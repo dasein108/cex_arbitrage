@@ -127,14 +127,15 @@ parsed = {
 ### Example 1: Binance-style JSON WebSocket
 
 ```python
-from src.exchanges.interface.base_ws import BaseWebSocketInterface
+from exchanges.interface.websocket.base_ws import BaseWebSocketInterface
 import websockets
 import msgspec
+
 
 class BinanceWebSocket(BaseWebSocketInterface):
     async def _connect(self) -> None:
         self._ws = await websockets.connect(self.config.url)
-    
+
     async def _send_subscription_message(self, streams: List[str], action: SubscriptionAction) -> None:
         message = {
             "method": "SUBSCRIBE" if action == SubscriptionAction.SUBSCRIBE else "UNSUBSCRIBE",
@@ -142,12 +143,12 @@ class BinanceWebSocket(BaseWebSocketInterface):
             "id": int(time.time())
         }
         await self.send_message(message)
-    
+
     async def _parse_message(self, raw_message: Union[str, bytes]) -> Optional[Dict[str, Any]]:
         if isinstance(raw_message, str):
             return msgspec.json.decode(raw_message)
         return None
-    
+
     def _extract_stream_info(self, message: Dict[str, Any]) -> Optional[tuple[str, StreamType]]:
         if "stream" in message:
             stream_id = message["stream"]

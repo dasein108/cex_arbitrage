@@ -292,43 +292,44 @@ async def example_usage():
 
 ```python
 # ✅ CORRECT: Using unified interface standards
-from src.exchanges.interface.public_exchange import PublicExchangeInterface
-from src.exchanges.interface.private_exchange import PrivateExchangeInterface
+from exchanges.interface.rest.public_exchange import PublicExchangeInterface
+from exchanges.interface.rest.private_exchange import PrivateExchangeInterface
 from src.structs.exchange import Symbol, OrderBook, Order, ExchangeName
 from src.common.rest import HighPerformanceRestClient, RequestConfig
 from src.common.exceptions import ExchangeAPIError, RateLimitError
 
+
 class BinancePublic(PublicExchangeInterface):
-    """COMPLIANT implementation using unified standards"""
-    
-    def __init__(self):
-        super().__init__(ExchangeName("binance"), "https://api.binance.com")
-        
-        # MANDATORY: Use standardized REST client
-        self.client = HighPerformanceRestClient(
-            base_url=self.base_url,
-            max_concurrent_requests=40,
-            enable_metrics=True
-        )
-    
-    @property
-    def exchange_name(self) -> ExchangeName:
-        return ExchangeName("binance")
-    
-    async def get_orderbook(self, symbol: Symbol, limit: int = 100) -> OrderBook:
-        """Implementation using unified data structures and REST client"""
-        try:
-            config = RequestConfig(timeout=5.0, max_retries=2)
-            response = await self.client.get(f"/api/v3/depth", 
-                                           params={"symbol": self.symbol_to_pair(symbol)}, 
-                                           config=config)
-            
-            # Transform to unified OrderBook structure
-            return self._transform_orderbook_response(response)
-            
-        except Exception as e:
-            # MANDATORY: Use unified exception mapping
-            raise self._map_exchange_error(e)
+   """COMPLIANT implementation using unified standards"""
+
+   def __init__(self):
+      super().__init__(ExchangeName("binance"), "https://api.binance.com")
+
+      # MANDATORY: Use standardized REST client
+      self.client = HighPerformanceRestClient(
+         base_url=self.base_url,
+         max_concurrent_requests=40,
+         enable_metrics=True
+      )
+
+   @property
+   def exchange_name(self) -> ExchangeName:
+      return ExchangeName("binance")
+
+   async def get_orderbook(self, symbol: Symbol, limit: int = 100) -> OrderBook:
+      """Implementation using unified data structures and REST client"""
+      try:
+         config = RequestConfig(timeout=5.0, max_retries=2)
+         response = await self.client.get(f"/api/v3/depth",
+                                          params={"symbol": self.symbol_to_pair(symbol)},
+                                          config=config)
+
+         # Transform to unified OrderBook structure
+         return self._transform_orderbook_response(response)
+
+      except Exception as e:
+         # MANDATORY: Use unified exception mapping
+         raise self._map_exchange_error(e)
 ```
 
 **Reference Implementation**: See `/Users/dasein/dev/cex_arbitrage/src/exchanges/mexc/public.py` for complete compliant implementation.
@@ -429,7 +430,7 @@ The `raw/` directory contains legacy code that is **incompatible with unified in
    from raw.common.exceptions import ExchangeAPIError
    
    # ✅ REPLACE with unified imports:
-   from src.exchanges.interface.public_exchange import PublicExchangeInterface
+   from exchanges.interface.rest.public_exchange import PublicExchangeInterface
    from src.structs.exchange import Order, SymbolInfo, AssetBalance
    from src.common.exceptions import ExchangeAPIError
    ```

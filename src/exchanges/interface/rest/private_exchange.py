@@ -1,6 +1,5 @@
-from abc import ABC, abstractmethod
+from abc import abstractmethod
 from typing import Dict, List, Optional
-from datetime import datetime
 from structs.exchange import (
     Symbol,
     Order,
@@ -9,12 +8,11 @@ from structs.exchange import (
     Side,
     AssetBalance,
     AssetName,
-    Trade,
     ExchangeName
 )
 
 # Import the base interface
-from exchanges.interface.base_exchange import BaseExchangeInterface
+from exchanges.interface.rest.base_exchange import BaseExchangeInterface
 
 
 class PrivateExchangeInterface(BaseExchangeInterface):
@@ -63,7 +61,7 @@ class PrivateExchangeInterface(BaseExchangeInterface):
         pass
     
     @abstractmethod
-    async def cancel_order(self, symbol: Symbol, order_id: str) -> Order:
+    async def cancel_order(self, symbol: Symbol, order_id: OrderId) -> Order:
         """Cancel an active order"""
         pass
     
@@ -73,7 +71,7 @@ class PrivateExchangeInterface(BaseExchangeInterface):
         pass
     
     @abstractmethod
-    async def get_order(self, symbol: Symbol, order_id: str) -> Order:
+    async def get_order(self, symbol: Symbol, order_id: OrderId) -> Order:
         """Query order status"""
         pass
     

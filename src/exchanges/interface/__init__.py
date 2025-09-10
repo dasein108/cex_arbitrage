@@ -1,7 +1,7 @@
-from .base_exchange import BaseExchangeInterface
-from .public_exchange import PublicExchangeInterface
-from .private_exchange import PrivateExchangeInterface
-from .base_ws import (
+from exchanges.interface.rest.base_exchange import BaseExchangeInterface
+from exchanges.interface.rest.public_exchange import PublicExchangeInterface
+from exchanges.interface.rest.private_exchange import PrivateExchangeInterface
+from exchanges.interface.websocket.base_ws import (
     BaseWebSocketInterface,
     WebSocketConfig,
     ConnectionState,

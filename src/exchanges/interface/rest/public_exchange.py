@@ -1,7 +1,6 @@
-import asyncio
 import logging
-from abc import ABC, abstractmethod
-from typing import Dict, List, Optional, Any
+from abc import abstractmethod
+from typing import Dict, List
 from structs.exchange import (
     Symbol,
     SymbolInfo,
@@ -11,7 +10,7 @@ from structs.exchange import (
 )
 
 # Import the base interface
-from exchanges.interface.base_exchange import BaseExchangeInterface
+from exchanges.interface.rest.base_exchange import BaseExchangeInterface
 
 
 class PublicExchangeInterface(BaseExchangeInterface):

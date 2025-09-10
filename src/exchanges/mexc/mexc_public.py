@@ -39,9 +39,8 @@ from structs.exchange import (
     Symbol, SymbolInfo, OrderBook, OrderBookEntry, Trade, 
     ExchangeName, AssetName, Side
 )
-from common.exceptions import ExchangeAPIError, RateLimitError
-from common.rest import HighPerformanceRestClient, create_market_data_config
-from exchanges.interface.public_exchange import PublicExchangeInterface
+from common.rest import UltraSimpleRestClient, RestConfig
+from exchanges.interface.rest.public_exchange import PublicExchangeInterface
 from exchanges.mexc.websocket import MexcWebSocketPublicStream
 
 
@@ -143,17 +142,21 @@ class MexcPublicExchange(PublicExchangeInterface):
         # Logger for debugging and monitoring
         self.logger = logging.getLogger(f"{__name__}.{self.__class__.__name__}")
         
-        # Initialize high-performance REST client with optimal market data configuration
-        self.client = HighPerformanceRestClient(
+        # Initialize ultra-simple REST client with optimal market data configuration
+        config = RestConfig(
+            timeout=10.0,
+            max_retries=3,
+            retry_delay=1.0,
+            require_auth=False,  # Public endpoints don't need auth
+            max_concurrent=40    # High concurrency for arbitrage
+        )
+        
+        self.client = UltraSimpleRestClient(
             base_url=self.BASE_URL,
             api_key=api_key,
             secret_key=secret_key,
-            max_concurrent_requests=40,  # High concurrency for arbitrage
-            enable_metrics=True  # Enable for performance monitoring
+            config=config
         )
-        
-        # Configure unified endpoint configurations (rate limiting + request settings)
-        self._setup_unified_endpoint_configs()
         
         # Cache for exchange info to reduce API calls
         self._exchange_info: Optional[Dict[Symbol, SymbolInfo]] = None
@@ -162,7 +165,7 @@ class MexcPublicExchange(PublicExchangeInterface):
         self._websocket: Optional[MexcWebSocketPublicStream] = None
         self._active_symbols: set[Symbol] = set()
         self._symbol_to_stream: Dict[Symbol, str] = {}
-        self._realtime_orderbooks: Dict[Symbol, OrderBook] = {}
+        self._orderbooks: Dict[Symbol, OrderBook] = {}
         self._orderbook_lock = asyncio.Lock()
         
         # Fallback mechanism for WebSocket disconnections
@@ -176,64 +179,14 @@ class MexcPublicExchange(PublicExchangeInterface):
         
         self.logger.info(f"Initialized {self.EXCHANGE_NAME} public exchange client")
     
-    def _setup_unified_endpoint_configs(self):
-        """
-        Configure unified endpoint configurations combining rate limiting and request settings.
-        Optimized for HFT performance with minimal object creation overhead.
-        """
-        
-        # Unified endpoint configurations with both request config and rate limiting
-        # Format: endpoint -> (RequestConfig, max_tokens, refill_rate)
-        unified_configs = {
-            self.ENDPOINTS['exchange_info']: (
-                create_market_data_config(
-                    timeout=8.0,
-                    rate_limit_tokens=5
-                ),
-                5, 0.1  # Low frequency, high weight
-            ),
-            self.ENDPOINTS['depth']: (
-                create_market_data_config(
-                    timeout=4.0,
-                    max_retries=1,
-                    retry_delay=0.1
-                ),
-                20, 20  # High frequency for order books
-            ),
-            self.ENDPOINTS['trades']: (
-                create_market_data_config(
-                    timeout=6.0,
-                    max_retries=2,
-                    retry_delay=0.3
-                ),
-                15, 15  # Medium-high for trade data
-            ),
-            self.ENDPOINTS['time']: (
-                create_market_data_config(
-                    timeout=2.0,
-                    max_retries=1,
-                    retry_delay=0.1
-                ),
-                30, 30  # High frequency for timestamps
-            ),
-            self.ENDPOINTS['ping']: (
-                create_market_data_config(
-                    timeout=3.0,
-                    max_retries=1,
-                    retry_delay=0.1
-                ),
-                50, 50  # Very high for health checks
-            ),
+        # Create endpoint-specific configurations for different performance requirements
+        self._endpoint_configs = {
+            'exchange_info': RestConfig(timeout=8.0, max_retries=3, retry_delay=1.0, require_auth=False),
+            'depth': RestConfig(timeout=4.0, max_retries=1, retry_delay=0.1, require_auth=False),
+            'trades': RestConfig(timeout=6.0, max_retries=2, retry_delay=0.3, require_auth=False),
+            'time': RestConfig(timeout=2.0, max_retries=1, retry_delay=0.1, require_auth=False),
+            'ping': RestConfig(timeout=3.0, max_retries=1, retry_delay=0.1, require_auth=False)
         }
-        
-        # Apply unified configurations to client
-        for endpoint, (config, max_tokens, refill_rate) in unified_configs.items():
-            self.client.set_endpoint_config(endpoint, config, max_tokens, refill_rate)
-    
-    @property
-    def exchange_name(self) -> ExchangeName:
-        """Return the MEXC exchange name identifier."""
-        return self.EXCHANGE_NAME
     
     @staticmethod
     async def symbol_to_pair(symbol: Symbol) -> str:
@@ -366,7 +319,10 @@ class MexcPublicExchange(PublicExchangeInterface):
             return self._exchange_info
         
         # Fetch exchange info from MEXC using endpoint-specific config
-        response_data = await self.client.get(self.ENDPOINTS['exchange_info'])
+        response_data = await self.client.get(
+            self.ENDPOINTS['exchange_info'],
+            config=self._endpoint_configs['exchange_info']
+        )
         
         # Parse response with msgspec for maximum performance
         exchange_info = msgspec.convert(response_data, MexcExchangeInfoResponse)
@@ -441,7 +397,11 @@ class MexcPublicExchange(PublicExchangeInterface):
         
         # Fetch order book data with performance tracking using endpoint-specific config
         start_time = time.time()
-        response_data = await self.client.get(self.ENDPOINTS['depth'], params=params)
+        response_data = await self.client.get(
+            self.ENDPOINTS['depth'],
+            params=params,
+            config=self._endpoint_configs['depth']
+        )
         
         # Parse with msgspec for maximum speed
         orderbook_data = msgspec.convert(response_data, MexcOrderBookResponse)
@@ -500,7 +460,11 @@ class MexcPublicExchange(PublicExchangeInterface):
         }
         
         # Fetch trade data using endpoint-specific config
-        response_data = await self.client.get(self.ENDPOINTS['trades'], params=params)
+        response_data = await self.client.get(
+            self.ENDPOINTS['trades'],
+            params=params,
+            config=self._endpoint_configs['trades']
+        )
         
         # Parse trade data efficiently with msgspec
         trade_responses = msgspec.convert(response_data, list[MexcTradeResponse])
@@ -541,7 +505,10 @@ class MexcPublicExchange(PublicExchangeInterface):
             RateLimitError: If rate limit is exceeded
         """
         # Fetch server time using endpoint-specific config
-        response_data = await self.client.get(self.ENDPOINTS['time'])
+        response_data = await self.client.get(
+            self.ENDPOINTS['time'],
+            config=self._endpoint_configs['time']
+        )
         
         # Parse server time response with msgspec
         time_response = msgspec.convert(response_data, MexcServerTimeResponse)
@@ -563,7 +530,10 @@ class MexcPublicExchange(PublicExchangeInterface):
             Following new development standards, exceptions now bubble up to application level.
         """
         try:
-            await self.client.get(self.ENDPOINTS['ping'])
+            await self.client.get(
+                self.ENDPOINTS['ping'],
+                config=self._endpoint_configs['ping']
+            )
             return True
         except Exception:
             return False
@@ -583,8 +553,14 @@ class MexcPublicExchange(PublicExchangeInterface):
         await self.close()
     
     def get_performance_metrics(self) -> dict:
-        """Get performance metrics for monitoring and optimization."""
-        return self.client.get_metrics()
+        """Get basic performance metrics for monitoring and optimization."""
+        return {
+            'exchange': str(self.EXCHANGE_NAME),
+            'base_url': self.BASE_URL,
+            'active_symbols': len(self._active_symbols),
+            'cached_orderbooks': len(self._orderbooks),
+            'rest_fallback_active': self._rest_fallback_active
+        }
     
     # Abstract method implementations for WebSocket integration
     
@@ -608,7 +584,7 @@ class MexcPublicExchange(PublicExchangeInterface):
             try:
                 orderbook = await self.get_orderbook(symbol, limit=100)
                 async with self._orderbook_lock:
-                    self._realtime_orderbooks[symbol] = orderbook
+                    self._orderbooks[symbol] = orderbook
                 initial_orderbooks[symbol] = orderbook
                 self.logger.debug(f"Loaded initial orderbook for {symbol}")
             except Exception as e:
@@ -663,7 +639,7 @@ class MexcPublicExchange(PublicExchangeInterface):
         try:
             orderbook = await self.get_orderbook(symbol, limit=100)
             async with self._orderbook_lock:
-                self._realtime_orderbooks[symbol] = orderbook
+                self._orderbooks[symbol] = orderbook
             self.logger.debug(f"Loaded initial orderbook for {symbol}")
         except Exception as e:
             self.logger.error(f"Failed to load initial orderbook for {symbol}: {e}")
@@ -710,7 +686,7 @@ class MexcPublicExchange(PublicExchangeInterface):
         # Clean up symbol data
         self._symbol_to_stream.pop(symbol, None)
         async with self._orderbook_lock:
-            self._realtime_orderbooks.pop(symbol, None)
+            self._orderbooks.pop(symbol, None)
         
         self.logger.info(f"Stopped symbol {symbol}")
     
@@ -767,7 +743,7 @@ class MexcPublicExchange(PublicExchangeInterface):
                 
                 # Thread-safe orderbook update
                 async with self._orderbook_lock:
-                    self._realtime_orderbooks[symbol] = orderbook
+                    self._orderbooks[symbol] = orderbook
                     # Track timestamp for fallback detection
                     self._last_orderbook_timestamps[symbol] = current_timestamp
                 
@@ -798,7 +774,7 @@ class MexcPublicExchange(PublicExchangeInterface):
         
         # Reset fallback flag if we have fresh data
         self._rest_fallback_active = False
-        return self._realtime_orderbooks.get(symbol)
+        return self._orderbooks.get(symbol)
     
     def is_symbol_active(self, symbol: Symbol) -> bool:
         """Check if symbol is actively streaming."""
@@ -818,7 +794,7 @@ class MexcPublicExchange(PublicExchangeInterface):
         self._active_symbols.clear()
         self._symbol_to_stream.clear()
         async with self._orderbook_lock:
-            self._realtime_orderbooks.clear()
+            self._orderbooks.clear()
         
         self.logger.info("All WebSocket streams stopped")
     
@@ -835,7 +811,7 @@ class MexcPublicExchange(PublicExchangeInterface):
                 'is_connected': hasattr(self._websocket, '_ws') and self._websocket._ws is not None,
                 'streams': len(self._symbol_to_stream),
                 'active_symbols': len(self._active_symbols),
-                'orderbook_symbols': len(self._realtime_orderbooks),
+                'orderbook_symbols': len(self._orderbooks),
                 'connection_retries': getattr(self._websocket, '_reconnection_count', 0),
                 'max_retries': getattr(self._websocket, 'max_retries', 10),
                 'websocket_type': 'MexcWebSocketPublicStream',
@@ -848,7 +824,7 @@ class MexcPublicExchange(PublicExchangeInterface):
             'is_connected': False,
             'streams': 0,
             'active_symbols': len(self._active_symbols),
-            'orderbook_symbols': len(self._realtime_orderbooks),
+            'orderbook_symbols': len(self._orderbooks),
             'connection_retries': 0,
             'max_retries': 0,
             'websocket_type': None,
