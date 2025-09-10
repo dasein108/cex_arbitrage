@@ -34,6 +34,32 @@ class Side(Enum):
     SELL = "SELL"
 
 
+# Backward compatibility alias
+OrderSide = Side
+
+
+class TimeInForce(Enum):
+    """Time in force for orders"""
+    GTC = "GTC"  # Good Till Cancelled
+    IOC = "IOC"  # Immediate or Cancel
+    FOK = "FOK"  # Fill or Kill
+    GTD = "GTD"  # Good Till Date
+
+
+class KlineInterval(Enum):
+    """Kline/Candlestick chart intervals"""
+    MINUTE_1 = "1m"
+    MINUTE_5 = "5m"
+    MINUTE_15 = "15m"
+    MINUTE_30 = "30m"
+    HOUR_1 = "1h"
+    HOUR_4 = "4h"
+    HOUR_12 = "12h"
+    DAY_1 = "1d"
+    WEEK_1 = "1w"
+    MONTH_1 = "1M"
+
+
 class StreamType(Enum):
     ORDERBOOK = "orderbook"
     TRADES = "trades"
@@ -104,3 +130,50 @@ class AssetBalance(Struct):
     @property
     def total(self) -> float:
         return self.free + self.locked
+
+
+class Ticker(Struct):
+    """24hr ticker price change statistics"""
+    symbol: Symbol
+    price: float
+    price_change: float = 0.0
+    price_change_percent: float = 0.0
+    high_price: float = 0.0
+    low_price: float = 0.0
+    volume: float = 0.0
+    quote_volume: float = 0.0
+    open_price: float = 0.0
+    timestamp: float = 0.0
+
+
+class Kline(Struct):
+    """Kline/Candlestick data"""
+    symbol: Symbol
+    interval: KlineInterval
+    open_time: int
+    close_time: int
+    open_price: float
+    high_price: float
+    low_price: float
+    close_price: float
+    volume: float
+    quote_volume: float
+    trades_count: int = 0
+
+
+class TradingFee(Struct):
+    """Trading fee structure"""
+    symbol: Symbol
+    maker_fee: float
+    taker_fee: float
+    
+
+class AccountInfo(Struct):
+    """Account information"""
+    exchange: ExchangeName
+    account_type: str = "SPOT"
+    can_trade: bool = True
+    can_withdraw: bool = True
+    can_deposit: bool = True
+    balances: list[AssetBalance] = []
+    permissions: list[str] = []

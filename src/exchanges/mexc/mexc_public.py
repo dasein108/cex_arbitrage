@@ -603,15 +603,13 @@ class MexcPublicExchange(PublicExchangeInterface):
         # Initialize WebSocket connection if we have streams
         if streams:
             self._websocket = MexcWebSocketPublicStream(
-                exchange_name=self.EXCHANGE_NAME,
-                on_message=self._handle_websocket_message,
-                streams=streams,
-                timeout=30.0,
-                max_retries=10
+                exchange=self.EXCHANGE_NAME,
+                message_handler=self._handle_websocket_message
             )
             
-            # Start WebSocket connection
-            asyncio.create_task(self._websocket.run())
+            # Start WebSocket connection and subscribe to streams
+            await self._websocket.start()
+            await self._websocket.subscribe(streams)
             self.logger.info(f"WebSocket initialized with {len(streams)} streams")
         else:
             self.logger.warning("No valid streams to subscribe to")
@@ -695,8 +693,8 @@ class MexcPublicExchange(PublicExchangeInterface):
     async def _create_orderbook_stream(self, symbol: Symbol) -> str:
         """Create differential depth stream identifier for a symbol."""
         symbol_str = await self.symbol_to_pair(symbol)
-        # Use MEXC's diff_depth stream for more efficient updates
-        return f"spot@public.increase.depth.v3.api@{symbol_str.upper()}"
+        # Use MEXC's depth stream with protobuf format for efficient updates
+        return f"spot@public.depth.v3.api.pb@100ms@{symbol_str.upper()}"
     
     async def _handle_websocket_message(self, message: Dict[str, Any]) -> None:
         """Handle WebSocket messages and update orderbook storage."""
