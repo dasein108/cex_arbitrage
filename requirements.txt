@@ -1,0 +1,41 @@
+# Core async and performance
+uvloop==0.20.0  # High-performance drop-in replacement for asyncio event loop
+anyio==4.6.2  # High-level async library with structured concurrency
+
+# WebSocket clients
+aiohttp==3.10.10  # Fast async HTTP/WebSocket client with connection pooling
+websockets==13.1  # Alternative WebSocket client, pure Python implementation
+
+# High-performance JSON/data parsing
+msgspec==0.18.6  # Fastest JSON encoder/decoder with schema validation
+orjson==3.10.11  # Alternative ultra-fast JSON library (3x faster than json)
+pysimdjson==6.0.2  # SIMD-accelerated JSON parsing (alternative to orjson)
+
+# Data structures and algorithms
+sortedcontainers==2.4.0  # Fast sorted collections for order book management
+numpy==2.0.2  # Efficient array operations for numerical computations
+numba==0.60.0  # JIT compiler for numerical functions
+
+# Exchange-specific libraries
+ccxt==4.4.24  # Unified API for crypto exchanges (optional, for reference)
+cryptography==43.0.3  # For signing requests and secure API communication
+
+# Monitoring and metrics
+prometheus-client==0.21.0  # Prometheus metrics export
+aioprometheus==23.12.0  # Async prometheus client
+
+# Logging and debugging
+loguru==0.7.2  # Better logging with performance in mind
+python-dotenv==1.0.1  # Environment variable management
+
+# Development and testing
+pytest==8.3.3  # Testing framework
+pytest-asyncio==0.24.0  # Async test support
+black==24.10.0  # Code formatter
+ruff==0.7.3  # Fast Python linter
+mypy==1.13.0  # Static type checker
+ipython==8.29.0  # Enhanced Python shell
+
+# Optional performance tools
+py-spy==0.3.14  # Sampling profiler for Python programs
+memory-profiler==0.61.0  # Memory usage monitoring
