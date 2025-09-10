@@ -1,6 +1,8 @@
+import asyncio
+import logging
 from abc import ABC, abstractmethod
-from typing import Dict, List, Optional
-from src.structs.exchange import (
+from typing import Dict, List, Optional, Any
+from structs.exchange import (
     Symbol,
     SymbolInfo,
     OrderBook,
@@ -8,20 +10,19 @@ from src.structs.exchange import (
     ExchangeName
 )
 
+# Import the base interface
+from exchanges.interface.base_exchange import BaseExchangeInterface
 
-class PublicExchangeInterface(ABC):
+
+class PublicExchangeInterface(BaseExchangeInterface):
     """Abstract interface for public exchange operations (market data)"""
-    
+
+
     def __init__(self, exchange: ExchangeName, base_url: str):
         self.exchange = exchange
         self.base_url = base_url
+        self.logger = logging.getLogger(f"public_exchange_{exchange}")
         
-    @property
-    @abstractmethod
-    def exchange_name(self) -> ExchangeName:
-        """Return the exchange name identifier"""
-        pass
-
     @staticmethod
     async def symbol_to_pair(symbol: Symbol) -> str:
         """Convert Symbol to exchange-specific trading pair string"""
@@ -58,3 +59,4 @@ class PublicExchangeInterface(ABC):
     async def ping(self) -> bool:
         """Test connectivity to the exchange"""
         pass
+

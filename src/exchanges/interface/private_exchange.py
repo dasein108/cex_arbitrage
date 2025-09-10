@@ -1,7 +1,7 @@
 from abc import ABC, abstractmethod
 from typing import Dict, List, Optional
 from datetime import datetime
-from src.structs.exchange import (
+from structs.exchange import (
     Symbol,
     Order,
     OrderId,
@@ -13,8 +13,11 @@ from src.structs.exchange import (
     ExchangeName
 )
 
+# Import the base interface
+from exchanges.interface.base_exchange import BaseExchangeInterface
 
-class PrivateExchangeInterface(ABC):
+
+class PrivateExchangeInterface(BaseExchangeInterface):
     """Abstract interface for private exchange operations (trading, account management)"""
     
     def __init__(self, exchange: ExchangeName, api_key: str, secret_key: str, base_url: str):
@@ -23,11 +26,6 @@ class PrivateExchangeInterface(ABC):
         self.secret_key = secret_key
         self.base_url = base_url
         
-    @property
-    @abstractmethod
-    def exchange_name(self) -> ExchangeName:
-        """Return the exchange name identifier"""
-        pass
     
     @abstractmethod
     async def get_account_balance(self) -> Dict[AssetName, AssetBalance]:

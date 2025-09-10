@@ -2,7 +2,16 @@
   "permissions": {
     "allow": [
       "Bash(source:*)",
-      "Bash(pip install:*)"
+      "Bash(pip install:*)",
+      "Bash(python:*)",
+      "Bash(git log:*)",
+      "WebSearch",
+      "Bash(find:*)",
+      "Bash(PYTHONPATH=src python src/examples/public_exchange_demo.py)",
+      "Bash(sed:*)",
+      "Bash(timeout:*)",
+      "Bash(PYTHONPATH=src python -c \"\nimport asyncio\nfrom examples.public_exchange_demo import PublicExchangeDemo\nfrom structs.exchange import Symbol, AssetName\n\nasync def test_health():\n    demo = PublicExchangeDemo()\n    print(''Testing WebSocket health method...'')\n    health = demo.exchange.get_websocket_health()\n    print(''✅ Health check successful:'', health)\n    await demo.exchange.close()\n\nasyncio.run(test_health())\n\")",
+      "Bash(PYTHONPATH=src python:*)"
     ],
     "deny": [],
     "ask": []

@@ -120,3 +120,4 @@ grafana_data/
 *.cache
 temp/
 tmp/
+venv/

@@ -5,10 +5,9 @@ from msgspec import Struct
 from typing import NewType, Optional
 
 
-type ExchangeName = NewType('Exchange', str)
-type AssetName = NewType('AssetName', str)
-
-type OrderId = NewType("OrderId", str)
+ExchangeName = NewType('Exchange', str)
+AssetName = NewType('AssetName', str)
+OrderId = NewType("OrderId", str)
 
 
 class OrderStatus(IntEnum):
@@ -35,7 +34,17 @@ class Side(Enum):
     SELL = "SELL"
 
 
-class Symbol(Struct):
+class StreamType(Enum):
+    ORDERBOOK = "orderbook"
+    TRADES = "trades"
+    TICKER = "ticker"
+    KLINE = "kline"
+    ACCOUNT = "account"
+    ORDERS = "orders"
+    BALANCE = "balance"
+
+
+class Symbol(Struct, frozen=True):
     base: AssetName
     quote: AssetName
     is_futures: bool = False
@@ -51,9 +60,10 @@ class SymbolInfo(Struct):
     is_futures: bool = False
     maker_commission: float = 0
     taker_commission: float = 0
+    inactive: bool = False
 
 
-class OrderBookEntry(Struct):
+class OrderBookEntry(Struct, frozen=True):
     price: float
     size: float
 

@@ -30,7 +30,7 @@ import logging
 
 import aiohttp
 import msgspec
-from src.common.exceptions import ExchangeAPIError, RateLimitError
+from common.exceptions import ExchangeAPIError, RateLimitError
 
 # Use msgspec as the primary and only JSON handler for maximum performance
 MSGSPEC_DECODER = msgspec.json.Decoder()
@@ -137,8 +137,7 @@ class ConnectionConfig(msgspec.Struct):
     connector_ttl_dns_cache: int = 600  # Longer DNS cache TTL to reduce lookups
     connector_use_dns_cache: bool = True
     
-    # TCP socket settings optimized for low latency
-    connector_tcp_keepalive: bool = True
+    # TCP socket settings optimized for low latency  
     connector_sock_keepalive: bool = True
     connector_enable_cleanup_closed: bool = True
     connector_tcp_keepidle: int = 60  # TCP keepalive idle time
@@ -247,12 +246,12 @@ class HighPerformanceRestClient:
                 limit_per_host=self.connection_config.connector_limit_per_host,
                 ttl_dns_cache=self.connection_config.connector_ttl_dns_cache,
                 use_dns_cache=self.connection_config.connector_use_dns_cache,
-                tcp_keepalive=self.connection_config.connector_tcp_keepalive,
                 enable_cleanup_closed=self.connection_config.connector_enable_cleanup_closed,
                 verify_ssl=self.connection_config.verify_ssl,
                 # Low-latency TCP optimizations
                 keepalive_timeout=60,  # Keep connections alive longer
                 force_close=False,     # Reuse connections aggressively
+                # Note: tcp_keepalive parameter removed (deprecated in aiohttp 3.12+)
                 # Note: Some TCP options need to be set at socket level in production
             )
             
@@ -419,7 +418,8 @@ class HighPerformanceRestClient:
         Execute HTTP request with comprehensive error handling and retries.
         Optimized for minimal latency and maximum throughput.
         """
-        config = config or RequestConfig()
+        # Use endpoint-specific config if available, otherwise use provided config or default
+        config = config or self.get_endpoint_config(endpoint) or RequestConfig()
         params = params or {}
         
         # Ensure session is ready
@@ -588,6 +588,31 @@ class HighPerformanceRestClient:
             max_tokens=max_tokens, refill_rate=refill_rate
         )
     
+    def set_endpoint_config(self, endpoint: str, config: RequestConfig, max_tokens: int, refill_rate: float):
+        """
+        Set unified configuration for an endpoint including both request config and rate limiting.
+        Optimized for HFT scenarios where minimal overhead is critical.
+        
+        Args:
+            endpoint: API endpoint path
+            config: Request configuration (timeout, retries, etc.)
+            max_tokens: Rate limiter max tokens
+            refill_rate: Rate limiter refill rate per second
+        """
+        # Store the config for this endpoint
+        if not hasattr(self, 'endpoint_configs'):
+            self.endpoint_configs: Dict[str, RequestConfig] = {}
+        self.endpoint_configs[endpoint] = config
+        
+        # Set up rate limiting
+        self.endpoint_rate_limiters[endpoint] = RateLimiter(
+            max_tokens=max_tokens, refill_rate=refill_rate
+        )
+    
+    def get_endpoint_config(self, endpoint: str) -> Optional[RequestConfig]:
+        """Get stored configuration for an endpoint, None if not set."""
+        return getattr(self, 'endpoint_configs', {}).get(endpoint)
+    
     def get_metrics(self) -> Dict[str, Any]:
         """Get performance metrics for monitoring."""
         if not self.enable_metrics:
@@ -672,27 +697,45 @@ async def create_trading_client(
         await client.close()
 
 
-def create_market_data_config() -> RequestConfig:
-    """Create optimized config for market data requests (public, fast)."""
+def create_market_data_config(
+    timeout: float = 5.0,
+    max_retries: int = 2,
+    retry_delay: float = 0.5,
+    retry_backoff: float = 1.5,
+    rate_limit_tokens: int = 1,
+    require_auth: bool = False,
+    validate_response: bool = True
+) -> RequestConfig:
+    """Create optimized config for market data requests with customizable parameters."""
     return RequestConfig(
-        timeout=5.0,
-        max_retries=2,
-        retry_delay=0.5,
-        retry_backoff=1.5,
-        rate_limit_tokens=1,
-        require_auth=False
+        timeout=timeout,
+        max_retries=max_retries,
+        retry_delay=retry_delay,
+        retry_backoff=retry_backoff,
+        rate_limit_tokens=rate_limit_tokens,
+        require_auth=require_auth,
+        validate_response=validate_response
     )
 
 
-def create_trading_config() -> RequestConfig:
-    """Create optimized config for trading requests (private, reliable)."""
+def create_trading_config(
+    timeout: float = 10.0,
+    max_retries: int = 3,
+    retry_delay: float = 1.0,
+    retry_backoff: float = 2.0,
+    rate_limit_tokens: int = 2,
+    require_auth: bool = True,
+    validate_response: bool = True
+) -> RequestConfig:
+    """Create optimized config for trading requests with customizable parameters."""
     return RequestConfig(
-        timeout=10.0,
-        max_retries=3,
-        retry_delay=1.0,
-        retry_backoff=2.0,
-        rate_limit_tokens=2,
-        require_auth=True
+        timeout=timeout,
+        max_retries=max_retries,
+        retry_delay=retry_delay,
+        retry_backoff=retry_backoff,
+        rate_limit_tokens=rate_limit_tokens,
+        require_auth=require_auth,
+        validate_response=validate_response
     )
 
 

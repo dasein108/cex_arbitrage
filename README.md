@@ -57,12 +57,27 @@ The engine follows a **high-performance event-driven architecture** with these f
 
 ## Core Components
 
-### 1. Data Layer (`src/structs/`)
+### 1. **Unified Interface System** (`src/exchanges/interface/`)
 
-**Purpose**: Type-safe data structures using `msgspec.Struct` for maximum performance
+**Purpose**: Standardized interfaces ensuring consistency across all exchange implementations
+
+**MANDATORY Interface Compliance**:
+- **All exchanges MUST implement `PublicExchangeInterface`** for market data operations
+- **All exchanges MUST implement `PrivateExchangeInterface`** for trading operations  
+- **All WebSocket implementations MUST use `BaseWebSocketInterface`**
+- **NO USAGE of legacy `raw/common/interfaces/`** - deprecated and performance-degraded
 
 **Key Files**:
-- `exchange.py`: Core trading data structures (Order, OrderBook, Trade, etc.)
+- `public_exchange.py`: Market data operations (order books, trades, server time)
+- `private_exchange.py`: Trading operations (orders, balances, account management)
+- `base_ws.py`: WebSocket base interface for real-time data streaming
+
+### 2. Data Layer (`src/structs/`)
+
+**Purpose**: **UNIFIED** type-safe data structures using `msgspec.Struct` for maximum performance
+
+**Key Files**:
+- `exchange.py`: **STANDARDIZED** core trading data structures (Order, OrderBook, Trade, etc.)
 
 **Performance Features**:
 - `msgspec.Struct` provides 3-5x performance gain over `dataclasses`
@@ -70,9 +85,13 @@ The engine follows a **high-performance event-driven architecture** with these f
 - `NewType` for type aliases with zero runtime overhead
 - Optimized memory layout with `__slots__` where applicable
 
-### 2. Network Layer (`src/common/rest.py`)
+**CRITICAL**: **NEVER use legacy structures from `raw/common/entities.py`**
 
-**Purpose**: Ultra-high performance REST API client optimized for cryptocurrency trading
+### 3. Network Layer (`src/common/rest.py`)
+
+**Purpose**: **STANDARDIZED** ultra-high performance REST API client optimized for cryptocurrency trading
+
+**CRITICAL**: **ALL exchanges MUST use `HighPerformanceRestClient` - NO custom HTTP clients allowed**
 
 **Key Features**:
 - **Connection pooling** with persistent aiohttp sessions
@@ -89,25 +108,52 @@ The engine follows a **high-performance event-driven architecture** with these f
 - Memory usage: O(1) per request
 - JSON parsing: <1ms per message
 
-### 3. Exchange Interfaces (`src/exchanges/interface/`)
+### 4. Exception Handling (`src/common/exceptions.py`)
 
-**Purpose**: Abstract interfaces ensuring consistent API across different exchanges
+**Purpose**: **UNIFIED** structured error handling with exchange-specific error codes
 
-**Architecture**:
-- `PublicExchangeInterface`: Market data operations (order books, trades, server time)
-- `PrivateExchangeInterface`: Trading operations (orders, balances, account management)
-
-**Design Pattern**: **Abstract Factory Pattern** with exchange-specific implementations
-
-### 4. Exception Hierarchy (`src/common/exceptions.py`)
-
-**Purpose**: Structured error handling with exchange-specific error codes
+**CRITICAL**: **ALL exchanges MUST use unified exception hierarchy - NO legacy exceptions allowed**
 
 **Features**:
 - Custom exception hierarchy for different error types
 - Structured error information (code, message, api_code)
 - Rate limiting exceptions with retry timing information
 - Trading-specific exceptions (insufficient balance, trading disabled, etc.)
+
+**DEPRECATED**: **NEVER use `raw/common/exceptions.py`** - incompatible with unified system
+
+## Interface Standards Compliance
+
+### **CRITICAL REQUIREMENTS** for All Exchange Implementations
+
+⚠️ **FAILURE TO COMPLY WILL RESULT IN PRODUCTION ISSUES AND PERFORMANCE DEGRADATION**
+
+#### ✅ **MUST USE** - Unified Standards:
+- `src/exchanges/interface/PublicExchangeInterface` - Market data operations
+- `src/exchanges/interface/PrivateExchangeInterface` - Trading operations  
+- `src/structs/exchange.py` - All data structures (Order, OrderBook, Trade, etc.)
+- `src/common/exceptions.py` - Exception handling (ExchangeAPIError, RateLimitError)
+- `src/common/rest.HighPerformanceRestClient` - HTTP operations
+
+#### ❌ **NEVER USE** - Legacy/Deprecated:
+- `raw/common/interfaces/` - Legacy interface system (performance issues)
+- `raw/common/entities.py` - Legacy data structures (lacks msgspec optimization)  
+- `raw/common/exceptions.py` - MEXC-specific exceptions (incompatible attributes)
+- Custom HTTP clients - Use standardized `HighPerformanceRestClient` only
+
+#### 📋 **Compliance Verification**:
+```bash
+# Run interface compliance check
+scripts/verify_interface_compliance.py your_exchange
+
+# Performance benchmarks  
+pytest tests/performance/test_your_exchange.py --benchmark
+
+# Integration tests
+pytest tests/exchanges/your_exchange/ --integration
+```
+
+See **`INTERFACE_STANDARDS.md`** for complete implementation guidelines.
 
 ## Performance Optimization Strategy
 
@@ -242,17 +288,27 @@ async def example_usage():
         print(f"Average response time: {metrics.get('avg_response_time', 0):.3f}s")
 ```
 
-### Exchange Interface Implementation
+### **Compliant Exchange Implementation Example**
 
 ```python
-from src.exchanges.interface import PublicExchangeInterface
-from src.structs.exchange import Symbol, OrderBook, ExchangeName
+# ✅ CORRECT: Using unified interface standards
+from src.exchanges.interface.public_exchange import PublicExchangeInterface
+from src.exchanges.interface.private_exchange import PrivateExchangeInterface
+from src.structs.exchange import Symbol, OrderBook, Order, ExchangeName
+from src.common.rest import HighPerformanceRestClient, RequestConfig
+from src.common.exceptions import ExchangeAPIError, RateLimitError
 
 class BinancePublic(PublicExchangeInterface):
+    """COMPLIANT implementation using unified standards"""
+    
     def __init__(self):
-        super().__init__(
-            exchange=ExchangeName("binance"),
-            base_url="https://api.binance.com"
+        super().__init__(ExchangeName("binance"), "https://api.binance.com")
+        
+        # MANDATORY: Use standardized REST client
+        self.client = HighPerformanceRestClient(
+            base_url=self.base_url,
+            max_concurrent_requests=40,
+            enable_metrics=True
         )
     
     @property
@@ -260,10 +316,22 @@ class BinancePublic(PublicExchangeInterface):
         return ExchangeName("binance")
     
     async def get_orderbook(self, symbol: Symbol, limit: int = 100) -> OrderBook:
-        # Implementation using the high-performance REST client
-        # ...
-        pass
+        """Implementation using unified data structures and REST client"""
+        try:
+            config = RequestConfig(timeout=5.0, max_retries=2)
+            response = await self.client.get(f"/api/v3/depth", 
+                                           params={"symbol": self.symbol_to_pair(symbol)}, 
+                                           config=config)
+            
+            # Transform to unified OrderBook structure
+            return self._transform_orderbook_response(response)
+            
+        except Exception as e:
+            # MANDATORY: Use unified exception mapping
+            raise self._map_exchange_error(e)
 ```
+
+**Reference Implementation**: See `/Users/dasein/dev/cex_arbitrage/src/exchanges/mexc/public.py` for complete compliant implementation.
 
 ## Performance Targets
 
@@ -345,10 +413,105 @@ print(f"Response time: {health_status['response_time']:.3f}s")
 - Load balancing across multiple exchange connections
 - Database integration for persistent state management
 
+## Migration from Legacy Systems
+
+### **CRITICAL MIGRATION REQUIRED** - Legacy `raw/` Directory Deprecation
+
+The `raw/` directory contains legacy code that is **incompatible with unified interface standards** and causes significant performance degradation. All legacy code must be migrated to the unified system.
+
+#### **Phase 1: Immediate Actions (REQUIRED)**
+
+1. **Stop Using Legacy Imports**:
+   ```python
+   # ❌ REMOVE these imports immediately:
+   from raw.common.interfaces.base_exchange import BaseSyncExchange
+   from raw.common.entities import Order, SymbolInfo, AccountBalance
+   from raw.common.exceptions import ExchangeAPIError
+   
+   # ✅ REPLACE with unified imports:
+   from src.exchanges.interface.public_exchange import PublicExchangeInterface
+   from src.structs.exchange import Order, SymbolInfo, AssetBalance
+   from src.common.exceptions import ExchangeAPIError
+   ```
+
+2. **Update Exception Handling**:
+   ```python
+   # ❌ Legacy exception with mexc_code:
+   try:
+       response = await api_call()
+   except ExchangeAPIError as e:
+       print(f"MEXC Code: {e.mexc_code}")  # Incompatible
+   
+   # ✅ Unified exception with api_code:
+   try:
+       response = await api_call()
+   except ExchangeAPIError as e:
+       print(f"API Code: {e.api_code}")    # Standardized
+   ```
+
+3. **Replace Custom HTTP Clients**:
+   ```python
+   # ❌ Custom aiohttp usage:
+   async with aiohttp.ClientSession() as session:
+       async with session.get(url) as response:
+           data = await response.json()
+   
+   # ✅ Use standardized client:
+   from src.common.rest import HighPerformanceRestClient
+   async with HighPerformanceRestClient(base_url) as client:
+       data = await client.get(endpoint)
+   ```
+
+#### **Phase 2: Interface Migration (1-2 weeks)**
+
+1. **Implement Unified Interfaces**:
+   - Create `PublicExchangeInterface` implementation
+   - Create `PrivateExchangeInterface` implementation
+   - Migrate WebSocket handlers to `BaseWebSocketInterface`
+
+2. **Data Structure Migration**:
+   - Replace `@dataclass` with `msgspec.Struct`
+   - Update type annotations to use `NewType` aliases
+   - Ensure all structures use `IntEnum` for performance
+
+3. **Testing Migration**:
+   - Update all tests to use unified interfaces
+   - Add performance benchmarks
+   - Verify compliance with `scripts/verify_interface_compliance.py`
+
+#### **Phase 3: Production Deployment**
+
+1. **Performance Validation**:
+   - Run full performance test suite
+   - Verify <50ms latency requirements
+   - Confirm >95% connection stability
+
+2. **Monitoring Setup**:
+   - Deploy with unified metrics collection
+   - Monitor interface compliance in production
+   - Set up alerts for performance degradation
+
+### **Legacy Code Cleanup Schedule**
+
+- **Week 1**: Stop all new development using `raw/` directory
+- **Week 2-3**: Migrate existing implementations to unified standards  
+- **Week 4**: Remove `raw/` directory from production deployments
+- **Week 5**: Archive `raw/` directory for historical reference only
+
+### **Support and Resources**
+
+- **Complete Implementation Guide**: `INTERFACE_STANDARDS.md`
+- **Performance Requirements**: `PERFORMANCE_RULES.md`  
+- **Reference Implementation**: `src/exchanges/mexc/public.py`
+- **Compliance Checker**: `scripts/verify_interface_compliance.py`
+- **Migration Support**: Contact system architects for migration assistance
+
 ## Contributing
 
 ### Development Standards
 
+- **MANDATORY**: Follow interface standards in `INTERFACE_STANDARDS.md`
+- **MANDATORY**: Pass interface compliance verification
 - Follow the performance rules in `PERFORMANCE_RULES.md`
 - Use `msgspec.Struct` exclusively for data structures
 - Maintain type safety with proper annotations
