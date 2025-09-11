@@ -1,0 +1,33 @@
+# MEXC Exchange Configuration
+# YAML-based configuration for MEXC cryptocurrency trading
+
+# Environment settings
+environment:
+  name: dev  # dev, prod, test
+  debug: true
+  log_level: DEBUG  # CRITICAL, ERROR, WARNING, INFO, DEBUG
+
+# MEXC Exchange API settings
+mexc:
+  api_key: ""  # Your MEXC API key
+  secret_key: ""  # Your MEXC secret key
+  base_url: "https://api.mexc.com"
+  websocket_url: "wss://wbs-api.mexc.com/ws"
+
+# Network configuration
+network:
+  request_timeout: 10.0  # seconds
+  connect_timeout: 5.0   # seconds
+  max_retries: 3
+  retry_delay: 1.0       # seconds
+
+# Rate limiting
+rate_limiting:
+  mexc_requests_per_second: 18  # Conservative limit for MEXC
+
+# WebSocket settings
+websocket:
+  connect_timeout: 10.0      # seconds
+  heartbeat_interval: 30.0   # seconds
+  max_reconnect_attempts: 10
+  reconnect_delay: 5.0       # seconds
