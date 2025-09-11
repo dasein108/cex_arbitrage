@@ -39,7 +39,8 @@ from structs.exchange import (
     Symbol, SymbolInfo, OrderBook, OrderBookEntry, Trade, 
     ExchangeName, AssetName, Side
 )
-from common.rest import UltraSimpleRestClient, RestConfig
+from common.rest import RestClient, RestConfig
+from common.config import config
 from exchanges.interface.rest.public_exchange import PublicExchangeInterface
 from exchanges.mexc.websocket import MexcWebSocketPublicStream
 
@@ -116,9 +117,14 @@ class MexcPublicExchange(PublicExchangeInterface):
     EXCHANGE_NAME = ExchangeName("MEXC")
     BASE_URL = "https://api.mexc.com"
     
-    # MEXC Rate Limits - Conservative values for stability
-    DEFAULT_RATE_LIMIT = 18  # 18 req/sec (below 20 req/sec limit)
-    WEIGHT_RATE_LIMIT = 10   # For weight-based endpoints
+    # MEXC Rate Limits - Uses configuration values
+    @property
+    def DEFAULT_RATE_LIMIT(self) -> int:
+        return config.MEXC_RATE_LIMIT_PER_SECOND
+    
+    @property    
+    def WEIGHT_RATE_LIMIT(self) -> int:
+        return max(10, config.MEXC_RATE_LIMIT_PER_SECOND // 2)  # Conservative weight limit
     
     # API Endpoints
     ENDPOINTS = {
@@ -143,19 +149,15 @@ class MexcPublicExchange(PublicExchangeInterface):
         self.logger = logging.getLogger(f"{__name__}.{self.__class__.__name__}")
         
         # Initialize ultra-simple REST client with optimal market data configuration
-        config = RestConfig(
-            timeout=10.0,
-            max_retries=3,
-            retry_delay=1.0,
-            require_auth=False,  # Public endpoints don't need auth
-            max_concurrent=40    # High concurrency for arbitrage
-        )
+        rest_config = config.create_rest_config('MEXC', 'market_data')
+        rest_config.require_auth = False  # Public endpoints don't need auth
+        rest_config.max_concurrent = config.MEXC_RATE_LIMIT_PER_SECOND * 2  # High concurrency for arbitrage
         
-        self.client = UltraSimpleRestClient(
+        self.client = RestClient(
             base_url=self.BASE_URL,
             api_key=api_key,
             secret_key=secret_key,
-            config=config
+            config=rest_config
         )
         
         # Cache for exchange info to reduce API calls
@@ -165,13 +167,16 @@ class MexcPublicExchange(PublicExchangeInterface):
         self._websocket: Optional[MexcWebSocketPublicStream] = None
         self._active_symbols: set[Symbol] = set()
         self._symbol_to_stream: Dict[Symbol, str] = {}
-        self._orderbooks: Dict[Symbol, OrderBook] = {}
-        self._orderbook_lock = asyncio.Lock()
         
-        # Fallback mechanism for WebSocket disconnections
+        # CRITICAL: Current orderbook state management (NOT caching)
+        # This maintains current live state, not historical cached data
+        self._current_orderbook_state: Dict[Symbol, OrderBook] = {}
+        self._last_state_update: Dict[Symbol, float] = {}
+        self._orderbook_locks: Dict[Symbol, asyncio.Lock] = {}
+        
+        # Fallback mechanism for WebSocket disconnections  
         self._rest_fallback_active = False
-        self._last_orderbook_timestamps: Dict[Symbol, float] = {}
-        self._fallback_threshold = 5.0  # seconds without updates before fallback
+        self._fallback_threshold = config.WS_RECONNECT_DELAY  # Use config for fallback timing
         
         # Exchange info caching
         self._cache_timestamp: float = 0
@@ -181,12 +186,35 @@ class MexcPublicExchange(PublicExchangeInterface):
     
         # Create endpoint-specific configurations for different performance requirements
         self._endpoint_configs = {
-            'exchange_info': RestConfig(timeout=8.0, max_retries=3, retry_delay=1.0, require_auth=False),
-            'depth': RestConfig(timeout=4.0, max_retries=1, retry_delay=0.1, require_auth=False),
-            'trades': RestConfig(timeout=6.0, max_retries=2, retry_delay=0.3, require_auth=False),
-            'time': RestConfig(timeout=2.0, max_retries=1, retry_delay=0.1, require_auth=False),
-            'ping': RestConfig(timeout=3.0, max_retries=1, retry_delay=0.1, require_auth=False)
+            'exchange_info': config.create_rest_config('MEXC', 'history'),
+            'depth': config.create_rest_config('MEXC', 'market_data'),
+            'trades': config.create_rest_config('MEXC', 'market_data'),
+            'time': config.create_rest_config('MEXC', 'default'),
+            'ping': config.create_rest_config('MEXC', 'default')
         }
+        
+        # Customize specific endpoint configs for optimal performance
+        self._endpoint_configs['depth'].timeout = config.REQUEST_TIMEOUT * 0.4  # Ultra-fast for order books
+        self._endpoint_configs['depth'].max_retries = 1  # Fast fail for real-time data
+        self._endpoint_configs['time'].timeout = config.REQUEST_TIMEOUT * 0.2  # Very fast for time sync
+        self._endpoint_configs['ping'].timeout = config.REQUEST_TIMEOUT * 0.3  # Fast for connectivity
+    
+    def _get_symbol_lock(self, symbol: Symbol) -> asyncio.Lock:
+        """
+        Get or create per-symbol lock for concurrent orderbook updates.
+        
+        This enables concurrent orderbook processing across different symbols
+        while maintaining thread safety for individual symbol updates.
+        
+        Args:
+            symbol: Symbol to get lock for
+            
+        Returns:
+            Per-symbol asyncio Lock
+        """
+        if symbol not in self._orderbook_locks:
+            self._orderbook_locks[symbol] = asyncio.Lock()
+        return self._orderbook_locks[symbol]
     
     @staticmethod
     async def symbol_to_pair(symbol: Symbol) -> str:
@@ -558,7 +586,7 @@ class MexcPublicExchange(PublicExchangeInterface):
             'exchange': str(self.EXCHANGE_NAME),
             'base_url': self.BASE_URL,
             'active_symbols': len(self._active_symbols),
-            'cached_orderbooks': len(self._orderbooks),
+            'current_state_management': 'Fresh preload + real-time updates',
             'rest_fallback_active': self._rest_fallback_active
         }
     
@@ -578,17 +606,23 @@ class MexcPublicExchange(PublicExchangeInterface):
         for symbol in symbols:
             self._active_symbols.add(symbol)
         
-        # Load initial orderbooks from REST API
-        initial_orderbooks = {}
-        for symbol in symbols:
-            try:
-                orderbook = await self.get_orderbook(symbol, limit=100)
-                async with self._orderbook_lock:
-                    self._orderbooks[symbol] = orderbook
-                initial_orderbooks[symbol] = orderbook
-                self.logger.debug(f"Loaded initial orderbook for {symbol}")
-            except Exception as e:
-                self.logger.error(f"Failed to load initial orderbook for {symbol}: {e}")
+        # CRITICAL: Load fresh current orderbook state for all symbols
+        # This is NOT caching - it's getting current live state for initialization
+        self.logger.info(f"Loading fresh orderbook state for {len(symbols)} symbols")
+        
+        # Load current state for all symbols concurrently
+        preload_tasks = [
+            self._ensure_fresh_orderbook_state(symbol)
+            for symbol in symbols
+        ]
+        
+        # Wait for all preloads to complete (don't fail if some symbols fail)
+        await asyncio.gather(*preload_tasks, return_exceptions=True)
+        
+        # Count successful preloads (no lock needed for reading length)
+        successful_preloads = len(self._current_orderbook_state)
+        
+        self.logger.info(f"Successfully loaded fresh state for {successful_preloads}/{len(symbols)} symbols")
         
         # Create WebSocket streams for all symbols
         streams = []
@@ -603,8 +637,8 @@ class MexcPublicExchange(PublicExchangeInterface):
         # Initialize WebSocket connection if we have streams
         if streams:
             self._websocket = MexcWebSocketPublicStream(
-                exchange=self.EXCHANGE_NAME,
-                message_handler=self._handle_websocket_message
+                message_handler=self._handle_websocket_message,
+                error_handler=self._handle_websocket_error
             )
             
             # Start WebSocket connection and subscribe to streams
@@ -614,7 +648,7 @@ class MexcPublicExchange(PublicExchangeInterface):
         else:
             self.logger.warning("No valid streams to subscribe to")
         
-        self.logger.info(f"MEXC exchange initialized with {len(initial_orderbooks)} symbols")
+        self.logger.info(f"MEXC exchange initialized with {len(symbols)} symbols - WebSocket streaming only")
     
     async def start_symbol(self, symbol: Symbol) -> None:
         """
@@ -633,14 +667,9 @@ class MexcPublicExchange(PublicExchangeInterface):
         # Add to active symbols
         self._active_symbols.add(symbol)
         
-        # Load initial orderbook
-        try:
-            orderbook = await self.get_orderbook(symbol, limit=100)
-            async with self._orderbook_lock:
-                self._orderbooks[symbol] = orderbook
-            self.logger.debug(f"Loaded initial orderbook for {symbol}")
-        except Exception as e:
-            self.logger.error(f"Failed to load initial orderbook for {symbol}: {e}")
+        # CRITICAL: Load fresh current orderbook state for new symbol
+        # This ensures we have current state before starting real-time updates
+        await self._ensure_fresh_orderbook_state(symbol)
         
         # Create and subscribe to WebSocket stream
         try:
@@ -683,8 +712,12 @@ class MexcPublicExchange(PublicExchangeInterface):
         
         # Clean up symbol data
         self._symbol_to_stream.pop(symbol, None)
-        async with self._orderbook_lock:
-            self._orderbooks.pop(symbol, None)
+        
+        # Clean up current state for this symbol
+        async with self._get_symbol_lock(symbol):
+            self._current_orderbook_state.pop(symbol, None)
+            self._last_state_update.pop(symbol, None)
+            self._orderbook_locks.pop(symbol, None)  # Clean up the lock too
         
         self.logger.info(f"Stopped symbol {symbol}")
     
@@ -694,13 +727,68 @@ class MexcPublicExchange(PublicExchangeInterface):
         """Create differential depth stream identifier for a symbol."""
         symbol_str = await self.symbol_to_pair(symbol)
         # Use MEXC's depth stream with protobuf format for efficient updates
-        return f"spot@public.depth.v3.api.pb@100ms@{symbol_str.upper()}"
+        return f"spot@public.depth.v3.api.pb@{symbol_str.upper()}"
+    
+    async def _on_websocket_reconnect(self) -> None:
+        """
+        Handle WebSocket reconnection by refreshing current orderbook state.
+        
+        After reconnection, we don't know what updates we missed during disconnect.
+        Must reload current state from REST API to ensure accuracy.
+        """
+        self.logger.info("WebSocket reconnected - refreshing orderbook state for all active symbols")
+        
+        # Get fresh state for all active symbols concurrently
+        refresh_tasks = [
+            self._ensure_fresh_orderbook_state(symbol)
+            for symbol in self._active_symbols
+        ]
+        
+        # Wait for all refreshes to complete
+        await asyncio.gather(*refresh_tasks, return_exceptions=True)
+        
+        # Count successful refreshes (no lock needed for reading)
+        refreshed_count = len([
+            symbol for symbol in self._active_symbols 
+            if symbol in self._current_orderbook_state
+        ])
+        
+        self.logger.info(f"Refreshed orderbook state for {refreshed_count}/{len(self._active_symbols)} symbols after reconnection")
+        
+        # Resume real-time updates by resubscribing
+        streams = list(self._symbol_to_stream.values())
+        if streams and self._websocket:
+            try:
+                await self._websocket.subscribe(streams)
+                self.logger.info(f"Resubscribed to {len(streams)} streams after reconnection")
+            except Exception as e:
+                self.logger.error(f"Failed to resubscribe after reconnection: {e}")
+
+    async def _handle_websocket_error(self, error: Exception) -> None:
+        """
+        Handle WebSocket errors and trigger reconnection state refresh.
+        
+        Args:
+            error: The WebSocket error that occurred
+        """
+        self.logger.warning(f"WebSocket error occurred: {error}")
+        
+        # If this is a disconnection error, prepare for state refresh on reconnect
+        if "disconnect" in str(error).lower() or "connection" in str(error).lower():
+            self.logger.info("WebSocket disconnection detected - will refresh state on reconnect")
+            self._rest_fallback_active = True
     
     async def _handle_websocket_message(self, message: Dict[str, Any]) -> None:
-        """Handle WebSocket messages and update orderbook storage."""
+        """Handle WebSocket messages and update current orderbook state."""
         try:
             if not isinstance(message, dict):
                 return
+            
+            # Check if we need to refresh state after reconnection
+            if self._rest_fallback_active:
+                self.logger.info("WebSocket message received after disconnection - refreshing state")
+                await self._on_websocket_reconnect()
+                self._rest_fallback_active = False
             
             # Extract symbol and orderbook data from message
             # This depends on the specific WebSocket message format
@@ -739,40 +827,83 @@ class MexcPublicExchange(PublicExchangeInterface):
                     timestamp=current_timestamp
                 )
                 
-                # Thread-safe orderbook update
-                async with self._orderbook_lock:
-                    self._orderbooks[symbol] = orderbook
-                    # Track timestamp for fallback detection
-                    self._last_orderbook_timestamps[symbol] = current_timestamp
+                # CRITICAL: Update current orderbook state with real-time data
+                # This maintains current live state, not historical cached data
+                current_time = time.time()
+                
+                # Apply differential update to current state (per-symbol thread-safe)
+                async with self._get_symbol_lock(symbol):
+                    self._current_orderbook_state[symbol] = orderbook
+                    self._last_state_update[symbol] = current_time
                 
                 self.logger.debug(f"Updated real-time orderbook for {symbol} using {stream_name}")
         
         except Exception as e:
             self.logger.error(f"Error handling WebSocket message: {e}")
     
-    def get_realtime_orderbook(self, symbol: Symbol) -> Optional[OrderBook]:
+    async def _ensure_fresh_orderbook_state(self, symbol: Symbol) -> None:
         """
-        Get real-time orderbook data from WebSocket stream with REST fallback.
+        CRITICAL: Load current orderbook state via REST API.
         
-        Returns cached WebSocket data if fresh, otherwise returns None and logs
-        that fallback should be used. The calling code should handle REST fallback.
+        This is NOT caching - it's getting the current live state.
+        Used for initialization and reconnection to ensure we have current data.
+        
+        Args:
+            symbol: Symbol to load current state for
         """
-        import time
+        try:
+            self.logger.debug(f"Loading fresh orderbook state for {symbol}")
+            
+            # Get current state from REST API - always fresh
+            fresh_orderbook = await self.get_orderbook(symbol, limit=100)
+            current_time = time.time()
+            
+            # Update current state (per-symbol thread-safe)
+            async with self._get_symbol_lock(symbol):
+                self._current_orderbook_state[symbol] = fresh_orderbook
+                self._last_state_update[symbol] = current_time
+            
+            self.logger.debug(f"Loaded fresh orderbook state for {symbol} with {len(fresh_orderbook.bids)} bids, {len(fresh_orderbook.asks)} asks")
+            
+        except Exception as e:
+            self.logger.error(f"Failed to load fresh orderbook state for {symbol}: {e}")
+            # Don't raise - continue with other symbols
+    
+    async def get_current_orderbook_state(self, symbol: Symbol) -> Optional[OrderBook]:
+        """
+        Get current orderbook state.
         
-        # Check if we have recent WebSocket data
-        current_time = time.time()
-        last_update = self._last_orderbook_timestamps.get(symbol, 0)
+        Returns current live state (not cached historical data).
+        State is maintained through fresh initialization + real-time updates.
         
-        # If WebSocket data is stale, log and return None so caller can fallback
-        if current_time - last_update > self._fallback_threshold:
-            if not self._rest_fallback_active:
-                self.logger.info(f"WebSocket data stale for {symbol} ({current_time - last_update:.1f}s), REST fallback recommended")
-                self._rest_fallback_active = True
+        Args:
+            symbol: Symbol to get current state for
+            
+        Returns:
+            Current orderbook state or None if not available
+        """
+        async with self._get_symbol_lock(symbol):
+            return self._current_orderbook_state.get(symbol)
+    
+    async def get_fresh_orderbook_data(self, symbol: Symbol) -> Optional[OrderBook]:
+        """
+        CRITICAL: Get fresh orderbook data via REST API.
+        
+        Always makes fresh REST API call for absolute data freshness.
+        Use this when you need guaranteed fresh data (not current state).
+        
+        Args:
+            symbol: Symbol to get fresh orderbook for
+            
+        Returns:
+            Fresh orderbook data from REST API or None if unavailable
+        """
+        try:
+            # Always make fresh REST API call - never return state or cached data
+            return await self.get_orderbook(symbol, limit=100)
+        except Exception as e:
+            self.logger.error(f"Failed to get fresh orderbook for {symbol}: {e}")
             return None
-        
-        # Reset fallback flag if we have fresh data
-        self._rest_fallback_active = False
-        return self._orderbooks.get(symbol)
     
     def is_symbol_active(self, symbol: Symbol) -> bool:
         """Check if symbol is actively streaming."""
@@ -791,8 +922,11 @@ class MexcPublicExchange(PublicExchangeInterface):
         # Clear all data
         self._active_symbols.clear()
         self._symbol_to_stream.clear()
-        async with self._orderbook_lock:
-            self._orderbooks.clear()
+        
+        # Clear current orderbook state
+        self._current_orderbook_state.clear()
+        self._last_state_update.clear()
+        self._orderbook_locks.clear()
         
         self.logger.info("All WebSocket streams stopped")
     
@@ -809,7 +943,7 @@ class MexcPublicExchange(PublicExchangeInterface):
                 'is_connected': hasattr(self._websocket, '_ws') and self._websocket._ws is not None,
                 'streams': len(self._symbol_to_stream),
                 'active_symbols': len(self._active_symbols),
-                'orderbook_symbols': len(self._orderbooks),
+                'current_state_symbols': len(self._current_orderbook_state),
                 'connection_retries': getattr(self._websocket, '_reconnection_count', 0),
                 'max_retries': getattr(self._websocket, 'max_retries', 10),
                 'websocket_type': 'MexcWebSocketPublicStream',
@@ -822,7 +956,7 @@ class MexcPublicExchange(PublicExchangeInterface):
             'is_connected': False,
             'streams': 0,
             'active_symbols': len(self._active_symbols),
-            'orderbook_symbols': len(self._orderbooks),
+            'current_state_symbols': len(self._current_orderbook_state),
             'connection_retries': 0,
             'max_retries': 0,
             'websocket_type': None,

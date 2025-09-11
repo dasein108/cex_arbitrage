@@ -56,7 +56,7 @@ class RestConfig(msgspec.Struct):
     max_concurrent: int = 50
 
 
-class UltraSimpleRestClient:
+class RestClient:
     """
     Ultra-simple high-performance REST API client for cryptocurrency trading.
     
@@ -79,7 +79,7 @@ class UltraSimpleRestClient:
     ):
         self.base_url = base_url.rstrip('/')
         self.api_key = api_key
-        self.secret_key = secret_key.encode() if secret_key else None
+        self.secret_key = secret_key
         self.signature_generator = signature_generator or self._default_signature_generator
         self.config = config or RestConfig()
         
@@ -152,7 +152,8 @@ class UltraSimpleRestClient:
         
         # Generate HMAC-SHA256 signature
         payload_bytes = payload.encode('utf-8')
-        signature = hmac.new(self.secret_key, payload_bytes, hashlib.sha256).hexdigest()
+        secret_bytes = self.secret_key.encode('utf-8') if isinstance(self.secret_key, str) else self.secret_key
+        signature = hmac.new(secret_bytes, payload_bytes, hashlib.sha256).hexdigest()
         
         return signature
     
@@ -164,10 +165,11 @@ class UltraSimpleRestClient:
         timestamp = str(int(time.time() * 1000))
         signature = self.signature_generator(method, endpoint, params, timestamp)
         
+        # Use MEXC-specific headers - MEXC expects X-MEXC-APIKEY not X-API-KEY
         return {
-            'X-API-KEY': self.api_key,
-            'X-SIGNATURE': signature,
-            'X-TIMESTAMP': timestamp,
+            'X-MEXC-APIKEY': self.api_key,
+            'X-MEXC-SIGNATURE': signature,
+            'X-MEXC-TIMESTAMP': timestamp,
         }
     
     def _parse_response(self, response_text: str) -> Any:
@@ -205,8 +207,26 @@ class UltraSimpleRestClient:
                 try:
                     # Prepare headers
                     headers = {}
+                    
+                    # For authenticated requests, add signature to params (not headers for MEXC)
+                    request_params = params.copy()
                     if config.require_auth:
-                        headers.update(self._prepare_auth_headers(method.value, endpoint, params))
+                        # MEXC requires API key in headers but signature in query params
+                        if self.api_key:
+                            headers['X-MEXC-APIKEY'] = self.api_key
+                        
+                        # Generate signature and add to params
+                        timestamp = str(int(time.time() * 1000))
+                        
+                        # CRITICAL FOR MEXC: Preserve parameter insertion order for signature generation
+                        # Add timestamp and recvWindow to params first
+                        request_params['timestamp'] = int(timestamp)  # Ensure int type
+                        request_params['recvWindow'] = 15000
+                        
+                        # Generate signature on params WITHOUT signature included
+                        signature = self.signature_generator(method.value, endpoint, request_params, timestamp)
+                        # Add signature AFTER generation - this maintains the order
+                        request_params['signature'] = signature
                     
                     # Prepare request parameters
                     request_kwargs = {
@@ -215,12 +235,25 @@ class UltraSimpleRestClient:
                     }
                     
                     # Add data based on method
-                    if method == HTTPMethod.GET and params:
-                        request_kwargs['params'] = params
+                    if method == HTTPMethod.GET:
+                        if request_params:
+                            request_kwargs['params'] = request_params
                     elif json_data:
+                        # For explicit JSON data, set appropriate content type
+                        headers['Content-Type'] = 'application/json'
                         request_kwargs['json'] = json_data
-                    elif params and method != HTTPMethod.GET:
-                        request_kwargs['json'] = params
+                    elif request_params and method != HTTPMethod.GET:
+                        # CRITICAL FIX: MEXC requires specific Content-Type header AND query parameters
+                        if config.require_auth:
+                            # MEXC authenticated POST requests require:
+                            # 1. Content-Type: application/json header
+                            # 2. Parameters in query string (NOT body)
+                            headers['Content-Type'] = 'application/json'
+                            request_kwargs['params'] = request_params
+                        else:
+                            # For non-authenticated requests, use standard JSON
+                            headers['Content-Type'] = 'application/json'
+                            request_kwargs['json'] = request_params
                     
                     # Execute request
                     async with self._session.request(method.value, url, **request_kwargs) as response:
@@ -327,12 +360,12 @@ async def create_rest_client(
     api_key: Optional[str] = None,
     secret_key: Optional[str] = None,
     **kwargs
-) -> UltraSimpleRestClient:
+) -> RestClient:
     """
     Create a properly configured REST client with context management.
     Automatically handles resource cleanup.
     """
-    client = UltraSimpleRestClient(
+    client = RestClient(
         base_url=base_url,
         api_key=api_key,
         secret_key=secret_key,

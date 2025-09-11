@@ -30,7 +30,8 @@ from structs.exchange import (
     Symbol, SymbolInfo, OrderBook, OrderBookEntry, Trade,
     ExchangeName, AssetName, Side, KlineInterval
 )
-from common.rest import UltraSimpleRestClient, RestConfig
+from common.rest import RestClient, RestConfig
+from common.config import config
 from common.exceptions import ExchangeAPIError, RateLimitError
 from exchanges.interface.rest.public_exchange import PublicExchangeInterface
 
@@ -137,32 +138,35 @@ class MexcPublicFuturesExchange(PublicExchangeInterface):
         # Initialize unified interface directly
         super().__init__(ExchangeName("MEXC_FUTURES"), "https://contract.mexc.com")
         
-        # Create optimized unified REST client
-        self._rest_client = UltraSimpleRestClient(
+        # Create optimized unified REST client using centralized config
+        rest_config = config.create_rest_config('MEXC', 'market_data')
+        rest_config.require_auth = False  # Public endpoints don't need auth
+        rest_config.max_concurrent = config.MEXC_RATE_LIMIT_PER_SECOND * 5  # High concurrency for futures arbitrage
+        
+        self._rest_client = RestClient(
             base_url=self.base_url,
             api_key=api_key,
             secret_key=secret_key,
-            config=RestConfig(
-                timeout=8.0,
-                max_retries=3,
-                retry_delay=0.5,
-                require_auth=False,
-                max_concurrent=100  # Increased for arbitrage
-            )
+            config=rest_config
         )
         
         # Performance tracking
         self._request_count = 0
         self._total_response_time = 0.0
         
-        # Endpoint-optimized configurations for sub-10ms targets
+        # Endpoint-optimized configurations for sub-10ms targets using centralized config
         self._endpoint_configs = {
-            'depth': RestConfig(timeout=2.0, require_auth=False),       # Critical arbitrage path
-            'ticker': RestConfig(timeout=3.0, require_auth=False),      # Market data
-            'trades': RestConfig(timeout=4.0, require_auth=False),      # Recent trades
-            'contract_detail': RestConfig(timeout=6.0, require_auth=False),  # Contract info
-            'ping': RestConfig(timeout=1.0, require_auth=False)         # Fast connectivity
+            'depth': config.create_rest_config('MEXC', 'market_data'),     # Critical arbitrage path
+            'ticker': config.create_rest_config('MEXC', 'market_data'),    # Market data
+            'trades': config.create_rest_config('MEXC', 'market_data'),    # Recent trades
+            'contract_detail': config.create_rest_config('MEXC', 'history'), # Contract info
+            'ping': config.create_rest_config('MEXC', 'default')           # Fast connectivity
         }
+        
+        # Ultra-fast customization for critical arbitrage paths
+        self._endpoint_configs['depth'].timeout = config.REQUEST_TIMEOUT * 0.2  # 20% of normal timeout
+        self._endpoint_configs['ticker'].timeout = config.REQUEST_TIMEOUT * 0.3  # 30% of normal timeout
+        self._endpoint_configs['ping'].timeout = config.REQUEST_TIMEOUT * 0.1    # 10% of normal timeout
         
         self.logger.info(f"Initialized {self.exchange} with UltraSimpleRestClient")
     

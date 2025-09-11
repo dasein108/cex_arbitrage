@@ -7,6 +7,7 @@
 from typing import Any, Dict, List, Optional, Callable, Coroutine
 
 from structs.exchange import ExchangeName
+from exchanges.interface.websocket.base_ws import WebSocketConfig
 
 # Import separated WebSocket stream implementations
 from exchanges.mexc.mexc_ws_public import MexcWebSocketPublicStream
@@ -21,70 +22,102 @@ __all__ = [
 
 
 def create_public_stream(
-    exchange_name: ExchangeName,
-    on_message: Callable[[Dict[str, Any]], Coroutine],
+    message_handler: Optional[Callable[[Dict[str, Any]], Coroutine]] = None,
+    error_handler: Optional[Callable[[Exception], Coroutine]] = None,
     timeout: float = 30.0,
-    on_connected: Optional[Callable[[], Coroutine]] = None,
-    on_restart: Optional[Callable[[], Coroutine]] = None,
-    streams: List[str] = None,
-    max_retries: int = 10
+    ping_interval: float = 15.0,
+    max_reconnect_attempts: int = 20,
+    **config_overrides
 ) -> MexcWebSocketPublicStream:
     """
     Factory function to create MEXC public WebSocket stream.
     
     Args:
-        exchange_name: Exchange identifier
-        on_message: Callback for WebSocket messages
+        message_handler: Callback for processed WebSocket messages
+        error_handler: Callback for error handling
         timeout: Connection timeout in seconds
-        on_connected: Optional callback when connection is established
-        on_restart: Optional callback when connection is restarted
-        streams: List of streams to subscribe to
-        max_retries: Maximum connection retry attempts
+        ping_interval: WebSocket ping interval
+        max_reconnect_attempts: Maximum connection retry attempts
+        **config_overrides: Additional WebSocket configuration overrides
         
     Returns:
         Configured MexcWebSocketPublicStream instance
     """
+    # Create configuration with defaults
+    config_dict = {
+        'url': "wss://wbs-api.mexc.com/ws",
+        'timeout': timeout,
+        'ping_interval': ping_interval,
+        'ping_timeout': 5.0,
+        'close_timeout': 3.0,
+        'max_reconnect_attempts': max_reconnect_attempts,
+        'reconnect_delay': 0.5,
+        'reconnect_backoff': 1.5,
+        'max_reconnect_delay': 30.0,
+        'max_message_size': 2 * 1024 * 1024,
+        'max_queue_size': 5000,
+        'heartbeat_interval': 20.0,
+        'enable_compression': True
+    }
+    
+    # Apply any configuration overrides
+    config_dict.update(config_overrides)
+    ws_config = WebSocketConfig(**config_dict)
+    
     return MexcWebSocketPublicStream(
-        exchange_name=exchange_name,
-        on_message=on_message,
-        timeout=timeout,
-        on_connected=on_connected,
-        on_restart=on_restart,
-        streams=streams,
-        max_retries=max_retries
+        message_handler=message_handler,
+        error_handler=error_handler,
+        config=ws_config
     )
 
 
 def create_private_stream(
-    exchange_name: ExchangeName,
     listen_key: str,
-    on_message: Callable[[Dict[str, Any]], Coroutine],
+    message_handler: Optional[Callable[[Dict[str, Any]], Coroutine]] = None,
+    error_handler: Optional[Callable[[Exception], Coroutine]] = None,
     timeout: float = 30.0,
-    on_connected: Optional[Callable[[], Coroutine]] = None,
-    on_restart: Optional[Callable[[], Coroutine]] = None,
-    max_retries: int = 10
+    ping_interval: float = 15.0,
+    max_reconnect_attempts: int = 20,
+    **config_overrides
 ) -> MexcWebSocketPrivateStream:
     """
     Factory function to create MEXC private WebSocket stream.
     
     Args:
-        exchange_name: Exchange identifier
         listen_key: Authentication listen key from MEXC API
-        on_message: Callback for WebSocket messages
+        message_handler: Callback for processed WebSocket messages
+        error_handler: Callback for error handling
         timeout: Connection timeout in seconds
-        on_connected: Optional callback when connection is established
-        on_restart: Optional callback when connection is restarted
-        max_retries: Maximum connection retry attempts
+        ping_interval: WebSocket ping interval
+        max_reconnect_attempts: Maximum connection retry attempts
+        **config_overrides: Additional WebSocket configuration overrides
         
     Returns:
         Configured MexcWebSocketPrivateStream instance
     """
+    # Create configuration with defaults (private stream uses different URL)
+    config_dict = {
+        'url': f"wss://wbs.mexc.com/ws?listenKey={listen_key}",
+        'timeout': timeout,
+        'ping_interval': ping_interval,
+        'ping_timeout': 5.0,
+        'close_timeout': 3.0,
+        'max_reconnect_attempts': max_reconnect_attempts,
+        'reconnect_delay': 0.5,
+        'reconnect_backoff': 1.5,
+        'max_reconnect_delay': 30.0,
+        'max_message_size': 2 * 1024 * 1024,
+        'max_queue_size': 5000,
+        'heartbeat_interval': 20.0,
+        'enable_compression': True
+    }
+    
+    # Apply any configuration overrides
+    config_dict.update(config_overrides)
+    ws_config = WebSocketConfig(**config_dict)
+    
     return MexcWebSocketPrivateStream(
-        exchange_name=exchange_name,
-        listen_key=listen_key,
-        on_message=on_message,
-        timeout=timeout,
-        on_connected=on_connected,
-        on_restart=on_restart,
-        max_retries=max_retries
+        message_handler=message_handler,
+        error_handler=error_handler,
+        config=ws_config
     )

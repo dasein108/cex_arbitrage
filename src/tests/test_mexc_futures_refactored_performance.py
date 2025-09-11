@@ -34,7 +34,7 @@ from exchanges.mexc.mexc_futures_public import (
 )
 from exchanges.interface.rest.public_exchange import PublicExchangeInterface
 from structs.exchange import Symbol, AssetName, OrderBook, Trade, SymbolInfo
-from common.rest import UltraSimpleRestClient
+from common.rest import RestClient
 from common.exceptions import ExchangeAPIError
 
 # Test configuration
@@ -107,7 +107,7 @@ class TestArchitecturalImprovements:
         client = MexcPublicFuturesExchange()
         
         assert hasattr(client, '_rest_client')
-        assert isinstance(client._rest_client, UltraSimpleRestClient)
+        assert isinstance(client._rest_client, RestClient)
         
         # Test that base URL is properly set
         assert client._rest_client.base_url == "https://contract.mexc.com"

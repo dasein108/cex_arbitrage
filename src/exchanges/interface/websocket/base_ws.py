@@ -107,12 +107,10 @@ class BaseWebSocketInterface(ABC):
     
     def __init__(
         self,
-        exchange: ExchangeName,
         config: WebSocketConfig,
         message_handler: Optional[Callable[[Dict[str, Any]], Awaitable[None]]] = None,
         error_handler: Optional[Callable[[Exception], Awaitable[None]]] = None
     ):
-        self.exchange = exchange
         self.config = config
         self.message_handler = message_handler
         self.error_handler = error_handler
@@ -143,7 +141,7 @@ class BaseWebSocketInterface(ABC):
         self._message_count = 0  # Local counter to reduce time() calls
         self._time_cache = time.time()  # Cache time for batched updates
         
-        self.logger = logging.getLogger(f"{__name__}.{exchange}")
+        self.logger = logging.getLogger(f"{__name__}.{self.exchange}")
     
     def _precompute_backoff_delays(self) -> List[float]:
         """Pre-compute exponential backoff delays to avoid power calculations in hot path"""
@@ -304,7 +302,7 @@ class BaseWebSocketInterface(ABC):
         
         # Lazy logging to avoid string formatting overhead
         if self.logger.isEnabledFor(logging.INFO):
-            self.logger.info("Subscribed to %d streams", len(streams))
+            self.logger.info("Subscribing to %d streams", len(streams))
     
     async def unsubscribe(self, streams: List[str]) -> None:
         """
@@ -326,7 +324,7 @@ class BaseWebSocketInterface(ABC):
         
         # Lazy logging to avoid string formatting overhead
         if self.logger.isEnabledFor(logging.INFO):
-            self.logger.info("Unsubscribed from %d streams", len(streams))
+            self.logger.info("Unsubscribing from %d streams", len(streams))
     
     # Message handling
     
@@ -394,12 +392,25 @@ class BaseWebSocketInterface(ABC):
         error_handler = self.error_handler
         metrics = self._metrics
         
+        if self.logger.isEnabledFor(logging.DEBUG):
+            self.logger.debug("Starting message reader loop")
+        
         try:
+            message = await self._ws.recv()
+            print(message)
             async for raw_message in self._ws:
                 try:
+                    # DEBUG: Log raw message reception
+                    if self.logger.isEnabledFor(logging.DEBUG):
+                        msg_type = type(raw_message).__name__
+                        msg_size = len(raw_message) if raw_message else 0
+                        self.logger.debug(f"Received raw message: {msg_type}, size={msg_size}")
+                    
                     # Parse message (exchange-specific) - minimize await overhead
                     parsed = await self._parse_message(raw_message)
                     if parsed is None:
+                        if self.logger.isEnabledFor(logging.DEBUG):
+                            self.logger.debug("Parsed message is None, skipping")
                         continue  # Skip heartbeat/ping messages
                     
                     # Optimized metrics update - batch time updates
@@ -410,6 +421,9 @@ class BaseWebSocketInterface(ABC):
                     if self._message_count % 100 == 0:
                         self._time_cache = time.time()
                         metrics.last_message_time = self._time_cache
+                    
+                    if self.logger.isEnabledFor(logging.DEBUG):
+                        self.logger.debug(f"Calling message handler with parsed message: {parsed}")
                     
                     # Handle message - direct call to avoid lookup overhead
                     if message_handler:

@@ -34,7 +34,7 @@ import hmac
 import time
 import urllib.parse
 from datetime import datetime
-from typing import Dict, List, Optional, Any
+from typing import Dict, List, Optional, Any, Callable, Coroutine
 import logging
 import msgspec
 
@@ -43,34 +43,36 @@ from structs.exchange import (
     Symbol, SymbolInfo, Order, OrderId, OrderType, Side, AssetBalance, 
     AssetName, ExchangeName, OrderStatus
 )
-from common.rest import UltraSimpleRestClient, RestConfig
+from common.rest import RestClient, RestConfig
 from common.exceptions import (
     ExchangeAPIError, RateLimitError, TradingDisabled, 
     InsufficientPosition, OversoldException, UnknownException
 )
+from common.config import config
 from exchanges.interface.rest.private_exchange import PrivateExchangeInterface
 from exchanges.mexc.mexc_public import MexcPublicExchange
 
 
 # MEXC Private API Response Structures - optimized with msgspec
-class MexcAccountResponse(msgspec.Struct):
+class MexcAccountResponse(msgspec.Struct, kw_only=True):
     """MEXC account info API response structure."""
-    makerCommission: int
-    takerCommission: int
-    buyerCommission: int
-    sellerCommission: int
-    canTrade: bool
-    canWithdraw: bool
-    canDeposit: bool
-    updateTime: int
-    accountType: str
-    balances: list[dict]  # [{"asset": str, "free": str, "locked": str}]
+    makerCommission: Optional[int] = None
+    takerCommission: Optional[int] = None
+    buyerCommission: Optional[int] = None
+    sellerCommission: Optional[int] = None
+    canTrade: bool = True
+    canWithdraw: bool = True
+    canDeposit: bool = True
+    updateTime: Optional[int] = None
+    accountType: str = "SPOT"
+    balances: list[dict] = []  # [{"asset": str, "free": str, "locked": str, "available": str}]
+    permissions: Optional[list[str]] = None  # Additional field present in response
 
 
 class MexcOrderResponse(msgspec.Struct):
     """MEXC order API response structure."""
     symbol: str
-    orderId: int
+    orderId: str
     orderListId: int = -1
     clientOrderId: str = ""
     transactTime: int = 0
@@ -79,7 +81,7 @@ class MexcOrderResponse(msgspec.Struct):
     executedQty: str = "0"
     cummulativeQuoteQty: str = "0"
     status: str = "NEW"
-    timeInForce: str = "GTC"
+    timeInForce: Optional[str] = "GTC"
     type: str = "LIMIT"
     side: str = "BUY"
     fills: Optional[list[dict]] = None
@@ -102,8 +104,10 @@ class MexcPrivateExchange(PrivateExchangeInterface):
     EXCHANGE_NAME = ExchangeName("MEXC")
     BASE_URL = "https://api.mexc.com"
     
-    # MEXC Rate Limits - Conservative values for stability
-    DEFAULT_RATE_LIMIT = 18  # 18 req/sec (below 20 req/sec limit)
+    # MEXC Rate Limits - Uses configuration values
+    @property
+    def DEFAULT_RATE_LIMIT(self) -> int:
+        return config.MEXC_RATE_LIMIT_PER_SECOND
     
     # Private API Endpoints
     ENDPOINTS = {
@@ -163,44 +167,46 @@ class MexcPrivateExchange(PrivateExchangeInterface):
     # Reverse mapping for API responses
     MEXC_SIDE_REVERSE_MAPPING = {v: k for k, v in MEXC_SIDE_MAPPING.items()}
     
-    def __init__(self, api_key: str, secret_key: str):
+    def __init__(self, api_key: Optional[str] = None, secret_key: Optional[str] = None):
         """
         Initialize MEXC private exchange client with unified interface compliance.
         
         Args:
-            api_key: MEXC API key for authenticated requests
-            secret_key: MEXC secret key for signature generation
+            api_key: MEXC API key for authenticated requests (optional, uses config if not provided)
+            secret_key: MEXC secret key for signature generation (optional, uses config if not provided)
         """
-        super().__init__(self.EXCHANGE_NAME, api_key, secret_key, self.BASE_URL)
+        # Use provided credentials or fall back to configuration
+        final_api_key = api_key or config.MEXC_API_KEY
+        final_secret_key = secret_key or config.MEXC_SECRET_KEY
+        
+        if not final_api_key or not final_secret_key:
+            raise ValueError("MEXC API credentials must be provided either as parameters or in configuration")
+        
+        super().__init__(self.EXCHANGE_NAME, final_api_key, final_secret_key, self.BASE_URL)
         
         # Logger for debugging and monitoring
         self.logger = logging.getLogger(f"{__name__}.{self.__class__.__name__}")
         
         # Initialize ultra-simple REST client with MEXC-specific signature generator
-        config = RestConfig(
-            timeout=10.0,
-            max_retries=3,
-            retry_delay=1.0,
-            require_auth=True,  # All private endpoints require authentication
-            max_concurrent=20   # Conservative limit for trading operations
-        )
+        rest_config = config.create_rest_config('MEXC', 'default')
+        rest_config.require_auth = True  # All private endpoints require authentication
         
-        self.client = UltraSimpleRestClient(
+        self.client = RestClient(
             base_url=self.BASE_URL,
-            api_key=api_key,
-            secret_key=secret_key,
+            api_key=final_api_key,
+            secret_key=final_secret_key,
             signature_generator=self._mexc_signature_generator,
-            config=config
+            config=rest_config
         )
         
         # Create endpoint-specific configurations for different performance requirements
         self._endpoint_configs = {
-            'account': RestConfig(timeout=8.0, max_retries=3, retry_delay=1.0, require_auth=True),
-            'order': RestConfig(timeout=6.0, max_retries=2, retry_delay=0.5, require_auth=True),
-            'cancel_order': RestConfig(timeout=4.0, max_retries=3, retry_delay=0.3, require_auth=True),
-            'open_orders': RestConfig(timeout=5.0, max_retries=2, retry_delay=0.3, require_auth=True),
-            'all_orders': RestConfig(timeout=8.0, max_retries=2, retry_delay=0.5, require_auth=True),
-            'listen_key': RestConfig(timeout=5.0, max_retries=3, retry_delay=0.5, require_auth=True),
+            'account': config.create_rest_config('MEXC', 'account'),
+            'order': config.create_rest_config('MEXC', 'order'),
+            'cancel_order': config.create_rest_config('MEXC', 'cancel_order'),
+            'open_orders': config.create_rest_config('MEXC', 'order'),
+            'all_orders': config.create_rest_config('MEXC', 'history'),
+            'listen_key': config.create_rest_config('MEXC', 'default'),
         }
         
         # Cache for symbol info (shared with public exchange logic)
@@ -219,15 +225,14 @@ class MexcPrivateExchange(PrivateExchangeInterface):
         """
         MEXC-specific signature generation for authenticated requests.
         
-        MEXC requires:
-        1. Add recvWindow and timestamp to parameters
-        2. Create query string from sorted parameters
-        3. Generate HMAC-SHA256 signature of query string
+        MEXC Spot API v3 signature format: HMAC-SHA256(query_string)
+        - CRITICAL: Parameters MUST preserve insertion order (not alphabetically sorted)
+        - Query string format: key=value&key=value in insertion order
         
         Args:
             method: HTTP method (GET, POST, DELETE)
             endpoint: API endpoint
-            params: Request parameters
+            params: Request parameters (already includes timestamp and recvWindow)
             timestamp: Timestamp string
             
         Returns:
@@ -236,16 +241,11 @@ class MexcPrivateExchange(PrivateExchangeInterface):
         if not self.secret_key:
             raise ValueError("Secret key required for authenticated requests")
         
-        # Add MEXC required parameters
-        mexc_params = params.copy()
-        mexc_params['recvWindow'] = 15000  # 15 seconds
-        mexc_params['timestamp'] = int(timestamp)
+        # CRITICAL FIX: MEXC requires parameters in insertion order, NOT alphabetically sorted
+        # The working raw/mexc_api/api.py preserves dict insertion order
+        query_string = '&'.join([f"{k}={v}" for k, v in params.items()])
         
-        # Create query string with sorted parameters (MEXC requirement)
-        sorted_params = sorted(mexc_params.items())
-        query_string = '&'.join([f"{k}={v}" for k, v in sorted_params])
-        
-        # Generate HMAC-SHA256 signature
+        # Generate HMAC-SHA256 signature of query string only
         signature = hmac.new(
             self.secret_key.encode('utf-8'),
             query_string.encode('utf-8'),
@@ -386,6 +386,41 @@ class MexcPrivateExchange(PrivateExchangeInterface):
         """Format price to MEXC precision requirements."""
         formatted = f"{price:.{precision}f}".rstrip('0').rstrip('.')
         return formatted if formatted else "0"
+
+    # TODO: remove, overcomplication
+    def _order_mexc_params(self, params: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Order MEXC parameters in the exact sequence MEXC expects for signature generation.
+        
+        MEXC is extremely sensitive to parameter order. Based on testing with working implementation,
+        the correct order is: symbol, side, type, [quantity], [price], [quoteOrderQty], 
+        [timeInForce], [other params], recvWindow, timestamp
+        
+        Args:
+            params: Raw parameter dictionary
+            
+        Returns:
+            Ordered dictionary with parameters in correct sequence
+        """
+        ordered = {}
+        
+        # MEXC expected parameter order (based on working API analysis)
+        expected_order = [
+            'symbol', 'side', 'type', 'quantity', 'price', 'quoteOrderQty', 
+            'timeInForce', 'recvWindow', 'timestamp'
+        ]
+        
+        # Add parameters in expected order if they exist
+        for key in expected_order:
+            if key in params:
+                ordered[key] = params[key]
+        
+        # Add any remaining parameters (shouldn't be any for typical orders)
+        for key, value in params.items():
+            if key not in ordered:
+                ordered[key] = value
+        
+        return ordered
     
     # PrivateExchangeInterface Implementation
     
@@ -404,9 +439,14 @@ class MexcPrivateExchange(PrivateExchangeInterface):
             RateLimitError: If rate limit is exceeded
         """
         try:
+            # For account endpoint, no additional params needed, but we'll prepare empty dict for consistency
+            params = {}
+            ordered_params = self._order_mexc_params(params)
+            
             # Fetch account info using endpoint-specific config
             response_data = await self.client.get(
                 self.ENDPOINTS['account'],
+                params=ordered_params if ordered_params else None,
                 config=self._endpoint_configs['account']
             )
             
@@ -535,11 +575,14 @@ class MexcPrivateExchange(PrivateExchangeInterface):
                 params['price'] = self._format_mexc_price(price)
                 params['quantity'] = self._format_mexc_quantity(quantity)
             
+            # CRITICAL: Order parameters correctly for MEXC signature validation
+            ordered_params = self._order_mexc_params(params)
+            
             # Place order using endpoint-specific config
             start_time = time.time()
             response_data = await self.client.post(
                 self.ENDPOINTS['order'],
-                params=params,
+                params=ordered_params,
                 config=self._endpoint_configs['order']
             )
             
@@ -593,10 +636,13 @@ class MexcPrivateExchange(PrivateExchangeInterface):
                 'orderId': str(order_id)
             }
             
+            # CRITICAL: Order parameters correctly for MEXC signature validation
+            ordered_params = self._order_mexc_params(params)
+            
             # Cancel order using endpoint-specific config
             response_data = await self.client.delete(
                 self.ENDPOINTS['order'],
-                params=params,
+                params=ordered_params,
                 config=self._endpoint_configs['cancel_order']
             )
             
@@ -667,10 +713,13 @@ class MexcPrivateExchange(PrivateExchangeInterface):
                 'symbol': mexc_symbol
             }
             
+            # CRITICAL: Order parameters correctly for MEXC signature validation  
+            ordered_params = self._order_mexc_params(params)
+            
             # Cancel all orders using endpoint-specific config
             response_data = await self.client.delete(
                 self.ENDPOINTS['open_orders'],
-                params=params,
+                params=ordered_params,
                 config=self._endpoint_configs['cancel_order']
             )
             
@@ -742,10 +791,13 @@ class MexcPrivateExchange(PrivateExchangeInterface):
                 'orderId': str(order_id)
             }
             
+            # CRITICAL: Order parameters correctly for MEXC signature validation
+            ordered_params = self._order_mexc_params(params)
+            
             # Get order using endpoint-specific config
             response_data = await self.client.get(
                 self.ENDPOINTS['order'],
-                params=params,
+                params=ordered_params,
                 config=self._endpoint_configs['order']
             )
             
@@ -797,10 +849,13 @@ class MexcPrivateExchange(PrivateExchangeInterface):
                 # Return empty list or raise error based on implementation choice
                 raise ValueError("MEXC API requires symbol parameter for open orders query")
             
+            # CRITICAL: Order parameters correctly for MEXC signature validation
+            ordered_params = self._order_mexc_params(params)
+            
             # Get open orders using endpoint-specific config
             response_data = await self.client.get(
                 self.ENDPOINTS['open_orders'],
-                params=params,
+                params=ordered_params,
                 config=self._endpoint_configs['open_orders']
             )
             
@@ -818,8 +873,8 @@ class MexcPrivateExchange(PrivateExchangeInterface):
             self.logger.debug(f"Retrieved {len(open_orders)} open orders")
             return open_orders
             
-        except ExchangeAPIError:
-            raise
+        except ExchangeAPIError as e:
+            raise e
         except Exception as e:
             if hasattr(e, 'status') and hasattr(e, 'response_text'):
                 # Handle HTTP error with MEXC error response

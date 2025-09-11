@@ -20,54 +20,54 @@ class OrderStatus(IntEnum):
     EXPIRED = 6
     REJECTED = 7
 
-class OrderType(Enum):
-    LIMIT = "LIMIT"
-    MARKET = "MARKET"
-    LIMIT_MAKER = "LIMIT_MAKER"
-    IMMEDIATE_OR_CANCEL = "IMMEDIATE_OR_CANCEL"
-    FILL_OR_KILL = "FILL_OR_KILL"
-    STOP_LIMIT = "STOP_LIMIT"
-    STOP_MARKET = "STOP_MARKET"
+class OrderType(IntEnum):
+    LIMIT = 1
+    MARKET = 2
+    LIMIT_MAKER = 3
+    IMMEDIATE_OR_CANCEL = 4
+    FILL_OR_KILL = 5
+    STOP_LIMIT = 6
+    STOP_MARKET = 7
 
-class Side(Enum):
-    BUY = "BUY"
-    SELL = "SELL"
+class Side(IntEnum):
+    BUY = 1
+    SELL = 2
 
 
 # Backward compatibility alias
 OrderSide = Side
 
 
-class TimeInForce(Enum):
+class TimeInForce(IntEnum):
     """Time in force for orders"""
-    GTC = "GTC"  # Good Till Cancelled
-    IOC = "IOC"  # Immediate or Cancel
-    FOK = "FOK"  # Fill or Kill
-    GTD = "GTD"  # Good Till Date
+    GTC = 1  # Good Till Cancelled
+    IOC = 2  # Immediate or Cancel
+    FOK = 3  # Fill or Kill
+    GTD = 4  # Good Till Date
 
 
-class KlineInterval(Enum):
+class KlineInterval(IntEnum):
     """Kline/Candlestick chart intervals"""
-    MINUTE_1 = "1m"
-    MINUTE_5 = "5m"
-    MINUTE_15 = "15m"
-    MINUTE_30 = "30m"
-    HOUR_1 = "1h"
-    HOUR_4 = "4h"
-    HOUR_12 = "12h"
-    DAY_1 = "1d"
-    WEEK_1 = "1w"
-    MONTH_1 = "1M"
+    MINUTE_1 = 1
+    MINUTE_5 = 2
+    MINUTE_15 = 3
+    MINUTE_30 = 4
+    HOUR_1 = 5
+    HOUR_4 = 6
+    HOUR_12 = 7
+    DAY_1 = 8
+    WEEK_1 = 9
+    MONTH_1 = 10
 
 
-class StreamType(Enum):
-    ORDERBOOK = "orderbook"
-    TRADES = "trades"
-    TICKER = "ticker"
-    KLINE = "kline"
-    ACCOUNT = "account"
-    ORDERS = "orders"
-    BALANCE = "balance"
+class StreamType(IntEnum):
+    ORDERBOOK = 1
+    TRADES = 2
+    TICKER = 3
+    KLINE = 4
+    ACCOUNT = 5
+    ORDERS = 6
+    BALANCE = 7
 
 
 class Symbol(Struct, frozen=True):

@@ -127,8 +127,8 @@ class PublicExchangeDemo:
             
             for symbol in self.symbols:
                 # Get real-time orderbook from WebSocket
-                realtime_ob = self.exchange.get_realtime_orderbook(symbol)
-                
+                realtime_ob = await self.exchange.get_orderbook(symbol)
+
                 if realtime_ob and realtime_ob.bids and realtime_ob.asks:
                     best_bid = realtime_ob.bids[0].price
                     best_ask = realtime_ob.asks[0].price
