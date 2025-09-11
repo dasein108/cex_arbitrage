@@ -21,7 +21,7 @@ from utils.exceptions import with_traceback
 TRUNC_DEALS = 100
 TRUNC_ORDERS = 100
 
-PUBLIC_STREAMS = ["spot@private.account.v3.api.pb", "spot@private.deals.v3.api.pb", "spot@private.orders.v3.api.pb"]
+PUBLIC_STREAMS = ["spot@private.account.v3.api.protobuf", "spot@private.deals.v3.api.protobuf", "spot@private.orders.v3.api.protobuf"]
 
 # apply interceptors for exceptions
 apply_exception_handler(MexcRestApi, mexc_exception_handler)
@@ -129,14 +129,14 @@ class MexcSyncExchange(BaseSyncExchange):
             self.deals[symbol] = await self.rest_api.get_last_deals(symbol, TRUNC_DEALS)
             # 10ms 100ms
             streams = [
-                f"spot@public.aggre.deals.v3.api.pb@10ms@{symbol.upper()}",
-                f"spot@public.limit.depth.v3.api.pb@{symbol.upper()}@5",
+                f"spot@public.aggre.deals.v3.api.protobuf@10ms@{symbol.upper()}",
+                f"spot@public.limit.depth.v3.api.protobuf@{symbol.upper()}@5",
             ]
         else:
             self.deals[symbol] = []
-            streams = [f"spot@public.limit.depth.v3.api.pb@{symbol.upper()}@5"]
+            streams = [f"spot@public.limit.depth.v3.api.protobuf@{symbol.upper()}@5"]
 
-        streams += [f"spot@public.kline.v3.api.pb@{symbol.upper()}@{from_interval(k).value}" for k in kline_intervals]
+        streams += [f"spot@public.kline.v3.api.protobuf@{symbol.upper()}@{from_interval(k).value}" for k in kline_intervals]
 
         self.streams[symbol] = streams
 
@@ -195,7 +195,7 @@ class MexcSyncExchange(BaseSyncExchange):
             #     logging.info(f'No data in message: {msg}')
             #     return
 
-            if channel == "spot@private.orders.v3.api.pb":
+            if channel == "spot@private.orders.v3.api.protobuf":
                 self.last_update = now()
 
                 symbol = msg["symbol"]
@@ -204,17 +204,17 @@ class MexcSyncExchange(BaseSyncExchange):
                     self.orders[symbol][o.order_id] = o
 
                 # self.orders[symbol] = self.orders[symbol][-TRUNC_ORDERS:]
-            elif channel == "spot@private.account.v3.api.pb":
+            elif channel == "spot@private.account.v3.api.protobuf":
                 self.last_update = now()
                 data = msg["privateAccount"]
                 coin = data["vcoinName"]
                 self._balance[coin] = AccountBalance(coin, float(data["balanceAmount"]), float(data["frozenAmount"]))
-            elif channel == "spot@private.deals.v3.api.pb":
+            elif channel == "spot@private.deals.v3.api.protobuf":
                 # https://mexcdevelop.github.io/apidocs/spot_v3_en/#spot-account-deals
                 # symbol = msg['s']
                 # deal = Deal.from_ws(data['d'])
                 pass
-            elif channel.startswith("spot@public.aggre.deals.v3.api.pb"):
+            elif channel.startswith("spot@public.aggre.deals.v3.api.protobuf"):
                 _, __, ___, symbol = channel.split("@")
                 data = msg["publicAggreDeals"]
                 new_deals = [Deal.from_ws(d) for d in data["deals"]]
@@ -226,7 +226,7 @@ class MexcSyncExchange(BaseSyncExchange):
                     # self.deals[symbol] = []
                     self.deals[symbol] = self.deals[symbol][-TRUNC_DEALS:] + new_deals
 
-            elif channel.startswith("spot@public.kline.v3.api.pb"):
+            elif channel.startswith("spot@public.kline.v3.api.protobuf"):
                 _, __, symbol, interval = channel.split("@")
                 data = msg["publicSpotKline"]
                 k_interval = from_stream_interval(StreamInterval(interval))
@@ -234,7 +234,7 @@ class MexcSyncExchange(BaseSyncExchange):
                     Kline.from_mexc_ws(data)
                 ]
 
-            elif channel.startswith("spot@public.limit.depth.v3.api.pb"):
+            elif channel.startswith("spot@public.limit.depth.v3.api.protobuf"):
                 symbol = channel.split("@")[2]
 
                 self.last_symbol_update[symbol] = now()

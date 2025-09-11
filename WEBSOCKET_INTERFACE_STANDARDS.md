@@ -165,7 +165,7 @@ class BinanceWebSocket(BaseWebSocketInterface):
 class MexcWebSocket(BaseWebSocketInterface):
     # MEXC WebSocket: wss://wbs-api.mexc.com/ws (UPDATED 2025)
     MEXC_WS_URL = "wss://wbs-api.mexc.com/ws"
-    
+
     async def _parse_message(self, raw_message: Union[str, bytes]) -> Optional[Dict[str, Any]]:
         try:
             if isinstance(raw_message, str):
@@ -173,7 +173,7 @@ class MexcWebSocket(BaseWebSocketInterface):
                 return msgspec.json.decode(raw_message)
             else:
                 # Ultra-optimized protobuf format with object pooling
-                from exchanges.mexc.pb import PushDataV3ApiWrapper_pb2
+                from exchanges.mexc.protobuf import PushDataV3ApiWrapper_pb2
                 wrapper = self._get_pooled_wrapper()  # Object pooling optimization
                 wrapper.ParseFromString(raw_message)
                 return self._fast_protobuf_to_dict(wrapper)
@@ -182,11 +182,11 @@ class MexcWebSocket(BaseWebSocketInterface):
 
 # CRITICAL: Updated MEXC Stream Formats (2025)
 # OLD (deprecated): "spot@public.increase.depth.v3.api@BTCUSDT"
-# NEW (current):    "spot@public.depth.v3.api.pb@100ms@BTCUSDT"
+# NEW (current):    "spot@public.depth.v3.api.protobuf@100ms@BTCUSDT"
 #
 # Key Changes:
 # 1. Removed "increase." prefix from depth streams
-# 2. Added ".pb" suffix for protobuf binary format
+# 2. Added ".protobuf" suffix for protobuf binary format
 # 3. Added "@100ms" interval specification
 # 4. Updated base URL from wbs.mexc.com to wbs-api.mexc.com
 ```
@@ -290,26 +290,28 @@ health = await websocket.health_check()
 ### 1. **Basic Connection (Updated 2025)**
 
 ```python
-from exchanges.mexc.mexc_ws_public import MexcWebSocketPublicStream
+from exchanges.mexc.ws.mexc_ws_public import MexcWebSocketPublicStream
 
 # Updated endpoint URL
 config = create_websocket_config("wss://wbs-api.mexc.com/ws")
 
+
 async def handle_message(message: Dict[str, Any]):
     print(f"Received: {message}")
+
 
 async def main():
     # Correct constructor pattern (fixed parameter alignment)
     async with MexcWebSocketPublicStream(
-        exchange=ExchangeName("MEXC"),
-        message_handler=handle_message,
-        error_handler=None,
-        config=config
+            exchange=ExchangeName("MEXC"),
+            message_handler=handle_message,
+            error_handler=None,
+            config=config
     ) as ws:
         # Updated stream formats with protobuf and intervals
         streams = [
-            "spot@public.depth.v3.api.pb@100ms@BTCUSDT",
-            "spot@public.deals.v3.api.pb@100ms@ETHUSDT"
+            "spot@public.depth.v3.api.protobuf@100ms@BTCUSDT",
+            "spot@public.deals.v3.api.protobuf@100ms@ETHUSDT"
         ]
         await ws.subscribe(streams)
         await asyncio.sleep(60)  # Listen for 1 minute
@@ -318,23 +320,26 @@ async def main():
 ### 2. **Advanced Usage with Error Handling (Updated 2025)**
 
 ```python
-from exchanges.mexc.mexc_ws_public import MexcWebSocketPublicStream, create_hft_optimized_websocket
+from exchanges.mexc.ws.mexc_ws_public import MexcWebSocketPublicStream, create_hft_optimized_websocket
+
 
 async def handle_error(error: Exception):
     logger.error(f"WebSocket error: {error}")
     # Implement custom error recovery logic here
 
+
 async def handle_message(message: Dict[str, Any]):
     # Process different message types
     msg_type = message.get('type')
     symbol = message.get('symbol')
-    
+
     if msg_type == 'depth' and symbol:
         orderbook = message.get('data')
         logger.info(f"Orderbook update for {symbol}: {len(orderbook.bids)} bids")
     elif msg_type == 'trades':
         trades = message.get('data', [])
         logger.info(f"Trade update for {symbol}: {len(trades)} trades")
+
 
 # Use HFT-optimized configuration for maximum performance
 websocket = create_hft_optimized_websocket(
@@ -347,24 +352,24 @@ await websocket.start()
 try:
     # Subscribe to high-performance streams
     streams = [
-        "spot@public.depth.v3.api.pb@100ms@BTCUSDT",
-        "spot@public.deals.v3.api.pb@100ms@BTCUSDT", 
-        "spot@public.bookTicker.v3.api.pb@100ms@BTCUSDT"
+        "spot@public.depth.v3.api.protobuf@100ms@BTCUSDT",
+        "spot@public.deals.v3.api.protobuf@100ms@BTCUSDT",
+        "spot@public.bookTicker.v3.api.protobuf@100ms@BTCUSDT"
     ]
     await websocket.subscribe(streams)
-    
+
     # Monitor performance
     while True:
         await asyncio.sleep(30)
-        
+
         # Get performance metrics
         metrics = websocket.get_performance_metrics()
         health = await websocket.get_health_check()
-        
-        logger.info(f"Messages/sec: {metrics['mexc_performance']['messages_parsed']/30:.1f}")
+
+        logger.info(f"Messages/sec: {metrics['mexc_performance']['messages_parsed'] / 30:.1f}")
         logger.info(f"Cache hit rate: {metrics['cache_performance']['symbol_cache_hit_rate']:.1f}%")
         logger.info(f"Connection healthy: {health['mexc_health']['streams_healthy']}")
-        
+
 finally:
     await websocket.stop()
 ```

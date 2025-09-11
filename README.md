@@ -286,39 +286,40 @@ trading_config = RequestConfig(
 ### Basic REST Client Usage
 
 ```python
-from src.common.rest import create_trading_client, create_market_data_config
+from src.common.rest_client import create_trading_client, create_market_data_config
+
 
 async def example_usage():
-    async with create_trading_client(
-        base_url="https://api.exchange.com",
-        api_key="your_api_key",
-        secret_key="your_secret_key",
-        enable_metrics=True
-    ) as client:
-        # Get market data
-        config = create_market_data_config()
-        ticker = await client.get("/api/v3/ticker/24hr", config=config)
-        
-        # Execute batch requests
-        batch_requests = [
-            (HTTPMethod.GET, "/api/v3/ticker/price", {"symbol": "BTCUSDT"}, config),
-            (HTTPMethod.GET, "/api/v3/ticker/price", {"symbol": "ETHUSDT"}, config),
-        ]
-        results = await client.batch_request(batch_requests)
-        
-        # Monitor performance
-        metrics = client.get_metrics()
-        print(f"Average response time: {metrics.get('avg_response_time', 0):.3f}s")
+   async with create_trading_client(
+           base_url="https://api.exchange.com",
+           api_key="your_api_key",
+           secret_key="your_secret_key",
+           enable_metrics=True
+   ) as client:
+      # Get market data
+      config = create_market_data_config()
+      ticker = await client.get("/api/v3/ticker/24hr", config=config)
+
+      # Execute batch requests
+      batch_requests = [
+         (HTTPMethod.GET, "/api/v3/ticker/price", {"symbol": "BTCUSDT"}, config),
+         (HTTPMethod.GET, "/api/v3/ticker/price", {"symbol": "ETHUSDT"}, config),
+      ]
+      results = await client.batch_request(batch_requests)
+
+      # Monitor performance
+      metrics = client.get_metrics()
+      print(f"Average response time: {metrics.get('avg_response_time', 0):.3f}s")
 ```
 
 ### **Compliant Exchange Implementation Example**
 
 ```python
 # ✅ CORRECT: Using unified interface standards
-from exchanges.interface.rest.public_exchange import PublicExchangeInterface
-from exchanges.interface.rest.private_exchange import PrivateExchangeInterface
+from exchanges.interface.rest.base_rest_public import PublicExchangeInterface
+from exchanges.interface.rest.base_rest_private import PrivateExchangeInterface
 from src.structs.exchange import Symbol, OrderBook, Order, ExchangeName
-from src.common.rest import HighPerformanceRestClient, RequestConfig
+from src.common.rest_client import HighPerformanceRestClient, RequestConfig
 from src.common.exceptions import ExchangeAPIError, RateLimitError
 
 
@@ -453,7 +454,7 @@ The `raw/` directory contains legacy code that is **incompatible with unified in
    from raw.common.exceptions import ExchangeAPIError
    
    # ✅ REPLACE with unified imports:
-   from exchanges.interface.rest.public_exchange import PublicExchangeInterface
+   from exchanges.interface.rest.base_rest_public import PublicExchangeInterface
    from src.structs.exchange import Order, SymbolInfo, AssetBalance
    from src.common.exceptions import ExchangeAPIError
    ```
@@ -481,7 +482,7 @@ The `raw/` directory contains legacy code that is **incompatible with unified in
            data = await response.json()
    
    # ✅ Use standardized client:
-   from src.common.rest import HighPerformanceRestClient
+   from src.common.rest_client import HighPerformanceRestClient
    async with HighPerformanceRestClient(base_url) as client:
        data = await client.get(endpoint)
    ```

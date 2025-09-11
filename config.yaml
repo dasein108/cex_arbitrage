@@ -9,10 +9,8 @@ environment:
 
 # MEXC Exchange API settings
 mexc:
-  api_key: ""  # Your MEXC API key
-  secret_key: ""  # Your MEXC secret key
-  base_url: "https://api.mexc.com"
-  websocket_url: "wss://wbs-api.mexc.com/ws"
+  api_key: "mx0vgl6pxdKU8DNcIT"  # Your MEXC API key
+  secret_key: "200bba9bffc24768a6899d9b79320f71"  # Your MEXC secret key
 
 # Network configuration
 network:

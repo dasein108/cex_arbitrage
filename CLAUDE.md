@@ -150,18 +150,20 @@ pip install -r requirements.txt
 ```python
 # Required interface implementations
 class ExchangePublic(PublicExchangeInterface):
-    """MUST implement all abstract methods from PublicExchangeInterface"""
-    pass
+   """MUST implement all abstract methods from PublicExchangeInterface"""
+   pass
+
 
 class ExchangePrivate(PrivateExchangeInterface):
-    """MUST implement all abstract methods from PrivateExchangeInterface"""  
-    pass
+   """MUST implement all abstract methods from PrivateExchangeInterface"""
+   pass
+
 
 # Required data structure usage
 from src.structs.exchange import Symbol, OrderBook, Trade, Order, AssetBalance
 
 # Required REST client usage  
-from src.common.rest import RestClient, RestConfig
+from src.common.rest_client import RestClient, RestConfig
 
 
 ```

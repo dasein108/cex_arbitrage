@@ -121,3 +121,4 @@ grafana_data/
 temp/
 tmp/
 venv/
+config.yaml

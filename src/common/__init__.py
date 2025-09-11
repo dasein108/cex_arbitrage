@@ -8,7 +8,7 @@ This module provides shared components used across the arbitrage trading system:
 """
 
 from .exceptions import *
-from .rest import *
+from .rest_client import *
 
 __all__ = [
     # Exception classes

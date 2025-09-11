@@ -24,9 +24,9 @@ Refactoring Achievements:
 - Enhanced performance with LRU caching
 """
 
-from .mexc_public import MexcPublicExchange
-from .mexc_futures_public import MexcPublicFuturesExchange, create_mexc_futures_client, FuturesPerformanceMonitor
-from .websocket import MexcWebSocketPublicStream
+from exchanges.mexc.rest.mexc_public import MexcPublicExchange
+from exchanges.mexc.rest.mexc_futures_public import MexcPublicFuturesExchange, create_mexc_futures_client, FuturesPerformanceMonitor
+from exchanges.mexc.ws.websocket import MexcWebSocketPublicStream
 
 __all__ = [
     'MexcPublicExchange', 

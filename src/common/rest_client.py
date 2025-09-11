@@ -75,13 +75,15 @@ class RestClient:
         api_key: Optional[str] = None,
         secret_key: Optional[str] = None,
         signature_generator: Optional[Callable] = None,
-        config: Optional[RestConfig] = None
+        config: Optional[RestConfig] = None,
+        exception_handler: Optional[Callable] = None
     ):
         self.base_url = base_url.rstrip('/')
         self.api_key = api_key
         self.secret_key = secret_key
-        self.signature_generator = signature_generator or self._default_signature_generator
+        self.signature_generator = signature_generator
         self.config = config or RestConfig()
+        self.exception_handler = exception_handler
         
         # Connection management
         self._session: Optional[aiohttp.ClientSession] = None
@@ -134,44 +136,7 @@ class RestClient:
                 }
             )
     
-    def _default_signature_generator(self, method: str, endpoint: str, params: Dict[str, Any], timestamp: str) -> str:
-        """
-        Default HMAC-SHA256 signature generation.
-        Override by providing custom signature_generator in constructor.
-        """
-        if not self.secret_key:
-            raise ValueError("Secret key required for authenticated requests")
-        
-        # Generate signature payload
-        if params:
-            sorted_params = sorted(params.items())
-            query_string = urllib.parse.urlencode(sorted_params)
-            payload = f"{timestamp}{method}{endpoint}?{query_string}"
-        else:
-            payload = f"{timestamp}{method}{endpoint}"
-        
-        # Generate HMAC-SHA256 signature
-        payload_bytes = payload.encode('utf-8')
-        secret_bytes = self.secret_key.encode('utf-8') if isinstance(self.secret_key, str) else self.secret_key
-        signature = hmac.new(secret_bytes, payload_bytes, hashlib.sha256).hexdigest()
-        
-        return signature
-    
-    def _prepare_auth_headers(self, method: str, endpoint: str, params: Dict[str, Any]) -> Dict[str, str]:
-        """Prepare authentication headers with minimal overhead."""
-        if not self.api_key or not self.secret_key:
-            return {}
-        
-        timestamp = str(int(time.time() * 1000))
-        signature = self.signature_generator(method, endpoint, params, timestamp)
-        
-        # Use MEXC-specific headers - MEXC expects X-MEXC-APIKEY not X-API-KEY
-        return {
-            'X-MEXC-APIKEY': self.api_key,
-            'X-MEXC-SIGNATURE': signature,
-            'X-MEXC-TIMESTAMP': timestamp,
-        }
-    
+
     def _parse_response(self, response_text: str) -> Any:
         """Ultra-high-performance JSON parsing using msgspec directly on strings."""
         if not response_text:
@@ -215,18 +180,13 @@ class RestClient:
                         if self.api_key:
                             headers['X-MEXC-APIKEY'] = self.api_key
                         
-                        # Generate signature and add to params
-                        timestamp = str(int(time.time() * 1000))
-                        
                         # CRITICAL FOR MEXC: Preserve parameter insertion order for signature generation
                         # Add timestamp and recvWindow to params first
-                        request_params['timestamp'] = int(timestamp)  # Ensure int type
+                        request_params['timestamp'] = round(time.time() * 1000) # Ensure int type
                         request_params['recvWindow'] = 15000
                         
-                        # Generate signature on params WITHOUT signature included
-                        signature = self.signature_generator(method.value, endpoint, request_params, timestamp)
-                        # Add signature AFTER generation - this maintains the order
-                        request_params['signature'] = signature
+                        # Generate signature
+                        request_params['signature'] = self.signature_generator(request_params)
                     
                     # Prepare request parameters
                     request_kwargs = {
@@ -264,10 +224,22 @@ class RestClient:
                             if response.status == 429:  # Rate limited
                                 raise RateLimitError(response.status, f"Rate limit exceeded: {response_text}")
                             
-                            raise ExchangeAPIError(
-                                response.status,
-                                f"HTTP {response.status}: {response_text}"
-                            )
+                            # Use custom exception handler if provided
+                            if self.exception_handler:
+                                # Create a mock exception with HTTP info for custom handler
+                                class HTTPError(Exception):
+                                    def __init__(self, status, response_text):
+                                        self.status = status
+                                        self.response_text = response_text
+                                        super().__init__(f"HTTP {status}: {response_text}")
+                                
+                                http_error = HTTPError(response.status, response_text)
+                                raise self.exception_handler(http_error)
+                            else:
+                                raise ExchangeAPIError(
+                                    response.status,
+                                    f"HTTP {response.status}: {response_text}"
+                                )
                         
                         # Parse and return successful response
                         return self._parse_response(response_text)
@@ -293,7 +265,11 @@ class RestClient:
                 
                 except Exception as e:
                     if attempt == config.max_retries:
-                        raise ExchangeAPIError(500, f"Unexpected error: {str(e)}")
+                        # Use custom exception handler if provided
+                        if self.exception_handler:
+                            raise self.exception_handler(e)
+                        else:
+                            raise ExchangeAPIError(500, f"Unexpected error: {str(e)}")
                     
                     await asyncio.sleep(config.retry_delay)
     
@@ -349,54 +325,4 @@ class RestClient:
         if self._connector:
             await self._connector.close()
         
-        self.logger.info("UltraSimpleRestClient closed successfully")
-
-
-# Utility Functions
-
-@asynccontextmanager
-async def create_rest_client(
-    base_url: str,
-    api_key: Optional[str] = None,
-    secret_key: Optional[str] = None,
-    **kwargs
-) -> RestClient:
-    """
-    Create a properly configured REST client with context management.
-    Automatically handles resource cleanup.
-    """
-    client = RestClient(
-        base_url=base_url,
-        api_key=api_key,
-        secret_key=secret_key,
-        **kwargs
-    )
-    
-    try:
-        await client._ensure_session()
-        yield client
-    finally:
-        await client.close()
-
-
-# Example usage (remove in production)
-if __name__ == "__main__":
-    async def example_usage():
-        """Example demonstrating ultra-simple REST client usage."""
-        async with create_rest_client(
-            base_url="https://api.mexc.com",
-            api_key="your_api_key",
-            secret_key="your_secret_key"
-        ) as client:
-            # Public market data request
-            config = RestConfig(timeout=5.0, require_auth=False)
-            ticker_data = await client.get("/api/v3/ticker/24hr", config=config)
-            
-            # Private authenticated request  
-            auth_config = RestConfig(timeout=10.0, require_auth=True)
-            account_info = await client.get("/api/v3/account", config=auth_config)
-            
-            print("Requests completed successfully")
-    
-    # Run example
-    asyncio.run(example_usage())
+        self.logger.info("RestClient closed successfully")

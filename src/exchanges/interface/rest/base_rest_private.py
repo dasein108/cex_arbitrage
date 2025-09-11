@@ -1,5 +1,6 @@
-from abc import abstractmethod
+from abc import abstractmethod, ABC
 from typing import Dict, List, Optional
+from .base_rest import BaseExchangeInterface
 from structs.exchange import (
     Symbol,
     Order,
@@ -8,25 +9,22 @@ from structs.exchange import (
     Side,
     AssetBalance,
     AssetName,
-    ExchangeName
+    ExchangeName,
+    TimeInForce
 )
-
-# Import the base interface
-from exchanges.interface.rest.base_exchange import BaseExchangeInterface
 
 
 class PrivateExchangeInterface(BaseExchangeInterface):
     """Abstract interface for private exchange operations (trading, account management)"""
     
     def __init__(self, exchange: ExchangeName, api_key: str, secret_key: str, base_url: str):
-        self.exchange = exchange
+        super().__init__(exchange, base_url)
         self.api_key = api_key
         self.secret_key = secret_key
-        self.base_url = base_url
-        
+
     
     @abstractmethod
-    async def get_account_balance(self) -> Dict[AssetName, AssetBalance]:
+    async def get_account_balance(self) -> List[AssetBalance]:
         """Get account balance for all assets"""
         pass
     
@@ -40,8 +38,11 @@ class PrivateExchangeInterface(BaseExchangeInterface):
         self,
         symbol: Symbol,
         order_id: OrderId,
-        quantity: Optional[float] = None,
-        price: Optional[float] = None
+        amount: Optional[float] = None,
+        price: Optional[float] = None,
+        quote_quantity: Optional[float] = None,
+        time_in_force: Optional[TimeInForce] = None,
+        stop_price: Optional[float] = None
     ) -> Order:
         """Modify an existing order (if supported)"""
         pass
@@ -52,12 +53,15 @@ class PrivateExchangeInterface(BaseExchangeInterface):
         symbol: Symbol,
         side: Side,
         order_type: OrderType,
+        amount: Optional[float] = None,
         price: Optional[float] = None,
-        quantity: Optional[float] = None,
         quote_quantity: Optional[float] = None,
-        time_in_force: Optional[str] = None,
+        time_in_force: Optional[TimeInForce] = None,
+        stop_price: Optional[float] = None,
+        iceberg_qty: Optional[float] = None,
+        new_order_resp_type: Optional[str] = None
     ) -> Order:
-        """Place a new order"""
+        """Place a new order with comprehensive parameters"""
         pass
     
     @abstractmethod

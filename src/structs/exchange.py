@@ -124,7 +124,8 @@ class Trade(Struct):
 
 class AssetBalance(Struct):
     asset: AssetName
-    free: float
+    available: float = 0.0
+    free: float = 0.0
     locked: float = 0.0
 
     @property

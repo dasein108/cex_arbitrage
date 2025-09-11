@@ -4,14 +4,13 @@
 # importing the separated public and private stream implementations for better
 # code organization and maintainability.
 
-from typing import Any, Dict, List, Optional, Callable, Coroutine
+from typing import Any, Dict, Optional, Callable, Coroutine
 
-from structs.exchange import ExchangeName
 from exchanges.interface.websocket.base_ws import WebSocketConfig
 
 # Import separated WebSocket stream implementations
-from exchanges.mexc.mexc_ws_public import MexcWebSocketPublicStream
-from exchanges.mexc.mexc_ws_private import MexcWebSocketPrivateStream
+from exchanges.mexc.ws.mexc_ws_public import MexcWebSocketPublicStream
+from exchanges.mexc.ws.mexc_ws_private import MexcWebSocketPrivateStream
 
 
 # Re-export main classes for backward compatibility

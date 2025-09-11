@@ -4,7 +4,7 @@ Simple MEXC WebSocket Implementation
 A minimal, working WebSocket implementation for MEXC that focuses on message reception.
 Based on the working raw implementation but simplified for easy use.
 
-Stream format support: spot@public.aggre.deals.v3.api.pb@10ms@BTCUSDT
+Stream format support: spot@public.aggre.deals.v3.api.protobuf@10ms@BTCUSDT
 """
 
 import asyncio
@@ -13,11 +13,10 @@ import json
 import time
 from typing import Any, Callable, Dict, List, Optional, Union
 from websockets import connect, ConnectionClosedError
-import msgspec
 
 # Protobuf support
 try:
-    from exchanges.mexc.pb.PushDataV3ApiWrapper_pb2 import PushDataV3ApiWrapper
+    from exchanges.mexc.protobuf.PushDataV3ApiWrapper_pb2 import PushDataV3ApiWrapper
     from google.protobuf import json_format
     PROTOBUF_AVAILABLE = True
 except ImportError:
@@ -334,7 +333,7 @@ async def test_simple_websocket():
         
         # Test different streams (corrected formats based on ccxt)
         test_streams = [
-            # Correct MEXC formats without .pb suffix and with proper intervals
+            # Correct MEXC formats without .protobuf suffix and with proper intervals
             "spot@public.deals.v3.api@BTCUSDT",           # Real-time trades 
             "spot@public.increase.depth.v3.api@BTCUSDT",  # Incremental depth updates
             "spot@public.bookTicker.v3.api@BTCUSDT",      # Best bid/ask ticker

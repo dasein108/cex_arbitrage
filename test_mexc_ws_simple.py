@@ -3,7 +3,7 @@
 Simple test script to validate MEXC WebSocket functionality.
 
 This script will test the current WebSocket implementation to identify any issues
-with message reception for the stream format: spot@public.aggre.deals.v3.api.pb@10ms@BTCUSDT
+with message reception for the stream format: spot@public.aggre.deals.v3.api.protobuf@10ms@BTCUSDT
 """
 import asyncio
 import logging
@@ -25,7 +25,7 @@ logger = logging.getLogger(__name__)
 
 # Import the current MEXC implementation
 try:
-    from exchanges.mexc.mexc_ws_public import MexcWebSocketPublicStream
+    from exchanges.mexc.ws.mexc_ws_public import MexcWebSocketPublicStream
     from exchanges.interface.websocket.base_ws import WebSocketConfig
     
     logger.info("Successfully imported MEXC WebSocket implementation")
@@ -98,11 +98,11 @@ async def test_mexc_websocket():
         # Test different stream formats
         test_streams = [
             # Original format request
-            "spot@public.aggre.deals.v3.api.pb@10ms@BTCUSDT",
+            "spot@public.aggre.deals.v3.api.protobuf@10ms@BTCUSDT",
             # Standard MEXC format
-            "spot@public.deals.v3.api.pb@BTCUSDT",
+            "spot@public.deals.v3.api.protobuf@BTCUSDT",
             # Depth stream
-            "spot@public.depth.v3.api.pb@BTCUSDT",
+            "spot@public.depth.v3.api.protobuf@BTCUSDT",
         ]
         
         for stream in test_streams:
@@ -129,7 +129,7 @@ async def test_mexc_websocket():
         
         # Keep connection alive for final testing
         logger.info("Final test: subscribing to simple depth stream...")
-        await websocket_client.subscribe(["spot@public.depth.v3.api.pb@BTCUSDT"])
+        await websocket_client.subscribe(["spot@public.depth.v3.api.protobuf@BTCUSDT"])
         
         # Wait for messages
         start_time = time.time()

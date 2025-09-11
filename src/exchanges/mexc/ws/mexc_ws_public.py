@@ -30,11 +30,11 @@ Latency: Sub-millisecond parsing, <50ms end-to-end processing
 
 MEXC WebSocket: wss://wbs-api.mexc.com/ws
 Supported Channels:
-- spot@public.depth.v3.api.pb@SYMBOL - Differential depth updates (preferred)
-- spot@public.deals.v3.api.pb@SYMBOL - Real-time trades
-- spot@public.bookTicker.v3.api.pb@SYMBOL - Best bid/ask ticker
-- spot@public.miniTicker.v3.api.pb@SYMBOL - 24hr mini ticker
-- spot@public.kline.v3.api.pb@INTERVAL@SYMBOL - Candlestick data
+- spot@public.depth.v3.api.protobuf@SYMBOL - Differential depth updates (preferred)
+- spot@public.deals.v3.api.protobuf@SYMBOL - Real-time trades
+- spot@public.bookTicker.v3.api.protobuf@SYMBOL - Best bid/ask ticker
+- spot@public.miniTicker.v3.api.protobuf@SYMBOL - 24hr mini ticker
+- spot@public.kline.v3.api.protobuf@INTERVAL@SYMBOL - Candlestick data
 
 NOTE: MEXC may block WebSocket connections based on IP/region. If you encounter
 "Blocked!" errors, this is a server-side restriction, not a client issue.
@@ -49,7 +49,7 @@ COMPLIANCE:
 import asyncio
 import logging
 import time
-from collections import defaultdict, deque
+from collections import deque
 from typing import Any, Dict, List, Optional, Union, Callable, Awaitable, Tuple
 import weakref
 from functools import lru_cache
@@ -67,12 +67,12 @@ from common.symbol_parser import parse_symbol_fast
 from common.zero_alloc_buffers import process_orderbook_zero_alloc, get_sorted_orderbook, RingBufferPool
 
 # MEXC Protobuf message structures for ultra-high performance parsing
-from exchanges.mexc.pb.PushDataV3ApiWrapper_pb2 import PushDataV3ApiWrapper
-from exchanges.mexc.pb.PublicIncreaseDepthsV3Api_pb2 import PublicIncreaseDepthsV3Api
-from exchanges.mexc.pb.PublicLimitDepthsV3Api_pb2 import PublicLimitDepthsV3Api
-from exchanges.mexc.pb.PublicDealsV3Api_pb2 import PublicDealsV3Api
-from exchanges.mexc.pb.PublicBookTickerV3Api_pb2 import PublicBookTickerV3Api
-from exchanges.mexc.pb.PublicMiniTickerV3Api_pb2 import PublicMiniTickerV3Api
+from exchanges.mexc.protobuf.PushDataV3ApiWrapper_pb2 import PushDataV3ApiWrapper
+from exchanges.mexc.protobuf.PublicIncreaseDepthsV3Api_pb2 import PublicIncreaseDepthsV3Api
+from exchanges.mexc.protobuf.PublicLimitDepthsV3Api_pb2 import PublicLimitDepthsV3Api
+from exchanges.mexc.protobuf.PublicDealsV3Api_pb2 import PublicDealsV3Api
+from exchanges.mexc.protobuf.PublicBookTickerV3Api_pb2 import PublicBookTickerV3Api
+from exchanges.mexc.protobuf.PublicMiniTickerV3Api_pb2 import PublicMiniTickerV3Api
 
 
 # ULTRA-HIGH PERFORMANCE: Ring buffer object pools for zero-allocation parsing
@@ -115,27 +115,21 @@ class _OptimizedProtobufPools:
             reset_func=reset_wrapper
         )
         
-        # Performance tracking
-        self._stats = {'gets': 0, 'returns': 0}
     
     def get_wrapper(self) -> PushDataV3ApiWrapper:
         """Get pooled wrapper object with O(1) complexity."""
-        self._stats['gets'] += 1
         return self._wrapper_pool.acquire()
     
     def return_wrapper(self, wrapper: PushDataV3ApiWrapper):
         """Return wrapper to pool with O(1) complexity."""
-        self._stats['returns'] += 1
         self._wrapper_pool.release(wrapper)
     
     def get_depth_msg(self) -> PublicIncreaseDepthsV3Api:
         """Get pooled depth message with O(1) complexity."""
-        self._stats['gets'] += 1
         return self._depth_pool.acquire()
     
     def return_depth_msg(self, msg: PublicIncreaseDepthsV3Api):
         """Return depth message to pool with O(1) complexity."""
-        self._stats['returns'] += 1
         self._depth_pool.release(msg)
     
     def get_cache_hit_rate(self) -> float:
@@ -165,7 +159,6 @@ class _SymbolCache:
     
     def __init__(self, max_size: int = 1000):
         self._cache: Dict[str, Symbol] = {}
-        self._stats = {'hits': 0, 'misses': 0}
         self._max_size = max_size
     
     @lru_cache(maxsize=1000)  # LRU cache for string operations
@@ -204,10 +197,6 @@ class _SymbolCache:
         # Use the optimized O(1) parser instead of linear search
         return parse_symbol_fast(symbol_str)
     
-    def get_hit_rate(self) -> float:
-        """Get cache hit rate percentage for performance monitoring."""
-        total = self._stats['hits'] + self._stats['misses']
-        return (self._stats['hits'] / total * 100.0) if total > 0 else 0.0
 
 
 # Global symbol cache singleton
@@ -219,7 +208,7 @@ class _MessageTypeDetector:
     O(1) binary pattern detection for instant message type identification.
     Eliminates expensive protobuf parsing for message routing decisions.
     """
-    __slots__ = ('_patterns', '_stats')
+    __slots__ = ('_patterns',)
     
     def __init__(self):
         # Pre-computed binary patterns for common message types
@@ -235,7 +224,6 @@ class _MessageTypeDetector:
             b'\xb5\x02': 'mini_ticker'
         }
         
-        self._stats = defaultdict(int)
     
     def detect_message_type(self, message_bytes: bytes) -> Optional[str]:
         """
@@ -265,16 +253,12 @@ class _MessageTypeDetector:
                         
                         # Direct O(1) lookup using state machine
                         if byte_pair == b'\xae\x02':  # Depth field 302
-                            self._stats['depth'] += 1
                             return 'depth'
                         elif byte_pair == b'\xad\x02':  # Deals field 301
-                            self._stats['deals'] += 1
                             return 'deals'
                         elif byte_pair == b'\xb1\x02':  # Ticker field 305
-                            self._stats['ticker'] += 1
                             return 'ticker'
                         elif byte_pair == b'\xb5\x02':  # Mini ticker field 309
-                            self._stats['mini_ticker'] += 1
                             return 'mini_ticker'
             
             # Alternative detection for compressed/offset messages
@@ -284,18 +268,13 @@ class _MessageTypeDetector:
                     if offset + 1 < len(message_bytes):
                         if message_bytes[offset:offset+2] in self._patterns:
                             msg_type = self._patterns[message_bytes[offset:offset+2]]
-                            self._stats[msg_type] += 1
                             return msg_type
             
         except (IndexError, KeyError):
             pass  # Fallback to unknown
         
-        self._stats['unknown'] += 1
         return 'unknown'
     
-    def get_detection_stats(self) -> Dict[str, int]:
-        """Get message type detection statistics."""
-        return dict(self._stats)
 
 
 # Global message type detector
@@ -345,8 +324,7 @@ class MexcWebSocketPublicStream(BaseWebSocketInterface):
     
     __slots__ = (
         '_message_processor', '_batch_messages', '_batch_size', '_last_batch_time',
-        '_performance_metrics', '_symbol_subscriptions',
-        '_message_handlers', '_stream_health', '_weak_refs'
+        '_symbol_subscriptions', '_message_handlers', '_weak_refs'
     )
     
     def __init__(
@@ -375,16 +353,6 @@ class MexcWebSocketPublicStream(BaseWebSocketInterface):
         self._batch_size = 10
         self._last_batch_time = 0.0
         
-        # Performance metrics with __slots__ optimization
-        self._performance_metrics = {
-            'messages_parsed': 0,
-            'protobuf_messages': 0,
-            'json_messages': 0,
-            'parse_errors': 0,
-            'batch_processes': 0,
-            'cache_hits': 0,
-            'cache_misses': 0
-        }
         
         # Symbol subscriptions mapping (no orderbook caching - fresh data only)
         self._symbol_subscriptions: Dict[str, Symbol] = {}  # stream -> symbol mapping
@@ -398,17 +366,6 @@ class MexcWebSocketPublicStream(BaseWebSocketInterface):
             'mini_ticker': self._handle_mini_ticker_message
         }
         
-        # Stream health monitoring
-        self._stream_health = {
-            'last_depth_update': 0.0,
-            'last_deals_update': 0.0,
-            'last_ticker_update': 0.0,
-            'message_rates': defaultdict(float),
-            'error_rates': defaultdict(int),
-            'last_subscription_time': 0.0,
-            'pending_subscriptions': 0,
-            'subscription_timeout_seconds': 30.0  # Time to wait for first message
-        }
         
         # Weak references to prevent memory leaks
         self._weak_refs: List[weakref.ref] = []
@@ -497,7 +454,7 @@ class MexcWebSocketPublicStream(BaseWebSocketInterface):
             }
             self.logger.debug(f"{SubscriptionAction.SUBSCRIBE}: {message}")
             # Fast JSON serialization with msgspec
-            # Example stream: spot@public.depth.v3.api.pb@BTCUSDT
+            # Example stream: spot@public.depth.v3.api.protobuf@BTCUSDT
             message_bytes = msgspec.json.encode(message)
             await self._ws.send(message_bytes)
             
@@ -531,12 +488,12 @@ class MexcWebSocketPublicStream(BaseWebSocketInterface):
         Extract symbol from MEXC stream identifier.
         
         Examples:
-        - "spot@public.depth.v3.api.pb@BTCUSDT" -> Symbol(BTC, USDT)
-        - "spot@public.deals.v3.api.pb@ETHUSDT" -> Symbol(ETH, USDT)
-        - "spot@public.depth.v3.api.pb@5@BTCUSDT" -> Symbol(BTC, USDT) (partial depth)
+        - "spot@public.depth.v3.api.protobuf@BTCUSDT" -> Symbol(BTC, USDT)
+        - "spot@public.deals.v3.api.protobuf@ETHUSDT" -> Symbol(ETH, USDT)
+        - "spot@public.depth.v3.api.protobuf@5@BTCUSDT" -> Symbol(BTC, USDT) (partial depth)
         """
         try:
-            # MEXC stream format: "spot@public.{type}.v3.api.pb@{SYMBOL}" or "spot@public.{type}.v3.api.pb@{levels}@{SYMBOL}"
+            # MEXC stream format: "spot@public.{type}.v3.api.protobuf@{SYMBOL}" or "spot@public.{type}.v3.api.protobuf@{levels}@{SYMBOL}"
             if '@' in stream:
                 parts = stream.split('@')
                 # if len(parts) >= 4:
@@ -913,16 +870,16 @@ class MexcWebSocketPublicStream(BaseWebSocketInterface):
             # Map message types to stream identifiers with correct format
             symbol_str = f"{symbol.base}{symbol.quote}".upper()
             if msg_type == 'depth':
-                stream_id = f"spot@public.depth.v3.api.pb@{symbol_str}"
+                stream_id = f"spot@public.depth.v3.api.protobuf@{symbol_str}"
                 return (stream_id, StreamType.ORDERBOOK)
             elif msg_type == 'trades':
-                stream_id = f"spot@public.deals.v3.api.pb@{symbol_str}"
+                stream_id = f"spot@public.deals.v3.api.protobuf@{symbol_str}"
                 return (stream_id, StreamType.TRADES)
             elif msg_type == 'ticker':
-                stream_id = f"spot@public.bookTicker.v3.api.pb@{symbol_str}"
+                stream_id = f"spot@public.bookTicker.v3.api.protobuf@{symbol_str}"
                 return (stream_id, StreamType.TICKER)
             elif msg_type == 'mini_ticker':
-                stream_id = f"spot@public.miniTicker.v3.api.pb@{symbol_str}"
+                stream_id = f"spot@public.miniTicker.v3.api.protobuf@{symbol_str}"
                 return (stream_id, StreamType.TICKER)
             
             return None
@@ -936,28 +893,28 @@ class MexcWebSocketPublicStream(BaseWebSocketInterface):
     async def subscribe_orderbook(self, symbol: Symbol) -> None:
         """Subscribe to real-time orderbook updates for a symbol."""
         symbol_str = f"{symbol.base}{symbol.quote}".upper()
-        stream = f"spot@public.depth.v3.api.pb@{symbol_str}"
+        stream = f"spot@public.depth.v3.api.protobuf@{symbol_str}"
         await self.subscribe([stream])
     
     async def subscribe_trades(self, symbol: Symbol) -> None:
         """Subscribe to real-time trade updates for a symbol."""
         symbol_str = f"{symbol.base}{symbol.quote}".upper()
-        stream = f"spot@public.deals.v3.api.pb@{symbol_str}"
+        stream = f"spot@public.deals.v3.api.protobuf@{symbol_str}"
         await self.subscribe([stream])
     
     async def subscribe_ticker(self, symbol: Symbol) -> None:
         """Subscribe to real-time ticker updates for a symbol."""
         symbol_str = f"{symbol.base}{symbol.quote}".upper()
-        stream = f"spot@public.bookTicker.v3.api.pb@{symbol_str}"
+        stream = f"spot@public.bookTicker.v3.api.protobuf@{symbol_str}"
         await self.subscribe([stream])
     
     async def subscribe_all_for_symbol(self, symbol: Symbol) -> None:
         """Subscribe to all available data streams for a symbol."""
         symbol_str = f"{symbol.base}{symbol.quote}".upper()
         streams = [
-            f"spot@public.depth.v3.api.pb@{symbol_str}",
-            f"spot@public.deals.v3.api.pb@{symbol_str}",
-            f"spot@public.bookTicker.v3.api.pb@{symbol_str}",
+            f"spot@public.depth.v3.api.protobuf@{symbol_str}",
+            f"spot@public.deals.v3.api.protobuf@{symbol_str}",
+            f"spot@public.bookTicker.v3.api.protobuf@{symbol_str}",
         ]
         await self.subscribe(streams)
     
@@ -979,117 +936,8 @@ class MexcWebSocketPublicStream(BaseWebSocketInterface):
         # Never return cached data for trading operations
         return None
     
-    def get_performance_metrics(self) -> Dict[str, Any]:
-        """
-        Get comprehensive performance metrics for monitoring and optimization.
-        
-        Returns detailed performance data including:
-        - Message processing statistics
-        - Cache hit rates
-        - Object pool efficiency
-        - Stream health status
-        """
-        base_metrics = super().metrics
-        
-        # Calculate advanced performance metrics
-        total_messages = self._performance_metrics['messages_parsed']
-        error_rate = (self._performance_metrics['parse_errors'] / max(total_messages, 1)) * 100
-        
-        return {
-            # Base WebSocket metrics
-            **base_metrics,
-            
-            # MEXC-specific performance metrics
-            'mexc_performance': {
-                **self._performance_metrics,
-                'parse_error_rate_percent': error_rate,
-                'protobuf_ratio': (self._performance_metrics['protobuf_messages'] / max(total_messages, 1)) * 100,
-                'json_ratio': (self._performance_metrics['json_messages'] / max(total_messages, 1)) * 100,
-            },
-            
-            # Processing performance (no trading data caching)
-            'processing_performance': {
-                'symbol_parser_hit_rate': _SYMBOL_CACHE.get_hit_rate(),
-                'protobuf_pool_hit_rate': _PROTOBUF_POOL.get_cache_hit_rate(),
-                'active_subscriptions': len(self._symbol_subscriptions),
-                'note': 'NO trading data caching - only static config data cached',
-            },
-            
-            # Stream health status
-            'stream_health': dict(self._stream_health),
-            
-            # Message detection statistics
-            'message_detection': _MSG_DETECTOR.get_detection_stats(),
-        }
     
-    def is_subscription_blocked(self) -> bool:
-        """
-        Detect if MEXC is silently blocking subscriptions.
-        
-        MEXC may silently ignore subscription requests instead of sending error messages.
-        This method detects such blocking by checking if any messages have been received
-        within a reasonable time after subscription.
-        
-        Returns:
-            True if subscriptions appear to be blocked (no messages received)
-        """
-        current_time = time.time()
-        last_subscription = self._stream_health.get('last_subscription_time', 0)
-        timeout_threshold = self._stream_health.get('subscription_timeout_seconds', 30.0)
-        pending_subs = self._stream_health.get('pending_subscriptions', 0)
-        
-        # Check if we have pending subscriptions that have timed out
-        if pending_subs > 0 and last_subscription > 0:
-            time_since_subscription = current_time - last_subscription
-            messages_received = self._performance_metrics.get('messages_parsed', 0)
-            
-            # If no messages received within timeout, likely blocked
-            if time_since_subscription > timeout_threshold and messages_received == 0:
-                return True
-        
-        return False
     
-    async def get_health_check(self) -> Dict[str, Any]:
-        """
-        Comprehensive health check for monitoring system status.
-        
-        Provides detailed health information including connection status,
-        performance metrics, and stream-specific health indicators.
-        """
-        base_health = await super().health_check()
-        current_time = time.time()
-        
-        # Calculate stream freshness
-        depth_lag = current_time - self._stream_health.get('last_depth_update', 0)
-        deals_lag = current_time - self._stream_health.get('last_deals_update', 0)
-        ticker_lag = current_time - self._stream_health.get('last_ticker_update', 0)
-        
-        # Check for subscription blocking
-        subscription_blocked = self.is_subscription_blocked()
-        
-        return {
-            **base_health,
-            
-            # MEXC-specific health indicators
-            'mexc_health': {
-                'depth_stream_lag_seconds': depth_lag,
-                'deals_stream_lag_seconds': deals_lag,
-                'ticker_stream_lag_seconds': ticker_lag,
-                'streams_healthy': depth_lag < 60 and deals_lag < 60,  # Streams should update within 60s
-                'subscription_blocked': subscription_blocked,
-                'fresh_data_policy': 'NO orderbook caching - always fresh',
-                'subscription_count': len(self._symbol_subscriptions),
-                'pending_subscriptions': self._stream_health.get('pending_subscriptions', 0),
-            },
-            
-            # Performance health indicators  
-            'performance_health': {
-                'parse_success_rate': (1 - self._performance_metrics['parse_errors'] / max(self._performance_metrics['messages_parsed'], 1)) * 100,
-                'cache_efficiency': _SYMBOL_CACHE.get_hit_rate(),
-                'pool_efficiency': _PROTOBUF_POOL.get_cache_hit_rate(),
-                'memory_efficiency': 'optimal' if _PROTOBUF_POOL.get_cache_hit_rate() > 80 else 'suboptimal'
-            }
-        }
     
     def __del__(self):
         """Cleanup resources on destruction."""
@@ -1195,80 +1043,3 @@ def create_hft_optimized_websocket(
         config_overrides=hft_config
     )
 
-
-# Performance monitoring and benchmarking utilities
-
-def calculate_websocket_performance_metrics(ws: MexcWebSocketPublicStream) -> Dict[str, float]:
-    """
-    Calculate advanced performance metrics for a MEXC WebSocket connection.
-    
-    Returns comprehensive performance indicators including:
-    - Message processing throughput
-    - Error rates and reliability metrics  
-    - Cache efficiency and memory optimization
-    - Latency estimates and optimization opportunities
-    """
-    metrics = ws.get_performance_metrics()
-    mexc_perf = metrics.get('mexc_performance', {})
-    cache_perf = metrics.get('cache_performance', {})
-    
-    uptime = metrics.get('connection_uptime', 0.0)
-    if uptime <= 0:
-        return {}
-    
-    total_messages = mexc_perf.get('messages_parsed', 0)
-    protobuf_messages = mexc_perf.get('protobuf_messages', 0)
-    parse_errors = mexc_perf.get('parse_errors', 0)
-    
-    return {
-        # Throughput metrics
-        'messages_per_second': total_messages / uptime,
-        'protobuf_messages_per_second': protobuf_messages / uptime,
-        
-        # Reliability metrics
-        'parse_success_rate': (1 - parse_errors / max(total_messages, 1)) * 100,
-        'error_rate_percent': (parse_errors / max(total_messages, 1)) * 100,
-        
-        # Performance efficiency
-        'protobuf_processing_ratio': (protobuf_messages / max(total_messages, 1)) * 100,
-        'symbol_cache_efficiency': cache_perf.get('symbol_cache_hit_rate', 0.0),
-        'object_pool_efficiency': cache_perf.get('protobuf_pool_hit_rate', 0.0),
-        
-        # Memory optimization indicators
-        'cached_orderbooks': cache_perf.get('cached_orderbooks', 0),
-        'active_subscriptions': cache_perf.get('active_subscriptions', 0),
-        
-        # Overall system health score (0-100)
-        'health_score': min(100.0, (
-            cache_perf.get('symbol_cache_hit_rate', 0.0) * 0.3 +
-            cache_perf.get('protobuf_pool_hit_rate', 0.0) * 0.3 +
-            ((1 - parse_errors / max(total_messages, 1)) * 100) * 0.4
-        ))
-    }
-
-
-# Global performance monitoring functions
-
-def get_global_cache_statistics() -> Dict[str, Any]:
-    """Get global cache statistics for all WebSocket instances."""
-    return {
-        'symbol_cache_hit_rate': _SYMBOL_CACHE.get_hit_rate(),
-        'symbol_cache_size': len(_SYMBOL_CACHE._cache),
-        'protobuf_pool_hit_rate': _PROTOBUF_POOL.get_cache_hit_rate(),
-        'message_detection_stats': _MSG_DETECTOR.get_detection_stats(),
-    }
-
-
-def reset_global_performance_counters():
-    """Reset global performance counters for benchmarking."""
-    global _SYMBOL_CACHE, _PROTOBUF_POOL, _MSG_DETECTOR
-    
-    # Reset symbol cache statistics
-    _SYMBOL_CACHE._stats = {'hits': 0, 'misses': 0}
-    
-    # Reset object pool statistics  
-    _PROTOBUF_POOL._hits = 0
-    _PROTOBUF_POOL._misses = 0
-    
-    # Reset message detector statistics
-    _MSG_DETECTOR._stats = defaultdict(int)

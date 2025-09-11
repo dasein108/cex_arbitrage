@@ -1,9 +1,7 @@
 import asyncio
 import logging
 import traceback
-import time
-from datetime import datetime
-from typing import Any, Dict, List, Optional, Union, Callable, Coroutine
+from typing import Any, Dict, Optional, Union, Callable, Coroutine
 
 import orjson
 import websockets
@@ -12,19 +10,13 @@ from websockets.exceptions import ConnectionClosedError
 
 from common.exceptions import ExchangeAPIError
 from structs.exchange import (
-    AssetBalance,
-    AssetName,
-    Order,
-    Side,
-    OrderStatus,
-    OrderType,
     ExchangeName
 )
 
 # Import protobuf classes for private streams
-from exchanges.mexc.pb.PushDataV3ApiWrapper_pb2 import PushDataV3ApiWrapper
-from exchanges.mexc.pb.PrivateAccountV3Api_pb2 import PrivateAccountV3Api
-from exchanges.mexc.pb.PrivateOrdersV3Api_pb2 import PrivateOrdersV3Api
+from exchanges.mexc.protobuf.PushDataV3ApiWrapper_pb2 import PushDataV3ApiWrapper
+from exchanges.mexc.protobuf.PrivateAccountV3Api_pb2 import PrivateAccountV3Api
+from exchanges.mexc.protobuf.PrivateOrdersV3Api_pb2 import PrivateOrdersV3Api
 
 
 class MexcWebSocketPrivateStream:
@@ -161,7 +153,7 @@ class MexcWebSocketPrivateStream:
             return
             
         # Private streams are automatically subscribed when using listen key
-        # MEXC private streams: spot@private.account.v3.api.pb and spot@private.orders.v3.api.pb
+        # MEXC private streams: spot@private.account.v3.api.protobuf and spot@private.orders.v3.api.protobuf
         self.logger.info("Private streams auto-subscribed with listen key")
 
     async def _read_socket(self):

@@ -1,0 +1,218 @@
+"""
+MEXC Exchange Utility Functions
+
+Collection of static utility functions used across MEXC exchange implementations.
+Contains symbol conversions, parsing, and formatting functions for optimal code reuse.
+
+Key Features:
+- Symbol/pair conversion utilities with smart detection
+- MEXC-specific formatting functions for prices and quantities
+- Synchronous parsing functions for internal use
+- No dependencies on exchange instances - all pure functions
+
+Threading: All functions are thread-safe as they're pure functions
+Performance: Optimized for high-frequency trading with minimal allocations
+"""
+
+from typing import Tuple
+from datetime import datetime
+from structs.exchange import Symbol, AssetName, AssetBalance, Order, OrderId
+from exchanges.mexc.common.mexc_struct import MexcOrderResponse, MexcBalanceResponse
+from exchanges.mexc.common.mexc_mappings import MexcMappings
+
+
+class MexcUtils:
+    """Static utility class containing MEXC-specific helper functions."""
+    
+    @staticmethod
+    def symbol_to_pair(symbol: Symbol) -> str:
+        """
+        Convert Symbol to MEXC trading pair format.
+        
+        MEXC uses concatenated format without separator: BTCUSDT, ETHUSDT, etc.
+        
+        Args:
+            symbol: Symbol struct with base and quote assets
+            
+        Returns:
+            MEXC trading pair string (e.g., "BTCUSDT")
+            
+        Example:
+            Symbol(base=AssetName("BTC"), quote=AssetName("USDT")) -> "BTCUSDT"
+        """
+        return f"{symbol.base}{symbol.quote}"
+    
+    @staticmethod
+    def pair_to_symbol(pair: str) -> Symbol:
+        """
+        Convert MEXC trading pair to Symbol using smart quote asset detection.
+        
+        MEXC uses concatenated format. We need to split based on common quote assets.
+        Priority order: USDT, USDC, BTC, ETH, BNB, BUSD (longest first to avoid conflicts)
+        
+        Args:
+            pair: MEXC trading pair string (e.g., "BTCUSDT")
+            
+        Returns:
+            Symbol struct with base and quote assets
+            
+        Examples:
+            "BTCUSDT" -> Symbol(base=AssetName("BTC"), quote=AssetName("USDT"))
+            "ETHUSDC" -> Symbol(base=AssetName("ETH"), quote=AssetName("USDC"))
+        """
+        # Common quote assets in priority order (longest first to avoid conflicts)
+        quote_assets = ['USDT', 'USDC', 'BUSD']
+        
+        pair_upper = pair.upper()
+        
+        # Find the quote asset by checking suffixes
+        for quote in quote_assets:
+            if pair_upper.endswith(quote):
+                base = pair_upper[:-len(quote)]
+                if base:  # Ensure base is not empty
+                    return Symbol(
+                        base=AssetName(base),
+                        quote=AssetName(quote),
+                        is_futures=False
+                    )
+        
+        # Fallback: if no common quote found, assume last 3-4 chars are quote
+        # This handles edge cases and new quote assets
+        if len(pair_upper) >= 6:
+            # Try 4-char quote first (like USDT), then 3-char (like BTC)
+            for quote_len in [4, 3]:
+                if len(pair_upper) > quote_len:
+                    base = pair_upper[:-quote_len]
+                    quote = pair_upper[-quote_len:]
+                    return Symbol(
+                        base=AssetName(base),
+                        quote=AssetName(quote),
+                        is_futures=False
+                    )
+        
+        # Last resort: split roughly in half
+        mid = len(pair_upper) // 2
+        return Symbol(
+            base=AssetName(pair_upper[:mid]),
+            quote=AssetName(pair_upper[mid:]),
+            is_futures=False
+        )
+    
+    @staticmethod
+    def parse_mexc_symbol(mexc_symbol: str) -> Tuple[str, str]:
+        """
+        Parse MEXC symbol string into base and quote assets (synchronous version).
+        Uses same logic as pair_to_symbol but synchronously for internal use.
+        
+        Args:
+            mexc_symbol: MEXC trading pair string (e.g., "BTCUSDT")
+            
+        Returns:
+            Tuple of (base_asset, quote_asset)
+        """
+        # Common quote assets in priority order (longest first to avoid conflicts)
+        quote_assets = ['USDT', 'USDC', 'BUSD', 'BTC', 'ETH', 'BNB', 'USD']
+        
+        symbol_upper = mexc_symbol.upper()
+        
+        # Find the quote asset by checking suffixes
+        for quote in quote_assets:
+            if symbol_upper.endswith(quote):
+                base = symbol_upper[:-len(quote)]
+                if base:  # Ensure base is not empty
+                    return base, quote
+        
+        # Fallback: if no common quote found, assume last 3-4 chars are quote
+        if len(symbol_upper) >= 6:
+            # Try 4-char quote first (like USDT), then 3-char (like BTC)
+            for quote_len in [4, 3]:
+                if len(symbol_upper) > quote_len:
+                    base = symbol_upper[:-quote_len]
+                    quote = symbol_upper[-quote_len:]
+                    return base, quote
+        
+        # Last resort: split roughly in half
+        mid = len(symbol_upper) // 2
+        return symbol_upper[:mid], symbol_upper[mid:]
+    
+    @staticmethod
+    def format_mexc_quantity(quantity: float, precision: int = 8) -> str:
+        """
+        Format quantity to MEXC precision requirements.
+        
+        Args:
+            quantity: Raw quantity value
+            precision: Decimal places precision (default: 8)
+            
+        Returns:
+            Formatted quantity string suitable for MEXC API
+        """
+        formatted = f"{quantity:.{precision}f}".rstrip('0').rstrip('.')
+        return formatted if formatted else "0"
+    
+    @staticmethod
+    def format_mexc_price(price: float, precision: int = 8) -> str:
+        """
+        Format price to MEXC precision requirements.
+        
+        Args:
+            price: Raw price value
+            precision: Decimal places precision (default: 8)
+            
+        Returns:
+            Formatted price string suitable for MEXC API
+        """
+        formatted = f"{price:.{precision}f}".rstrip('0').rstrip('.')
+        return formatted if formatted else "0"
+    
+    
+    @staticmethod
+    def transform_mexc_balance_to_unified(mexc_balance: MexcBalanceResponse) -> AssetBalance:
+        """
+        Transform MEXC balance response to unified AssetBalance struct.
+        
+        Args:
+            mexc_balance: MEXC balance response with asset, available, free, locked fields
+            
+        Returns:
+            Unified AssetBalance struct
+        """
+        return AssetBalance(
+            asset=AssetName(mexc_balance.asset),
+            available=float(mexc_balance.available),
+            free=float(mexc_balance.free),
+            locked=float(mexc_balance.locked)
+        )
+    
+    @staticmethod
+    def transform_mexc_order_to_unified(mexc_order: MexcOrderResponse) -> Order:
+        """
+        Transform MEXC order response to unified Order struct.
+        
+        Args:
+            mexc_order: MEXC order response structure
+            
+        Returns:
+            Unified Order struct
+        """
+        # Convert MEXC symbol to unified Symbol
+        base_asset, quote_asset = MexcUtils.parse_mexc_symbol(mexc_order.symbol)
+        symbol = Symbol(base=AssetName(base_asset), quote=AssetName(quote_asset), is_futures=False)
+        
+        # Calculate fee from fills if available
+        fee = 0.0
+        if mexc_order.fills:
+            fee = sum(float(fill.get('commission', '0')) for fill in mexc_order.fills)
+        
+        return Order(
+            symbol=symbol,
+            side=MexcMappings.get_unified_side(mexc_order.side),
+            order_type=MexcMappings.get_unified_order_type(mexc_order.type),
+            price=float(mexc_order.price),
+            amount=float(mexc_order.origQty),
+            amount_filled=float(mexc_order.executedQty),
+            order_id=OrderId(str(mexc_order.orderId)),
+            status=MexcMappings.get_unified_order_status(mexc_order.status),
+            timestamp=datetime.fromtimestamp(mexc_order.transactTime / 1000) if mexc_order.transactTime else None,
+            fee=fee
+        )

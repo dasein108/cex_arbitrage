@@ -20,21 +20,18 @@ Performance Targets:
 - Full PublicExchangeInterface compliance
 """
 
-import asyncio
 import time
 import pytest
-from typing import List, Dict, Any
-import logging
 
 # Import refactored implementation
-from exchanges.mexc.mexc_futures_public import (
+from exchanges.mexc.rest.mexc_futures_public import (
     MexcPublicFuturesExchange, 
     create_mexc_futures_client,
     FuturesPerformanceMonitor
 )
-from exchanges.interface.rest.public_exchange import PublicExchangeInterface
-from structs.exchange import Symbol, AssetName, OrderBook, Trade, SymbolInfo
-from common.rest import RestClient
+from exchanges.interface.rest.base_rest_public import PublicExchangeInterface
+from structs.exchange import Symbol, AssetName, OrderBook
+from common.rest_client import RestClient
 from common.exceptions import ExchangeAPIError
 
 # Test configuration

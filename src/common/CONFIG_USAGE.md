@@ -27,7 +27,7 @@ This document explains how to use the centralized configuration system for the H
 3. **Use in your code:**
    ```python
    from common.config import config
-   from exchanges.mexc.mexc_private import MexcPrivateExchange
+   from exchanges.mexc.rest.mexc_private import MexcPrivateExchange
    
    # API credentials automatically loaded from config
    exchange = MexcPrivateExchange()
@@ -64,10 +64,11 @@ This document explains how to use the centralized configuration system for the H
 ## Usage Examples
 
 ### Basic Exchange Usage
+
 ```python
 from common.config import config
-from exchanges.mexc.mexc_private import MexcPrivateExchange
-from exchanges.mexc.mexc_public import MexcPublicExchange
+from exchanges.mexc.rest.mexc_private import MexcPrivateExchange
+from exchanges.mexc.rest.mexc_public import MexcPublicExchange
 
 # Private exchange (requires API credentials)
 private_exchange = MexcPrivateExchange()

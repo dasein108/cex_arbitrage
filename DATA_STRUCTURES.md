@@ -264,31 +264,33 @@ class AccountInfo(Struct):
 ## Usage Examples
 
 ### **Basic Trading Workflow**
+
 ```python
 from structs.exchange import *
-from exchanges.mexc.mexc_public import MexcPublicExchange
+from exchanges.mexc.rest.mexc_public import MexcPublicExchange
+
 
 async def trading_example():
     # Initialize exchange
     exchange = MexcPublicExchange()
-    
+
     # Define symbol
     btc_usdt = Symbol(base=AssetName("BTC"), quote=AssetName("USDT"))
-    
+
     # Get exchange info
     exchange_info = await exchange.get_exchange_info()
     symbol_info = exchange_info[btc_usdt]
-    
+
     print(f"Min order size: {symbol_info.min_base_amount} BTC")
     print(f"Min order value: {symbol_info.min_quote_amount} USDT")
     print(f"Maker fee: {symbol_info.maker_commission:.4f}%")
-    
+
     # Get current orderbook
     orderbook = await exchange.get_orderbook(btc_usdt, limit=10)
     if orderbook.bids and orderbook.asks:
         spread = orderbook.asks[0].price - orderbook.bids[0].price
         print(f"Current spread: ${spread:.2f}")
-    
+
     # Get recent trades
     trades = await exchange.get_recent_trades(btc_usdt, limit=5)
     if trades:

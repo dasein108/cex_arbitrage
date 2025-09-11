@@ -54,36 +54,6 @@ class WebSocketConfig(msgspec.Struct):
     text_encoding: str = "utf-8"
 
 
-class _PerformanceMetrics:
-    """High-performance metrics collection with __slots__ for memory efficiency"""
-    __slots__ = (
-        'messages_received', 'messages_sent', 'connections', 'reconnections',
-        'errors', 'last_message_time', 'connection_uptime', '_start_time'
-    )
-    
-    def __init__(self):
-        self.messages_received = 0
-        self.messages_sent = 0
-        self.connections = 0
-        self.reconnections = 0
-        self.errors = 0
-        self.last_message_time = 0.0
-        self.connection_uptime = 0.0
-        self._start_time = time.time()
-    
-    def to_dict(self) -> Dict[str, Any]:
-        """Convert to dictionary - only called when needed for external access"""
-        return {
-            'messages_received': self.messages_received,
-            'messages_sent': self.messages_sent,
-            'connections': self.connections,
-            'reconnections': self.reconnections,
-            'errors': self.errors,
-            'last_message_time': self.last_message_time,
-            'connection_uptime': self.connection_uptime
-        }
-
-
 class BaseWebSocketInterface(ABC):
     """
     Abstract base class for high-performance WebSocket connections.
@@ -93,7 +63,6 @@ class BaseWebSocketInterface(ABC):
     - Automatic reconnection with exponential backoff
     - Subscription management
     - Error handling and recovery
-    - Metrics collection
     - Connection lifecycle management
     """
     
@@ -101,16 +70,18 @@ class BaseWebSocketInterface(ABC):
         'exchange', 'config', 'message_handler', 'error_handler',
         '_state', '_ws', '_loop', '_connection_task', '_reader_task',
         '_subscriptions', '_pending_subscriptions', '_reconnect_attempts',
-        '_should_reconnect', '_last_pong', '_metrics', 'logger',
+        '_should_reconnect', '_last_pong', 'logger',
         '_cached_backoff_delays', '_message_count', '_time_cache'
     )
     
     def __init__(
         self,
+        exchange: ExchangeName,
         config: WebSocketConfig,
         message_handler: Optional[Callable[[Dict[str, Any]], Awaitable[None]]] = None,
         error_handler: Optional[Callable[[Exception], Awaitable[None]]] = None
     ):
+        self.exchange = exchange
         self.config = config
         self.message_handler = message_handler
         self.error_handler = error_handler
@@ -133,9 +104,6 @@ class BaseWebSocketInterface(ABC):
         
         # Pre-computed backoff delays for performance (avoid power calculations)
         self._cached_backoff_delays = self._precompute_backoff_delays()
-        
-        # Performance metrics - using optimized slots-based class
-        self._metrics = _PerformanceMetrics()
         
         # Performance optimizations
         self._message_count = 0  # Local counter to reduce time() calls
@@ -168,11 +136,6 @@ class BaseWebSocketInterface(ABC):
     def subscriptions(self) -> Dict[str, Dict[str, Any]]:
         """Current active subscriptions - returns view to avoid copying"""
         return dict(self._subscriptions)  # Only copy when actually needed
-    
-    @property
-    def metrics(self) -> Dict[str, Any]:
-        """Performance metrics - optimized to avoid unnecessary copying"""
-        return self._metrics.to_dict()
     
     # Abstract methods that must be implemented by exchange-specific classes
     
@@ -262,7 +225,6 @@ class BaseWebSocketInterface(ABC):
     async def restart(self) -> None:
         """Restart the WebSocket connection - optimized restart sequence"""
         await self.stop()
-        # Reset metrics for clean restart
         self._message_count = 0
         self._time_cache = time.time()
         self._reconnect_attempts = 0
@@ -340,9 +302,7 @@ class BaseWebSocketInterface(ABC):
             # Optimized serialization - avoid decode step for bytes
             serialized_bytes = msgspec.json.encode(message)
             await self._ws.send(serialized_bytes)
-            self._metrics.messages_sent += 1
         except Exception as e:
-            self._metrics.errors += 1
             raise ExchangeAPIError(500, f"Failed to send message: {str(e)}")
     
     # Internal connection management
@@ -361,9 +321,7 @@ class BaseWebSocketInterface(ABC):
                 
                 self._state = ConnectionState.CONNECTED
                 self._reconnect_attempts = 0
-                self._metrics.connections += 1
                 current_time = time.time()
-                self._metrics.connection_uptime = current_time - connect_time
                 self._time_cache = current_time
                 
                 # Process pending subscriptions
@@ -390,7 +348,6 @@ class BaseWebSocketInterface(ABC):
         # Performance optimizations: cache frequently accessed values
         message_handler = self.message_handler
         error_handler = self.error_handler
-        metrics = self._metrics
         
         if self.logger.isEnabledFor(logging.DEBUG):
             self.logger.debug("Starting message reader loop")
@@ -413,15 +370,8 @@ class BaseWebSocketInterface(ABC):
                             self.logger.debug("Parsed message is None, skipping")
                         continue  # Skip heartbeat/ping messages
                     
-                    # Optimized metrics update - batch time updates
-                    metrics.messages_received += 1
                     self._message_count += 1
-                    
-                    # Update time cache every 100 messages instead of every message
-                    if self._message_count % 100 == 0:
-                        self._time_cache = time.time()
-                        metrics.last_message_time = self._time_cache
-                    
+
                     if self.logger.isEnabledFor(logging.DEBUG):
                         self.logger.debug(f"Calling message handler with parsed message: {parsed}")
                     
@@ -430,7 +380,6 @@ class BaseWebSocketInterface(ABC):
                         await message_handler(parsed)
                     
                 except Exception as e:
-                    metrics.errors += 1
                     # Avoid string formatting in hot path - use lazy logging
                     if self.logger.isEnabledFor(logging.ERROR):
                         self.logger.error("Error processing message: %s", e)
@@ -464,8 +413,7 @@ class BaseWebSocketInterface(ABC):
     async def _handle_connection_error(self, error: Exception) -> None:
         """Handle connection errors with pre-computed exponential backoff"""
         self._state = ConnectionState.ERROR
-        self._metrics.errors += 1
-        
+
         if self._reconnect_attempts >= self.config.max_reconnect_attempts:
             if self.logger.isEnabledFor(logging.ERROR):
                 self.logger.error("Max reconnection attempts reached for %s", self.exchange)
@@ -476,8 +424,7 @@ class BaseWebSocketInterface(ABC):
         delay = self._cached_backoff_delays[self._reconnect_attempts]
         
         self._reconnect_attempts += 1
-        self._metrics.reconnections += 1
-        
+
         # Lazy logging with optimized formatting
         if self.logger.isEnabledFor(logging.WARNING):
             self.logger.warning(
@@ -498,146 +445,5 @@ class BaseWebSocketInterface(ABC):
     async def __aexit__(self, exc_type, exc_val, exc_tb):
         """Async context manager exit"""
         await self.stop()
-    
-    # Health check and monitoring
-    
-    async def health_check(self) -> Dict[str, Any]:
-        """Perform health check on WebSocket connection - optimized"""
-        current_time = time.time()
-        last_msg_time = self._metrics.last_message_time
-        
-        return {
-            'exchange': self.exchange,
-            'state': self._state.value,
-            'is_connected': self.is_connected,
-            'subscriptions': len(self._subscriptions),
-            'reconnect_attempts': self._reconnect_attempts,
-            'metrics': self._metrics.to_dict(),
-            'last_message_age': current_time - last_msg_time if last_msg_time else float('inf'),
-            'message_rate': self._message_count / (current_time - self._metrics._start_time) if current_time > self._metrics._start_time else 0.0
-        }
 
 
-# High-performance utility functions for WebSocket operations
-
-class WebSocketConnectionPool:
-    """
-    High-performance WebSocket connection pool for managing multiple exchanges.
-    Optimized for cryptocurrency arbitrage trading with minimal overhead.
-    """
-    
-    __slots__ = ('_connections', '_max_connections', '_loop')
-    
-    def __init__(self, max_connections: int = 50):
-        self._connections: Dict[str, BaseWebSocketInterface] = {}
-        self._max_connections = max_connections
-        self._loop = None
-    
-    async def get_connection(
-        self,
-        exchange: ExchangeName,
-        config: WebSocketConfig,
-        connection_factory: Callable[[], BaseWebSocketInterface]
-    ) -> BaseWebSocketInterface:
-        """Get or create a WebSocket connection with connection reuse"""
-        key = f"{exchange}_{config.url}"
-        
-        if key in self._connections:
-            conn = self._connections[key]
-            if conn.is_connected:
-                return conn
-        
-        # Create new connection if pool has capacity
-        if len(self._connections) >= self._max_connections:
-            # Remove oldest disconnected connection
-            for k, conn in list(self._connections.items()):
-                if not conn.is_connected:
-                    del self._connections[k]
-                    break
-        
-        # Create and store new connection
-        connection = connection_factory()
-        self._connections[key] = connection
-        await connection.start()
-        
-        return connection
-    
-    async def close_all(self):
-        """Close all connections in the pool"""
-        tasks = []
-        for conn in self._connections.values():
-            if conn.is_connected:
-                tasks.append(conn.stop())
-        
-        if tasks:
-            await asyncio.gather(*tasks, return_exceptions=True)
-        
-        self._connections.clear()
-
-@asynccontextmanager
-async def websocket_connection(
-    exchange: ExchangeName,
-    config: WebSocketConfig,
-    message_handler: Optional[Callable[[Dict[str, Any]], Awaitable[None]]] = None,
-    error_handler: Optional[Callable[[Exception], Awaitable[None]]] = None
-):
-    """
-    Optimized context manager for WebSocket connections with automatic cleanup.
-    
-    Note: This requires a concrete implementation of BaseWebSocketInterface.
-    """
-    # This would need to be implemented by specific exchange classes
-    raise NotImplementedError("Use exchange-specific WebSocket implementations")
-
-
-def create_websocket_config(
-    url: str,
-    **overrides
-) -> WebSocketConfig:
-    """
-    Create WebSocket configuration with high-frequency trading optimized defaults.
-    
-    Args:
-        url: WebSocket URL
-        **overrides: Configuration overrides
-    """
-    # Optimized defaults for cryptocurrency arbitrage trading
-    defaults = {
-        'timeout': 5.0,  # More aggressive for HFT
-        'ping_interval': 15.0,  # Shorter intervals for faster disconnect detection
-        'ping_timeout': 5.0,  # Quick timeout detection
-        'close_timeout': 3.0,  # Faster cleanup
-        'reconnect_delay': 0.5,  # Faster reconnection
-        'max_reconnect_attempts': 15,  # More attempts for stability
-        'reconnect_backoff': 1.5,  # Less aggressive backoff
-        'max_reconnect_delay': 30.0,  # Lower max delay
-        'max_message_size': 2 * 1024 * 1024,  # 2MB for larger market data
-        'max_queue_size': 2000,  # Larger queue for high throughput
-        'heartbeat_interval': 20.0,  # Faster heartbeat
-        'enable_compression': True,  # Keep compression for bandwidth
-    }
-    
-    defaults.update(overrides)
-    return WebSocketConfig(url=url, **defaults)
-
-
-# Performance monitoring and benchmarking utilities
-def calculate_performance_metrics(connection: BaseWebSocketInterface) -> Dict[str, float]:
-    """Calculate advanced performance metrics for a WebSocket connection"""
-    metrics = connection.metrics
-    uptime = metrics.get('connection_uptime', 0.0)
-    
-    if uptime <= 0:
-        return {}
-    
-    messages_received = metrics.get('messages_received', 0)
-    messages_sent = metrics.get('messages_sent', 0)
-    errors = metrics.get('errors', 0)
-    
-    return {
-        'message_throughput_per_second': messages_received / uptime,
-        'error_rate_percentage': (errors / max(messages_received, 1)) * 100,
-        'total_message_rate': (messages_received + messages_sent) / uptime,
-        'connection_stability': max(0.0, 1.0 - (errors / max(messages_received, 1))),
-        'average_latency_estimate': 1.0 / max(messages_received / max(uptime, 1), 1.0)  # Rough estimate
-    }

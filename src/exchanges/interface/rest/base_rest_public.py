@@ -1,6 +1,7 @@
 import logging
-from abc import abstractmethod
+from abc import abstractmethod, ABC
 from typing import Dict, List
+from .base_rest import BaseExchangeInterface
 from structs.exchange import (
     Symbol,
     SymbolInfo,
@@ -9,29 +10,14 @@ from structs.exchange import (
     ExchangeName
 )
 
-# Import the base interface
-from exchanges.interface.rest.base_exchange import BaseExchangeInterface
-
-
 class PublicExchangeInterface(BaseExchangeInterface):
     """Abstract interface for public exchange operations (market data)"""
 
 
     def __init__(self, exchange: ExchangeName, base_url: str):
-        self.exchange = exchange
-        self.base_url = base_url
+        super().__init__(exchange, base_url)
         self.logger = logging.getLogger(f"public_exchange_{exchange}")
         
-    @staticmethod
-    async def symbol_to_pair(symbol: Symbol) -> str:
-        """Convert Symbol to exchange-specific trading pair string"""
-        pass
-
-    @staticmethod
-    async def pair_to_symbol(symbol: str) -> Symbol:
-        """Convert exchange-specific trading pair string to Symbol"""
-        pass
-    
     @abstractmethod
     async def get_exchange_info(self) -> Dict[Symbol, SymbolInfo]:
         """Get exchange trading rules and symbol information"""

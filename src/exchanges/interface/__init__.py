@@ -1,12 +1,11 @@
-from exchanges.interface.rest.base_exchange import BaseExchangeInterface
-from exchanges.interface.rest.public_exchange import PublicExchangeInterface
-from exchanges.interface.rest.private_exchange import PrivateExchangeInterface
+from exchanges.interface.base_exchange import BaseExchangeInterface
+from exchanges.interface.rest.base_rest_public import PublicExchangeInterface
+from exchanges.interface.rest.base_rest_private import PrivateExchangeInterface
 from exchanges.interface.websocket.base_ws import (
     BaseWebSocketInterface,
     WebSocketConfig,
     ConnectionState,
-    SubscriptionAction,
-    create_websocket_config
+    SubscriptionAction
 )
 
 __all__ = [
@@ -17,5 +16,4 @@ __all__ = [
     "WebSocketConfig", 
     "ConnectionState",
     "SubscriptionAction",
-    "create_websocket_config"
 ]
