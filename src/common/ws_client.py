@@ -145,30 +145,28 @@ class WebsocketClient:
         """
         Send subscription message to MEXC WebSocket.
 
-        MEXC uses a simple JSON subscription format:
-        {"method": "SUBSCRIPTION", "params": [streams]}
-
-        Note: MEXC may silently ignore subscriptions instead of sending error messages.
-        This is detected by monitoring message reception after subscription.
+        MEXC uses exact format: {"method": "SUBSCRIPTION", "params": [streams]}
+        Based on working legacy implementation in raw/mexc_api/websocket/mexc_ws.py
         """
         if not self._ws or self._ws.closed:
             raise ExchangeAPIError(500, "WebSocket not connected")
 
         try:
-            # MEXC subscription message format (with required id field)
+            # MEXC subscription message format - exact match from legacy working code
+            method = "SUBSCRIPTION" if action == SubscriptionAction.SUBSCRIBE else "UNSUBSCRIPTION"
             message = {
-                "method": "SUBSCRIBE" if action == SubscriptionAction.SUBSCRIBE else "UNSUBSCRIBE",
-                "params": streams,
-                "id": 1  # MEXC requires an id field for subscription messages
+                "method": method,
+                "params": streams
+                # No "id" field - legacy working code doesn't include it
             }
-            # Fast JSON serialization with msgspec
-            # Example stream: spot@public.depth.v3.api.pb@BTCUSDT
-            message_bytes = msgspec.json.encode(message)
-            await self._ws.send(message_bytes)
+            
+            # Send as JSON string using standard library like legacy code
+            import json
+            message_str = json.dumps(message)
+            await self._ws.send(message_str)
 
             action_str = "Subscribed to" if action == SubscriptionAction.SUBSCRIBE else "Unsubscribed from"
-
-            self.logger.info(f"{action_str} {len(streams)} MEXC streams")
+            self.logger.info(f"{action_str} {len(streams)} streams")
 
         except Exception as e:
             self.logger.error(f"Failed to send subscription message: {e}")
@@ -178,39 +176,22 @@ class WebsocketClient:
         """
         Establish WebSocket connection with MEXC-optimized settings.
 
-        Uses aggressive performance settings optimized for cryptocurrency arbitrage:
-        - Disabled compression for minimal CPU overhead
-        - Large message buffers for order book data
-        - Fast ping intervals for quick disconnect detection
+        Uses minimal headers to avoid blocking by MEXC.
+        The working implementation shows that browser-like headers cause blocking.
         """
         try:
             # Close existing connection if any
             if self._ws and not self._ws.closed:
                 await self._ws.close()
 
-            self.logger.info(f"Connecting to MEXC public WebSocket: {self.config.url}")
+            self.logger.info(f"Connecting to WebSocket: {self.config.url}")
 
-            # Add comprehensive headers for MEXC WebSocket connection
-            # Use browser-like headers to avoid blocking
-            extra_headers = {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
-                'Accept-Language': 'en-US,en;q=0.9',
-                'Accept-Encoding': 'gzip, deflate, br',
-                'Accept': '*/*',
-                'Cache-Control': 'no-cache',
-                'Pragma': 'no-cache',
-                'Origin': 'https://www.mexc.com',
-                'Referer': 'https://www.mexc.com/'
-            }
-
-            # Ultra-high-performance connection settings
+            # Minimal connection - no extra headers to avoid blocking
+            # The working simple_websocket.py shows this approach works
             self._ws = await connect(
                 self.config.url,
-                # TODO: TMP Disabled
-                # Required headers for MEXC
-                # extra_headers=extra_headers,
-                # Browser-like origin to avoid blocking
-                # origin='https://www.mexc.com',
+                # NO extra headers - they cause blocking
+                # NO origin header - causes blocking
                 # Performance optimizations
                 ping_interval=self.config.ping_interval,
                 ping_timeout=self.config.ping_timeout,
@@ -223,10 +204,10 @@ class WebsocketClient:
                 read_limit=2 ** 20,  # 1MB read buffer
             )
 
-            self.logger.info("MEXC public WebSocket connected successfully")
+            self.logger.info("WebSocket connected successfully")
 
         except Exception as e:
-            self.logger.error(f"Failed to connect to MEXC public WebSocket: {e}")
+            self.logger.error(f"Failed to connect to WebSocket: {e}")
             raise ExchangeAPIError(500, f"WebSocket connection failed: {str(e)}")
 
 
@@ -395,21 +376,11 @@ class WebsocketClient:
             self.logger.debug("Starting message reader loop")
         
         try:
-            async for raw_message in self._ws:
+            while self.is_connected:
+                # This is the correct pattern from the working implementation
                 try:
-                    print(f"WS {raw_message}")
-                    # DEBUG: Log raw message reception
-                    if self.logger.isEnabledFor(logging.DEBUG):
-                        msg_type = type(raw_message).__name__
-                        msg_size = len(raw_message) if raw_message else 0
-                        self.logger.debug(f"Received raw message: {msg_type}, size={msg_size}")
-                    
+                    raw_message = await self._ws.recv()
 
-                    self._message_count += 1
-
-                    if self.logger.isEnabledFor(logging.DEBUG):
-                        self.logger.debug(f"Calling message handler with parsed message: {raw_message}")
-                    
                     # Handle message - direct call to avoid lookup overhead
                     if message_handler:
                         await message_handler(raw_message)
