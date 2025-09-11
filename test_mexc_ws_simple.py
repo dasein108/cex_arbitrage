@@ -115,11 +115,7 @@ async def test_mexc_websocket():
                 logger.info("Waiting 10 seconds for messages...")
                 await asyncio.sleep(10)
                 
-                # Check if we received any messages
-                metrics = websocket_client.get_performance_metrics()
-                messages_received = metrics.get('mexc_performance', {}).get('messages_parsed', 0)
-                logger.info(f"Messages received so far: {messages_received}")
-                
+
                 # Unsubscribe and try next
                 await websocket_client.unsubscribe([stream])
                 await asyncio.sleep(2)

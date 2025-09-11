@@ -20,7 +20,7 @@ class BaseExchangeWebsocketInterface(ABC):
     async def init(self, symbols: List[Symbol]):
         """Initialize the websocket connection."""
         self.symbols = symbols
-        await self.ws_client.connect()
+        await self.ws_client.start()
 
         subscriptions = list(chain.from_iterable(
             self._create_subscriptions(symbol, SubscriptionAction.SUBSCRIBE)

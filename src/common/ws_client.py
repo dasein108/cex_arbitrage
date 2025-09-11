@@ -9,7 +9,6 @@ from websockets import connect
 import msgspec
 
 from common.exceptions import ExchangeAPIError
-from structs.exchange import ExchangeName, StreamType
 
 
 class ConnectionState(Enum):
@@ -175,7 +174,7 @@ class WebsocketClient:
             self.logger.error(f"Failed to send subscription message: {e}")
             raise ExchangeAPIError(500, f"Subscription failed: {str(e)}")
 
-    async def connect(self) -> None:
+    async def _connect(self) -> None:
         """
         Establish WebSocket connection with MEXC-optimized settings.
 
@@ -245,7 +244,7 @@ class WebsocketClient:
         self._connection_task = asyncio.create_task(self._connection_loop())
         
         if self.logger.isEnabledFor(logging.INFO):
-            self.logger.info("Started WebSocket connection for %s", self.exchange)
+            self.logger.info("Started WebSocket connection for %s", self.config.name)
     
     async def stop(self) -> None:
         """Stop the WebSocket connection gracefully - optimized"""
@@ -275,7 +274,7 @@ class WebsocketClient:
         
         self._state = ConnectionState.CLOSED
         if self.logger.isEnabledFor(logging.INFO):
-            self.logger.info("Stopped WebSocket connection for %s", self.exchange)
+            self.logger.info("Stopped WebSocket connection for %s", self.config.name)
     
     async def restart(self) -> None:
         """Restart the WebSocket connection - optimized restart sequence"""
@@ -374,7 +373,7 @@ class WebsocketClient:
                 self._reader_task = asyncio.create_task(self._message_reader())
                 
                 if self.logger.isEnabledFor(logging.INFO):
-                    self.logger.info("WebSocket connected to %s", self.exchange)
+                    self.logger.info("WebSocket connected to %s", self.config.name)
                 
                 # Wait for connection to close
                 await self._reader_task
@@ -398,6 +397,7 @@ class WebsocketClient:
         try:
             async for raw_message in self._ws:
                 try:
+                    print(f"WS {raw_message}")
                     # DEBUG: Log raw message reception
                     if self.logger.isEnabledFor(logging.DEBUG):
                         msg_type = type(raw_message).__name__
@@ -451,7 +451,7 @@ class WebsocketClient:
 
         if self._reconnect_attempts >= self.config.max_reconnect_attempts:
             if self.logger.isEnabledFor(logging.ERROR):
-                self.logger.error("Max reconnection attempts reached for %s", self.exchange)
+                self.logger.error("Max reconnection attempts reached for %s", self.config.name)
             self._should_reconnect = False
             return
         
@@ -464,7 +464,7 @@ class WebsocketClient:
         if self.logger.isEnabledFor(logging.WARNING):
             self.logger.warning(
                 "Connection error for %s (attempt %d): %s. Reconnecting in %.1fs",
-                self.exchange, self._reconnect_attempts, error, delay
+                self.config.name, self._reconnect_attempts, error, delay
             )
         
         self._state = ConnectionState.RECONNECTING
