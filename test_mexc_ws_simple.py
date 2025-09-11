@@ -25,8 +25,8 @@ logger = logging.getLogger(__name__)
 
 # Import the current MEXC implementation
 try:
-    from exchanges.mexc.ws.mexc_ws_public import MexcWebSocketPublicStream
-    from exchanges.interface.websocket.base_ws import WebSocketConfig
+    from exchanges.mexc.ws.legacy.mexc_ws_public_old import MexcWebSocketPublicStream
+    from common.ws_client import WebSocketConfig
     
     logger.info("Successfully imported MEXC WebSocket implementation")
     

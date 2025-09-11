@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from typing import Dict, List
+from typing import Dict, List, Optional
 from structs.exchange import Symbol, ExchangeName, OrderBook, AssetBalance
 
 
@@ -11,6 +11,12 @@ class BaseExchangeInterface(ABC):
     def orderbook(self) -> OrderBook:
         """Abstract property to get the current orderbook"""
         pass
+
+    def __init__(self,exchange: str, api_key: Optional[str], secret_key: Optional[str]):
+        self.exchange = ExchangeName(exchange)
+        self.api_key = api_key
+        self.secret_key = secret_key
+        self.has_private = bool(api_key and secret_key)
 
     @property
     @abstractmethod

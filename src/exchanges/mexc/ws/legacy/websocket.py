@@ -6,11 +6,11 @@
 
 from typing import Any, Dict, Optional, Callable, Coroutine
 
-from exchanges.interface.websocket.base_ws import WebSocketConfig
+from common.ws_client import WebSocketConfig
 
 # Import separated WebSocket stream implementations
-from exchanges.mexc.ws.mexc_ws_public import MexcWebSocketPublicStream
-from exchanges.mexc.ws.mexc_ws_private import MexcWebSocketPrivateStream
+from exchanges.mexc.ws.legacy.mexc_ws_public_old import MexcWebSocketPublicStream
+from exchanges.mexc.ws.legacy.mexc_ws_private_old import MexcWebSocketPrivateStream
 
 
 # Re-export main classes for backward compatibility

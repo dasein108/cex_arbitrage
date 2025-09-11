@@ -127,12 +127,12 @@ parsed = {
 ### Example 1: Binance-style JSON WebSocket
 
 ```python
-from exchanges.interface.websocket.base_ws import BaseWebSocketInterface
+from common.ws_client import WebsocketClient
 import websockets
 import msgspec
 
 
-class BinanceWebSocket(BaseWebSocketInterface):
+class BinanceWebSocket(WebsocketClient):
     async def _connect(self) -> None:
         self._ws = await websockets.connect(self.config.url)
 
@@ -290,7 +290,7 @@ health = await websocket.health_check()
 ### 1. **Basic Connection (Updated 2025)**
 
 ```python
-from exchanges.mexc.ws.mexc_ws_public import MexcWebSocketPublicStream
+from exchanges.mexc.ws.legacy.mexc_ws_public_old import MexcWebSocketPublicStream
 
 # Updated endpoint URL
 config = create_websocket_config("wss://wbs-api.mexc.com/ws")
@@ -320,7 +320,7 @@ async def main():
 ### 2. **Advanced Usage with Error Handling (Updated 2025)**
 
 ```python
-from exchanges.mexc.ws.mexc_ws_public import MexcWebSocketPublicStream, create_hft_optimized_websocket
+from exchanges.mexc.ws.legacy.mexc_ws_public_old import MexcWebSocketPublicStream, create_hft_optimized_websocket
 
 
 async def handle_error(error: Exception):
