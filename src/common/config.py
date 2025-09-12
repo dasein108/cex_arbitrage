@@ -116,6 +116,15 @@ class HftConfig:
         self.MEXC_BASE_URL = mexc_config.get('base_url', 'https://api.mexc.com')
         self.MEXC_WEBSOCKET_URL = mexc_config.get('websocket_url', 'wss://wbs-api.mexc.com/ws')
         
+        # Extract Gate.io settings
+        gateio_config = config_data.get('gateio', {})
+        self.GATEIO_API_KEY = gateio_config.get('api_key', '')
+        self.GATEIO_SECRET_KEY = gateio_config.get('secret_key', '')
+        self.GATEIO_BASE_URL = gateio_config.get('base_url', 'https://api.gateio.ws/api/v4')
+        self.GATEIO_WEBSOCKET_URL = gateio_config.get('websocket_url', 'wss://api.gateio.ws/ws/v4/')
+        self.GATEIO_TESTNET_BASE_URL = gateio_config.get('testnet_base_url', 'https://api-testnet.gateapi.io/api/v4')
+        self.GATEIO_TESTNET_WEBSOCKET_URL = gateio_config.get('testnet_websocket_url', 'wss://ws-testnet.gate.com/v4/ws/spot')
+        
         # Extract network settings
         network_config = config_data.get('network', {})
         self.REQUEST_TIMEOUT = float(network_config.get('request_timeout', 10.0))
@@ -126,6 +135,7 @@ class HftConfig:
         # Extract rate limiting settings
         rate_limit_config = config_data.get('rate_limiting', {})
         self.MEXC_RATE_LIMIT_PER_SECOND = int(rate_limit_config.get('mexc_requests_per_second', 18))
+        self.GATEIO_RATE_LIMIT_PER_SECOND = int(rate_limit_config.get('gateio_requests_per_second', 15))
         
         # Extract WebSocket settings
         websocket_config = config_data.get('websocket', {})
@@ -144,12 +154,25 @@ class HftConfig:
         if self.MEXC_SECRET_KEY and not self.MEXC_API_KEY:
             raise ConfigurationError("MEXC_SECRET_KEY configured but MEXC_API_KEY is missing", 'MEXC_API_KEY')
         
+        # Validate Gate.io credentials if provided
+        if self.GATEIO_API_KEY and not self.GATEIO_SECRET_KEY:
+            raise ConfigurationError("GATEIO_API_KEY configured but GATEIO_SECRET_KEY is missing", 'GATEIO_SECRET_KEY')
+        
+        if self.GATEIO_SECRET_KEY and not self.GATEIO_API_KEY:
+            raise ConfigurationError("GATEIO_SECRET_KEY configured but GATEIO_API_KEY is missing", 'GATEIO_API_KEY')
+        
         # Validate API key format if provided
         if self.MEXC_API_KEY:
             self._validate_api_key_format('MEXC_API_KEY', self.MEXC_API_KEY)
         
         if self.MEXC_SECRET_KEY:
             self._validate_api_key_format('MEXC_SECRET_KEY', self.MEXC_SECRET_KEY)
+            
+        if self.GATEIO_API_KEY:
+            self._validate_api_key_format('GATEIO_API_KEY', self.GATEIO_API_KEY)
+        
+        if self.GATEIO_SECRET_KEY:
+            self._validate_api_key_format('GATEIO_SECRET_KEY', self.GATEIO_SECRET_KEY)
         
         # Validate numeric settings
         if self.REQUEST_TIMEOUT <= 0 or self.REQUEST_TIMEOUT > 60:
@@ -158,10 +181,16 @@ class HftConfig:
         if self.MEXC_RATE_LIMIT_PER_SECOND <= 0 or self.MEXC_RATE_LIMIT_PER_SECOND > 100:
             raise ConfigurationError(f"MEXC_RATE_LIMIT_PER_SECOND must be between 1 and 100, got {self.MEXC_RATE_LIMIT_PER_SECOND}", 'MEXC_RATE_LIMIT_PER_SECOND')
         
+        if self.GATEIO_RATE_LIMIT_PER_SECOND <= 0 or self.GATEIO_RATE_LIMIT_PER_SECOND > 100:
+            raise ConfigurationError(f"GATEIO_RATE_LIMIT_PER_SECOND must be between 1 and 100, got {self.GATEIO_RATE_LIMIT_PER_SECOND}", 'GATEIO_RATE_LIMIT_PER_SECOND')
+        
         # Warn about production settings
         if self.ENVIRONMENT == 'prod':
             if not self.MEXC_API_KEY or not self.MEXC_SECRET_KEY:
                 self._logger.warning("Production environment detected but MEXC credentials are not configured")
+            
+            if not self.GATEIO_API_KEY or not self.GATEIO_SECRET_KEY:
+                self._logger.warning("Production environment detected but Gate.io credentials are not configured")
             
             if self.DEBUG_MODE:
                 self._logger.warning("DEBUG_MODE is enabled in production environment")
@@ -197,6 +226,15 @@ class HftConfig:
         """
         return bool(self.MEXC_API_KEY) and bool(self.MEXC_SECRET_KEY)
     
+    def has_gateio_credentials(self) -> bool:
+        """
+        Check if Gate.io credentials are configured.
+        
+        Returns:
+            True if both API key and secret are configured
+        """
+        return bool(self.GATEIO_API_KEY) and bool(self.GATEIO_SECRET_KEY)
+    
     def get_mexc_config(self) -> Dict[str, Any]:
         """
         Get MEXC-specific configuration dictionary.
@@ -210,6 +248,26 @@ class HftConfig:
             'base_url': self.MEXC_BASE_URL,
             'websocket_url': self.MEXC_WEBSOCKET_URL,
             'rate_limit_per_second': self.MEXC_RATE_LIMIT_PER_SECOND,
+            'request_timeout': self.REQUEST_TIMEOUT,
+            'max_retries': self.MAX_RETRIES,
+            'retry_delay': self.RETRY_DELAY
+        }
+    
+    def get_gateio_config(self) -> Dict[str, Any]:
+        """
+        Get Gate.io-specific configuration dictionary.
+        
+        Returns:
+            Dictionary with Gate.io configuration settings
+        """
+        return {
+            'api_key': self.GATEIO_API_KEY,
+            'secret_key': self.GATEIO_SECRET_KEY,
+            'base_url': self.GATEIO_BASE_URL,
+            'websocket_url': self.GATEIO_WEBSOCKET_URL,
+            'testnet_base_url': self.GATEIO_TESTNET_BASE_URL,
+            'testnet_websocket_url': self.GATEIO_TESTNET_WEBSOCKET_URL,
+            'rate_limit_per_second': self.GATEIO_RATE_LIMIT_PER_SECOND,
             'request_timeout': self.REQUEST_TIMEOUT,
             'max_retries': self.MAX_RETRIES,
             'retry_delay': self.RETRY_DELAY
@@ -229,9 +287,13 @@ class HftConfig:
             'mexc_base_url': self.MEXC_BASE_URL,
             'mexc_websocket_url': self.MEXC_WEBSOCKET_URL,
             'mexc_credentials_configured': self.has_mexc_credentials(),
+            'gateio_base_url': self.GATEIO_BASE_URL,
+            'gateio_websocket_url': self.GATEIO_WEBSOCKET_URL,
+            'gateio_credentials_configured': self.has_gateio_credentials(),
             'request_timeout': self.REQUEST_TIMEOUT,
             'max_retries': self.MAX_RETRIES,
             'mexc_rate_limit': self.MEXC_RATE_LIMIT_PER_SECOND,
+            'gateio_rate_limit': self.GATEIO_RATE_LIMIT_PER_SECOND,
             'ws_connect_timeout': self.WS_CONNECT_TIMEOUT,
             'ws_heartbeat_interval': self.WS_HEARTBEAT_INTERVAL
         }
@@ -264,9 +326,11 @@ def validate_configuration() -> None:
     print(f"Configuration validation passed:")
     print(f"  Environment: {cfg.ENVIRONMENT}")
     print(f"  MEXC credentials: {'✓' if cfg.has_mexc_credentials() else '✗'}")
+    print(f"  Gate.io credentials: {'✓' if cfg.has_gateio_credentials() else '✗'}")
     print(f"  Debug mode: {cfg.DEBUG_MODE}")
     print(f"  Request timeout: {cfg.REQUEST_TIMEOUT}s")
-    print(f"  Rate limit: {cfg.MEXC_RATE_LIMIT_PER_SECOND} req/s")
+    print(f"  MEXC rate limit: {cfg.MEXC_RATE_LIMIT_PER_SECOND} req/s")
+    print(f"  Gate.io rate limit: {cfg.GATEIO_RATE_LIMIT_PER_SECOND} req/s")
 
 
 # Convenience functions
@@ -290,6 +354,19 @@ def get_mexc_credentials() -> Dict[str, str]:
     return {
         'api_key': config.MEXC_API_KEY,
         'secret_key': config.MEXC_SECRET_KEY
+    }
+
+
+def get_gateio_credentials() -> Dict[str, str]:
+    """
+    Get Gate.io API credentials.
+    
+    Returns:
+        Dictionary with api_key and secret_key
+    """
+    return {
+        'api_key': config.GATEIO_API_KEY,
+        'secret_key': config.GATEIO_SECRET_KEY
     }
 
 

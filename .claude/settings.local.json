@@ -34,7 +34,10 @@
       "Bash(PYTHONPATH=/Users/dasein/dev/cex_arbitrage/src python src/examples/mexc/ws_public_simple_check.py)",
       "Bash(PYTHONPATH:*)",
       "Bash(git add:*)",
-      "Bash(git commit:*)"
+      "Bash(git commit:*)",
+      "WebFetch(domain:www.gate.io)",
+      "WebFetch(domain:www.gate.io)",
+      "WebFetch(domain:www.gate.com)"
     ],
     "deny": [],
     "ask": []

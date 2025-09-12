@@ -1,5 +1,5 @@
-# MEXC Exchange Configuration
-# YAML-based configuration for MEXC cryptocurrency trading
+# CEX Arbitrage Engine Configuration
+# YAML-based configuration for multi-exchange cryptocurrency trading
 
 # Environment settings
 environment:
@@ -11,6 +11,14 @@ environment:
 mexc:
   api_key: "mx0vgl6pxdKU8DNcIT"  # Your MEXC API key
   secret_key: "200bba9bffc24768a6899d9b79320f71"  # Your MEXC secret key
+# Gate.io Exchange API settings
+gateio:
+  api_key: "9c83ff595ce55ae4fc83c08002bde62f"  # Your Gate.io API key (empty for public-only access)
+  secret_key: "80d24f9870773ca69eb7988f7f6dd0b5f938aeaae6e41028522e89cfb1d5e236"  # Your Gate.io secret key (empty for public-only access)
+  base_url: "https://api.gateio.ws/api/v4"  # Production URL
+  websocket_url: "wss://api.gateio.ws/ws/v4/"  # Production WebSocket URL
+  # testnet_base_url: "https://api-testnet.gateapi.io/api/v4"  # Testnet URL
+  # testnet_websocket_url: "wss://ws-testnet.gate.com/v4/ws/spot"  # Testnet WebSocket URL
 
 # Network configuration
 network:
@@ -22,6 +30,7 @@ network:
 # Rate limiting
 rate_limiting:
   mexc_requests_per_second: 18  # Conservative limit for MEXC
+  gateio_requests_per_second: 15  # Conservative limit for Gate.io (200/10s = 20, but use 15)
 
 # WebSocket settings
 websocket:

@@ -33,7 +33,7 @@ import logging
 
 import aiohttp
 import msgspec
-from common.exceptions import ExchangeAPIError, RateLimitError
+from .exceptions import ExchangeAPIError, RateLimitError
 
 # Use msgspec for maximum JSON performance
 MSGSPEC_ENCODER = msgspec.json.encode
@@ -52,8 +52,8 @@ class RestConfig(msgspec.Struct):
     timeout: float = 10.0
     max_retries: int = 3
     retry_delay: float = 1.0
-    require_auth: bool = False
     max_concurrent: int = 50
+    headers: Optional[Dict[str, str]] = None  # Custom headers to add/override
 
 
 class RestClient:
@@ -62,26 +62,19 @@ class RestClient:
     
     Features:
     - Single execution path with unified request handling
-    - Generic authentication (HMAC-SHA256)
     - Connection pooling with persistent sessions
     - Ultra-fast JSON parsing with msgspec
     - Simple exponential backoff retry logic
-    - Customizable signature generation
+    - Exchange-agnostic HTTP operations with custom headers support
     """
     
     def __init__(
         self,
         base_url: str,
-        api_key: Optional[str] = None,
-        secret_key: Optional[str] = None,
-        signature_generator: Optional[Callable] = None,
         config: Optional[RestConfig] = None,
         exception_handler: Optional[Callable] = None
     ):
         self.base_url = base_url.rstrip('/')
-        self.api_key = api_key
-        self.secret_key = secret_key
-        self.signature_generator = signature_generator
         self.config = config or RestConfig()
         self.exception_handler = exception_handler
         
@@ -153,7 +146,8 @@ class RestClient:
         endpoint: str,
         params: Optional[Dict[str, Any]] = None,
         json_data: Optional[Dict[str, Any]] = None,
-        config: Optional[RestConfig] = None
+        config: Optional[RestConfig] = None,
+        headers: Optional[Dict[str, str]] = None  # Additional headers for this request
     ) -> Any:
         """
         Execute HTTP request with unified handling.
@@ -170,28 +164,24 @@ class RestClient:
         async with self._semaphore:  # Limit concurrent requests
             for attempt in range(config.max_retries + 1):
                 try:
-                    # Prepare headers
-                    headers = {}
+                    # Prepare headers - start with base headers
+                    request_headers = {}
                     
-                    # For authenticated requests, add signature to params (not headers for MEXC)
-                    request_params = params.copy()
-                    if config.require_auth:
-                        # MEXC requires API key in headers but signature in query params
-                        if self.api_key:
-                            headers['X-MEXC-APIKEY'] = self.api_key
-                        
-                        # CRITICAL FOR MEXC: Preserve parameter insertion order for signature generation
-                        # Add timestamp and recvWindow to params first
-                        request_params['timestamp'] = round(time.time() * 1000) # Ensure int type
-                        request_params['recvWindow'] = 15000
-                        
-                        # Generate signature
-                        request_params['signature'] = self.signature_generator(request_params)
+                    # Add config headers if provided
+                    if config and config.headers:
+                        request_headers.update(config.headers)
+                    
+                    # Add request-specific headers if provided (these override config headers)
+                    if headers:
+                        request_headers.update(headers)
+                    
+                    # Use provided parameters as-is (authentication handled by exchange implementations)
+                    request_params = params.copy() if params else {}
                     
                     # Prepare request parameters
                     request_kwargs = {
                         'timeout': aiohttp.ClientTimeout(total=config.timeout),
-                        'headers': headers,
+                        'headers': request_headers,  # Use the merged headers
                     }
                     
                     # Add data based on method
@@ -200,20 +190,12 @@ class RestClient:
                             request_kwargs['params'] = request_params
                     elif json_data:
                         # For explicit JSON data, set appropriate content type
-                        headers['Content-Type'] = 'application/json'
+                        request_headers['Content-Type'] = 'application/json'
                         request_kwargs['json'] = json_data
                     elif request_params and method != HTTPMethod.GET:
-                        # CRITICAL FIX: MEXC requires specific Content-Type header AND query parameters
-                        if config.require_auth:
-                            # MEXC authenticated POST requests require:
-                            # 1. Content-Type: application/json header
-                            # 2. Parameters in query string (NOT body)
-                            headers['Content-Type'] = 'application/json'
-                            request_kwargs['params'] = request_params
-                        else:
-                            # For non-authenticated requests, use standard JSON
-                            headers['Content-Type'] = 'application/json'
-                            request_kwargs['json'] = request_params
+                        # For POST/PUT/DELETE with parameters, use query parameters by default
+                        # Individual exchanges can override this behavior via headers/json_data
+                        request_kwargs['params'] = request_params
                     
                     # Execute request
                     async with self._session.request(method.value, url, **request_kwargs) as response:
@@ -279,21 +261,23 @@ class RestClient:
         self,
         endpoint: str,
         params: Optional[Dict[str, Any]] = None,
-        config: Optional[RestConfig] = None
+        config: Optional[RestConfig] = None,
+        headers: Optional[Dict[str, str]] = None
     ) -> Any:
-        """Execute GET request."""
-        return await self.request(HTTPMethod.GET, endpoint, params=params, config=config)
+        """Execute GET request with optional custom headers."""
+        return await self.request(HTTPMethod.GET, endpoint, params=params, config=config, headers=headers)
     
     async def post(
         self,
         endpoint: str,
         json_data: Optional[Dict[str, Any]] = None,
         params: Optional[Dict[str, Any]] = None,
-        config: Optional[RestConfig] = None
+        config: Optional[RestConfig] = None,
+        headers: Optional[Dict[str, str]] = None
     ) -> Any:
-        """Execute POST request."""
+        """Execute POST request with optional custom headers."""
         return await self.request(
-            HTTPMethod.POST, endpoint, params=params, json_data=json_data, config=config
+            HTTPMethod.POST, endpoint, params=params, json_data=json_data, config=config, headers=headers
         )
     
     async def put(
@@ -301,21 +285,23 @@ class RestClient:
         endpoint: str,
         json_data: Optional[Dict[str, Any]] = None,
         params: Optional[Dict[str, Any]] = None,
-        config: Optional[RestConfig] = None
+        config: Optional[RestConfig] = None,
+        headers: Optional[Dict[str, str]] = None
     ) -> Any:
-        """Execute PUT request."""
+        """Execute PUT request with optional custom headers."""
         return await self.request(
-            HTTPMethod.PUT, endpoint, params=params, json_data=json_data, config=config
+            HTTPMethod.PUT, endpoint, params=params, json_data=json_data, config=config, headers=headers
         )
     
     async def delete(
         self,
         endpoint: str,
         params: Optional[Dict[str, Any]] = None,
-        config: Optional[RestConfig] = None
+        config: Optional[RestConfig] = None,
+        headers: Optional[Dict[str, str]] = None
     ) -> Any:
-        """Execute DELETE request."""
-        return await self.request(HTTPMethod.DELETE, endpoint, params=params, config=config)
+        """Execute DELETE request with optional custom headers."""
+        return await self.request(HTTPMethod.DELETE, endpoint, params=params, config=config, headers=headers)
     
     async def close(self):
         """Clean up resources with proper connection closure."""

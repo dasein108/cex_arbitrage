@@ -24,7 +24,8 @@ Memory: O(1) per request, optimized for trading operations
 import hashlib
 import hmac
 import urllib.parse
-from typing import Dict, List, Optional
+import time
+from typing import Dict, List, Optional, Any
 import logging
 import msgspec
 
@@ -76,19 +77,16 @@ class MexcPrivateExchange(PrivateExchangeInterface):
 
         self.logger = logging.getLogger(f"{__name__}.{self.__class__.__name__}")
 
-        # Initialize REST client with MEXC-specific authentication
+        # Initialize REST client (now exchange-agnostic)
         self.client = RestClient(
             base_url=self.base_url,
-            api_key=self.api_key,
-            secret_key=self.secret_key,
-            signature_generator=self._mexc_signature_generator,
             config=MexcConfig.rest_config['default'],
             exception_handler=self._handle_mexc_exception
         )
 
         self.logger.info(f"Initialized {self.exchange} private REST client")
 
-    def _mexc_signature_generator(self, params: Dict[str, any]) -> str:
+    def _generate_mexc_signature(self, params: Dict[str, Any]) -> str:
         """
         Generate MEXC HMAC-SHA256 signature for authentication.
         
@@ -98,10 +96,8 @@ class MexcPrivateExchange(PrivateExchangeInterface):
         Returns:
             HMAC-SHA256 signature string
         """
-        # Create query string from sorted parameters (excluding signature)
-        # sorted_params = sorted(params.items())
+        # Create query string from parameters
         query_string = urllib.parse.urlencode(params)
-        # query_string = "&".join(f"{key}={value}" for key, value in params.items())
 
         # Generate HMAC-SHA256 signature
         signature = hmac.new(
@@ -145,6 +141,55 @@ class MexcPrivateExchange(PrivateExchangeInterface):
         # Fallback for other error types
         return ExchangeAPIError(500, f"Unexpected error: {str(error)}")
 
+    async def _authenticated_request(
+        self, 
+        method: str, 
+        endpoint: str, 
+        params: Optional[Dict[str, Any]] = None,
+        json_data: Optional[Dict[str, Any]] = None,
+        config: Optional[Any] = None
+    ) -> Any:
+        """
+        Make an authenticated request to MEXC API with proper signature generation.
+        
+        Args:
+            method: HTTP method (GET, POST, PUT, DELETE)
+            endpoint: API endpoint path
+            params: Query parameters
+            json_data: JSON data for POST requests
+            config: RestConfig for the request
+            
+        Returns:
+            Parsed response data
+        """
+        # Prepare parameters
+        request_params = params.copy() if params else {}
+        
+        # Add required MEXC authentication parameters
+        request_params['timestamp'] = round(time.time() * 1000)
+        request_params['recvWindow'] = 15000
+        
+        # Generate signature
+        signature = self._generate_mexc_signature(request_params)
+        request_params['signature'] = signature
+        
+        # Prepare headers with API key
+        headers = {'X-MEXC-APIKEY': self.api_key}
+        
+        # Make the request using RestClient
+        from common.rest_client import HTTPMethod
+        
+        if method.upper() == 'GET':
+            return await self.client.get(endpoint, params=request_params, config=config, headers=headers)
+        elif method.upper() == 'POST':
+            return await self.client.post(endpoint, json_data=json_data, params=request_params, config=config, headers=headers)
+        elif method.upper() == 'PUT':
+            return await self.client.put(endpoint, json_data=json_data, params=request_params, config=config, headers=headers)
+        elif method.upper() == 'DELETE':
+            return await self.client.delete(endpoint, params=request_params, config=config, headers=headers)
+        else:
+            raise ValueError(f"Unsupported HTTP method: {method}")
+
     async def get_account_balance(self) -> List[AssetBalance]:
         """
         Get account balance for all assets.
@@ -155,7 +200,8 @@ class MexcPrivateExchange(PrivateExchangeInterface):
         Raises:
             ExchangeAPIError: If unable to fetch account balance
         """
-        response_data = await self.client.get(
+        response_data = await self._authenticated_request(
+            'GET',
             '/api/v3/account',
             config=MexcConfig.rest_config['account']
         )
@@ -283,7 +329,8 @@ class MexcPrivateExchange(PrivateExchangeInterface):
         if new_order_resp_type is not None:
             params['newOrderRespType'] = new_order_resp_type
 
-        response_data = await self.client.post(
+        response_data = await self._authenticated_request(
+            'POST',
             '/api/v3/order',
             params=params,
             config=MexcConfig.rest_config['order']
@@ -321,7 +368,8 @@ class MexcPrivateExchange(PrivateExchangeInterface):
             'orderId': str(order_id)
         }
 
-        response_data = await self.client.delete(
+        response_data = await self._authenticated_request(
+            'DELETE',
             '/api/v3/order',
             params=params,
             config=MexcConfig.rest_config['order']
@@ -352,7 +400,8 @@ class MexcPrivateExchange(PrivateExchangeInterface):
 
         params = {'symbol': pair}
 
-        response_data = await self.client.delete(
+        response_data = await self._authenticated_request(
+            'DELETE',
             '/api/v3/openOrders',
             params=params,
             config=MexcConfig.rest_config['order']
@@ -390,7 +439,8 @@ class MexcPrivateExchange(PrivateExchangeInterface):
             'orderId': str(order_id)
         }
 
-        response_data = await self.client.get(
+        response_data = await self._authenticated_request(
+            'GET',
             '/api/v3/order',
             params=params,
             config=MexcConfig.rest_config['order']
@@ -421,7 +471,8 @@ class MexcPrivateExchange(PrivateExchangeInterface):
         if symbol:
             params['symbol'] = MexcUtils.symbol_to_pair(symbol)
 
-        response_data = await self.client.get(
+        response_data = await self._authenticated_request(
+            'GET',
             '/api/v3/openOrders',
             params=params,
             config=MexcConfig.rest_config['my_orders']
@@ -504,7 +555,8 @@ class MexcPrivateExchange(PrivateExchangeInterface):
         Raises:
             ExchangeAPIError: If unable to create listen key
         """
-        response_data = await self.client.post(
+        response_data = await self._authenticated_request(
+            'POST',
             '/api/v3/userDataStream',
             config=MexcConfig.rest_config['account']
         )
@@ -526,7 +578,8 @@ class MexcPrivateExchange(PrivateExchangeInterface):
         Raises:
             ExchangeAPIError: If unable to fetch listen keys
         """
-        response_data = await self.client.get(
+        response_data = await self._authenticated_request(
+            'GET',
             '/api/v3/userDataStream',
             config=MexcConfig.rest_config['account']
         )
@@ -546,7 +599,8 @@ class MexcPrivateExchange(PrivateExchangeInterface):
         """
         params = {'listenKey': listen_key}
         
-        await self.client.put(
+        await self._authenticated_request(
+            'PUT',
             '/api/v3/userDataStream',
             params=params,
             config=MexcConfig.rest_config['account']
@@ -566,7 +620,8 @@ class MexcPrivateExchange(PrivateExchangeInterface):
         """
         params = {'listenKey': listen_key}
         
-        await self.client.delete(
+        await self._authenticated_request(
+            'DELETE',
             '/api/v3/userDataStream',
             params=params,
             config=MexcConfig.rest_config['account']

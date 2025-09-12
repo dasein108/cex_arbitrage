@@ -27,7 +27,6 @@ def _create_mexc_config(endpoint_type: str, timeout_multiplier: float = 1.0, max
         timeout=final_timeout,
         max_retries=max_retries if max_retries is not None else config.MAX_RETRIES,
         retry_delay=config.RETRY_DELAY,
-        require_auth=endpoint_type in ['account', 'order', 'my_orders'],
         max_concurrent=config.MEXC_RATE_LIMIT_PER_SECOND
     )
 
