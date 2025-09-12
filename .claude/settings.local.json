@@ -32,7 +32,9 @@
       "Bash(PYTHONPATH=/Users/dasein/dev/cex_arbitrage/src python /Users/dasein/dev/cex_arbitrage/src/examples/simple_mexc_trading.py)",
       "Bash(PYTHONPATH=/Users/dasein/dev/cex_arbitrage/src python /Users/dasein/dev/cex_arbitrage/src/examples/test_content_type_fix_verification.py)",
       "Bash(PYTHONPATH=/Users/dasein/dev/cex_arbitrage/src python src/examples/mexc/ws_public_simple_check.py)",
-      "Bash(PYTHONPATH:*)"
+      "Bash(PYTHONPATH:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)"
     ],
     "deny": [],
     "ask": []
