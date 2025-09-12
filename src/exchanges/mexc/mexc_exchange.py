@@ -16,25 +16,44 @@ from common.exceptions import ExchangeAPIError
 
 
 class MexcExchange(BaseExchangeInterface):
+    """
+    MEXC Exchange Implementation using Composition Pattern.
+    
+    This class follows SOLID principles by composing separate public and private
+    interface implementations rather than inheriting everything directly.
+    
+    Architecture:
+    - Delegates public market data operations to MexcPublicExchange
+    - Delegates private trading operations to MexcPrivateExchange  
+    - Manages WebSocket streaming for real-time data
+    - Coordinates between public and private operations
+    
+    HFT Compliance:
+    - No caching of real-time trading data (balances, orders, trades)
+    - Real-time streaming orderbook data only
+    - Fresh API calls for all trading operations
+    """
     
     def __init__(self, api_key: Optional[str] = None, secret_key: Optional[str] = None):
         super().__init__('MEXC', api_key, secret_key)
         
         self.logger = logging.getLogger(f"{__name__}.{self.__class__.__name__}")
         
-        self._orderbooks: Dict[Symbol, OrderBook] = {}
-        self._balances_dict: Dict[AssetName, AssetBalance] = {}
-        self._active_symbols: Set[Symbol] = set()
+        # HFT Compliant: Real-time streaming data structures (not persistent storage)
+        self._orderbooks: Dict[Symbol, OrderBook] = {}  # Current streaming orderbooks
+        self._balances_dict: Dict[AssetName, AssetBalance] = {}  # Current balances
+        self._active_symbols: Set[Symbol] = set()  # Active streaming symbols
         
+        # Current streaming state (not cached/persistent)
         self._latest_orderbook: Optional[OrderBook] = None
         self._latest_orderbook_symbol: Optional[Symbol] = None
-        self._balance_cache_expiry: float = 0.0
-        self._completed_order_cache: OrderedDict = OrderedDict()
-        self._max_cache_size = 100
+        # HFT Policy: NO CACHING of real-time trading data
+        # Removed: balance caching, order status caching, orderbook persistence
         
         self._ws_client: Optional[MexcWebsocketPublic] = None
-        self._rest_private: Optional[MexcPrivateExchange] = None
-        self._rest_public: Optional[MexcPublicExchange] = None
+        # Composition: Separate public and private interface implementations
+        self._public_api: Optional[MexcPublicExchange] = None
+        self._private_api: Optional[MexcPrivateExchange] = None
         
         self._ws_config = WebSocketConfig(
             name="mexc_orderbooks",
@@ -48,34 +67,33 @@ class MexcExchange(BaseExchangeInterface):
         )
         
         self._initialized = False
-        self._balance_cache_time = 0.0
-        self._balance_cache_ttl = 30.0
-        self._balance_cache_dirty = True
+        # HFT Compliance: Real-time data only - no caching
         
         self.logger.info(f"Initialized {self.exchange} exchange with HFT optimizations")
         
         self._performance_metrics = {
-            'orderbook_updates': 0,
-            'api_calls_saved': 0,
-            'cache_hits': 0,
-            'cache_misses': 0
+            'orderbook_updates': 0
         }
     
     @property
     def balances(self) -> Dict[Symbol, AssetBalance]:
-        if not hasattr(self, '_symbol_balances_cache') or self._balance_cache_dirty:
-            symbol_balances = {}
-            for asset_name, balance in self._balances_dict.items():
-                dummy_symbol = Symbol(base=asset_name, quote=AssetName("USDT"))
-                symbol_balances[dummy_symbol] = balance
-            self._symbol_balances_cache = MappingProxyType(symbol_balances)
-            self._balance_cache_dirty = False
-        
-        return self._symbol_balances_cache
+        # HFT Policy: Always return fresh balance data, no caching
+        symbol_balances = {}
+        for asset_name, balance in self._balances_dict.items():
+            dummy_symbol = Symbol(base=asset_name, quote=AssetName("USDT"))
+            symbol_balances[dummy_symbol] = balance
+        return MappingProxyType(symbol_balances)
     
     @property
     def active_symbols(self) -> List[Symbol]:
         return list(self._active_symbols)
+    
+    @property
+    def open_orders(self) -> Dict[Symbol, List[Order]]:
+        """Property required by BaseExchangeInterface - returns empty dict for composition-based design"""
+        # Note: This property exists for interface compliance
+        # Actual open orders should be accessed via get_open_orders() method
+        return {}
     
     @property
     def orderbook(self) -> OrderBook:
@@ -99,15 +117,20 @@ class MexcExchange(BaseExchangeInterface):
             return
         
         try:
-            self._rest_public = MexcPublicExchange()
-            self.logger.info("Initialized public REST client")
+            # Initialize public API for market data
+            self._public_api = MexcPublicExchange()
+            self.logger.info("Initialized public API interface")
             
+            # Initialize private API for trading (if credentials provided)
             if self.has_private:
-                self._rest_private = MexcPrivateExchange(self.api_key, self.secret_key)
-                self.logger.info("Initialized private REST client")
+                self._private_api = MexcPrivateExchange(self.api_key, self.secret_key)
+                self.logger.info("Initialized private API interface")
                 
+                # Get initial balance state (HFT compliant - no caching)
                 await self.refresh_balances()
             
+            # Initialize WebSocket through composition pattern
+            # WebSocket handles real-time market data streaming
             self._ws_client = MexcWebsocketPublic(
                 config=self._ws_config,
                 orderbook_handler=self._on_orderbook_update,
@@ -115,7 +138,7 @@ class MexcExchange(BaseExchangeInterface):
             )
             
             await self._ws_client.init([])
-            self.logger.info("Started WebSocket client")
+            self.logger.info("Started WebSocket streaming interface")
             
             self._initialized = True
             
@@ -175,21 +198,18 @@ class MexcExchange(BaseExchangeInterface):
             raise ExchangeAPIError(500, f"Symbol unsubscription failed: {str(e)}")
     
     async def refresh_balances(self) -> None:
-        if not self.has_private or not self._rest_private:
+        if not self.has_private or not self._private_api:
             raise ExchangeAPIError(400, "Private API access not configured")
         
         try:
-            balance_list = await self._rest_private.get_account_balance()
+            balance_list = await self._private_api.get_account_balance()
             
             new_balances = {}
             for balance in balance_list:
                 new_balances[balance.asset] = balance
             
+            # HFT Policy: Update balances without caching
             self._balances_dict = new_balances
-            current_time = time.time()
-            self._balance_cache_time = current_time
-            self._balance_cache_expiry = current_time + self._balance_cache_ttl
-            self._balance_cache_dirty = True
             
             self.logger.debug(f"Refreshed {len(balance_list)} account balances")
             
@@ -198,11 +218,8 @@ class MexcExchange(BaseExchangeInterface):
             raise ExchangeAPIError(500, f"Balance refresh failed: {str(e)}")
     
     async def get_fresh_balances(self, max_age: float = 30.0) -> Dict[AssetName, AssetBalance]:
-        current_time = time.time()
-        
-        if current_time > self._balance_cache_expiry:
-            await self.refresh_balances()
-        
+        # HFT Policy: Always fetch fresh balance data, no cache checking
+        await self.refresh_balances()
         return self._balances_dict.copy()
     
     async def place_limit_order(
@@ -213,11 +230,11 @@ class MexcExchange(BaseExchangeInterface):
         price: float,
         time_in_force: TimeInForce = TimeInForce.GTC
     ) -> Order:
-        if not self.has_private or not self._rest_private:
+        if not self.has_private or not self._private_api:
             raise ExchangeAPIError(400, "Private API credentials required for trading")
         
         try:
-            order = await self._rest_private.place_order(
+            order = await self._private_api.place_order(
                 symbol=symbol,
                 side=side,
                 order_type=OrderType.LIMIT,
@@ -244,7 +261,7 @@ class MexcExchange(BaseExchangeInterface):
         amount: Optional[float] = None,
         quote_amount: Optional[float] = None
     ) -> Order:
-        if not self.has_private or not self._rest_private:
+        if not self.has_private or not self._private_api:
             raise ExchangeAPIError(400, "Private API credentials required for trading")
         
         if side == Side.BUY:
@@ -257,7 +274,7 @@ class MexcExchange(BaseExchangeInterface):
                 raise ValueError("quote_amount not supported for market sell orders")
         
         try:
-            order = await self._rest_private.place_order(
+            order = await self._private_api.place_order(
                 symbol=symbol,
                 side=side,
                 order_type=OrderType.MARKET,
@@ -283,11 +300,11 @@ class MexcExchange(BaseExchangeInterface):
             raise
     
     async def cancel_order(self, symbol: Symbol, order_id: OrderId) -> Order:
-        if not self.has_private or not self._rest_private:
+        if not self.has_private or not self._private_api:
             raise ExchangeAPIError(400, "Private API credentials required for trading")
         
         try:
-            order = await self._rest_private.cancel_order(symbol, order_id)
+            order = await self._private_api.cancel_order(symbol, order_id)
             
             self.logger.info(
                 f"Cancelled order {order_id} for {symbol.base}/{symbol.quote}"
@@ -300,11 +317,11 @@ class MexcExchange(BaseExchangeInterface):
             raise
     
     async def cancel_all_orders(self, symbol: Symbol) -> List[Order]:
-        if not self.has_private or not self._rest_private:
+        if not self.has_private or not self._private_api:
             raise ExchangeAPIError(400, "Private API credentials required for trading")
         
         try:
-            orders = await self._rest_private.cancel_all_orders(symbol)
+            orders = await self._private_api.cancel_all_orders(symbol)
             
             self.logger.info(
                 f"Cancelled {len(orders)} orders for {symbol.base}/{symbol.quote}"
@@ -317,27 +334,12 @@ class MexcExchange(BaseExchangeInterface):
             raise
     
     async def get_order_status(self, symbol: Symbol, order_id: OrderId) -> Order:
-        if not self.has_private or not self._rest_private:
+        if not self.has_private or not self._private_api:
             raise ExchangeAPIError(400, "Private API credentials required for trading")
         
-        cache_key = f"{symbol.base}{symbol.quote}:{order_id}"
-        if cache_key in self._completed_order_cache:
-            cached_order = self._completed_order_cache[cache_key]
-            self._completed_order_cache.move_to_end(cache_key)
-            self._performance_metrics['cache_hits'] += 1
-            self._performance_metrics['api_calls_saved'] += 1
-            self.logger.debug(f"Cache hit for order {order_id}")
-            return cached_order
-        
-        self._performance_metrics['cache_misses'] += 1
-        
+        # HFT Policy: Always fetch fresh order status, no caching
         try:
-            order = await self._rest_private.get_order(symbol, order_id)
-            
-            if order.status.name in ['FILLED', 'CANCELED', 'REJECTED', 'EXPIRED']:
-                self._completed_order_cache[cache_key] = order
-                if len(self._completed_order_cache) > self._max_cache_size:
-                    self._completed_order_cache.popitem(last=False)
+            order = await self._private_api.get_order(symbol, order_id)
             
             self.logger.debug(
                 f"Retrieved order {order_id} status: {order.status.name}"
@@ -350,11 +352,11 @@ class MexcExchange(BaseExchangeInterface):
             raise
     
     async def get_open_orders(self, symbol: Optional[Symbol] = None) -> List[Order]:
-        if not self.has_private or not self._rest_private:
+        if not self.has_private or not self._private_api:
             raise ExchangeAPIError(400, "Private API credentials required for trading")
         
         try:
-            orders = await self._rest_private.get_open_orders(symbol)
+            orders = await self._private_api.get_open_orders(symbol)
             
             symbol_str = f" for {symbol.base}/{symbol.quote}" if symbol else ""
             self.logger.debug(f"Retrieved {len(orders)} open orders{symbol_str}")
@@ -374,11 +376,11 @@ class MexcExchange(BaseExchangeInterface):
         new_price: Optional[float] = None,
         new_time_in_force: Optional[TimeInForce] = None
     ) -> Order:
-        if not self.has_private or not self._rest_private:
+        if not self.has_private or not self._private_api:
             raise ExchangeAPIError(400, "Private API credentials required for trading")
         
         try:
-            order = await self._rest_private.modify_order(
+            order = await self._private_api.modify_order(
                 symbol=symbol,
                 order_id=order_id,
                 amount=new_amount,
@@ -423,16 +425,15 @@ class MexcExchange(BaseExchangeInterface):
             except Exception as e:
                 self.logger.error(f"Error stopping WebSocket during cleanup: {e}")
         
-        if self._rest_private:
+        if self._private_api:
             try:
-                await self._rest_private.close()
+                await self._private_api.close()
             except Exception as e:
-                self.logger.error(f"Error closing private REST during cleanup: {e}")
+                self.logger.error(f"Error closing private API during cleanup: {e}")
         
         self._active_symbols.clear()
         self._orderbooks.clear()
         self._balances_dict.clear()
-        self._completed_order_cache.clear()
         self._latest_orderbook = None
         self._latest_orderbook_symbol = None
         self._initialized = False
@@ -447,17 +448,16 @@ class MexcExchange(BaseExchangeInterface):
             except Exception as e:
                 self.logger.error(f"Error closing WebSocket: {e}")
         
-        if self._rest_private:
+        if self._private_api:
             try:
-                await self._rest_private.close()
-                self.logger.info("Closed private REST client")
+                await self._private_api.close()
+                self.logger.info("Closed private API client")
             except Exception as e:
-                self.logger.error(f"Error closing private REST: {e}")
+                self.logger.error(f"Error closing private API: {e}")
         
         self._active_symbols.clear()
         self._orderbooks.clear()
         self._balances_dict.clear()
-        self._completed_order_cache.clear()
         self._latest_orderbook = None
         self._latest_orderbook_symbol = None
         self._initialized = False
@@ -485,15 +485,9 @@ class MexcExchange(BaseExchangeInterface):
         return await self.place_market_order(symbol, Side.SELL, amount=amount)
     
     def get_performance_metrics(self) -> Dict[str, int]:
-        total_requests = self._performance_metrics['cache_hits'] + self._performance_metrics['cache_misses']
-        cache_hit_rate = (self._performance_metrics['cache_hits'] / total_requests * 100) if total_requests > 0 else 0
-        
         return {
             **self._performance_metrics,
-            'total_cache_requests': total_requests,
-            'cache_hit_rate_percent': round(cache_hit_rate, 1),
-            'active_symbols_count': len(self._active_symbols),
-            'cached_orders_count': len(self._completed_order_cache)
+            'active_symbols_count': len(self._active_symbols)
         }
     
     def __repr__(self) -> str:
