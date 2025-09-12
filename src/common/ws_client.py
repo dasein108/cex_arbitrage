@@ -5,7 +5,7 @@ import time
 import logging
 from contextlib import asynccontextmanager
 from collections import deque
-from websockets import connect
+from websockets import connect, State
 import msgspec
 
 from common.exceptions import ExchangeAPIError
@@ -150,7 +150,7 @@ class WebsocketClient:
         MEXC uses exact format: {"method": "SUBSCRIPTION", "params": [streams]}
         Based on working legacy implementation in raw/mexc_api/websocket/mexc_ws.py
         """
-        if not self._ws or self._ws.closed:
+        if not self._ws or self._ws.state != State.OPEN:
             raise ExchangeAPIError(500, "WebSocket not connected")
 
         try:
@@ -183,7 +183,7 @@ class WebsocketClient:
         """
         try:
             # Close existing connection if any
-            if self._ws and not self._ws.closed:
+            if self._ws and self._ws.state != State.CLOSED:
                 await self._ws.close()
 
             self.logger.info(f"Connecting to WebSocket: {self.config.url}")
@@ -208,7 +208,7 @@ class WebsocketClient:
                 max_size=self.config.max_message_size,
                 # Additional performance settings
                 write_limit=2 ** 20,  # 1MB write buffer
-                read_limit=2 ** 20,  # 1MB read buffer
+                # read_limit parameter not supported in websockets 15.0.1
             )
 
             self.logger.info("WebSocket connected successfully")

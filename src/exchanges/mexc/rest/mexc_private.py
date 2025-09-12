@@ -182,9 +182,25 @@ class MexcPrivateExchange(PrivateExchangeInterface):
         if method.upper() == 'GET':
             return await self.client.get(endpoint, params=request_params, config=config, headers=headers)
         elif method.upper() == 'POST':
-            return await self.client.post(endpoint, json_data=json_data, params=request_params, config=config, headers=headers)
+            # For POST requests, MEXC expects query parameters with Content-Type: application/json
+            if json_data:
+                post_params = {**request_params, **json_data}
+            else:
+                post_params = request_params
+            
+            # Add the correct content type header for MEXC
+            headers['Content-Type'] = 'application/json'
+            
+            # Use RestClient's normal POST handling with query parameters
+            return await self.client.post(endpoint, params=post_params, config=config, headers=headers)
         elif method.upper() == 'PUT':
-            return await self.client.put(endpoint, json_data=json_data, params=request_params, config=config, headers=headers)
+            # PUT requests use query parameters for MEXC
+            if json_data:
+                body_data = {**request_params, **json_data}
+            else:
+                body_data = request_params
+                
+            return await self.client.put(endpoint, params=body_data, config=config, headers=headers)
         elif method.upper() == 'DELETE':
             return await self.client.delete(endpoint, params=request_params, config=config, headers=headers)
         else:

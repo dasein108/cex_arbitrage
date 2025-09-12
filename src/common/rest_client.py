@@ -36,7 +36,8 @@ import msgspec
 from .exceptions import ExchangeAPIError, RateLimitError
 
 # Use msgspec for maximum JSON performance
-MSGSPEC_ENCODER = msgspec.json.encode
+# Note: msgspec.json.encode returns bytes, but aiohttp expects string serializer
+MSGSPEC_ENCODER = lambda obj: msgspec.json.encode(obj).decode('utf-8')
 
 
 class HTTPMethod(Enum):

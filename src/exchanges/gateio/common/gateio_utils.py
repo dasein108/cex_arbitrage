@@ -226,7 +226,18 @@ class GateioUtils:
             HMAC-SHA512 signature hex string
         """
         # Step 1: Create payload hash (SHA512 of request body)
-        payload_hash = hashlib.sha512(payload.encode('utf-8')).hexdigest()
+        # Handle both string and bytes payload
+        try:
+            if isinstance(payload, bytes):
+                payload_bytes = payload
+            else:
+                payload_bytes = payload.encode('utf-8')
+            payload_hash = hashlib.sha512(payload_bytes).hexdigest()
+        except Exception as e:
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.error(f"Error encoding payload: {e}, payload type: {type(payload)}, payload: {payload[:100] if len(str(payload)) > 100 else payload}")
+            raise
         
         # Step 2: Create signature string according to Gate.io APIv4 format
         # Format: method + "\n" + url_path + "\n" + query_string + "\n" + payload_hash + "\n" + timestamp
