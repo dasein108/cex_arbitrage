@@ -15,7 +15,7 @@ Threading: All constants are thread-safe (immutable)
 Performance: Dict-based lookups optimized for O(1) access
 """
 
-from exchanges.interface.structs import OrderStatus, OrderType, Side, TimeInForce
+from exchanges.interface.structs import OrderStatus, OrderType, Side, TimeInForce, KlineInterval
 from common.exceptions import (
     ExchangeAPIError, RateLimitError, TradingDisabled,
     InsufficientPosition, OversoldException
@@ -286,6 +286,34 @@ class GateioMappings:
             Gate.io kline interval string
         """
         return cls.KLINE_INTERVAL_MAPPING.get(unified_interval, '1m')
+    
+    @classmethod
+    def get_kline_interval_from_enum(cls, interval: KlineInterval) -> str:
+        """
+        Get Gate.io kline interval from KlineInterval enum.
+        
+        Args:
+            interval: Unified KlineInterval enum value
+            
+        Returns:
+            Gate.io kline interval string
+        """
+        # Convert KlineInterval enum to string key for mapping lookup
+        interval_to_string_map = {
+            KlineInterval.MINUTE_1: "1m",
+            KlineInterval.MINUTE_5: "5m",
+            KlineInterval.MINUTE_15: "15m", 
+            KlineInterval.MINUTE_30: "30m",
+            KlineInterval.HOUR_1: "1h",
+            KlineInterval.HOUR_4: "4h",
+            KlineInterval.HOUR_12: "12h",
+            KlineInterval.DAY_1: "1d",
+            KlineInterval.WEEK_1: "1w",
+            KlineInterval.MONTH_1: "30d"
+        }
+        
+        string_key = interval_to_string_map.get(interval, "1m")
+        return cls.KLINE_INTERVAL_MAPPING.get(string_key, '1m')
     
     @classmethod 
     def should_use_post_only(cls, order_type: OrderType) -> bool:

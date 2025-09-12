@@ -10,7 +10,8 @@ from exchanges.interface.structs import (
     AssetBalance,
     AssetName,
     ExchangeName,
-    TimeInForce
+    TimeInForce,
+    Position
 )
 
 
@@ -121,6 +122,29 @@ class PrivateExchangeInterface(BaseExchangeInterface):
         
         Args:
             listen_key: The listen key to delete
+        """
+        pass
+    
+    @abstractmethod
+    async def get_positions(self) -> List[Position]:
+        """
+        Get all open positions for futures trading.
+        
+        Returns:
+            List of Position objects representing current open positions
+        """
+        pass
+    
+    @abstractmethod
+    async def get_position(self, symbol: Symbol) -> Optional[Position]:
+        """
+        Get position for a specific symbol.
+        
+        Args:
+            symbol: The futures symbol to get position for
+            
+        Returns:
+            Position object if exists, None otherwise
         """
         pass
     

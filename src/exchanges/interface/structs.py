@@ -170,6 +170,37 @@ class TradingFee(Struct):
     taker_fee: float
     
 
+class Position(Struct):
+    """Futures position information"""
+    symbol: Symbol
+    size: float  # Position size (positive for long, negative for short)
+    side: Side  # LONG (BUY) or SHORT (SELL)
+    entry_price: float  # Average entry price
+    mark_price: float  # Current mark price
+    unrealized_pnl: float  # Unrealized profit/loss
+    realized_pnl: float  # Realized profit/loss
+    margin: float  # Position margin/collateral
+    leverage: float  # Leverage used
+    risk_limit: float  # Risk limit for the position
+    contract_value: float  # Value of single contract
+    timestamp: Optional[int] = None  # Last update timestamp
+    
+    @property
+    def is_long(self) -> bool:
+        """Check if this is a long position"""
+        return self.side == Side.BUY and self.size > 0
+    
+    @property
+    def is_short(self) -> bool:
+        """Check if this is a short position"""
+        return self.side == Side.SELL and self.size > 0
+    
+    @property
+    def notional_value(self) -> float:
+        """Calculate notional value of the position"""
+        return abs(self.size) * self.mark_price
+
+
 class AccountInfo(Struct):
     """Account information"""
     exchange: ExchangeName
