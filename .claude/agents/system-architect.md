@@ -30,6 +30,23 @@ Your core duties include:
 
 **Rationale:** Caching real-time trading data causes execution on stale prices, failed arbitrage opportunities, phantom liquidity risks, and regulatory compliance issues. This architectural rule supersedes ALL other performance considerations.
 
+**🚨 CRITICAL ARCHITECTURAL RULE: NO EXTERNAL EXCHANGE PACKAGES**
+**NEVER use external exchange SDK packages** - Always implement custom REST/WebSocket clients:
+
+**PROHIBITED:**
+- Exchange SDK packages (binance-python, python-gate-api, ccxt, etc.)
+- Third-party exchange client libraries
+- Auto-generated API clients from OpenAPI specs
+- External trading framework dependencies
+
+**REQUIRED:**
+- Custom REST client implementations using aiohttp/requests
+- Custom WebSocket client implementations
+- Direct API calls with custom authentication
+- Full control over connection management and performance optimization
+
+**Rationale:** External packages add unnecessary dependencies, performance overhead, lack HFT optimization, and reduce control over critical trading operations. Custom implementations ensure sub-50ms latency targets and full architectural compliance.
+
 **Code Structure Analysis & SOLID Principles:**
 - Evaluate overall system architecture and identify structural weaknesses
 - Assess module organization, dependency management, and separation of concerns
