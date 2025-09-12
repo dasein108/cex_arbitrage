@@ -23,12 +23,13 @@ Memory: O(1) per request, optimized for high-frequency access
 
 import time
 from typing import Dict, List, Optional, Any
+from datetime import datetime
 import msgspec
 import logging
 
 from exchanges.interface.structs import (
-    Symbol, SymbolInfo, OrderBook, OrderBookEntry, Trade,
-    AssetName, Side, ExchangeName
+    Symbol, SymbolInfo, OrderBook, OrderBookEntry, Trade, Kline,
+    AssetName, Side, ExchangeName, KlineInterval
 )
 from common.rest_client import RestClient
 from exchanges.interface.rest.base_rest_public import PublicExchangeInterface
@@ -354,6 +355,182 @@ class GateioPublicExchange(PublicExchangeInterface):
         except Exception as e:
             self.logger.debug(f"Ping failed: {e}")
             return False
+    
+    async def get_klines(self, symbol: Symbol, timeframe: KlineInterval,
+                         date_from: Optional[datetime], date_to: Optional[datetime]) -> List[Kline]:
+        """
+        Get kline/candlestick data for a symbol.
+        
+        HFT COMPLIANT: Never caches kline data - always fresh API call.
+        
+        Args:
+            symbol: Symbol to get klines for
+            timeframe: Kline interval (1m, 5m, 1h, 1d, etc.)
+            date_from: Start time (optional)
+            date_to: End time (optional)
+            
+        Returns:
+            List of Kline objects sorted by timestamp (oldest first)
+            
+        Raises:
+            ExchangeAPIError: If unable to fetch kline data
+        """
+        try:
+            pair = GateioUtils.symbol_to_pair(symbol)
+            interval = GateioUtils.get_gateio_kline_interval(timeframe)
+            
+            params = {
+                'currency_pair': pair,
+                'interval': interval
+            }
+            
+            # Gate.io API: Either use limit OR use from/to, but not both
+            if date_from or date_to:
+                # Use time range mode
+                if date_from:
+                    params['from'] = int(date_from.timestamp())
+                if date_to:
+                    params['to'] = int(date_to.timestamp())
+            else:
+                # Use limit mode (default: 1000 klines)
+                params['limit'] = 1000
+            
+            response_data = await self.client.get(
+                GateioConfig.SPOT_ENDPOINTS['candlesticks'],
+                params=params,
+                config=GateioConfig.rest_config['market_data']
+            )
+            
+            # Gate.io returns array of arrays with different format than MEXC:
+            # Each kline: [timestamp, volume, close, high, low, open, previous_close]
+            # Note: Gate.io format is: [time, volume, close, high, low, open, previous_close]
+            if not isinstance(response_data, list):
+                raise ExchangeAPIError(500, "Invalid candlesticks response format")
+            
+            klines = []
+            for kline_data in response_data:
+                if len(kline_data) >= 7:
+                    # Gate.io format: [time, volume, close, high, low, open, previous_close]
+                    timestamp = int(float(kline_data[0]))  # Unix timestamp
+                    volume = float(kline_data[1])
+                    close_price = float(kline_data[2])
+                    high_price = float(kline_data[3])
+                    low_price = float(kline_data[4])
+                    open_price = float(kline_data[5])
+                    # previous_close = float(kline_data[6])  # Not used in unified format
+                    
+                    # Calculate quote volume (Gate.io doesn't provide it directly)
+                    # Estimate as volume * average price
+                    avg_price = (high_price + low_price + open_price + close_price) / 4
+                    quote_volume = volume * avg_price
+                    
+                    kline = Kline(
+                        symbol=symbol,
+                        interval=timeframe,
+                        open_time=timestamp * 1000,  # Convert to milliseconds
+                        close_time=timestamp * 1000 + self._get_interval_milliseconds(timeframe),
+                        open_price=open_price,
+                        high_price=high_price,
+                        low_price=low_price,
+                        close_price=close_price,
+                        volume=volume,
+                        quote_volume=quote_volume,
+                        trades_count=0  # Gate.io doesn't provide trade count
+                    )
+                    klines.append(kline)
+            
+            # Gate.io returns oldest first (already sorted correctly)
+            self.logger.debug(f"Retrieved {len(klines)} klines for {pair} {interval}")
+            return klines
+            
+        except Exception as e:
+            self.logger.error(f"Failed to get klines for {symbol}: {e}")
+            raise ExchangeAPIError(500, f"Klines fetch failed: {str(e)}")
+    
+    async def get_klines_batch(self, symbol: Symbol, timeframe: KlineInterval,
+                              date_from: Optional[datetime], date_to: Optional[datetime]) -> List[Kline]:
+        """
+        Get batch kline data by making multiple get_klines requests for large time ranges.
+        
+        This method splits large time ranges into chunks to handle Gate.io's 1000 kline limit per request.
+        Uses multiple calls to get_klines internally.
+        
+        HFT COMPLIANT: Never caches kline data - always fresh API calls.
+        
+        Args:
+            symbol: Symbol to get klines for
+            timeframe: Kline interval
+            date_from: Start time (optional)
+            date_to: End time (optional)
+            
+        Returns:
+            List of Kline objects sorted by timestamp (oldest first)
+            
+        Raises:
+            ExchangeAPIError: If unable to fetch kline data
+        """
+        # If no date range specified, use single request
+        if not date_from or not date_to:
+            return await self.get_klines(symbol, timeframe, date_from, date_to)
+        
+        # Calculate interval duration in seconds
+        interval_seconds = self._get_interval_seconds(timeframe)
+        if interval_seconds == 0:
+            # Fallback to single request for unknown intervals
+            return await self.get_klines(symbol, timeframe, date_from, date_to)
+        
+        # Calculate chunk size (1000 klines per request)
+        chunk_duration_seconds = 1000 * interval_seconds
+        
+        all_klines = []
+        current_start = date_from
+        
+        while current_start < date_to:
+            # Calculate chunk end time
+            chunk_end = datetime.fromtimestamp(
+                min(current_start.timestamp() + chunk_duration_seconds, date_to.timestamp())
+            )
+            
+            # Fetch chunk
+            chunk_klines = await self.get_klines(symbol, timeframe, current_start, chunk_end)
+            all_klines.extend(chunk_klines)
+            
+            # Move to next chunk
+            current_start = datetime.fromtimestamp(chunk_end.timestamp() + interval_seconds)
+            
+            # Break if no more data or we've reached the end
+            if not chunk_klines or current_start >= date_to:
+                break
+        
+        # Remove duplicates and sort
+        unique_klines = {}
+        for kline in all_klines:
+            unique_klines[kline.open_time] = kline
+        
+        sorted_klines = sorted(unique_klines.values(), key=lambda k: k.open_time)
+        
+        self.logger.info(f"Retrieved {len(sorted_klines)} klines in batch for {symbol.base}/{symbol.quote}")
+        return sorted_klines
+    
+    def _get_interval_seconds(self, interval: KlineInterval) -> int:
+        """Get interval duration in seconds for batch processing."""
+        interval_map = {
+            KlineInterval.MINUTE_1: 60,
+            KlineInterval.MINUTE_5: 300,
+            KlineInterval.MINUTE_15: 900,
+            KlineInterval.MINUTE_30: 1800,
+            KlineInterval.HOUR_1: 3600,
+            KlineInterval.HOUR_4: 14400,
+            KlineInterval.HOUR_12: 43200,
+            KlineInterval.DAY_1: 86400,
+            KlineInterval.WEEK_1: 604800,
+            KlineInterval.MONTH_1: 2592000  # 30 days approximation
+        }
+        return interval_map.get(interval, 0)
+    
+    def _get_interval_milliseconds(self, interval: KlineInterval) -> int:
+        """Get interval duration in milliseconds for close time calculation."""
+        return self._get_interval_seconds(interval) * 1000
     
     async def close(self) -> None:
         """Close the REST client and clean up resources."""

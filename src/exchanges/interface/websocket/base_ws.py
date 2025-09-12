@@ -48,8 +48,8 @@ class BaseExchangeWebsocketInterface(ABC):
         """Prepare the connections for subscriptions specific symbol."""
         raise NotImplementedError("_create_subscriptions must be implemented in subclass")
 
-    async def _on_message(self, message: Dict[str, Any]):
-        raise NotImplementedError("on_message must be implemented in subclass")
+    async def _on_message(self, raw_message: str):
+        raise NotImplementedError("_on_message must be implemented in subclass")
 
     async def on_error(self, error: Exception):
         raise NotImplementedError("on_error must be implemented in subclass")

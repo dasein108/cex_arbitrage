@@ -113,3 +113,15 @@ class MexcErrorResponse(msgspec.Struct):
 class MexcServerTimeResponse(msgspec.Struct):
     """MEXC server time API response structure."""
     serverTime: int
+
+
+class MexcKlineResponse(msgspec.Struct):
+    """
+    MEXC kline/candlestick API response structure.
+    
+    Each kline data point contains:
+    [0] Open time, [1] Open price, [2] High price, [3] Low price,
+    [4] Close price, [5] Volume, [6] Close time, [7] Quote asset volume
+    """
+    # MEXC returns list of lists, each inner list has 8 elements
+    pass  # This will be typed as list[list[str]] in the API response

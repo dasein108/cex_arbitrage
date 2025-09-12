@@ -17,7 +17,7 @@ Performance: Optimized for high-frequency trading with minimal allocations
 
 from typing import Tuple, Dict, Any, Optional
 from datetime import datetime
-from exchanges.interface.structs import Symbol, AssetName, AssetBalance, Order, OrderId, OrderStatus, Side, OrderType
+from exchanges.interface.structs import Symbol, AssetName, AssetBalance, Order, OrderId, OrderStatus, Side, OrderType, KlineInterval
 import hashlib
 import hmac
 import time
@@ -373,6 +373,32 @@ class GateioUtils:
             timestamp=timestamp,
             fee=float(gateio_order.get('fee', '0'))
         )
+    
+    @staticmethod
+    def get_gateio_kline_interval(interval: KlineInterval) -> str:
+        """
+        Convert unified KlineInterval to Gate.io API interval string.
+        
+        Args:
+            interval: Unified KlineInterval enum value
+            
+        Returns:
+            Gate.io API interval string (e.g., "1m", "5m", "1h", "1d")
+        """
+        interval_map = {
+            KlineInterval.MINUTE_1: "1m",
+            KlineInterval.MINUTE_5: "5m",
+            KlineInterval.MINUTE_15: "15m", 
+            KlineInterval.MINUTE_30: "30m",
+            KlineInterval.HOUR_1: "1h",
+            KlineInterval.HOUR_4: "4h",
+            KlineInterval.HOUR_12: "12h",
+            KlineInterval.DAY_1: "1d",
+            KlineInterval.WEEK_1: "7d",  # Gate.io uses "7d" for weekly
+            KlineInterval.MONTH_1: "30d"  # Gate.io uses "30d" for monthly
+        }
+        
+        return interval_map.get(interval, "1h")  # Default to 1 hour
     
     @staticmethod
     def get_current_timestamp() -> int:

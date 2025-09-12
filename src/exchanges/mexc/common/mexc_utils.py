@@ -16,7 +16,7 @@ Performance: Optimized for high-frequency trading with minimal allocations
 
 from typing import Tuple, Dict
 from datetime import datetime
-from exchanges.interface.structs import Symbol, AssetName, AssetBalance, Order, OrderId
+from exchanges.interface.structs import Symbol, AssetName, AssetBalance, Order, OrderId, KlineInterval
 from exchanges.mexc.common.mexc_struct import MexcOrderResponse, MexcBalanceResponse
 from exchanges.mexc.common.mexc_mappings import MexcMappings
 
@@ -218,6 +218,32 @@ class MexcUtils:
             free=float(mexc_balance.free),
             locked=float(mexc_balance.locked)
         )
+    
+    @staticmethod
+    def get_mexc_kline_interval(interval: KlineInterval) -> str:
+        """
+        Convert unified KlineInterval to MEXC API interval string.
+        
+        Args:
+            interval: Unified KlineInterval enum value
+            
+        Returns:
+            MEXC API interval string (e.g., "1m", "5m", "1h", "1d")
+        """
+        interval_map = {
+            KlineInterval.MINUTE_1: "1m",
+            KlineInterval.MINUTE_5: "5m", 
+            KlineInterval.MINUTE_15: "15m",
+            KlineInterval.MINUTE_30: "30m",
+            KlineInterval.HOUR_1: "1h",
+            KlineInterval.HOUR_4: "4h",
+            KlineInterval.HOUR_12: "12h",
+            KlineInterval.DAY_1: "1d",
+            KlineInterval.WEEK_1: "1w",
+            KlineInterval.MONTH_1: "1M"
+        }
+        
+        return interval_map.get(interval, "1h")  # Default to 1 hour
     
     @staticmethod
     def transform_mexc_order_to_unified(mexc_order: MexcOrderResponse) -> Order:

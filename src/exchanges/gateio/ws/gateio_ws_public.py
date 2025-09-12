@@ -111,42 +111,35 @@ class GateioWebsocketPublic(BaseExchangeWebsocketInterface):
             'parse_errors': 0
         }
 
-    def _create_subscriptions(self, symbol: Symbol, action: SubscriptionAction) -> List[str]:
-        """Create Gate.io WebSocket subscription messages for a symbol.
+    async def init(self, symbols: List[Symbol]):
+        """Initialize the websocket connection using Gate.io specific approach."""
+        self.symbols = symbols
+        await self.ws_client.start()
         
-        Gate.io WebSocket subscription format:
-        {
-            "time": 1234567890,
-            "channel": "spot.order_book_update", 
-            "event": "subscribe",
-            "payload": ["BTC_USDT", "100ms"]
-        }
+        # Use Gate.io-specific subscription instead of generic
+        for symbol in symbols:
+            subscriptions = self._create_subscriptions(symbol, SubscriptionAction.SUBSCRIBE)
+            await self._subscribe_to_streams(subscriptions, SubscriptionAction.SUBSCRIBE)
+
+    def _create_subscriptions(self, symbol: Symbol, action: SubscriptionAction) -> List[str]:
+        """Create Gate.io WebSocket subscription streams in channel@payload format.
+        
+        Reference implementation uses format: "spot.order_book_update@BTC_USDT@1000ms@20"
         """
         pair = GateioUtils.symbol_to_pair(symbol)
-        current_time = int(time.time())
         
-        # Create subscription messages for different channels
+        # Create subscription streams for different channels using @ format
         subscriptions = []
         
-        # Orderbook updates (spot.order_book_update)
+        # Orderbook updates (spot.order_book_update@symbol@frequency) - Gate.io expects exactly 2 args
         if self.orderbook_handler:
-            orderbook_sub = {
-                "time": current_time,
-                "channel": "spot.order_book_update",
-                "event": "subscribe" if action == SubscriptionAction.SUBSCRIBE else "unsubscribe",
-                "payload": [pair, "100ms"]  # Symbol and update frequency
-            }
-            subscriptions.append(json.dumps(orderbook_sub))
+            orderbook_stream = f"spot.order_book_update@{pair}@1000ms"
+            subscriptions.append(orderbook_stream)
         
-        # Trade updates (spot.trades)  
+        # Trade updates (spot.trades@symbol)  
         if self.trades_handler:
-            trades_sub = {
-                "time": current_time + 1,  # Slightly different timestamp
-                "channel": "spot.trades",
-                "event": "subscribe" if action == SubscriptionAction.SUBSCRIBE else "unsubscribe", 
-                "payload": [pair]
-            }
-            subscriptions.append(json.dumps(trades_sub))
+            trades_stream = f"spot.trades@{pair}"
+            subscriptions.append(trades_stream)
         
         # Track active channels for message routing
         if action == SubscriptionAction.SUBSCRIBE:
@@ -157,6 +150,52 @@ class GateioWebsocketPublic(BaseExchangeWebsocketInterface):
             self._active_channels.pop(f"spot.trades.{pair}", None)
         
         return subscriptions
+
+    async def _request(self, channel: str, event: str, payload: List[str], auth_required: bool = False):
+        """Send Gate.io WebSocket request message like reference implementation."""
+        current_time = int(time.time())
+        data = {
+            "time": current_time,
+            "channel": channel,
+            "event": event,
+            "payload": payload,
+        }
+        
+        # Auth not required for public channels
+        if auth_required:
+            # Would add auth here for private channels
+            pass
+            
+        if self.ws_client._ws and not self.ws_client._ws.closed:
+            await self.ws_client._ws.send(json.dumps(data))
+        else:
+            raise Exception("WebSocket not connected")
+
+    async def _subscribe_to_streams(self, streams: List[str], action: SubscriptionAction):
+        """Subscribe to streams using reference implementation approach."""
+        for stream in streams:
+            event = "subscribe" if action == SubscriptionAction.SUBSCRIBE else "unsubscribe"
+            payload = stream.split("@")
+            channel = payload.pop(0)  # Remove and get channel
+            await self._request(channel, event, payload)
+
+    async def start_symbol(self, symbol: Symbol):
+        """Start streaming data for a specific symbol using reference approach."""
+        if symbol not in self.symbols:
+            self.symbols.append(symbol)
+            subscriptions = self._create_subscriptions(symbol, SubscriptionAction.SUBSCRIBE)
+            
+            # Use reference implementation's subscription method
+            await self._subscribe_to_streams(subscriptions, SubscriptionAction.SUBSCRIBE)
+
+    async def stop_symbol(self, symbol: Symbol):
+        """Stop streaming data for a specific symbol using reference approach."""
+        if symbol in self.symbols:
+            self.symbols.remove(symbol)
+            subscriptions = self._create_subscriptions(symbol, SubscriptionAction.UNSUBSCRIBE)
+            
+            # Use reference implementation's unsubscription method
+            await self._subscribe_to_streams(subscriptions, SubscriptionAction.UNSUBSCRIBE)
 
     async def _on_message(self, raw_message: str):
         """Process incoming WebSocket messages from Gate.io.
@@ -243,20 +282,34 @@ class GateioWebsocketPublic(BaseExchangeWebsocketInterface):
             # Transform to unified format using object pool
             bids = []
             for bid_data in bids_data:
-                if len(bid_data) >= 2:
+                if isinstance(bid_data, list) and len(bid_data) >= 2:
+                    # Gate.io uses array format ["price", "size"] (primary)
                     price = float(bid_data[0])
                     size = float(bid_data[1])
-                    # Only include non-zero sizes (0 size means remove level)
+                    if size > 0:
+                        entry = self.entry_pool.get_entry(price, size)
+                        bids.append(entry)
+                elif isinstance(bid_data, dict) and 'p' in bid_data and 's' in bid_data:
+                    # Fallback for object format (backup support)
+                    price = float(bid_data['p'])
+                    size = float(bid_data['s'])
                     if size > 0:
                         entry = self.entry_pool.get_entry(price, size)
                         bids.append(entry)
             
             asks = []
             for ask_data in asks_data:
-                if len(ask_data) >= 2:
+                if isinstance(ask_data, list) and len(ask_data) >= 2:
+                    # Gate.io uses array format ["price", "size"] (primary)
                     price = float(ask_data[0])
                     size = float(ask_data[1])
-                    # Only include non-zero sizes (0 size means remove level)
+                    if size > 0:
+                        entry = self.entry_pool.get_entry(price, size)
+                        asks.append(entry)
+                elif isinstance(ask_data, dict) and 'p' in ask_data and 's' in ask_data:
+                    # Fallback for object format (backup support)
+                    price = float(ask_data['p'])
+                    size = float(ask_data['s'])
                     if size > 0:
                         entry = self.entry_pool.get_entry(price, size)
                         asks.append(entry)

@@ -128,6 +128,10 @@ async def demonstrate_websocket_streaming():
         logger.info("Starting WebSocket streaming...")
         await ws_client.init([])
         
+        # Wait for connection to stabilize
+        logger.info("Waiting for WebSocket connection to stabilize...")
+        await asyncio.sleep(2)
+        
         # Add symbols one by one
         for symbol in symbols:
             logger.info(f"Starting stream for {symbol.base}/{symbol.quote}...")

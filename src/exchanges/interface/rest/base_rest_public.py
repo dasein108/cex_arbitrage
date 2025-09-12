@@ -1,13 +1,16 @@
 import logging
 from abc import abstractmethod
-from typing import Dict, List
+from datetime import datetime
+from typing import Dict, List, Optional
 from .base_rest import BaseExchangeInterface
 from exchanges.interface.structs import (
     Symbol,
     SymbolInfo,
     OrderBook,
     Trade,
-    ExchangeName
+    Kline,
+    ExchangeName,
+    KlineInterval
 )
 
 class PublicExchangeInterface(BaseExchangeInterface):
@@ -33,7 +36,19 @@ class PublicExchangeInterface(BaseExchangeInterface):
     async def get_recent_trades(self, symbol: Symbol, limit: int = 500) -> List[Trade]:
         """Get recent trades for a symbol"""
         pass
-    
+
+    @abstractmethod
+    async def get_klines_batch(self, symbol: Symbol, timeframe: KlineInterval,
+                         date_from: Optional[datetime], date_to: Optional[datetime]) -> List[Kline]:
+        """Get recent trades for a symbol"""
+        pass
+
+
+    @abstractmethod
+    async def get_klines(self, symbol: Symbol, timeframe: KlineInterval,
+                         date_from: Optional[datetime], date_to: Optional[datetime]) -> List[Kline]:
+        """Get recent trades for a symbol"""
+        pass
 
     @abstractmethod
     async def get_server_time(self) -> int:

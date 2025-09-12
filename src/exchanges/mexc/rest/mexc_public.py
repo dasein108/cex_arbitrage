@@ -23,6 +23,7 @@ Memory: O(1) per request, optimized for high-frequency access
 
 import time
 from typing import Dict, List, Optional
+from datetime import datetime
 import msgspec
 
 from exchanges.mexc.common.mexc_struct import (
@@ -30,8 +31,8 @@ from exchanges.mexc.common.mexc_struct import (
     MexcOrderBookResponse, MexcTradeResponse, MexcServerTimeResponse
 )
 from exchanges.interface.structs import (
-    Symbol, SymbolInfo, OrderBook, OrderBookEntry, Trade,
-    AssetName, Side, ExchangeName
+    Symbol, SymbolInfo, OrderBook, OrderBookEntry, Trade, Kline,
+    AssetName, Side, ExchangeName, KlineInterval
 )
 from common.rest_client import RestClient
 from exchanges.interface.rest.base_rest_public import PublicExchangeInterface
@@ -296,4 +297,148 @@ class MexcPublicExchange(PublicExchangeInterface):
             return True
         except Exception:
             return False
+    
+    async def get_klines(self, symbol: Symbol, timeframe: KlineInterval,
+                         date_from: Optional[datetime], date_to: Optional[datetime]) -> List[Kline]:
+        """
+        Get kline/candlestick data for a symbol.
+        
+        Args:
+            symbol: Symbol to get klines for
+            timeframe: Kline interval (1m, 5m, 1h, 1d, etc.)
+            date_from: Start time (optional)
+            date_to: End time (optional)
+            
+        Returns:
+            List of Kline objects sorted by timestamp (oldest first)
+            
+        Raises:
+            ExchangeAPIError: If unable to fetch kline data
+        """
+        pair = MexcUtils.symbol_to_pair(symbol)
+        interval = MexcUtils.get_mexc_kline_interval(timeframe)
+        
+        params = {
+            'symbol': pair,
+            'interval': interval,
+            'limit': 1000  # MEXC default/max limit
+        }
+        
+        # Add time filters if provided
+        if date_from:
+            params['startTime'] = int(date_from.timestamp() * 1000)
+        if date_to:
+            params['endTime'] = int(date_to.timestamp() * 1000)
+        
+        response_data = await self.client.get(
+            '/api/v3/klines',
+            params=params,
+            config=MexcConfig.rest_config['market_data']
+        )
+        
+        # MEXC returns array of arrays, each with 8 elements:
+        # [open_time, open, high, low, close, volume, close_time, quote_volume]
+        kline_arrays = msgspec.convert(response_data, list[list[str]])
+        
+        # Transform to unified format
+        klines = []
+        for kline_data in kline_arrays:
+            if len(kline_data) >= 8:
+                kline = Kline(
+                    symbol=symbol,
+                    interval=timeframe,
+                    open_time=int(kline_data[0]),
+                    close_time=int(kline_data[6]),
+                    open_price=float(kline_data[1]),
+                    high_price=float(kline_data[2]),
+                    low_price=float(kline_data[3]),
+                    close_price=float(kline_data[4]),
+                    volume=float(kline_data[5]),
+                    quote_volume=float(kline_data[7]),
+                    trades_count=0  # MEXC doesn't provide trade count
+                )
+                klines.append(kline)
+        
+        # Already sorted by timestamp from MEXC API
+        self.logger.debug(f"Retrieved {len(klines)} klines for {pair} {interval}")
+        return klines
+    
+    async def get_klines_batch(self, symbol: Symbol, timeframe: KlineInterval,
+                              date_from: Optional[datetime], date_to: Optional[datetime]) -> List[Kline]:
+        """
+        Get batch kline data by making multiple get_klines requests for large time ranges.
+        
+        This method splits large time ranges into chunks to handle MEXC's 1000 kline limit per request.
+        Uses multiple calls to get_klines internally.
+        
+        Args:
+            symbol: Symbol to get klines for
+            timeframe: Kline interval 
+            date_from: Start time (optional)
+            date_to: End time (optional)
+            
+        Returns:
+            List of Kline objects sorted by timestamp (oldest first)
+            
+        Raises:
+            ExchangeAPIError: If unable to fetch kline data
+        """
+        # If no date range specified, use single request
+        if not date_from or not date_to:
+            return await self.get_klines(symbol, timeframe, date_from, date_to)
+        
+        # Calculate interval duration in seconds
+        interval_seconds = self._get_interval_seconds(timeframe)
+        if interval_seconds == 0:
+            # Fallback to single request for unknown intervals
+            return await self.get_klines(symbol, timeframe, date_from, date_to)
+        
+        # Calculate chunk size (1000 klines per request)
+        chunk_duration_seconds = 1000 * interval_seconds
+        
+        all_klines = []
+        current_start = date_from
+        
+        while current_start < date_to:
+            # Calculate chunk end time
+            chunk_end = datetime.fromtimestamp(
+                min(current_start.timestamp() + chunk_duration_seconds, date_to.timestamp())
+            )
+            
+            # Fetch chunk
+            chunk_klines = await self.get_klines(symbol, timeframe, current_start, chunk_end)
+            all_klines.extend(chunk_klines)
+            
+            # Move to next chunk
+            current_start = datetime.fromtimestamp(chunk_end.timestamp() + interval_seconds)
+            
+            # Break if no more data or we've reached the end
+            if not chunk_klines or current_start >= date_to:
+                break
+        
+        # Remove duplicates and sort
+        unique_klines = {}
+        for kline in all_klines:
+            unique_klines[kline.open_time] = kline
+        
+        sorted_klines = sorted(unique_klines.values(), key=lambda k: k.open_time)
+        
+        self.logger.info(f"Retrieved {len(sorted_klines)} klines in batch for {symbol.base}/{symbol.quote}")
+        return sorted_klines
+    
+    def _get_interval_seconds(self, interval: KlineInterval) -> int:
+        """Get interval duration in seconds for batch processing."""
+        interval_map = {
+            KlineInterval.MINUTE_1: 60,
+            KlineInterval.MINUTE_5: 300,
+            KlineInterval.MINUTE_15: 900,
+            KlineInterval.MINUTE_30: 1800,
+            KlineInterval.HOUR_1: 3600,
+            KlineInterval.HOUR_4: 14400,
+            KlineInterval.HOUR_12: 43200,
+            KlineInterval.DAY_1: 86400,
+            KlineInterval.WEEK_1: 604800,
+            KlineInterval.MONTH_1: 2592000  # 30 days approximation
+        }
+        return interval_map.get(interval, 0)
     
