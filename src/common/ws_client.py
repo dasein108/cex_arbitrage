@@ -32,7 +32,7 @@ class WebSocketConfig(msgspec.Struct):
     """Configuration for WebSocket connections optimized for trading"""
     # Connection settings
     name: str
-    url: str
+    url: Optional[str] = None
     timeout: float = 30.0
     ping_interval: float = 20.0
     ping_timeout: float = 10.0
@@ -65,24 +65,26 @@ class WebsocketClient:
     - Error handling and recovery
     - Connection lifecycle management
     """
-    
+
     __slots__ = (
         'exchange', 'config', 'message_handler', 'error_handler',
         '_state', '_ws', '_loop', '_connection_task', '_reader_task',
         '_subscriptions', '_pending_subscriptions', '_reconnect_attempts',
         '_should_reconnect', '_last_pong', 'logger',
-        '_cached_backoff_delays', '_message_count', '_time_cache'
+        '_cached_backoff_delays', '_message_count', '_time_cache', 'get_connect_url'
     )
     
     def __init__(
         self,
         config: WebSocketConfig,
         message_handler: Optional[Callable[[Dict[str, Any]], Awaitable[None]]] = None,
-        error_handler: Optional[Callable[[Exception], Awaitable[None]]] = None
+        error_handler: Optional[Callable[[Exception], Awaitable[None]]] = None,
+        get_connect_url: Optional[Callable[[], Awaitable[str]]] = None
     ):
         self.config = config
         self.message_handler = message_handler
         self.error_handler = error_handler
+        self.get_connect_url = get_connect_url
         
         # Connection state
         self._state = ConnectionState.DISCONNECTED
@@ -188,8 +190,13 @@ class WebsocketClient:
 
             # Minimal connection - no extra headers to avoid blocking
             # The working simple_websocket.py shows this approach works
+            url = self.config.url
+            if self.get_connect_url:
+                url = await self.get_connect_url()
+                self.logger.info(f"Using dynamic WebSocket URL: {url}")
+
             self._ws = await connect(
-                self.config.url,
+                url,
                 # NO extra headers - they cause blocking
                 # NO origin header - causes blocking
                 # Performance optimizations

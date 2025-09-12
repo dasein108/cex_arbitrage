@@ -495,6 +495,86 @@ class MexcPrivateExchange(PrivateExchangeInterface):
         self.logger.info(f"Modified order {order_id} -> {new_order.order_id}")
         return new_order
 
+    async def create_listen_key(self) -> str:
+        """
+        Create a new listen key for user data stream.
+        
+        Returns:
+            Listen key string for WebSocket user data stream
+            
+        Raises:
+            ExchangeAPIError: If unable to create listen key
+        """
+        response_data = await self.client.post(
+            '/api/v3/userDataStream',
+            config=MexcConfig.rest_config['account']
+        )
+        
+        listen_key = response_data.get('listenKey')
+        if not listen_key:
+            raise ExchangeAPIError(500, "Failed to create listen key - no key in response")
+        
+        self.logger.debug("Created new listen key")
+        return listen_key
+
+    async def get_all_listen_keys(self) -> Dict:
+        """
+        Get all active listen keys.
+        
+        Returns:
+            Dictionary containing active listen keys and their metadata
+            
+        Raises:
+            ExchangeAPIError: If unable to fetch listen keys
+        """
+        response_data = await self.client.get(
+            '/api/v3/userDataStream',
+            config=MexcConfig.rest_config['account']
+        )
+        
+        self.logger.debug("Retrieved all listen keys")
+        return response_data
+
+    async def keep_alive_listen_key(self, listen_key: str) -> None:
+        """
+        Keep a listen key alive to prevent expiration.
+        
+        Args:
+            listen_key: The listen key to keep alive
+            
+        Raises:
+            ExchangeAPIError: If unable to keep alive listen key
+        """
+        params = {'listenKey': listen_key}
+        
+        await self.client.put(
+            '/api/v3/userDataStream',
+            params=params,
+            config=MexcConfig.rest_config['account']
+        )
+        
+        self.logger.debug(f"Kept alive listen key: {listen_key[:8]}...")
+
+    async def delete_listen_key(self, listen_key: str) -> None:
+        """
+        Delete/close a listen key.
+        
+        Args:
+            listen_key: The listen key to delete
+            
+        Raises:
+            ExchangeAPIError: If unable to delete listen key
+        """
+        params = {'listenKey': listen_key}
+        
+        await self.client.delete(
+            '/api/v3/userDataStream',
+            params=params,
+            config=MexcConfig.rest_config['account']
+        )
+        
+        self.logger.debug(f"Deleted listen key: {listen_key[:8]}...")
+
     async def close(self):
         """Clean up resources and close connections."""
         if hasattr(self, 'client'):

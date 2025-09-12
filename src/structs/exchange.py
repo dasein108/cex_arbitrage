@@ -108,6 +108,7 @@ class Order(Struct):
     amount: float
     amount_filled: float = 0.0
     order_id: Optional[OrderId] = None
+    client_order_id: Optional[str] = None
     status: OrderStatus = OrderStatus.NEW
     timestamp: Optional[datetime] = None
     fee: float = 0.0

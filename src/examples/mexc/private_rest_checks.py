@@ -192,7 +192,14 @@ async def main():
     print("=" * 50)
     
     try:
-        exchange = MexcPrivateExchange()
+        # Load config to get API credentials
+        from common.config import config
+        
+        # Create exchange with explicit API credentials from config
+        exchange = MexcPrivateExchange(
+            api_key=config.MEXC_API_KEY,
+            secret_key=config.MEXC_SECRET_KEY
+        )
         
         await check_get_account_balance(exchange)
         await check_get_asset_balance(exchange)

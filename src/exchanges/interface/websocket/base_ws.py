@@ -1,5 +1,5 @@
 from abc import ABC
-from typing import List, Dict, Any, Set
+from typing import List, Dict, Any, Set, Optional, Callable, Awaitable
 from structs.exchange import ExchangeName, Symbol
 from common.ws_client import WebSocketConfig, WebsocketClient, SubscriptionAction
 from itertools import chain
@@ -8,13 +8,15 @@ from itertools import chain
 class BaseExchangeWebsocketInterface(ABC):
     """Abstract interface for private exchange operations (trading, account management)"""
 
-    def __init__(self, exchange: ExchangeName, config: WebSocketConfig):
+    def __init__(self, exchange: ExchangeName, config: WebSocketConfig,
+                 get_connect_url: Optional[Callable[[], Awaitable[str]]] = None):
         self.exchange = exchange
         self.config = config
         self.symbols: List[Symbol] = []
         self.ws_client = WebsocketClient(config,
                                          message_handler=self._on_message,
-                                         error_handler=self.on_error)
+                                         error_handler=self.on_error,
+                                         get_connect_url=get_connect_url)
         self._subscriptions: Set[str] = set()
 
     async def init(self, symbols: List[Symbol]):
