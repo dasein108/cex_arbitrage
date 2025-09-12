@@ -86,8 +86,8 @@ class MexcWebsocketPublic(BaseExchangeWebsocketInterface):
         # Format: spot@public.limit.depth.v3.api.pb@<symbol>@<level>
         # Format: spot@public.aggre.deals.v3.api.pb@<interval>@<symbol>
         subscriptions = [
-            # f"spot@public.limit.depth.v3.api.pb@{symbol_str}@5",     # Correct format: symbol@level
-            f"spot@public.aggre.deals.v3.api.pb@10ms@{symbol_str}"  # Aggregated trades at 100ms
+            f"spot@public.limit.depth.v3.api.pb@{symbol_str}@5",     # Orderbook depth (5 levels)
+            f"spot@public.aggre.deals.v3.api.pb@10ms@{symbol_str}"  # Aggregated trades at 10ms
         ]
         
         # Debug logging removed from hot path for HFT performance
@@ -170,6 +170,10 @@ class MexcWebsocketPublic(BaseExchangeWebsocketInterface):
     async def _handle_protobuf_message_typed(self, data: bytes, msg_type: str):
         """Optimized protobuf handling based on actual MEXC data format."""
         try:
+            # Debug: log all protobuf messages to understand what we're receiving
+            self.logger.debug(f"Received protobuf message type: {msg_type}, length: {len(data)}")
+            if len(data) > 20:
+                self.logger.debug(f"Message contains: limit.depth={b'limit.depth' in data[:50]}, aggre.deals={b'aggre.deals' in data[:50]}")
             # MEXC format: b'\n.spot@public.aggre.deals.v3.api.pb@10ms@BTCUSDT\x1a\x07BTCUSDT...\xd2\x13<deals_data>...'
             # Field 1 (\n): stream name
             # Field 3 (\x1a): symbol  
@@ -217,9 +221,12 @@ class MexcWebsocketPublic(BaseExchangeWebsocketInterface):
                             self.logger.debug(f"Could not parse deals data from position {deals_start}")
                 
             elif b'limit.depth' in data[:50]:
-                # Similar handling for depth data
+                # Handle orderbook depth data
+                self.logger.debug(f"Processing orderbook message for symbol: {symbol_str}")
+                self.logger.debug(f"Message hex dump: {data.hex()}")
                 depth_marker = b'\xd2\x13'  # Field 26
                 depth_idx = data.find(depth_marker)
+                self.logger.debug(f"Depth marker search: found at index {depth_idx} (length: {len(data)})")
                 
                 if depth_idx != -1:
                     depth_start = depth_idx + 2
@@ -237,8 +244,11 @@ class MexcWebsocketPublic(BaseExchangeWebsocketInterface):
                                 depth_data = PublicLimitDepthsV3Api()
                                 depth_data.ParseFromString(depth_data_bytes)
                                 await self._handle_orderbook_update(depth_data, symbol_str)
-                        except:
-                            self.logger.debug(f"Could not parse depth data from position {depth_start}")
+                        except Exception as e:
+                            self.logger.error(f"Could not parse depth data: {e}")
+                            self.logger.debug(f"Depth data first 50 bytes: {data[:50].hex()}")
+                            import traceback
+                            self.logger.debug(f"Full parsing error: {traceback.format_exc()}")
                 
             else:
                 # Fallback: standard wrapper format
@@ -340,6 +350,7 @@ class MexcWebsocketPublic(BaseExchangeWebsocketInterface):
     async def _handle_orderbook_update(self, depth_data: PublicLimitDepthsV3Api, symbol_str: str):
         """Optimized protobuf orderbook processing with object pooling (75% faster)."""
         try:
+        
             # Handle cases where symbol might not be provided
             if not symbol_str:
                 self.logger.warning("No symbol provided for orderbook update, skipping")

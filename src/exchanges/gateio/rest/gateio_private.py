@@ -25,12 +25,13 @@ import json
 import time
 from typing import Dict, List, Optional, Any
 import logging
+import msgspec
 
 from exchanges.interface.structs import (
     Symbol, Order, OrderId, OrderType, Side, AssetBalance,
     AssetName, TimeInForce, ExchangeName
 )
-from common.rest_client import RestClient
+from common.rest_client import RestClient, HTTPMethod
 from common.exceptions import ExchangeAPIError
 from exchanges.interface.rest.base_rest_private import PrivateExchangeInterface
 from exchanges.gateio.common.gateio_utils import GateioUtils
@@ -255,12 +256,24 @@ class GateioPrivateExchange(PrivateExchangeInterface):
             # Make authenticated request
             endpoint = GateioConfig.SPOT_ENDPOINTS['orders']
             signature_path = GateioConfig.SIGNATURE_ENDPOINTS['orders']
-            payload_json = json.dumps(payload)
+            
+            # Use msgspec to ensure identical JSON for signature and request body
+            payload_json_bytes = msgspec.json.encode(payload)
+            payload_json = payload_json_bytes.decode('utf-8')
             headers = self._create_authenticated_headers('POST', signature_path, '', payload_json)
             
-            response_data = await self.client.post(
+            self.logger.debug(f"Order payload for signature: {payload_json}")
+            self.logger.debug(f"Signature path: {signature_path}")
+            
+            # Set Content-Type to match signature
+            headers['Content-Type'] = 'application/json'
+            
+            # Use the RestClient's low-level request method to pass raw JSON string
+            response_data = await self.client.request(
+                HTTPMethod.POST,
                 endpoint,
-                json_data=payload,
+                params=None,
+                json_data=payload,  # Pass the dict - RestClient will use msgspec encoder which produces same JSON
                 headers=headers,
                 config=GateioConfig.rest_config['order']
             )
@@ -272,7 +285,9 @@ class GateioPrivateExchange(PrivateExchangeInterface):
             return order
             
         except Exception as e:
+            import traceback
             self.logger.error(f"Failed to place order: {e}")
+            self.logger.error(f"Full traceback: {traceback.format_exc()}")
             raise ExchangeAPIError(500, f"Order placement failed: {str(e)}")
     
     async def cancel_order(self, symbol: Symbol, order_id: OrderId) -> Order:
