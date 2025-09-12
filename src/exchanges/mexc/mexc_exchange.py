@@ -1,32 +1,505 @@
-from typing import List, Dict
+import asyncio
+import logging
+import time
+from typing import List, Dict, Optional, Set
+from contextlib import asynccontextmanager
+from types import MappingProxyType
+from collections import OrderedDict
 
 from exchanges.interface.base_exchange import BaseExchangeInterface
-from structs import OrderBook, Symbol, AssetBalance
+from structs.exchange import OrderBook, Symbol, AssetBalance, AssetName, Order, OrderId, OrderType, Side, TimeInForce
+from exchanges.mexc.ws.mexc_ws_public import MexcWebsocketPublic
+from exchanges.mexc.rest.mexc_private import MexcPrivateExchange
+from exchanges.mexc.rest.mexc_public import MexcPublicExchange
+from exchanges.mexc.common.mexc_config import MexcConfig
+from common.ws_client import WebSocketConfig
+from common.exceptions import ExchangeAPIError
 
 
 class MexcExchange(BaseExchangeInterface):
+    
+    def __init__(self, api_key: Optional[str] = None, secret_key: Optional[str] = None):
+        super().__init__('MEXC', api_key, secret_key)
+        
+        self.logger = logging.getLogger(f"{__name__}.{self.__class__.__name__}")
+        
+        self._orderbooks: Dict[Symbol, OrderBook] = {}
+        self._balances_dict: Dict[AssetName, AssetBalance] = {}
+        self._active_symbols: Set[Symbol] = set()
+        
+        self._latest_orderbook: Optional[OrderBook] = None
+        self._latest_orderbook_symbol: Optional[Symbol] = None
+        self._balance_cache_expiry: float = 0.0
+        self._completed_order_cache: OrderedDict = OrderedDict()
+        self._max_cache_size = 100
+        
+        self._ws_client: Optional[MexcWebsocketPublic] = None
+        self._rest_private: Optional[MexcPrivateExchange] = None
+        self._rest_public: Optional[MexcPublicExchange] = None
+        
+        self._ws_config = WebSocketConfig(
+            name="mexc_orderbooks",
+            url=MexcConfig.WEBSOCKET_URL,
+            timeout=30.0,
+            ping_interval=20.0,
+            max_reconnect_attempts=10,
+            reconnect_delay=1.0,
+            max_queue_size=1000,
+            enable_compression=False
+        )
+        
+        self._initialized = False
+        self._balance_cache_time = 0.0
+        self._balance_cache_ttl = 30.0
+        self._balance_cache_dirty = True
+        
+        self.logger.info(f"Initialized {self.exchange} exchange with HFT optimizations")
+        
+        self._performance_metrics = {
+            'orderbook_updates': 0,
+            'api_calls_saved': 0,
+            'cache_hits': 0,
+            'cache_misses': 0
+        }
+    
     @property
     def balances(self) -> Dict[Symbol, AssetBalance]:
-        pass
-
+        if not hasattr(self, '_symbol_balances_cache') or self._balance_cache_dirty:
+            symbol_balances = {}
+            for asset_name, balance in self._balances_dict.items():
+                dummy_symbol = Symbol(base=asset_name, quote=AssetName("USDT"))
+                symbol_balances[dummy_symbol] = balance
+            self._symbol_balances_cache = MappingProxyType(symbol_balances)
+            self._balance_cache_dirty = False
+        
+        return self._symbol_balances_cache
+    
     @property
     def active_symbols(self) -> List[Symbol]:
-        pass
-
+        return list(self._active_symbols)
+    
     @property
     def orderbook(self) -> OrderBook:
-        pass
-
-    def __init__(self, api_key: str = None, secret_key: str = None):
-        super().__init__('MEXC', api_key, secret_key)
-
-    async def init(self, symbols: List[Symbol] = None) -> None:
-        pass
-
+        if self._latest_orderbook is not None:
+            return self._latest_orderbook
+        
+        return OrderBook(bids=[], asks=[], timestamp=time.time())
+    
+    def get_orderbook(self, symbol: Symbol) -> Optional[OrderBook]:
+        return self._orderbooks.get(symbol)
+    
+    def get_asset_balance(self, asset: AssetName) -> Optional[AssetBalance]:
+        return self._balances_dict.get(asset)
+    
+    def get_all_orderbooks(self) -> Dict[Symbol, OrderBook]:
+        return MappingProxyType(self._orderbooks)
+    
+    async def init(self, symbols: Optional[List[Symbol]] = None) -> None:
+        if self._initialized:
+            self.logger.warning("Exchange already initialized")
+            return
+        
+        try:
+            self._rest_public = MexcPublicExchange()
+            self.logger.info("Initialized public REST client")
+            
+            if self.has_private:
+                self._rest_private = MexcPrivateExchange(self.api_key, self.secret_key)
+                self.logger.info("Initialized private REST client")
+                
+                await self.refresh_balances()
+            
+            self._ws_client = MexcWebsocketPublic(
+                config=self._ws_config,
+                orderbook_handler=self._on_orderbook_update,
+                trades_handler=None
+            )
+            
+            await self._ws_client.init([])
+            self.logger.info("Started WebSocket client")
+            
+            self._initialized = True
+            
+            if symbols:
+                for symbol in symbols:
+                    await self.add_symbol(symbol)
+            
+            self.logger.info(f"Successfully initialized {self.exchange} exchange")
+            
+        except Exception as e:
+            self.logger.error(f"Failed to initialize exchange: {e}")
+            await self._cleanup_partial_init()
+            raise ExchangeAPIError(500, f"Exchange initialization failed: {str(e)}")
+    
     async def add_symbol(self, symbol: Symbol) -> None:
-        pass
-
+        if not self._initialized:
+            raise ExchangeAPIError(400, "Exchange not initialized. Call init() first.")
+        
+        if symbol in self._active_symbols:
+            self.logger.debug(f"Already subscribed to {symbol}")
+            return
+        
+        try:
+            if self._ws_client:
+                await self._ws_client.start_symbol(symbol)
+            
+            self._active_symbols.add(symbol)
+            
+            self._orderbooks[symbol] = OrderBook(
+                bids=[],
+                asks=[],
+                timestamp=time.time()
+            )
+            
+            self.logger.info(f"Subscribed to {symbol}")
+            
+        except Exception as e:
+            self.logger.error(f"Failed to subscribe to {symbol}: {e}")
+            raise ExchangeAPIError(500, f"Symbol subscription failed: {str(e)}")
+    
     async def remove_symbol(self, symbol: Symbol) -> None:
-        pass
-
-
+        if symbol not in self._active_symbols:
+            self.logger.debug(f"Not subscribed to {symbol}")
+            return
+        
+        try:
+            if self._ws_client:
+                await self._ws_client.stop_symbol(symbol)
+            
+            self._active_symbols.discard(symbol)
+            self._orderbooks.pop(symbol, None)
+            
+            self.logger.info(f"Unsubscribed from {symbol}")
+            
+        except Exception as e:
+            self.logger.error(f"Failed to unsubscribe from {symbol}: {e}")
+            raise ExchangeAPIError(500, f"Symbol unsubscription failed: {str(e)}")
+    
+    async def refresh_balances(self) -> None:
+        if not self.has_private or not self._rest_private:
+            raise ExchangeAPIError(400, "Private API access not configured")
+        
+        try:
+            balance_list = await self._rest_private.get_account_balance()
+            
+            new_balances = {}
+            for balance in balance_list:
+                new_balances[balance.asset] = balance
+            
+            self._balances_dict = new_balances
+            current_time = time.time()
+            self._balance_cache_time = current_time
+            self._balance_cache_expiry = current_time + self._balance_cache_ttl
+            self._balance_cache_dirty = True
+            
+            self.logger.debug(f"Refreshed {len(balance_list)} account balances")
+            
+        except Exception as e:
+            self.logger.error(f"Failed to refresh balances: {e}")
+            raise ExchangeAPIError(500, f"Balance refresh failed: {str(e)}")
+    
+    async def get_fresh_balances(self, max_age: float = 30.0) -> Dict[AssetName, AssetBalance]:
+        current_time = time.time()
+        
+        if current_time > self._balance_cache_expiry:
+            await self.refresh_balances()
+        
+        return self._balances_dict.copy()
+    
+    async def place_limit_order(
+        self,
+        symbol: Symbol,
+        side: Side,
+        amount: float,
+        price: float,
+        time_in_force: TimeInForce = TimeInForce.GTC
+    ) -> Order:
+        if not self.has_private or not self._rest_private:
+            raise ExchangeAPIError(400, "Private API credentials required for trading")
+        
+        try:
+            order = await self._rest_private.place_order(
+                symbol=symbol,
+                side=side,
+                order_type=OrderType.LIMIT,
+                amount=amount,
+                price=price,
+                time_in_force=time_in_force
+            )
+            
+            self.logger.info(
+                f"Placed limit {side.name} order: {amount} {symbol.base} "
+                f"at {price} {symbol.quote} (Order ID: {order.order_id})"
+            )
+            
+            return order
+            
+        except Exception as e:
+            self.logger.error(f"Failed to place limit order: {e}")
+            raise
+    
+    async def place_market_order(
+        self,
+        symbol: Symbol,
+        side: Side,
+        amount: Optional[float] = None,
+        quote_amount: Optional[float] = None
+    ) -> Order:
+        if not self.has_private or not self._rest_private:
+            raise ExchangeAPIError(400, "Private API credentials required for trading")
+        
+        if side == Side.BUY:
+            if amount is None and quote_amount is None:
+                raise ValueError("Either amount or quote_amount is required for market buy orders")
+        elif side == Side.SELL:
+            if amount is None:
+                raise ValueError("Amount is required for market sell orders")
+            if quote_amount is not None:
+                raise ValueError("quote_amount not supported for market sell orders")
+        
+        try:
+            order = await self._rest_private.place_order(
+                symbol=symbol,
+                side=side,
+                order_type=OrderType.MARKET,
+                amount=amount,
+                quote_quantity=quote_amount
+            )
+            
+            if quote_amount and side == Side.BUY:
+                self.logger.info(
+                    f"Placed market {side.name} order: {quote_amount} {symbol.quote} "
+                    f"worth of {symbol.base} (Order ID: {order.order_id})"
+                )
+            else:
+                self.logger.info(
+                    f"Placed market {side.name} order: {amount} {symbol.base} "
+                    f"(Order ID: {order.order_id})"
+                )
+            
+            return order
+            
+        except Exception as e:
+            self.logger.error(f"Failed to place market order: {e}")
+            raise
+    
+    async def cancel_order(self, symbol: Symbol, order_id: OrderId) -> Order:
+        if not self.has_private or not self._rest_private:
+            raise ExchangeAPIError(400, "Private API credentials required for trading")
+        
+        try:
+            order = await self._rest_private.cancel_order(symbol, order_id)
+            
+            self.logger.info(
+                f"Cancelled order {order_id} for {symbol.base}/{symbol.quote}"
+            )
+            
+            return order
+            
+        except Exception as e:
+            self.logger.error(f"Failed to cancel order {order_id}: {e}")
+            raise
+    
+    async def cancel_all_orders(self, symbol: Symbol) -> List[Order]:
+        if not self.has_private or not self._rest_private:
+            raise ExchangeAPIError(400, "Private API credentials required for trading")
+        
+        try:
+            orders = await self._rest_private.cancel_all_orders(symbol)
+            
+            self.logger.info(
+                f"Cancelled {len(orders)} orders for {symbol.base}/{symbol.quote}"
+            )
+            
+            return orders
+            
+        except Exception as e:
+            self.logger.error(f"Failed to cancel all orders for {symbol}: {e}")
+            raise
+    
+    async def get_order_status(self, symbol: Symbol, order_id: OrderId) -> Order:
+        if not self.has_private or not self._rest_private:
+            raise ExchangeAPIError(400, "Private API credentials required for trading")
+        
+        cache_key = f"{symbol.base}{symbol.quote}:{order_id}"
+        if cache_key in self._completed_order_cache:
+            cached_order = self._completed_order_cache[cache_key]
+            self._completed_order_cache.move_to_end(cache_key)
+            self._performance_metrics['cache_hits'] += 1
+            self._performance_metrics['api_calls_saved'] += 1
+            self.logger.debug(f"Cache hit for order {order_id}")
+            return cached_order
+        
+        self._performance_metrics['cache_misses'] += 1
+        
+        try:
+            order = await self._rest_private.get_order(symbol, order_id)
+            
+            if order.status.name in ['FILLED', 'CANCELED', 'REJECTED', 'EXPIRED']:
+                self._completed_order_cache[cache_key] = order
+                if len(self._completed_order_cache) > self._max_cache_size:
+                    self._completed_order_cache.popitem(last=False)
+            
+            self.logger.debug(
+                f"Retrieved order {order_id} status: {order.status.name}"
+            )
+            
+            return order
+            
+        except Exception as e:
+            self.logger.error(f"Failed to get order status for {order_id}: {e}")
+            raise
+    
+    async def get_open_orders(self, symbol: Optional[Symbol] = None) -> List[Order]:
+        if not self.has_private or not self._rest_private:
+            raise ExchangeAPIError(400, "Private API credentials required for trading")
+        
+        try:
+            orders = await self._rest_private.get_open_orders(symbol)
+            
+            symbol_str = f" for {symbol.base}/{symbol.quote}" if symbol else ""
+            self.logger.debug(f"Retrieved {len(orders)} open orders{symbol_str}")
+            
+            return orders
+            
+        except Exception as e:
+            symbol_str = f" for {symbol}" if symbol else ""
+            self.logger.error(f"Failed to get open orders{symbol_str}: {e}")
+            raise
+    
+    async def modify_order(
+        self,
+        symbol: Symbol,
+        order_id: OrderId,
+        new_amount: Optional[float] = None,
+        new_price: Optional[float] = None,
+        new_time_in_force: Optional[TimeInForce] = None
+    ) -> Order:
+        if not self.has_private or not self._rest_private:
+            raise ExchangeAPIError(400, "Private API credentials required for trading")
+        
+        try:
+            order = await self._rest_private.modify_order(
+                symbol=symbol,
+                order_id=order_id,
+                amount=new_amount,
+                price=new_price,
+                time_in_force=new_time_in_force
+            )
+            
+            self.logger.info(
+                f"Modified order {order_id} -> {order.order_id} for {symbol.base}/{symbol.quote}"
+            )
+            
+            return order
+            
+        except Exception as e:
+            self.logger.error(f"Failed to modify order {order_id}: {e}")
+            raise
+    
+    async def _on_orderbook_update(self, symbol: Symbol, orderbook: OrderBook) -> None:
+        if symbol in self._active_symbols:
+            if len(orderbook.bids) > 100:
+                orderbook.bids = orderbook.bids[:100]
+            if len(orderbook.asks) > 100:
+                orderbook.asks = orderbook.asks[:100]
+            
+            self._orderbooks[symbol] = orderbook
+            self._performance_metrics['orderbook_updates'] += 1
+            
+            if (self._latest_orderbook is None or 
+                orderbook.timestamp > self._latest_orderbook.timestamp):
+                self._latest_orderbook = orderbook
+                self._latest_orderbook_symbol = symbol
+            
+            self.logger.debug(
+                f"Updated orderbook for {symbol}: "
+                f"{len(orderbook.bids)} bids, {len(orderbook.asks)} asks"
+            )
+    
+    async def _cleanup_partial_init(self) -> None:
+        if self._ws_client:
+            try:
+                await self._ws_client.ws_client.stop()
+            except Exception as e:
+                self.logger.error(f"Error stopping WebSocket during cleanup: {e}")
+        
+        if self._rest_private:
+            try:
+                await self._rest_private.close()
+            except Exception as e:
+                self.logger.error(f"Error closing private REST during cleanup: {e}")
+        
+        self._active_symbols.clear()
+        self._orderbooks.clear()
+        self._balances_dict.clear()
+        self._completed_order_cache.clear()
+        self._latest_orderbook = None
+        self._latest_orderbook_symbol = None
+        self._initialized = False
+    
+    async def close(self) -> None:
+        self.logger.info("Closing exchange connections...")
+        
+        if self._ws_client:
+            try:
+                await self._ws_client.ws_client.stop()
+                self.logger.info("Closed WebSocket client")
+            except Exception as e:
+                self.logger.error(f"Error closing WebSocket: {e}")
+        
+        if self._rest_private:
+            try:
+                await self._rest_private.close()
+                self.logger.info("Closed private REST client")
+            except Exception as e:
+                self.logger.error(f"Error closing private REST: {e}")
+        
+        self._active_symbols.clear()
+        self._orderbooks.clear()
+        self._balances_dict.clear()
+        self._completed_order_cache.clear()
+        self._latest_orderbook = None
+        self._latest_orderbook_symbol = None
+        self._initialized = False
+        
+        self.logger.info(f"Successfully closed {self.exchange} exchange")
+    
+    @asynccontextmanager
+    async def session(self, symbols: Optional[List[Symbol]] = None):
+        try:
+            await self.init(symbols)
+            yield self
+        finally:
+            await self.close()
+    
+    async def buy_limit(self, symbol: Symbol, amount: float, price: float) -> Order:
+        return await self.place_limit_order(symbol, Side.BUY, amount, price)
+    
+    async def sell_limit(self, symbol: Symbol, amount: float, price: float) -> Order:
+        return await self.place_limit_order(symbol, Side.SELL, amount, price)
+    
+    async def buy_market(self, symbol: Symbol, quote_amount: float) -> Order:
+        return await self.place_market_order(symbol, Side.BUY, quote_amount=quote_amount)
+    
+    async def sell_market(self, symbol: Symbol, amount: float) -> Order:
+        return await self.place_market_order(symbol, Side.SELL, amount=amount)
+    
+    def get_performance_metrics(self) -> Dict[str, int]:
+        total_requests = self._performance_metrics['cache_hits'] + self._performance_metrics['cache_misses']
+        cache_hit_rate = (self._performance_metrics['cache_hits'] / total_requests * 100) if total_requests > 0 else 0
+        
+        return {
+            **self._performance_metrics,
+            'total_cache_requests': total_requests,
+            'cache_hit_rate_percent': round(cache_hit_rate, 1),
+            'active_symbols_count': len(self._active_symbols),
+            'cached_orders_count': len(self._completed_order_cache)
+        }
+    
+    def __repr__(self) -> str:
+        return (
+            f"MexcExchange(symbols={len(self._active_symbols)}, "
+            f"balances={len(self._balances_dict)}, "
+            f"initialized={self._initialized})"
+        )
