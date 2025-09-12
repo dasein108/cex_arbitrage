@@ -13,12 +13,11 @@ Performance characteristics:
 
 import array
 import threading
-from typing import List, Optional, Any
+from typing import List
 from dataclasses import dataclass, field
-from collections import deque
 from sortedcontainers import SortedDict
 
-from structs.exchange import OrderBookEntry, OrderBook
+from exchanges.interface.structs import OrderBookEntry, OrderBook
 
 
 class RingBufferPool:

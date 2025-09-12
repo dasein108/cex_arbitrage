@@ -1,6 +1,6 @@
 from abc import ABC
 from typing import List, Dict, Any, Set, Optional, Callable, Awaitable
-from structs.exchange import ExchangeName, Symbol
+from exchanges.interface.structs import ExchangeName, Symbol
 from common.ws_client import WebSocketConfig, WebsocketClient, SubscriptionAction
 from itertools import chain
 

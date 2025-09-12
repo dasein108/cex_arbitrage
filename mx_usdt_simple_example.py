@@ -18,7 +18,7 @@ from pathlib import Path
 # Setup imports
 sys.path.append(str(Path(__file__).parent / "src"))
 
-from structs.exchange import Symbol, AssetName, Side
+from exchanges.interface.structs import Symbol, AssetName, Side
 from exchanges.mexc.rest.mexc_public import MexcPublicExchange
 from exchanges.mexc.rest.mexc_private import MexcPrivateExchange
 from common.exceptions import ExchangeAPIError
@@ -204,5 +204,5 @@ def main():
 
 if __name__ == "__main__":
     # Import OrderType here to avoid issues in the main function
-    from structs.exchange import OrderType
+    from exchanges.interface.structs import OrderType
     main()

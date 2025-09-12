@@ -3,7 +3,7 @@ from typing import Dict, List
 
 # Import unified types from src
 try:
-    from src.structs.exchange import ExchangeName, Symbol
+    from exchanges.interface.structs import ExchangeName, Symbol
 except ImportError:
     # Fallback for raw/ module compatibility
     from typing import NewType

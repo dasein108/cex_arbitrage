@@ -16,7 +16,7 @@ Performance: Optimized for high-frequency trading with minimal allocations
 
 from typing import Tuple, Dict
 from datetime import datetime
-from structs.exchange import Symbol, AssetName, AssetBalance, Order, OrderId
+from exchanges.interface.structs import Symbol, AssetName, AssetBalance, Order, OrderId
 from exchanges.mexc.common.mexc_struct import MexcOrderResponse, MexcBalanceResponse
 from exchanges.mexc.common.mexc_mappings import MexcMappings
 

@@ -23,18 +23,17 @@ Memory: O(1) per request, optimized for trading operations
 
 import hashlib
 import hmac
-import time
 import urllib.parse
 from typing import Dict, List, Optional
 import logging
 import msgspec
 
 from exchanges.mexc.common.mexc_struct import (
-    MexcAccountResponse, MexcBalanceResponse, MexcOrderResponse, MexcErrorResponse
+    MexcAccountResponse, MexcOrderResponse, MexcErrorResponse
 )
-from structs.exchange import (
+from exchanges.interface.structs import (
     Symbol, Order, OrderId, OrderType, Side, AssetBalance,
-    AssetName, OrderStatus, ExchangeName, TimeInForce
+    AssetName, TimeInForce
 )
 from common.rest_client import RestClient
 from common.exceptions import ExchangeAPIError

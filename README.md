@@ -318,7 +318,7 @@ async def example_usage():
 # ✅ CORRECT: Using unified interface standards
 from exchanges.interface.rest.base_rest_public import PublicExchangeInterface
 from exchanges.interface.rest.base_rest_private import PrivateExchangeInterface
-from src.structs.exchange import Symbol, OrderBook, Order, ExchangeName
+from exchanges.interface.structs import Symbol, OrderBook, Order, ExchangeName
 from src.common.rest_client import HighPerformanceRestClient, RequestConfig
 from src.common.exceptions import ExchangeAPIError, RateLimitError
 
@@ -455,7 +455,7 @@ The `raw/` directory contains legacy code that is **incompatible with unified in
    
    # ✅ REPLACE with unified imports:
    from exchanges.interface.rest.base_rest_public import PublicExchangeInterface
-   from src.structs.exchange import Order, SymbolInfo, AssetBalance
+   from exchanges.interface.structs import Order, SymbolInfo, AssetBalance
    from src.common.exceptions import ExchangeAPIError
    ```
 

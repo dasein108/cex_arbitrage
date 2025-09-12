@@ -6,7 +6,7 @@ Used for API validation and response verification for authenticated endpoints.
 """
 
 import asyncio
-from structs.exchange import Symbol, AssetName, Side, OrderType, TimeInForce
+from exchanges.interface.structs import Symbol, AssetName, Side, OrderType, TimeInForce
 from exchanges.mexc.rest.mexc_private import MexcPrivateExchange
 
 

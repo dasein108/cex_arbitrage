@@ -18,21 +18,18 @@ Compliance: Full PublicExchangeInterface implementation
 Memory: O(1) per request with efficient pooling
 """
 
-import asyncio
 import time
-import logging
 from typing import Dict, List, Optional, Any
 from enum import Enum
 from functools import lru_cache
 
 # MANDATORY imports - unified interface compliance
-from structs.exchange import (
+from exchanges.interface.structs import (
     Symbol, SymbolInfo, OrderBook, OrderBookEntry, Trade,
     ExchangeName, AssetName, Side, KlineInterval
 )
-from common.rest_client import RestClient, RestConfig
+from common.rest_client import RestClient
 from common.config import config
-from common.exceptions import ExchangeAPIError, RateLimitError
 from exchanges.interface.rest.base_rest_public import PublicExchangeInterface
 
 import msgspec

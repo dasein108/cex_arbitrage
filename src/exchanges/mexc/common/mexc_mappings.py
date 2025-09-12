@@ -15,7 +15,7 @@ Threading: All constants are thread-safe (immutable)
 Performance: Dict-based lookups optimized for O(1) access
 """
 
-from structs.exchange import OrderStatus, OrderType, Side, TimeInForce
+from exchanges.interface.structs import OrderStatus, OrderType, Side, TimeInForce
 from common.exceptions import (
     ExchangeAPIError, RateLimitError, TradingDisabled,
     InsufficientPosition, OversoldException

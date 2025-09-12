@@ -23,14 +23,13 @@ Memory: O(1) per request, optimized for high-frequency access
 
 import time
 from typing import Dict, List, Optional
-import logging
 import msgspec
 
 from exchanges.mexc.common.mexc_struct import (
     MexcSymbolResponse, MexcExchangeInfoResponse, 
     MexcOrderBookResponse, MexcTradeResponse, MexcServerTimeResponse
 )
-from structs.exchange import (
+from exchanges.interface.structs import (
     Symbol, SymbolInfo, OrderBook, OrderBookEntry, Trade,
     AssetName, Side, ExchangeName
 )

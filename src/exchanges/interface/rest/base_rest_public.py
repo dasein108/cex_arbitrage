@@ -1,8 +1,8 @@
 import logging
-from abc import abstractmethod, ABC
+from abc import abstractmethod
 from typing import Dict, List
 from .base_rest import BaseExchangeInterface
-from structs.exchange import (
+from exchanges.interface.structs import (
     Symbol,
     SymbolInfo,
     OrderBook,

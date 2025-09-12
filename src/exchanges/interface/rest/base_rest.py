@@ -1,5 +1,5 @@
 from abc import ABC
-from structs.exchange import ExchangeName
+from exchanges.interface.structs import ExchangeName
 
 
 class BaseExchangeInterface(ABC):

@@ -1,4 +1,3 @@
-import asyncio
 import logging
 import time
 from typing import List, Dict, Optional, Set
@@ -7,7 +6,7 @@ from types import MappingProxyType
 from collections import OrderedDict
 
 from exchanges.interface.base_exchange import BaseExchangeInterface
-from structs.exchange import OrderBook, Symbol, AssetBalance, AssetName, Order, OrderId, OrderType, Side, TimeInForce
+from exchanges.interface.structs import OrderBook, Symbol, AssetBalance, AssetName, Order, OrderId, OrderType, Side, TimeInForce
 from exchanges.mexc.ws.mexc_ws_public import MexcWebsocketPublic
 from exchanges.mexc.rest.mexc_private import MexcPrivateExchange
 from exchanges.mexc.rest.mexc_public import MexcPublicExchange

@@ -2,9 +2,9 @@ import logging
 import time
 import msgspec
 from collections import deque
-from typing import List, Any, Dict, Optional, Callable, Awaitable
+from typing import List, Dict, Optional, Callable, Awaitable
 from exchanges.interface.websocket.base_ws import BaseExchangeWebsocketInterface
-from structs.exchange import Symbol, Trade, OrderBook, OrderBookEntry, Side
+from exchanges.interface.structs import Symbol, Trade, OrderBook, OrderBookEntry, Side
 from exchanges.mexc.common.mexc_config import MexcConfig
 from exchanges.mexc.common.mexc_utils import MexcUtils
 from common.ws_client import SubscriptionAction, WebSocketConfig

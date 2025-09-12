@@ -8,7 +8,7 @@ Tests listen key creation, connection, subscription, and private event handling.
 import asyncio
 import logging
 from typing import List
-from structs.exchange import Symbol, AssetName, Order, AssetBalance, Trade
+from exchanges.interface.structs import Order, AssetBalance, Trade
 from exchanges.mexc.ws.mexc_ws_private import MexcWebsocketPrivate
 from exchanges.mexc.rest.mexc_private import MexcPrivateExchange
 from common.ws_client import WebSocketConfig

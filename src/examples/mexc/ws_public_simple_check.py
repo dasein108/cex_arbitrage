@@ -7,7 +7,7 @@ Tests connection, subscription, and basic message handling.
 
 import asyncio
 import logging
-from structs.exchange import Symbol, AssetName, OrderBook, Trade
+from exchanges.interface.structs import Symbol, AssetName, OrderBook, Trade
 from exchanges.mexc.ws.mexc_ws_public import MexcWebsocketPublic
 from common.ws_client import WebSocketConfig
 from typing import List, Dict

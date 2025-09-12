@@ -266,7 +266,7 @@ class AccountInfo(Struct):
 ### **Basic Trading Workflow**
 
 ```python
-from structs.exchange import *
+from exchanges.interface.structs import *
 from exchanges.mexc.rest.mexc_public import MexcPublicExchange
 
 
