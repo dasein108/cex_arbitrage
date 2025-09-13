@@ -33,7 +33,6 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from decimal import Decimal, ROUND_DOWN
 from typing import Dict, List, Optional, Tuple, Any
 from dataclasses import dataclass
 from enum import IntEnum
@@ -88,7 +87,7 @@ class ExecutionPlan:
     execution_strategy: ExecutionStrategy
     orders: List['OrderInstruction']
     total_estimated_time_ms: int
-    risk_tolerance: Decimal
+    risk_tolerance: float               # HFT optimized: float vs Decimal
     max_slippage_bps: int
     require_atomic_completion: bool = True
 
@@ -106,8 +105,8 @@ class OrderInstruction:
     symbol: Symbol
     side: OrderSide
     order_type: OrderType
-    quantity: Decimal
-    price: Optional[Decimal]
+    quantity: float                      # HFT optimized: float vs Decimal
+    price: Optional[float]               # HFT optimized: float vs Decimal
     time_in_force: Optional[str]
     execution_priority: int  # Lower number = higher priority
     depends_on: Optional[str] = None  # instruction_id dependency
@@ -132,13 +131,16 @@ class OrderInstruction:
         
         Performance: <1ms parameter formatting
         """
-        # TODO: Implement exchange-specific formatting
+        # HFT OPTIMIZED: Fast formatting without Decimal overhead
+        quantity_str = f"{self.quantity:.{self.precision_decimals}f}"
+        price_str = f"{self.price:.{self.precision_decimals}f}" if self.price else None
+        
         return {
             "symbol": str(self.symbol),
             "side": self.side.name.lower(),
             "type": self.order_type.name.lower(),
-            "quantity": str(self.quantity.quantize(Decimal('0.' + '0' * self.precision_decimals))),
-            "price": str(self.price) if self.price else None,
+            "quantity": quantity_str,
+            "price": price_str,
         }
 
 

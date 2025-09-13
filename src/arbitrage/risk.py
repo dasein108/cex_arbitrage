@@ -32,7 +32,6 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from decimal import Decimal
 from typing import Dict, List, Optional, Set, Callable, Any, Tuple
 from dataclasses import dataclass
 
@@ -59,16 +58,16 @@ class RiskMetrics:
     Real-time risk calculations and exposure measurements
     across all positions and exchanges.
     """
-    total_exposure_usd: Decimal
-    max_single_position_usd: Decimal
-    total_unrealized_pnl: Decimal
-    daily_realized_pnl: Decimal
+    total_exposure_usd: float           # HFT optimized: float vs Decimal
+    max_single_position_usd: float      # HFT optimized: float vs Decimal
+    total_unrealized_pnl: float         # HFT optimized: float vs Decimal
+    daily_realized_pnl: float           # HFT optimized: float vs Decimal
     positions_count: int
     exchanges_count: int
-    var_95_1day: Decimal  # Value at Risk 95% confidence 1 day
-    concentration_risk: Decimal  # Largest single exposure %
-    correlation_exposure: Decimal  # Correlated position exposure
-    liquidity_risk_score: Decimal  # Liquidity risk assessment
+    var_95_1day: float                  # Value at Risk 95% confidence 1 day
+    concentration_risk: float           # Largest single exposure %
+    correlation_exposure: float         # Correlated position exposure
+    liquidity_risk_score: float         # Liquidity risk assessment
     timestamp: int
 
 
@@ -136,10 +135,10 @@ class RiskManager:
         self._circuit_breakers: CircuitBreakerStatus = self._initialize_circuit_breakers()
         self._risk_monitoring_active = False
         
-        # Position and Exposure Tracking
-        self._position_exposures: Dict[str, Decimal] = {}  # position_id -> exposure_usd
-        self._exchange_exposures: Dict[ExchangeName, Decimal] = {}  # exchange -> exposure_usd
-        self._symbol_exposures: Dict[Symbol, Decimal] = {}  # symbol -> exposure_usd
+        # Position and Exposure Tracking (HFT optimized with float)
+        self._position_exposures: Dict[str, float] = {}  # position_id -> exposure_usd
+        self._exchange_exposures: Dict[ExchangeName, float] = {}  # exchange -> exposure_usd
+        self._symbol_exposures: Dict[Symbol, float] = {}  # symbol -> exposure_usd
         
         # Risk Monitoring
         self._monitoring_task: Optional[asyncio.Task] = None
@@ -152,9 +151,9 @@ class RiskManager:
         self._circuit_breaker_triggers = 0
         self._emergency_shutdowns = 0
         
-        # Daily P&L Tracking
-        self._daily_pnl_start = Decimal("0")
-        self._daily_realized_pnl = Decimal("0")
+        # Daily P&L Tracking (HFT optimized with float)
+        self._daily_pnl_start = 0.0
+        self._daily_realized_pnl = 0.0
         self._daily_pnl_reset_time = 0
         
         logger.info("Risk manager initialized with comprehensive monitoring")
@@ -339,29 +338,31 @@ class RiskManager:
                     self._opportunities_rejected += 1
                     return False
                 
-                # TODO: Check position size limits
+                # HFT OPTIMIZED: Ultra-fast float calculations for critical path
                 position_size_usd = opportunity.buy_price * opportunity.max_quantity
+                
+                # Fast position size check
                 if position_size_usd > self.risk_limits.max_position_size_usd:
                     logger.warning(f"Opportunity rejected due to position size limit: {opportunity.opportunity_id}")
                     self._opportunities_rejected += 1
                     return False
                 
-                # TODO: Check total exposure limits
+                # Fast total exposure check  
                 current_exposure = await self._calculate_current_exposure()
                 if current_exposure + position_size_usd > self.risk_limits.max_total_exposure_usd:
                     logger.warning(f"Opportunity rejected due to total exposure limit: {opportunity.opportunity_id}")
                     self._opportunities_rejected += 1
                     return False
                 
-                # TODO: Check exchange exposure limits
-                exchange_exposure = self._exchange_exposures.get(opportunity.buy_exchange, Decimal("0"))
+                # Fast exchange exposure check (using defaultdict pattern for O(1) access)
+                exchange_exposure = self._exchange_exposures.get(opportunity.buy_exchange, 0.0)
                 if exchange_exposure + position_size_usd > self.risk_limits.max_exchange_exposure_usd:
                     logger.warning(f"Opportunity rejected due to exchange exposure limit: {opportunity.opportunity_id}")
                     self._opportunities_rejected += 1
                     return False
                 
-                # TODO: Check symbol exposure limits
-                symbol_exposure = self._symbol_exposures.get(opportunity.symbol, Decimal("0"))
+                # Fast symbol exposure check
+                symbol_exposure = self._symbol_exposures.get(opportunity.symbol, 0.0)
                 if symbol_exposure + position_size_usd > self.risk_limits.max_symbol_exposure_usd:
                     logger.warning(f"Opportunity rejected due to symbol exposure limit: {opportunity.opportunity_id}")
                     self._opportunities_rejected += 1
@@ -384,7 +385,7 @@ class RiskManager:
     async def update_position_exposure(
         self,
         position: PositionEntry,
-        current_price: Optional[Decimal] = None,
+        current_price: Optional[float] = None,
     ) -> None:
         """
         Update exposure tracking for position.
@@ -415,14 +416,14 @@ class RiskManager:
             # Update position exposure tracking
             self._position_exposures[position.position_id] = exposure
             
-            # Update exchange exposure
+            # Update exchange exposure (HFT optimized with float)
             if position.exchange not in self._exchange_exposures:
-                self._exchange_exposures[position.exchange] = Decimal("0")
+                self._exchange_exposures[position.exchange] = 0.0
             # TODO: Recalculate exchange exposure from all positions
             
-            # Update symbol exposure
+            # Update symbol exposure (HFT optimized with float)
             if position.symbol not in self._symbol_exposures:
-                self._symbol_exposures[position.symbol] = Decimal("0")
+                self._symbol_exposures[position.symbol] = 0.0
             # TODO: Recalculate symbol exposure from all positions
             
             logger.debug(f"Updated position exposure: {position.position_id} = ${exposure}")
@@ -506,8 +507,8 @@ class RiskManager:
         if self._current_metrics.total_exposure_usd > self.risk_limits.max_total_exposure_usd:
             triggered_breakers.append("total_exposure_limit")
         
-        # TODO: Evaluate position concentration
-        if self._current_metrics.concentration_risk > Decimal("0.5"):  # 50% concentration threshold
+        # HFT OPTIMIZED: Fast concentration risk check with float
+        if self._current_metrics.concentration_risk > 0.5:  # 50% concentration threshold
             triggered_breakers.append("concentration_risk")
         
         # TODO: Evaluate other circuit breaker conditions
@@ -594,8 +595,8 @@ class RiskManager:
         # TODO: Implement concentration and correlation risk monitoring
         pass
     
-    async def _calculate_current_exposure(self) -> Decimal:
-        """Calculate current total exposure across all positions."""
+    async def _calculate_current_exposure(self) -> float:
+        """Calculate current total exposure across all positions (HFT optimized)."""
         return sum(self._position_exposures.values())
     
     async def _recalculate_exposures(self) -> None:

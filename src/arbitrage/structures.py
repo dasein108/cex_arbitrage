@@ -14,7 +14,6 @@ Design Principles:
 
 from __future__ import annotations
 
-from decimal import Decimal
 from enum import IntEnum
 from typing import Dict, List, Optional, Any
 from msgspec import Struct
@@ -86,20 +85,20 @@ class ArbitrageOpportunity(Struct, frozen=True):
     symbol: Symbol                        # Trading pair symbol
     buy_exchange: ExchangeName           # Exchange to buy from
     sell_exchange: ExchangeName          # Exchange to sell to
-    buy_price: Decimal                   # Exact buy price with full precision
-    sell_price: Decimal                  # Exact sell price with full precision
+    buy_price: float                     # Buy price (float for HFT performance)
+    sell_price: float                    # Sell price (float for HFT performance)
     
     # Execution Parameters
-    max_quantity: Decimal                # Maximum tradeable quantity
-    profit_per_unit: Decimal             # Profit per unit before fees
-    total_profit_estimate: Decimal       # Estimated total profit after fees
+    max_quantity: float                  # Maximum tradeable quantity
+    profit_per_unit: float               # Profit per unit before fees
+    total_profit_estimate: float         # Estimated total profit after fees
     profit_margin_bps: int               # Profit margin in basis points
     
     # Risk Metrics
-    price_impact_estimate: Decimal       # Estimated slippage impact
+    price_impact_estimate: float         # Estimated slippage impact
     execution_time_window_ms: int        # Maximum execution window (HFT target: <50ms)
-    required_balance_buy: Decimal        # Required balance on buy exchange
-    required_balance_sell: Decimal       # Required balance on sell exchange
+    required_balance_buy: float          # Required balance on buy exchange
+    required_balance_sell: float         # Required balance on sell exchange
     
     # Validation Data
     timestamp_detected: int              # Detection timestamp (milliseconds)
@@ -109,8 +108,8 @@ class ArbitrageOpportunity(Struct, frozen=True):
     
     # Futures Hedge Parameters (for SPOT_FUTURES_HEDGE)
     futures_symbol: Optional[Symbol] = None      # Futures contract symbol
-    hedge_ratio: Optional[Decimal] = None        # Hedge ratio (typically 1.0)
-    futures_price: Optional[Decimal] = None      # Futures entry price
+    hedge_ratio: Optional[float] = None          # Hedge ratio (typically 1.0)
+    futures_price: Optional[float] = None        # Futures entry price
     
     def calculate_minimum_profit_threshold(self, min_profit_bps: int = 10) -> bool:
         """
@@ -160,28 +159,28 @@ class PositionEntry(Struct, frozen=True):
     exchange: ExchangeName              # Exchange where position exists
     symbol: Symbol                      # Trading pair
     side: OrderSide                     # BUY or SELL
-    quantity: Decimal                   # Position size (exact decimal)
-    entry_price: Decimal                # Average entry price
+    quantity: float                     # Position size (float for HFT performance)
+    entry_price: float                  # Average entry price
     
     # Execution Metadata
     order_id: str                       # Exchange order ID
     execution_timestamp: int            # Fill timestamp (milliseconds)
     execution_stage: ExecutionStage     # Stage when position created
-    fees_paid: Decimal                  # Total fees paid in quote currency
+    fees_paid: float                    # Total fees paid in quote currency
     
     # Position Management
     is_hedge: bool = False              # True if futures hedge position
-    hedge_ratio: Optional[Decimal] = None    # Hedge ratio if applicable
+    hedge_ratio: Optional[float] = None      # Hedge ratio if applicable
     requires_closing: bool = False      # True if position needs manual close
     
     # Recovery Information
     partial_fill: bool = False          # True if partially filled
-    remaining_quantity: Decimal = Decimal("0")  # Unfilled quantity
+    remaining_quantity: float = 0.0     # Unfilled quantity
     recovery_attempts: int = 0          # Number of recovery attempts
     
-    def calculate_unrealized_pnl(self, current_price: Decimal) -> Decimal:
+    def calculate_unrealized_pnl(self, current_price: float) -> float:
         """
-        TODO: Calculate unrealized P&L for position monitoring.
+        Calculate unrealized P&L for position monitoring.
         
         Logic Requirements:
         - Calculate P&L based on current market price
@@ -189,15 +188,17 @@ class PositionEntry(Struct, frozen=True):
         - Include fees in P&L calculation
         - Handle different quote currencies between exchanges
         
-        Questions:
-        - Should we mark-to-market using mid price or best bid/offer?
-        - How to handle cross-currency P&L calculations?
-        - Should fees be amortized over position lifetime?
-        
-        Performance: O(1) calculation, sub-millisecond target
+        Performance: O(1) calculation, sub-millisecond target (optimized with float)
         """
-        # TODO: Implement P&L calculation logic
-        return Decimal("0")
+        if self.side == OrderSide.BUY:
+            # Long position: profit when price goes up
+            pnl = (current_price - self.entry_price) * self.quantity
+        else:
+            # Short position: profit when price goes down
+            pnl = (self.entry_price - current_price) * self.quantity
+        
+        # Subtract fees
+        return pnl - self.fees_paid
     
     def is_position_stale(self, max_age_seconds: int = 300) -> bool:
         """
@@ -234,15 +235,15 @@ class ExecutionResult(Struct, frozen=True):
     
     # Financial Results
     positions_created: List[PositionEntry]  # All positions created
-    realized_profit: Decimal            # Actual profit realized (post-fees)
-    total_fees_paid: Decimal           # Sum of all exchange fees
-    slippage_cost: Decimal             # Total slippage vs expected prices
+    realized_profit: float              # Actual profit realized (post-fees)
+    total_fees_paid: float             # Sum of all exchange fees
+    slippage_cost: float               # Total slippage vs expected prices
     
     # Execution Quality Metrics
     orders_placed: int                  # Total orders attempted
     orders_filled: int                  # Total orders successfully filled
     partial_fills: int                  # Number of partial fills
-    execution_success_rate: Decimal     # Fill rate percentage
+    execution_success_rate: float       # Fill rate percentage
     
     # Error Information
     errors_encountered: List[str]       # Any errors during execution
@@ -253,9 +254,9 @@ class ExecutionResult(Struct, frozen=True):
     market_impact_bps: Optional[int] = None     # Measured market impact
     timing_analysis: Optional[Dict[str, Any]] = None  # Detailed timing breakdown
     
-    def calculate_execution_efficiency(self) -> Decimal:
+    def calculate_execution_efficiency(self) -> float:
         """
-        TODO: Calculate overall execution efficiency score.
+        Calculate overall execution efficiency score.
         
         Logic Requirements:
         - Combine execution time, slippage, and success rate
@@ -263,15 +264,19 @@ class ExecutionResult(Struct, frozen=True):
         - Normalize score to 0-100 scale for comparison
         - Consider market conditions impact on efficiency
         
-        Questions:
-        - What weights should be assigned to different factors?
-        - How to account for market volatility in efficiency scoring?
-        - Should efficiency be relative to historical performance?
-        
-        Use Case: Performance optimization and strategy tuning
+        Performance: Ultra-fast float calculations for real-time monitoring
         """
-        # TODO: Implement efficiency calculation
-        return Decimal("0")
+        if self.orders_placed == 0:
+            return 0.0
+        
+        # Efficiency factors (0-1 scale)
+        time_efficiency = max(0.0, 1.0 - (self.total_execution_time_ms / 50.0))  # Target: <50ms
+        fill_efficiency = self.execution_success_rate / 100.0  # Convert from percentage
+        cost_efficiency = max(0.0, 1.0 - (abs(self.slippage_cost) / max(abs(self.realized_profit), 1.0)))
+        
+        # Weighted combination
+        efficiency = (0.4 * time_efficiency + 0.4 * fill_efficiency + 0.2 * cost_efficiency) * 100.0
+        return min(100.0, max(0.0, efficiency))
     
     def identify_performance_bottlenecks(self) -> List[str]:
         """
@@ -298,26 +303,26 @@ class RiskLimits(Struct, frozen=True):
     and circuit breaker functionality for position protection.
     """
     # Position Size Limits
-    max_position_size_usd: Decimal      # Maximum position size in USD
-    max_total_exposure_usd: Decimal     # Maximum total exposure across all positions
-    max_exchange_exposure_usd: Decimal  # Maximum exposure per exchange
-    max_symbol_exposure_usd: Decimal    # Maximum exposure per trading pair
+    max_position_size_usd: float        # Maximum position size in USD
+    max_total_exposure_usd: float       # Maximum total exposure across all positions
+    max_exchange_exposure_usd: float    # Maximum exposure per exchange
+    max_symbol_exposure_usd: float      # Maximum exposure per trading pair
     
     # Profit and Loss Controls  
-    max_daily_loss_usd: Decimal         # Maximum daily loss threshold
-    max_single_loss_usd: Decimal        # Maximum loss per single arbitrage
+    max_daily_loss_usd: float           # Maximum daily loss threshold
+    max_single_loss_usd: float          # Maximum loss per single arbitrage
     min_profit_margin_bps: int          # Minimum profit margin in basis points
     stop_loss_threshold_bps: int        # Stop loss threshold in basis points
     
     # Execution Risk Controls
     max_execution_time_ms: int          # Maximum allowed execution time
     max_slippage_bps: int              # Maximum acceptable slippage
-    max_partial_fill_ratio: Decimal     # Maximum partial fill ratio (0.1 = 10%)
+    max_partial_fill_ratio: float       # Maximum partial fill ratio (0.1 = 10%)
     max_concurrent_operations: int      # Maximum concurrent arbitrage operations
     
     # Market Risk Parameters
     max_price_deviation_bps: int        # Maximum price deviation from fair value
-    min_market_depth_usd: Decimal      # Minimum order book depth required
+    min_market_depth_usd: float        # Minimum order book depth required
     max_spread_bps: int                # Maximum bid-ask spread tolerance
     volatility_circuit_breaker_bps: int # Volatility circuit breaker threshold
     
