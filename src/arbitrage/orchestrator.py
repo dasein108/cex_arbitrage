@@ -44,7 +44,7 @@ from .structures import (
     ArbitrageConfig,
 )
 
-from ..exchanges.interface.structs import (
+from exchanges.interface.structs import (
     Symbol,
     OrderSide,
     OrderType,
@@ -52,9 +52,9 @@ from ..exchanges.interface.structs import (
     Order,
     OrderResponse,
 )
-from ..exchanges.interface.private import PrivateExchangeInterface
-from ..common.types import ExchangeName
-from ..common.exceptions import OrderExecutionError, ExchangeError
+from exchanges.interface.private import PrivateExchangeInterface
+from common.types import ExchangeName
+from common.exceptions import OrderExecutionError, ExchangeError
 
 
 logger = logging.getLogger(__name__)

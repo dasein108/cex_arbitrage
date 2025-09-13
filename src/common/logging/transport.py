@@ -29,7 +29,7 @@ import zmq.asyncio
 import msgspec
 
 from .structures import LogType, LogStatistics
-from ..exceptions import HftException
+from common.exceptions import HftException
 
 
 class TransportException(HftException):

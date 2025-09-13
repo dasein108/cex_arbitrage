@@ -38,10 +38,10 @@ from dataclasses import dataclass
 
 from .structures import ArbitrageConfig
 
-from ..exchanges.interface.structs import Balance, Symbol
-from ..exchanges.interface.private import PrivateExchangeInterface
-from ..common.types import ExchangeName
-from ..common.exceptions import BalanceManagementError
+from exchanges.interface.structs import Balance, Symbol
+from exchanges.interface.private import PrivateExchangeInterface
+from common.types import ExchangeName
+from common.exceptions import BalanceManagementError
 
 
 logger = logging.getLogger(__name__)

@@ -41,7 +41,7 @@ from .structures import (
     ArbitrageConfig,
 )
 
-from ..common.exceptions import StateTransitionError
+from common.exceptions import StateTransitionError
 
 
 logger = logging.getLogger(__name__)

@@ -41,9 +41,9 @@ from .structures import (
 )
 from .aggregator import MarketDataAggregator
 
-from ..exchanges.interface.structs import Symbol, OrderBook, Ticker
-from ..common.types import ExchangeName
-from ..common.exceptions import ArbitrageDetectionError
+from exchanges.interface.structs import Symbol, OrderBook, Ticker
+from common.types import ExchangeName
+from common.exceptions import ArbitrageDetectionError
 
 
 logger = logging.getLogger(__name__)

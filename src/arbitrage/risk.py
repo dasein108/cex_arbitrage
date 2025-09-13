@@ -42,9 +42,9 @@ from .structures import (
     ArbitrageConfig,
 )
 
-from ..exchanges.interface.structs import Symbol
-from ..common.types import ExchangeName
-from ..common.exceptions import RiskManagementError
+from exchanges.interface.structs import Symbol
+from common.types import ExchangeName
+from common.exceptions import RiskManagementError
 
 
 logger = logging.getLogger(__name__)

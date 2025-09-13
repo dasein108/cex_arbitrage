@@ -37,16 +37,16 @@ from weakref import WeakSet
 
 from .structures import ArbitrageConfig
 
-from ..exchanges.interface.structs import (
+from exchanges.interface.structs import (
     Symbol,
     OrderBook,
     Ticker,
     Trade,
     SymbolInfo,
 )
-from ..exchanges.interface.public import PublicExchangeInterface
-from ..common.types import ExchangeName
-from ..common.exceptions import MarketDataError
+from exchanges.interface.public import PublicExchangeInterface
+from common.types import ExchangeName
+from common.exceptions import MarketDataError
 
 
 logger = logging.getLogger(__name__)

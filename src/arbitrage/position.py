@@ -45,10 +45,10 @@ from .structures import (
     ArbitrageConfig,
 )
 
-from ..exchanges.interface.structs import Symbol, OrderSide
-from ..exchanges.interface.private import PrivateExchangeInterface
-from ..common.types import ExchangeName
-from ..common.exceptions import PositionManagementError
+from exchanges.interface.structs import Symbol, OrderSide
+from exchanges.interface.private import PrivateExchangeInterface
+from common.types import ExchangeName
+from common.exceptions import PositionManagementError
 
 
 logger = logging.getLogger(__name__)

@@ -46,10 +46,10 @@ from .balance import BalanceMonitor
 from .recovery import RecoveryManager
 from .aggregator import MarketDataAggregator
 
-from ..exchanges.interface.public import PublicExchangeInterface
-from ..exchanges.interface.private import PrivateExchangeInterface
-from ..common.types import ExchangeName
-from ..common.exceptions import ArbitrageEngineError, ExchangeError
+from exchanges.interface.public import PublicExchangeInterface
+from exchanges.interface.private import PrivateExchangeInterface
+from common.types import ExchangeName
+from common.exceptions import ArbitrageEngineError, ExchangeError
 
 
 logger = logging.getLogger(__name__)

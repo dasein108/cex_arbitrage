@@ -39,7 +39,8 @@
       "WebFetch(domain:www.gate.io)",
       "WebFetch(domain:www.gate.com)",
       "WebFetch(domain:www.gateio.ws)",
-      "Bash(chmod:*)"
+      "Bash(chmod:*)",
+      "Bash(gtimeout:*)"
     ],
     "deny": [],
     "ask": []

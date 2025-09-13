@@ -32,7 +32,7 @@ from .structures import (
 )
 from .correlation import CorrelationManager, generate_correlation_id
 from .transport import CompositeTransport, FileTransport
-from ..exceptions import HftException
+from common.exceptions import HftException
 
 
 class LoggingDisabledException(HftException):

@@ -1,12 +1,13 @@
 """
-MEXC Configuration Management Module
+HFT Configuration Management Module
 
-Simple YAML-based configuration system for MEXC exchange integration.
-Loads configuration from config.yaml file with MEXC-specific settings.
+Comprehensive YAML-based configuration system for multi-exchange HFT trading
+including MEXC, Gate.io, and arbitrage engine settings.
 
 Key Features:
 - YAML-based configuration for better readability
-- MEXC-focused configuration
+- Multi-exchange support (MEXC, Gate.io)
+- HFT arbitrage engine configuration
 - Secure API key management
 - Type-safe configuration access
 - Clear error messages for missing settings
@@ -14,13 +15,17 @@ Key Features:
 Usage:
     from common.config import config
     
-    # MEXC API credentials
-    api_key = config.MEXC_API_KEY
-    secret = config.MEXC_SECRET_KEY
+    # Exchange API credentials
+    mexc_key = config.MEXC_API_KEY
+    gateio_key = config.GATEIO_API_KEY
     
     # System settings
     timeout = config.REQUEST_TIMEOUT
     debug = config.DEBUG_MODE
+    
+    # Arbitrage configuration
+    arb_config = config.get_arbitrage_config()
+    risk_limits = config.get_arbitrage_risk_limits()
 """
 
 import os
@@ -40,10 +45,11 @@ class ConfigurationError(Exception):
 
 class HftConfig:
     """
-    MEXC-focused configuration management with YAML support.
+    Comprehensive HFT configuration management with YAML support.
     
-    Loads configuration from config.yaml file and provides
-    type-safe access to MEXC exchange settings.
+    Loads configuration from config.yaml file and provides type-safe access
+    to multi-exchange settings including MEXC, Gate.io, and arbitrage engine
+    configuration with risk limits and performance parameters.
     """
     
     # Class-level cache for singleton pattern
@@ -143,6 +149,9 @@ class HftConfig:
         self.WS_HEARTBEAT_INTERVAL = float(websocket_config.get('heartbeat_interval', 30.0))
         self.WS_MAX_RECONNECT_ATTEMPTS = int(websocket_config.get('max_reconnect_attempts', 10))
         self.WS_RECONNECT_DELAY = float(websocket_config.get('reconnect_delay', 5.0))
+        
+        # Store complete config data for arbitrage access
+        self._config_data = config_data
     
     def _validate_required_settings(self) -> None:
         """Validate that required settings are properly configured."""
@@ -297,6 +306,35 @@ class HftConfig:
             'ws_connect_timeout': self.WS_CONNECT_TIMEOUT,
             'ws_heartbeat_interval': self.WS_HEARTBEAT_INTERVAL
         }
+    
+    def get_arbitrage_config(self) -> Dict[str, Any]:
+        """
+        Get arbitrage-specific configuration dictionary.
+        
+        Returns:
+            Dictionary with arbitrage configuration settings
+        """
+        return self._config_data.get('arbitrage', {})
+    
+    def has_arbitrage_config(self) -> bool:
+        """
+        Check if arbitrage configuration is available.
+        
+        Returns:
+            True if arbitrage configuration exists in config.yaml
+        """
+        arbitrage_config = self._config_data.get('arbitrage', {})
+        return bool(arbitrage_config)
+    
+    def get_arbitrage_risk_limits(self) -> Dict[str, Any]:
+        """
+        Get arbitrage risk limits configuration.
+        
+        Returns:
+            Dictionary with risk limits settings
+        """
+        arbitrage_config = self._config_data.get('arbitrage', {})
+        return arbitrage_config.get('risk_limits', {})
 
 
 # Create singleton instance
@@ -331,6 +369,15 @@ def validate_configuration() -> None:
     print(f"  Request timeout: {cfg.REQUEST_TIMEOUT}s")
     print(f"  MEXC rate limit: {cfg.MEXC_RATE_LIMIT_PER_SECOND} req/s")
     print(f"  Gate.io rate limit: {cfg.GATEIO_RATE_LIMIT_PER_SECOND} req/s")
+    print(f"  Arbitrage config: {'✓' if cfg.has_arbitrage_config() else '✗'}")
+    
+    if cfg.has_arbitrage_config():
+        arb_config = cfg.get_arbitrage_config()
+        risk_limits = cfg.get_arbitrage_risk_limits()
+        print(f"  Arbitrage engine: {arb_config.get('engine_name', 'Not configured')}")
+        print(f"  Dry run mode: {arb_config.get('enable_dry_run', 'Not configured')}")
+        print(f"  Max position size: ${risk_limits.get('max_position_size_usd', 'Not configured')}")
+        print(f"  Min profit margin: {risk_limits.get('min_profit_margin_bps', 'Not configured')} bps")
 
 
 # Convenience functions
@@ -368,6 +415,26 @@ def get_gateio_credentials() -> Dict[str, str]:
         'api_key': config.GATEIO_API_KEY,
         'secret_key': config.GATEIO_SECRET_KEY
     }
+
+
+def get_arbitrage_config() -> Dict[str, Any]:
+    """
+    Get arbitrage configuration.
+    
+    Returns:
+        Dictionary with arbitrage configuration settings
+    """
+    return config.get_arbitrage_config()
+
+
+def get_arbitrage_risk_limits() -> Dict[str, Any]:
+    """
+    Get arbitrage risk limits.
+    
+    Returns:
+        Dictionary with risk limits settings
+    """
+    return config.get_arbitrage_risk_limits()
 
 
 if __name__ == "__main__":
