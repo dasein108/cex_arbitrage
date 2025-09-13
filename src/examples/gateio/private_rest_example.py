@@ -54,6 +54,11 @@ async def demonstrate_private_api():
     )
     
     try:
+        logger.info("\n== Fees")
+        fees = await client.get_trading_fees()
+        for symbol, fee in list(fees.items())[:5]:
+            logger.info(f"  {symbol}: Maker: {fee.maker:.4f}%, Taker: {fee.taker:.4f}%")
+
         # Test 1: Get account balances
         logger.info("\n=== Test 1: Account Balances ===")
         balances = await client.get_account_balance()

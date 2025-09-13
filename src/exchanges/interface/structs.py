@@ -10,6 +10,11 @@ AssetName = NewType('AssetName', str)
 OrderId = NewType("OrderId", str)
 
 
+class ExchangeStatus(IntEnum):
+    """A WebSocket connection is in one of these four states."""
+
+    CONNECTING, ACTIVE, CLOSING, INACTIVE = range(4)
+
 class OrderStatus(IntEnum):
     UNKNOWN = -1
     NEW = 1
@@ -87,6 +92,8 @@ class SymbolInfo(Struct):
     maker_commission: float = 0
     taker_commission: float = 0
     inactive: bool = False
+    fees_maker: float = 0.0
+    fees_taker: float = 0.0
 
 
 class OrderBookEntry(Struct, frozen=True):
@@ -201,6 +208,30 @@ class Position(Struct):
         return abs(self.size) * self.mark_price
 
 
+class TradingFee(Struct):
+    """Trading fee information for a user"""
+    exchange: ExchangeName
+    maker_rate: float = 0.0  # Maker fee rate (e.g., 0.001 for 0.1%)
+    taker_rate: float = 0.0  # Taker fee rate (e.g., 0.001 for 0.1%)
+    spot_maker: Optional[float] = None  # Spot maker fee (if different)
+    spot_taker: Optional[float] = None  # Spot taker fee (if different)
+    futures_maker: Optional[float] = None  # Futures maker fee (if different)
+    futures_taker: Optional[float] = None  # Futures taker fee (if different)
+    thirty_day_volume: Optional[float] = None  # 30-day trading volume in USDT
+    point_type: Optional[str] = None  # Fee tier/level
+    symbol: Optional['Symbol'] = None  # Symbol these fees apply to (None = account-level)
+    
+    @property
+    def maker_percentage(self) -> float:
+        """Get maker fee as percentage (e.g., 0.1 for 0.1%)"""
+        return self.maker_rate * 100
+    
+    @property
+    def taker_percentage(self) -> float:
+        """Get taker fee as percentage (e.g., 0.1 for 0.1%)"""
+        return self.taker_rate * 100
+
+
 class AccountInfo(Struct):
     """Account information"""
     exchange: ExchangeName
@@ -210,3 +241,4 @@ class AccountInfo(Struct):
     can_deposit: bool = True
     balances: list[AssetBalance] = []
     permissions: list[str] = []
+

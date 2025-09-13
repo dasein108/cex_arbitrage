@@ -83,6 +83,7 @@ class GateioConfig:
         'cancel_orders': '/spot/orders',
         'my_trades': '/spot/my_trades',
         'order_history': '/spot/orders',
+        'fee': '/spot/fee',
         
         # Batch Operations
         'orders_batch': '/spot/batch_orders',
@@ -105,6 +106,7 @@ class GateioConfig:
         'cancel_orders': '/api/v4/spot/orders',
         'my_trades': '/api/v4/spot/my_trades',
         'order_history': '/api/v4/spot/orders',
+        'fee': '/api/v4/spot/fee',
         
         # Batch Operations
         'orders_batch': '/api/v4/spot/batch_orders',

@@ -7,6 +7,7 @@ from contextlib import asynccontextmanager
 from collections import deque
 from websockets import connect #, State
 import msgspec
+import json
 
 from common.exceptions import ExchangeAPIError
 
@@ -162,10 +163,9 @@ class WebsocketClient:
                 # No "id" field - legacy working code doesn't include it
             }
             
-            # Send as JSON string using standard library like legacy code
-            import json
-            message_str = json.dumps(message)
-            await self._ws.send(message_str)
+            # Send as JSON bytes using msgspec for HFT performance
+            message_bytes = msgspec.json.encode(message)
+            await self._ws.send(message_bytes)
 
             action_str = "Subscribed to" if action == SubscriptionAction.SUBSCRIBE else "Unsubscribed from"
             self.logger.info(f"{action_str} {len(streams)} streams")

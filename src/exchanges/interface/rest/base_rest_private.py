@@ -11,7 +11,8 @@ from exchanges.interface.structs import (
     AssetName,
     ExchangeName,
     TimeInForce,
-    Position
+    Position,
+    TradingFee
 )
 
 
@@ -125,7 +126,6 @@ class PrivateExchangeInterface(BaseExchangeInterface):
         """
         pass
     
-    @abstractmethod
     async def get_positions(self) -> List[Position]:
         """
         Get all open positions for futures trading.
@@ -133,9 +133,8 @@ class PrivateExchangeInterface(BaseExchangeInterface):
         Returns:
             List of Position objects representing current open positions
         """
-        pass
+        raise NotImplementedError("get_positions method not implemented")
     
-    @abstractmethod
     async def get_position(self, symbol: Symbol) -> Optional[Position]:
         """
         Get position for a specific symbol.
@@ -145,6 +144,27 @@ class PrivateExchangeInterface(BaseExchangeInterface):
             
         Returns:
             Position object if exists, None otherwise
+        """
+        raise NotImplementedError("get_position method not implemented")
+    
+    @abstractmethod
+    async def get_trading_fees(self, symbol: Optional[Symbol] = None) -> TradingFee:
+        """
+        Get personal trading fees for the account or a specific symbol.
+        
+        Args:
+            symbol: Optional trading symbol to get specific fees for.
+                   If None, returns account-level default fees.
+                   
+        Returns:
+            TradingFee object with maker and taker rates
+            
+        Raises:
+            ExchangeAPIError: If unable to fetch fee data
+            
+        Note:
+            Some exchanges may not support symbol-specific fees and will
+            return account-level fees regardless of the symbol parameter.
         """
         pass
     
