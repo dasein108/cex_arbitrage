@@ -30,18 +30,21 @@ import time
 from datetime import datetime
 from typing import Dict, List, Optional, Any
 from enum import Enum
-from functools import lru_cache
 import logging
+from collections import deque
+from threading import Lock
 
 # MANDATORY imports - unified interface compliance
 from exchanges.interface.structs import (
-    Symbol, Order, OrderId, OrderType, Side, AssetBalance, AssetName, 
+    Symbol, Order, OrderId, OrderType, Side, AssetBalance, AssetName,
     ExchangeName, TimeInForce, Position
 )
 from common.rest_client import RestClient, HTTPMethod
 from exchanges.interface.rest.base_rest_private import PrivateExchangeInterface
 from exchanges.gateio.common.gateio_utils import GateioUtils
 from exchanges.gateio.common.gateio_config import GateioConfig
+from exchanges.gateio.common.gateio_config_service import GateioConfigurationService
+from exchanges.gateio.common.gateio_endpoints import GateioFuturesEndpoints, GateioFuturesEndpoint
 
 
 class GateioPrivateFuturesExchange(PrivateExchangeInterface):
@@ -60,103 +63,115 @@ class GateioPrivateFuturesExchange(PrivateExchangeInterface):
     directly or composed into the GateioExchange facade for unified access.
     """
     
-    def __init__(self, api_key: str, secret_key: str):
+    def __init__(self, api_key: str, secret_key: str, config_service: Optional[GateioConfigurationService] = None):
         """
         Initialize Gate.io Futures private client with unified architecture.
-        
+
         Args:
             api_key: Gate.io API key for authentication
             secret_key: Gate.io secret key for signature generation
-            
+            config_service: Optional configuration service (for dependency injection)
+
         Raises:
             ValueError: If API credentials are not provided
         """
         if not api_key or not secret_key:
             raise ValueError("Gate.io API credentials must be provided for private interface")
-            
+
+        # Use dependency injection or create new config service
+        self._config_service = config_service or GateioConfigurationService()
+        futures_base_url = self._config_service.get_futures_base_url()
+
         # Initialize PrivateExchangeInterface parent
         super().__init__(
             exchange=ExchangeName("GATEIO_FUTURES"),
             api_key=api_key,
             secret_key=secret_key,
-            base_url="https://api.gateio.ws/api/v4/futures/usdt"
+            base_url=futures_base_url
         )
         
         self.logger = logging.getLogger(f"{__name__}.{self.__class__.__name__}")
         
-        # Create optimized authenticated REST client using Gate.io config
+        # Create HFT-optimized authenticated REST client
         rest_config = GateioConfig.rest_config['account']
+
+        # HFT Performance Optimizations for sub-50ms latency
+        rest_config.timeout = min(rest_config.timeout, 30.0)  # Aggressive timeout
+        rest_config.max_concurrent = max(rest_config.max_concurrent, 100)  # Larger connection pool
+        rest_config.retry_delay = min(rest_config.retry_delay, 0.1)  # Faster retries for HFT
+
+        # Headers optimization
         rest_config.headers = rest_config.headers or {}
         rest_config.headers.update({
             'Accept': 'application/json',
             'Content-Type': 'application/json',
-            'User-Agent': 'GateioFuturesTrader/1.0'
+            'User-Agent': 'GateioFuturesTrader/1.0',
+            'Connection': 'keep-alive',  # Persistent connections
+            'Keep-Alive': 'timeout=300, max=1000'  # Connection reuse parameters
         })
-        
+
         self._rest_client = RestClient(
             base_url=self.base_url,
             config=rest_config
         )
         
-        # Performance tracking
-        self._performance_metrics = []
+        # Performance tracking with bounded circular buffer (prevents memory leaks)
+        self._performance_metrics = deque(maxlen=10000)  # Keep only last 10K metrics
+        self._metrics_lock = Lock()  # Thread-safe metrics collection
         
         self.logger.info("Initialized GATEIO_FUTURES private interface with authenticated RestClient")
 
     def _create_authenticated_headers(
-        self, 
-        method: str, 
-        url_path: str, 
-        query_string: str = '', 
+        self,
+        method: str,
+        url_path: str,
+        query_string: str = '',
         payload: str = ''
     ) -> Dict[str, str]:
         """
-        Create authentication headers for Gate.io futures API requests.
-        
+        Create optimized authentication headers for Gate.io futures API requests.
+
+        Uses object pooling and optimized signature generation for sub-0.1ms performance.
+
         Args:
             method: HTTP method (GET, POST, etc.)
             url_path: API endpoint path (without base URL)
             query_string: URL query parameters
             payload: Request body JSON
-            
+
         Returns:
             Dictionary of authentication headers for Gate.io API
         """
+        # Use optimized header creation with object pooling
         return GateioUtils.create_auth_headers(
             method, url_path, query_string, payload, self.api_key, self.secret_key
         )
 
-    # Symbol conversion utilities with caching
-    @lru_cache(maxsize=2000)
+    # Symbol conversion utilities using centralized caching
     def symbol_to_futures_contract(self, symbol: Symbol) -> str:
         """
-        Convert Symbol to Gate.io futures contract format with caching.
-        
+        Convert Symbol to Gate.io futures contract format.
+
         Args:
             symbol: Symbol struct with base and quote assets
-            
+
         Returns:
             Gate.io futures contract string (e.g., 'BTC_USDT')
         """
-        return f"{symbol.base}_{symbol.quote}"
+        return GateioUtils.symbol_to_pair(symbol)
 
-    @lru_cache(maxsize=2000)
     def futures_contract_to_symbol(self, contract: str) -> Symbol:
         """
-        Convert Gate.io futures contract to Symbol struct with caching.
-        
+        Convert Gate.io futures contract to Symbol struct.
+
         Args:
             contract: Gate.io futures contract string (e.g., 'BTC_USDT')
-            
+
         Returns:
             Symbol struct with futures flag set
         """
-        if '_' in contract:
-            base, quote = contract.split('_', 1)
-            return Symbol(base=AssetName(base), quote=AssetName(quote), is_futures=True)
-        else:
-            # Fallback for unusual contract formats
-            return Symbol(base=AssetName(contract), quote=AssetName("USDT"), is_futures=True)
+        symbol = GateioUtils.pair_to_symbol(contract)
+        return Symbol(base=symbol.base, quote=symbol.quote, is_futures=True)
 
     # Account Balance Methods
     async def get_account_balance(self) -> List[AssetBalance]:
@@ -166,19 +181,25 @@ class GateioPrivateFuturesExchange(PrivateExchangeInterface):
         Returns:
             List of AssetBalance structs containing margin account balances
         """
-        endpoint = '/accounts'
-        headers = self._create_authenticated_headers('GET', endpoint)
+        endpoint, signature_path = GateioFuturesEndpoints.get_endpoint_paths(GateioFuturesEndpoint.ACCOUNTS)
+        headers = self._create_authenticated_headers('GET', signature_path)
         
         start_time = time.time()
-        response = await self._rest_client.request(
-            method=HTTPMethod.GET,
-            endpoint=endpoint,
-            headers=headers
-        )
-        
-        # Track performance
+        # HFT-optimized request with header pooling
+        try:
+            response = await self._rest_client.request(
+                method=HTTPMethod.GET,
+                endpoint=endpoint,
+                headers=headers
+            )
+        finally:
+            # Return headers to pool for reuse (HFT optimization)
+            GateioUtils.return_headers_to_pool(headers)
+
+        # Track performance with thread-safe bounded collection
         response_time = (time.time() - start_time) * 1000
-        self._performance_metrics.append(('account_balance', response_time))
+        with self._metrics_lock:
+            self._performance_metrics.append(('account_balance', response_time))
         
         # Parse response
         balances = []
@@ -223,19 +244,25 @@ class GateioPrivateFuturesExchange(PrivateExchangeInterface):
         Returns:
             List of Position structs representing current open positions
         """
-        endpoint = '/positions'
-        headers = self._create_authenticated_headers('GET', endpoint)
+        endpoint, signature_path = GateioFuturesEndpoints.get_endpoint_paths(GateioFuturesEndpoint.POSITIONS)
+        headers = self._create_authenticated_headers('GET', signature_path)
         
         start_time = time.time()
-        response = await self._rest_client.request(
-            method=HTTPMethod.GET,
-            endpoint=endpoint,
-            headers=headers
-        )
-        
-        # Track performance
+        # HFT-optimized request with header pooling
+        try:
+            response = await self._rest_client.request(
+                method=HTTPMethod.GET,
+                endpoint=endpoint,
+                headers=headers
+            )
+        finally:
+            # Return headers to pool for reuse (HFT optimization)
+            GateioUtils.return_headers_to_pool(headers)
+
+        # Track performance with thread-safe bounded collection
         response_time = (time.time() - start_time) * 1000
-        self._performance_metrics.append(('positions', response_time))
+        with self._metrics_lock:
+            self._performance_metrics.append(('positions', response_time))
         
         positions = []
         
@@ -289,50 +316,55 @@ class GateioPrivateFuturesExchange(PrivateExchangeInterface):
             Position object if exists, None otherwise
         """
         contract = self.symbol_to_futures_contract(symbol)
-        endpoint = f'/positions/{contract}'
-        headers = self._create_authenticated_headers('GET', endpoint)
+        endpoint, signature_path = GateioFuturesEndpoints.get_endpoint_paths(
+            GateioFuturesEndpoint.SINGLE_POSITION,
+            contract=contract
+        )
+        headers = self._create_authenticated_headers('GET', signature_path)
         
         start_time = time.time()
-        
+        # HFT-optimized request with header pooling
         try:
             response = await self._rest_client.request(
                 method=HTTPMethod.GET,
                 endpoint=endpoint,
                 headers=headers
             )
-            
-            # Track performance
-            response_time = (time.time() - start_time) * 1000
+        finally:
+            # Return headers to pool for reuse (HFT optimization)
+            GateioUtils.return_headers_to_pool(headers)
+
+        # Track performance with thread-safe bounded collection
+        response_time = (time.time() - start_time) * 1000
+        with self._metrics_lock:
             self._performance_metrics.append(('position', response_time))
-            
-            if isinstance(response, dict):
-                size = float(response.get('size', 0))
-                
-                # Return None if no position
-                if size == 0:
-                    return None
-                
-                # Determine side based on size
-                side = Side.BUY if size > 0 else Side.SELL
-                
-                return Position(
-                    symbol=symbol,
-                    size=abs(size),
-                    side=side,
-                    entry_price=float(response.get('entry_price', 0)),
-                    mark_price=float(response.get('mark_price', 0)),
-                    unrealized_pnl=float(response.get('unrealised_pnl', 0)),
-                    realized_pnl=float(response.get('realised_pnl', 0)),
-                    margin=float(response.get('margin', 0)),
-                    leverage=float(response.get('leverage', 1)),
-                    risk_limit=float(response.get('risk_limit', 0)),
-                    contract_value=float(response.get('value', 0)),
-                    timestamp=int(time.time() * 1000)
-                )
-                
-        except Exception as e:
-            self.logger.warning(f"Failed to get position for {symbol}: {e}")
-            return None
+
+        if isinstance(response, dict):
+            size = float(response.get('size', 0))
+
+            # Return None if no position
+            if size == 0:
+                return None
+
+            # Determine side based on size
+            side = Side.BUY if size > 0 else Side.SELL
+
+            return Position(
+                symbol=symbol,
+                size=abs(size),
+                side=side,
+                entry_price=float(response.get('entry_price', 0)),
+                mark_price=float(response.get('mark_price', 0)),
+                unrealized_pnl=float(response.get('unrealised_pnl', 0)),
+                realized_pnl=float(response.get('realised_pnl', 0)),
+                margin=float(response.get('margin', 0)),
+                leverage=float(response.get('leverage', 1)),
+                risk_limit=float(response.get('risk_limit', 0)),
+                contract_value=float(response.get('value', 0)),
+                timestamp=int(time.time() * 1000)
+            )
+
+        return None
 
     # Order Management Methods (Required by PrivateExchangeInterface)
     async def place_order(
@@ -402,39 +434,65 @@ class GateioPrivateFuturesExchange(PrivateExchangeInterface):
     # Performance and Utility Methods
     def get_performance_metrics(self) -> Dict[str, Any]:
         """
-        Get performance metrics for the exchange client.
-        
+        Get performance metrics for the exchange client with thread-safe access.
+
         Returns:
             Dictionary containing performance statistics
         """
-        if not self._performance_metrics:
-            return {"message": "No metrics available yet"}
-        
+        with self._metrics_lock:
+            if not self._performance_metrics:
+                return {"message": "No metrics available yet"}
+
+            # Create snapshot of metrics for processing (avoid holding lock)
+            metrics_snapshot = list(self._performance_metrics)
+
         # Calculate metrics by endpoint type
         endpoint_metrics = {}
-        for endpoint, response_time in self._performance_metrics:
+        for endpoint, response_time in metrics_snapshot:
             if endpoint not in endpoint_metrics:
                 endpoint_metrics[endpoint] = []
             endpoint_metrics[endpoint].append(response_time)
-        
-        # Generate summary statistics
+
+        # Generate summary statistics with performance analysis
         summary = {}
+        total_time = 0
+        total_requests = 0
+
         for endpoint, times in endpoint_metrics.items():
+            avg_time = sum(times) / len(times)
+            total_time += sum(times)
+            total_requests += len(times)
+
             summary[endpoint] = {
-                'avg_response_time_ms': sum(times) / len(times),
+                'avg_response_time_ms': avg_time,
                 'min_response_time_ms': min(times),
                 'max_response_time_ms': max(times),
-                'total_requests': len(times)
+                'total_requests': len(times),
+                'p95_response_time_ms': sorted(times)[int(0.95 * len(times))],
+                'hft_compliant': avg_time < 50.0  # Sub-50ms target
             }
-        
+
+        # Overall performance metrics
+        overall_avg = total_time / total_requests if total_requests > 0 else 0
+
         return {
             'endpoint_metrics': summary,
-            'total_requests': len(self._performance_metrics),
-            'cache_info': {
-                'symbol_to_contract': self.symbol_to_futures_contract.cache_info()._asdict(),
-                'contract_to_symbol': self.futures_contract_to_symbol.cache_info()._asdict()
-            }
+            'total_requests': total_requests,
+            'overall_avg_response_time_ms': overall_avg,
+            'hft_target_compliance': overall_avg < 50.0,
+            'metrics_buffer_size': len(metrics_snapshot),
+            'metrics_buffer_max': self._performance_metrics.maxlen,
+            'cache_info': GateioUtils.get_cache_stats()
         }
+
+    def clear_performance_metrics(self) -> None:
+        """
+        Clear all performance metrics - useful for fresh performance testing.
+
+        This method provides O(1) clearing of the bounded metrics buffer.
+        """
+        with self._metrics_lock:
+            self._performance_metrics.clear()
 
     async def close(self):
         """Clean up resources and close connections."""
@@ -452,15 +510,24 @@ class GateioPrivateFuturesExchange(PrivateExchangeInterface):
 
 
 # Factory function for easy instantiation
-async def create_gateio_futures_private_client(api_key: str, secret_key: str) -> GateioPrivateFuturesExchange:
+async def create_gateio_futures_private_client(
+    api_key: str,
+    secret_key: str,
+    config_service: Optional[GateioConfigurationService] = None
+) -> GateioPrivateFuturesExchange:
     """
     Create a Gate.io futures private client with optimized configuration.
-    
+
     Args:
         api_key: Gate.io API key
         secret_key: Gate.io secret key
-        
+        config_service: Optional configuration service for dependency injection
+
     Returns:
         Configured GateioPrivateFuturesExchange instance
     """
-    return GateioPrivateFuturesExchange(api_key=api_key, secret_key=secret_key)
+    return GateioPrivateFuturesExchange(
+        api_key=api_key,
+        secret_key=secret_key,
+        config_service=config_service
+    )
