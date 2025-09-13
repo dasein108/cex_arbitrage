@@ -2,6 +2,77 @@
 
 This directory contains utility tools for the CEX Arbitrage Engine.
 
+## Cross-Exchange Symbol Discovery Tool
+
+A high-performance tool for analyzing symbol availability across multiple exchanges to identify arbitrage opportunities.
+
+### Features
+
+- **Multi-Exchange Analysis**: Compare symbols across MEXC Spot, Gate.io Spot, and Gate.io Futures
+- **Arbitrage Identification**: Find symbols available on multiple exchanges
+- **3-Tier Focus**: Filter major coins to focus on altcoin opportunities
+- **Multiple Output Formats**: Matrix, detailed, summary, and filtered outputs
+- **HFT Compliant**: No real-time data caching, fresh API calls only
+- **Parallel Processing**: Async fetching from all exchanges simultaneously
+
+### Quick Start
+
+```bash
+# Generate matrix format showing symbol availability
+python src/tools/cross_exchange_symbol_discovery.py --format matrix
+
+# Include major coins in analysis
+python src/tools/cross_exchange_symbol_discovery.py --no-filter-major
+
+# Generate summary only without saving
+python src/tools/cross_exchange_symbol_discovery.py --format summary --no-save
+
+# Use simplified version for testing
+python src/tools/symbol_discovery_simple.py
+```
+
+### Output Format
+
+The tool generates JSON files with symbol availability across exchanges:
+
+```json
+{
+  "ADA/USDT": {
+    "mexc_spot": true,
+    "gateio_spot": true,
+    "gateio_futures": true
+  },
+  "NEAR/USDT": {
+    "mexc_spot": true,
+    "gateio_spot": true,
+    "gateio_futures": false
+  }
+}
+```
+
+### Command Line Options
+
+```
+usage: cross_exchange_symbol_discovery.py [-h] [--format {summary,detailed,filtered,matrix}] 
+                                         [--no-filter-major] [--no-save]
+
+Cross-Exchange Symbol Discovery Tool
+
+optional arguments:
+  -h, --help            show this help message and exit
+  --format {summary,detailed,filtered,matrix}
+                        Output format (default: detailed)
+  --no-filter-major     Include major coins (BTC, ETH, etc.) in analysis
+  --no-save             Do not save output to file
+```
+
+### Performance Characteristics
+
+- **Parallel API Calls**: All exchanges queried simultaneously
+- **Sub-30s Execution**: Optimized for fast analysis
+- **msgspec Processing**: Zero-copy JSON parsing
+- **Connection Pooling**: Reuses existing RestClient connections
+
 ## Candles Downloader
 
 A comprehensive tool for downloading historical candlestick data from multiple cryptocurrency exchanges.

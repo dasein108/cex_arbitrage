@@ -122,3 +122,5 @@ temp/
 tmp/
 venv/
 config.yaml
+src/tools/data/*.*
+src/tools/output/*.*

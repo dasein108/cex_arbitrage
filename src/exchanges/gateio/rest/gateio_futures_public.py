@@ -162,13 +162,13 @@ class GateioPublicFuturesExchange(PublicExchangeInterface):
             return SymbolInfo(
                 exchange=self.exchange,
                 symbol=symbol,
-                base_precision=8,  # Default for Gate.io futures
-                quote_precision=contract_data.get('order_price_round', 2),
+                base_precision=contract_data.get('order_price_round', 2),  # Default for Gate.io futures
+                quote_precision=contract_data.get('mark_price_round', 2),
                 min_base_amount=float(contract_data.get('order_size_min', 1)),
-                max_base_amount=float(contract_data.get('order_size_max', 1000000)),
+                # max_base_amount=float(contract_data.get('order_size_max', 1000000)),
                 min_quote_amount=0.0,
                 is_futures=True,
-                inactive=contract_data.get('in_delisting', False)
+                inactive=contract_data.get('status', "") != 'trading'
             )
         except Exception as e:
             self.logger.debug(f"Failed to map contract data {contract_data}: {e}")

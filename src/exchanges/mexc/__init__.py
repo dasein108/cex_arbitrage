@@ -25,13 +25,9 @@ Refactoring Achievements:
 """
 
 from exchanges.mexc.rest.mexc_public import MexcPublicExchange
-from exchanges.mexc.rest.legacy.mexc_futures_public import MexcPublicFuturesExchange, create_mexc_futures_client, FuturesPerformanceMonitor
 from exchanges.mexc.ws.mexc_ws_public import MexcWebsocketPublic
 
 __all__ = [
     'MexcPublicExchange', 
-    'MexcPublicFuturesExchange',
     'MexcWebsocketPublic',
-    'create_mexc_futures_client',
-    'FuturesPerformanceMonitor'
 ]
