@@ -29,7 +29,7 @@ import msgspec
 
 from exchanges.interface.structs import (
     Symbol, Order, OrderId, OrderType, Side, AssetBalance,
-    AssetName, TimeInForce, ExchangeName
+    AssetName, TimeInForce, ExchangeName, TradingFee
 )
 from common.rest_client import RestClient, HTTPMethod
 from common.exceptions import ExchangeAPIError
@@ -553,6 +553,89 @@ class GateioPrivateExchange(PrivateExchangeInterface):
         """Gate.io doesn't use listen keys - no-op."""
         pass
     
+    async def get_trading_fees(self, symbol: Optional[Symbol] = None) -> TradingFee:
+        """
+        Get personal trading fees for the account or a specific symbol.
+        
+        HFT COMPLIANT: Never caches fee data - always fresh API call.
+        
+        Args:
+            symbol: Optional trading symbol to get specific fees for.
+                   Note: Gate.io API limitation - only returns account-level fees
+                   regardless of symbol parameter.
+        
+        Returns:
+            TradingFee object with maker and taker rates
+            
+        Raises:
+            ExchangeAPIError: If unable to fetch fee data
+            
+        Note:
+            Gate.io API Limitation: The /spot/fee endpoint only supports account-level
+            fees, not symbol-specific fees. The symbol parameter is accepted for
+            interface compatibility but Gate.io will always return account-level rates.
+        """
+        try:
+            # Log the request details
+            if symbol:
+                self.logger.debug(f"Retrieving trading fees for symbol {symbol.base}/{symbol.quote}")
+                self.logger.warning(f"Gate.io API limitation: Symbol-specific fees not supported, returning account-level fees")
+            else:
+                self.logger.debug("Retrieving account-level trading fees")
+            
+            endpoint = GateioConfig.SPOT_ENDPOINTS['fee']
+            signature_path = GateioConfig.SIGNATURE_ENDPOINTS['fee']
+            headers = self._create_authenticated_headers('GET', signature_path)
+            
+            response_data = await self.client.get(
+                endpoint,
+                headers=headers,
+                config=GateioConfig.rest_config['account']
+            )
+            
+            # Gate.io fee response format based on API docs:
+            # {
+            #   "user_id": 10003,
+            #   "taker_fee": "0.002",
+            #   "maker_fee": "0.002",
+            #   "gt_discount": false,
+            #   "gt_taker_fee": "0.0015", 
+            #   "gt_maker_fee": "0.0015",
+            #   "loan_fee": "0.18",
+            #   "point_type": "0" // fee tier
+            # }
+            
+            if not isinstance(response_data, dict):
+                raise ExchangeAPIError(500, "Invalid trading fees response format")
+            
+            # Extract fee rates - Gate.io returns string values
+            maker_rate = float(response_data.get('maker_fee', '0.002'))
+            taker_rate = float(response_data.get('taker_fee', '0.002'))
+            point_type = response_data.get('point_type', '0')
+            
+            # Gate.io doesn't provide 30-day volume in fee response
+            # Could be fetched separately if needed
+            
+            trading_fee = TradingFee(
+                exchange=self.exchange,
+                maker_rate=maker_rate,
+                taker_rate=taker_rate,
+                spot_maker=maker_rate,
+                spot_taker=taker_rate,
+                point_type=point_type,
+                symbol=symbol  # Include symbol in response (None for account-level)
+            )
+            
+            if symbol:
+                self.logger.debug(f"Retrieved trading fees for {symbol.base}/{symbol.quote}: maker {maker_rate*100:.3f}%, taker {taker_rate*100:.3f}%")
+            else:
+                self.logger.debug(f"Retrieved account-level trading fees: maker {maker_rate*100:.3f}%, taker {taker_rate*100:.3f}%")
+            return trading_fee
+            
+        except Exception as e:
+            self.logger.error(f"Failed to get trading fees: {e}")
+            raise ExchangeAPIError(500, f"Trading fees fetch failed: {str(e)}")
+
     async def close(self) -> None:
         """Close the REST client and clean up resources."""
         try:

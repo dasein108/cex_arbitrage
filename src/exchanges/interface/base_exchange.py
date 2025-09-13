@@ -1,11 +1,17 @@
 from abc import ABC, abstractmethod
 from typing import Dict, List, Optional
-from exchanges.interface.structs import Symbol, ExchangeName, OrderBook, AssetBalance, Order, Position
+from exchanges.interface.structs import Symbol, ExchangeName, OrderBook, AssetBalance, Order, Position, ExchangeStatus
 
 
 class BaseExchangeInterface(ABC):
-    """Base interface containing common methods for both public and private exchange operations"""
 
+    @property
+    @abstractmethod
+    def status(self) -> ExchangeStatus:
+        """Status of exchange"""
+        pass
+
+    """Base interface containing common methods for both public and private exchange operations"""
     @property
     @abstractmethod
     def orderbook(self) -> OrderBook:

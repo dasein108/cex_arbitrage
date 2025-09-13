@@ -201,7 +201,6 @@ class RestClient:
                     # Execute request
                     async with self._session.request(method.value, url, **request_kwargs) as response:
                         response_text = await response.text()
-                        print(response.url)
                         # Handle HTTP errors
                         if response.status >= 400:
                             if response.status == 429:  # Rate limited

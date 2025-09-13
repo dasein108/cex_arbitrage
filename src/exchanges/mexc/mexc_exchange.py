@@ -6,12 +6,12 @@ from types import MappingProxyType
 from collections import OrderedDict
 
 from exchanges.interface.base_exchange import BaseExchangeInterface
-from exchanges.interface.structs import OrderBook, Symbol, AssetBalance, AssetName, Order, OrderId, OrderType, Side, TimeInForce
+from exchanges.interface.structs import OrderBook, Symbol, AssetBalance, AssetName, Order, OrderId, OrderType, Side, TimeInForce, ExchangeStatus
 from exchanges.mexc.ws.mexc_ws_public import MexcWebsocketPublic
 from exchanges.mexc.rest.mexc_private import MexcPrivateExchange
 from exchanges.mexc.rest.mexc_public import MexcPublicExchange
 from exchanges.mexc.common.mexc_config import MexcConfig
-from common.ws_client import WebSocketConfig
+from common.ws_client import WebSocketConfig, ConnectionState
 from common.exceptions import ExchangeAPIError
 
 
@@ -74,6 +74,68 @@ class MexcExchange(BaseExchangeInterface):
         self._performance_metrics = {
             'orderbook_updates': 0
         }
+    
+    @property
+    def status(self) -> ExchangeStatus:
+        """
+        Get current exchange connection status.
+        
+        HFT COMPLIANT: Property-based computation with <1µs latency.
+        
+        Returns:
+            ExchangeStatus.INACTIVE if not initialized
+            ExchangeStatus.CONNECTING if WebSocket is connecting/reconnecting
+            ExchangeStatus.ACTIVE if all connections are operational
+        """
+        # Fast path: not initialized
+        if not self._initialized:
+            return ExchangeStatus.INACTIVE
+        
+        # Check WebSocket state (critical path for real-time data)
+        ws_state = self._get_websocket_state()
+        if ws_state in (ConnectionState.CONNECTING, ConnectionState.RECONNECTING):
+            return ExchangeStatus.CONNECTING
+        
+        # Check if WebSocket is disconnected or in error state
+        if ws_state in (ConnectionState.DISCONNECTED, ConnectionState.ERROR, 
+                        ConnectionState.CLOSING, ConnectionState.CLOSED):
+            return ExchangeStatus.CONNECTING  # Treat as connecting since it will auto-reconnect
+        
+        # Optional: Check REST client health (basic existence check)
+        if not self._is_rest_healthy():
+            return ExchangeStatus.CONNECTING
+        
+        # All systems operational
+        return ExchangeStatus.ACTIVE
+    
+    def _get_websocket_state(self) -> ConnectionState:
+        """
+        Get current WebSocket connection state.
+        
+        Returns:
+            Current ConnectionState of the WebSocket client
+        """
+        if self._ws_client and self._ws_client.ws_client:
+            return self._ws_client.ws_client.state
+        return ConnectionState.DISCONNECTED
+    
+    def _is_rest_healthy(self) -> bool:
+        """
+        Check if REST clients are healthy.
+        
+        Basic implementation: checks if clients exist.
+        Future enhancement: actual health check via ping endpoints.
+        
+        Returns:
+            True if REST clients are initialized and ready
+        """
+        # Basic check: ensure REST clients exist
+        if self.has_private:
+            # Private trading requires both private and public APIs
+            return self._private_api is not None and self._public_api is not None
+        else:
+            # Public-only mode just needs public API
+            return self._public_api is not None
     
     @property
     def balances(self) -> Dict[Symbol, AssetBalance]:

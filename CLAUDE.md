@@ -307,6 +307,13 @@ For detailed implementation guidance and usage examples, see component-specific 
 - **Memory Management**: O(1) per request, >95% connection reuse
 - **Uptime**: >99.9% availability with automatic recovery
 
+### Numeric Type Standards (MANDATORY)
+
+- **Use float for all financial calculations** - Python's float type provides sufficient precision for cryptocurrency trading
+- **NEVER use Decimal()** - Decimal adds unnecessary computational overhead that violates HFT latency requirements
+- **Rationale**: 64-bit float precision (15-17 decimal digits) exceeds cryptocurrency precision needs (typically 8 decimal places max)
+- **Exception**: Only use Decimal if explicitly required by external library APIs that don't accept float
+
 # important-instruction-reminders
 Do what has been asked; nothing more, nothing less.
 NEVER create files unless they're absolutely necessary for achieving your goal.

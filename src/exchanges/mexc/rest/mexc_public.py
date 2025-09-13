@@ -467,4 +467,3 @@ class MexcPublicExchange(PublicExchangeInterface):
             KlineInterval.MONTH_1: 2592000  # 30 days approximation
         }
         return interval_map.get(interval, 0)
-    
