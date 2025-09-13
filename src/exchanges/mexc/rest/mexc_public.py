@@ -21,6 +21,7 @@ Threading: Fully async/await compatible, thread-safe
 Memory: O(1) per request, optimized for high-frequency access
 """
 
+import asyncio
 import time
 from typing import Dict, List, Optional
 from datetime import datetime
@@ -321,7 +322,7 @@ class MexcPublicExchange(PublicExchangeInterface):
         params = {
             'symbol': pair,
             'interval': interval,
-            'limit': 1000  # MEXC default/max limit
+            'limit': 500  # Reduced limit to avoid API issues
         }
         
         # Add time filters if provided
@@ -338,7 +339,7 @@ class MexcPublicExchange(PublicExchangeInterface):
         
         # MEXC returns array of arrays, each with 8 elements:
         # [open_time, open, high, low, close, volume, close_time, quote_volume]
-        kline_arrays = msgspec.convert(response_data, list[list[str]])
+        kline_arrays = msgspec.convert(response_data, list[list])
         
         # Transform to unified format
         klines = []
@@ -393,8 +394,29 @@ class MexcPublicExchange(PublicExchangeInterface):
             # Fallback to single request for unknown intervals
             return await self.get_klines(symbol, timeframe, date_from, date_to)
         
-        # Calculate chunk size (1000 klines per request)
-        chunk_duration_seconds = 1000 * interval_seconds
+        # MEXC has variable historical data availability per symbol
+        # Some symbols only have ~30 days, others may have more
+        # Conservative approach: limit to 30 days to avoid empty results
+        MAX_SAFE_DAYS = 30  # Conservative limit based on testing
+        MAX_SAFE_DURATION_SECONDS = MAX_SAFE_DAYS * 24 * 3600
+        
+        total_duration_seconds = int((date_to - date_from).total_seconds())
+        
+        if total_duration_seconds > MAX_SAFE_DURATION_SECONDS:
+            # Adjust date_from to stay within safe historical limit
+            adjusted_date_from = datetime.fromtimestamp(date_to.timestamp() - MAX_SAFE_DURATION_SECONDS)
+            
+            self.logger.warning(
+                f"MEXC historical limit: {total_duration_seconds/3600/24:.1f} days requested, "
+                f"max {MAX_SAFE_DAYS} days safe limit. "
+                f"Adjusted start date from {date_from.strftime('%Y-%m-%d %H:%M')} "
+                f"to {adjusted_date_from.strftime('%Y-%m-%d %H:%M')}"
+            )
+            
+            date_from = adjusted_date_from
+        
+        # Calculate chunk size (500 klines per request to avoid API limits)
+        chunk_duration_seconds = 500 * interval_seconds
         
         all_klines = []
         current_start = date_from
@@ -415,6 +437,10 @@ class MexcPublicExchange(PublicExchangeInterface):
             # Break if no more data or we've reached the end
             if not chunk_klines or current_start >= date_to:
                 break
+            
+            # Rate limiting: Add small delay between requests to avoid rate limits
+            # MEXC has higher limits (1200 req/min) so shorter delay than Gate.io
+            await asyncio.sleep(0.1)
         
         # Remove duplicates and sort
         unique_klines = {}

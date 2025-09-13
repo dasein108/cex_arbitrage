@@ -26,6 +26,7 @@ import asyncio
 import argparse
 import csv
 import os
+import traceback
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple, Any
@@ -35,6 +36,7 @@ import logging
 from exchanges.mexc.rest.mexc_public import MexcPublicExchange
 from exchanges.gateio.rest.gateio_public import GateioPublicExchange
 from exchanges.interface.structs import Symbol, AssetName, KlineInterval, Kline
+from common.rate_limiter import get_rate_limiter
 
 
 class CandlesDownloader:
@@ -81,12 +83,12 @@ class CandlesDownloader:
         '1M': KlineInterval.MONTH_1
     }
     
-    def __init__(self, output_dir: str = "./data"):
+    def __init__(self, output_dir: str = "data"):
         """
         Initialize the candles downloader.
         
         Args:
-            output_dir: Directory to save CSV files (default: ./data)
+            output_dir: Directory to save CSV files (default: data)
         """
         self.output_dir = Path(output_dir)
         self.output_dir.mkdir(parents=True, exist_ok=True)
@@ -296,7 +298,8 @@ class CandlesDownloader:
             
         except Exception as e:
             self.logger.error(f"Failed to download candles: {e}")
-            raise
+            traceback.print_exc()
+            raise e
         finally:
             # Clean up exchange client
             if hasattr(client, 'close'):
@@ -307,7 +310,10 @@ class CandlesDownloader:
         download_configs: List[Dict[str, Any]]
     ) -> List[str]:
         """
-        Download candles from multiple exchanges/symbols concurrently.
+        Download candles from multiple exchanges/symbols with coordinated rate limiting.
+        
+        Implements intelligent batching and rate limiting to prevent API throttling
+        while maintaining optimal performance through controlled concurrency.
         
         Args:
             download_configs: List of download configuration dictionaries
@@ -316,29 +322,70 @@ class CandlesDownloader:
         Returns:
             List of paths to saved CSV files
         """
-        self.logger.info(f"Starting batch download of {len(download_configs)} configurations")
+        self.logger.info(f"Starting rate-limited batch download of {len(download_configs)} configurations")
         
-        # Create download tasks
-        tasks = []
+        # Get global rate limiter for coordination
+        rate_limiter = get_rate_limiter()
+        
+        # Group configurations by exchange for coordinated processing
+        exchange_groups = {}
         for config in download_configs:
-            task = self.download_candles(**config)
-            tasks.append(task)
+            exchange = config.get('exchange', '').lower()
+            if exchange not in exchange_groups:
+                exchange_groups[exchange] = []
+            exchange_groups[exchange].append(config)
         
-        # Execute downloads concurrently
-        results = await asyncio.gather(*tasks, return_exceptions=True)
+        self.logger.info(f"Grouped downloads: {[(ex, len(configs)) for ex, configs in exchange_groups.items()]}")
         
-        # Process results
+        # Process each exchange group with proper rate limiting
+        all_results = []
+        
+        for exchange, configs in exchange_groups.items():
+            self.logger.info(f"Processing {len(configs)} downloads for {exchange}")
+            
+            # Create rate-limited tasks for this exchange
+            async def download_with_rate_limiting(config):
+                """Download with rate limiting coordination."""
+                try:
+                    # Coordinate request through rate limiter
+                    async with rate_limiter.coordinate_request(exchange):
+                        result = await self.download_candles(**config)
+                        return result
+                except Exception as e:
+                    self.logger.error(f"Rate-limited download failed for {config}: {e}")
+                    return e
+            
+            # Execute exchange-specific downloads with controlled concurrency
+            exchange_tasks = [download_with_rate_limiting(config) for config in configs]
+            exchange_results = await asyncio.gather(*exchange_tasks, return_exceptions=True)
+            
+            all_results.extend(exchange_results)
+            
+            # Add inter-exchange delay to prevent cross-exchange rate limit conflicts
+            if len(exchange_groups) > 1:  # Only delay if multiple exchanges
+                await asyncio.sleep(0.5)  # 500ms between exchange groups
+        
+        # Process and categorize results
         successful_files = []
         failed_count = 0
         
-        for i, result in enumerate(results):
+        for i, result in enumerate(all_results):
             if isinstance(result, Exception):
                 self.logger.error(f"Failed download {i+1}: {result}")
                 failed_count += 1
             else:
                 successful_files.append(result)
         
-        self.logger.info(f"Batch download completed: {len(successful_files)} successful, {failed_count} failed")
+        # Log rate limiting statistics
+        stats = rate_limiter.get_stats()
+        for exchange, stat in stats.items():
+            if stat['total_requests'] > 0:
+                self.logger.info(
+                    f"{stat['name']}: {stat['total_requests']} requests, "
+                    f"{stat['available_tokens']}/{stat['max_concurrent']} tokens available"
+                )
+        
+        self.logger.info(f"Rate-limited batch download completed: {len(successful_files)} successful, {failed_count} failed")
         
         return successful_files
     
@@ -424,8 +471,8 @@ Examples:
     
     parser.add_argument(
         '--output', '-o',
-        default='./data',
-        help='Output directory for CSV files (default: ./data)'
+        default='data',
+        help='Output directory for CSV files (default: data)'
     )
     
     parser.add_argument(

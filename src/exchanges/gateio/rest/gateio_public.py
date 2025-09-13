@@ -21,6 +21,7 @@ Threading: Fully async/await compatible, thread-safe
 Memory: O(1) per request, optimized for high-frequency access
 """
 
+import asyncio
 import time
 from typing import Dict, List, Optional, Any
 from datetime import datetime
@@ -375,6 +376,7 @@ class GateioPublicExchange(PublicExchangeInterface):
         Raises:
             ExchangeAPIError: If unable to fetch kline data
         """
+        klines = []
         try:
             pair = GateioUtils.symbol_to_pair(symbol)
             interval = GateioUtils.get_gateio_kline_interval(timeframe)
@@ -392,8 +394,8 @@ class GateioPublicExchange(PublicExchangeInterface):
                 if date_to:
                     params['to'] = int(date_to.timestamp())
             else:
-                # Use limit mode (default: 1000 klines)
-                params['limit'] = 1000
+                # Use limit mode (max 720 klines - Gate.io limit is ~12 hours for 1m data)
+                params['limit'] = 720
             
             response_data = await self.client.get(
                 GateioConfig.SPOT_ENDPOINTS['candlesticks'],
@@ -447,13 +449,53 @@ class GateioPublicExchange(PublicExchangeInterface):
             self.logger.error(f"Failed to get klines for {symbol}: {e}")
             raise ExchangeAPIError(500, f"Klines fetch failed: {str(e)}")
     
+    def _calculate_optimal_batch_size(self, timeframe: KlineInterval, total_duration_seconds: int) -> int:
+        """
+        Calculate optimal batch size respecting Gate.io's 10,000 point historical limit.
+        
+        Args:
+            timeframe: Kline interval
+            total_duration_seconds: Total duration of requested time range
+            
+        Returns:
+            Optimal batch size for this timeframe
+        """
+        MAX_HISTORICAL_POINTS = 10000
+        interval_seconds = self._get_interval_seconds(timeframe)
+        
+        # Calculate total points needed
+        total_points = int(total_duration_seconds / interval_seconds)
+        
+        # Gate.io allows max 1000 points per request, but we should be conservative
+        # for longer time ranges due to historical access limits
+        if total_points <= MAX_HISTORICAL_POINTS:
+            # Conservative batch sizing - Gate.io has strict historical limits
+            batch_sizes = {
+                KlineInterval.MINUTE_1: 720,    # 12 hours per request (safe zone)
+                KlineInterval.MINUTE_5: 1000,   # 3.5 days per request  
+                KlineInterval.MINUTE_15: 1000,  # 10.4 days per request
+                KlineInterval.MINUTE_30: 1000,  # 20.8 days per request
+                KlineInterval.HOUR_1: 1000,     # 41.7 days per request
+                KlineInterval.HOUR_4: 1000,     # 166 days per request
+                KlineInterval.HOUR_12: 1000,    # 500 days per request
+                KlineInterval.DAY_1: 1000,      # 2.7 years per request
+                KlineInterval.WEEK_1: 1000,     # 19.2 years per request
+                KlineInterval.MONTH_1: 1000,    # 83 years per request
+            }
+            return batch_sizes.get(timeframe, 720)  # Default to 720 (12 hours for 1m)
+        else:
+            # For very large ranges, use smaller chunks
+            return min(720, MAX_HISTORICAL_POINTS // 10)  # Use 1/10 of limit per batch
+
     async def get_klines_batch(self, symbol: Symbol, timeframe: KlineInterval,
                               date_from: Optional[datetime], date_to: Optional[datetime]) -> List[Kline]:
         """
         Get batch kline data by making multiple get_klines requests for large time ranges.
         
-        This method splits large time ranges into chunks to handle Gate.io's 1000 kline limit per request.
-        Uses multiple calls to get_klines internally.
+        This method splits large time ranges into chunks to handle Gate.io's API limits:
+        - Maximum 500 klines per individual request
+        - Maximum 10,000 historical data points total
+        - Automatic date range adjustment if needed
         
         HFT COMPLIANT: Never caches kline data - always fresh API calls.
         
@@ -479,8 +521,31 @@ class GateioPublicExchange(PublicExchangeInterface):
             # Fallback to single request for unknown intervals
             return await self.get_klines(symbol, timeframe, date_from, date_to)
         
-        # Calculate chunk size (1000 klines per request)
-        chunk_duration_seconds = 1000 * interval_seconds
+        # Gate.io has very restrictive historical access - much more conservative approach needed
+        # Based on testing: 2 days works, 3+ days often fail with "too long ago"
+        MAX_SAFE_DAYS = 2  # Conservative limit based on actual API testing
+        MAX_SAFE_DURATION_SECONDS = MAX_SAFE_DAYS * 24 * 3600
+        
+        total_duration_seconds = int((date_to - date_from).total_seconds())
+        total_points = int(total_duration_seconds / interval_seconds)
+        
+        if total_duration_seconds > MAX_SAFE_DURATION_SECONDS:
+            # Adjust date_from to stay within safe historical limit
+            adjusted_date_from = datetime.fromtimestamp(date_to.timestamp() - MAX_SAFE_DURATION_SECONDS)
+            
+            self.logger.warning(
+                f"Gate.io historical limit: {total_duration_seconds/3600:.1f} hours requested, "
+                f"max {MAX_SAFE_DURATION_SECONDS/3600:.1f} hours safe limit. "
+                f"Adjusted start date from {date_from.strftime('%Y-%m-%d %H:%M')} "
+                f"to {adjusted_date_from.strftime('%Y-%m-%d %H:%M')}"
+            )
+            
+            date_from = adjusted_date_from
+            total_duration_seconds = MAX_SAFE_DURATION_SECONDS
+        
+        # Calculate optimal batch size for this timeframe
+        batch_size = self._calculate_optimal_batch_size(timeframe, total_duration_seconds)
+        chunk_duration_seconds = batch_size * interval_seconds
         
         all_klines = []
         current_start = date_from
@@ -501,6 +566,11 @@ class GateioPublicExchange(PublicExchangeInterface):
             # Break if no more data or we've reached the end
             if not chunk_klines or current_start >= date_to:
                 break
+            
+            # Rate limiting: Add 0.3 second delay between requests to avoid 429 errors
+            # Gate.io has strict rate limits: 200 requests/10 seconds (20 req/sec)
+            # Only delay if we have more requests to make
+            await asyncio.sleep(0.3)
         
         # Remove duplicates and sort
         unique_klines = {}

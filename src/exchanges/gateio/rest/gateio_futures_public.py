@@ -363,7 +363,7 @@ class GateioPublicFuturesExchange(PublicExchangeInterface):
         params = {
             'contract': contract,
             'interval': gateio_interval,
-            'limit': 1000  # Default limit for interface compliance
+            'limit': 500  # Default limit for interface compliance
         }
         
         # Convert datetime to timestamp if provided

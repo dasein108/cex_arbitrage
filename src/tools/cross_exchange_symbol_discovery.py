@@ -24,6 +24,7 @@ from typing import Dict, List, Optional, Set, Tuple, Any
 from enum import IntEnum
 import msgspec
 from msgspec import Struct
+import aiohttp
 
 # Add parent directory to path for imports (we're now in src/tools)
 import sys
@@ -37,6 +38,97 @@ from exchanges.mexc.rest.mexc_public import MexcPublicExchange
 from exchanges.gateio.rest.gateio_public import GateioPublicExchange  
 from exchanges.gateio.rest.gateio_futures_public import GateioPublicFuturesExchange
 from common.exceptions import ExchangeAPIError
+
+
+async def fetch_mexc_futures_symbols() -> Dict[Symbol, SymbolInfo]:
+    """
+    Fetch MEXC futures symbols using direct API call to contract endpoint.
+    
+    Returns:
+        Dictionary mapping Symbol to SymbolInfo for MEXC futures contracts
+    """
+    url = "https://contract.mexc.com/api/v1/contract/detail"
+    headers = {
+        'User-Agent': 'SymbolDiscoveryTool/1.0',
+        'Accept': 'application/json'
+    }
+    
+    try:
+        timeout = aiohttp.ClientTimeout(total=10.0)
+        async with aiohttp.ClientSession(timeout=timeout) as session:
+            async with session.get(url, headers=headers) as response:
+                if response.status != 200:
+                    raise ExchangeAPIError(response.status, f"MEXC Futures API error: {response.status}")
+                
+                data = await response.json()
+                
+                if not isinstance(data, dict) or 'data' not in data:
+                    raise ExchangeAPIError(500, "Invalid MEXC futures response format")
+                
+                contracts = data['data']
+                if not isinstance(contracts, list):
+                    raise ExchangeAPIError(500, "Expected list of contracts in MEXC futures response")
+                
+                # Convert to unified format
+                symbol_info_map = {}
+                for contract in contracts:
+                    try:
+                        # Extract symbol information
+                        symbol_str = contract.get('symbol', '')
+                        if not symbol_str or '_' not in symbol_str:
+                            continue
+                            
+                        base_coin = contract.get('baseCoin', '')
+                        quote_coin = contract.get('quoteCoin', '')
+                        
+                        if not base_coin or not quote_coin:
+                            continue
+                        
+                        # Create Symbol object
+                        symbol = Symbol(
+                            base=AssetName(base_coin),
+                            quote=AssetName(quote_coin),
+                            is_futures=True
+                        )
+                        
+                        # Extract trading parameters
+                        price_scale = contract.get('priceScale', 8)
+                        amount_scale = contract.get('amountScale', 8)
+                        min_vol = float(contract.get('minVol', 1))
+                        taker_fee = float(contract.get('takerFeeRate', 0.0002))
+                        maker_fee = float(contract.get('makerFeeRate', 0.0))
+                        contract_size = float(contract.get('contractSize', 1))
+                        state = contract.get('state', 1)  # 0 = active, 1 = inactive
+                        
+                        # Calculate minimum quote amount (min_vol * contract_size)
+                        min_quote_amount = min_vol * contract_size
+                        
+                        # Create SymbolInfo
+                        symbol_info = SymbolInfo(
+                            exchange=ExchangeName("mexc_futures"),
+                            symbol=symbol,
+                            base_precision=amount_scale,
+                            quote_precision=price_scale,
+                            min_quote_amount=min_quote_amount,
+                            min_base_amount=min_vol,
+                            is_futures=True,
+                            maker_commission=maker_fee,
+                            taker_commission=taker_fee,
+                            inactive=(state != 0)
+                        )
+                        
+                        symbol_info_map[symbol] = symbol_info
+                        
+                    except (KeyError, ValueError, TypeError) as e:
+                        # Skip malformed contract data
+                        continue
+                
+                return symbol_info_map
+                
+    except aiohttp.ClientError as e:
+        raise ExchangeAPIError(500, f"Network error fetching MEXC futures: {str(e)}")
+    except Exception as e:
+        raise ExchangeAPIError(500, f"Error parsing MEXC futures data: {str(e)}")
 
 
 class MarketType(IntEnum):
@@ -59,13 +151,14 @@ class SymbolAvailability(Struct):
     """Symbol availability across exchanges"""
     symbol: Symbol
     mexc_spot: bool = False
+    mexc_futures: bool = False
     gateio_spot: bool = False
     gateio_futures: bool = False
     
     @property
     def exchange_count(self) -> int:
         """Number of exchanges where symbol is available"""
-        return sum([self.mexc_spot, self.gateio_spot, self.gateio_futures])
+        return sum([self.mexc_spot, self.mexc_futures, self.gateio_spot, self.gateio_futures])
     
     @property
     def is_arbitrage_candidate(self) -> bool:
@@ -121,6 +214,9 @@ class SymbolDiscoveryEngine:
         """Factory method to create exchange clients"""
         if exchange_market.exchange == "mexc" and exchange_market.market == MarketType.SPOT:
             return MexcPublicExchange()
+        elif exchange_market.exchange == "mexc" and exchange_market.market == MarketType.FUTURES:
+            # Return None for MEXC futures - we'll handle this specially
+            return None
         elif exchange_market.exchange == "gateio" and exchange_market.market == MarketType.SPOT:
             return GateioPublicExchange()
         elif exchange_market.exchange == "gateio" and exchange_market.market == MarketType.FUTURES:
@@ -135,12 +231,24 @@ class SymbolDiscoveryEngine:
         HFT COMPLIANT: Fresh API calls for configuration data.
         """
         try:
-            # Create exchange instance on-demand
+            # Special handling for MEXC futures
+            if exchange_market.exchange == "mexc" and exchange_market.market == MarketType.FUTURES:
+                start_time = time.perf_counter()
+                info = await fetch_mexc_futures_symbols()
+                elapsed = time.perf_counter() - start_time
+                self.logger.info(f"Fetched {len(info)} futures symbols from {exchange_market} in {elapsed:.2f}s")
+                return info
+            
+            # Standard exchange client handling
             exchange_key = str(exchange_market)
             if exchange_key not in self.exchanges:
                 self.exchanges[exchange_key] = self._create_exchange_client(exchange_market)
             
             client = self.exchanges[exchange_key]
+            if client is None:
+                self.logger.warning(f"No client available for {exchange_market}")
+                return {}
+                
             start_time = time.perf_counter()
             
             # Fetch exchange info (fresh call per HFT compliance)
@@ -173,6 +281,7 @@ class SymbolDiscoveryEngine:
         # Define exchange/market combinations
         targets = [
             ExchangeMarket(exchange="mexc", market=MarketType.SPOT),
+            ExchangeMarket(exchange="mexc", market=MarketType.FUTURES),
             ExchangeMarket(exchange="gateio", market=MarketType.SPOT),
             ExchangeMarket(exchange="gateio", market=MarketType.FUTURES)
         ]
@@ -211,6 +320,7 @@ class SymbolDiscoveryEngine:
         for symbol_key, avail in availability_matrix.items():
             availability_dict[symbol_key] = {
                 'mexc_spot': avail.mexc_spot,
+                'mexc_futures': avail.mexc_futures,
                 'gateio_spot': avail.gateio_spot,
                 'gateio_futures': avail.gateio_futures
             }
@@ -236,28 +346,107 @@ class SymbolDiscoveryEngine:
             execution_time=execution_time
         )
     
+    def _normalize_quote_asset(self, quote: str) -> str:
+        """Normalize stablecoin quotes to unified representation"""
+        stablecoin_groups = {'USDT', 'USDC'}
+        if quote in stablecoin_groups:
+            return 'USD_STABLE'  # Unified representation for USDT/USDC
+        return quote
+    
+    def _find_stablecoin_matches(self, base_asset: str, exchange_data: Dict[ExchangeMarket, Dict[Symbol, SymbolInfo]]) -> Dict[str, bool]:
+        """Find all stablecoin matches for a base asset across exchanges"""
+        matches = {
+            'mexc_spot': False,
+            'mexc_futures': False, 
+            'gateio_spot': False,
+            'gateio_futures': False
+        }
+        
+        exchange_markets = {
+            'mexc_spot': ExchangeMarket(exchange="mexc", market=MarketType.SPOT),
+            'mexc_futures': ExchangeMarket(exchange="mexc", market=MarketType.FUTURES),
+            'gateio_spot': ExchangeMarket(exchange="gateio", market=MarketType.SPOT),
+            'gateio_futures': ExchangeMarket(exchange="gateio", market=MarketType.FUTURES)
+        }
+        
+        stablecoins = {'USDT', 'USDC'}
+        
+        for market_name, market in exchange_markets.items():
+            market_symbols = exchange_data.get(market, {})
+            for symbol in market_symbols:
+                if symbol.base == base_asset and symbol.quote in stablecoins:
+                    matches[market_name] = True
+                    break
+        
+        return matches
+
     def _build_availability_matrix(self, 
                                   exchange_data: Dict[ExchangeMarket, Dict[Symbol, SymbolInfo]]
                                   ) -> Dict[str, SymbolAvailability]:
-        """Build symbol availability matrix across all exchanges"""
-        # Collect all unique symbols
-        all_symbols: Set[Symbol] = set()
-        for symbols in exchange_data.values():
-            all_symbols.update(symbols.keys())
+        """Build symbol availability matrix across all exchanges with stablecoin equivalence"""
+        # Collect all unique base assets that trade against stablecoins
+        base_assets_with_stables: Set[str] = set()
+        regular_symbols: Set[Symbol] = set()
         
-        # Build availability matrix
+        stablecoins = {'USDT', 'USDC'}
+        
+        for symbols in exchange_data.values():
+            for symbol in symbols:
+                if symbol.quote in stablecoins:
+                    base_assets_with_stables.add(symbol.base)
+                else:
+                    regular_symbols.add(symbol)
+        
         matrix = {}
-        for symbol in all_symbols:
+        
+        # Handle stablecoin pairs with equivalence matching
+        for base_asset in base_assets_with_stables:
+            matches = self._find_stablecoin_matches(base_asset, exchange_data)
+            
+            # Create a representative symbol for display (prefer USDT)
+            representative_symbol = None
+            for symbols in exchange_data.values():
+                for symbol in symbols:
+                    if symbol.base == base_asset and symbol.quote == 'USDT':
+                        representative_symbol = symbol
+                        break
+                if representative_symbol:
+                    break
+            
+            # If no USDT pair found, use USDC
+            if not representative_symbol:
+                for symbols in exchange_data.values():
+                    for symbol in symbols:
+                        if symbol.base == base_asset and symbol.quote == 'USDC':
+                            representative_symbol = symbol
+                            break
+                    if representative_symbol:
+                        break
+            
+            if representative_symbol:
+                symbol_key = f"{base_asset}/USD_STABLE"
+                availability = SymbolAvailability(
+                    symbol=representative_symbol,
+                    mexc_spot=matches['mexc_spot'],
+                    mexc_futures=matches['mexc_futures'],
+                    gateio_spot=matches['gateio_spot'],
+                    gateio_futures=matches['gateio_futures']
+                )
+                matrix[symbol_key] = availability
+        
+        # Handle regular non-stablecoin pairs with exact matching
+        for symbol in regular_symbols:
             symbol_key = f"{symbol.base}/{symbol.quote}"
             
-            # Find exchange markets for mexc and gateio
             mexc_spot_market = ExchangeMarket(exchange="mexc", market=MarketType.SPOT)
+            mexc_futures_market = ExchangeMarket(exchange="mexc", market=MarketType.FUTURES)
             gateio_spot_market = ExchangeMarket(exchange="gateio", market=MarketType.SPOT)
             gateio_futures_market = ExchangeMarket(exchange="gateio", market=MarketType.FUTURES)
             
             availability = SymbolAvailability(
                 symbol=symbol,
                 mexc_spot=symbol in exchange_data.get(mexc_spot_market, {}),
+                mexc_futures=symbol in exchange_data.get(mexc_futures_market, {}),
                 gateio_spot=symbol in exchange_data.get(gateio_spot_market, {}),
                 gateio_futures=symbol in exchange_data.get(gateio_futures_market, {})
             )
@@ -296,7 +485,26 @@ class SymbolDiscoveryEngine:
                         'inactive': info.inactive
                     }
                     min_quotes.append(info.min_quote_amount)
-                    precisions.append(max(info.base_precision, info.quote_precision))
+                    # Ensure precisions are integers, handle decimal precision values
+                    try:
+                        if isinstance(info.base_precision, str) and '.' in info.base_precision:
+                            # Count decimal places for precision strings like "0.0001"
+                            base_prec = len(info.base_precision.split('.')[1]) if '.' in info.base_precision else 8
+                        else:
+                            base_prec = int(info.base_precision) if info.base_precision else 8
+                    except (ValueError, AttributeError):
+                        base_prec = 8
+                        
+                    try:
+                        if isinstance(info.quote_precision, str) and '.' in info.quote_precision:
+                            # Count decimal places for precision strings like "0.0001"
+                            quote_prec = len(info.quote_precision.split('.')[1]) if '.' in info.quote_precision else 8
+                        else:
+                            quote_prec = int(info.quote_precision) if info.quote_precision else 8
+                    except (ValueError, AttributeError):
+                        quote_prec = 8
+                        
+                    precisions.append(max(base_prec, quote_prec))
                     fees.extend([info.maker_commission, info.taker_commission])
             
             if exchanges_info:
@@ -332,34 +540,40 @@ class SymbolDiscoveryEngine:
         total = len(availability)
         
         # Count by availability
-        mexc_only = sum(1 for a in availability.values() 
-                       if a.mexc_spot and not a.gateio_spot and not a.gateio_futures)
+        mexc_spot_only = sum(1 for a in availability.values() 
+                           if a.mexc_spot and not a.mexc_futures and not a.gateio_spot and not a.gateio_futures)
+        mexc_futures_only = sum(1 for a in availability.values()
+                              if not a.mexc_spot and a.mexc_futures and not a.gateio_spot and not a.gateio_futures)
         gateio_spot_only = sum(1 for a in availability.values()
-                              if not a.mexc_spot and a.gateio_spot and not a.gateio_futures)
+                              if not a.mexc_spot and not a.mexc_futures and a.gateio_spot and not a.gateio_futures)
         gateio_futures_only = sum(1 for a in availability.values()
-                                 if not a.mexc_spot and not a.gateio_spot and a.gateio_futures)
+                                 if not a.mexc_spot and not a.mexc_futures and not a.gateio_spot and a.gateio_futures)
         
-        # Arbitrage opportunities
-        two_way = sum(1 for a in availability.values() if a.exchange_count == 2)
-        three_way = sum(1 for a in availability.values() if a.exchange_count == 3)
+        # Arbitrage opportunities (cumulative counts)
+        two_way = sum(1 for a in availability.values() if a.exchange_count >= 2)
+        three_way = sum(1 for a in availability.values() if a.exchange_count >= 3)
+        four_way = sum(1 for a in availability.values() if a.exchange_count == 4)
         
         # Best opportunities (available on all exchanges)
         best_opportunities = [
             symbol_key for symbol_key, avail in availability.items()
-            if avail.exchange_count == 3
+            if avail.exchange_count == 4
         ]
         
         return {
             'total_symbols': total,
             'mexc_spot_total': sum(1 for a in availability.values() if a.mexc_spot),
+            'mexc_futures_total': sum(1 for a in availability.values() if a.mexc_futures),
             'gateio_spot_total': sum(1 for a in availability.values() if a.gateio_spot),
             'gateio_futures_total': sum(1 for a in availability.values() if a.gateio_futures),
-            'mexc_only': mexc_only,
+            'mexc_spot_only': mexc_spot_only,
+            'mexc_futures_only': mexc_futures_only,
             'gateio_spot_only': gateio_spot_only,
             'gateio_futures_only': gateio_futures_only,
-            'arbitrage_candidates': two_way + three_way,
+            'arbitrage_candidates': two_way + three_way + four_way,
             'two_way_opportunities': two_way,
             'three_way_opportunities': three_way,
+            'four_way_opportunities': four_way,
             'best_opportunities': best_opportunities[:20]  # Top 20
         }
     
@@ -385,7 +599,7 @@ class OutputManager:
     
     def __init__(self, output_dir: Path = None):
         """Initialize output manager with directory"""
-        self.output_dir = output_dir or Path(__file__).parent / 'output'
+        self.output_dir = output_dir or Path('output')
         self.output_dir.mkdir(parents=True, exist_ok=True)
     
     def save_result(self, 
@@ -410,6 +624,130 @@ class OutputManager:
             json.dump(output_data, f, indent=2, ensure_ascii=False)
         
         return filepath
+    
+    def save_arbitrage_opportunities_md(self, result: DiscoveryResult) -> Path:
+        """
+        Generate arbitrage_opportunities.md with 3-way and 4-way opportunities.
+        
+        Returns:
+            Path to saved markdown file
+        """
+        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+        filename = "arbitrage_opportunities.md"
+        filepath = self.output_dir / filename
+        
+        # Separate opportunities by exchange count
+        three_way_opps = []
+        four_way_opps = []
+        
+        for symbol_key, availability in result.availability_matrix.items():
+            count = sum([availability['mexc_spot'], availability['mexc_futures'], 
+                        availability['gateio_spot'], availability['gateio_futures']])
+            
+            if count == 3:
+                three_way_opps.append((symbol_key, availability))
+            elif count == 4:
+                four_way_opps.append((symbol_key, availability))
+        
+        # Generate markdown content
+        md_content = self._generate_markdown_content(
+            result, three_way_opps, four_way_opps, timestamp
+        )
+        
+        # Save markdown file
+        with open(filepath, 'w', encoding='utf-8') as f:
+            f.write(md_content)
+        
+        return filepath
+    
+    def _generate_markdown_content(self, result: DiscoveryResult, 
+                                  three_way_opps: List, four_way_opps: List, 
+                                  timestamp: str) -> str:
+        """Generate markdown content for arbitrage opportunities"""
+        
+        # Header section
+        md_lines = [
+            "# Arbitrage Opportunities Report",
+            "",
+            f"**Generated:** {result.timestamp}",
+            f"**Execution Time:** {result.execution_time:.2f} seconds",
+            f"**Total Symbols Analyzed:** {result.total_symbols:,}",
+            "",
+            "## Summary",
+            "",
+            f"- **Four-Way Opportunities:** {len(four_way_opps)} symbols",
+            f"- **Three-Way Opportunities:** {len(three_way_opps)} symbols", 
+            f"- **Total High-Value Opportunities:** {len(four_way_opps) + len(three_way_opps)} symbols",
+            "",
+            "---",
+            ""
+        ]
+        
+        # Four-way opportunities section
+        if four_way_opps:
+            md_lines.extend([
+                "## 🚀 Four-Way Arbitrage Opportunities",
+                "",
+                "*Symbols available on ALL four markets (MEXC Spot, MEXC Futures, Gate.io Spot, Gate.io Futures)*",
+                "",
+                "| Symbol | MEXC Spot | MEXC Futures | Gate.io Spot | Gate.io Futures |",
+                "|--------|-----------|--------------|--------------|-----------------|"
+            ])
+            
+            # Sort by symbol name for consistency
+            four_way_opps.sort(key=lambda x: x[0])
+            
+            for symbol_key, avail in four_way_opps:
+                mexc_spot = "✅" if avail['mexc_spot'] else "❌"
+                mexc_futures = "✅" if avail['mexc_futures'] else "❌"
+                gateio_spot = "✅" if avail['gateio_spot'] else "❌"
+                gateio_futures = "✅" if avail['gateio_futures'] else "❌"
+                
+                md_lines.append(f"| `{symbol_key}` | {mexc_spot} | {mexc_futures} | {gateio_spot} | {gateio_futures} |")
+            
+            md_lines.extend(["", f"**Total:** {len(four_way_opps)} symbols", "", "---", ""])
+        
+        # Three-way opportunities section  
+        if three_way_opps:
+            md_lines.extend([
+                "## ⚡ Three-Way Arbitrage Opportunities",
+                "",
+                "*Symbols available on exactly THREE of the four markets*",
+                "",
+                "| Symbol | MEXC Spot | MEXC Futures | Gate.io Spot | Gate.io Futures |",
+                "|--------|-----------|--------------|--------------|-----------------|"
+            ])
+            
+            # Sort by symbol name for consistency
+            three_way_opps.sort(key=lambda x: x[0])
+            
+            for symbol_key, avail in three_way_opps:
+                mexc_spot = "✅" if avail['mexc_spot'] else "❌"
+                mexc_futures = "✅" if avail['mexc_futures'] else "❌"
+                gateio_spot = "✅" if avail['gateio_spot'] else "❌"
+                gateio_futures = "✅" if avail['gateio_futures'] else "❌"
+                
+                md_lines.append(f"| `{symbol_key}` | {mexc_spot} | {mexc_futures} | {gateio_spot} | {gateio_futures} |")
+            
+            md_lines.extend(["", f"**Total:** {len(three_way_opps)} symbols", ""])
+        
+        # Footer
+        md_lines.extend([
+            "",
+            "---",
+            "",
+            "## Notes",
+            "",
+            "- ✅ = Symbol available on this exchange/market",
+            "- ❌ = Symbol not available on this exchange/market", 
+            "- `USD_STABLE` = Represents USDT/USDC equivalence (stablecoin pairs)",
+            "- Four-way opportunities offer the highest arbitrage potential",
+            "- Three-way opportunities provide strong cross-market arbitrage potential",
+            "",
+            f"*Report generated by CEX Arbitrage Symbol Discovery Tool at {timestamp}*"
+        ])
+        
+        return "\n".join(md_lines)
     
     def _format_output(self, result: DiscoveryResult, format: OutputFormat) -> dict:
         """Format output based on selected format"""
@@ -449,7 +787,8 @@ class OutputManager:
         filtered_availability = {}
         for symbol_key, availability in result.availability_matrix.items():
             # Check if available on multiple exchanges
-            count = sum([availability['mexc_spot'], availability['gateio_spot'], availability['gateio_futures']])
+            count = sum([availability['mexc_spot'], availability['mexc_futures'], 
+                        availability['gateio_spot'], availability['gateio_futures']])
             if count >= 2:
                 filtered_availability[symbol_key] = availability
         
@@ -513,6 +852,10 @@ class DiscoveryCLI:
             if save_output:
                 filepath = self.output_manager.save_result(result, output_format)
                 self.logger.info(f"Results saved to: {filepath}")
+                
+                # Always generate arbitrage opportunities markdown report
+                md_filepath = self.output_manager.save_arbitrage_opportunities_md(result)
+                self.logger.info(f"Arbitrage opportunities report saved to: {md_filepath}")
             
             # Close connections
             await self.engine.close()
@@ -535,16 +878,19 @@ class DiscoveryCLI:
         print(f"Timestamp: {datetime.fromisoformat(result.timestamp).strftime('%Y-%m-%d %H:%M:%S')}")
         print("\nEXCHANGE COVERAGE:")
         print(f"  MEXC Spot: {stats['mexc_spot_total']} symbols")
+        print(f"  MEXC Futures: {stats['mexc_futures_total']} symbols")
         print(f"  Gate.io Spot: {stats['gateio_spot_total']} symbols")
         print(f"  Gate.io Futures: {stats['gateio_futures_total']} symbols")
         print(f"  Total Unique: {stats['total_symbols']} symbols")
         print("\nEXCLUSIVE SYMBOLS:")
-        print(f"  MEXC Only: {stats['mexc_only']}")
+        print(f"  MEXC Spot Only: {stats['mexc_spot_only']}")
+        print(f"  MEXC Futures Only: {stats['mexc_futures_only']}")
         print(f"  Gate.io Spot Only: {stats['gateio_spot_only']}")
         print(f"  Gate.io Futures Only: {stats['gateio_futures_only']}")
         print("\nARBITRAGE OPPORTUNITIES:")
         print(f"  Two-Way: {stats['two_way_opportunities']} symbols")
         print(f"  Three-Way: {stats['three_way_opportunities']} symbols")
+        print(f"  Four-Way: {stats['four_way_opportunities']} symbols")
         print(f"  Total Candidates: {stats['arbitrage_candidates']} symbols")
         
         if stats.get('best_opportunities'):
