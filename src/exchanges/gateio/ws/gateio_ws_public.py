@@ -166,8 +166,8 @@ class GateioWebsocketPublic(BaseExchangeWebsocketInterface):
             # Would add auth here for private channels
             pass
             
-        if self.ws_client._ws and not self.ws_client._ws.closed:
-            await self.ws_client._ws.send(json.dumps(data))
+        if self.ws_client.is_connected:
+            await self.ws_client.send_message(json.dumps(data))
         else:
             raise Exception("WebSocket not connected")
 

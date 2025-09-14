@@ -4,35 +4,37 @@ High-level architectural documentation for the ultra-high-performance CEX arbitr
 
 ## System Overview
 
-This is a **high-frequency trading (HFT) arbitrage engine** built for professional cryptocurrency trading across multiple exchanges. The system has been **completely refactored** to implement SOLID principles and eliminate all architectural code smells.
+This is a **high-frequency trading (HFT) arbitrage engine** built for professional cryptocurrency trading across multiple exchanges. The system features a **clean src-only architecture** with unified interfaces and SOLID principles throughout.
 
 **Current Architecture Features**:
+- **Clean src-only architecture** - All components use unified `src/exchanges/interface/` system
 - **SOLID-compliant design** with focused, single-responsibility components
 - **Sub-50ms latency** for complete arbitrage cycle execution
 - **Factory pattern** eliminating code duplication in exchange creation
-- **Clean separation of concerns** with dependency injection throughout
+- **Unified interface system** - Single source of truth for all data structures and contracts
 - **Professional-grade resource management** with graceful shutdown
 - **Event-driven architecture** with async/await throughout
 - **Zero-copy message processing** using msgspec for maximum performance
 - **Abstract Factory pattern** enabling seamless exchange integration
 - **Production-grade reliability** with automatic reconnection and error recovery
 
-**Major Refactoring Improvements**:
-- **Eliminated God Class**: Split monolithic controller into focused components
-- **Removed Code Duplication**: Implemented Factory pattern for exchange creation
-- **Fixed Architecture Violations**: Moved all mock classes to proper type definitions
-- **Clean Main Entry Point**: Professional CLI with proper error handling and resource cleanup
+**Architecture Evolution Highlights**:
+- **Eliminated Legacy Dependencies**: Removed `/raw` directory for clean architecture
+- **Unified Type System**: All components use `src/exchanges/interface/structs.py` exclusively
 - **Component-Based Design**: Each component has single responsibility with clear interfaces
+- **Clean Main Entry Point**: Professional CLI with proper error handling and resource cleanup
+- **SOLID Principles**: Factory pattern, dependency injection, and interface-driven design
 
 ## Core Architectural Principles
 
 ### 1. SOLID-Compliant Component Architecture
 
-The system follows a **clean component-based architecture** with **SOLID principles** throughout:
+The system follows a **clean src-only architecture** with **unified interfaces** and **SOLID principles** throughout:
 
-**Configuration Layer** → **Exchange Factory** → **Symbol Resolution** → **Performance Monitor** → **Shutdown Manager** → **Controller Layer**
+**Configuration Layer** → **Exchange Factory** → **Unified Interface System** → **Symbol Resolution** → **Performance Monitor** → **Shutdown Manager** → **Controller Layer**
 
 **Key Components:**
+- **Unified Interface System** (`src/exchanges/interface/`): Single source of truth for all data structures and contracts
 - **ConfigurationManager**: Single responsibility for configuration loading and validation
 - **ExchangeFactory**: Factory pattern for exchange creation, eliminating code duplication
 - **Symbol Resolution System**: Ultra-high-performance O(1) symbol lookup with <1μs latency
@@ -192,10 +194,10 @@ The system implements an **ultra-high-performance symbol resolution architecture
 - **Memory Trade-off**: Higher memory usage for sub-microsecond performance
 
 #### Clean Architecture Compliance
-- **Eliminated Raw Dependencies**: No more `@raw/` module imports in arbitrage layer
-- **Unified Interface**: Exclusive use of `src/exchanges/interface/structs.py` types
+- **Unified Interface System**: Exclusive use of `src/exchanges/interface/structs.py` types throughout
 - **SOLID Principles**: Proper separation of concerns, interface-driven design
 - **Type Safety**: Comprehensive type annotations with structured error handling
+- **Clean Dependencies**: All components depend only on src-based interfaces
 
 ## Development Standards
 
@@ -217,7 +219,7 @@ The system implements an **ultra-high-performance symbol resolution architecture
 
 - **Interface Compliance**: All implementations must use `src/exchanges/interface/`
 - **Data Structure Standards**: msgspec.Struct from `src/exchanges/interface/structs.py`
-- **Clean Architecture**: No `@raw/` module imports in arbitrage layer - unified interface only
+- **Unified Architecture**: All components use src-based interfaces exclusively
 - **Symbol Resolution**: Exclusive use of `Symbol` and `SymbolInfo` structs with O(1) lookup
 - **Performance Targets**: <50ms latency, >95% uptime, <1μs symbol resolution
 - **Type Safety**: Comprehensive type annotations with structured error propagation
@@ -411,7 +413,7 @@ The abstract interface pattern enables easy addition of new exchanges:
 
 **Exchange and Infrastructure Components**:
 - **[Common Components](src/common/README.md)** - Shared utilities and base components
-- **[Exchange Interfaces](src/exchanges/interface/README.md)** - Core interface patterns and contracts  
+- **[Exchange Interfaces](src/exchanges/interface/README.md)** - Unified interface system and contracts  
 - **[MEXC Implementation](src/exchanges/mexc/README.md)** - MEXC-specific implementation details
 - **[Gate.io Implementation](src/exchanges/gateio/README.md)** - Gate.io-specific implementation details
 - **[Usage Examples](src/examples/README.md)** - Usage patterns and testing approaches
@@ -432,9 +434,11 @@ The abstract interface pattern enables easy addition of new exchanges:
 - **Centralized creation**: All object creation logic belongs in appropriate Factory classes
 - **Error resilience**: Factories must handle creation failures gracefully
 
-**Component Organization**:
-- **src/arbitrage/**: Core business logic components (NEW - SOLID-compliant)
-- **src/exchanges/**: Exchange implementations and interfaces
+**Component Organization** (Clean src-only architecture):
+- **src/arbitrage/**: Core business logic components (SOLID-compliant)
+- **src/exchanges/interface/**: Unified interface system and data structures
+- **src/exchanges/mexc/**: MEXC exchange implementation
+- **src/exchanges/gateio/**: Gate.io exchange implementation
 - **src/common/**: Shared utilities and base components
 - **src/examples/**: Usage demonstrations and testing code
 
@@ -517,8 +521,8 @@ python -c "from src.arbitrage.symbol_resolver import SymbolResolver; print('✓ 
 find src/arbitrage -name "*.py" -exec basename {} .py \; | sort
 # Should show: configuration_manager, controller, exchange_factory, performance_monitor, shutdown_manager, symbol_resolver, types, simple_engine
 
-# Verify no raw dependencies in arbitrage layer
-grep -r "@raw" src/arbitrage/ || echo "✓ No raw dependencies - Clean architecture achieved"
+# Verify clean src-only architecture
+find src/ -name "*.py" -exec grep -l "@raw\|raw/" {} \; | wc -l | grep -q "^0$" && echo "✓ Clean src-only architecture achieved" || echo "⚠ Raw dependencies found"
 ```
 
 ### Numeric Type Standards (MANDATORY)

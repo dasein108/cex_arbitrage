@@ -114,10 +114,10 @@ class ArbitrageController:
         """
         try:
             # Get log level from config
-            from common.config import config as raw_config
+            from common.config import config as base_config
             
             # Get environment settings for log level
-            env_config = raw_config.get('environment', {})
+            env_config = base_config.get('environment', {})
             log_level = env_config.get('log_level', 'INFO')
             
             # Configure logging
