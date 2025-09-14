@@ -32,7 +32,7 @@ class ConfigurationManager:
     
     def __init__(self):
         self._config: Optional[ArbitrageConfig] = None
-        self._raw_config: Dict[str, Any] = {}
+        self._base_config: Dict[str, Any] = {}
         self._symbol_resolver: Optional[SymbolResolver] = None
         self._raw_pairs_config: List[Dict[str, Any]] = []
         
@@ -54,15 +54,18 @@ class ConfigurationManager:
         logger.info("Loading arbitrage engine configuration...")
         
         try:
-            # Load from config system
+            # Load from existing config system (which already handles YAML securely)
             if not config.has_arbitrage_config():
                 logger.warning("No arbitrage configuration found, using defaults")
-                self._raw_config = self._get_default_config()
+                self._base_config = self._get_default_config()
             else:
-                self._raw_config = config.get_arbitrage_config()
+                self._base_config = config.get_arbitrage_config()
+            
+            # Log credentials status using existing config
+            self._log_credentials_status()
             
             # Build configuration object
-            self._config = self._build_config(self._raw_config, dry_run)
+            self._config = self._build_config(self._base_config, dry_run)
             
             # Load and validate arbitrage pairs
             self._load_arbitrage_pairs()
@@ -89,11 +92,11 @@ class ConfigurationManager:
             logger.error(f"Failed to load configuration: {e}")
             raise ConfigurationError(f"Configuration loading failed: {e}")
     
-    def _build_config(self, raw_config: Dict[str, Any], dry_run: bool) -> ArbitrageConfig:
+    def _build_config(self, base_config: Dict[str, Any], dry_run: bool) -> ArbitrageConfig:
         """Build ArbitrageConfig from raw configuration dictionary."""
         
         # Extract risk limits
-        risk_limits_dict = raw_config.get('risk_limits', {})
+        risk_limits_dict = base_config.get('risk_limits', {})
         risk_limits = RiskLimits(**{
             k: v for k, v in risk_limits_dict.items() 
             if k in RiskLimits.__dataclass_fields__
@@ -101,34 +104,34 @@ class ConfigurationManager:
         
         # Map opportunity types
         opportunity_types = []
-        for ot_str in raw_config.get('enabled_opportunity_types', ['SPOT_SPOT']):
+        for ot_str in base_config.get('enabled_opportunity_types', ['SPOT_SPOT']):
             try:
                 opportunity_types.append(OpportunityType[ot_str])
             except KeyError:
                 logger.warning(f"Unknown opportunity type: {ot_str}")
         
         # Get enabled exchanges
-        enabled_exchanges = raw_config.get('enabled_exchanges', ['MEXC', 'GATEIO'])
+        enabled_exchanges = base_config.get('enabled_exchanges', ['MEXC', 'GATEIO'])
         
         return ArbitrageConfig(
-            engine_name=raw_config.get('engine_name', 'hft_arbitrage_main'),
+            engine_name=base_config.get('engine_name', 'hft_arbitrage_main'),
             enabled_opportunity_types=opportunity_types,
             enabled_exchanges=enabled_exchanges,
-            target_execution_time_ms=raw_config.get('target_execution_time_ms', 30),
-            opportunity_scan_interval_ms=raw_config.get('opportunity_scan_interval_ms', 100),
-            position_monitor_interval_ms=raw_config.get('position_monitor_interval_ms', 1000),
-            balance_refresh_interval_ms=raw_config.get('balance_refresh_interval_ms', 5000),
+            target_execution_time_ms=base_config.get('target_execution_time_ms', 30),
+            opportunity_scan_interval_ms=base_config.get('opportunity_scan_interval_ms', 100),
+            position_monitor_interval_ms=base_config.get('position_monitor_interval_ms', 1000),
+            balance_refresh_interval_ms=base_config.get('balance_refresh_interval_ms', 5000),
             risk_limits=risk_limits,
-            enable_risk_checks=raw_config.get('enable_risk_checks', True),
-            enable_circuit_breakers=raw_config.get('enable_circuit_breakers', True),
-            enable_websocket_feeds=raw_config.get('enable_websocket_feeds', True),
-            websocket_fallback_to_rest=raw_config.get('websocket_fallback_to_rest', True),
-            market_data_staleness_ms=raw_config.get('market_data_staleness_ms', 100),
-            exchange_specific_configs=raw_config.get('exchange_configs', {}),
-            enable_dry_run=raw_config.get('enable_dry_run', True) if dry_run is None else dry_run,
-            enable_detailed_logging=raw_config.get('enable_detailed_logging', True),
-            enable_performance_metrics=raw_config.get('enable_performance_metrics', True),
-            enable_recovery_mode=raw_config.get('enable_recovery_mode', True),
+            enable_risk_checks=base_config.get('enable_risk_checks', True),
+            enable_circuit_breakers=base_config.get('enable_circuit_breakers', True),
+            enable_websocket_feeds=base_config.get('enable_websocket_feeds', True),
+            websocket_fallback_to_rest=base_config.get('websocket_fallback_to_rest', True),
+            market_data_staleness_ms=base_config.get('market_data_staleness_ms', 100),
+            exchange_specific_configs=base_config.get('exchange_configs', {}),
+            enable_dry_run=base_config.get('enable_dry_run', True) if dry_run is None else dry_run,
+            enable_detailed_logging=base_config.get('enable_detailed_logging', True),
+            enable_performance_metrics=base_config.get('enable_performance_metrics', True),
+            enable_recovery_mode=base_config.get('enable_recovery_mode', True),
         )
     
     def _get_default_config(self) -> Dict[str, Any]:
@@ -150,7 +153,7 @@ class ConfigurationManager:
     def _load_arbitrage_pairs(self) -> None:
         """Load arbitrage pairs from simplified configuration."""
         # Note: Symbol resolver needs to be set up by controller after exchanges are initialized
-        pairs_config = self._raw_config.get('arbitrage_pairs', [])
+        pairs_config = self._base_config.get('arbitrage_pairs', [])
         
         # Store raw config for later processing
         self._raw_pairs_config = pairs_config
@@ -230,6 +233,19 @@ class ConfigurationManager:
         
         return all_errors
     
+    def _log_credentials_status(self):
+        """Log exchange credentials status using existing config."""
+        logger.info("Exchange Credentials Status:")
+        
+        mexc_configured = config.has_mexc_credentials()
+        gateio_configured = config.has_gateio_credentials()
+        
+        status_mexc = "✅ CONFIGURED" if mexc_configured else "⚠️ PUBLIC ONLY"
+        status_gateio = "✅ CONFIGURED" if gateio_configured else "⚠️ PUBLIC ONLY"
+        
+        logger.info(f"  MEXC: {status_mexc}")
+        logger.info(f"  GATEIO: {status_gateio}")
+    
     def _log_configuration_summary(self):
         """Log configuration summary for operational visibility."""
         if not self._config:
@@ -272,3 +288,49 @@ class ConfigurationManager:
         if not self._config:
             return {}
         return self._config.exchange_specific_configs.get(exchange_name, {})
+    
+    def extract_symbols_from_arbitrage_pairs(self) -> List['Symbol']:
+        """
+        Extract unique symbols from arbitrage pairs configuration.
+        
+        Returns:
+            List of Symbol objects for exchange initialization
+        """
+        from exchanges.interface.structs import Symbol, AssetName
+        
+        if not self._raw_pairs_config:
+            logger.warning("No arbitrage pairs configured, using default symbols")
+            return []
+        
+        # Extract unique base/quote pairs from enabled arbitrage pairs
+        unique_pairs = set()
+        enabled_count = 0
+        
+        for pair_config in self._raw_pairs_config:
+            if pair_config.get('is_enabled', True):
+                base_asset = pair_config.get('base_asset', '')
+                quote_asset = pair_config.get('quote_asset', '')
+                
+                if base_asset and quote_asset:
+                    unique_pairs.add((base_asset, quote_asset))
+                    enabled_count += 1
+                else:
+                    logger.warning(f"Invalid pair config: {pair_config.get('id', 'unknown')}")
+        
+        # Convert to Symbol objects
+        symbols = []
+        for base, quote in sorted(unique_pairs):
+            symbols.append(Symbol(
+                base=AssetName(base),
+                quote=AssetName(quote),
+                is_futures=False  # All arbitrage pairs are spot
+            ))
+        
+        logger.info(f"Extracted {len(symbols)} unique symbols from {enabled_count} enabled arbitrage pairs")
+        for symbol in symbols[:5]:  # Log first 5
+            logger.info(f"  - {symbol.base}/{symbol.quote}")
+        
+        if len(symbols) > 5:
+            logger.info(f"  ... and {len(symbols) - 5} more symbols")
+        
+        return symbols

@@ -7,21 +7,20 @@ environment:
   debug: true
   log_level: DEBUG  # CRITICAL, ERROR, WARNING, INFO, DEBUG
 
-# MEXC Exchange API settings
-mexc:
-  api_key: ""  # Your MEXC API key
-  secret_key: ""  # Your MEXC secret key
-  base_url: "https://api.mexc.com"
-  websocket_url: "wss://wbs-api.mexc.com/ws"
-
-# Gate.io Exchange API settings
-gateio:
-  api_key: ""  # Your Gate.io API key (empty for public-only access)
-  secret_key: ""  # Your Gate.io secret key (empty for public-only access)
-  base_url: "https://api.gateio.ws/api/v4"  # Production URL
-  websocket_url: "wss://api.gateio.ws/ws/v4/"  # Production WebSocket URL
-  testnet_base_url: "https://api-testnet.gateapi.io/api/v4"  # Testnet URL
-  testnet_websocket_url: "wss://ws-testnet.gate.com/v4/ws/spot"  # Testnet WebSocket URL
+# Exchange API settings - Unified structure
+exchanges:
+  mexc:
+    api_key: "${MEXC_API_KEY}"  # Set via environment variable MEXC_API_KEY
+    secret_key: "${MEXC_SECRET_KEY}"  # Set via environment variable MEXC_SECRET_KEY
+    base_url: "https://api.mexc.com"
+    websocket_url: "wss://wbs-api.mexc.com/ws"
+  gateio:
+    api_key: "${GATEIO_API_KEY}"  # Set via environment variable GATEIO_API_KEY (empty for public-only access)
+    secret_key: "${GATEIO_SECRET_KEY}"  # Set via environment variable GATEIO_SECRET_KEY (empty for public-only access)
+    base_url: "https://api.gateio.ws/api/v4"  # Production URL
+    websocket_url: "wss://api.gateio.ws/ws/v4/"  # Production WebSocket URL
+    testnet_base_url: "https://api-testnet.gateapi.io/api/v4"  # Testnet URL
+    testnet_websocket_url: "wss://ws-testnet.gate.com/v4/ws/spot"  # Testnet WebSocket URL
 
 # Network configuration
 network:

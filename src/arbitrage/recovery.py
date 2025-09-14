@@ -45,8 +45,8 @@ from .structures import (
 )
 
 from exchanges.interface.structs import Symbol, OrderSide
-from exchanges.interface.private import PrivateExchangeInterface
-from common.types import ExchangeName
+from exchanges.interface.base_exchange import BaseExchangeInterface
+from exchanges.interface.structs import ExchangeName
 from common.exceptions import RecoveryError, OrderExecutionError
 
 
@@ -146,7 +146,7 @@ class RecoveryManager:
     def __init__(
         self,
         config: ArbitrageConfig,
-        private_exchanges: Dict[ExchangeName, PrivateExchangeInterface],
+        exchanges: Dict[str, BaseExchangeInterface],
         recovery_alert_callback: Optional[Callable[[RecoveryContext], None]] = None,
     ):
         """

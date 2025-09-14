@@ -9,8 +9,10 @@ HFT COMPLIANT: Optimized exchange initialization with connection pooling.
 
 import asyncio
 import logging
-from typing import Dict, Any, List, Optional, Type
+import time
+from typing import Dict, Any, List, Optional, Type, Tuple
 from dataclasses import dataclass
+from enum import Enum
 
 from common.config import config
 from common.exceptions import ExchangeAPIError
@@ -20,6 +22,13 @@ from exchanges.interface.structs import Symbol, AssetName, ExchangeStatus
 from exchanges.interface.base_exchange import BaseExchangeInterface
 
 logger = logging.getLogger(__name__)
+
+
+class InitializationStrategy(Enum):
+    """Exchange initialization strategies."""
+    FAIL_FAST = "fail_fast"          # Fail immediately on any error
+    CONTINUE_ON_ERROR = "continue"   # Continue with available exchanges
+    RETRY_WITH_BACKOFF = "retry"     # Retry failed initializations
 
 
 @dataclass
@@ -32,6 +41,40 @@ class ExchangeCredentials:
     def has_private_access(self) -> bool:
         """Check if private API credentials are available."""
         return bool(self.api_key and self.secret_key)
+    
+    def validate(self) -> List[str]:
+        """Validate credentials format."""
+        errors = []
+        
+        if self.api_key:
+            if len(self.api_key) < 10:
+                errors.append("API key appears too short")
+            if ' ' in self.api_key:
+                errors.append("API key contains spaces")
+        
+        if self.secret_key:
+            if len(self.secret_key) < 20:
+                errors.append("Secret key appears too short")
+            if ' ' in self.secret_key:
+                errors.append("Secret key contains spaces")
+        
+        return errors
+
+
+@dataclass
+class ExchangeInitResult:
+    """Result of exchange initialization attempt."""
+    exchange_name: str
+    success: bool
+    exchange: Optional[BaseExchangeInterface] = None
+    error: Optional[Exception] = None
+    attempts: int = 1
+    initialization_time: float = 0.0
+    
+    @property
+    def failed(self) -> bool:
+        """Check if initialization failed."""
+        return not self.success
 
 
 class ExchangeFactory:
@@ -59,7 +102,10 @@ class ExchangeFactory:
     
     def __init__(self):
         self.exchanges: Dict[str, BaseExchangeInterface] = {}
-        self._initialization_timeout = 5.0  # seconds
+        self._initialization_timeout = 10.0  # seconds
+        self._retry_attempts = 3
+        self._retry_delay = 2.0  # seconds
+        self._initialization_results: List[ExchangeInitResult] = []
         
     def _get_credentials(self, exchange_name: str) -> ExchangeCredentials:
         """
@@ -71,18 +117,11 @@ class ExchangeFactory:
         Returns:
             ExchangeCredentials instance
         """
-        if exchange_name == 'MEXC':
-            return ExchangeCredentials(
-                api_key=config.MEXC_API_KEY,
-                secret_key=config.MEXC_SECRET_KEY
-            )
-        elif exchange_name == 'GATEIO':
-            return ExchangeCredentials(
-                api_key=config.GATEIO_API_KEY,
-                secret_key=config.GATEIO_SECRET_KEY
-            )
-        else:
-            return ExchangeCredentials()
+        credentials = config.get_exchange_credentials(exchange_name.lower())
+        return ExchangeCredentials(
+            api_key=credentials.get('api_key', ''),
+            secret_key=credentials.get('secret_key', '')
+        )
     
     def _get_exchange_class(self, exchange_name: str) -> Type[BaseExchangeInterface]:
         """
@@ -104,39 +143,119 @@ class ExchangeFactory:
     async def create_exchange(
         self, 
         exchange_name: str,
-        symbols: Optional[List[Symbol]] = None
+        symbols: Optional[List[Symbol]] = None,
+        max_attempts: Optional[int] = None
     ) -> BaseExchangeInterface:
         """
-        Create and initialize exchange instance.
+        Create and initialize exchange instance with retry logic.
         
         Args:
             exchange_name: Name of the exchange
             symbols: Symbols to initialize (uses defaults if None)
+            max_attempts: Maximum retry attempts (uses default if None)
             
         Returns:
             Initialized exchange instance
             
         Raises:
-            ExchangeAPIError: If exchange creation fails
+            ExchangeAPIError: If exchange creation fails after all retries
         """
+        start_time = time.time()
+        attempts = max_attempts or self._retry_attempts
+        last_error = None
+        
+        for attempt in range(1, attempts + 1):
+            try:
+                logger.info(f"Creating {exchange_name} exchange (attempt {attempt}/{attempts})...")
+                
+                # Validate exchange name
+                if exchange_name not in self.EXCHANGE_CLASSES:
+                    available = list(self.EXCHANGE_CLASSES.keys())
+                    raise ValueError(f"Unsupported exchange: {exchange_name}. Available: {available}")
+                
+                # Get and validate credentials
+                credentials = self._get_credentials(exchange_name)
+                credential_errors = credentials.validate()
+                if credential_errors:
+                    logger.warning(f"Credential validation issues for {exchange_name}: {', '.join(credential_errors)}")
+                
+                # Log credential availability
+                if credentials.has_private_access:
+                    logger.info(f"Private credentials available for {exchange_name}")
+                    key_preview = self._get_key_preview(credentials.api_key)
+                    logger.info(f"API Key: {key_preview}")
+                else:
+                    logger.warning(f"No private credentials for {exchange_name} - public mode only")
+                
+                # Get exchange class
+                exchange_class = self._get_exchange_class(exchange_name)
+                
+                # Create exchange instance with validation
+                exchange = await self._create_exchange_instance(
+                    exchange_class, 
+                    credentials, 
+                    exchange_name
+                )
+                
+                # Initialize with symbols and validation
+                await self._initialize_exchange_with_validation(
+                    exchange, 
+                    exchange_name, 
+                    symbols or self.DEFAULT_SYMBOLS
+                )
+                
+                # Store exchange instance
+                self.exchanges[exchange_name] = exchange
+                
+                # Record successful initialization
+                init_time = time.time() - start_time
+                self._initialization_results.append(
+                    ExchangeInitResult(
+                        exchange_name=exchange_name,
+                        success=True,
+                        exchange=exchange,
+                        attempts=attempt,
+                        initialization_time=init_time
+                    )
+                )
+                
+                logger.info(f"Successfully created {exchange_name} exchange in {init_time:.2f}s")
+                return exchange
+                
+            except Exception as e:
+                last_error = e
+                logger.error(f"Attempt {attempt} failed for {exchange_name}: {e}")
+                
+                if attempt < attempts:
+                    wait_time = self._retry_delay * attempt
+                    logger.info(f"Retrying {exchange_name} in {wait_time:.1f}s...")
+                    await asyncio.sleep(wait_time)
+                else:
+                    # Record failed initialization
+                    init_time = time.time() - start_time
+                    self._initialization_results.append(
+                        ExchangeInitResult(
+                            exchange_name=exchange_name,
+                            success=False,
+                            error=e,
+                            attempts=attempt,
+                            initialization_time=init_time
+                        )
+                    )
+        
+        # All attempts failed
+        error_msg = f"Failed to create {exchange_name} after {attempts} attempts. Last error: {last_error}"
+        logger.error(error_msg)
+        raise ExchangeAPIError(500, error_msg)
+    
+    async def _create_exchange_instance(
+        self,
+        exchange_class: Type[BaseExchangeInterface],
+        credentials: ExchangeCredentials,
+        exchange_name: str
+    ) -> BaseExchangeInterface:
+        """Create exchange instance with proper error handling."""
         try:
-            logger.info(f"Creating {exchange_name} exchange...")
-            
-            # Get credentials
-            credentials = self._get_credentials(exchange_name)
-            
-            # Log credential availability
-            if credentials.has_private_access:
-                logger.info(f"Private credentials available for {exchange_name}")
-                key_preview = self._get_key_preview(credentials.api_key)
-                logger.info(f"API Key: {key_preview}")
-            else:
-                logger.warning(f"No private credentials for {exchange_name} - public mode only")
-            
-            # Get exchange class
-            exchange_class = self._get_exchange_class(exchange_name)
-            
-            # Create exchange instance
             if credentials.has_private_access:
                 exchange = exchange_class(
                     api_key=credentials.api_key,
@@ -145,71 +264,115 @@ class ExchangeFactory:
             else:
                 exchange = exchange_class()
             
-            # Initialize with symbols
-            await self._initialize_exchange(
-                exchange, 
-                exchange_name, 
-                symbols or self.DEFAULT_SYMBOLS
-            )
-            
-            # Store exchange instance
-            self.exchanges[exchange_name] = exchange
+            # Validate instance creation
+            if not isinstance(exchange, BaseExchangeInterface):
+                raise ValueError(f"Exchange {exchange_name} does not implement BaseExchangeInterface")
             
             return exchange
             
         except Exception as e:
-            logger.error(f"Failed to create {exchange_name} exchange: {e}")
-            raise ExchangeAPIError(500, f"Exchange creation failed: {e}")
+            raise ExchangeAPIError(500, f"Failed to instantiate {exchange_name}: {e}")
     
-    async def _initialize_exchange(
+    async def _initialize_exchange_with_validation(
         self,
         exchange: BaseExchangeInterface,
         name: str,
         symbols: List[Symbol]
     ) -> None:
-        """
-        Initialize exchange with symbols and validate connection.
-        
-        Args:
-            exchange: Exchange instance to initialize
-            name: Exchange name for logging
-            symbols: Symbols to subscribe to
-        """
+        """Initialize exchange with comprehensive validation."""
         logger.info(f"Initializing {name} with {len(symbols)} symbols...")
         
-        # Initialize exchange
-        await exchange.init(symbols)
+        # Validate symbols
+        if not symbols:
+            raise ValueError(f"No symbols provided for {name} initialization")
+        
+        try:
+            # Initialize exchange with timeout
+            await asyncio.wait_for(
+                exchange.init(symbols),
+                timeout=self._initialization_timeout
+            )
+        except asyncio.TimeoutError:
+            raise ExchangeAPIError(504, f"{name} initialization timeout ({self._initialization_timeout}s)")
+        except Exception as e:
+            raise ExchangeAPIError(500, f"{name} initialization failed: {e}")
         
         # Wait for connection establishment
         await asyncio.sleep(1)
         
-        # Check status
+        # Comprehensive status validation
         status = exchange.status
         logger.info(f"{name} initialized - Status: {status.name}")
         
         if status == ExchangeStatus.INACTIVE:
-            raise ExchangeAPIError(500, f"{name} failed to activate")
+            raise ExchangeAPIError(500, f"{name} failed to activate - check credentials and connectivity")
+        elif status == ExchangeStatus.ERROR:
+            raise ExchangeAPIError(500, f"{name} entered error state during initialization")
+        
+        # Validate symbol loading
+        active_symbols = getattr(exchange, 'active_symbols', [])
+        if len(active_symbols) == 0:
+            logger.warning(f"{name} has no active symbols after initialization")
+        else:
+            logger.info(f"{name} loaded {len(active_symbols)} active symbols")
+    
     
     async def create_exchanges(
         self,
         exchange_names: List[str],
-        dry_run: bool = True
+        strategy: InitializationStrategy = InitializationStrategy.CONTINUE_ON_ERROR,
+        symbols: Optional[List[Symbol]] = None
     ) -> Dict[str, BaseExchangeInterface]:
         """
-        Create multiple exchanges concurrently.
+        Create multiple exchanges with intelligent error handling.
         
         Args:
             exchange_names: List of exchange names to create
-            dry_run: Whether in dry run mode (affects error handling)
+            strategy: How to handle initialization failures
+            symbols: Symbols to initialize (uses defaults if None)
             
         Returns:
-            Dictionary of initialized exchanges
+            Dictionary of successfully initialized exchanges
         """
-        logger.info(f"Creating {len(exchange_names)} exchanges...")
+        if not exchange_names:
+            raise ValueError("No exchange names provided")
         
+        logger.info(f"Creating {len(exchange_names)} exchanges with {strategy.value} strategy...")
+        
+        # Clear previous results
+        self._initialization_results = []
+        
+        if strategy == InitializationStrategy.FAIL_FAST:
+            return await self._create_exchanges_fail_fast(exchange_names, symbols)
+        elif strategy == InitializationStrategy.CONTINUE_ON_ERROR:
+            return await self._create_exchanges_continue(exchange_names, symbols)
+        elif strategy == InitializationStrategy.RETRY_WITH_BACKOFF:
+            return await self._create_exchanges_with_retry(exchange_names, symbols)
+        else:
+            raise ValueError(f"Unknown initialization strategy: {strategy}")
+    
+    async def _create_exchanges_fail_fast(
+        self, 
+        exchange_names: List[str],
+        symbols: Optional[List[Symbol]]
+    ) -> Dict[str, BaseExchangeInterface]:
+        """Create exchanges with fail-fast strategy."""
+        for name in exchange_names:
+            exchange = await self.create_exchange(name, symbols, max_attempts=1)
+            self.exchanges[name] = exchange
+        
+        self._log_exchange_summary()
+        return self.exchanges
+    
+    async def _create_exchanges_continue(
+        self, 
+        exchange_names: List[str],
+        symbols: Optional[List[Symbol]]
+    ) -> Dict[str, BaseExchangeInterface]:
+        """Create exchanges with continue-on-error strategy."""
         tasks = []
         for name in exchange_names:
-            tasks.append(self._create_exchange_safe(name, dry_run))
+            tasks.append(self._create_exchange_safe(name, symbols))
         
         # Create exchanges concurrently
         results = await asyncio.gather(*tasks, return_exceptions=True)
@@ -218,53 +381,151 @@ class ExchangeFactory:
         for name, result in zip(exchange_names, results):
             if isinstance(result, Exception):
                 logger.error(f"Failed to create {name}: {result}")
-                if not dry_run:
-                    raise result
-            else:
+            elif result:
                 self.exchanges[name] = result
         
         if not self.exchanges:
             raise ExchangeAPIError(500, "No exchanges could be initialized")
         
-        # Log summary
         self._log_exchange_summary()
+        return self.exchanges
+    
+    async def _create_exchanges_with_retry(
+        self, 
+        exchange_names: List[str],
+        symbols: Optional[List[Symbol]]
+    ) -> Dict[str, BaseExchangeInterface]:
+        """Create exchanges with retry strategy."""
+        failed_exchanges = []
         
+        # First attempt - concurrent
+        await self._create_exchanges_continue(exchange_names, symbols)
+        
+        # Identify failures
+        for name in exchange_names:
+            if name not in self.exchanges:
+                failed_exchanges.append(name)
+        
+        # Retry failed exchanges with backoff
+        if failed_exchanges:
+            logger.info(f"Retrying {len(failed_exchanges)} failed exchanges...")
+            
+            for attempt in range(2, self._retry_attempts + 1):
+                if not failed_exchanges:
+                    break
+                
+                retry_tasks = []
+                for name in failed_exchanges:
+                    retry_tasks.append(self._create_exchange_safe(name, symbols))
+                
+                # Wait with exponential backoff
+                wait_time = self._retry_delay * (2 ** (attempt - 2))
+                logger.info(f"Waiting {wait_time:.1f}s before retry attempt {attempt}...")
+                await asyncio.sleep(wait_time)
+                
+                # Execute retries
+                results = await asyncio.gather(*retry_tasks, return_exceptions=True)
+                
+                # Update failed list
+                new_failed = []
+                for name, result in zip(failed_exchanges, results):
+                    if isinstance(result, Exception) or not result:
+                        new_failed.append(name)
+                    else:
+                        self.exchanges[name] = result
+                        logger.info(f"Successfully recovered {name} on attempt {attempt}")
+                
+                failed_exchanges = new_failed
+        
+        if not self.exchanges:
+            raise ExchangeAPIError(500, "No exchanges could be initialized after retries")
+        
+        self._log_exchange_summary()
         return self.exchanges
     
     async def _create_exchange_safe(
         self, 
         name: str, 
-        dry_run: bool
+        symbols: Optional[List[Symbol]] = None
     ) -> Optional[BaseExchangeInterface]:
         """
-        Create exchange with error handling for dry run mode.
+        Create exchange with comprehensive error handling.
         
         Args:
             name: Exchange name
-            dry_run: Whether in dry run mode
+            symbols: Symbols to initialize
             
         Returns:
-            Exchange instance or None if failed in dry run mode
+            Exchange instance or None if failed
         """
         try:
-            return await self.create_exchange(name)
+            return await self.create_exchange(name, symbols)
         except Exception as e:
-            if dry_run:
-                logger.warning(f"Continuing in dry run mode without {name}")
-                return None
-            raise
+            logger.error(f"Safe creation failed for {name}: {e}")
+            return None
     
     def _log_exchange_summary(self):
-        """Log summary of initialized exchanges."""
-        logger.info("Exchange initialization complete:")
+        """Log comprehensive summary of initialization results."""
+        total_requested = len(self._initialization_results)
+        successful = len([r for r in self._initialization_results if r.success])
+        failed = total_requested - successful
+        
+        logger.info("Exchange Initialization Summary:")
+        logger.info(f"  Requested: {total_requested}, Successful: {successful}, Failed: {failed}")
         logger.info(f"  Active exchanges: {list(self.exchanges.keys())}")
         
+        # Log successful exchanges
         for name, exchange in self.exchanges.items():
             if exchange:
                 status = exchange.status.name
-                symbols = len(exchange.active_symbols)
+                symbols = len(getattr(exchange, 'active_symbols', []))
                 private = "Private" if exchange.has_private else "Public Only"
-                logger.info(f"  {name}: {status} ({symbols} symbols, {private})")
+                
+                # Find initialization result
+                result = next((r for r in self._initialization_results if r.exchange_name == name), None)
+                time_info = f" in {result.initialization_time:.2f}s" if result else ""
+                attempts_info = f" (attempts: {result.attempts})" if result and result.attempts > 1 else ""
+                
+                logger.info(f"  ✅ {name}: {status} ({symbols} symbols, {private}){time_info}{attempts_info}")
+        
+        # Log failed exchanges
+        for result in self._initialization_results:
+            if result.failed:
+                logger.error(f"  ❌ {result.exchange_name}: Failed after {result.attempts} attempts - {result.error}")
+    
+    def get_initialization_results(self) -> List[ExchangeInitResult]:
+        """Get initialization results for monitoring and analysis."""
+        return self._initialization_results.copy()
+    
+    def get_initialization_summary(self) -> Dict[str, Any]:
+        """Get initialization summary as dictionary."""
+        total_requested = len(self._initialization_results)
+        successful = len([r for r in self._initialization_results if r.success])
+        failed = total_requested - successful
+        
+        avg_init_time = 0.0
+        if successful > 0:
+            successful_results = [r for r in self._initialization_results if r.success]
+            avg_init_time = sum(r.initialization_time for r in successful_results) / len(successful_results)
+        
+        return {
+            'total_requested': total_requested,
+            'successful': successful,
+            'failed': failed,
+            'success_rate': (successful / total_requested * 100) if total_requested > 0 else 0.0,
+            'average_init_time': avg_init_time,
+            'active_exchanges': list(self.exchanges.keys()),
+            'initialization_results': [
+                {
+                    'exchange_name': r.exchange_name,
+                    'success': r.success,
+                    'attempts': r.attempts,
+                    'initialization_time': r.initialization_time,
+                    'error': str(r.error) if r.error else None
+                }
+                for r in self._initialization_results
+            ]
+        }
     
     def _get_key_preview(self, api_key: Optional[str]) -> str:
         """Get safe preview of API key for logging."""

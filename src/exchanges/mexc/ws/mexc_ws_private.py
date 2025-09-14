@@ -115,7 +115,7 @@ class MexcWebsocketPrivate(BaseExchangeWebsocketInterface):
         self.listen_key = await self.private_client.create_listen_key()
         self.logger.info(f"Listen key created: {self.listen_key[:8]}...")
 
-        return MexcConfig.WEBSOCKET_URL + f"?listenKey={self.listen_key}"
+        return MexcConfig.get_websocket_url() + f"?listenKey={self.listen_key}"
 
 
     async def init(self, symbols: List[Symbol] = None):

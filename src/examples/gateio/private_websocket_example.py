@@ -113,8 +113,9 @@ async def demonstrate_private_websocket_streaming():
     logger = logging.getLogger(__name__)
     
     # Get API credentials from config
-    api_key = config.GATEIO_API_KEY
-    secret_key = config.GATEIO_SECRET_KEY
+    gateio_credentials = config.get_exchange_credentials('gateio')
+    api_key = gateio_credentials['api_key']
+    secret_key = gateio_credentials['secret_key']
     
     if not api_key or not secret_key:
         logger.error("❌ Missing Gate.io API credentials!")
@@ -268,8 +269,9 @@ async def demonstrate_symbol_management():
     processor = AccountDataProcessor()
     
     # Get API credentials from config
-    api_key = config.GATEIO_API_KEY
-    secret_key = config.GATEIO_SECRET_KEY
+    gateio_credentials = config.get_exchange_credentials('gateio')
+    api_key = gateio_credentials['api_key']
+    secret_key = gateio_credentials['secret_key']
     
     if not api_key or not secret_key:
         logger.error("❌ Missing Gate.io API credentials for symbol management demo!")

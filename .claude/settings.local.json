@@ -40,7 +40,14 @@
       "WebFetch(domain:www.gate.com)",
       "WebFetch(domain:www.gateio.ws)",
       "Bash(chmod:*)",
-      "Bash(gtimeout:*)"
+      "Bash(gtimeout:*)",
+      "Bash(MEXC_API_KEY=\"test_mexc_key_123456789\" MEXC_SECRET_KEY=\"test_mexc_secret_very_long_key_123456789012345678901234567890\" PYTHONPATH=src python -c \"\nfrom src.common.config import config\n\nprint(''Testing with complete MEXC credentials...'')\nprint(f''MEXC has credentials: {config.has_mexc_credentials()}'')\nprint(f''GATEIO has credentials: {config.has_gateio_credentials()}'')\n\n# Test safe summary\nsummary = config.get_safe_summary()\nprint(f''MEXC credentials configured: {summary[\"\"mexc_credentials_configured\"\"]}'')\nprint(f''GATEIO credentials configured: {summary[\"\"gateio_credentials_configured\"\"]}'')\n\")",
+      "Bash(for file in /Users/dasein/dev/cex_arbitrage/src/arbitrage/*.py)",
+      "Bash(do)",
+      "Bash(if grep -q \"from common.types\" \"$file\")",
+      "Bash(then)",
+      "Bash(fi)",
+      "Bash(done)"
     ],
     "deny": [],
     "ask": []

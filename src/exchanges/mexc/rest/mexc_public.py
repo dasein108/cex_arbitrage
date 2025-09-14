@@ -55,7 +55,7 @@ class MexcPublicExchange(PublicExchangeInterface):
         
         No authentication required for public endpoints.
         """
-        super().__init__(ExchangeName(MexcConfig.EXCHANGE_NAME), MexcConfig.BASE_URL)
+        super().__init__(ExchangeName(MexcConfig.EXCHANGE_NAME), MexcConfig.get_base_url())
         
         # Initialize REST client for public endpoints
         self.client = RestClient(
@@ -152,7 +152,7 @@ class MexcPublicExchange(PublicExchangeInterface):
                 is_futures=False,
                 maker_commission=float(mexc_symbol.makerCommission),
                 taker_commission=float(mexc_symbol.takerCommission),
-                inactive=mexc_symbol.status == '1'
+                inactive=mexc_symbol.status != '1'
             )
             
             symbol_info_map[symbol] = symbol_info

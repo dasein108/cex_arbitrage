@@ -46,8 +46,8 @@ from .structures import (
 )
 
 from exchanges.interface.structs import Symbol, OrderSide
-from exchanges.interface.private import PrivateExchangeInterface
-from common.types import ExchangeName
+from exchanges.interface.base_exchange import BaseExchangeInterface
+from exchanges.interface.structs import ExchangeName
 from common.exceptions import PositionManagementError
 
 
@@ -90,7 +90,7 @@ class PositionManager:
     def __init__(
         self,
         config: ArbitrageConfig,
-        private_exchanges: Dict[ExchangeName, PrivateExchangeInterface],
+        exchanges: Dict[str, BaseExchangeInterface],
     ):
         """
         Initialize position manager with exchange connections and configuration.

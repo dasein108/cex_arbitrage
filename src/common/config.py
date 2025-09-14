@@ -15,9 +15,13 @@ Key Features:
 Usage:
     from common.config import config
     
-    # Exchange API credentials
-    mexc_key = config.MEXC_API_KEY
-    gateio_key = config.GATEIO_API_KEY
+    # Exchange API credentials (new unified approach)
+    mexc_credentials = config.get_exchange_credentials('mexc')
+    gateio_credentials = config.get_exchange_credentials('gateio')
+    
+    # Exchange configuration
+    mexc_config = config.get_exchange_config('mexc')
+    gateio_config = config.get_exchange_config('gateio')
     
     # System settings
     timeout = config.REQUEST_TIMEOUT
@@ -29,10 +33,12 @@ Usage:
 """
 
 import os
+import re
 import logging
 from typing import Dict, Optional, Any
 from pathlib import Path
 import yaml
+from dotenv import load_dotenv
 
 
 class ConfigurationError(Exception):
@@ -69,16 +75,59 @@ class HftConfig:
         
         self._logger = logging.getLogger(__name__)
         
+        # Load environment variables from .env file
+        self._load_env_file()
+        
         # Load configuration from YAML
         self._load_yaml_config()
         self._validate_required_settings()
         
         # Mark as initialized
         HftConfig._initialized = True
-        self._logger.info(f"MEXC configuration initialized for environment: {self.ENVIRONMENT}")
+        self._logger.info(f"HFT configuration initialized for environment: {self.ENVIRONMENT}")
+    
+    def _load_env_file(self) -> None:
+        """
+        Load environment variables from .env file in project root.
+        
+        Tries multiple locations to find the .env file:
+        1. Project root (preferred)
+        2. Parent directories
+        3. Current working directory
+        """
+
+        # Try multiple locations for .env file
+        env_paths = [
+            Path(__file__).parent.parent.parent / '.env',  # Project root
+            Path(__file__).parent.parent / '.env',         # src directory
+            Path.cwd() / '.env',                            # Current working directory
+            Path.home() / '.env',                           # User home directory (fallback)
+        ]
+        
+        env_loaded = False
+        for env_path in env_paths:
+            if env_path.exists():
+                try:
+                    # Load the .env file
+                    load_dotenv(dotenv_path=env_path, override=False)
+                    self._logger.info(f"Loaded environment variables from: {env_path}")
+                    env_loaded = True
+                    break
+                except Exception as e:
+                    self._logger.warning(f"Failed to load .env from {env_path}: {e}")
+                    continue
+        
+        if not env_loaded:
+            self._logger.debug("No .env file found - using system environment variables only")
+            # Still try to load from default location (load_dotenv will search automatically)
+            try:
+                if load_dotenv(override=False):
+                    self._logger.info("Loaded environment variables from default .env location")
+            except Exception:
+                pass
     
     def _load_yaml_config(self) -> None:
-        """Load configuration from YAML file."""
+        """Load configuration from YAML file with environment variable substitution."""
         
         # Look for config.yaml in multiple locations
         config_paths = [
@@ -95,7 +144,11 @@ class HftConfig:
             if config_path.exists():
                 try:
                     with open(config_path, 'r') as f:
-                        config_data = yaml.safe_load(f)
+                        raw_content = f.read()
+                    
+                    # Substitute environment variables
+                    substituted_content = self._substitute_env_vars(raw_content)
+                    config_data = yaml.safe_load(substituted_content)
                     config_file_path = config_path
                     break
                 except Exception as e:
@@ -115,15 +168,17 @@ class HftConfig:
         self.DEBUG_MODE = env_config.get('debug', True if self.ENVIRONMENT == 'dev' else False)
         self.LOG_LEVEL = env_config.get('log_level', 'DEBUG' if self.DEBUG_MODE else 'INFO')
         
-        # Extract MEXC settings
-        mexc_config = config_data.get('mexc', {})
+        # Extract exchanges settings as dictionary
+        self.exchanges = config_data.get('exchanges', {})
+        
+        # Legacy compatibility - add individual properties for backward compatibility during transition
+        mexc_config = self.exchanges.get('mexc', {})
         self.MEXC_API_KEY = mexc_config.get('api_key', '')
         self.MEXC_SECRET_KEY = mexc_config.get('secret_key', '')
         self.MEXC_BASE_URL = mexc_config.get('base_url', 'https://api.mexc.com')
         self.MEXC_WEBSOCKET_URL = mexc_config.get('websocket_url', 'wss://wbs-api.mexc.com/ws')
         
-        # Extract Gate.io settings
-        gateio_config = config_data.get('gateio', {})
+        gateio_config = self.exchanges.get('gateio', {})
         self.GATEIO_API_KEY = gateio_config.get('api_key', '')
         self.GATEIO_SECRET_KEY = gateio_config.get('secret_key', '')
         self.GATEIO_BASE_URL = gateio_config.get('base_url', 'https://api.gateio.ws/api/v4')
@@ -153,35 +208,67 @@ class HftConfig:
         # Store complete config data for arbitrage access
         self._config_data = config_data
     
+    def _substitute_env_vars(self, content: str) -> str:
+        """
+        Substitute environment variables in configuration content.
+        
+        Supports syntax:
+        - ${VAR_NAME} - Required environment variable
+        - ${VAR_NAME:default} - Optional with default value
+        
+        Args:
+            content: Raw configuration content
+            
+        Returns:
+            Content with environment variables substituted
+        """
+        env_var_pattern = re.compile(r'\$\{([^}]+)\}')
+        
+        def replace_var(match):
+            var_expr = match.group(1)
+            
+            # Check for default value syntax
+            if ':' in var_expr:
+                var_name, default_value = var_expr.split(':', 1)
+                env_value = os.getenv(var_name.strip())
+                if env_value is None:
+                    self._logger.debug(f"Using default value for {var_name}: {default_value}")
+                    return default_value
+                return env_value
+            else:
+                # Required environment variable (but allow empty for public mode)
+                var_name = var_expr.strip()
+                env_value = os.getenv(var_name)
+                if env_value is None:
+                    self._logger.warning(f"Environment variable {var_name} not set - using empty value")
+                    return ""
+                return env_value
+        
+        # Perform substitution
+        result = env_var_pattern.sub(replace_var, content)
+        return result
+    
     def _validate_required_settings(self) -> None:
         """Validate that required settings are properly configured."""
         
-        # Validate MEXC credentials if provided
-        if self.MEXC_API_KEY and not self.MEXC_SECRET_KEY:
-            raise ConfigurationError("MEXC_API_KEY configured but MEXC_SECRET_KEY is missing", 'MEXC_SECRET_KEY')
-        
-        if self.MEXC_SECRET_KEY and not self.MEXC_API_KEY:
-            raise ConfigurationError("MEXC_SECRET_KEY configured but MEXC_API_KEY is missing", 'MEXC_API_KEY')
-        
-        # Validate Gate.io credentials if provided
-        if self.GATEIO_API_KEY and not self.GATEIO_SECRET_KEY:
-            raise ConfigurationError("GATEIO_API_KEY configured but GATEIO_SECRET_KEY is missing", 'GATEIO_SECRET_KEY')
-        
-        if self.GATEIO_SECRET_KEY and not self.GATEIO_API_KEY:
-            raise ConfigurationError("GATEIO_SECRET_KEY configured but GATEIO_API_KEY is missing", 'GATEIO_API_KEY')
-        
-        # Validate API key format if provided
-        if self.MEXC_API_KEY:
-            self._validate_api_key_format('MEXC_API_KEY', self.MEXC_API_KEY)
-        
-        if self.MEXC_SECRET_KEY:
-            self._validate_api_key_format('MEXC_SECRET_KEY', self.MEXC_SECRET_KEY)
+        # Validate exchange credentials
+        for exchange_name, exchange_config in self.exchanges.items():
+            api_key = exchange_config.get('api_key', '')
+            secret_key = exchange_config.get('secret_key', '')
             
-        if self.GATEIO_API_KEY:
-            self._validate_api_key_format('GATEIO_API_KEY', self.GATEIO_API_KEY)
-        
-        if self.GATEIO_SECRET_KEY:
-            self._validate_api_key_format('GATEIO_SECRET_KEY', self.GATEIO_SECRET_KEY)
+            # Validate paired credentials
+            if api_key and not secret_key:
+                raise ConfigurationError(f"{exchange_name.upper()}_API_KEY configured but {exchange_name.upper()}_SECRET_KEY is missing", f'{exchange_name.upper()}_SECRET_KEY')
+            
+            if secret_key and not api_key:
+                raise ConfigurationError(f"{exchange_name.upper()}_SECRET_KEY configured but {exchange_name.upper()}_API_KEY is missing", f'{exchange_name.upper()}_API_KEY')
+            
+            # Validate API key format if provided
+            if api_key:
+                self._validate_api_key_format(f'{exchange_name.upper()}_API_KEY', api_key)
+            
+            if secret_key:
+                self._validate_api_key_format(f'{exchange_name.upper()}_SECRET_KEY', secret_key)
         
         # Validate numeric settings
         if self.REQUEST_TIMEOUT <= 0 or self.REQUEST_TIMEOUT > 60:
@@ -195,11 +282,9 @@ class HftConfig:
         
         # Warn about production settings
         if self.ENVIRONMENT == 'prod':
-            if not self.MEXC_API_KEY or not self.MEXC_SECRET_KEY:
-                self._logger.warning("Production environment detected but MEXC credentials are not configured")
-            
-            if not self.GATEIO_API_KEY or not self.GATEIO_SECRET_KEY:
-                self._logger.warning("Production environment detected but Gate.io credentials are not configured")
+            for exchange_name in self.exchanges.keys():
+                if not self.has_exchange_credentials(exchange_name):
+                    self._logger.warning(f"Production environment detected but {exchange_name.upper()} credentials are not configured")
             
             if self.DEBUG_MODE:
                 self._logger.warning("DEBUG_MODE is enabled in production environment")
@@ -226,6 +311,21 @@ class HftConfig:
         key_preview = f"{key_value[:4]}...{key_value[-4:]}" if len(key_value) > 8 else "***"
         self._logger.debug(f"{key_name} format validation passed: {key_preview}")
     
+    def has_exchange_credentials(self, exchange_name: str) -> bool:
+        """
+        Check if exchange credentials are configured.
+        
+        Args:
+            exchange_name: Name of the exchange (e.g., 'mexc', 'gateio')
+        
+        Returns:
+            True if both API key and secret are configured for the exchange
+        """
+        exchange_config = self.exchanges.get(exchange_name.lower(), {})
+        api_key = exchange_config.get('api_key', '')
+        secret_key = exchange_config.get('secret_key', '')
+        return bool(api_key) and bool(secret_key)
+    
     def has_mexc_credentials(self) -> bool:
         """
         Check if MEXC credentials are configured.
@@ -233,7 +333,7 @@ class HftConfig:
         Returns:
             True if both API key and secret are configured
         """
-        return bool(self.MEXC_API_KEY) and bool(self.MEXC_SECRET_KEY)
+        return self.has_exchange_credentials('mexc')
     
     def has_gateio_credentials(self) -> bool:
         """
@@ -242,7 +342,50 @@ class HftConfig:
         Returns:
             True if both API key and secret are configured
         """
-        return bool(self.GATEIO_API_KEY) and bool(self.GATEIO_SECRET_KEY)
+        return self.has_exchange_credentials('gateio')
+    
+    def get_exchange_config(self, exchange_name: str) -> Dict[str, Any]:
+        """
+        Get exchange-specific configuration dictionary.
+        
+        Args:
+            exchange_name: Name of the exchange (e.g., 'mexc', 'gateio')
+        
+        Returns:
+            Dictionary with exchange configuration settings
+        """
+        exchange_config = self.exchanges.get(exchange_name.lower(), {}).copy()
+        
+        # Add common network settings
+        exchange_config.update({
+            'request_timeout': self.REQUEST_TIMEOUT,
+            'max_retries': self.MAX_RETRIES,
+            'retry_delay': self.RETRY_DELAY
+        })
+        
+        # Add exchange-specific rate limits
+        if exchange_name.lower() == 'mexc':
+            exchange_config['rate_limit_per_second'] = self.MEXC_RATE_LIMIT_PER_SECOND
+        elif exchange_name.lower() == 'gateio':
+            exchange_config['rate_limit_per_second'] = self.GATEIO_RATE_LIMIT_PER_SECOND
+        
+        return exchange_config
+    
+    def get_exchange_credentials(self, exchange_name: str) -> Dict[str, str]:
+        """
+        Get exchange credentials.
+        
+        Args:
+            exchange_name: Name of the exchange (e.g., 'mexc', 'gateio')
+        
+        Returns:
+            Dictionary with api_key and secret_key
+        """
+        exchange_config = self.exchanges.get(exchange_name.lower(), {})
+        return {
+            'api_key': exchange_config.get('api_key', ''),
+            'secret_key': exchange_config.get('secret_key', '')
+        }
     
     def get_mexc_config(self) -> Dict[str, Any]:
         """
@@ -251,16 +394,7 @@ class HftConfig:
         Returns:
             Dictionary with MEXC configuration settings
         """
-        return {
-            'api_key': self.MEXC_API_KEY,
-            'secret_key': self.MEXC_SECRET_KEY,
-            'base_url': self.MEXC_BASE_URL,
-            'websocket_url': self.MEXC_WEBSOCKET_URL,
-            'rate_limit_per_second': self.MEXC_RATE_LIMIT_PER_SECOND,
-            'request_timeout': self.REQUEST_TIMEOUT,
-            'max_retries': self.MAX_RETRIES,
-            'retry_delay': self.RETRY_DELAY
-        }
+        return self.get_exchange_config('mexc')
     
     def get_gateio_config(self) -> Dict[str, Any]:
         """
@@ -269,18 +403,7 @@ class HftConfig:
         Returns:
             Dictionary with Gate.io configuration settings
         """
-        return {
-            'api_key': self.GATEIO_API_KEY,
-            'secret_key': self.GATEIO_SECRET_KEY,
-            'base_url': self.GATEIO_BASE_URL,
-            'websocket_url': self.GATEIO_WEBSOCKET_URL,
-            'testnet_base_url': self.GATEIO_TESTNET_BASE_URL,
-            'testnet_websocket_url': self.GATEIO_TESTNET_WEBSOCKET_URL,
-            'rate_limit_per_second': self.GATEIO_RATE_LIMIT_PER_SECOND,
-            'request_timeout': self.REQUEST_TIMEOUT,
-            'max_retries': self.MAX_RETRIES,
-            'retry_delay': self.RETRY_DELAY
-        }
+        return self.get_exchange_config('gateio')
     
     def get_safe_summary(self) -> Dict[str, Any]:
         """
@@ -391,6 +514,19 @@ def is_debug_enabled() -> bool:
     return config.DEBUG_MODE
 
 
+def get_exchange_credentials(exchange_name: str) -> Dict[str, str]:
+    """
+    Get exchange API credentials.
+    
+    Args:
+        exchange_name: Name of the exchange (e.g., 'mexc', 'gateio')
+    
+    Returns:
+        Dictionary with api_key and secret_key
+    """
+    return config.get_exchange_credentials(exchange_name)
+
+
 def get_mexc_credentials() -> Dict[str, str]:
     """
     Get MEXC API credentials.
@@ -398,10 +534,7 @@ def get_mexc_credentials() -> Dict[str, str]:
     Returns:
         Dictionary with api_key and secret_key
     """
-    return {
-        'api_key': config.MEXC_API_KEY,
-        'secret_key': config.MEXC_SECRET_KEY
-    }
+    return get_exchange_credentials('mexc')
 
 
 def get_gateio_credentials() -> Dict[str, str]:
@@ -411,10 +544,7 @@ def get_gateio_credentials() -> Dict[str, str]:
     Returns:
         Dictionary with api_key and secret_key
     """
-    return {
-        'api_key': config.GATEIO_API_KEY,
-        'secret_key': config.GATEIO_SECRET_KEY
-    }
+    return get_exchange_credentials('gateio')
 
 
 def get_arbitrage_config() -> Dict[str, Any]:

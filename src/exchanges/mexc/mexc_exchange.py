@@ -59,7 +59,7 @@ class MexcExchange(BaseExchangeInterface):
         
         self._ws_config = WebSocketConfig(
             name="mexc_orderbooks",
-            url=MexcConfig.WEBSOCKET_URL,
+            url=MexcConfig.get_websocket_url(),
             timeout=30.0,
             ping_interval=20.0,
             max_reconnect_attempts=10,

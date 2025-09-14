@@ -46,9 +46,8 @@ from .balance import BalanceMonitor
 from .recovery import RecoveryManager
 from .aggregator import MarketDataAggregator
 
-from exchanges.interface.public import PublicExchangeInterface
-from exchanges.interface.private import PrivateExchangeInterface
-from common.types import ExchangeName
+from exchanges.interface.base_exchange import BaseExchangeInterface
+from exchanges.interface.structs import ExchangeName
 from common.exceptions import ArbitrageEngineError, ExchangeError
 
 
@@ -73,11 +72,12 @@ class ArbitrageEngine:
     def __init__(
         self,
         config: ArbitrageConfig,
-        public_exchanges: Dict[ExchangeName, PublicExchangeInterface],
-        private_exchanges: Dict[ExchangeName, PrivateExchangeInterface],
+        exchanges: Dict[str, BaseExchangeInterface],
     ):
         """
         Initialize arbitrage engine with exchange connections and configuration.
+        
+        Uses unified BaseExchangeInterface that encapsulates both public and private functionality.
         
         TODO: Comprehensive initialization with validation.
         
@@ -94,10 +94,14 @@ class ArbitrageEngine:
         - Should we pre-load symbol mappings and trading rules?
         
         Performance: Initialization should complete in <5 seconds
+        
+        Args:
+            config: Arbitrage engine configuration
+            exchanges: Dictionary of exchange instances (name -> BaseExchangeInterface)
+                      Each exchange encapsulates both public and private API functionality
         """
         self.config = config
-        self.public_exchanges = public_exchanges
-        self.private_exchanges = private_exchanges
+        self.exchanges = exchanges
         
         # Core Engine State
         self._state = ArbitrageState.IDLE

@@ -23,11 +23,12 @@ def _create_mexc_config(endpoint_type: str, timeout_multiplier: float = 1.0, max
     base_timeout = timeout_map.get(endpoint_type, config.REQUEST_TIMEOUT)
     final_timeout = base_timeout * timeout_multiplier
     
+    mexc_config = config.get_exchange_config('mexc')
     return RestConfig(
         timeout=final_timeout,
         max_retries=max_retries if max_retries is not None else config.MAX_RETRIES,
         retry_delay=config.RETRY_DELAY,
-        max_concurrent=config.MEXC_RATE_LIMIT_PER_SECOND
+        max_concurrent=mexc_config.get('rate_limit_per_second', 18)
     )
 
 
@@ -36,8 +37,18 @@ class MexcConfig:
     
     # Exchange constants from YAML config
     EXCHANGE_NAME = "MEXC"
-    BASE_URL = config.MEXC_BASE_URL
-    WEBSOCKET_URL = config.MEXC_WEBSOCKET_URL
+    
+    @staticmethod
+    def get_base_url() -> str:
+        """Get MEXC base URL from config."""
+        mexc_config = config.get_exchange_config('mexc')
+        return mexc_config.get('base_url', 'https://api.mexc.com')
+    
+    @staticmethod
+    def get_websocket_url() -> str:
+        """Get MEXC WebSocket URL from config."""
+        mexc_config = config.get_exchange_config('mexc')
+        return mexc_config.get('websocket_url', 'wss://wbs-api.mexc.com/ws')
     
     # REST configs only - no paths
     rest_config = {

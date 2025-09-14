@@ -24,6 +24,8 @@ This is a **high-frequency trading (HFT) arbitrage engine** built for profession
 - **Component-Based Design**: Each component has single responsibility with clear interfaces
 - **Clean Main Entry Point**: Professional CLI with proper error handling and resource cleanup
 - **SOLID Principles**: Factory pattern, dependency injection, and interface-driven design
+- **Modernized Configuration System**: Dictionary-based exchange configuration with unified credential management
+- **Dynamic Exchange Scaling**: New exchanges added via configuration without code changes
 
 ## Core Architectural Principles
 
@@ -117,6 +119,31 @@ Each component has **one focused purpose**:
 - **Concurrent initialization**: Multiple exchanges created in parallel
 - **Error resilience**: Graceful handling of exchange failures in dry run mode
 
+### Exchange Implementation Architecture
+
+**All exchange implementations inherit from `BaseExchangeInterface`** (`src/exchanges/interface/base_exchange.py`) following composition pattern:
+
+**Exchange Hierarchy**:
+```
+BaseExchangeInterface (Abstract Interface)
+├── MexcExchange (implements BaseExchangeInterface)
+└── GateioExchange (implements BaseExchangeInterface)
+```
+
+**Composition Pattern Benefits**:
+- **SOLID Compliance**: Delegates to specialized public/private components
+- **Clear Separation**: Public market data vs private trading operations
+- **WebSocket Coordination**: Manages real-time streaming without tight coupling
+- **HFT Compliance**: No caching of real-time trading data
+- **Type Safety**: Unified data structures via `exchanges.interface.structs`
+
+**Key Implementation Requirements**:
+1. **Inherit from BaseExchangeInterface**: Not from WebSocket or other specialized classes
+2. **Implement all abstract methods**: `status`, `orderbook`, `balances`, `symbol_info`, `active_symbols`, `open_orders`
+3. **Composition over inheritance**: Delegate to specialized REST/WebSocket components
+4. **HFT Compliance**: Never cache real-time trading data (balances, orders, positions)
+5. **Unified structures**: Use only `Symbol`, `SymbolInfo`, `OrderBook`, etc. from `exchanges.interface.structs`
+
 ### Clean Main Entry Point
 
 **Previous**: Monolithic `main.py` with embedded mock classes and mixed concerns
@@ -127,6 +154,27 @@ Each component has **one focused purpose**:
 - **Professional CLI**: Argument parsing with proper help and examples
 
 ## Key Architectural Decisions
+
+### Configuration Architecture (NEW - Modernized System)
+
+**Unified Configuration Dictionary Structure**:
+- **Migrated from individual exchange sections** to unified `exchanges:` dictionary in `config.yaml`
+- **Dynamic credential lookup** via `config.get_exchange_credentials(exchange_name)` 
+- **Scalable exchange addition** - new exchanges require only YAML configuration entry
+- **Environment variable integration** - seamless `.env` file support with `${VAR_NAME}` substitution
+- **Backward compatibility maintained** during architectural transition
+
+**Benefits of New Configuration Architecture**:
+- **Eliminates code duplication** in credential management across exchanges
+- **Enables dynamic exchange scaling** without code changes
+- **Centralizes configuration validation** through unified methods
+- **Simplifies testing and deployment** with consistent credential patterns
+- **Future-proofs system** for additional exchange integrations
+
+**Configuration Flow**:
+```
+config.yaml (exchanges: dict) → ConfigurationManager → ExchangeFactory → Dynamic Exchange Creation
+```
 
 ### Performance-First Design Philosophy
 

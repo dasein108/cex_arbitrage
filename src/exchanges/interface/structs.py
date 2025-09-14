@@ -13,7 +13,7 @@ OrderId = NewType("OrderId", str)
 class ExchangeStatus(IntEnum):
     """A WebSocket connection is in one of these four states."""
 
-    CONNECTING, ACTIVE, CLOSING, INACTIVE = range(4)
+    CONNECTING, ACTIVE, CLOSING, INACTIVE, ERROR = range(5)
 
 class OrderStatus(IntEnum):
     UNKNOWN = -1

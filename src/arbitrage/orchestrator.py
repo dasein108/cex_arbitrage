@@ -50,10 +50,9 @@ from exchanges.interface.structs import (
     OrderType,
     OrderStatus,
     Order,
-    OrderResponse,
 )
-from exchanges.interface.private import PrivateExchangeInterface
-from common.types import ExchangeName
+from exchanges.interface.base_exchange import BaseExchangeInterface
+from exchanges.interface.structs import ExchangeName
 from common.exceptions import OrderExecutionError, ExchangeError
 
 
@@ -162,7 +161,7 @@ class OrderOrchestrator:
     def __init__(
         self,
         config: ArbitrageConfig,
-        private_exchanges: Dict[ExchangeName, PrivateExchangeInterface],
+        exchanges: Dict[str, BaseExchangeInterface],
     ):
         """
         Initialize order orchestrator with exchange connections and configuration.
@@ -193,7 +192,7 @@ class OrderOrchestrator:
         
         # Order Tracking
         self._active_orders: Dict[str, Order] = {}  # order_id -> Order
-        self._order_responses: Dict[str, OrderResponse] = {}  # order_id -> Response
+        self._order_responses: Dict[str, Order] = {}  # order_id -> Response
         
         # Performance Metrics
         self._orders_executed = 0
@@ -532,7 +531,7 @@ class OrderOrchestrator:
         positions = []
         return positions
     
-    async def _execute_single_order(self, instruction: OrderInstruction) -> OrderResponse:
+    async def _execute_single_order(self, instruction: OrderInstruction) -> Order:
         """
         Execute single order instruction with comprehensive monitoring.
         

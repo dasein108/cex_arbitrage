@@ -44,9 +44,9 @@ from exchanges.interface.structs import (
     Trade,
     SymbolInfo,
 )
-from exchanges.interface.public import PublicExchangeInterface
-from common.types import ExchangeName
-from common.exceptions import MarketDataError
+from exchanges.interface.base_exchange import BaseExchangeInterface
+from exchanges.interface.structs import ExchangeName
+from common.exceptions import ExchangeAPIError as MarketDataError
 
 
 logger = logging.getLogger(__name__)
@@ -103,7 +103,7 @@ class MarketDataAggregator:
     def __init__(
         self,
         config: ArbitrageConfig,
-        public_exchanges: Dict[ExchangeName, PublicExchangeInterface],
+        exchanges: Dict[str, BaseExchangeInterface],
         data_update_callback: Optional[Callable[[MarketDataSnapshot], None]] = None,
     ):
         """
@@ -271,7 +271,7 @@ class MarketDataAggregator:
     async def _websocket_connection_manager(
         self,
         exchange_name: ExchangeName,
-        exchange_client: PublicExchangeInterface,
+        exchange_client: BaseExchangeInterface,
         symbols: Set[Symbol],
     ) -> None:
         """
@@ -332,7 +332,7 @@ class MarketDataAggregator:
     async def _rest_fallback_manager(
         self,
         exchange_name: ExchangeName,
-        exchange_client: PublicExchangeInterface,
+        exchange_client: BaseExchangeInterface,
         symbols: Set[Symbol],
     ) -> None:
         """
@@ -573,7 +573,7 @@ class MarketDataAggregator:
     async def _fetch_rest_data(
         self,
         exchange_name: ExchangeName,
-        exchange_client: PublicExchangeInterface,
+        exchange_client: BaseExchangeInterface,
         symbols: Set[Symbol],
     ) -> None:
         """

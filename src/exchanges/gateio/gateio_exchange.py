@@ -634,7 +634,15 @@ class GateioExchange(BaseExchangeInterface):
             f"balances={len(self._balances_dict)}, "
             f"initialized={self._initialized})"
         )
-    
+
+    async def _setup_fees(self, exchange_info: Dict[Symbol, SymbolInfo]) -> Dict[Symbol, SymbolInfo]:
+        fees =  await self._private_api.get_trading_fees()
+        for symbol, exchange_info in exchange_info.items():
+            exchange_info[symbol].fees_maker = fees.maker_rate
+            exchange_info[symbol].fees_taker = fees.taker_rate
+
+        return exchange_info
+
     async def _load_symbol_info(self) -> None:
         """
         Load symbol information from exchange API and cache it.
@@ -651,7 +659,12 @@ class GateioExchange(BaseExchangeInterface):
             
             # Get exchange info from public API (returns Dict[Symbol, SymbolInfo])
             exchange_info = await self._public_api.get_exchange_info()
-            
+
+            # apply fees from private API if available
+            if self.has_private and self._private_api:
+                exchange_info = await self._setup_fees(exchange_info)
+
+
             # Cache the symbol info directly (already in correct format)
             self._symbol_info_cache = exchange_info.copy()
                 

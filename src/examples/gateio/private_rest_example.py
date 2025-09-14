@@ -48,9 +48,10 @@ async def demonstrate_private_api():
     
     # Initialize Gate.io private API client
     logger.info("Initializing Gate.io private REST client...")
+    gateio_credentials = config.get_exchange_credentials('gateio')
     client = GateioPrivateExchange(
-        api_key=config.GATEIO_API_KEY,
-        secret_key=config.GATEIO_SECRET_KEY
+        api_key=gateio_credentials['api_key'],
+        secret_key=gateio_credentials['secret_key']
     )
     
     try:
@@ -195,9 +196,10 @@ async def demonstrate_batch_operations():
     
     logger.info("\n=== Batch Operations Demo ===")
     
+    gateio_credentials = config.get_exchange_credentials('gateio')
     client = GateioPrivateExchange(
-        api_key=config.GATEIO_API_KEY,
-        secret_key=config.GATEIO_SECRET_KEY
+        api_key=gateio_credentials['api_key'],
+        secret_key=gateio_credentials['secret_key']
     )
     
     try:

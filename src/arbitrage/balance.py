@@ -38,9 +38,9 @@ from dataclasses import dataclass
 
 from .structures import ArbitrageConfig
 
-from exchanges.interface.structs import Balance, Symbol
-from exchanges.interface.private import PrivateExchangeInterface
-from common.types import ExchangeName
+from exchanges.interface.structs import AssetBalance, Symbol
+from exchanges.interface.base_exchange import BaseExchangeInterface
+from exchanges.interface.structs import ExchangeName
 from common.exceptions import BalanceManagementError
 
 
@@ -56,7 +56,7 @@ class BalanceSnapshot:
     Contains all balance information needed for arbitrage decisions.
     """
     exchange: ExchangeName
-    balances: Dict[str, Balance]  # asset -> Balance
+    balances: Dict[str, AssetBalance]  # asset -> AssetBalance
     total_value_usd: Decimal
     timestamp: int
     refresh_latency_ms: float
@@ -98,7 +98,7 @@ class BalanceMonitor:
     def __init__(
         self,
         config: ArbitrageConfig,
-        private_exchanges: Dict[ExchangeName, PrivateExchangeInterface],
+        exchanges: Dict[str, BaseExchangeInterface],
         balance_alert_callback: Optional[Callable[[str, Dict[str, Any]], None]] = None,
     ):
         """
@@ -244,7 +244,7 @@ class BalanceMonitor:
     async def _balance_monitoring_loop(
         self,
         exchange_name: ExchangeName,
-        exchange_client: PrivateExchangeInterface,
+        exchange_client: BaseExchangeInterface,
     ) -> None:
         """
         Balance monitoring loop for specific exchange.
@@ -295,7 +295,7 @@ class BalanceMonitor:
     async def _refresh_exchange_balances(
         self,
         exchange_name: ExchangeName,
-        exchange_client: PrivateExchangeInterface,
+        exchange_client: BaseExchangeInterface,
     ) -> None:
         """
         Refresh balances for specific exchange.
@@ -351,7 +351,7 @@ class BalanceMonitor:
     
     async def _calculate_total_value_usd(
         self,
-        balance_dict: Dict[str, Balance],
+        balance_dict: Dict[str, AssetBalance],
         exchange_name: ExchangeName,
     ) -> Decimal:
         """
@@ -534,7 +534,7 @@ class BalanceMonitor:
         self,
         exchange: ExchangeName,
         min_balance: Decimal = Decimal("0.001"),
-    ) -> Dict[str, Balance]:
+    ) -> Dict[str, AssetBalance]:
         """
         Get all balances for exchange above minimum threshold.
         

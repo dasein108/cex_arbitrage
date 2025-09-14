@@ -43,7 +43,7 @@ from .structures import (
 )
 
 from exchanges.interface.structs import Symbol
-from common.types import ExchangeName
+from exchanges.interface.structs import ExchangeName
 from common.exceptions import RiskManagementError
 
 

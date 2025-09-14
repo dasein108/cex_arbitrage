@@ -62,8 +62,10 @@ class MexcPrivateExchange(PrivateExchangeInterface):
             secret_key: MEXC secret key for signature generation
         """
         # Use provided credentials or fall back to configuration
-        api_key = api_key or config.MEXC_API_KEY
-        secret_key = secret_key or config.MEXC_SECRET_KEY
+        if not api_key or not secret_key:
+            mexc_credentials = config.get_exchange_credentials('mexc')
+            api_key = api_key or mexc_credentials.get('api_key', '')
+            secret_key = secret_key or mexc_credentials.get('secret_key', '')
 
         if not api_key or not secret_key:
             raise ValueError("MEXC API credentials must be provided")
@@ -72,7 +74,7 @@ class MexcPrivateExchange(PrivateExchangeInterface):
             MexcConfig.EXCHANGE_NAME,
             api_key,
             secret_key,
-            MexcConfig.BASE_URL
+            MexcConfig.get_base_url()
         )
 
         self.logger = logging.getLogger(f"{__name__}.{self.__class__.__name__}")

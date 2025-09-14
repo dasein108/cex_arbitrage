@@ -78,9 +78,10 @@ async def main():
         
         # Create private REST client for listen key management
         logger.info("🔑 Creating MEXC private client...")
+        mexc_credentials = config.get_exchange_credentials('mexc')
         private_client = MexcPrivateExchange(
-            api_key=config.MEXC_API_KEY,
-            secret_key=config.MEXC_SECRET_KEY
+            api_key=mexc_credentials['api_key'],
+            secret_key=mexc_credentials['secret_key']
         )
         
         # Test basic API connectivity first

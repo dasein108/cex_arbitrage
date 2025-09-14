@@ -45,7 +45,7 @@ class ArbitrageController:
         self.engine: Optional[Any] = None  # Will be the actual engine
         self.running = False
         
-    async def initialize(self) -> None:
+    async def  initialize(self) -> None:
         """
         Initialize all components of the arbitrage system.
         
@@ -68,10 +68,18 @@ class ArbitrageController:
         # Register shutdown callbacks
         self.shutdown_manager.register_shutdown_callback(self._shutdown_components)
         
-        # HFT OPTIMIZATION: Initialize exchanges and symbol resolver concurrently
+        # Extract symbols from arbitrage pairs for exchange initialization
+        arbitrage_symbols = self.config_manager.extract_symbols_from_arbitrage_pairs()
+        logger.info(f"Initializing exchanges with {len(arbitrage_symbols)} symbols from arbitrage configuration")
+        
+        # HFT OPTIMIZATION: Initialize exchanges with arbitrage symbols
+        from arbitrage.exchange_factory import InitializationStrategy
+        
+        strategy = InitializationStrategy.CONTINUE_ON_ERROR if self.config.enable_dry_run else InitializationStrategy.RETRY_WITH_BACKOFF
         exchanges_task = self.exchange_factory.create_exchanges(
             self.config.enabled_exchanges,
-            self.config.enable_dry_run
+            strategy=strategy,
+            symbols=arbitrage_symbols
         )
         
         # Wait for exchanges to complete first (symbol resolver depends on them)
@@ -117,8 +125,7 @@ class ArbitrageController:
             from common.config import config as base_config
             
             # Get environment settings for log level
-            env_config = base_config.get('environment', {})
-            log_level = env_config.get('log_level', 'INFO')
+            log_level = base_config.LOG_LEVEL
             
             # Configure logging
             logging.basicConfig(
@@ -185,10 +192,17 @@ class ArbitrageController:
     async def _run_engine_session(self):
         """Run the engine trading session."""
         # Import here to avoid circular dependency
-        from arbitrage.simple_engine import SimpleArbitrageEngine
+        from arbitrage.engine_factory import EngineFactory
         
-        # Create engine
-        self.engine = SimpleArbitrageEngine(self.config, self.exchanges)
+        # Get recommended engine type based on configuration
+        engine_type = EngineFactory.get_recommended_engine_type(self.config)
+        logger.info(f"Using {engine_type} engine based on configuration")
+        
+        # Create engine using factory
+        self.engine = EngineFactory.create_engine(engine_type, self.config, self.exchanges)
+        
+        # CRITICAL FIX: Start the engine (was missing!)
+        await self.engine.start()
         
         logger.info("Arbitrage engine operational and monitoring opportunities...")
         
