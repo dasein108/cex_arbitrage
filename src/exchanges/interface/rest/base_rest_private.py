@@ -147,7 +147,6 @@ class PrivateExchangeInterface(BaseExchangeInterface):
         """
         raise NotImplementedError("get_position method not implemented")
     
-    @abstractmethod
     async def get_trading_fees(self, symbol: Optional[Symbol] = None) -> TradingFee:
         """
         Get personal trading fees for the account or a specific symbol.
@@ -166,7 +165,7 @@ class PrivateExchangeInterface(BaseExchangeInterface):
             Some exchanges may not support symbol-specific fees and will
             return account-level fees regardless of the symbol parameter.
         """
-        pass
+        raise NotImplementedError("get_trading_fees method not implemented")
     
     # @abstractmethod
     # async def get_order_history(

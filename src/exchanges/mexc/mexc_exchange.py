@@ -6,7 +6,8 @@ from types import MappingProxyType
 from collections import OrderedDict
 
 from exchanges.interface.base_exchange import BaseExchangeInterface
-from exchanges.interface.structs import OrderBook, Symbol, AssetBalance, AssetName, Order, OrderId, OrderType, Side, TimeInForce, ExchangeStatus
+from exchanges.interface.structs import OrderBook, Symbol, SymbolInfo, AssetBalance, AssetName, Order, OrderId, OrderType, Side, TimeInForce, ExchangeStatus
+from typing import Dict as TypingDict  # Avoid conflict with types.Dict
 from exchanges.mexc.ws.mexc_ws_public import MexcWebsocketPublic
 from exchanges.mexc.rest.mexc_private import MexcPrivateExchange
 from exchanges.mexc.rest.mexc_public import MexcPublicExchange
@@ -44,6 +45,7 @@ class MexcExchange(BaseExchangeInterface):
         self._balances_dict: Dict[AssetName, AssetBalance] = {}  # Current balances
         self._active_symbols: Set[Symbol] = set()  # Active streaming symbols
         
+        
         # Current streaming state (not cached/persistent)
         self._latest_orderbook: Optional[OrderBook] = None
         self._latest_orderbook_symbol: Optional[Symbol] = None
@@ -74,6 +76,23 @@ class MexcExchange(BaseExchangeInterface):
         self._performance_metrics = {
             'orderbook_updates': 0
         }
+        
+        # Symbol information cache (loaded once at startup - HFT compliant)
+        self._symbol_info_cache: Dict[Symbol, SymbolInfo] = {}  # Symbol -> SymbolInfo
+    
+    
+    @property
+    def symbol_info(self) -> Dict[Symbol, SymbolInfo]:
+        """
+        Get symbol information dictionary.
+        
+        HFT COMPLIANT: Cached at initialization, no runtime API calls.
+        Implements the src interface abstract property.
+        
+        Returns:
+            Dict[Symbol, SymbolInfo] mapping symbols to symbol information
+        """
+        return self._symbol_info_cache.copy()
     
     @property
     def status(self) -> ExchangeStatus:
@@ -201,6 +220,9 @@ class MexcExchange(BaseExchangeInterface):
             
             await self._ws_client.init([])
             self.logger.info("Started WebSocket streaming interface")
+            
+            # Load symbol information (HFT compliant - cached at startup)
+            await self._load_symbol_info()
             
             self._initialized = True
             
@@ -498,6 +520,7 @@ class MexcExchange(BaseExchangeInterface):
         self._balances_dict.clear()
         self._latest_orderbook = None
         self._latest_orderbook_symbol = None
+        self._symbol_info_cache.clear()
         self._initialized = False
     
     async def close(self) -> None:
@@ -522,6 +545,7 @@ class MexcExchange(BaseExchangeInterface):
         self._balances_dict.clear()
         self._latest_orderbook = None
         self._latest_orderbook_symbol = None
+        self._symbol_info_cache.clear()
         self._initialized = False
         
         self.logger.info(f"Successfully closed {self.exchange} exchange")
@@ -558,3 +582,30 @@ class MexcExchange(BaseExchangeInterface):
             f"balances={len(self._balances_dict)}, "
             f"initialized={self._initialized})"
         )
+    
+    async def _load_symbol_info(self) -> None:
+        """
+        Load symbol information from exchange API and cache it.
+        
+        HFT COMPLIANT: Called once during initialization, cached for lifetime.
+        Uses only src interface types, no raw dependencies.
+        """
+        if not self._public_api:
+            self.logger.warning("Cannot load symbol info - public API not available")
+            return
+        
+        try:
+            self.logger.info("Loading symbol information from MEXC API...")
+            
+            # Get exchange info from public API (returns Dict[Symbol, SymbolInfo])
+            exchange_info = await self._public_api.get_exchange_info()
+            
+            # Cache the symbol info directly (already in correct format)
+            self._symbol_info_cache = exchange_info.copy()
+                
+            self.logger.info(f"Successfully loaded {len(self._symbol_info_cache)} symbols from MEXC")
+                
+        except Exception as e:
+            self.logger.error(f"Failed to load symbol info from MEXC: {e}")
+            # Don't raise - this is not critical for basic functionality
+    

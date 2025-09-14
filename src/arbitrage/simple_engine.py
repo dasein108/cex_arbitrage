@@ -10,9 +10,9 @@ HFT COMPLIANT: Event-driven with proper abstractions.
 import asyncio
 import logging
 import time
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, List
 
-from arbitrage.types import ArbitrageConfig, EngineStatistics
+from arbitrage.types import ArbitrageConfig, EngineStatistics, ArbitragePair
 from exchanges.interface.base_exchange import BaseExchangeInterface
 from exchanges.interface.structs import ExchangeStatus
 
@@ -39,6 +39,10 @@ class SimpleArbitrageEngine:
         self._start_time: Optional[float] = None
         self._simulation_task: Optional[asyncio.Task] = None
         
+        # Track active pairs for monitoring
+        self._active_pairs = self._get_active_pairs()
+        logger.info(f"Engine initialized with {len(self._active_pairs)} active pairs")
+        
     async def start(self):
         """Start the engine."""
         if self.running:
@@ -46,6 +50,14 @@ class SimpleArbitrageEngine:
             
         self.running = True
         self._start_time = time.time()
+        
+        # Log active pairs
+        if self._active_pairs:
+            logger.info(f"Monitoring {len(self._active_pairs)} arbitrage pairs:")
+            for pair in self._active_pairs:
+                logger.info(f"  - {pair.id}: {pair.base_asset}/{pair.quote_asset}")
+        else:
+            logger.warning("No active arbitrage pairs configured")
         
         # Start simulation in dry run mode
         if self.config.enable_dry_run:
@@ -102,6 +114,13 @@ class SimpleArbitrageEngine:
     
     async def _simulate_opportunity(self):
         """Simulate detecting and processing an opportunity."""
+        if not self._active_pairs:
+            return
+        
+        # Pick a random pair for simulation
+        import random
+        pair = random.choice(self._active_pairs)
+        
         self.statistics.opportunities_detected += 1
         
         # Simulate execution decision
@@ -112,11 +131,13 @@ class SimpleArbitrageEngine:
             
             logger.info(
                 f"Simulated opportunity #{self.statistics.opportunities_detected} "
+                f"for {pair.id} ({pair.base_asset}/{pair.quote_asset}) "
                 f"(DRY RUN) - Profit: ${profit:.2f}"
             )
         else:
             logger.info(
                 f"Simulated opportunity #{self.statistics.opportunities_detected} "
+                f"for {pair.id} ({pair.base_asset}/{pair.quote_asset}) "
                 f"(DRY RUN) - Skipped due to risk checks"
             )
         
@@ -166,3 +187,31 @@ class SimpleArbitrageEngine:
             self.statistics.uptime_seconds = time.time() - self._start_time
         
         return self.statistics.to_dict()
+    
+    def _get_active_pairs(self) -> List[ArbitragePair]:
+        """
+        Get list of active arbitrage pairs from configuration.
+        
+        HFT COMPLIANT: Pairs are loaded once at startup.
+        """
+        if not self.config.pair_map:
+            return []
+        
+        active_pairs = self.config.pair_map.get_active_pairs()
+        
+        # Filter pairs based on enabled exchanges
+        filtered_pairs = []
+        for pair in active_pairs:
+            # Check if all required exchanges are available
+            exchanges_available = all(
+                exchange_name in self.exchanges 
+                for exchange_name in pair.exchanges.keys()
+            )
+            if exchanges_available:
+                filtered_pairs.append(pair)
+            else:
+                logger.warning(
+                    f"Skipping pair {pair.id}: not all required exchanges available"
+                )
+        
+        return filtered_pairs

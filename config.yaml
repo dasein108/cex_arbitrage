@@ -9,15 +9,15 @@ environment:
 
 # MEXC Exchange API settings
 mexc:
-  api_key: "mx0vgl6pxdKU8DNcIT"  # Your MEXC API key
-  secret_key: "200bba9bffc24768a6899d9b79320f71"  # Your MEXC secret key
+  api_key: ""  # Your MEXC API key
+  secret_key: ""  # Your MEXC secret key
   base_url: "https://api.mexc.com"
   websocket_url: "wss://wbs-api.mexc.com/ws"
 
 # Gate.io Exchange API settings
 gateio:
-  api_key: "9c83ff595ce55ae4fc83c08002bde62f"  # Your Gate.io API key (empty for public-only access)
-  secret_key: "80d24f9870773ca69eb7988f7f6dd0b5f938aeaae6e41028522e89cfb1d5e236"  # Your Gate.io secret key (empty for public-only access)
+  api_key: ""  # Your Gate.io API key (empty for public-only access)
+  secret_key: ""  # Your Gate.io secret key (empty for public-only access)
   base_url: "https://api.gateio.ws/api/v4"  # Production URL
   websocket_url: "wss://api.gateio.ws/ws/v4/"  # Production WebSocket URL
   testnet_base_url: "https://api-testnet.gateapi.io/api/v4"  # Testnet URL
@@ -100,3 +100,89 @@ arbitrage:
     GATEIO:
       # Gate.io-specific settings can be added here
       priority: 2  # Exchange priority for execution
+
+  # Arbitrage pairs configuration (simplified)
+  # Symbol details are auto-discovered from exchanges using get_exchange_info()
+  arbitrage_pairs:
+    - id: "wai_usdt_spot_arb"
+      base_asset: "WAI"
+      quote_asset: "USDT"
+      opportunity_type: "SPOT_SPOT"  # Cross-exchange spot arbitrage
+      min_profit_bps: 30  # Minimum 0.30% profit to execute
+      max_exposure_usd: 25000  # Maximum $25k exposure for this pair
+      is_enabled: true
+      priority: 1  # Highest priority
+    - id: "hifi_usdt_spot_arb"
+      base_asset: "HIFI"
+      quote_asset: "USDT"
+      opportunity_type: "SPOT_SPOT"
+      min_profit_bps: 25  # Minimum 0.25% profit
+      max_exposure_usd: 20000  # Maximum $20k exposure
+      is_enabled: true
+      priority: 2
+    - id: "giga_usdt_spot_arb"
+      base_asset: "GIGA"
+      quote_asset: "USDT"
+      opportunity_type: "SPOT_SPOT"
+      min_profit_bps: 35  # Higher threshold for less liquid pair
+      max_exposure_usd: 15000
+      is_enabled: true
+      priority: 3
+    - id: "aiot_usdt_spot_arb"
+      base_asset: "AIOT"
+      quote_asset: "USDT"
+      opportunity_type: "SPOT_SPOT"
+      min_profit_bps: 40  # Higher for volatile asset
+      max_exposure_usd: 10000
+      is_enabled: false  # Disabled by default
+      priority: 4
+    # Additional pairs can be added - symbol info auto-discovered
+    - id: "neiroeth_usdt_spot_arb"
+      base_asset: "NEIROETH"
+      quote_asset: "USDT"
+      min_profit_bps: 45
+      max_exposure_usd: 8000
+      is_enabled: true
+      priority: 5
+    - id: "hippo_usdt_spot_arb"
+      base_asset: "HIPPO"
+      quote_asset: "USDT"
+      min_profit_bps: 50
+      max_exposure_usd: 7000
+      is_enabled: true
+      priority: 6
+    - id: "myria_usdt_spot_arb"
+      base_asset: "MYRIA"
+      quote_asset: "USDT"
+      min_profit_bps: 50
+      max_exposure_usd: 7000
+      is_enabled: true
+      priority: 6
+    - id: "myx_usdt_spot_arb"
+      base_asset: "MYX"
+      quote_asset: "USDT"
+      min_profit_bps: 50
+      max_exposure_usd: 7000
+      is_enabled: true
+      priority: 6
+    - id: "tai_usdt_spot_arb"
+      base_asset: "TAI"
+      quote_asset: "USDT"
+      min_profit_bps: 50
+      max_exposure_usd: 7000
+      is_enabled: true
+      priority: 6
+    - id: "ai16z_usdt_spot_arb"
+      base_asset: "AI16Z"
+      quote_asset: "USDT"
+      min_profit_bps: 50
+      max_exposure_usd: 7000
+      is_enabled: true
+      priority: 6
+    - id: "badger_usdt_spot_arb"
+      base_asset: "BADGER"
+      quote_asset: "USDT"
+      min_profit_bps: 50
+      max_exposure_usd: 7000
+      is_enabled: true
+      priority: 6

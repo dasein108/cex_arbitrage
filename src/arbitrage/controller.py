@@ -16,6 +16,7 @@ from arbitrage.configuration_manager import ConfigurationManager
 from arbitrage.exchange_factory import ExchangeFactory
 from arbitrage.performance_monitor import PerformanceMonitor
 from arbitrage.shutdown_manager import ShutdownManager, ShutdownReason
+from arbitrage.symbol_resolver import SymbolResolver
 from exchanges.interface.base_exchange import BaseExchangeInterface
 
 logger = logging.getLogger(__name__)
@@ -40,23 +41,26 @@ class ArbitrageController:
         # State
         self.config: Optional[ArbitrageConfig] = None
         self.exchanges: Dict[str, BaseExchangeInterface] = {}
+        self.symbol_resolver: Optional[SymbolResolver] = None
         self.engine: Optional[Any] = None  # Will be the actual engine
         self.running = False
         
-    async def initialize(self, dry_run: bool = True) -> None:
+    async def initialize(self) -> None:
         """
         Initialize all components of the arbitrage system.
         
-        Args:
-            dry_run: Whether to run in dry run mode
+        All settings loaded from config.yaml including dry_run mode.
         """
         logger.info("Initializing arbitrage controller...")
         
         # Setup shutdown handlers
         self.shutdown_manager.setup_signal_handlers()
         
-        # Load configuration
-        self.config = await self.config_manager.load_configuration(dry_run)
+        # Load configuration (will get dry_run setting from config)
+        self.config = await self.config_manager.load_configuration()
+        
+        # Configure logging based on config settings
+        self._configure_logging()
         
         # Initialize performance monitor
         self.performance_monitor = PerformanceMonitor(self.config)
@@ -64,16 +68,75 @@ class ArbitrageController:
         # Register shutdown callbacks
         self.shutdown_manager.register_shutdown_callback(self._shutdown_components)
         
-        # Initialize exchanges
-        self.exchanges = await self.exchange_factory.create_exchanges(
+        # HFT OPTIMIZATION: Initialize exchanges and symbol resolver concurrently
+        exchanges_task = self.exchange_factory.create_exchanges(
             self.config.enabled_exchanges,
             self.config.enable_dry_run
         )
+        
+        # Wait for exchanges to complete first (symbol resolver depends on them)
+        self.exchanges = await exchanges_task
+        
+        # Initialize symbol resolver with exchange information
+        await self._initialize_symbol_resolver()
         
         # Validate we have required resources
         self._validate_initialization()
         
         logger.info("Arbitrage controller initialized successfully")
+    
+    async def _initialize_symbol_resolver(self):
+        """
+        Initialize symbol resolver with exchange information.
+        
+        HFT COMPLIANT: Symbol info fetched once at startup.
+        HFT OPTIMIZED: Performance timing for initialization monitoring.
+        """
+        import time
+        start_time = time.perf_counter()
+        
+        logger.info("Initializing symbol resolver...")
+        self.symbol_resolver = SymbolResolver(self.exchanges)
+        await self.symbol_resolver.initialize()
+        
+        # Log common symbols with performance metrics
+        common_symbols = self.symbol_resolver.get_common_symbols()
+        elapsed = time.perf_counter() - start_time
+        
+        logger.info(f"Symbol resolver initialized in {elapsed*1000:.2f}ms")
+        logger.info(f"Found {len(common_symbols)} symbols available on all exchanges")
+        if common_symbols[:5]:  # Show first 5
+            logger.info(f"Sample common symbols: {common_symbols[:5]}")
+    
+    def _configure_logging(self):
+        """
+        Configure logging based on config.yaml settings.
+        """
+        try:
+            # Get log level from config
+            from common.config import config as raw_config
+            
+            # Get environment settings for log level
+            env_config = raw_config.get('environment', {})
+            log_level = env_config.get('log_level', 'INFO')
+            
+            # Configure logging
+            logging.basicConfig(
+                level=getattr(logging, log_level),
+                format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+                handlers=[
+                    logging.StreamHandler(),
+                    logging.FileHandler('arbitrage.log')
+                ],
+                force=True  # Override existing configuration
+            )
+            
+            logger.info(f"Logging configured: level={log_level}")
+            
+        except Exception as e:
+            logger.warning(f"Failed to configure logging from config: {e}")
+            # Fall back to INFO level
+            logging.basicConfig(level=logging.INFO, force=True)
     
     def _validate_initialization(self):
         """Validate that initialization was successful."""

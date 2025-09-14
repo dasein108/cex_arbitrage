@@ -1,14 +1,14 @@
 #!/usr/bin/env python3
 """
-HFT Arbitrage Engine - Refactored Main Entry Point
+HFT Arbitrage Engine - Config-Driven Main Entry Point
 
 Production-ready main entry point with clean architecture following SOLID principles.
-Eliminates all code smells and provides maintainable, testable, HFT-compliant design.
+All configuration loaded from config.yaml file, no command line arguments required.
 
 Features:
 - Clean separation of concerns with focused components
 - Factory pattern for exchange creation
-- Proper configuration management
+- Proper configuration management from config.yaml
 - Professional performance monitoring
 - Graceful shutdown with resource cleanup
 - HFT-compliant architecture (no real-time data caching)
@@ -21,11 +21,16 @@ Architecture:
 - ArbitrageController: Orchestrates all components
 
 Usage:
-    PYTHONPATH=src python src/main.py          # Start in dry run mode
-    PYTHONPATH=src python src/main.py --live   # Start in live trading mode
+    PYTHONPATH=src python src/main.py
+    
+Configuration:
+    All settings loaded from config.yaml including:
+    - Trading mode (dry_run vs live)
+    - Log level (DEBUG, INFO, WARNING, ERROR)
+    - Exchange credentials and settings
+    - Risk limits and safety features
 """
 
-import argparse
 import asyncio
 import logging
 import sys
@@ -33,15 +38,6 @@ from pathlib import Path
 
 from arbitrage.controller import ArbitrageController
 
-# Configure logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    handlers=[
-        logging.StreamHandler(),
-        logging.FileHandler('arbitrage.log')
-    ]
-)
 logger = logging.getLogger(__name__)
 
 
@@ -49,56 +45,25 @@ async def main() -> None:
     """
     Main entry point for HFT arbitrage engine.
     
-    Clean, focused implementation following Single Responsibility Principle.
+    Config-driven implementation - all settings loaded from config.yaml.
+    No command line arguments required.
     """
-    # Parse command line arguments
-    parser = argparse.ArgumentParser(
-        description='HFT Arbitrage Engine - Ultra-high-performance cryptocurrency arbitrage',
-        formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog="""
-Examples:
-  PYTHONPATH=src python src/main.py          # Start in dry run mode (safe)
-  PYTHONPATH=src python src/main.py --live   # Start in live trading mode
-  
-Configuration:
-  All settings loaded from config.yaml file
-  
-Exchange API Credentials (environment variables):
-  MEXC_API_KEY, MEXC_SECRET_KEY
-  GATEIO_API_KEY, GATEIO_SECRET_KEY
-        """
-    )
-    
-    parser.add_argument(
-        '--live', 
-        action='store_true',
-        help='Enable live trading mode (default: dry run mode for safety)'
-    )
-    
-    parser.add_argument(
-        '--log-level',
-        choices=['DEBUG', 'INFO', 'WARNING', 'ERROR'],
-        default='INFO',
-        help='Set logging level (default: INFO)'
-    )
-    
-    args = parser.parse_args()
-    
-    # Configure logging level
-    logging.getLogger().setLevel(getattr(logging, args.log_level))
-    
-    # Initialize controller
+    # Initialize controller (will load and apply all config settings)
     controller = ArbitrageController()
     
     try:
         logger.info("Starting HFT Arbitrage Engine...")
-        logger.info(f"Mode: {'LIVE TRADING' if args.live else 'DRY RUN (SAFE)'}")
-        logger.info(f"Log Level: {args.log_level}")
         
-        # Initialize all components
-        await controller.initialize(dry_run=not args.live)
+        # Initialize all components (config will be loaded internally)
+        await controller.initialize()
         
-        # Log trading mode confirmation
+        # Log configuration details
+        logger.info(f"Engine: {controller.config.engine_name}")
+        logger.info(f"Mode: {'DRY RUN (SAFE)' if controller.config.enable_dry_run else 'LIVE TRADING'}")
+        logger.info(f"Exchanges: {', '.join(controller.config.enabled_exchanges)}")
+        logger.info(f"Opportunities: {', '.join([t.name for t in controller.config.enabled_opportunity_types])}")
+        
+        # Trading mode confirmation
         if controller.config.enable_dry_run:
             logger.info("Running in DRY RUN mode - safe for testing")
         else:
@@ -127,7 +92,7 @@ if __name__ == "__main__":
     try:
         asyncio.run(main())
     except KeyboardInterrupt:
-        logger.info("Keyboard interrupt - exiting...")
+        print("\nKeyboard interrupt - exiting...")
     except Exception as e:
-        logger.error(f"Fatal error: {e}")
+        print(f"Fatal error: {e}")
         sys.exit(1)

@@ -1,6 +1,7 @@
 from abc import ABC, abstractmethod
 from typing import Dict, List, Optional
-from exchanges.interface.structs import Symbol, ExchangeName, OrderBook, AssetBalance, Order, Position, ExchangeStatus
+from exchanges.interface.structs import (Symbol, ExchangeName, SymbolInfo,
+                                         OrderBook, AssetBalance, Order, Position, ExchangeStatus)
 
 
 class BaseExchangeInterface(ABC):
@@ -23,6 +24,13 @@ class BaseExchangeInterface(ABC):
     def balances(self) -> Dict[Symbol, AssetBalance]:
         """Abstract property to get the current account balances"""
         pass
+
+    @property
+    @abstractmethod
+    def symbol_info(self) -> Dict[Symbol, SymbolInfo]:
+        """Abstract property to get the current account balances"""
+        pass
+
 
     @property
     @abstractmethod
