@@ -12,8 +12,8 @@ from typing import Dict, List, Optional, Tuple
 from decimal import Decimal
 from dataclasses import dataclass, field
 
-from exchanges.interface.base_exchange import BaseExchangeInterface
-from exchanges.interface.structs import Symbol, SymbolInfo
+from core.cex.composed import BasePublicExchangeInterface
+from structs.exchange import Symbol, SymbolInfo
 from arbitrage.types import ExchangePairConfig, ArbitragePair, OpportunityType
 
 logger = logging.getLogger(__name__)
@@ -60,12 +60,12 @@ class SymbolResolver:
     HFT COMPLIANT: All symbol info fetched once at startup and cached.
     """
     
-    def __init__(self, exchanges: Dict[str, BaseExchangeInterface]):
+    def __init__(self, exchanges: Dict[str, BasePublicExchangeInterface]):
         self.exchanges = exchanges
         self._symbol_cache: Dict[str, Dict[Symbol, SymbolInfo]] = {}
         
         # HFT Performance Optimizations - O(1) lookup tables
-        self._symbol_lookup: Dict[Tuple[str, str], Dict[str, SymbolInfo]] = {}  # (base,quote) -> {exchange: info}
+        self._symbol_lookup: Dict[Tuple[str, str], Dict[str, SymbolInfo]] = {}  # (cex,quote) -> {exchange: info}
         self._common_symbols_cache: Optional[List[Tuple[str, str]]] = None
         
         self._initialized = False
@@ -88,7 +88,7 @@ class SymbolResolver:
                 if exchange and hasattr(exchange, 'symbol_info'):
                     logger.info(f"Getting symbol info from {exchange_name}...")
                     
-                    # Get symbol info through standard interface property
+                    # Get symbol info through standard cex property
                     symbol_info = exchange.symbol_info
                     self._symbol_cache[exchange_name] = symbol_info
                     logger.info(f"Cached {len(symbol_info)} symbols from {exchange_name}")
@@ -120,7 +120,7 @@ class SymbolResolver:
         # Clear existing caches
         self._symbol_lookup.clear()
         
-        # Build (base, quote) -> {exchange: SymbolInfo} lookup table
+        # Build (cex, quote) -> {exchange: SymbolInfo} lookup table
         for exchange_name, symbol_cache in self._symbol_cache.items():
             for symbol, info in symbol_cache.items():
                 # Normalize key for case-insensitive O(1) lookup
@@ -205,9 +205,9 @@ class SymbolResolver:
         """
         Find a symbol in the cache for a specific exchange.
         
-        Matches by base/quote assets from Symbol struct.
+        Matches by cex/quote assets from Symbol struct.
         """
-        # Try matching by base/quote assets from Symbol struct
+        # Try matching by cex/quote assets from Symbol struct
         for symbol, info in symbol_cache.items():
             if (symbol.base.upper() == base_asset.upper() and 
                 symbol.quote.upper() == quote_asset.upper()):
@@ -235,7 +235,7 @@ class SymbolResolver:
         Build an ArbitragePair from simplified config using auto-discovered symbol info.
         
         Args:
-            pair_config: Simple config with just base/quote assets
+            pair_config: Simple config with just cex/quote assets
             
         Returns:
             Fully configured ArbitragePair or None if symbol not available

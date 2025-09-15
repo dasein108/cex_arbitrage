@@ -13,14 +13,16 @@ exchanges:
     api_key: "${MEXC_API_KEY}"  # Set via environment variable MEXC_API_KEY
     secret_key: "${MEXC_SECRET_KEY}"  # Set via environment variable MEXC_SECRET_KEY
     base_url: "https://api.mexc.com"
-    websocket_url: "wss://wbs-api.mexc.com/ws"
+    websocket_url: "wss://wbs.mexc.com/ws"
+    enabled: true
   gateio:
     api_key: "${GATEIO_API_KEY}"  # Set via environment variable GATEIO_API_KEY (empty for public-only access)
     secret_key: "${GATEIO_SECRET_KEY}"  # Set via environment variable GATEIO_SECRET_KEY (empty for public-only access)
     base_url: "https://api.gateio.ws/api/v4"  # Production URL
     websocket_url: "wss://api.gateio.ws/ws/v4/"  # Production WebSocket URL
     testnet_base_url: "https://api-testnet.gateapi.io/api/v4"  # Testnet URL
-    testnet_websocket_url: "wss://ws-testnet.gate.com/v4/ws/spot"  # Testnet WebSocket URL
+    testnet_websocket_url: "wss://ws-testnet.gate.com/v4/ws/spot" # Testnet WebSocket URL
+    enabled: true
 
 # Network configuration
 network:

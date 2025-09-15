@@ -15,10 +15,10 @@ Threading: All functions are thread-safe as they're pure functions
 Performance: Optimized for high-frequency trading with minimal allocations
 """
 
-from typing import Tuple, Dict, Any, Optional
+from typing import Tuple, Dict, Any
 from datetime import datetime
 from functools import lru_cache
-from exchanges.interface.structs import Symbol, AssetName, AssetBalance, Order, OrderId, OrderStatus, Side, OrderType, KlineInterval
+from structs.exchange import Symbol, AssetName, AssetBalance, Order, OrderId, OrderStatus, Side, OrderType, KlineInterval
 import hashlib
 import hmac
 import time
@@ -54,13 +54,13 @@ class GateioUtils:
         90% performance improvement through LRU caching for hot trading paths.
 
         Args:
-            symbol: Symbol struct with base and quote assets
+            symbol: Symbol struct with cex and quote assets
 
         Returns:
             Gate.io trading pair string (e.g., "BTC_USDT")
 
         Example:
-            Symbol(base=AssetName("BTC"), quote=AssetName("USDT")) -> "BTC_USDT"
+            Symbol(cex=AssetName("BTC"), quote=AssetName("USDT")) -> "BTC_USDT"
         """
         return f"{symbol.base}_{symbol.quote}"
     
@@ -77,11 +77,11 @@ class GateioUtils:
             pair: Gate.io trading pair string (e.g., "BTC_USDT")
 
         Returns:
-            Symbol struct with base and quote assets
+            Symbol struct with cex and quote assets
 
         Examples:
-            "BTC_USDT" -> Symbol(base=AssetName("BTC"), quote=AssetName("USDT"))
-            "ETH_USDC" -> Symbol(base=AssetName("ETH"), quote=AssetName("USDC"))
+            "BTC_USDT" -> Symbol(cex=AssetName("BTC"), quote=AssetName("USDT"))
+            "ETH_USDC" -> Symbol(cex=AssetName("ETH"), quote=AssetName("USDC"))
         """
         pair_upper = pair.upper()
         return GateioUtils._parse_pair_fast(pair_upper)
@@ -106,7 +106,7 @@ class GateioUtils:
         for quote in GateioUtils._QUOTE_ASSETS:
             if pair_upper.endswith(quote):
                 base = pair_upper[:-len(quote)]
-                if base:  # Ensure base is not empty
+                if base:  # Ensure cex is not empty
                     return Symbol(
                         base=AssetName(base),
                         quote=AssetName(quote),
@@ -124,7 +124,7 @@ class GateioUtils:
     @staticmethod
     def parse_gateio_symbol(gateio_symbol: str) -> Tuple[str, str]:
         """
-        Parse Gate.io symbol string into base and quote assets (synchronous version).
+        Parse Gate.io symbol string into cex and quote assets (synchronous version).
         Gate.io uses underscore format: BTC_USDT -> ("BTC", "USDT")
         
         Args:
@@ -147,7 +147,7 @@ class GateioUtils:
         for quote in quote_assets:
             if symbol_upper.endswith(quote):
                 base = symbol_upper[:-len(quote)]
-                if base:  # Ensure base is not empty
+                if base:  # Ensure cex is not empty
                     return base, quote
         
         # Last resort: split roughly in half

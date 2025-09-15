@@ -25,29 +25,26 @@ Compliance: Full PrivateExchangeInterface implementation with futures position s
 Memory: O(1) per request with efficient pooling
 """
 
-import asyncio
 import time
-from datetime import datetime
 from typing import Dict, List, Optional, Any
-from enum import Enum
 import logging
 from collections import deque
 from threading import Lock
 
-# MANDATORY imports - unified interface compliance
-from exchanges.interface.structs import (
+# MANDATORY imports - unified cex compliance
+from structs.exchange import (
     Symbol, Order, OrderId, OrderType, Side, AssetBalance, AssetName,
     ExchangeName, TimeInForce, Position
 )
-from common.rest_client import RestClient, HTTPMethod
-from exchanges.interface.rest.base_rest_private import PrivateExchangeInterface
+from core.transport.rest.rest_client import RestClient, HTTPMethod
+from core.cex.rest.spot.base_rest_spot_private import PrivateExchangeSpotRestInterface
 from exchanges.gateio.common.gateio_utils import GateioUtils
 from exchanges.gateio.common.gateio_config import GateioConfig
 from exchanges.gateio.common.gateio_config_service import GateioConfigurationService
 from exchanges.gateio.common.gateio_endpoints import GateioFuturesEndpoints, GateioFuturesEndpoint
 
 
-class GateioPrivateFuturesExchange(PrivateExchangeInterface):
+class GateioPrivateFuturesExchangeSpot(PrivateExchangeSpotRestInterface):
     """
     Ultra-high-performance Gate.io Futures private exchange implementation.
     
@@ -59,7 +56,7 @@ class GateioPrivateFuturesExchange(PrivateExchangeInterface):
     - Sub-10ms response time optimization for critical trading paths
     - Comprehensive position and balance management for futures trading
     
-    Architecture Note: This is a private interface implementation that can be used
+    Architecture Note: This is a private cex implementation that can be used
     directly or composed into the GateioExchange facade for unified access.
     """
     
@@ -76,7 +73,7 @@ class GateioPrivateFuturesExchange(PrivateExchangeInterface):
             ValueError: If API credentials are not provided
         """
         if not api_key or not secret_key:
-            raise ValueError("Gate.io API credentials must be provided for private interface")
+            raise ValueError("Gate.io API credentials must be provided for private cex")
 
         # Use dependency injection or create new config service
         self._config_service = config_service or GateioConfigurationService()
@@ -119,7 +116,7 @@ class GateioPrivateFuturesExchange(PrivateExchangeInterface):
         self._performance_metrics = deque(maxlen=10000)  # Keep only last 10K metrics
         self._metrics_lock = Lock()  # Thread-safe metrics collection
         
-        self.logger.info("Initialized GATEIO_FUTURES private interface with authenticated RestClient")
+        self.logger.info("Initialized GATEIO_FUTURES private cex with authenticated RestClient")
 
     def _create_authenticated_headers(
         self,
@@ -135,7 +132,7 @@ class GateioPrivateFuturesExchange(PrivateExchangeInterface):
 
         Args:
             method: HTTP method (GET, POST, etc.)
-            url_path: API endpoint path (without base URL)
+            url_path: API endpoint path (without cex URL)
             query_string: URL query parameters
             payload: Request body JSON
 
@@ -153,7 +150,7 @@ class GateioPrivateFuturesExchange(PrivateExchangeInterface):
         Convert Symbol to Gate.io futures contract format.
 
         Args:
-            symbol: Symbol struct with base and quote assets
+            symbol: Symbol struct with cex and quote assets
 
         Returns:
             Gate.io futures contract string (e.g., 'BTC_USDT')
@@ -498,7 +495,7 @@ class GateioPrivateFuturesExchange(PrivateExchangeInterface):
         """Clean up resources and close connections."""
         if hasattr(self, '_rest_client'):
             await self._rest_client.close()
-            self.logger.info("Closed GATEIO_FUTURES private interface")
+            self.logger.info("Closed GATEIO_FUTURES private cex")
 
     async def __aenter__(self):
         """Async context manager entry."""
@@ -514,7 +511,7 @@ async def create_gateio_futures_private_client(
     api_key: str,
     secret_key: str,
     config_service: Optional[GateioConfigurationService] = None
-) -> GateioPrivateFuturesExchange:
+) -> GateioPrivateFuturesExchangeSpot:
     """
     Create a Gate.io futures private client with optimized configuration.
 
@@ -526,7 +523,7 @@ async def create_gateio_futures_private_client(
     Returns:
         Configured GateioPrivateFuturesExchange instance
     """
-    return GateioPrivateFuturesExchange(
+    return GateioPrivateFuturesExchangeSpot(
         api_key=api_key,
         secret_key=secret_key,
         config_service=config_service

@@ -45,7 +45,7 @@ class GateioFuturesEndpoints:
     for both REST client requests and authentication signature generation.
     """
 
-    # Endpoint path templates (relative to base URL)
+    # Endpoint path templates (relative to cex URL)
     ENDPOINT_TEMPLATES = {
         GateioFuturesEndpoint.ACCOUNTS: "/accounts",
         GateioFuturesEndpoint.POSITIONS: "/positions",
@@ -77,7 +77,7 @@ class GateioFuturesEndpoints:
 
         Returns:
             Tuple of (rest_endpoint, signature_path) where:
-            - rest_endpoint: Path for REST client requests (relative to base URL)
+            - rest_endpoint: Path for REST client requests (relative to cex URL)
             - signature_path: Full path for signature generation (includes API version)
 
         Example:
@@ -110,7 +110,7 @@ class GateioFuturesEndpoints:
             **params: Parameters for template substitution
 
         Returns:
-            REST endpoint path relative to base URL
+            REST endpoint path relative to cex URL
         """
         rest_endpoint, _ = cls.get_endpoint_paths(endpoint, **params)
         return rest_endpoint
@@ -173,7 +173,7 @@ class GateioFuturesEndpoints:
 
 class GateioFuturesEndpointBuilder:
     """
-    Fluent interface builder for Gate.io futures endpoints.
+    Fluent cex builder for Gate.io futures endpoints.
 
     Provides a more expressive way to build endpoint paths with method chaining.
     """

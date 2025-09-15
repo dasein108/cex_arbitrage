@@ -34,9 +34,8 @@ from __future__ import annotations
 import asyncio
 import logging
 from decimal import Decimal
-from typing import Dict, List, Optional, Set, Tuple
+from typing import Dict, List, Optional, Set
 from dataclasses import dataclass
-from weakref import WeakSet
 
 from .structures import (
     PositionEntry,
@@ -45,10 +44,10 @@ from .structures import (
     ArbitrageConfig,
 )
 
-from exchanges.interface.structs import Symbol, OrderSide
-from exchanges.interface.base_exchange import BaseExchangeInterface
-from exchanges.interface.structs import ExchangeName
-from common.exceptions import PositionManagementError
+from structs.exchange import Symbol, OrderSide
+from core.cex.composed import BasePrivateExchangeInterface
+from structs.exchange import ExchangeName
+from core.exceptions.exchange import PositionManagementError
 
 
 logger = logging.getLogger(__name__)
@@ -90,7 +89,7 @@ class PositionManager:
     def __init__(
         self,
         config: ArbitrageConfig,
-        exchanges: Dict[str, BaseExchangeInterface],
+        exchanges: Dict[str, BasePrivateExchangeInterface],
     ):
         """
         Initialize position manager with exchange connections and configuration.
@@ -538,7 +537,7 @@ class PositionManager:
         
         for position in positions:
             # TODO: Calculate position exposure
-            # - Convert to base currency
+            # - Convert to cex currency
             # - Account for leverage and margin
             # - Include hedge position netting
             # - Aggregate by asset type

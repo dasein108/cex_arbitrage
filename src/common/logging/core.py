@@ -18,10 +18,8 @@ Performance optimizations take precedence over code readability.
 import asyncio
 import time
 import threading
-import uuid
-from typing import Optional, Dict, Any, List, Union, Callable
+from typing import Optional, Dict, Any, List, Union
 from collections import deque
-from contextlib import asynccontextmanager
 import msgspec
 
 from .structures import (
@@ -30,14 +28,9 @@ from .structures import (
     LogBatch, LogStatistics,
     TradeOperation, SystemComponent, PerformanceOperation
 )
-from .correlation import CorrelationManager, generate_correlation_id
+from .correlation import CorrelationManager
 from .transport import CompositeTransport, FileTransport
-from common.exceptions import HftException
-
-
-class LoggingDisabledException(HftException):
-    """Raised when attempting to log while logging is disabled"""
-    pass
+from core.exceptions.common import LoggingDisabledException
 
 
 class BufferPool:

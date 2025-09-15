@@ -461,11 +461,11 @@ The arbitrage framework integrates seamlessly with the existing exchange infrast
 
 ```python
 # Use existing exchange interfaces
-from exchanges.interface.public import PublicExchangeInterface
-from exchanges.interface.private import PrivateExchangeInterface
+from core.cex import PublicExchangeInterface
+from core.cex import PrivateExchangeInterface
 
 # Existing MEXC and Gate.io implementations work directly
-from exchanges.mexc import MexcPublicExchange, MexcPrivateExchange  
+from exchanges.mexc import MexcPublicSpotRest, MexcPrivateExchange
 from exchanges.gateio import GateioPublicExchange, GateioPrivateExchange
 
 # No modifications needed - plug and play integration
@@ -476,22 +476,22 @@ from exchanges.gateio import GateioPublicExchange, GateioPrivateExchange
 Uses the unified exception system:
 
 ```python
-from common.exceptions import (
-    ArbitrageEngineError,
-    OrderExecutionError, 
-    RiskManagementError,
-    RecoveryError
+from core.exceptions.exchange import (
+   ArbitrageEngineError,
+   OrderExecutionError,
+   RiskManagementError,
+   RecoveryError
 )
 
 try:
-    await engine.execute_opportunity(opportunity)
+   await engine.execute_opportunity(opportunity)
 except OrderExecutionError as e:
-    # Handle execution failures
-    logger.error(f"Execution failed: {e}")
-    # Recovery procedures automatically initiated
+   # Handle execution failures
+   logger.error(f"Execution failed: {e}")
+   # Recovery procedures automatically initiated
 except RiskManagementError as e:
-    # Handle risk limit violations  
-    logger.warning(f"Risk limits exceeded: {e}")
+   # Handle risk limit violations  
+   logger.warning(f"Risk limits exceeded: {e}")
 ```
 
 ## Configuration

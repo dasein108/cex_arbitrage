@@ -7,11 +7,11 @@ High-level architectural documentation for the ultra-high-performance CEX arbitr
 This is a **high-frequency trading (HFT) arbitrage engine** built for professional cryptocurrency trading across multiple exchanges. The system features a **clean src-only architecture** with unified interfaces and SOLID principles throughout.
 
 **Current Architecture Features**:
-- **Clean src-only architecture** - All components use unified `src/exchanges/interface/` system
+- **Clean src-only architecture** - All components use separated `src/exchanges/interface/` system
 - **SOLID-compliant design** with focused, single-responsibility components
 - **Sub-50ms latency** for complete arbitrage cycle execution
 - **Factory pattern** eliminating code duplication in exchange creation
-- **Unified interface system** - Single source of truth for all data structures and contracts
+- **Separated interface system** - Clean separation between public and private operations
 - **Professional-grade resource management** with graceful shutdown
 - **Event-driven architecture** with async/await throughout
 - **Zero-copy message processing** using msgspec for maximum performance
@@ -20,23 +20,26 @@ This is a **high-frequency trading (HFT) arbitrage engine** built for profession
 
 **Architecture Evolution Highlights**:
 - **Eliminated Legacy Dependencies**: Removed `/raw` directory for clean architecture
-- **Unified Type System**: All components use `src/exchanges/interface/structs.py` exclusively
+- **Separated Interface System**: Split unified interface into public and private operations
 - **Component-Based Design**: Each component has single responsibility with clear interfaces
 - **Clean Main Entry Point**: Professional CLI with proper error handling and resource cleanup
-- **SOLID Principles**: Factory pattern, dependency injection, and interface-driven design
+- **SOLID Principles**: Factory pattern, dependency injection, and interface segregation
 - **Modernized Configuration System**: Dictionary-based exchange configuration with unified credential management
 - **Dynamic Exchange Scaling**: New exchanges added via configuration without code changes
+- **Security by Design**: Clear authentication boundaries between public and private operations
 
 ## Core Architectural Principles
 
 ### 1. SOLID-Compliant Component Architecture
 
-The system follows a **clean src-only architecture** with **unified interfaces** and **SOLID principles** throughout:
+The system follows a **clean src-only architecture** with **separated interfaces** and **SOLID principles** throughout:
 
-**Configuration Layer** → **Exchange Factory** → **Unified Interface System** → **Symbol Resolution** → **Performance Monitor** → **Shutdown Manager** → **Controller Layer**
+**Configuration Layer** → **Exchange Factory** → **Separated Interface System** → **Symbol Resolution** → **Performance Monitor** → **Shutdown Manager** → **Controller Layer**
 
 **Key Components:**
-- **Unified Interface System** (`src/exchanges/interface/`): Single source of truth for all data structures and contracts
+- **Separated Interface System** (`src/exchanges/interface/`): Clean separation between public and private operations
+  - **BasePublicExchangeInterface**: Market data operations (orderbooks, symbols, tickers)
+  - **BasePrivateExchangeInterface**: Trading operations (orders, balances, positions)
 - **ConfigurationManager**: Single responsibility for configuration loading and validation
 - **ExchangeFactory**: Factory pattern for exchange creation, eliminating code duplication
 - **Symbol Resolution System**: Ultra-high-performance O(1) symbol lookup with <1μs latency
@@ -68,12 +71,16 @@ The system follows a **layered event-driven architecture** with **Abstract Facto
 - **NewType aliases**: Type safety without runtime overhead
 - **Comprehensive validation**: Data integrity at API boundaries
 
-### 5. Interface-Driven Design
+### 5. Interface-Driven Design with Separation of Concerns
 
-- **Abstract Interfaces**: Clean separation between public/private operations
+- **Separated Interfaces**: 
+  - **BasePublicExchangeInterface**: For components requiring only market data (no authentication)
+  - **BasePrivateExchangeInterface**: For components requiring trading capabilities (authenticated)
+  - **Interface Segregation Principle (ISP)**: Components depend only on interfaces they need
 - **Unified Exception System**: Structured error hierarchy with intelligent retry logic
 - **Pluggable Architecture**: Exchange implementations as interchangeable components
 - **Contract-First Development**: Interface definitions drive implementation
+- **Security by Design**: Clear authentication boundaries between public and private operations
 
 ## Refactored Architecture: SOLID Principles Implementation
 
@@ -90,7 +97,7 @@ Each component has **one focused purpose**:
 - **ArbitrageController** (`src/arbitrage/controller.py`): Orchestrates components without implementing their logic
 
 #### 2. Open/Closed Principle (OCP)
-- **Extensible interfaces**: New exchanges implement `BaseExchangeInterface` without modifying existing code
+- **Extensible interfaces**: New exchanges implement appropriate public/private interfaces without modifying existing code
 - **Strategy pattern ready**: Trading algorithms can be added via plugin interfaces
 - **Configurable components**: Behavior modification through configuration rather than code changes
 
@@ -100,9 +107,14 @@ Each component has **one focused purpose**:
 - **Contract compliance**: Interface contracts are respected by all implementations
 
 #### 4. Interface Segregation Principle (ISP)
+- **Separated Exchange Interfaces**: 
+  - Public operations (market data) separated from private operations (trading)
+  - Components use `BasePublicExchangeInterface` when only market data is needed
+  - Components use `BasePrivateExchangeInterface` when trading operations are required
 - **Focused interfaces**: Each component exposes only methods relevant to its clients
 - **Minimal dependencies**: Components depend only on the interfaces they actually use
 - **Clean abstractions**: No component is forced to depend on unused functionality
+- **Example**: MarketDataAggregator uses only `BasePublicExchangeInterface` (no trading methods)
 
 #### 5. Dependency Inversion Principle (DIP)
 - **Dependency injection**: Controller receives components rather than creating them
@@ -121,25 +133,47 @@ Each component has **one focused purpose**:
 
 ### Exchange Implementation Architecture
 
-**All exchange implementations inherit from `BaseExchangeInterface`** (`src/exchanges/interface/base_exchange.py`) following composition pattern:
+**All exchange implementations inherit from `BasePrivateExchangeInterface`** (which includes public operations via inheritance):
 
-**Exchange Hierarchy**:
+**Exchange Interface Hierarchy**:
 ```
-BaseExchangeInterface (Abstract Interface)
-├── MexcExchange (implements BaseExchangeInterface)
-└── GateioExchange (implements BaseExchangeInterface)
+BaseExchangeInterface (base_exchange.py)
+├── BasePublicExchangeInterface (base_public_exchange.py)
+│   ├── orderbook: OrderBook (property)
+│   ├── symbols_info: SymbolsInfo (property) 
+│   ├── active_symbols: List[Symbol] (property)
+│   ├── init(symbols: List[Symbol])
+│   ├── add_symbol(symbol: Symbol)
+│   └── remove_symbol(symbol: Symbol)
+│
+└── BasePrivateExchangeInterface (base_private_exchange.py)
+    ├── Inherits all public methods from BasePublicExchangeInterface
+    ├── balances: Dict[Symbol, AssetBalance] (property)
+    ├── open_orders: Dict[Symbol, List[Order]] (property)
+    ├── positions(): Dict[Symbol, Position]
+    ├── place_limit_order(...)
+    ├── place_market_order(...)
+    └── cancel_order(...)
+```
+
+**Exchange Implementations**:
+```
+BasePrivateExchangeInterface
+├── MexcExchange (implements BasePrivateExchangeInterface)
+└── GateioExchange (implements BasePrivateExchangeInterface)
 ```
 
 **Composition Pattern Benefits**:
 - **SOLID Compliance**: Delegates to specialized public/private components
 - **Clear Separation**: Public market data vs private trading operations
+- **Interface Segregation**: Components use only the interface level they need
 - **WebSocket Coordination**: Manages real-time streaming without tight coupling
 - **HFT Compliance**: No caching of real-time trading data
 - **Type Safety**: Unified data structures via `exchanges.interface.structs`
 
 **Key Implementation Requirements**:
-1. **Inherit from BaseExchangeInterface**: Not from WebSocket or other specialized classes
-2. **Implement all abstract methods**: `status`, `orderbook`, `balances`, `symbol_info`, `active_symbols`, `open_orders`
+1. **Inherit from BasePrivateExchangeInterface**: Provides both public and private capabilities
+2. **Implement all abstract methods**: Both public and private interface methods
 3. **Composition over inheritance**: Delegate to specialized REST/WebSocket components
 4. **HFT Compliance**: Never cache real-time trading data (balances, orders, positions)
 5. **Unified structures**: Use only `Symbol`, `SymbolInfo`, `OrderBook`, etc. from `exchanges.interface.structs`
@@ -265,12 +299,16 @@ The system implements an **ultra-high-performance symbol resolution architecture
 
 ### Interface Standards
 
-- **Interface Compliance**: All implementations must use `src/exchanges/interface/`
+- **Interface Compliance**: All implementations must use appropriate interfaces from `src/exchanges/interface/`
+  - **Public Components**: Use `BasePublicExchangeInterface` for market data operations
+  - **Private Components**: Use `BasePrivateExchangeInterface` for trading operations
+  - **Exchange Implementations**: Inherit from `BasePrivateExchangeInterface` (includes public via inheritance)
 - **Data Structure Standards**: msgspec.Struct from `src/exchanges/interface/structs.py`
-- **Unified Architecture**: All components use src-based interfaces exclusively
+- **Separated Architecture**: Clear boundaries between public and private operations
 - **Symbol Resolution**: Exclusive use of `Symbol` and `SymbolInfo` structs with O(1) lookup
 - **Performance Targets**: <50ms latency, >95% uptime, <1μs symbol resolution
 - **Type Safety**: Comprehensive type annotations with structured error propagation
+- **Security**: Authentication required only for private interface usage
 
 ## Market Data Architecture: Klines/Candlestick System
 
@@ -461,9 +499,11 @@ The abstract interface pattern enables easy addition of new exchanges:
 
 **Exchange and Infrastructure Components**:
 - **[Common Components](src/common/README.md)** - Shared utilities and base components
-- **[Exchange Interfaces](src/exchanges/interface/README.md)** - Unified interface system and contracts  
-- **[MEXC Implementation](src/exchanges/mexc/README.md)** - MEXC-specific implementation details
-- **[Gate.io Implementation](src/exchanges/gateio/README.md)** - Gate.io-specific implementation details
+- **[Exchange Interfaces](src/core/cex/README.md)** - Separated public/private interface system
+  - **BasePublicExchangeInterface** - Market data operations (no authentication required)
+  - **BasePrivateExchangeInterface** - Trading operations (authentication required)
+- **[MEXC Implementation](src/exchanges/mexc/README.md)** - MEXC-specific implementation (implements BasePrivateExchangeInterface)
+- **[Gate.io Implementation](src/exchanges/gateio/README.md)** - Gate.io-specific implementation (implements BasePrivateExchangeInterface)
 - **[Usage Examples](src/examples/README.md)** - Usage patterns and testing approaches
 
 ## Development Guidelines
@@ -484,7 +524,11 @@ The abstract interface pattern enables easy addition of new exchanges:
 
 **Component Organization** (Clean src-only architecture):
 - **src/arbitrage/**: Core business logic components (SOLID-compliant)
-- **src/exchanges/interface/**: Unified interface system and data structures
+  - **Public components**: Use `BasePublicExchangeInterface` (market data only)
+  - **Private components**: Use `BasePrivateExchangeInterface` (trading operations)
+- **src/exchanges/interface/**: Separated public/private interface system
+  - **BasePublicExchangeInterface**: Market data operations
+  - **BasePrivateExchangeInterface**: Trading operations (inherits public)
 - **src/exchanges/mexc/**: MEXC exchange implementation
 - **src/exchanges/gateio/**: Gate.io exchange implementation
 - **src/common/**: Shared utilities and base components

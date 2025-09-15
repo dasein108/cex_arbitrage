@@ -8,7 +8,7 @@ Key Features:
 - Pure REST API implementation 
 - Sub-10ms response times for market data
 - Zero-copy JSON parsing with msgspec
-- Unified interface compliance
+- Unified cex compliance
 - Simple caching for exchange info
 
 Gate.io API Specifications:
@@ -25,22 +25,20 @@ import asyncio
 import time
 from typing import Dict, List, Optional, Any
 from datetime import datetime
-import msgspec
-import logging
 
-from exchanges.interface.structs import (
+from structs.exchange import (
     Symbol, SymbolInfo, OrderBook, OrderBookEntry, Trade, Kline,
-    AssetName, Side, ExchangeName, KlineInterval
+    ExchangeName, KlineInterval
 )
-from common.rest_client import RestClient
-from exchanges.interface.rest.base_rest_public import PublicExchangeInterface
+from core.transport.rest.rest_client import RestClient
+from core.cex.rest import PublicExchangeSpotRestInterface
 from exchanges.gateio.common.gateio_utils import GateioUtils
 from exchanges.gateio.common.gateio_config import GateioConfig
 from exchanges.gateio.common.gateio_mappings import GateioMappings
-from common.exceptions import ExchangeAPIError
+from core.exceptions.exchange import BaseExchangeError
 
 
-class GateioPublicExchange(PublicExchangeInterface):
+class GateioPublicExchangeSpotRest(PublicExchangeSpotRestInterface):
     """
     Gate.io public REST API client focused on direct API calls.
     
@@ -67,7 +65,7 @@ class GateioPublicExchange(PublicExchangeInterface):
         self._cache_timestamp: float = 0
         self._cache_ttl: float = 300.0  # 5-minute cache TTL
         
-        self.logger.info(f"Initialized {self.exchange} public REST client")
+        self.logger.info(f"Initialized {self.exchange_tag} public REST client")
     
     def _extract_symbol_precision(self, gateio_symbol: Dict[str, Any]) -> tuple[int, int, float, float]:
         """
@@ -76,7 +74,7 @@ class GateioPublicExchange(PublicExchangeInterface):
         Gate.io currency_pair response format:
         {
             "id": "BTC_USDT",
-            "base": "BTC",
+            "cex": "BTC",
             "quote": "USDT", 
             "fee": "0.2",
             "min_base_amount": "0.001",
@@ -129,7 +127,7 @@ class GateioPublicExchange(PublicExchangeInterface):
             
             # Gate.io returns list of currency pairs directly
             if not isinstance(response_data, list):
-                raise ExchangeAPIError(500, "Invalid exchange info response format")
+                raise BaseExchangeError(500, "Invalid exchange info response format")
             
             # Transform to unified format
             symbol_info_map: Dict[Symbol, SymbolInfo] = {}
@@ -149,7 +147,7 @@ class GateioPublicExchange(PublicExchangeInterface):
                 is_inactive = trade_status != 'tradable'
                 
                 symbol_info = SymbolInfo(
-                    exchange=self.exchange,
+                    exchange=self.exchange_tag,
                     symbol=symbol,
                     base_precision=base_prec,
                     quote_precision=quote_prec,
@@ -172,7 +170,7 @@ class GateioPublicExchange(PublicExchangeInterface):
             
         except Exception as e:
             self.logger.error(f"Failed to get exchange info: {e}")
-            raise ExchangeAPIError(500, f"Exchange info fetch failed: {str(e)}")
+            raise BaseExchangeError(500, f"Exchange info fetch failed: {str(e)}")
     
     async def get_orderbook(self, symbol: Symbol, limit: int = 100) -> OrderBook:
         """
@@ -241,7 +239,7 @@ class GateioPublicExchange(PublicExchangeInterface):
             
         except Exception as e:
             self.logger.error(f"Failed to get orderbook for {symbol}: {e}")
-            raise ExchangeAPIError(500, f"Orderbook fetch failed: {str(e)}")
+            raise BaseExchangeError(500, f"Orderbook fetch failed: {str(e)}")
     
     async def get_recent_trades(self, symbol: Symbol, limit: int = 500) -> List[Trade]:
         """
@@ -288,7 +286,7 @@ class GateioPublicExchange(PublicExchangeInterface):
             # ]
             
             if not isinstance(response_data, list):
-                raise ExchangeAPIError(500, "Invalid trades response format")
+                raise BaseExchangeError(500, "Invalid trades response format")
             
             trades = []
             for trade_data in response_data:
@@ -308,7 +306,7 @@ class GateioPublicExchange(PublicExchangeInterface):
             
         except Exception as e:
             self.logger.error(f"Failed to get recent trades for {symbol}: {e}")
-            raise ExchangeAPIError(500, f"Recent trades fetch failed: {str(e)}")
+            raise BaseExchangeError(500, f"Recent trades fetch failed: {str(e)}")
     
     async def get_server_time(self) -> int:
         """
@@ -338,7 +336,7 @@ class GateioPublicExchange(PublicExchangeInterface):
             
         except Exception as e:
             self.logger.error(f"Failed to get server time: {e}")
-            raise ExchangeAPIError(500, f"Server time fetch failed: {str(e)}")
+            raise BaseExchangeError(500, f"Server time fetch failed: {str(e)}")
     
     async def ping(self) -> bool:
         """
@@ -407,7 +405,7 @@ class GateioPublicExchange(PublicExchangeInterface):
             # Each kline: [timestamp, volume, close, high, low, open, previous_close]
             # Note: Gate.io format is: [time, volume, close, high, low, open, previous_close]
             if not isinstance(response_data, list):
-                raise ExchangeAPIError(500, "Invalid candlesticks response format")
+                raise BaseExchangeError(500, "Invalid candlesticks response format")
             
             klines = []
             for kline_data in response_data:
@@ -447,7 +445,7 @@ class GateioPublicExchange(PublicExchangeInterface):
             
         except Exception as e:
             self.logger.error(f"Failed to get klines for {symbol}: {e}")
-            raise ExchangeAPIError(500, f"Klines fetch failed: {str(e)}")
+            raise BaseExchangeError(500, f"Klines fetch failed: {str(e)}")
     
     def _calculate_optimal_batch_size(self, timeframe: KlineInterval, total_duration_seconds: int) -> int:
         """

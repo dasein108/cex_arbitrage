@@ -213,26 +213,27 @@ async def create_exchanges(
 - **Retry logic** - Intelligent backoff for temporary failures
 
 **Per-Exchange Initialization**:
+
 ```python
 async def _initialize_exchange_with_validation(
-    self, exchange: BaseExchangeInterface, name: str, symbols: List[Symbol]
+        self, exchange: BaseExchangeInterface, name: str, symbols: List[Symbol]
 ) -> None:
     """Initialize single exchange with comprehensive validation"""
-    
+
     # 1. Symbol initialization with timeout
     await asyncio.wait_for(
-        exchange.init(symbols), 
+        exchange.initialize(symbols),
         timeout=self._initialization_timeout
     )
-    
+
     # 2. Connection establishment delay
     await asyncio.sleep(1)
-    
+
     # 3. Status validation
     status = exchange.status
     if status == ExchangeStatus.INACTIVE:
         raise ExchangeAPIError(f"{name} failed to activate")
-    
+
     # 4. Symbol loading verification
     active_symbols = getattr(exchange, 'active_symbols', [])
     logger.info(f"{name} loaded {len(active_symbols)} active symbols")
@@ -348,58 +349,60 @@ class PerformanceMonitor:
 **Location**: `src/arbitrage/controller.py` → `ArbitrageController.initialize()`
 
 **Master Orchestration**:
+
 ```python
 async def initialize(self, dry_run: bool = True) -> None:
     """Initialize complete arbitrage system"""
-    
+
     logger.info("Initializing arbitrage controller...")
-    
+
     # 1. Load configuration
     await self.configuration_manager.load_configuration(dry_run)
-    config = self.configuration_manager.config
-    
+    config = self.configuration_manager.websocket_config
+
     # 2. Extract symbols for exchange initialization  
     symbols = self.configuration_manager.extract_symbols_from_arbitrage_pairs()
-    
+
     # 3. Initialize exchanges concurrently
     exchanges = await self.exchange_factory.create_exchanges(
-        config.enabled_exchanges, 
+        config.enabled_exchanges,
         strategy=InitializationStrategy.CONTINUE_ON_ERROR,
         symbols=symbols
     )
-    
+
     # 4. Initialize symbol resolution system
     self.symbol_resolver = SymbolResolver()
     await self.symbol_resolver.initialize(exchanges)
-    
+
     # 5. Resolve arbitrage pairs with exchange data
     await self.configuration_manager.resolve_arbitrage_pairs(self.symbol_resolver)
-    
+
     # 6. Start performance monitoring
     self.performance_monitor.start()
-    
+
     # 7. Initialize trading engine
     await self._initialize_trading_engine()
-    
+
     logger.info("✅ Arbitrage controller initialization complete")
 ```
 
 ### Step 10: Trading Engine Startup
 
 **Final Activation**:
+
 ```python
 async def _initialize_trading_engine(self) -> None:
     """Initialize trading engine with validated configuration"""
-    
-    config = self.configuration_manager.config
-    
+
+    config = self.configuration_manager.websocket_config
+
     # Validate system is ready for trading
     if not config.arbitrage_pairs:
         raise ConfigurationError("No arbitrage pairs configured")
-    
+
     if not self.exchange_factory.exchanges:
         raise ConfigurationError("No exchanges available")
-    
+
     # Initialize trading engine components
     self.trading_engine = SimpleArbitrageEngine()
     await self.trading_engine.initialize(
@@ -407,7 +410,7 @@ async def _initialize_trading_engine(self) -> None:
         arbitrage_pairs=config.arbitrage_pairs,
         performance_monitor=self.performance_monitor
     )
-    
+
     logger.info(f"Trading engine initialized:")
     logger.info(f"  - Active exchanges: {len(self.exchange_factory.exchanges)}")
     logger.info(f"  - Arbitrage pairs: {len(config.arbitrage_pairs)}")

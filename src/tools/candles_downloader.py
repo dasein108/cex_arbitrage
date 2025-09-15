@@ -25,17 +25,16 @@ Class Usage:
 import asyncio
 import argparse
 import csv
-import os
 import traceback
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple, Any
+from typing import Dict, List, Optional, Any
 import logging
 
 # Import the exchange implementations
-from exchanges.mexc.rest.mexc_public import MexcPublicExchange
-from exchanges.gateio.rest.gateio_public import GateioPublicExchange
-from exchanges.interface.structs import Symbol, AssetName, KlineInterval, Kline
+from exchanges.mexc.rest.mexc_public import MexcPublicSpotRest
+from exchanges.gateio.rest.gateio_public import GateioPublicExchangeSpotRest
+from structs.exchange import Symbol, AssetName, KlineInterval, Kline
 from common.rate_limiter import get_rate_limiter
 
 
@@ -65,8 +64,8 @@ class CandlesDownloader:
     
     # Exchange implementations mapping
     EXCHANGES = {
-        'mexc': MexcPublicExchange,
-        'gateio': GateioPublicExchange
+        'mexc': MexcPublicSpotRest,
+        'gateio': GateioPublicExchangeSpotRest
     }
     
     # Timeframe mapping to KlineInterval enum
@@ -118,7 +117,7 @@ class CandlesDownloader:
             symbol_str: Symbol string in various formats
             
         Returns:
-            Symbol struct with base and quote assets
+            Symbol struct with cex and quote assets
         """
         # Normalize symbol string
         symbol_str = symbol_str.upper().replace('/', '_')

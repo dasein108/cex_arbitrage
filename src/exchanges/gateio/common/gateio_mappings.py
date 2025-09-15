@@ -15,9 +15,9 @@ Threading: All constants are thread-safe (immutable)
 Performance: Dict-based lookups optimized for O(1) access
 """
 
-from exchanges.interface.structs import OrderStatus, OrderType, Side, TimeInForce, KlineInterval
-from common.exceptions import (
-    ExchangeAPIError, RateLimitError, TradingDisabled,
+from structs.exchange import OrderStatus, OrderType, Side, TimeInForce, KlineInterval
+from core.exceptions.exchange import (
+    BaseExchangeError, RateLimitErrorBase, TradingDisabled,
     InsufficientPosition, OversoldException
 )
 
@@ -28,30 +28,30 @@ class GateioMappings:
     # Gate.io Error Label Mapping to Unified Exceptions (from API docs)
     ERROR_LABEL_MAPPING = {
         'BALANCE_NOT_ENOUGH': InsufficientPosition,  # Insufficient balance
-        'ORDER_NOT_FOUND': ExchangeAPIError,  # Order not found
-        'INVALID_CURRENCY_PAIR': ExchangeAPIError,  # Invalid trading pair
-        'INVALID_PRICE': ExchangeAPIError,  # Invalid price
-        'INVALID_AMOUNT': ExchangeAPIError,  # Invalid amount
+        'ORDER_NOT_FOUND': BaseExchangeError,  # Order not found
+        'INVALID_CURRENCY_PAIR': BaseExchangeError,  # Invalid trading pair
+        'INVALID_PRICE': BaseExchangeError,  # Invalid price
+        'INVALID_AMOUNT': BaseExchangeError,  # Invalid amount
         'MIN_AMOUNT_NOT_REACHED': OversoldException,  # Minimum amount not met
         'TRADING_DISABLED': TradingDisabled,  # Trading disabled for pair
-        'TOO_MANY_REQUESTS': RateLimitError,  # Rate limit exceeded
-        'SIGNATURE_ERROR': ExchangeAPIError,  # Authentication failed
-        'TIMESTAMP_EXPIRED': ExchangeAPIError,  # Request timestamp expired
-        'IP_NOT_ALLOWED': ExchangeAPIError,  # IP not whitelisted
+        'TOO_MANY_REQUESTS': RateLimitErrorBase,  # Rate limit exceeded
+        'SIGNATURE_ERROR': BaseExchangeError,  # Authentication failed
+        'TIMESTAMP_EXPIRED': BaseExchangeError,  # Request timestamp expired
+        'IP_NOT_ALLOWED': BaseExchangeError,  # IP not whitelisted
         'ACCOUNT_LOCKED': TradingDisabled,  # Account locked
         'INSUFFICIENT_BALANCE': InsufficientPosition,  # Alternative balance error
     }
     
     # Gate.io HTTP Status Code Mapping
     HTTP_STATUS_MAPPING = {
-        400: ExchangeAPIError,  # Bad Request
-        401: ExchangeAPIError,  # Unauthorized
-        403: ExchangeAPIError,  # Forbidden
-        404: ExchangeAPIError,  # Not Found
-        429: RateLimitError,    # Too Many Requests
-        500: ExchangeAPIError,  # Internal Server Error
-        502: ExchangeAPIError,  # Bad Gateway
-        503: ExchangeAPIError,  # Service Unavailable
+        400: BaseExchangeError,  # Bad Request
+        401: BaseExchangeError,  # Unauthorized
+        403: BaseExchangeError,  # Forbidden
+        404: BaseExchangeError,  # Not Found
+        429: RateLimitErrorBase,    # Too Many Requests
+        500: BaseExchangeError,  # Internal Server Error
+        502: BaseExchangeError,  # Bad Gateway
+        503: BaseExchangeError,  # Service Unavailable
     }
     
     # Gate.io Order Status Mapping to Unified Status
@@ -246,7 +246,7 @@ class GateioMappings:
         Returns:
             Unified exception class
         """
-        return cls.ERROR_LABEL_MAPPING.get(label, ExchangeAPIError)
+        return cls.ERROR_LABEL_MAPPING.get(label, BaseExchangeError)
     
     @classmethod
     def get_exception_from_status(cls, status_code: int) -> type:
@@ -259,7 +259,7 @@ class GateioMappings:
         Returns:
             Unified exception class
         """
-        return cls.HTTP_STATUS_MAPPING.get(status_code, ExchangeAPIError)
+        return cls.HTTP_STATUS_MAPPING.get(status_code, BaseExchangeError)
     
     @classmethod
     def get_ws_channel(cls, channel_type: str) -> str:

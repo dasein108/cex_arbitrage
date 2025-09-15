@@ -54,7 +54,7 @@ class PerformanceMonitor:
             logger.warning("Performance monitor already running")
             return
             
-        self.start_time = time.time()
+        self.start_time = time.perf_counter()
         self._running = True
         self._statistics_callback = statistics_callback
         self._monitoring_task = asyncio.create_task(self._monitor_loop())
@@ -129,7 +129,7 @@ class PerformanceMonitor:
                 
                 # Update uptime
                 if self.start_time:
-                    self.statistics.uptime_seconds = time.time() - self.start_time
+                    self.statistics.uptime_seconds = time.perf_counter() - self.start_time
                     
         except Exception as e:
             logger.error(f"Error updating statistics: {e}")
@@ -188,7 +188,7 @@ class PerformanceMonitor:
         if not self.start_time:
             return
             
-        uptime = time.time() - self.start_time
+        uptime = time.perf_counter() - self.start_time
         
         logger.info("Final Statistics:")
         logger.info(f"  Total Uptime: {uptime/60:.1f} minutes")

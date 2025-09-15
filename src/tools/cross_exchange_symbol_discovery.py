@@ -22,22 +22,21 @@ from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Optional, Set, Tuple, Any
 from enum import IntEnum
-import msgspec
 from msgspec import Struct
 import aiohttp
 
 # Add parent directory to path for imports (we're now in src/tools)
 import sys
-import os
+
 project_root = Path(__file__).parent.parent  # Now points to src/
 sys.path.insert(0, str(project_root))
 
 # Direct imports from src directory
-from exchanges.interface.structs import Symbol, SymbolInfo, AssetName, ExchangeName
-from exchanges.mexc.rest.mexc_public import MexcPublicExchange
-from exchanges.gateio.rest.gateio_public import GateioPublicExchange  
-from exchanges.gateio.rest.gateio_futures_public import GateioPublicFuturesExchange
-from common.exceptions import ExchangeAPIError
+from structs.exchange import Symbol, SymbolInfo, AssetName, ExchangeName
+from exchanges.mexc.rest.mexc_public import MexcPublicSpotRest
+from exchanges.gateio.rest.gateio_public import GateioPublicExchangeSpotRest
+from exchanges.gateio.rest.gateio_futures_public import GateioPublicFuturesExchangeSpotRest
+from core.exceptions.exchange import BaseExchangeError
 
 
 async def fetch_mexc_futures_symbols() -> Dict[Symbol, SymbolInfo]:
@@ -58,16 +57,16 @@ async def fetch_mexc_futures_symbols() -> Dict[Symbol, SymbolInfo]:
         async with aiohttp.ClientSession(timeout=timeout) as session:
             async with session.get(url, headers=headers) as response:
                 if response.status != 200:
-                    raise ExchangeAPIError(response.status, f"MEXC Futures API error: {response.status}")
+                    raise BaseExchangeError(response.status, f"MEXC Futures API error: {response.status}")
                 
                 data = await response.json()
                 
                 if not isinstance(data, dict) or 'data' not in data:
-                    raise ExchangeAPIError(500, "Invalid MEXC futures response format")
+                    raise BaseExchangeError(500, "Invalid MEXC futures response format")
                 
                 contracts = data['data']
                 if not isinstance(contracts, list):
-                    raise ExchangeAPIError(500, "Expected list of contracts in MEXC futures response")
+                    raise BaseExchangeError(500, "Expected list of contracts in MEXC futures response")
                 
                 # Convert to unified format
                 symbol_info_map = {}
@@ -126,9 +125,9 @@ async def fetch_mexc_futures_symbols() -> Dict[Symbol, SymbolInfo]:
                 return symbol_info_map
                 
     except aiohttp.ClientError as e:
-        raise ExchangeAPIError(500, f"Network error fetching MEXC futures: {str(e)}")
+        raise BaseExchangeError(500, f"Network error fetching MEXC futures: {str(e)}")
     except Exception as e:
-        raise ExchangeAPIError(500, f"Error parsing MEXC futures data: {str(e)}")
+        raise BaseExchangeError(500, f"Error parsing MEXC futures data: {str(e)}")
 
 
 class MarketType(IntEnum):
@@ -213,14 +212,14 @@ class SymbolDiscoveryEngine:
     def _create_exchange_client(self, exchange_market: ExchangeMarket):
         """Factory method to create exchange clients"""
         if exchange_market.exchange == "mexc" and exchange_market.market == MarketType.SPOT:
-            return MexcPublicExchange()
+            return MexcPublicSpotRest()
         elif exchange_market.exchange == "mexc" and exchange_market.market == MarketType.FUTURES:
             # Return None for MEXC futures - we'll handle this specially
             return None
         elif exchange_market.exchange == "gateio" and exchange_market.market == MarketType.SPOT:
-            return GateioPublicExchange()
+            return GateioPublicExchangeSpotRest()
         elif exchange_market.exchange == "gateio" and exchange_market.market == MarketType.FUTURES:
-            return GateioPublicFuturesExchange()
+            return GateioPublicFuturesExchangeSpotRest()
         else:
             raise ValueError(f"Unsupported exchange/market: {exchange_market}")
     
@@ -259,7 +258,7 @@ class SymbolDiscoveryEngine:
             
             return info
             
-        except ExchangeAPIError as e:
+        except BaseExchangeError as e:
             self.logger.error(f"Failed to fetch from {exchange_market}: {e}")
             return {}
         except Exception as e:
@@ -354,7 +353,7 @@ class SymbolDiscoveryEngine:
         return quote
     
     def _find_stablecoin_matches(self, base_asset: str, exchange_data: Dict[ExchangeMarket, Dict[Symbol, SymbolInfo]]) -> Dict[str, bool]:
-        """Find all stablecoin matches for a base asset across exchanges"""
+        """Find all stablecoin matches for a cex asset across exchanges"""
         matches = {
             'mexc_spot': False,
             'mexc_futures': False, 
@@ -384,7 +383,7 @@ class SymbolDiscoveryEngine:
                                   exchange_data: Dict[ExchangeMarket, Dict[Symbol, SymbolInfo]]
                                   ) -> Dict[str, SymbolAvailability]:
         """Build symbol availability matrix across all exchanges with stablecoin equivalence"""
-        # Collect all unique base assets that trade against stablecoins
+        # Collect all unique cex assets that trade against stablecoins
         base_assets_with_stables: Set[str] = set()
         regular_symbols: Set[Symbol] = set()
         
@@ -806,9 +805,9 @@ class OutputManager:
 
 class DiscoveryCLI:
     """
-    Command-line interface for symbol discovery tool.
+    Command-line cex for symbol discovery tool.
     
-    Provides user-friendly interface with progress indicators.
+    Provides user-friendly cex with progress indicators.
     """
     
     def __init__(self):

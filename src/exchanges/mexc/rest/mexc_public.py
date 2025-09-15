@@ -8,7 +8,7 @@ Key Features:
 - Pure REST API implementation 
 - Sub-10ms response times for market data
 - Zero-copy JSON parsing with msgspec
-- Unified interface compliance
+- Unified cex compliance
 - Simple caching for exchange info
 
 MEXC API Specifications:
@@ -27,49 +27,42 @@ from typing import Dict, List, Optional
 from datetime import datetime
 import msgspec
 
-from exchanges.mexc.common.mexc_struct import (
+from exchanges.mexc.common.mexc_structs import (
     MexcSymbolResponse, MexcExchangeInfoResponse, 
     MexcOrderBookResponse, MexcTradeResponse, MexcServerTimeResponse
 )
-from exchanges.interface.structs import (
+from structs.exchange import (
     Symbol, SymbolInfo, OrderBook, OrderBookEntry, Trade, Kline,
-    AssetName, Side, ExchangeName, KlineInterval
+    AssetName, Side, KlineInterval
 )
-from common.rest_client import RestClient
-from exchanges.interface.rest.base_rest_public import PublicExchangeInterface
-from exchanges.mexc.common.mexc_utils import MexcUtils
+from core.cex.rest.spot.base_rest_spot_public import PublicExchangeSpotRestInterface
+from exchanges.mexc.common.mexc_mappings import MexcUtils
 from exchanges.mexc.common.mexc_config import MexcConfig
+from .custom_exception_handler import handle_custom_exception
+from structs.config import ExchangeConfig
+from core.cex.utils import get_interval_seconds
+from core.transport.rest.rest_client import HTTPMethod
 
-
-class MexcPublicExchange(PublicExchangeInterface):
+class MexcPublicSpotRest(PublicExchangeSpotRestInterface):
     """
     MEXC public REST API client focused on direct API calls.
     
     Provides access to public market data endpoints without WebSocket features.
     Optimized for high-frequency market data retrieval with minimal overhead.
     """
-    
-    def __init__(self):
+
+    def __init__(self, config: ExchangeConfig):
         """
-        Initialize MEXC public REST client.
-        
-        No authentication required for public endpoints.
+        Initialize MEXC private REST client.
+
+        Args:
+            api_key: MEXC API key for authentication
+            secret_key: MEXC secret key for signature generation
         """
-        super().__init__(ExchangeName(MexcConfig.EXCHANGE_NAME), MexcConfig.get_base_url())
-        
-        # Initialize REST client for public endpoints
-        self.client = RestClient(
-            base_url=self.base_url,
-            config=MexcConfig.rest_config['market_data']
-        )
-        
-        # Simple caching for exchange info to reduce API calls
+        super().__init__(config, MexcConfig.rest_config['market_data'], handle_custom_exception)
+
         self._exchange_info: Optional[Dict[Symbol, SymbolInfo]] = None
-        self._cache_timestamp: float = 0
-        self._cache_ttl: float = 300.0  # 5-minute cache TTL
-        
-        self.logger.info(f"Initialized {self.exchange} public REST client")
-    
+
     def _extract_symbol_precision(self, mexc_symbol: MexcSymbolResponse) -> tuple[int, int, float, float]:
         """
         Extract precision and size limits from MEXC symbol data.
@@ -116,13 +109,8 @@ class MexcPublicExchange(PublicExchangeInterface):
         """
         current_time = time.time()
         
-        # Return cached data if still valid
-        if (self._exchange_info is not None and 
-            current_time - self._cache_timestamp < self._cache_ttl):
-            return self._exchange_info
-        
         # Fetch fresh exchange info from MEXC
-        response_data = await self.client.get(
+        response_data = await self.request(HTTPMethod.GET,
             '/api/v3/exchangeInfo',
             config=MexcConfig.rest_config['default']
         )
@@ -159,12 +147,11 @@ class MexcPublicExchange(PublicExchangeInterface):
         
         # Update cache
         self._exchange_info = symbol_info_map
-        self._cache_timestamp = current_time
-        
+
         self.logger.info(f"Retrieved exchange info for {len(symbol_info_map)} symbols")
         return symbol_info_map
     
-    async def get_orderbook(self, symbol: Symbol, limit: int = 100) -> OrderBook:
+    async def get_orderbook(self, symbol: Symbol, limit: int = 10) -> OrderBook:
         """
         Get order book for a symbol.
         
@@ -178,18 +165,15 @@ class MexcPublicExchange(PublicExchangeInterface):
         Raises:
             ExchangeAPIError: If unable to fetch order book data
         """
-        pair = MexcUtils.symbol_to_pair(symbol)
-        
-        # Validate limit for MEXC API
-        valid_limits = [5, 10, 20, 50, 100, 500, 1000, 5000]
-        optimized_limit = min(valid_limits, key=lambda x: abs(x - limit))
+        pair = self.symbol_mapper.symbol_to_pair(symbol)
         
         params = {
             'symbol': pair,
-            'limit': optimized_limit
+            'limit': limit
         }
         
-        response_data = await self.client.get(
+        response_data = await self.request(
+            HTTPMethod.GET,
             '/api/v3/depth',
             params=params,
             config=MexcConfig.rest_config['market_data_fast']
@@ -228,7 +212,7 @@ class MexcPublicExchange(PublicExchangeInterface):
         Raises:
             ExchangeAPIError: If unable to fetch trade data
         """
-        pair = MexcUtils.symbol_to_pair(symbol)
+        pair = self.symbol_mapper.symbol_to_pair(symbol)
         optimized_limit = min(limit, 1000)  # MEXC max limit
         
         params = {
@@ -236,7 +220,8 @@ class MexcPublicExchange(PublicExchangeInterface):
             'limit': optimized_limit
         }
         
-        response_data = await self.client.get(
+        response_data = await self.request(
+            HTTPMethod.GET,
             '/api/v3/trades',
             params=params,
             config=MexcConfig.rest_config['market_data']
@@ -275,7 +260,8 @@ class MexcPublicExchange(PublicExchangeInterface):
         Raises:
             ExchangeAPIError: If unable to fetch server time
         """
-        response_data = await self.client.get(
+        response_data = await self.request(
+            HTTPMethod.GET,
             '/api/v3/time',
             config=MexcConfig.rest_config['default_fast_time']
         )
@@ -291,7 +277,8 @@ class MexcPublicExchange(PublicExchangeInterface):
             True if connection successful, False otherwise
         """
         try:
-            await self.client.get(
+            await self.request(
+                HTTPMethod.GET,
                 '/api/v3/ping',
                 config=MexcConfig.rest_config['default_fast_ping']
             )
@@ -316,7 +303,7 @@ class MexcPublicExchange(PublicExchangeInterface):
         Raises:
             ExchangeAPIError: If unable to fetch kline data
         """
-        pair = MexcUtils.symbol_to_pair(symbol)
+        pair = self.symbol_mapper.symbol_to_pair(symbol)
         interval = MexcUtils.get_mexc_kline_interval(timeframe)
         
         params = {
@@ -331,7 +318,8 @@ class MexcPublicExchange(PublicExchangeInterface):
         if date_to:
             params['endTime'] = int(date_to.timestamp() * 1000)
         
-        response_data = await self.client.get(
+        response_data = await self.request(
+            HTTPMethod.GET,
             '/api/v3/klines',
             params=params,
             config=MexcConfig.rest_config['market_data']
@@ -389,7 +377,7 @@ class MexcPublicExchange(PublicExchangeInterface):
             return await self.get_klines(symbol, timeframe, date_from, date_to)
         
         # Calculate interval duration in seconds
-        interval_seconds = self._get_interval_seconds(timeframe)
+        interval_seconds = get_interval_seconds(timeframe)
         if interval_seconds == 0:
             # Fallback to single request for unknown intervals
             return await self.get_klines(symbol, timeframe, date_from, date_to)
@@ -452,18 +440,3 @@ class MexcPublicExchange(PublicExchangeInterface):
         self.logger.info(f"Retrieved {len(sorted_klines)} klines in batch for {symbol.base}/{symbol.quote}")
         return sorted_klines
     
-    def _get_interval_seconds(self, interval: KlineInterval) -> int:
-        """Get interval duration in seconds for batch processing."""
-        interval_map = {
-            KlineInterval.MINUTE_1: 60,
-            KlineInterval.MINUTE_5: 300,
-            KlineInterval.MINUTE_15: 900,
-            KlineInterval.MINUTE_30: 1800,
-            KlineInterval.HOUR_1: 3600,
-            KlineInterval.HOUR_4: 14400,
-            KlineInterval.HOUR_12: 43200,
-            KlineInterval.DAY_1: 86400,
-            KlineInterval.WEEK_1: 604800,
-            KlineInterval.MONTH_1: 2592000  # 30 days approximation
-        }
-        return interval_map.get(interval, 0)

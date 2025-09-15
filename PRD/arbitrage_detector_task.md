@@ -97,7 +97,7 @@ This document provides a comprehensive task breakdown for implementing the HFT-c
       HFT Compliance: Fresh data only, no caching
       """
       comparisons = []
-      exchanges = self.config.enabled_exchanges
+      exchanges = self.websocket_config.enabled_exchanges
       
       # Get fresh orderbook data from all exchanges (concurrent)
       orderbook_tasks = [
@@ -183,21 +183,21 @@ This document provides a comprehensive task breakdown for implementing the HFT-c
       """
       
       # 1. Profit margin threshold check (O(1) - fastest)
-      if comparison.profit_margin_bps < self.config.risk_limits.min_profit_margin_bps:
+      if comparison.profit_margin_bps < self.websocket_config.risk_limits.min_profit_margin_bps:
           return False
       
       # 2. Minimum quantity check
       min_trade_value = comparison.buy_price * comparison.max_quantity
-      if min_trade_value < self.config.risk_limits.max_position_size_usd * 0.01:  # 1% of max position
+      if min_trade_value < self.websocket_config.risk_limits.max_position_size_usd * 0.01:  # 1% of max position
           return False
       
       # 3. Price deviation check (prevent execution on extreme prices)
       price_spread_bps = ((comparison.sell_price - comparison.buy_price) / comparison.buy_price) * 10000
-      if price_spread_bps > self.config.risk_limits.max_spread_bps:
+      if price_spread_bps > self.websocket_config.risk_limits.max_spread_bps:
           return False
       
       # 4. Market depth validation (ensure sufficient liquidity)
-      required_depth_usd = self.config.risk_limits.min_market_depth_usd
+      required_depth_usd = self.websocket_config.risk_limits.min_market_depth_usd
       buy_depth_usd = comparison.buy_price * comparison.max_quantity
       sell_depth_usd = comparison.sell_price * comparison.max_quantity
       
@@ -291,7 +291,7 @@ This document provides a comprehensive task breakdown for implementing the HFT-c
       price_impact_estimate = min(0.001, comparison.max_quantity * 0.0001)  # HFT optimized: float literals
       
       # Set execution window based on profit margin (higher profit = longer window)
-      base_window_ms = self.config.target_execution_time_ms
+      base_window_ms = self.websocket_config.target_execution_time_ms
       profit_multiplier = max(1.0, comparison.profit_margin_bps / 50.0)  # Scale with profit
       execution_window_ms = min(int(base_window_ms * profit_multiplier), base_window_ms * 3)
       
@@ -346,7 +346,7 @@ This document provides a comprehensive task breakdown for implementing the HFT-c
           
           balance_tasks = [
               self._get_exchange_balance(buy_exchange_instance, opportunity.symbol.quote),  # Need quote for buying
-              self._get_exchange_balance(sell_exchange_instance, opportunity.symbol.base)   # Need base for selling
+              self._get_exchange_balance(sell_exchange_instance, opportunity.symbol.base)   # Need cex for selling
           ]
           
           buy_balance, sell_balance = await asyncio.gather(*balance_tasks)
@@ -434,7 +434,7 @@ This document provides a comprehensive task breakdown for implementing the HFT-c
               # Perform market scan with timeout
               await asyncio.wait_for(
                   self._scan_for_opportunities(),
-                  timeout=self.config.opportunity_scan_interval_ms / 1000.0 * 0.8  # 80% of interval
+                  timeout=self.websocket_config.opportunity_scan_interval_ms / 1000.0 * 0.8  # 80% of interval
               )
               
               # Reset error counter on success
@@ -459,7 +459,7 @@ This document provides a comprehensive task breakdown for implementing the HFT-c
                   break
           
           # Adaptive sleep based on error rate
-          sleep_duration = self.config.opportunity_scan_interval_ms / 1000.0
+          sleep_duration = self.websocket_config.opportunity_scan_interval_ms / 1000.0
           if consecutive_errors > 0:
               sleep_duration *= (1.5 ** consecutive_errors)  # Exponential backoff
           
@@ -493,7 +493,7 @@ This document provides a comprehensive task breakdown for implementing the HFT-c
   
   from arbitrage.detector import OpportunityDetector
   from arbitrage.structures import ArbitrageConfig, RiskLimits
-  from exchanges.interface.structs import Symbol, OrderBook, OrderBookEntry
+  from structs import Symbol, OrderBook, OrderBookEntry
   
   @pytest.fixture
   def mock_config():

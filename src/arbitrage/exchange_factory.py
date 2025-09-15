@@ -10,16 +10,16 @@ HFT COMPLIANT: Optimized exchange initialization with connection pooling.
 import asyncio
 import logging
 import time
-from typing import Dict, Any, List, Optional, Type, Tuple
+from typing import Dict, Any, List, Optional, Type
 from dataclasses import dataclass
 from enum import Enum
 
-from common.config import config
-from common.exceptions import ExchangeAPIError
+from config import config
+from core.exceptions.exchange import BaseExchangeError
 from exchanges.mexc.mexc_exchange import MexcExchange
 from exchanges.gateio.gateio_exchange import GateioExchange
-from exchanges.interface.structs import Symbol, AssetName, ExchangeStatus
-from exchanges.interface.base_exchange import BaseExchangeInterface
+from structs.exchange import Symbol, AssetName, ExchangeStatus
+from core.cex.composed.base_private_exchange import BasePrivateExchangeInterface
 
 logger = logging.getLogger(__name__)
 
@@ -66,7 +66,7 @@ class ExchangeInitResult:
     """Result of exchange initialization attempt."""
     exchange_name: str
     success: bool
-    exchange: Optional[BaseExchangeInterface] = None
+    exchange: Optional[BasePrivateExchangeInterface] = None
     error: Optional[Exception] = None
     attempts: int = 1
     initialization_time: float = 0.0
@@ -85,11 +85,11 @@ class ExchangeFactory:
     - Create exchange instances with proper credentials
     - Initialize exchanges with default symbols
     - Manage exchange lifecycle
-    - Provide unified interface for exchange operations
+    - Provide unified cex for exchange operations
     """
     
     # Exchange class registry
-    EXCHANGE_CLASSES: Dict[str, Type[BaseExchangeInterface]] = {
+    EXCHANGE_CLASSES: Dict[str, Type[BasePrivateExchangeInterface]] = {
         'MEXC': MexcExchange,
         'GATEIO': GateioExchange,
     }
@@ -101,7 +101,7 @@ class ExchangeFactory:
     ]
     
     def __init__(self):
-        self.exchanges: Dict[str, BaseExchangeInterface] = {}
+        self.exchanges: Dict[str, BasePrivateExchangeInterface] = {}
         self._initialization_timeout = 10.0  # seconds
         self._retry_attempts = 3
         self._retry_delay = 2.0  # seconds
@@ -123,7 +123,7 @@ class ExchangeFactory:
             secret_key=credentials.get('secret_key', '')
         )
     
-    def _get_exchange_class(self, exchange_name: str) -> Type[BaseExchangeInterface]:
+    def _get_exchange_class(self, exchange_name: str) -> Type[BasePrivateExchangeInterface]:
         """
         Get exchange class for specified exchange name.
         
@@ -145,7 +145,7 @@ class ExchangeFactory:
         exchange_name: str,
         symbols: Optional[List[Symbol]] = None,
         max_attempts: Optional[int] = None
-    ) -> BaseExchangeInterface:
+    ) -> BasePrivateExchangeInterface:
         """
         Create and initialize exchange instance with retry logic.
         
@@ -246,14 +246,14 @@ class ExchangeFactory:
         # All attempts failed
         error_msg = f"Failed to create {exchange_name} after {attempts} attempts. Last error: {last_error}"
         logger.error(error_msg)
-        raise ExchangeAPIError(500, error_msg)
+        raise BaseExchangeError(500, error_msg)
     
     async def _create_exchange_instance(
         self,
-        exchange_class: Type[BaseExchangeInterface],
+        exchange_class: Type[BasePrivateExchangeInterface],
         credentials: ExchangeCredentials,
         exchange_name: str
-    ) -> BaseExchangeInterface:
+    ) -> BasePrivateExchangeInterface:
         """Create exchange instance with proper error handling."""
         try:
             if credentials.has_private_access:
@@ -265,17 +265,17 @@ class ExchangeFactory:
                 exchange = exchange_class()
             
             # Validate instance creation
-            if not isinstance(exchange, BaseExchangeInterface):
-                raise ValueError(f"Exchange {exchange_name} does not implement BaseExchangeInterface")
+            if not isinstance(exchange, BasePrivateExchangeInterface):
+                raise ValueError(f"Exchange {exchange_name} does not implement BasePrivateExchangeInterface")
             
             return exchange
             
         except Exception as e:
-            raise ExchangeAPIError(500, f"Failed to instantiate {exchange_name}: {e}")
+            raise BaseExchangeError(500, f"Failed to instantiate {exchange_name}: {e}")
     
     async def _initialize_exchange_with_validation(
         self,
-        exchange: BaseExchangeInterface,
+        exchange: BasePrivateExchangeInterface,
         name: str,
         symbols: List[Symbol]
     ) -> None:
@@ -289,13 +289,13 @@ class ExchangeFactory:
         try:
             # Initialize exchange with timeout
             await asyncio.wait_for(
-                exchange.init(symbols),
+                exchange.initialize(symbols),
                 timeout=self._initialization_timeout
             )
         except asyncio.TimeoutError:
-            raise ExchangeAPIError(504, f"{name} initialization timeout ({self._initialization_timeout}s)")
+            raise BaseExchangeError(504, f"{name} initialization timeout ({self._initialization_timeout}s)")
         except Exception as e:
-            raise ExchangeAPIError(500, f"{name} initialization failed: {e}")
+            raise BaseExchangeError(500, f"{name} initialization failed: {e}")
         
         # Wait for connection establishment
         await asyncio.sleep(1)
@@ -305,9 +305,9 @@ class ExchangeFactory:
         logger.info(f"{name} initialized - Status: {status.name}")
         
         if status == ExchangeStatus.INACTIVE:
-            raise ExchangeAPIError(500, f"{name} failed to activate - check credentials and connectivity")
+            raise BaseExchangeError(500, f"{name} failed to activate - check credentials and connectivity")
         elif status == ExchangeStatus.ERROR:
-            raise ExchangeAPIError(500, f"{name} entered error state during initialization")
+            raise BaseExchangeError(500, f"{name} entered error state during initialization")
         
         # Validate symbol loading
         active_symbols = getattr(exchange, 'active_symbols', [])
@@ -322,7 +322,7 @@ class ExchangeFactory:
         exchange_names: List[str],
         strategy: InitializationStrategy = InitializationStrategy.CONTINUE_ON_ERROR,
         symbols: Optional[List[Symbol]] = None
-    ) -> Dict[str, BaseExchangeInterface]:
+    ) -> Dict[str, BasePrivateExchangeInterface]:
         """
         Create multiple exchanges with intelligent error handling.
         
@@ -355,7 +355,7 @@ class ExchangeFactory:
         self, 
         exchange_names: List[str],
         symbols: Optional[List[Symbol]]
-    ) -> Dict[str, BaseExchangeInterface]:
+    ) -> Dict[str, BasePrivateExchangeInterface]:
         """Create exchanges with fail-fast strategy."""
         for name in exchange_names:
             exchange = await self.create_exchange(name, symbols, max_attempts=1)
@@ -368,7 +368,7 @@ class ExchangeFactory:
         self, 
         exchange_names: List[str],
         symbols: Optional[List[Symbol]]
-    ) -> Dict[str, BaseExchangeInterface]:
+    ) -> Dict[str, BasePrivateExchangeInterface]:
         """Create exchanges with continue-on-error strategy."""
         tasks = []
         for name in exchange_names:
@@ -385,7 +385,7 @@ class ExchangeFactory:
                 self.exchanges[name] = result
         
         if not self.exchanges:
-            raise ExchangeAPIError(500, "No exchanges could be initialized")
+            raise BaseExchangeError(500, "No exchanges could be initialized")
         
         self._log_exchange_summary()
         return self.exchanges
@@ -394,7 +394,7 @@ class ExchangeFactory:
         self, 
         exchange_names: List[str],
         symbols: Optional[List[Symbol]]
-    ) -> Dict[str, BaseExchangeInterface]:
+    ) -> Dict[str, BasePrivateExchangeInterface]:
         """Create exchanges with retry strategy."""
         failed_exchanges = []
         
@@ -438,7 +438,7 @@ class ExchangeFactory:
                 failed_exchanges = new_failed
         
         if not self.exchanges:
-            raise ExchangeAPIError(500, "No exchanges could be initialized after retries")
+            raise BaseExchangeError(500, "No exchanges could be initialized after retries")
         
         self._log_exchange_summary()
         return self.exchanges
@@ -447,7 +447,7 @@ class ExchangeFactory:
         self, 
         name: str, 
         symbols: Optional[List[Symbol]] = None
-    ) -> Optional[BaseExchangeInterface]:
+    ) -> Optional[BasePrivateExchangeInterface]:
         """
         Create exchange with comprehensive error handling.
         
@@ -549,7 +549,7 @@ class ExchangeFactory:
         self.exchanges.clear()
         logger.info("All exchanges closed")
     
-    async def _close_exchange(self, name: str, exchange: BaseExchangeInterface):
+    async def _close_exchange(self, name: str, exchange: BasePrivateExchangeInterface):
         """Close single exchange connection."""
         try:
             await exchange.close()
@@ -557,11 +557,11 @@ class ExchangeFactory:
         except Exception as e:
             logger.error(f"Error closing {name}: {e}")
     
-    def get_exchange(self, name: str) -> Optional[BaseExchangeInterface]:
+    def get_exchange(self, name: str) -> Optional[BasePrivateExchangeInterface]:
         """Get exchange instance by name."""
         return self.exchanges.get(name)
     
-    def get_active_exchanges(self) -> Dict[str, BaseExchangeInterface]:
+    def get_active_exchanges(self) -> Dict[str, BasePrivateExchangeInterface]:
         """Get all active exchanges."""
         return {
             name: exchange

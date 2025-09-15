@@ -434,7 +434,7 @@ class SizedOpportunity(msgspec.Struct):
     sell_exchange: str
     buy_price: float
     sell_price: float
-    order_amount: float  # In base currency
+    order_amount: float  # In cex currency
     quote_amount: float  # In quote currency (USDT)
     gross_profit: float
     net_profit: float    # After fees
@@ -817,7 +817,7 @@ Extend existing exchange interfaces to support futures/derivatives trading while
 
 **Technical Specs**:
 ```python
-# Extensions to existing structs.py
+# Extensions to existing exchange.py
 class FuturesContract(Struct):
     underlying: Symbol
     contract_type: ContractType  # PERPETUAL, QUARTERLY, MONTHLY

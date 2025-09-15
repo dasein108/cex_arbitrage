@@ -9,11 +9,10 @@ HFT COMPLIANT: Fast configuration loading with validation caching.
 
 import logging
 from typing import Dict, Any, List, Optional
-from decimal import Decimal
-from common.config import config, ConfigurationError
+from config import config
+from core.exceptions.exchange import ConfigurationError
 from arbitrage.types import (
-    ArbitrageConfig, RiskLimits, OpportunityType, ExchangeName,
-    ArbitragePair, ExchangePairConfig, ArbitragePairMap, PairValidationResult
+    ArbitrageConfig, RiskLimits, OpportunityType, ArbitragePairMap
 )
 from arbitrage.symbol_resolver import SymbolResolver
 
@@ -296,13 +295,13 @@ class ConfigurationManager:
         Returns:
             List of Symbol objects for exchange initialization
         """
-        from exchanges.interface.structs import Symbol, AssetName
+        from structs.exchange import Symbol, AssetName
         
         if not self._raw_pairs_config:
             logger.warning("No arbitrage pairs configured, using default symbols")
             return []
         
-        # Extract unique base/quote pairs from enabled arbitrage pairs
+        # Extract unique cex/quote pairs from enabled arbitrage pairs
         unique_pairs = set()
         enabled_count = 0
         

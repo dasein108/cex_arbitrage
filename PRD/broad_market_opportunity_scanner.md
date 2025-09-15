@@ -196,7 +196,7 @@ async def discover_symbols(exchanges):
             
             filtered_symbols[symbol] = {
                 'exchanges': list(exchange_set),
-                'base': base,
+                'cex': base,
                 'quote': normalize_quote(quote),  # USDT/USDC -> USD_STABLE
                 'exchange_count': len(exchange_set)
             }
@@ -471,7 +471,7 @@ class SymbolFilter:
         
         return {
             symbol: data for symbol, data in symbols.items()
-            if data['base'] not in TOP_50_COINS
+            if data['cex'] not in TOP_50_COINS
         }
     
     async def volume_filter(self, symbols):
@@ -1017,7 +1017,7 @@ class SymbolDiscoveryEngine:
                         
                         if normalized not in all_symbols:
                             all_symbols[normalized] = {
-                                'base': market['base'],
+                                'cex': market['cex'],
                                 'quote': market['quote'],
                                 'exchanges': set()
                             }

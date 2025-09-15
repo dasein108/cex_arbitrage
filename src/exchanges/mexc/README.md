@@ -46,9 +46,10 @@ Production-ready high-level interface implementing `BaseExchangeInterface`.
 - **Production Monitoring**: Performance metrics, cache hit rates, memory management
 
 #### Usage Example
+
 ```python
 from exchanges.mexc.mexc_exchange import MexcExchange
-from exchanges.interface.structs import Symbol, AssetName, Side
+from structs import Symbol, AssetName, Side
 
 # Initialize exchange
 exchange = MexcExchange(api_key="your_key", secret_key="your_secret")
@@ -58,7 +59,7 @@ async with exchange.session([Symbol(base=AssetName("BTC"), quote=AssetName("USDT
     # Get real-time orderbook
     orderbook = mexc.orderbook
     print(f"Best bid: {orderbook.bids[0].price}")
-    
+
     # Place limit order
     order = await mexc.place_limit_order(
         symbol=Symbol(base=AssetName("BTC"), quote=AssetName("USDT")),
@@ -67,7 +68,7 @@ async with exchange.session([Symbol(base=AssetName("BTC"), quote=AssetName("USDT
         price=50000.0
     )
     print(f"Order placed: {order.order_id}")
-    
+
     # Check account balances
     balances = await mexc.get_fresh_balances()
     btc_balance = mexc.get_asset_balance(AssetName("BTC"))
@@ -102,10 +103,11 @@ High-performance REST client for MEXC public API endpoints.
 - **Optimized parameter handling** for MEXC API requirements
 
 ##### Usage Example
-```python
-from exchanges.mexc.rest.mexc_public import MexcPublicExchange
 
-public = MexcPublicExchange()
+```python
+from exchanges.mexc.rest.mexc_public import MexcPublicSpotRest
+
+public = MexcPublicSpotRest()
 
 # Get exchange information with caching
 exchange_info = await public.get_exchange_info()
@@ -113,13 +115,13 @@ btc_usdt_info = exchange_info[Symbol(base=AssetName("BTC"), quote=AssetName("USD
 
 # Get real-time orderbook
 orderbook = await public.get_orderbook(
-    Symbol(base=AssetName("BTC"), quote=AssetName("USDT")), 
+    Symbol(base=AssetName("BTC"), quote=AssetName("USDT")),
     limit=100
 )
 
 # Get recent trades
 trades = await public.get_recent_trades(
-    Symbol(base=AssetName("BTC"), quote=AssetName("USDT")), 
+    Symbol(base=AssetName("BTC"), quote=AssetName("USDT")),
     limit=500
 )
 
@@ -157,10 +159,11 @@ def _mexc_signature_generator(self, params: Dict[str, any]) -> str:
 ```
 
 ##### Trading Operations
-```python
-from exchanges.mexc.rest.mexc_private import MexcPrivateExchange
 
-private = MexcPrivateExchange(api_key="key", secret_key="secret")
+```python
+from exchanges.mexc.rest.mexc_private import MexcPrivateSpotRest
+
+private = MexcPrivateSpotRest(api_key="key", secret_key="secret")
 
 # Get account balances
 balances = await private.get_account_balance()
@@ -420,14 +423,15 @@ print(f"Pool utilization: {pool_stats['utilization']}%")
 ### Error Handling and Recovery
 
 #### Connection Recovery
+
 ```python
 async def _cleanup_partial_init(self) -> None:
     """Clean up resources during failed initialization"""
-    if self._ws_client:
-        await self._ws_client.ws_client.stop()
+    if self._ws_public:
+        await self._ws_public.ws_client.stop()
     if self._rest_private:
         await self._rest_private.close()
-    
+
     # Reset all state
     self._active_symbols.clear()
     self._orderbooks.clear()
@@ -436,19 +440,20 @@ async def _cleanup_partial_init(self) -> None:
 ```
 
 #### Graceful Shutdown
+
 ```python
 async def close(self) -> None:
     """Clean shutdown with proper resource cleanup"""
-    if self._ws_client:
-        await self._ws_client.ws_client.stop()
+    if self._ws_public:
+        await self._ws_public.ws_client.stop()
     if self._rest_private:
         await self._rest_private.close()
-    
+
     # Clear all cached data
     self._active_symbols.clear()
     self._orderbooks.clear()
     self._balances_dict.clear()
-    
+
     self.logger.info(f"Successfully closed {self.exchange} exchange")
 ```
 

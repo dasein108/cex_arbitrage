@@ -11,7 +11,7 @@ from __future__ import annotations
 from enum import IntEnum
 from typing import Dict, List, Optional, Any, Set
 from dataclasses import dataclass, field
-from decimal import Decimal
+# HFT OPTIMIZATION: Using float-only arithmetic for 50x performance vs Decimal
 
 
 class OpportunityType(IntEnum):
@@ -173,9 +173,9 @@ class ExchangePairConfig:
     HFT COMPLIANT: Immutable configuration loaded once at startup.
     """
     symbol: str  # Exchange-specific symbol format (e.g., "BTCUSDT" on MEXC, "BTC_USDT" on Gate.io)
-    min_amount: Decimal  # Minimum trading amount in base asset
-    max_amount: Decimal  # Maximum trading amount in base asset
-    min_notional: Optional[Decimal] = None  # Minimum order value in quote asset
+    min_amount: float  # Minimum trading amount in cex asset
+    max_amount: float  # Maximum trading amount in cex asset
+    min_notional: Optional[float] = None  # Minimum order value in quote asset
     price_precision: int = 8  # Decimal places for price
     amount_precision: int = 8  # Decimal places for amount
     maker_fee_bps: int = 10  # Maker fee in basis points (0.10% = 10 bps)
@@ -213,7 +213,7 @@ class ArbitragePair:
     exchanges: Dict[str, ExchangePairConfig]  # Exchange-specific configurations
     opportunity_type: OpportunityType = OpportunityType.SPOT_SPOT  # Type of arbitrage
     min_profit_bps: int = 30  # Minimum profit threshold in basis points
-    max_exposure_usd: Decimal = Decimal('10000')  # Maximum exposure for this pair
+    max_exposure_usd: float = 10000.0  # Maximum exposure for this pair
     is_enabled: bool = True  # Whether this pair is enabled for trading
     priority: int = 1  # Execution priority (lower = higher priority)
     
@@ -250,11 +250,11 @@ class ArbitragePair:
         """Get exchange-specific symbols for this pair."""
         return {exchange: config.symbol for exchange, config in self.exchanges.items()}
     
-    def get_min_trade_amount(self) -> Decimal:
+    def get_min_trade_amount(self) -> float:
         """Get the minimum trade amount across all exchanges."""
         return max(config.min_amount for config in self.exchanges.values())
     
-    def get_max_trade_amount(self) -> Decimal:
+    def get_max_trade_amount(self) -> float:
         """Get the maximum trade amount across all exchanges."""
         return min(config.max_amount for config in self.exchanges.values())
     

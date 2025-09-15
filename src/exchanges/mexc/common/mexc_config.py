@@ -5,50 +5,35 @@ Simple, centralized configuration for MEXC exchange REST configs.
 Uses the new YAML-based configuration system.
 """
 
-from common.config import config
-from common.rest_client import RestConfig
+from config import config
+from core.transport.rest.rest_client import RestConfig
 
 
 def _create_mexc_config(endpoint_type: str, timeout_multiplier: float = 1.0, max_retries: int = None) -> RestConfig:
     """Create MEXC-specific REST config using YAML-based config."""
     # MEXC endpoint timeout mapping
     timeout_map = {
-        'account': config.REQUEST_TIMEOUT * 0.8,
-        'my_orders': config.REQUEST_TIMEOUT * 0.7,
-        'order': config.REQUEST_TIMEOUT * 0.6, 
-        'market_data': config.REQUEST_TIMEOUT * 1.0,
-        'default': config.REQUEST_TIMEOUT
+        'account': config._network_config.request_timeout * 0.8,
+        'my_orders': config._network_config.request_timeout * 0.7,
+        'order': config._network_config.request_timeout * 0.6, 
+        'market_data': config._network_config.request_timeout * 1.0,
+        'default': config._network_config.request_timeout
     }
     
-    base_timeout = timeout_map.get(endpoint_type, config.REQUEST_TIMEOUT)
+    base_timeout = timeout_map.get(endpoint_type, config._network_config.request_timeout)
     final_timeout = base_timeout * timeout_multiplier
     
-    mexc_config = config.get_exchange_config('mexc')
+    mexc_config = config._exchange_configs.get('mexc')
     return RestConfig(
         timeout=final_timeout,
-        max_retries=max_retries if max_retries is not None else config.MAX_RETRIES,
-        retry_delay=config.RETRY_DELAY,
-        max_concurrent=mexc_config.get('rate_limit_per_second', 18)
+        max_retries=max_retries if max_retries is not None else config._network_config.max_retries,
+        retry_delay=config._network_config.retry_delay,
+        max_concurrent=getattr(mexc_config.rate_limit, 'requests_per_second', 18) if mexc_config and hasattr(mexc_config, 'rate_limit') else 18
     )
 
 
 class MexcConfig:
     """Simple MEXC configuration using YAML-based config."""
-    
-    # Exchange constants from YAML config
-    EXCHANGE_NAME = "MEXC"
-    
-    @staticmethod
-    def get_base_url() -> str:
-        """Get MEXC base URL from config."""
-        mexc_config = config.get_exchange_config('mexc')
-        return mexc_config.get('base_url', 'https://api.mexc.com')
-    
-    @staticmethod
-    def get_websocket_url() -> str:
-        """Get MEXC WebSocket URL from config."""
-        mexc_config = config.get_exchange_config('mexc')
-        return mexc_config.get('websocket_url', 'wss://wbs-api.mexc.com/ws')
     
     # REST configs only - no paths
     rest_config = {

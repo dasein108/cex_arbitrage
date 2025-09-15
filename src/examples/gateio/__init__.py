@@ -5,11 +5,11 @@ This package contains comprehensive examples demonstrating Gate.io exchange inte
 Public API Examples (No credentials required):
 - public_rest_example.py: REST API market data retrieval
 - public_websocket_example.py: WebSocket real-time streaming  
-- exchange_public_example.py: High-level exchange interface
+- exchange_public_example.py: High-level exchange cex
 
 Private API Examples (Requires API credentials):
 - private_rest_example.py: REST API trading operations
-- exchange_private_example.py: Full exchange trading interface
+- exchange_private_example.py: Full exchange trading cex
 
 Usage:
     # Public examples (no credentials needed)

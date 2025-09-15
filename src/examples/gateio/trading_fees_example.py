@@ -20,9 +20,9 @@ import logging
 import os
 from typing import Optional
 
-from exchanges.gateio.rest.gateio_private import GateioPrivateExchange
-from exchanges.interface.structs import TradingFee, Symbol, AssetName
-from common.exceptions import ExchangeAPIError
+from exchanges.gateio.rest.gateio_private import GateioPrivateExchangeSpot
+from structs.exchange import TradingFee, Symbol, AssetName
+from core.exceptions.exchange import BaseExchangeError
 
 
 # Configure logging for better debugging
@@ -54,11 +54,11 @@ class TradingFeesDemo:
         """
         self.api_key = api_key
         self.secret_key = secret_key
-        self.exchange: Optional[GateioPrivateExchange] = None
+        self.exchange: Optional[GateioPrivateExchangeSpot] = None
     
     async def __aenter__(self):
         """Async context manager entry - initialize exchange client."""
-        self.exchange = GateioPrivateExchange(self.api_key, self.secret_key)
+        self.exchange = GateioPrivateExchangeSpot(self.api_key, self.secret_key)
         return self
     
     async def __aexit__(self, exc_type, exc_val, exc_tb):
@@ -106,7 +106,7 @@ class TradingFeesDemo:
             
             return trading_fee
             
-        except ExchangeAPIError as e:
+        except BaseExchangeError as e:
             logger.error(f"❌ Gate.io API Error: {e.code} - {e.message}")
             if e.api_code:
                 logger.error(f"   Gate.io Error Code: {e.api_code}")
@@ -154,7 +154,7 @@ class TradingFeesDemo:
             
             return trading_fee
             
-        except ExchangeAPIError as e:
+        except BaseExchangeError as e:
             logger.error(f"❌ Gate.io API Error: {e.code} - {e.message}")
             return None
         
@@ -176,12 +176,12 @@ class TradingFeesDemo:
         
         # Create client with invalid credentials for demonstration
         try:
-            invalid_client = GateioPrivateExchange("invalid_key", "invalid_secret")
+            invalid_client = GateioPrivateExchangeSpot("invalid_key", "invalid_secret")
             
             # This should fail with authentication error
             await invalid_client.get_trading_fees()
             
-        except ExchangeAPIError as e:
+        except BaseExchangeError as e:
             logger.info(f"✅ Expected authentication error caught: {e.code} - {e.message}")
             
         except Exception as e:

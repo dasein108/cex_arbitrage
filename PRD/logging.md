@@ -312,7 +312,7 @@ class HFTLogger:
     """
     Main HFT Logger coordinating all logging subsystems.
     
-    Provides unified interface while maintaining ultra-high performance.
+    Provides unified cex while maintaining ultra-high performance.
     """
     
     def __init__(self, 
@@ -474,36 +474,37 @@ import clickhouse_connect
 from elasticsearch import AsyncElasticsearch
 import influxdb_client
 
+
 class LoggingServer:
     """
     Dedicated logging server for async processing of logs.
     
     Receives logs via ZeroMQ and distributes to appropriate storage.
     """
-    
+
     def __init__(self):
         self.zmq_context = zmq.asyncio.Context()
-        
+
         # Storage clients
         self.clickhouse = clickhouse_connect.get_client(
             host='clickhouse-server',
             port=8123,
             database='arbitrage_logs'
         )
-        
+
         self.elasticsearch = AsyncElasticsearch([
             {'host': 'elasticsearch-server', 'port': 9200}
         ])
-        
+
         self.influxdb = influxdb_client.InfluxDBClient(
             url="http://influxdb-server:8086",
             token="your-token",
             org="arbitrage-org"
         )
-        
+
         # Message decoder
         self.decoder = msgspec.msgpack.Decoder()
-        
+
         # Processing stats
         self.stats = {
             'trades_processed': 0,
@@ -511,22 +512,22 @@ class LoggingServer:
             'metrics_processed': 0,
             'exceptions_processed': 0
         }
-    
+
     async def start(self):
         """Start all logging processors"""
         # Setup receivers
         trade_receiver = self.zmq_context.socket(zmq.PULL)
         trade_receiver.bind("tcp://*:5557")
-        
+
         metrics_receiver = self.zmq_context.socket(zmq.PULL)
         metrics_receiver.bind("tcp://*:5558")
-        
+
         # Start processing tasks
         asyncio.create_task(self._process_system_logs(trade_receiver))
         asyncio.create_task(self._process_metrics(metrics_receiver))
-        
+
         print("Logging server started...")
-    
+
     async def _process_system_logs(self, receiver):
         """Process system logs and route to appropriate storage"""
         while True:
@@ -534,7 +535,7 @@ class LoggingServer:
                 # Receive log batch
                 message = await receiver.recv()
                 log_batch = self.decoder.decode(message)
-                
+
                 # Route logs by type
                 for log_record in log_batch:
                     if log_record.level == LogLevel.TRADE:
@@ -543,12 +544,12 @@ class LoggingServer:
                         await self._store_exception(log_record)
                     else:
                         await self._store_system_log(log_record)
-                
+
                 self.stats['system_logs_processed'] += len(log_batch)
-                
+
             except Exception as e:
                 print(f"System log processing error: {e}")
-    
+
     async def _store_trade_log(self, log_record):
         """Store trade log in ClickHouse for analytics"""
         try:
@@ -563,10 +564,10 @@ class LoggingServer:
                 'message': log_record.message
             }])
             self.stats['trades_processed'] += 1
-            
+
         except Exception as e:
             print(f"ClickHouse trade log error: {e}")
-    
+
     async def _store_system_log(self, log_record):
         """Store system log in Elasticsearch for searching"""
         try:
@@ -580,37 +581,37 @@ class LoggingServer:
                 'symbol': log_record.symbol,
                 'metadata': log_record.metadata
             }
-            
+
             await self.elasticsearch.index(
                 index=f"system-logs-{datetime.now().strftime('%Y-%m')}",
                 document=doc
             )
-            
+
         except Exception as e:
             print(f"Elasticsearch system log error: {e}")
-    
+
     async def _process_metrics(self, receiver):
         """Process performance metrics and store in InfluxDB"""
         while True:
             try:
                 message = await receiver.recv()
                 metrics_data = self.decoder.decode(message)
-                
+
                 # Store in InfluxDB for time-series analysis
                 write_api = self.influxdb.write_api()
-                
-                point = influxdb_client.Point("performance_metrics") \
-                    .time(datetime.fromtimestamp(metrics_data['timestamp'])) \
-                    .field("trade_latency_p95_ms", metrics_data['data']['trade_latency_p95_ms']) \
-                    .field("trade_latency_avg_ms", metrics_data['data']['trade_latency_avg_ms']) \
-                    .field("api_latency_p95_ms", metrics_data['data']['api_latency_p95_ms']) \
-                    .field("total_trades", metrics_data['data']['total_trades'])
-                
-                write_api.write(bucket="arbitrage-metrics", record=point)
-                self.stats['metrics_processed'] += 1
-                
-            except Exception as e:
-                print(f"Metrics processing error: {e}")
+
+                point = influxdb_client.Point("performance_metrics")
+                .time(datetime.fromtimestamp(metrics_data['timestamp']))
+                .field("trade_latency_p95_ms", metrics_data['data']['trade_latency_p95_ms'])
+                .field("trade_latency_avg_ms", metrics_data['data']['trade_latency_avg_ms'])
+                .field("api_latency_p95_ms", metrics_data['data']['api_latency_p95_ms'])
+                .field("total_trades", metrics_data['data']['total_trades'])
+
+            write_api.write(bucket="arbitrage-metrics", record=point)
+            self.stats['metrics_processed'] += 1
+
+        except Exception as e:
+        print(f"Metrics processing error: {e}")
 ```
 
 ## 📊 **Visualization Strategy**

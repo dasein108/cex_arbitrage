@@ -33,15 +33,15 @@ from __future__ import annotations
 import asyncio
 import logging
 from decimal import Decimal
-from typing import Dict, List, Optional, Set, Callable, Any
+from typing import Dict, Optional, Callable, Any
 from dataclasses import dataclass
 
 from .structures import ArbitrageConfig
 
-from exchanges.interface.structs import AssetBalance, Symbol
-from exchanges.interface.base_exchange import BaseExchangeInterface
-from exchanges.interface.structs import ExchangeName
-from common.exceptions import BalanceManagementError
+from structs.exchange import AssetBalance
+from core.cex.composed.base_private_exchange import BasePrivateExchangeInterface
+from structs.exchange import ExchangeName
+from core.exceptions.exchange import BalanceManagementError
 
 
 logger = logging.getLogger(__name__)
@@ -98,7 +98,7 @@ class BalanceMonitor:
     def __init__(
         self,
         config: ArbitrageConfig,
-        exchanges: Dict[str, BaseExchangeInterface],
+        exchanges: Dict[str, BasePrivateExchangeInterface],
         balance_alert_callback: Optional[Callable[[str, Dict[str, Any]], None]] = None,
     ):
         """
@@ -244,7 +244,7 @@ class BalanceMonitor:
     async def _balance_monitoring_loop(
         self,
         exchange_name: ExchangeName,
-        exchange_client: BaseExchangeInterface,
+        exchange_client: BasePrivateExchangeInterface,
     ) -> None:
         """
         Balance monitoring loop for specific exchange.
@@ -295,7 +295,7 @@ class BalanceMonitor:
     async def _refresh_exchange_balances(
         self,
         exchange_name: ExchangeName,
-        exchange_client: BaseExchangeInterface,
+        exchange_client: BasePrivateExchangeInterface,
     ) -> None:
         """
         Refresh balances for specific exchange.

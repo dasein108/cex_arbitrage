@@ -11,13 +11,13 @@ import asyncio
 import logging
 from typing import Dict, Optional, Any
 
-from arbitrage.types import ArbitrageConfig, EngineStatistics
+from arbitrage.types import ArbitrageConfig
 from arbitrage.configuration_manager import ConfigurationManager
 from arbitrage.exchange_factory import ExchangeFactory
 from arbitrage.performance_monitor import PerformanceMonitor
 from arbitrage.shutdown_manager import ShutdownManager, ShutdownReason
 from arbitrage.symbol_resolver import SymbolResolver
-from exchanges.interface.base_exchange import BaseExchangeInterface
+from core.cex.composed.base_private_exchange import BasePrivateExchangeInterface
 
 logger = logging.getLogger(__name__)
 
@@ -40,7 +40,7 @@ class ArbitrageController:
         
         # State
         self.config: Optional[ArbitrageConfig] = None
-        self.exchanges: Dict[str, BaseExchangeInterface] = {}
+        self.exchanges: Dict[str, BasePrivateExchangeInterface] = {}
         self.symbol_resolver: Optional[SymbolResolver] = None
         self.engine: Optional[Any] = None  # Will be the actual engine
         self.running = False
@@ -122,7 +122,7 @@ class ArbitrageController:
         """
         try:
             # Get log level from config
-            from common.config import config as base_config
+            from config import config as base_config
             
             # Get environment settings for log level
             log_level = base_config.LOG_LEVEL

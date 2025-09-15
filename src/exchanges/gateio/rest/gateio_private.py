@@ -9,7 +9,7 @@ Key Features:
 - Sub-10ms response times for order management  
 - Gate.io-specific HMAC-SHA512 authentication
 - Zero-copy JSON parsing with msgspec
-- Unified interface compliance
+- Unified cex compliance
 
 Gate.io Private API Specifications:
 - Base URL: https://api.gateio.ws/api/v4
@@ -21,25 +21,23 @@ Threading: Fully async/await compatible, thread-safe
 Memory: O(1) per request, optimized for trading operations
 """
 
-import json
-import time
-from typing import Dict, List, Optional, Any
+from typing import Dict, List, Optional
 import logging
 import msgspec
 
-from exchanges.interface.structs import (
+from structs.exchange import (
     Symbol, Order, OrderId, OrderType, Side, AssetBalance,
     AssetName, TimeInForce, ExchangeName, TradingFee
 )
-from common.rest_client import RestClient, HTTPMethod
-from common.exceptions import ExchangeAPIError
-from exchanges.interface.rest.base_rest_private import PrivateExchangeInterface
+from core.transport.rest.rest_client import RestClient, HTTPMethod
+from core.exceptions.exchange import BaseExchangeError
+from core.cex.rest.spot.base_rest_spot_private import PrivateExchangeSpotRestInterface
 from exchanges.gateio.common.gateio_utils import GateioUtils
 from exchanges.gateio.common.gateio_mappings import GateioMappings
 from exchanges.gateio.common.gateio_config import GateioConfig
 
 
-class GateioPrivateExchange(PrivateExchangeInterface):
+class GateioPrivateExchangeSpot(PrivateExchangeSpotRestInterface):
     """
     Gate.io private REST API client focused on trading operations.
     
@@ -131,7 +129,7 @@ class GateioPrivateExchange(PrivateExchangeInterface):
             # ]
             
             if not isinstance(response_data, list):
-                raise ExchangeAPIError(500, "Invalid balance response format")
+                raise BaseExchangeError(500, "Invalid balance response format")
             
             balances = []
             for balance_data in response_data:
@@ -145,7 +143,7 @@ class GateioPrivateExchange(PrivateExchangeInterface):
             
         except Exception as e:
             self.logger.error(f"Failed to get account balance: {e}")
-            raise ExchangeAPIError(500, f"Balance fetch failed: {str(e)}")
+            raise BaseExchangeError(500, f"Balance fetch failed: {str(e)}")
     
     async def get_asset_balance(self, asset: AssetName) -> Optional[AssetBalance]:
         """
@@ -198,7 +196,7 @@ class GateioPrivateExchange(PrivateExchangeInterface):
             symbol: Trading symbol
             side: Order side (BUY/SELL)
             order_type: Order type (LIMIT/MARKET)
-            amount: Order quantity in base asset
+            amount: Order quantity in cex asset
             price: Order price (required for limit orders)
             quote_quantity: Order quantity in quote asset (for market buys)
             time_in_force: Time in force (GTC/IOC/FOK)
@@ -237,7 +235,7 @@ class GateioPrivateExchange(PrivateExchangeInterface):
                         quote_quantity = amount * price
                     payload['amount'] = GateioUtils.format_gateio_quantity(quote_quantity)
                 else:
-                    # Market sell: specify base quantity
+                    # Market sell: specify cex quantity
                     if amount is None:
                         raise ValueError("Market sell orders require amount")
                     payload['amount'] = GateioUtils.format_gateio_quantity(amount)
@@ -288,7 +286,7 @@ class GateioPrivateExchange(PrivateExchangeInterface):
             import traceback
             self.logger.error(f"Failed to place order: {e}")
             self.logger.error(f"Full traceback: {traceback.format_exc()}")
-            raise ExchangeAPIError(500, f"Order placement failed: {str(e)}")
+            raise BaseExchangeError(500, f"Order placement failed: {str(e)}")
     
     async def cancel_order(self, symbol: Symbol, order_id: OrderId) -> Order:
         """
@@ -329,7 +327,7 @@ class GateioPrivateExchange(PrivateExchangeInterface):
             
         except Exception as e:
             self.logger.error(f"Failed to cancel order {order_id}: {e}")
-            raise ExchangeAPIError(500, f"Order cancellation failed: {str(e)}")
+            raise BaseExchangeError(500, f"Order cancellation failed: {str(e)}")
     
     async def cancel_all_orders(self, symbol: Symbol) -> List[Order]:
         """
@@ -362,7 +360,7 @@ class GateioPrivateExchange(PrivateExchangeInterface):
             
             # Gate.io returns list of cancelled orders
             if not isinstance(response_data, list):
-                raise ExchangeAPIError(500, "Invalid cancel all orders response format")
+                raise BaseExchangeError(500, "Invalid cancel all orders response format")
             
             cancelled_orders = []
             for order_data in response_data:
@@ -374,7 +372,7 @@ class GateioPrivateExchange(PrivateExchangeInterface):
             
         except Exception as e:
             self.logger.error(f"Failed to cancel all orders for {symbol}: {e}")
-            raise ExchangeAPIError(500, f"Mass order cancellation failed: {str(e)}")
+            raise BaseExchangeError(500, f"Mass order cancellation failed: {str(e)}")
     
     async def get_order(self, symbol: Symbol, order_id: OrderId) -> Order:
         """
@@ -417,7 +415,7 @@ class GateioPrivateExchange(PrivateExchangeInterface):
             
         except Exception as e:
             self.logger.error(f"Failed to get order {order_id}: {e}")
-            raise ExchangeAPIError(500, f"Order query failed: {str(e)}")
+            raise BaseExchangeError(500, f"Order query failed: {str(e)}")
     
     async def get_open_orders(self, symbol: Optional[Symbol] = None) -> List[Order]:
         """
@@ -462,7 +460,7 @@ class GateioPrivateExchange(PrivateExchangeInterface):
             
             # Gate.io returns list of orders
             if not isinstance(response_data, list):
-                raise ExchangeAPIError(500, "Invalid open orders response format")
+                raise BaseExchangeError(500, "Invalid open orders response format")
             
             open_orders = []
             for order_data in response_data:
@@ -476,7 +474,7 @@ class GateioPrivateExchange(PrivateExchangeInterface):
         except Exception as e:
             symbol_str = f" for {symbol}" if symbol else ""
             self.logger.error(f"Failed to get open orders{symbol_str}: {e}")
-            raise ExchangeAPIError(500, f"Open orders retrieval failed: {str(e)}")
+            raise BaseExchangeError(500, f"Open orders retrieval failed: {str(e)}")
     
     async def modify_order(
         self,
@@ -532,10 +530,10 @@ class GateioPrivateExchange(PrivateExchangeInterface):
             
         except Exception as e:
             self.logger.error(f"Failed to modify order {order_id}: {e}")
-            raise ExchangeAPIError(500, f"Order modification failed: {str(e)}")
+            raise BaseExchangeError(500, f"Order modification failed: {str(e)}")
     
     # Gate.io doesn't have listen key endpoints like Binance
-    # These methods are required by interface but not applicable
+    # These methods are required by cex but not applicable
     
     async def create_listen_key(self) -> str:
         """Gate.io doesn't use listen keys - returns empty string."""
@@ -573,7 +571,7 @@ class GateioPrivateExchange(PrivateExchangeInterface):
         Note:
             Gate.io API Limitation: The /spot/fee endpoint only supports account-level
             fees, not symbol-specific fees. The symbol parameter is accepted for
-            interface compatibility but Gate.io will always return account-level rates.
+            cex compatibility but Gate.io will always return account-level rates.
         """
         try:
             # Log the request details
@@ -606,7 +604,7 @@ class GateioPrivateExchange(PrivateExchangeInterface):
             # }
             
             if not isinstance(response_data, dict):
-                raise ExchangeAPIError(500, "Invalid trading fees response format")
+                raise BaseExchangeError(500, "Invalid trading fees response format")
             
             # Extract fee rates - Gate.io returns string values
             maker_rate = float(response_data.get('maker_fee', '0.002'))
@@ -634,7 +632,7 @@ class GateioPrivateExchange(PrivateExchangeInterface):
             
         except Exception as e:
             self.logger.error(f"Failed to get trading fees: {e}")
-            raise ExchangeAPIError(500, f"Trading fees fetch failed: {str(e)}")
+            raise BaseExchangeError(500, f"Trading fees fetch failed: {str(e)}")
 
     async def close(self) -> None:
         """Close the REST client and clean up resources."""

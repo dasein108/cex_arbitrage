@@ -37,16 +37,16 @@ from weakref import WeakSet
 
 from .structures import ArbitrageConfig
 
-from exchanges.interface.structs import (
+from structs.exchange import (
     Symbol,
     OrderBook,
     Ticker,
     Trade,
     SymbolInfo,
 )
-from exchanges.interface.base_exchange import BaseExchangeInterface
-from exchanges.interface.structs import ExchangeName
-from common.exceptions import ExchangeAPIError as MarketDataError
+from core.cex.composed import BasePublicExchangeInterface
+from structs.exchange import ExchangeName
+from core.exceptions.exchange import BaseExchangeError as MarketDataError
 
 
 logger = logging.getLogger(__name__)
@@ -103,7 +103,7 @@ class MarketDataAggregator:
     def __init__(
         self,
         config: ArbitrageConfig,
-        exchanges: Dict[str, BaseExchangeInterface],
+        exchanges: Dict[ExchangeName, BasePublicExchangeInterface],
         data_update_callback: Optional[Callable[[MarketDataSnapshot], None]] = None,
     ):
         """
@@ -126,7 +126,7 @@ class MarketDataAggregator:
         Performance: Initialization should complete in <2 seconds
         """
         self.config = config
-        self.public_exchanges = public_exchanges
+        self.public_exchanges = exchanges
         self.data_update_callback = data_update_callback
         
         # Data Aggregation State
@@ -156,7 +156,7 @@ class MarketDataAggregator:
         self._data_synchronization_failures = 0
         self._exchange_connectivity_issues = {}
         
-        logger.info(f"Market data aggregator initialized for {len(public_exchanges)} exchanges")
+        logger.info(f"Market data aggregator initialized for {len(exchanges)} exchanges")
     
     async def start_aggregation(self, symbols: Set[Symbol]) -> None:
         """
@@ -268,10 +268,37 @@ class MarketDataAggregator:
             logger.error(f"Error during aggregation shutdown: {e}")
             raise MarketDataError(f"Aggregation stop failed: {e}")
     
+    # HFT IMPROVEMENT: Add cex methods for SimpleArbitrageEngine compatibility
+    
+    async def initialize(self, symbols: Set[Symbol]) -> None:
+        """
+        Initialize market data aggregator with symbols.
+        
+        HFT COMPLIANT: Wrapper method for SimpleArbitrageEngine compatibility.
+        Delegates to start_aggregation() for actual implementation.
+        
+        Args:
+            symbols: Set of trading symbols to monitor
+        
+        Performance: <100ms initialization time
+        """
+        await self.start_aggregation(symbols)
+    
+    async def stop(self) -> None:
+        """
+        Stop market data aggregator.
+        
+        HFT COMPLIANT: Wrapper method for SimpleArbitrageEngine compatibility.
+        Delegates to stop_aggregation() for actual implementation.
+        
+        Performance: <10s graceful shutdown
+        """
+        await self.stop_aggregation()
+    
     async def _websocket_connection_manager(
         self,
         exchange_name: ExchangeName,
-        exchange_client: BaseExchangeInterface,
+        exchange_client: BasePublicExchangeInterface,
         symbols: Set[Symbol],
     ) -> None:
         """
@@ -332,7 +359,7 @@ class MarketDataAggregator:
     async def _rest_fallback_manager(
         self,
         exchange_name: ExchangeName,
-        exchange_client: BaseExchangeInterface,
+        exchange_client: BasePublicExchangeInterface,
         symbols: Set[Symbol],
     ) -> None:
         """
@@ -573,7 +600,7 @@ class MarketDataAggregator:
     async def _fetch_rest_data(
         self,
         exchange_name: ExchangeName,
-        exchange_client: BaseExchangeInterface,
+        exchange_client: BasePublicExchangeInterface,
         symbols: Set[Symbol],
     ) -> None:
         """

@@ -18,10 +18,9 @@ Usage:
 
 import asyncio
 import logging
-from typing import List
 
-from exchanges.gateio.rest.gateio_public import GateioPublicExchange
-from exchanges.interface.structs import Symbol, AssetName
+from exchanges.gateio.rest.gateio_public import GateioPublicExchangeSpotRest
+from structs.exchange import Symbol, AssetName
 
 
 async def demonstrate_public_api():
@@ -37,7 +36,7 @@ async def demonstrate_public_api():
     
     # Initialize Gate.io public API client
     logger.info("Initializing Gate.io public REST client...")
-    client = GateioPublicExchange()
+    client = GateioPublicExchangeSpotRest()
     
     try:
         # Test 1: Ping connectivity

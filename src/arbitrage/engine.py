@@ -25,8 +25,7 @@ from __future__ import annotations
 import asyncio
 import logging
 from contextlib import asynccontextmanager
-from decimal import Decimal
-from typing import Dict, List, Optional, Set, AsyncIterator
+from typing import Any, Dict, List, Optional, AsyncIterator
 from weakref import WeakSet
 
 from .structures import (
@@ -34,7 +33,6 @@ from .structures import (
     ArbitrageOpportunity, 
     ArbitrageState,
     ExecutionResult,
-    OpportunityType,
     PositionEntry,
 )
 from .detector import OpportunityDetector
@@ -46,10 +44,8 @@ from .balance import BalanceMonitor
 from .recovery import RecoveryManager
 from .aggregator import MarketDataAggregator
 
-from exchanges.interface.base_exchange import BaseExchangeInterface
-from exchanges.interface.structs import ExchangeName
-from common.exceptions import ArbitrageEngineError, ExchangeError
-
+from core.cex.composed.base_private_exchange import BasePrivateExchangeInterface
+from core.exceptions.exchange import ArbitrageEngineError
 
 logger = logging.getLogger(__name__)
 
@@ -72,12 +68,12 @@ class ArbitrageEngine:
     def __init__(
         self,
         config: ArbitrageConfig,
-        exchanges: Dict[str, BaseExchangeInterface],
+        exchanges: Dict[str, BasePrivateExchangeInterface],
     ):
         """
         Initialize arbitrage engine with exchange connections and configuration.
         
-        Uses unified BaseExchangeInterface that encapsulates both public and private functionality.
+        Uses unified BasePrivateExchangeInterface that encapsulates both public and private functionality.
         
         TODO: Comprehensive initialization with validation.
         
@@ -97,7 +93,7 @@ class ArbitrageEngine:
         
         Args:
             config: Arbitrage engine configuration
-            exchanges: Dictionary of exchange instances (name -> BaseExchangeInterface)
+            exchanges: Dictionary of exchange instances (name -> BasePrivateExchangeInterface)
                       Each exchange encapsulates both public and private API functionality
         """
         self.config = config
@@ -120,11 +116,13 @@ class ArbitrageEngine:
         self.balance_monitor: Optional[BalanceMonitor] = None
         self.recovery_manager: Optional[RecoveryManager] = None
         
-        # Performance Metrics
-        self._opportunities_detected = 0
-        self._opportunities_executed = 0
-        self._total_profit_realized = Decimal("0")
-        self._average_execution_time_ms = 0.0
+        # HFT IMPROVEMENT: Use unified EngineStatistics for consistent state management
+        from .types import EngineStatistics
+        self.statistics = EngineStatistics()
+        
+        # HFT IMPROVEMENT: Initialize OpportunityProcessor for callback handling
+        from .opportunity_processor import OpportunityProcessor
+        self.opportunity_processor = OpportunityProcessor(self.config, self.statistics)
         
         logger.info(f"Arbitrage engine initialized: {config.engine_name}")
     
@@ -156,17 +154,21 @@ class ArbitrageEngine:
         logger.info("Initializing arbitrage engine components...")
         
         try:
-            # TODO: Initialize MarketDataAggregator
-            # - Set up cross-exchange data synchronization
-            # - Configure WebSocket connections with REST fallback
-            # - Initialize orderbook and price feed aggregation
-            # - Set up data staleness monitoring (100ms threshold)
+            # Initialize MarketDataAggregator
+            logger.info("Initializing market data aggregator...")
+            self.market_data_aggregator = MarketDataAggregator(
+                config=self.config,
+                exchanges=self.exchanges,
+                data_update_callback=self.opportunity_processor.handle_market_data_update
+            )
             
-            # TODO: Initialize OpportunityDetector  
-            # - Configure enabled opportunity types
-            # - Set up real-time cross-exchange price comparison
-            # - Initialize profit margin calculations
-            # - Configure market depth validation
+            # Initialize OpportunityDetector with market data feed
+            logger.info("Initializing HFT opportunity detector...")
+            self.opportunity_detector = OpportunityDetector(
+                config=self.config,
+                market_data_aggregator=self.market_data_aggregator,
+                opportunity_callback=self._handle_opportunity_detected_via_processor
+            )
             
             # TODO: Initialize RiskManager
             # - Load risk limits and circuit breaker configurations
@@ -438,13 +440,13 @@ class ArbitrageEngine:
                 order_placement_time_ms=0,    # TODO: Calculate
                 fill_confirmation_time_ms=0,  # TODO: Calculate
                 positions_created=[],         # TODO: Populate
-                realized_profit=Decimal("0"), # TODO: Calculate
-                total_fees_paid=Decimal("0"), # TODO: Calculate
-                slippage_cost=Decimal("0"),   # TODO: Calculate
+                realized_profit=0.0,          # TODO: Calculate
+                total_fees_paid=0.0,          # TODO: Calculate
+                slippage_cost=0.0,            # TODO: Calculate
                 orders_placed=0,              # TODO: Track
                 orders_filled=0,              # TODO: Track
                 partial_fills=0,              # TODO: Track
-                execution_success_rate=Decimal("100"),  # TODO: Calculate
+                execution_success_rate=100.0, # TODO: Calculate
                 errors_encountered=[],        # TODO: Populate
                 recovery_actions_taken=[],    # TODO: Populate
                 requires_manual_review=False, # TODO: Determine
@@ -473,13 +475,13 @@ class ArbitrageEngine:
                 order_placement_time_ms=0,
                 fill_confirmation_time_ms=0,
                 positions_created=[],
-                realized_profit=Decimal("0"),
-                total_fees_paid=Decimal("0"),
-                slippage_cost=Decimal("0"),
+                realized_profit=0.0,
+                total_fees_paid=0.0,
+                slippage_cost=0.0,
                 orders_placed=0,
                 orders_filled=0,
                 partial_fills=0,
-                execution_success_rate=Decimal("0"),
+                execution_success_rate=0.0,
                 errors_encountered=[str(e)],
                 recovery_actions_taken=[],
                 requires_manual_review=True,
@@ -517,9 +519,9 @@ class ArbitrageEngine:
     
     # Performance and Monitoring Methods
     
-    def get_engine_statistics(self) -> Dict[str, any]:
+    def get_engine_statistics(self) -> Dict[str, Any]:
         """
-        TODO: Get comprehensive engine performance statistics.
+        HFT IMPROVEMENT: Get comprehensive engine performance statistics using unified EngineStatistics.
         
         Logic Requirements:
         - Collect performance metrics from all components
@@ -536,15 +538,21 @@ class ArbitrageEngine:
         
         Performance: <1ms collection time, cached appropriately
         """
-        return {
-            "opportunities_detected": self._opportunities_detected,
-            "opportunities_executed": self._opportunities_executed,
-            "total_profit_realized": str(self._total_profit_realized),
-            "average_execution_time_ms": self._average_execution_time_ms,
+        # HFT IMPROVEMENT: Use unified statistics object for consistency
+        stats = self.statistics.to_dict()
+        
+        # Add engine-specific metrics
+        stats.update({
             "engine_state": self._state.name,
             "active_opportunities": len(self._active_opportunities),
             "execution_history_count": len(self._execution_history),
-        }
+        })
+        
+        # Add processor statistics
+        if hasattr(self, 'opportunity_processor'):
+            stats.update(self.opportunity_processor.get_processor_statistics())
+        
+        return stats
     
     def get_active_positions(self) -> List[PositionEntry]:
         """
@@ -562,7 +570,7 @@ class ArbitrageEngine:
         # TODO: Implement position retrieval from position manager
         return []
     
-    def calculate_current_pnl(self) -> Decimal:
+    def calculate_current_pnl(self) -> float:
         """
         TODO: Calculate current unrealized P&L across all positions.
         
@@ -576,7 +584,7 @@ class ArbitrageEngine:
         Performance: <10ms for complete P&L calculation
         """
         # TODO: Implement real-time P&L calculation
-        return Decimal("0")
+        return 0.0
     
     @property
     def is_healthy(self) -> bool:
@@ -606,3 +614,15 @@ class ArbitrageEngine:
     def current_state(self) -> ArbitrageState:
         """Get current engine state."""
         return self._state
+    
+    async def _handle_opportunity_detected_via_processor(self, opportunity: ArbitrageOpportunity):
+        """
+        HFT IMPROVEMENT: Delegate opportunity handling to OpportunityProcessor.
+        
+        Eliminates code duplication and maintains SOLID principles by using
+        dedicated processor component for all callback handling.
+        """
+        await self.opportunity_processor.handle_opportunity_detected(
+            opportunity, 
+            execute_callback=self.execute_opportunity
+        )

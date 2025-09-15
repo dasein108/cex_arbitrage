@@ -6,6 +6,7 @@ Shared utilities and base components providing core functionality for the HFT ar
 
 The `src/common/` directory contains foundational components used throughout the system:
 
+- **SimpleLogger**: Ultra-high performance logging system with <2μs emit latency
 - **REST Client**: Ultra-high performance HTTP client optimized for trading APIs
 - **WebSocket Client**: Real-time data streaming with automatic reconnection
 - **Exception System**: Unified error handling with structured exception hierarchy
@@ -13,6 +14,125 @@ The `src/common/` directory contains foundational components used throughout the
 - **Zero Allocation Buffers**: Memory-optimized data structures for HFT
 
 ## Components
+
+### SimpleLogger (`simple_logger.py`)
+
+Ultra-high-performance logging system designed for HFT (High-Frequency Trading) applications with sub-2μs emit latency and optional console output.
+
+#### Key Features
+- **<2μs emit latency** (vs 1000μs+ for standard logging)
+- **Async file batching** to eliminate I/O blocking
+- **JSON structured output** for efficient parsing
+- **Optional console output** with colored formatting
+- **Memory-efficient ring buffer** for log batching
+- **Graceful shutdown** with flush guarantee
+- **Drop-in replacement** for `logging.getLogger()`
+
+#### Performance Characteristics
+- **Emit Latency**: <2μs average
+- **Throughput**: 500,000+ messages/second
+- **Memory Usage**: Ring buffer with 10,000 message capacity
+- **File Format**: JSON Lines (.jsonl) for streaming analysis
+
+#### Basic Usage
+
+```python
+from common.logging.simple_logger import getLogger, shutdown_all_loggers
+
+# Drop-in replacement for logging.getLogger()
+logger = getLogger(__name__)
+
+logger.info("Application started")
+logger.info("Trade executed", extra={
+    "symbol": "BTCUSDT",
+    "price": 45000.50,
+    "quantity": 0.001,
+    "latency_us": 180
+})
+
+# Clean shutdown (important for log integrity)
+shutdown_all_loggers()
+```
+
+#### Console Output Configuration
+
+```python
+from common.logging.simple_logger import configure_console, LogLevel
+
+# Development mode - all levels with colors
+configure_console(enabled=True, min_level=LogLevel.DEBUG, use_colors=True)
+
+# Production mode - warnings and errors only
+configure_console(enabled=True, min_level=LogLevel.WARNING, use_colors=True)
+
+# HFT mode - console disabled for maximum performance (default)
+configure_console(enabled=False)
+```
+
+#### SOLID Principles Integration
+SimpleLogger follows dependency injection patterns for seamless integration:
+
+```python
+class PerformanceMonitor:
+    def __init__(self, logger: SimpleLogger):
+        self.logger = logger  # Dependency injection
+    
+    def record_latency(self, operation: str, latency_us: float) -> None:
+        if latency_us > 50000:  # > 50ms
+            self.logger.warning(f"High latency: {operation}", extra={
+                "operation": operation,
+                "latency_us": latency_us,
+                "threshold_us": 50000
+            })
+```
+
+#### Migration from Standard Logging
+
+**Before (Standard Logging)**:
+```python
+import logging
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+logger.info("Message")
+```
+
+**After (SimpleLogger)**:
+
+```python
+from common.logging.simple_logger import getLogger, configure_console, LogLevel, shutdown_all_loggers
+
+configure_console(enabled=True, min_level=LogLevel.INFO)
+logger = getLogger(__name__)
+logger.info("Message")
+shutdown_all_loggers()  # Required for proper cleanup
+```
+
+#### Performance Benefits
+| Aspect | Standard Logging | SimpleLogger | Improvement |
+|--------|-----------------|--------------|-------------|
+| **Emit Latency** | 1000-5000μs | <2μs | **500-2500x faster** |
+| **File Format** | Text | JSON | **Structured parsing** |
+| **Async I/O** | Synchronous | Async batched | **Non-blocking** |
+| **Memory Usage** | Unbounded | Ring buffer | **Bounded memory** |
+| **Console Control** | Handler-based | Global config | **Simpler setup** |
+
+#### Environment-Specific Configuration
+```python
+import os
+
+def setup_logging():
+    env = os.getenv('ENVIRONMENT', 'development')
+    
+    if env == 'production':
+        configure_console(enabled=True, min_level=LogLevel.WARNING, use_colors=False)
+    elif env == 'development':
+        configure_console(enabled=True, min_level=LogLevel.DEBUG, use_colors=True)
+    elif env == 'hft':
+        configure_console(enabled=False)  # Maximum performance
+```
+
+---
 
 ### RestClient (`rest_client.py`)
 
@@ -32,17 +152,18 @@ Ultra-simple high-performance REST API client optimized for cryptocurrency tradi
 - **Latency**: <50ms HTTP request latency, <1ms JSON parsing
 
 #### Usage Example
+
 ```python
-from common.rest_client import RestClient, RestConfig
+from core.transport.rest.rest_client import RestClient, RestConfig
 
 # Initialize client
 config = RestConfig(timeout=10.0, max_retries=3, require_auth=True)
 async with RestClient(
-    base_url="https://api.exchange.com",
-    api_key="your_key",
-    secret_key="your_secret", 
-    signature_generator=your_signature_function,
-    config=config
+        base_url="https://api.exchange.com",
+        api_key="your_key",
+        secret_key="your_secret",
+        signature_generator=your_signature_function,
+        config=config
 ) as client:
     # Make authenticated request
     result = await client.get("/api/v3/account")
@@ -78,8 +199,9 @@ High-performance WebSocket client for real-time market data streaming with autom
 - **Fast message type detection** with binary patterns
 
 #### Usage Example
+
 ```python
-from common.ws_client import WebsocketClient, WebSocketConfig
+from core.transport.websocket.ws_client import WebsocketClient, WebSocketConfig
 
 # Configure WebSocket
 config = WebSocketConfig(
@@ -90,12 +212,15 @@ config = WebSocketConfig(
     max_reconnect_attempts=10
 )
 
+
 # Initialize client
 async def message_handler(message):
     print(f"Received: {message}")
 
+
 async def error_handler(error):
     print(f"Error: {error}")
+
 
 client = WebsocketClient(
     config=config,
@@ -146,11 +271,12 @@ ExchangeAPIError (base)
 - **Mandatory propagation** - exceptions must bubble to application level
 
 #### Usage Example
+
 ```python
-from common.exceptions import ExchangeAPIError, RateLimitError
+from core.exceptions.exchange import BaseExchangeError, RateLimitErrorBase
 
 # Standard API error
-raise ExchangeAPIError(400, "Invalid symbol", api_code=1100)
+raise BaseExchangeError(400, "Invalid symbol", api_code=1100)
 
 # Rate limit error with retry information
 raise RateLimitError(429, "Rate limit exceeded", retry_after=60)
@@ -175,8 +301,9 @@ YAML-based configuration management system for environment-specific settings.
 - **Performance tuning parameters** for HFT optimization
 
 #### Usage Example
+
 ```python
-from common.config import config
+from config import config
 
 # Access configuration values
 base_url = config.MEXC_BASE_URL

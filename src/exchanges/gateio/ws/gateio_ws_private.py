@@ -9,7 +9,7 @@ Key Features:
 - Account balance streaming with immediate updates
 - HFT-optimized message processing
 - JSON-based message parsing aligned with Gate.io API v4
-- Unified interface compliance
+- Unified cex compliance
 - Authentication-enabled private channels
 
 Gate.io Private WebSocket Specifications:
@@ -29,29 +29,30 @@ import time
 import json
 import hashlib
 import hmac
-from typing import List, Dict, Optional, Callable, Awaitable, Any, Union
+from typing import List, Dict, Optional, Callable, Awaitable, Any
 
-from exchanges.interface.websocket.base_ws import BaseExchangeWebsocketInterface
-from exchanges.interface.structs import Symbol, Order, AssetBalance, OrderStatus, Side, OrderType
+from core.cex.websocket import BaseExchangeWebsocketInterface
+from structs.exchange import Symbol, Order, AssetBalance
 from exchanges.gateio.common.gateio_config import GateioConfig
 from exchanges.gateio.common.gateio_utils import GateioUtils
 from exchanges.gateio.common.gateio_mappings import GateioMappings
-from common.ws_client import SubscriptionAction, WebSocketConfig
-from common.exceptions import ExchangeAPIError
+from core.cex.websocket.structs import SubscriptionAction
+
+from core.transport.websocket.ws_client import WebSocketConfig
 
 
 class GateioWebsocketPrivate(BaseExchangeWebsocketInterface):
-    """Gate.io private websocket interface for account and order data streaming"""
+    """Gate.io private websocket cex for account and order data streaming"""
 
     def __init__(
         self, 
-        config: WebSocketConfig,
+        websocket_config: WebSocketConfig,
         api_key: str,
         secret_key: str,
         order_handler: Optional[Callable[[Symbol, Order], Awaitable[None]]] = None,
         balance_handler: Optional[Callable[[AssetBalance], Awaitable[None]]] = None
     ):
-        super().__init__(GateioConfig.EXCHANGE_NAME, config)
+        super().__init__(GateioConfig.EXCHANGE_NAME, websocket_config)
         self.logger = logging.getLogger(f"{__name__}.{self.__class__.__name__}")
         self.api_key = api_key
         self.secret_key = secret_key
@@ -69,7 +70,7 @@ class GateioWebsocketPrivate(BaseExchangeWebsocketInterface):
             'parse_errors': 0
         }
 
-    async def init(self, symbols: List[Symbol]):
+    async def initialize(self, symbols: List[Symbol]):
         """Initialize the websocket connection using Gate.io specific approach."""
         self.symbols = symbols
         await self.ws_client.start()

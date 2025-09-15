@@ -1,6 +1,6 @@
 """Gate.io REST API Implementations"""
 
-from .gateio_public import GateioPublicExchange
-from .gateio_private import GateioPrivateExchange
+from .gateio_public import GateioPublicExchangeSpotRest
+from .gateio_private import GateioPrivateExchangeSpot
 
-__all__ = ['GateioPublicExchange', 'GateioPrivateExchange']
+__all__ = ['GateioPublicExchangeSpotRest', 'GateioPrivateExchangeSpot']

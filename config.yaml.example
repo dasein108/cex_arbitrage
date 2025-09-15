@@ -12,7 +12,7 @@ exchanges:
     api_key: ""  # Your MEXC API Key
     secret_key: ""  # Your MEXC Secret Key
     base_url: "https://api.mexc.com"
-    websocket_url: "wss://wbs-api.mexc.com/ws"
+    websocket_url: "wss://wbs.mexc.com/ws"
   gateio:
     api_key: ""  # Your Gate.io API Key
     secret_key: ""  # Your Gate.io Secret Key

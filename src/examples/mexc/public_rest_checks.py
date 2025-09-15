@@ -6,11 +6,11 @@ Used for API validation and response verification.
 """
 
 import asyncio
-from exchanges.interface.structs import Symbol, AssetName
-from exchanges.mexc.rest.mexc_public import MexcPublicExchange
+from structs.exchange import Symbol, AssetName
+from exchanges.mexc.rest.mexc_public import MexcPublicSpotRest
+from config import get_exchange_config_struct
 
-
-async def check_ping(exchange: MexcPublicExchange):
+async def check_ping(exchange: MexcPublicSpotRest):
     """Check ping method."""
     print("=== PING CHECK ===")
     try:
@@ -20,7 +20,7 @@ async def check_ping(exchange: MexcPublicExchange):
         print(f"Error: {e}")
 
 
-async def check_get_server_time(exchange: MexcPublicExchange):
+async def check_get_server_time(exchange: MexcPublicSpotRest):
     """Check get_server_time method."""
     print("\n=== GET SERVER TIME CHECK ===")
     try:
@@ -30,7 +30,7 @@ async def check_get_server_time(exchange: MexcPublicExchange):
         print(f"Error: {e}")
 
 
-async def check_get_exchange_info(exchange: MexcPublicExchange):
+async def check_get_exchange_info(exchange: MexcPublicSpotRest):
     """Check get_exchange_info method."""
     print("\n=== GET EXCHANGE INFO CHECK ===")
     try:
@@ -55,7 +55,7 @@ async def check_get_exchange_info(exchange: MexcPublicExchange):
         print(f"Error: {e}")
 
 
-async def check_get_orderbook(exchange: MexcPublicExchange):
+async def check_get_orderbook(exchange: MexcPublicSpotRest):
     """Check get_orderbook method."""
     print("\n=== GET ORDERBOOK CHECK ===")
     symbol = Symbol(base=AssetName('BTC'), quote=AssetName('USDT'), is_futures=False)
@@ -79,7 +79,7 @@ async def check_get_orderbook(exchange: MexcPublicExchange):
         print(f"Error: {e}")
 
 
-async def check_get_recent_trades(exchange: MexcPublicExchange):
+async def check_get_recent_trades(exchange: MexcPublicSpotRest):
     """Check get_recent_trades method.""" 
     print("\n=== GET RECENT TRADES CHECK ===")
     symbol = Symbol(base=AssetName('BTC'), quote=AssetName('USDT'), is_futures=False)
@@ -105,8 +105,9 @@ async def main():
     """Run all integration checks."""
     print("MEXC PUBLIC API INTEGRATION CHECKS")
     print("=" * 50)
-    
-    exchange = MexcPublicExchange()
+
+    config = get_exchange_config_struct('MEXC')
+    exchange = MexcPublicSpotRest(config)
     
     await check_ping(exchange)
     await check_get_server_time(exchange)

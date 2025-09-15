@@ -16,7 +16,6 @@ import time
 from enum import IntEnum
 from msgspec import Struct
 from typing import Optional, Dict, Any, List
-from datetime import datetime
 
 # Import existing structures for consistency
 import sys
@@ -24,7 +23,7 @@ from pathlib import Path
 project_root = Path(__file__).parent.parent.parent
 sys.path.insert(0, str(project_root))
 
-from exchanges.interface.structs import Symbol, Side, OrderStatus, ExchangeName
+from structs.exchange import Symbol, Side, OrderStatus, ExchangeName
 
 
 class LogLevel(IntEnum):
@@ -170,6 +169,7 @@ class SystemLogEntry(Struct, frozen=True):
     
     # System state
     event_type: str                      # e.g., "startup", "shutdown", "config_change"
+    message: str
     current_state: Optional[str] = None
     previous_state: Optional[str] = None
     
@@ -192,7 +192,6 @@ class SystemLogEntry(Struct, frozen=True):
     stack_trace: Optional[str] = None
     
     # Additional context
-    message: str
     additional_data: Optional[Dict[str, Any]] = None
 
 

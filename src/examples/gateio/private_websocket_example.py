@@ -22,12 +22,11 @@ Requirements:
 
 import asyncio
 import logging
-from typing import List
 
 from exchanges.gateio.ws.gateio_ws_private import GateioWebsocketPrivate
-from exchanges.interface.structs import Symbol, AssetName, Order, AssetBalance
-from common.ws_client import WebSocketConfig
-from common.config import config
+from structs.exchange import Symbol, AssetName, Order, AssetBalance
+from core.transport.websocket.ws_client import WebSocketConfig
+from config import config
 
 
 class AccountDataProcessor:
@@ -144,7 +143,7 @@ async def demonstrate_private_websocket_streaming():
     # Initialize Gate.io private WebSocket client
     logger.info("Initializing Gate.io private WebSocket client...")
     ws_client = GateioWebsocketPrivate(
-        config=ws_config,
+        websocket_config=ws_config,
         api_key=api_key,
         secret_key=secret_key,
         order_handler=processor.handle_order_update,
@@ -155,13 +154,13 @@ async def demonstrate_private_websocket_streaming():
     symbols = [
         Symbol(base=AssetName("BTC"), quote=AssetName("USDT")),
         Symbol(base=AssetName("ETH"), quote=AssetName("USDT")),
-        # Symbol(base=AssetName("BNB"), quote=AssetName("USDT")),  # Add more as needed
+        # Symbol(cex=AssetName("BNB"), quote=AssetName("USDT")),  # Add more as needed
     ]
     
     try:
         # Start WebSocket streaming
         logger.info("Starting private WebSocket streaming...")
-        await ws_client.init([])  # Private channels are account-wide, no symbols needed
+        await ws_client.initialize([])  # Private channels are account-wide, no symbols needed
         
         # Wait for connection to stabilize
         logger.info("Waiting for WebSocket connection to stabilize...")
@@ -289,7 +288,7 @@ async def demonstrate_symbol_management():
     )
     
     ws_client = GateioWebsocketPrivate(
-        config=ws_config,
+        websocket_config=ws_config,
         api_key=api_key,
         secret_key=secret_key,
         order_handler=processor.handle_order_update,
@@ -300,7 +299,7 @@ async def demonstrate_symbol_management():
         logger.info("\n=== Private Symbol Management Demo ===")
         
         # Start with empty subscriptions
-        await ws_client.init([])
+        await ws_client.initialize([])
         
         symbols = [
             Symbol(base=AssetName("BTC"), quote=AssetName("USDT")),

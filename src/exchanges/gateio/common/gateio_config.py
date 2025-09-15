@@ -5,34 +5,38 @@ Simple, centralized configuration for Gate.io exchange REST configs.
 Uses the YAML-based configuration system following MEXC patterns.
 """
 
-from common.config import config
-from common.rest_client import RestConfig
+from config import config
+from core.transport.rest.rest_client import RestConfig
 
 
 def _create_gateio_config(endpoint_type: str, timeout_multiplier: float = 1.0, max_retries: int = None) -> RestConfig:
     """Create Gate.io-specific REST config using YAML-based config."""
     # Gate.io endpoint timeout mapping (optimized for lower latency than MEXC)
     timeout_map = {
-        'account': config.REQUEST_TIMEOUT * 0.7,      # Account balance queries - fast
-        'my_orders': config.REQUEST_TIMEOUT * 0.6,    # Order status queries - very fast  
-        'order': config.REQUEST_TIMEOUT * 0.5,        # Order placement - ultra fast for HFT
-        'market_data': config.REQUEST_TIMEOUT * 0.8,  # Market data - standard
-        'default': config.REQUEST_TIMEOUT
+        'account': config._network_config.request_timeout * 0.7,      # Account balance queries - fast
+        'my_orders': config._network_config.request_timeout * 0.6,    # Order status queries - very fast  
+        'order': config._network_config.request_timeout * 0.5,        # Order placement - ultra fast for HFT
+        'market_data': config._network_config.request_timeout * 0.8,  # Market data - standard
+        'default': config._network_config.request_timeout
     }
     
-    base_timeout = timeout_map.get(endpoint_type, config.REQUEST_TIMEOUT)
+    base_timeout = timeout_map.get(endpoint_type, config._network_config.request_timeout)
     final_timeout = base_timeout * timeout_multiplier
     
     return RestConfig(
         timeout=final_timeout,
-        max_retries=max_retries if max_retries is not None else config.MAX_RETRIES,
-        retry_delay=config.RETRY_DELAY,
+        max_retries=max_retries if max_retries is not None else config._network_config.max_retries,
+        retry_delay=config._network_config.retry_delay,
         max_concurrent=20  # Gate.io rate limit: 200 req/10s = ~20 req/s
     )
 
 
 class GateioConfig:
     """Simple Gate.io configuration using YAML-based config."""
+    
+    # Exchange constants
+    WEBSOCKET_PUBLIC_URL = "wss://api.gateio.ws/ws/v4/"
+    WEBSOCKET_PRIVATE_URL = "wss://api.gateio.ws/ws/v4/"
     
     # Exchange constants
     EXCHANGE_NAME = "GATEIO"
@@ -148,7 +152,7 @@ class GateioConfig:
     
     @classmethod
     def get_base_url(cls, use_testnet: bool = False) -> str:
-        """Get appropriate base URL based on environment."""
+        """Get appropriate cex URL based on environment."""
         return cls.TESTNET_BASE_URL if use_testnet else cls.BASE_URL
     
     @classmethod  

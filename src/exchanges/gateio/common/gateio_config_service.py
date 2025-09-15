@@ -134,20 +134,20 @@ class GateioConfigurationService:
 
     def get_base_url(self) -> str:
         """
-        Get Gate.io base URL from configuration.
+        Get Gate.io cex URL from configuration.
 
         Returns:
-            Gate.io API base URL
+            Gate.io API cex URL
         """
         gateio_config = self.get_gateio_config()
         return gateio_config.get('base_url', 'https://api.gateio.ws/api/v4')
 
     def get_futures_base_url(self) -> str:
         """
-        Get Gate.io futures base URL by appending to base URL.
+        Get Gate.io futures cex URL by appending to cex URL.
 
         Returns:
-            Complete Gate.io futures API base URL
+            Complete Gate.io futures API cex URL
         """
         base_url = self.get_base_url()
         return f"{base_url}/futures/usdt"

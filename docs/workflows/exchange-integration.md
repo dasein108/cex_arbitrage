@@ -98,12 +98,14 @@ KRAKEN_SECRET_KEY=your_kraken_secret_key
 **CRITICAL: All exchange implementations must inherit from `BaseExchangeInterface`**
 
 **Create exchange implementation following composition pattern**:
+
 ```python
 # src/exchanges/binance/binance_exchange.py
-from exchanges.interface.base_exchange import BaseExchangeInterface
-from exchanges.interface.structs import (
+from core.cex.composed import BaseExchangeInterface
+from structs import (
     Symbol, SymbolInfo, OrderBook, AssetBalance, ExchangeStatus, Order
 )
+
 
 class BinanceExchange(BaseExchangeInterface):
     """
@@ -122,61 +124,61 @@ class BinanceExchange(BaseExchangeInterface):
     - Real-time streaming orderbook data only
     - Fresh API calls for all trading operations
     """
-    
+
     def __init__(self, api_key: Optional[str] = None, secret_key: Optional[str] = None):
         # REQUIRED: Call parent constructor with exchange name
         super().__init__('BINANCE', api_key, secret_key)
-        
+
         self.logger = logging.getLogger(f"{__name__}.{self.__class__.__name__}")
-        
+
         # Composition pattern - delegate to specialized components
         self._public_api: Optional[BinancePublicExchange] = None
         self._private_api: Optional[BinancePrivateExchange] = None
         self._ws_client: Optional[BinanceWebsocketPublic] = None
-    
+
     @property
     def status(self) -> ExchangeStatus:
         """REQUIRED: Implement status property"""
         # Implementation logic here
         pass
-    
-    @property 
+
+    @property
     def orderbook(self) -> OrderBook:
         """REQUIRED: Implement orderbook property"""
         # Return current streaming orderbook data
         pass
-    
+
     @property
     def balances(self) -> Dict[Symbol, AssetBalance]:
         """REQUIRED: Implement balances property"""
         # HFT COMPLIANT: Fresh API call, no caching
         pass
-    
+
     @property
     def symbol_info(self) -> Dict[Symbol, SymbolInfo]:
-        """REQUIRED: Implement symbol_info property"""  
+        """REQUIRED: Implement symbol_info property"""
         # Static data - safe to cache
         pass
-    
+
     @property
     def active_symbols(self) -> List[Symbol]:
         """REQUIRED: Implement active_symbols property"""
         pass
-    
-    @property 
+
+    @property
     def open_orders(self) -> Dict[Symbol, List[Order]]:
         """REQUIRED: Implement open_orders property"""
         # HFT COMPLIANT: Fresh API call, no caching
         pass
-    
+
     async def init(self, symbols: List[Symbol] = None) -> None:
         """REQUIRED: Implement initialization"""
         pass
-    
+
     async def add_symbol(self, symbol: Symbol) -> None:
         """REQUIRED: Implement symbol addition"""
         pass
-    
+
     async def remove_symbol(self, symbol: Symbol) -> None:
         """REQUIRED: Implement symbol removal"""
         pass
@@ -216,67 +218,71 @@ class ExchangeFactory:
 ### Step 5: Testing & Validation
 
 **Integration Test Template**:
+
 ```python
 # tests/test_binance_integration.py
 
 import pytest
 from exchanges.binance.binance_exchange import BinanceExchange
-from exchanges.interface.structs import Symbol, AssetName
-from common.config import config
+from structs import Symbol, AssetName
+from config import config
+
 
 @pytest.mark.asyncio
 async def test_binance_initialization():
     """Test Binance exchange initialization"""
-    
+
     # Test symbols
     symbols = [
         Symbol(base=AssetName("BTC"), quote=AssetName("USDT")),
         Symbol(base=AssetName("ETH"), quote=AssetName("USDT"))
     ]
-    
+
     # Initialize exchange
     exchange = BinanceExchange()
-    await exchange.init(symbols)
-    
+    await exchange.initialize(symbols)
+
     # Validate initialization
     assert exchange.status == ExchangeStatus.ACTIVE
     assert len(exchange.active_symbols) > 0
-    
+
     # Test configuration integration
     binance_config = config.get_exchange_config('binance')
     assert 'base_url' in binance_config
-    
+
     await exchange.close()
 
-@pytest.mark.asyncio 
+
+@pytest.mark.asyncio
 async def test_binance_with_credentials():
     """Test Binance with private credentials"""
-    
+
     credentials = config.get_exchange_credentials('binance')
     if credentials['api_key'] and credentials['secret_key']:
         exchange = BinanceExchange(
             api_key=credentials['api_key'],
             secret_key=credentials['secret_key']
         )
-        
+
         assert exchange.has_private == True
         await exchange.close()
     else:
         pytest.skip("Binance credentials not configured")
 
+
 @pytest.mark.asyncio
 async def test_binance_factory_integration():
     """Test integration with ExchangeFactory"""
-    
+
     from arbitrage.exchange_factory import ExchangeFactory
-    
+
     factory = ExchangeFactory()
-    
+
     # Test exchange creation through factory
     exchange = await factory.create_exchange('BINANCE')
     assert isinstance(exchange, BinanceExchange)
     assert exchange.status == ExchangeStatus.ACTIVE
-    
+
     await factory.close_all()
 ```
 
@@ -442,8 +448,10 @@ exchanges:
 ### 2. Error Handling Patterns
 
 **Standardized Error Handling**:
+
 ```python
-from common.exceptions import ExchangeAPIError, ConfigurationError
+from core.exceptions.exchange import BaseExchangeError, ConfigurationError
+
 
 class NewExchange(BaseExchangeInterface):
     async def init(self, symbols: List[Symbol]) -> None:
@@ -451,18 +459,18 @@ class NewExchange(BaseExchangeInterface):
             # Exchange initialization logic
             await self._initialize_exchange()
             self._status = ExchangeStatus.ACTIVE
-            
+
         except ConnectionError as e:
             self._status = ExchangeStatus.ERROR
-            raise ExchangeAPIError(503, f"Connection failed: {e}")
-            
+            raise BaseExchangeError(503, f"Connection failed: {e}")
+
         except ValueError as e:
-            self._status = ExchangeStatus.ERROR  
+            self._status = ExchangeStatus.ERROR
             raise ConfigurationError(f"Configuration error: {e}")
-            
+
         except Exception as e:
             self._status = ExchangeStatus.ERROR
-            raise ExchangeAPIError(500, f"Initialization failed: {e}")
+            raise BaseExchangeError(500, f"Initialization failed: {e}")
 ```
 
 ### 3. Performance Optimization

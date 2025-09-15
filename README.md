@@ -166,7 +166,7 @@ The engine follows a **high-performance event-driven architecture** with these f
 
 #### 📋 **Compliance Verification**:
 ```bash
-# Run interface compliance check
+# Run cex compliance check
 scripts/verify_interface_compliance.py your_exchange
 
 # Performance benchmarks  
@@ -286,7 +286,7 @@ trading_config = RequestConfig(
 ### Basic REST Client Usage
 
 ```python
-from src.common.rest_client import create_trading_client, create_market_data_config
+from core.transport.rest.rest_client import create_trading_client, create_market_data_config
 
 
 async def example_usage():
@@ -315,15 +315,15 @@ async def example_usage():
 ### **Compliant Exchange Implementation Example**
 
 ```python
-# ✅ CORRECT: Using unified interface standards
-from exchanges.interface.rest.base_rest_public import PublicExchangeInterface
-from exchanges.interface.rest.base_rest_private import PrivateExchangeInterface
-from exchanges.interface.structs import Symbol, OrderBook, Order, ExchangeName
-from src.common.rest_client import HighPerformanceRestClient, RequestConfig
-from src.common.exceptions import ExchangeAPIError, RateLimitError
+# ✅ CORRECT: Using unified cex standards
+from core.cex.rest import PublicExchangeSpotRestInterface
+from core.cex.rest.spot.base_rest_spot_private import PrivateExchangeSpotRestInterface
+from structs import Symbol, OrderBook, Order, ExchangeName
+from core.transport.rest.rest_client import HighPerformanceRestClient, RequestConfig
+from core.exceptions.exchange import BaseExchangeError, RateLimitErrorBase
 
 
-class BinancePublic(PublicExchangeInterface):
+class BinancePublic(PublicExchangeSpotRestInterface):
    """COMPLIANT implementation using unified standards"""
 
    def __init__(self):
@@ -454,9 +454,9 @@ The `raw/` directory contains legacy code that is **incompatible with unified in
    from raw.common.exceptions import ExchangeAPIError
    
    # ✅ REPLACE with unified imports:
-   from exchanges.interface.rest.base_rest_public import PublicExchangeInterface
-   from exchanges.interface.structs import Order, SymbolInfo, AssetBalance
-   from src.common.exceptions import ExchangeAPIError
+   from core.cex.rest import PublicExchangeSpotRestInterface
+   from structs import Order, SymbolInfo, AssetBalance
+   from core.exceptions.exchange import BaseExchangeError
    ```
 
 2. **Update Exception Handling**:
@@ -482,7 +482,7 @@ The `raw/` directory contains legacy code that is **incompatible with unified in
            data = await response.json()
    
    # ✅ Use standardized client:
-   from src.common.rest_client import HighPerformanceRestClient
+   from core.transport.rest.rest_client import HighPerformanceRestClient
    async with HighPerformanceRestClient(base_url) as client:
        data = await client.get(endpoint)
    ```

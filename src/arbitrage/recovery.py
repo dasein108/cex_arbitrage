@@ -33,22 +33,20 @@ from __future__ import annotations
 import asyncio
 import logging
 from decimal import Decimal
-from typing import Dict, List, Optional, Set, Callable, Any
+from typing import Dict, List, Optional, Callable, Any
 from dataclasses import dataclass
 from enum import IntEnum
 
 from .structures import (
     PositionEntry,
-    ArbitrageOpportunity,
     ExecutionStage,
     ArbitrageConfig,
 )
 
-from exchanges.interface.structs import Symbol, OrderSide
-from exchanges.interface.base_exchange import BaseExchangeInterface
-from exchanges.interface.structs import ExchangeName
-from common.exceptions import RecoveryError, OrderExecutionError
-
+from structs.exchange import Symbol, OrderSide
+from core.cex.composed.base_private_exchange import BasePrivateExchangeInterface
+from structs.exchange import ExchangeName
+from core.exceptions.exchange import RecoveryError
 
 logger = logging.getLogger(__name__)
 
@@ -146,7 +144,7 @@ class RecoveryManager:
     def __init__(
         self,
         config: ArbitrageConfig,
-        exchanges: Dict[str, BaseExchangeInterface],
+        exchanges: Dict[str, BasePrivateExchangeInterface],
         recovery_alert_callback: Optional[Callable[[RecoveryContext], None]] = None,
     ):
         """

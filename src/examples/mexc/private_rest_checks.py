@@ -6,11 +6,11 @@ Used for API validation and response verification for authenticated endpoints.
 """
 
 import asyncio
-from exchanges.interface.structs import Symbol, AssetName, Side, OrderType, TimeInForce
-from exchanges.mexc.rest.mexc_private import MexcPrivateExchange
+from structs.exchange import Symbol, AssetName, Side, OrderType, TimeInForce
+from exchanges.mexc.rest.mexc_private import MexcPrivateSpotRest
 
 
-async def check_get_account_balance(exchange: MexcPrivateExchange):
+async def check_get_account_balance(exchange: MexcPrivateSpotRest):
     """Check get_account_balance method."""
     print("=== GET ACCOUNT BALANCE CHECK ===")
     try:
@@ -28,7 +28,7 @@ async def check_get_account_balance(exchange: MexcPrivateExchange):
         print(f"Error: {e}")
 
 
-async def check_get_asset_balance(exchange: MexcPrivateExchange):
+async def check_get_asset_balance(exchange: MexcPrivateSpotRest):
     """Check get_asset_balance method."""
     print("\n=== GET ASSET BALANCE CHECK ===")
     asset = AssetName('USDT')
@@ -47,10 +47,10 @@ async def check_get_asset_balance(exchange: MexcPrivateExchange):
         print(f"Error: {e}")
 
 
-async def check_place_order(exchange: MexcPrivateExchange):
+async def check_place_order(exchange: MexcPrivateSpotRest):
     """Check place_order method."""
     print("\n=== PLACE ORDER CHECK ===")
-    symbol = Symbol(base=AssetName('BTC'), quote=AssetName('USDT'), is_futures=False)
+    symbol = Symbol(base=AssetName('ADA'), quote=AssetName('USDT'), is_futures=False)
     
     try:
         # Place a small limit buy order (this will likely fail due to insufficient funds or invalid price)
@@ -58,8 +58,8 @@ async def check_place_order(exchange: MexcPrivateExchange):
             symbol=symbol,
             side=Side.BUY,
             order_type=OrderType.LIMIT,
-            amount=0.001,
-            price=30000.0,
+            amount=0.01,
+            price=3000.0,
             time_in_force=TimeInForce.GTC
         )
         print(f"Order placed:")
@@ -76,7 +76,7 @@ async def check_place_order(exchange: MexcPrivateExchange):
         print(f"Error: {e}")
 
 
-async def check_get_open_orders(exchange: MexcPrivateExchange):
+async def check_get_open_orders(exchange: MexcPrivateSpotRest):
     """Check get_open_orders method."""
     print("\n=== GET OPEN ORDERS CHECK ===")
     
@@ -100,7 +100,7 @@ async def check_get_open_orders(exchange: MexcPrivateExchange):
         print(f"Error: {e}")
 
 
-async def check_get_order(exchange: MexcPrivateExchange):
+async def check_get_order(exchange: MexcPrivateSpotRest):
     """Check get_order method."""
     print("\n=== GET ORDER CHECK ===")
     symbol = Symbol(base=AssetName('BTC'), quote=AssetName('USDT'), is_futures=False)
@@ -123,7 +123,7 @@ async def check_get_order(exchange: MexcPrivateExchange):
         print(f"Error: {e}")
 
 
-async def check_cancel_order(exchange: MexcPrivateExchange):
+async def check_cancel_order(exchange: MexcPrivateSpotRest):
     """Check cancel_order method."""
     print("\n=== CANCEL ORDER CHECK ===")
     symbol = Symbol(base=AssetName('BTC'), quote=AssetName('USDT'), is_futures=False)
@@ -141,7 +141,7 @@ async def check_cancel_order(exchange: MexcPrivateExchange):
         print(f"Error: {e}")
 
 
-async def check_cancel_all_orders(exchange: MexcPrivateExchange):
+async def check_cancel_all_orders(exchange: MexcPrivateSpotRest):
     """Check cancel_all_orders method."""
     print("\n=== CANCEL ALL ORDERS CHECK ===")
     symbol = Symbol(base=AssetName('BTC'), quote=AssetName('USDT'), is_futures=False)
@@ -161,31 +161,6 @@ async def check_cancel_all_orders(exchange: MexcPrivateExchange):
         print(f"Error: {e}")
 
 
-async def check_modify_order(exchange: MexcPrivateExchange):
-    """Check modify_order method."""
-    print("\n=== MODIFY ORDER CHECK ===")
-    symbol = Symbol(base=AssetName('BTC'), quote=AssetName('USDT'), is_futures=False)
-    order_id = "123456789"  # This will likely fail as order doesn't exist
-    
-    try:
-        result = await exchange.modify_order(
-            symbol=symbol,
-            order_id=order_id,
-            amount=0.002,
-            price=31000.0
-        )
-        print(f"Modified order:")
-        print(f"  New Order ID: {result.order_id}")
-        print(f"  Symbol: {result.symbol}")
-        print(f"  Side: {result.side}")
-        print(f"  Amount: {result.amount}")
-        print(f"  Price: {result.price}")
-        print(f"  Status: {result.status}")
-        
-    except Exception as e:
-        print(f"Error: {e}")
-
-
 async def main():
     """Run all integration checks."""
     print("MEXC PRIVATE API INTEGRATION CHECKS")
@@ -193,14 +168,16 @@ async def main():
     
     try:
         # Load config to get API credentials
-        from common.config import config
-        
+        from config import config
+        from core.register import install_exchange_dependencies
+
+        install_exchange_dependencies()
+
         # Create exchange with explicit API credentials from config
-        mexc_credentials = config.get_exchange_credentials('mexc')
-        exchange = MexcPrivateExchange(
-            api_key=mexc_credentials['api_key'],
-            secret_key=mexc_credentials['secret_key']
-        )
+        mexc_config = config.get_exchange_config_struct('mexc')
+        if not mexc_config:
+            raise ValueError("MEXC configuration not found")
+        exchange = MexcPrivateSpotRest(mexc_config)
         
         await check_get_account_balance(exchange)
         await check_get_asset_balance(exchange)
@@ -209,8 +186,7 @@ async def main():
         await check_place_order(exchange)
         await check_cancel_order(exchange)
         await check_cancel_all_orders(exchange)
-        await check_modify_order(exchange)
-        
+
         await exchange.close()
         
     except ValueError as e:

@@ -9,7 +9,7 @@ Key Features:
 - Sub-10ms response times for order management
 - MEXC-specific HMAC-SHA256 authentication
 - Zero-copy JSON parsing with msgspec
-- Unified interface compliance
+- Unified cex compliance
 
 MEXC Private API Specifications:
 - Base URL: https://api.mexc.com  
@@ -25,27 +25,28 @@ import hashlib
 import hmac
 import urllib.parse
 import time
-from typing import Dict, List, Optional, Any
-import logging
+from typing import Dict, List, Optional, Any, Tuple
 import msgspec
 
-from exchanges.mexc.common.mexc_struct import (
-    MexcAccountResponse, MexcOrderResponse, MexcErrorResponse
+from exchanges.mexc.common.mexc_structs import (
+    MexcAccountResponse, MexcOrderResponse
 )
-from exchanges.interface.structs import (
+from structs.exchange import (
     Symbol, Order, OrderId, OrderType, Side, AssetBalance,
     AssetName, TimeInForce
 )
-from common.rest_client import RestClient
-from common.exceptions import ExchangeAPIError
-from common.config import config
-from exchanges.interface.rest.base_rest_private import PrivateExchangeInterface
-from exchanges.mexc.common.mexc_utils import MexcUtils
+from core.exceptions.exchange import BaseExchangeError
+from structs.config import ExchangeConfig
+
+from core.cex.rest.spot.base_rest_spot_private import PrivateExchangeSpotRestInterface
+from exchanges.mexc.common.mexc_mappings import MexcUtils
 from exchanges.mexc.common.mexc_mappings import MexcMappings
 from exchanges.mexc.common.mexc_config import MexcConfig
+from .custom_exception_handler import handle_custom_exception
+from exchanges.mexc.common.mexc_symbol_mapper import mexc_symbol_mapper
+from core.transport.rest.rest_client import HTTPMethod
 
-
-class MexcPrivateExchange(PrivateExchangeInterface):
+class MexcPrivateSpotRest(PrivateExchangeSpotRestInterface):
     """
     MEXC private REST API client focused on trading operations.
     
@@ -53,42 +54,16 @@ class MexcPrivateExchange(PrivateExchangeInterface):
     Optimized for high-frequency trading operations with minimal overhead.
     """
 
-    def __init__(self, api_key: Optional[str] = None, secret_key: Optional[str] = None):
+    def __init__(self, config: ExchangeConfig):
         """
         Initialize MEXC private REST client.
         
         Args:
-            api_key: MEXC API key for authentication
-            secret_key: MEXC secret key for signature generation
+            config: ExchangeConfig with API credentials
         """
-        # Use provided credentials or fall back to configuration
-        if not api_key or not secret_key:
-            mexc_credentials = config.get_exchange_credentials('mexc')
-            api_key = api_key or mexc_credentials.get('api_key', '')
-            secret_key = secret_key or mexc_credentials.get('secret_key', '')
+        super().__init__(config, MexcConfig.rest_config['default'], handle_custom_exception)
 
-        if not api_key or not secret_key:
-            raise ValueError("MEXC API credentials must be provided")
-
-        super().__init__(
-            MexcConfig.EXCHANGE_NAME,
-            api_key,
-            secret_key,
-            MexcConfig.get_base_url()
-        )
-
-        self.logger = logging.getLogger(f"{__name__}.{self.__class__.__name__}")
-
-        # Initialize REST client (now exchange-agnostic)
-        self.client = RestClient(
-            base_url=self.base_url,
-            config=MexcConfig.rest_config['default'],
-            exception_handler=self._handle_mexc_exception
-        )
-
-        self.logger.info(f"Initialized {self.exchange} private REST client")
-
-    def _generate_mexc_signature(self, params: Dict[str, Any]) -> str:
+    def generate_auth_signature(self, params: Dict[str, Any]) -> str:
         """
         Generate MEXC HMAC-SHA256 signature for authentication.
         
@@ -110,103 +85,29 @@ class MexcPrivateExchange(PrivateExchangeInterface):
 
         return signature
 
-    def _handle_mexc_exception(self, error: Exception) -> Exception:
-        """
-        Handle MEXC-specific API errors and convert to unified exceptions.
-        
-        Args:
-            error: Original exception from HTTP request
-            
-        Returns:
-            Unified exception with appropriate error details
-        """
-        if hasattr(error, 'status') and hasattr(error, 'response_text'):
-            try:
-                # Try to parse MEXC error response
-                error_data = msgspec.json.decode(error.response_text)
-                mexc_error = msgspec.convert(error_data, MexcErrorResponse)
-
-                # Map MEXC error codes to unified exceptions
-                error_code = mexc_error.code
-                error_msg = mexc_error.msg
-
-                if error_code in MexcMappings.ERROR_CODE_MAPPING:
-                    unified_error = MexcMappings.ERROR_CODE_MAPPING[error_code]
-                    return unified_error(error.status, f"MEXC Error {error_code}: {error_msg}")
-                else:
-                    return ExchangeAPIError(error.status, f"MEXC Error {error_code}: {error_msg}")
-
-            except Exception:
-                # Fallback if error parsing fails
-                return ExchangeAPIError(error.status, f"MEXC API Error: {error.response_text}")
-
-        # Fallback for other error types
-        return ExchangeAPIError(500, f"Unexpected error: {str(error)}")
-
-    async def _authenticated_request(
-        self, 
-        method: str, 
-        endpoint: str, 
-        params: Optional[Dict[str, Any]] = None,
-        json_data: Optional[Dict[str, Any]] = None,
-        config: Optional[Any] = None
-    ) -> Any:
-        """
-        Make an authenticated request to MEXC API with proper signature generation.
-        
-        Args:
-            method: HTTP method (GET, POST, PUT, DELETE)
-            endpoint: API endpoint path
-            params: Query parameters
-            json_data: JSON data for POST requests
-            config: RestConfig for the request
-            
-        Returns:
-            Parsed response data
-        """
+    async def add_auth(self, params: Optional[Dict[str, Any]] = None, headers: Optional[Dict[str, str]] = None) -> Tuple[Dict[str, Any], Dict[str, str]]:
         # Prepare parameters
         request_params = params.copy() if params else {}
-        
+
         # Add required MEXC authentication parameters
         request_params['timestamp'] = round(time.time() * 1000)
         request_params['recvWindow'] = 15000
-        
+
         # Generate signature
-        signature = self._generate_mexc_signature(request_params)
+        signature = self.generate_auth_signature(request_params)
         request_params['signature'] = signature
+
+        # Prepare headers with API key and required content-type for MEXC
+        auth_headers = {
+            'X-MEXC-APIKEY': self.api_key,
+            'Content-Type': 'application/json'  # MEXC requires this for authenticated requests
+        }
         
-        # Prepare headers with API key
-        headers = {'X-MEXC-APIKEY': self.api_key}
-        
-        # Make the request using RestClient
-        from common.rest_client import HTTPMethod
-        
-        if method.upper() == 'GET':
-            return await self.client.get(endpoint, params=request_params, config=config, headers=headers)
-        elif method.upper() == 'POST':
-            # For POST requests, MEXC expects query parameters with Content-Type: application/json
-            if json_data:
-                post_params = {**request_params, **json_data}
-            else:
-                post_params = request_params
-            
-            # Add the correct content type header for MEXC
-            headers['Content-Type'] = 'application/json'
-            
-            # Use RestClient's normal POST handling with query parameters
-            return await self.client.post(endpoint, params=post_params, config=config, headers=headers)
-        elif method.upper() == 'PUT':
-            # PUT requests use query parameters for MEXC
-            if json_data:
-                body_data = {**request_params, **json_data}
-            else:
-                body_data = request_params
-                
-            return await self.client.put(endpoint, params=body_data, config=config, headers=headers)
-        elif method.upper() == 'DELETE':
-            return await self.client.delete(endpoint, params=request_params, config=config, headers=headers)
-        else:
-            raise ValueError(f"Unsupported HTTP method: {method}")
+        # Merge with any existing headers, allowing them to override if needed
+        if headers:
+            auth_headers.update(headers)
+
+        return request_params, auth_headers
 
     async def get_account_balance(self) -> List[AssetBalance]:
         """
@@ -218,10 +119,11 @@ class MexcPrivateExchange(PrivateExchangeInterface):
         Raises:
             ExchangeAPIError: If unable to fetch account balance
         """
-        response_data = await self._authenticated_request(
-            'GET',
+        response_data = await self.request(
+            HTTPMethod.GET,
             '/api/v3/account',
-            config=MexcConfig.rest_config['account']
+            config=MexcConfig.rest_config['account'],
+            auth=True
         )
 
         account_data = msgspec.convert(response_data, MexcAccountResponse)
@@ -230,7 +132,12 @@ class MexcPrivateExchange(PrivateExchangeInterface):
         balances = []
         for mexc_balance in account_data.balances:
             if float(mexc_balance.free) > 0 or float(mexc_balance.locked) > 0:
-                balance = MexcUtils.transform_mexc_balance_to_unified(mexc_balance)
+                balance = AssetBalance(
+                    asset=AssetName(mexc_balance.asset),
+                    available=float(mexc_balance.available),
+                    free=float(mexc_balance.free),
+                    locked=float(mexc_balance.locked)
+                )
                 balances.append(balance)
 
         self.logger.debug(f"Retrieved {len(balances)} non-zero balances")
@@ -250,12 +157,12 @@ class MexcPrivateExchange(PrivateExchangeInterface):
             ExchangeAPIError: If unable to fetch account balance
         """
         all_balances = await self.get_account_balance()
-        
+
         # Find the specific asset balance
         for balance in all_balances:
             if balance.asset == asset:
                 return balance
-        
+
         # Return None if asset not found or has zero balance
         return None
 
@@ -294,17 +201,17 @@ class MexcPrivateExchange(PrivateExchangeInterface):
             ExchangeAPIError: If unable to place order
             ValueError: If required parameters are missing
         """
-        pair = MexcUtils.symbol_to_pair(symbol)
+        pair = mexc_symbol_mapper.symbol_to_pair(symbol)
 
         # Validate required parameters based on order type
         if order_type in [OrderType.LIMIT, OrderType.LIMIT_MAKER, OrderType.STOP_LIMIT]:
             if price is None:
                 raise ValueError(f"Price is required for {order_type.name} orders")
-        
+
         if order_type in [OrderType.STOP_LIMIT, OrderType.STOP_MARKET]:
             if stop_price is None:
                 raise ValueError(f"Stop price is required for {order_type.name} orders")
-        
+
         # For MARKET buy orders, either amount or quote_quantity is required
         if order_type == OrderType.MARKET and side == Side.BUY:
             if amount is None and quote_quantity is None:
@@ -312,7 +219,7 @@ class MexcPrivateExchange(PrivateExchangeInterface):
         elif amount is None:
             raise ValueError("Amount is required for this order type")
 
-        # Prepare base order parameters
+        # Prepare cex order parameters
         params = {
             'symbol': pair,
             'side': MexcMappings.get_mexc_side(side),
@@ -322,14 +229,14 @@ class MexcPrivateExchange(PrivateExchangeInterface):
         # Add quantity parameters
         if amount is not None:
             params['quantity'] = MexcUtils.format_mexc_quantity(amount)
-        
+
         if quote_quantity is not None:
             params['quoteOrderQty'] = MexcUtils.format_mexc_quantity(quote_quantity)
 
         # Add price parameters
         if price is not None:
             params['price'] = MexcUtils.format_mexc_price(price)
-        
+
         if stop_price is not None:
             params['stopPrice'] = MexcUtils.format_mexc_price(stop_price)
 
@@ -343,15 +250,16 @@ class MexcPrivateExchange(PrivateExchangeInterface):
         # Add optional parameters
         if iceberg_qty is not None:
             params['icebergQty'] = MexcUtils.format_mexc_quantity(iceberg_qty)
-        
+
         if new_order_resp_type is not None:
             params['newOrderRespType'] = new_order_resp_type
 
-        response_data = await self._authenticated_request(
-            'POST',
+        response_data = await self.request(
+            HTTPMethod.POST,
             '/api/v3/order',
             params=params,
-            config=MexcConfig.rest_config['order']
+            config=MexcConfig.rest_config['order'],
+            auth=True
         )
 
         order_response = msgspec.convert(response_data, MexcOrderResponse)
@@ -379,18 +287,19 @@ class MexcPrivateExchange(PrivateExchangeInterface):
         Raises:
             ExchangeAPIError: If unable to cancel order
         """
-        pair = MexcUtils.symbol_to_pair(symbol)
+        pair = mexc_symbol_mapper.symbol_to_pair(symbol)
 
         params = {
             'symbol': pair,
             'orderId': str(order_id)
         }
 
-        response_data = await self._authenticated_request(
-            'DELETE',
+        response_data = await self.request(
+            HTTPMethod.DELETE,
             '/api/v3/order',
             params=params,
-            config=MexcConfig.rest_config['order']
+            config=MexcConfig.rest_config['order'],
+            auth=True
         )
 
         order_response = msgspec.convert(response_data, MexcOrderResponse)
@@ -414,15 +323,16 @@ class MexcPrivateExchange(PrivateExchangeInterface):
         Raises:
             ExchangeAPIError: If unable to cancel orders
         """
-        pair = MexcUtils.symbol_to_pair(symbol)
+        pair = mexc_symbol_mapper.symbol_to_pair(symbol)
 
         params = {'symbol': pair}
 
-        response_data = await self._authenticated_request(
-            'DELETE',
+        response_data = await self.request(
+            HTTPMethod.DELETE,
             '/api/v3/openOrders',
             params=params,
-            config=MexcConfig.rest_config['order']
+            config=MexcConfig.rest_config['order'],
+            auth=True
         )
 
         order_responses = msgspec.convert(response_data, list[MexcOrderResponse])
@@ -450,18 +360,19 @@ class MexcPrivateExchange(PrivateExchangeInterface):
         Raises:
             ExchangeAPIError: If unable to fetch order
         """
-        pair = MexcUtils.symbol_to_pair(symbol)
+        pair = mexc_symbol_mapper.symbol_to_pair(symbol)
 
         params = {
             'symbol': pair,
             'orderId': str(order_id)
         }
 
-        response_data = await self._authenticated_request(
-            'GET',
+        response_data = await self.request(
+            HTTPMethod.GET,
             '/api/v3/order',
             params=params,
-            config=MexcConfig.rest_config['order']
+            config=MexcConfig.rest_config['order'],
+            auth=True
         )
 
         order_response = msgspec.convert(response_data, MexcOrderResponse)
@@ -487,13 +398,14 @@ class MexcPrivateExchange(PrivateExchangeInterface):
         """
         params = {}
         if symbol:
-            params['symbol'] = MexcUtils.symbol_to_pair(symbol)
+            params['symbol'] = mexc_symbol_mapper.symbol_to_pair(symbol)
 
-        response_data = await self._authenticated_request(
-            'GET',
+        response_data = await self.request(
+            HTTPMethod.GET,
             '/api/v3/openOrders',
             params=params,
-            config=MexcConfig.rest_config['my_orders']
+            config=MexcConfig.rest_config['my_orders'],
+            auth=True
         )
 
         order_responses = msgspec.convert(response_data, list[MexcOrderResponse])
@@ -508,60 +420,60 @@ class MexcPrivateExchange(PrivateExchangeInterface):
         self.logger.debug(f"Retrieved {len(open_orders)} open orders{symbol_str}")
         return open_orders
 
-    async def modify_order(
-            self,
-            symbol: Symbol,
-            order_id: OrderId,
-            amount: Optional[float] = None,
-            price: Optional[float] = None,
-            quote_quantity: Optional[float] = None,
-            time_in_force: Optional[TimeInForce] = None,
-            stop_price: Optional[float] = None
-    ) -> Order:
-        """
-        Modify an existing order.
-        
-        Note: MEXC doesn't support direct order modification.
-        This method cancels the existing order and places a new one.
-        
-        Args:
-            symbol: Symbol of the order
-            order_id: ID of the order to modify
-            amount: New order amount (optional)
-            price: New order price (optional)
-            quote_quantity: New quote quantity (optional)
-            time_in_force: New time in force (optional)
-            stop_price: New stop price (optional)
-            
-        Returns:
-            New Order object after modification
-            
-        Raises:
-            ExchangeAPIError: If unable to modify order
-        """
-        # Get current order details
-        current_order = await self.get_order(symbol, order_id)
-
-        # Cancel existing order
-        await self.cancel_order(symbol, order_id)
-
-        # Place new order with modified parameters
-        new_amount = amount if amount is not None else current_order.amount
-        new_price = price if price is not None else current_order.price
-
-        new_order = await self.place_order(
-            symbol=symbol,
-            side=current_order.side,
-            order_type=current_order.order_type,
-            amount=new_amount,
-            price=new_price,
-            quote_quantity=quote_quantity,
-            time_in_force=time_in_force,
-            stop_price=stop_price
-        )
-
-        self.logger.info(f"Modified order {order_id} -> {new_order.order_id}")
-        return new_order
+    # async def modify_order(
+    #         self,
+    #         symbol: Symbol,
+    #         order_id: OrderId,
+    #         amount: Optional[float] = None,
+    #         price: Optional[float] = None,
+    #         quote_quantity: Optional[float] = None,
+    #         time_in_force: Optional[TimeInForce] = None,
+    #         stop_price: Optional[float] = None
+    # ) -> Order:
+    #     """
+    #     Modify an existing order.
+    #
+    #     Note: MEXC doesn't support direct order modification.
+    #     This method cancels the existing order and places a new one.
+    #
+    #     Args:
+    #         symbol: Symbol of the order
+    #         order_id: ID of the order to modify
+    #         amount: New order amount (optional)
+    #         price: New order price (optional)
+    #         quote_quantity: New quote quantity (optional)
+    #         time_in_force: New time in force (optional)
+    #         stop_price: New stop price (optional)
+    #
+    #     Returns:
+    #         New Order object after modification
+    #
+    #     Raises:
+    #         ExchangeAPIError: If unable to modify order
+    #     """
+    #     # Get current order details
+    #     current_order = await self.get_order(symbol, order_id)
+    #
+    #     # Cancel existing order
+    #     await self.cancel_order(symbol, order_id)
+    #
+    #     # Place new order with modified parameters
+    #     new_amount = amount if amount is not None else current_order.amount
+    #     new_price = price if price is not None else current_order.price
+    #
+    #     new_order = await self.place_order(
+    #         symbol=symbol,
+    #         side=current_order.side,
+    #         order_type=current_order.order_type,
+    #         amount=new_amount,
+    #         price=new_price,
+    #         quote_quantity=quote_quantity,
+    #         time_in_force=time_in_force,
+    #         stop_price=stop_price
+    #     )
+    #
+    #     self.logger.info(f"Modified order {order_id} -> {new_order.order_id}")
+    #     return new_order
 
     async def create_listen_key(self) -> str:
         """
@@ -573,20 +485,21 @@ class MexcPrivateExchange(PrivateExchangeInterface):
         Raises:
             ExchangeAPIError: If unable to create listen key
         """
-        response_data = await self._authenticated_request(
-            'POST',
+        response_data = await self.request(
+            HTTPMethod.POST,
             '/api/v3/userDataStream',
-            config=MexcConfig.rest_config['account']
+            config=MexcConfig.rest_config['account'],
+            auth=True
         )
-        
+
         listen_key = response_data.get('listenKey')
         if not listen_key:
-            raise ExchangeAPIError(500, "Failed to create listen key - no key in response")
-        
+            raise BaseExchangeError(500, "Failed to create listen key - no key in response")
+
         self.logger.debug("Created new listen key")
         return listen_key
 
-    async def get_all_listen_keys(self) -> Dict:
+    async def get_all_listen_keys(self) -> Dict[str, Any]:
         """
         Get all active listen keys.
         
@@ -596,12 +509,13 @@ class MexcPrivateExchange(PrivateExchangeInterface):
         Raises:
             ExchangeAPIError: If unable to fetch listen keys
         """
-        response_data = await self._authenticated_request(
-            'GET',
+        response_data = await self.request(
+            HTTPMethod.GET,
             '/api/v3/userDataStream',
-            config=MexcConfig.rest_config['account']
+            config=MexcConfig.rest_config['account'],
+            auth=True
         )
-        
+
         self.logger.debug("Retrieved all listen keys")
         return response_data
 
@@ -616,14 +530,15 @@ class MexcPrivateExchange(PrivateExchangeInterface):
             ExchangeAPIError: If unable to keep alive listen key
         """
         params = {'listenKey': listen_key}
-        
-        await self._authenticated_request(
-            'PUT',
+
+        await self.request(
+            HTTPMethod.PUT,
             '/api/v3/userDataStream',
             params=params,
-            config=MexcConfig.rest_config['account']
+            config=MexcConfig.rest_config['account'],
+            auth=True
         )
-        
+
         self.logger.debug(f"Kept alive listen key: {listen_key[:8]}...")
 
     async def delete_listen_key(self, listen_key: str) -> None:
@@ -637,19 +552,13 @@ class MexcPrivateExchange(PrivateExchangeInterface):
             ExchangeAPIError: If unable to delete listen key
         """
         params = {'listenKey': listen_key}
-        
-        await self._authenticated_request(
-            'DELETE',
+
+        await self.request(
+            HTTPMethod.DELETE,
             '/api/v3/userDataStream',
             params=params,
-            config=MexcConfig.rest_config['account']
+            config=MexcConfig.rest_config['account'],
+            auth=True
         )
-        
+
         self.logger.debug(f"Deleted listen key: {listen_key[:8]}...")
-
-    async def close(self):
-        """Clean up resources and close connections."""
-        if hasattr(self, 'client'):
-            await self.client.close()
-        self.logger.info(f"Closed {self.exchange} private REST client")
-

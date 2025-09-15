@@ -36,40 +36,43 @@ Complete validation of MEXC public API endpoints.
 - **Error handling patterns** - Comprehensive exception management
 
 #### Usage Example
+
 ```python
 """MEXC Public API Integration Check"""
 import asyncio
-from exchanges.interface.structs import Symbol, AssetName
-from exchanges.mexc.rest.mexc_public import MexcPublicExchange
+from structs import Symbol, AssetName
+from exchanges.mexc.rest.mexc_public import MexcPublicSpotRest
+
 
 async def main():
-    exchange = MexcPublicExchange()
-    
+    exchange = MexcPublicSpotRest()
+
     # Test connectivity
     is_connected = await exchange.ping()
     print(f"Exchange connected: {is_connected}")
-    
+
     # Get server time
     server_time = await exchange.get_server_time()
     print(f"Server time: {server_time}")
-    
+
     # Get exchange information
     exchange_info = await exchange.get_exchange_info()
     print(f"Available symbols: {len(exchange_info)}")
-    
+
     # Get orderbook for BTC/USDT
     btc_usdt = Symbol(base=AssetName("BTC"), quote=AssetName("USDT"))
     orderbook = await exchange.get_orderbook(btc_usdt, limit=10)
-    
+
     print(f"Best bid: {orderbook.bids[0].price}")
     print(f"Best ask: {orderbook.asks[0].price}")
     print(f"Spread: {orderbook.asks[0].price - orderbook.bids[0].price}")
-    
+
     # Get recent trades
     trades = await exchange.get_recent_trades(btc_usdt, limit=5)
     print(f"Recent trades: {len(trades)}")
     for trade in trades[:3]:
         print(f"  {trade.side.name}: {trade.amount} @ {trade.price}")
+
 
 if __name__ == "__main__":
     asyncio.run(main())
@@ -121,36 +124,38 @@ Complete validation of MEXC private API and trading functionality.
 - **Error handling** - Trading-specific exception management
 
 #### Usage Example
+
 ```python
 """MEXC Private API Integration Check"""
 import asyncio
-from exchanges.interface.structs import Symbol, AssetName, Side, OrderType, TimeInForce
-from exchanges.mexc.rest.mexc_private import MexcPrivateExchange
+from structs import Symbol, AssetName, Side, OrderType, TimeInForce
+from exchanges.mexc.rest.mexc_private import MexcPrivateSpotRest
+
 
 async def main():
     # Initialize with credentials
-    exchange = MexcPrivateExchange(
+    exchange = MexcPrivateSpotRest(
         api_key="your_mexc_api_key",
         secret_key="your_mexc_secret_key"
     )
-    
+
     try:
         # Get account balances
         balances = await exchange.get_account_balance()
         print(f"Account has {len(balances)} assets with non-zero balance")
-        
+
         # Check specific asset balance
         usdt_balance = await exchange.get_asset_balance(AssetName("USDT"))
         if usdt_balance:
             print(f"USDT balance: {usdt_balance.free} free, {usdt_balance.locked} locked")
-        
+
         # Get open orders
         open_orders = await exchange.get_open_orders()
         print(f"Open orders: {len(open_orders)}")
-        
+
         # Example: Place a limit order (use testnet for real testing)
         btc_usdt = Symbol(base=AssetName("BTC"), quote=AssetName("USDT"))
-        
+
         # WARNING: This places a real order - use testnet!
         order = await exchange.place_order(
             symbol=btc_usdt,
@@ -160,21 +165,22 @@ async def main():
             price=30000.0,  # Well below market for safety
             time_in_force=TimeInForce.GTC
         )
-        
+
         print(f"Order placed: {order.order_id}")
         print(f"Status: {order.status.name}")
-        
+
         # Query order status
         order_status = await exchange.get_order(btc_usdt, order.order_id)
         print(f"Order status: {order_status.status.name}")
-        
+
         # Cancel the order
         cancelled_order = await exchange.cancel_order(btc_usdt, order.order_id)
         print(f"Order cancelled: {cancelled_order.status.name}")
-        
+
     finally:
         # Clean up connections
         await exchange.close()
+
 
 if __name__ == "__main__":
     asyncio.run(main())
@@ -232,28 +238,30 @@ Complete WebSocket integration for real-time market data streaming.
 - **Performance monitoring** - Message processing statistics
 
 #### Usage Example
+
 ```python
 """MEXC Public WebSocket Integration"""
 import asyncio
 import logging
 from typing import Dict, List
-from exchanges.interface.structs import Symbol, AssetName, OrderBook, Trade
+from structs import Symbol, AssetName, OrderBook, Trade
 from exchanges.mexc.ws.mexc_ws_public import MexcWebsocketPublic
-from common.ws_client import WebSocketConfig
+from core.transport.websocket.ws_client import WebSocketConfig
+
 
 class MarketDataManager:
     """Manage real-time market data from WebSocket"""
-    
+
     def __init__(self):
         self.orderbooks: Dict[Symbol, OrderBook] = {}
         self.trade_history: Dict[Symbol, List[Trade]] = {}
         self.message_count = 0
-    
+
     async def handle_orderbook_update(self, symbol: Symbol, orderbook: OrderBook):
         """Process order book updates"""
         self.orderbooks[symbol] = orderbook
         self.message_count += 1
-        
+
         # Display top of book
         if orderbook.bids and orderbook.asks:
             spread = orderbook.asks[0].price - orderbook.bids[0].price
@@ -261,25 +269,26 @@ class MarketDataManager:
                   f"Bid {orderbook.bids[0].price}, "
                   f"Ask {orderbook.asks[0].price}, "
                   f"Spread {spread:.2f}")
-    
+
     async def handle_trades_update(self, symbol: Symbol, trades: List[Trade]):
         """Process trade updates"""
         if symbol not in self.trade_history:
             self.trade_history[symbol] = []
-        
+
         self.trade_history[symbol].extend(trades)
         # Keep only recent trades (memory management)
         self.trade_history[symbol] = self.trade_history[symbol][-1000:]
-        
+
         # Display recent trades
         for trade in trades[-3:]:
             print(f"{symbol.base}/{symbol.quote} Trade: "
                   f"{trade.side.name} {trade.amount} @ {trade.price}")
 
+
 async def main():
     # Set up market data manager
     manager = MarketDataManager()
-    
+
     # Configure WebSocket
     config = WebSocketConfig(
         name="mexc_market_data",
@@ -288,29 +297,29 @@ async def main():
         ping_interval=20.0,
         max_reconnect_attempts=10
     )
-    
+
     # Initialize WebSocket client
     ws_client = MexcWebsocketPublic(
-        config=config,
+        ws_config=config,
         orderbook_handler=manager.handle_orderbook_update,
         trades_handler=manager.handle_trades_update
     )
-    
+
     # Define symbols to track
     symbols = [
         Symbol(base=AssetName("BTC"), quote=AssetName("USDT")),
         Symbol(base=AssetName("ETH"), quote=AssetName("USDT")),
     ]
-    
+
     try:
         # Start WebSocket connection
-        await ws_client.init(symbols)
+        await ws_client.initialize(symbols)
         print("WebSocket connected, streaming market data...")
         print("Press Ctrl+C to stop")
-        
+
         # Monitor for 30 seconds
         await asyncio.sleep(30)
-        
+
         # Display statistics
         print(f"\nStatistics:")
         print(f"Messages received: {manager.message_count}")
@@ -320,12 +329,13 @@ async def main():
             print(f"  {symbol.base}/{symbol.quote}: "
                   f"{len(orderbook.bids)} bids, {len(orderbook.asks)} asks, "
                   f"{trade_count} trades")
-        
+
     except KeyboardInterrupt:
         print("\nShutting down...")
     finally:
         # Clean up
         await ws_client.ws_client.stop()
+
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
@@ -376,68 +386,70 @@ class RobustWebSocketManager:
 ### Integration Testing Framework
 
 #### API Validation Testing
+
 ```python
 import pytest
-from exchanges.mexc.rest.mexc_public import MexcPublicExchange
-from exchanges.interface.structs import Symbol, AssetName
+from exchanges.mexc.rest.mexc_public import MexcPublicSpotRest
+from structs import Symbol, AssetName
+
 
 class TestMexcPublicAPI:
     """Comprehensive API integration tests"""
-    
+
     @pytest.fixture
     async def exchange(self):
         """Create exchange instance for testing"""
-        exchange = MexcPublicExchange()
+        exchange = MexcPublicSpotRest()
         yield exchange
         # Cleanup after test
-        await exchange.client.close()
-    
+        await exchange._client.close()
+
     @pytest.mark.asyncio
     async def test_connectivity(self, exchange):
         """Test basic connectivity"""
         result = await exchange.ping()
         assert result is True
-        
+
         server_time = await exchange.get_server_time()
         assert isinstance(server_time, int)
         assert server_time > 0
-    
+
     @pytest.mark.asyncio
     async def test_exchange_info(self, exchange):
         """Test exchange information retrieval"""
         info = await exchange.get_exchange_info()
         assert len(info) > 0
-        
+
         # Check for common trading pairs
         btc_usdt = Symbol(base=AssetName("BTC"), quote=AssetName("USDT"))
         assert btc_usdt in info
-        
+
         symbol_info = info[btc_usdt]
         assert symbol_info.base_precision > 0
         assert symbol_info.quote_precision > 0
-    
+
     @pytest.mark.asyncio
     async def test_orderbook_retrieval(self, exchange):
         """Test order book data retrieval"""
         btc_usdt = Symbol(base=AssetName("BTC"), quote=AssetName("USDT"))
         orderbook = await exchange.get_orderbook(btc_usdt, limit=10)
-        
+
         assert len(orderbook.bids) > 0
         assert len(orderbook.asks) > 0
         assert orderbook.bids[0].price < orderbook.asks[0].price
         assert orderbook.timestamp > 0
-    
-    @pytest.mark.asyncio 
+
+    @pytest.mark.asyncio
     async def test_performance_requirements(self, exchange):
         """Verify performance meets HFT requirements"""
         import time
-        
+
         # Test latency requirement (<50ms)
         start_time = time.time()
         await exchange.ping()
         latency = (time.time() - start_time) * 1000
         assert latency < 50, f"Latency {latency}ms exceeds 50ms requirement"
-        
+
         # Test orderbook retrieval speed
         btc_usdt = Symbol(base=AssetName("BTC"), quote=AssetName("USDT"))
         start_time = time.time()
@@ -447,38 +459,39 @@ class TestMexcPublicAPI:
 ```
 
 #### WebSocket Testing
+
 ```python
 class TestMexcWebSocket:
     """WebSocket integration testing"""
-    
+
     @pytest.mark.asyncio
     async def test_websocket_connection(self):
         """Test WebSocket connection and basic functionality"""
-        
+
         message_received = asyncio.Event()
         received_messages = []
-        
+
         async def message_handler(message):
             received_messages.append(message)
             message_received.set()
-        
+
         config = WebSocketConfig(name="test", url="wss://wbs.mexc.com/ws")
         ws_client = MexcWebsocketPublic(
             config=config,
             orderbook_handler=message_handler
         )
-        
+
         try:
             # Start connection
             symbols = [Symbol(base=AssetName("BTC"), quote=AssetName("USDT"))]
-            await ws_client.init(symbols)
-            
+            await ws_client.initialize(symbols)
+
             # Wait for first message (max 30 seconds)
             await asyncio.wait_for(message_received.wait(), timeout=30.0)
-            
+
             assert len(received_messages) > 0
             print(f"Received {len(received_messages)} messages")
-            
+
         finally:
             await ws_client.ws_client.stop()
 ```
@@ -486,15 +499,16 @@ class TestMexcWebSocket:
 ### Performance Testing
 
 #### Latency Benchmarks
+
 ```python
 async def benchmark_api_latency():
     """Benchmark API call latencies"""
     exchange = MexcPublicExchange()
     symbol = Symbol(base=AssetName("BTC"), quote=AssetName("USDT"))
-    
+
     # Warm up connection
     await exchange.ping()
-    
+
     # Benchmark different endpoints
     endpoints = {
         'ping': lambda: exchange.ping(),
@@ -502,33 +516,33 @@ async def benchmark_api_latency():
         'orderbook': lambda: exchange.get_orderbook(symbol, limit=10),
         'trades': lambda: exchange.get_recent_trades(symbol, limit=10)
     }
-    
+
     results = {}
     for name, endpoint in endpoints.items():
         latencies = []
-        
+
         for _ in range(10):  # 10 samples
             start = time.time()
             await endpoint()
             latency = (time.time() - start) * 1000  # Convert to ms
             latencies.append(latency)
             await asyncio.sleep(0.1)  # Rate limiting
-        
+
         results[name] = {
             'avg': sum(latencies) / len(latencies),
             'min': min(latencies),
             'max': max(latencies),
             'p95': sorted(latencies)[int(0.95 * len(latencies))]
         }
-    
+
     # Display results
     print("API Latency Benchmarks:")
     for endpoint, stats in results.items():
         print(f"{endpoint:12}: avg={stats['avg']:5.1f}ms, "
               f"min={stats['min']:5.1f}ms, max={stats['max']:5.1f}ms, "
               f"p95={stats['p95']:5.1f}ms")
-    
-    await exchange.client.close()
+
+    await exchange._client.close()
 ```
 
 #### Memory Usage Monitoring
@@ -649,23 +663,25 @@ async def robust_trading_operation(exchange, operation_func, *args, **kwargs):
 ```
 
 ### Resource Management
+
 ```python
 import contextlib
+
 
 @contextlib.asynccontextmanager
 async def trading_session(api_key, secret_key, symbols):
     """Managed trading session with proper cleanup"""
-    
+
     exchange = MexcExchange(api_key=api_key, secret_key=secret_key)
-    
+
     try:
         # Initialize exchange
-        await exchange.init(symbols)
+        await exchange.initialize(symbols)
         print(f"Trading session started with {len(symbols)} symbols")
-        
+
         # Yield exchange for use
         yield exchange
-        
+
     except Exception as e:
         print(f"Error in trading session: {e}")
         raise
@@ -677,10 +693,11 @@ async def trading_session(api_key, secret_key, symbols):
         except Exception as e:
             print(f"Error closing session: {e}")
 
+
 # Usage
 async def main():
     symbols = [Symbol(base=AssetName("BTC"), quote=AssetName("USDT"))]
-    
+
     async with trading_session(api_key, secret_key, symbols) as exchange:
         # Trading operations
         orderbook = exchange.orderbook
@@ -690,49 +707,51 @@ async def main():
 ## Production Deployment Examples
 
 ### High-Availability Configuration
+
 ```python
 async def create_resilient_exchange(config):
     """Create exchange with high-availability configuration"""
-    
+
     # Configure with production settings
     exchange = MexcExchange(
         api_key=config.api_key,
         secret_key=config.secret_key
     )
-    
+
     # Set up health monitoring
     async def health_check():
         try:
             return await exchange._rest_public.ping()
         except Exception:
             return False
-    
+
     # Set up automatic reconnection
     async def ensure_connection():
         while True:
             if not await health_check():
                 print("Connection lost, attempting reconnection...")
                 try:
-                    await exchange._ws_client.ws_client.restart()
+                    await exchange._ws_public.ws_client.restart()
                 except Exception as e:
                     print(f"Reconnection failed: {e}")
-            
+
             await asyncio.sleep(30)  # Check every 30 seconds
-    
+
     # Start health monitoring
     asyncio.create_task(ensure_connection())
-    
+
     return exchange
 ```
 
 ### Monitoring and Alerting
+
 ```python
 async def monitor_trading_session(exchange):
     """Monitor trading session with alerting"""
-    
+
     last_orderbook_update = time.time()
     last_balance_check = time.time()
-    
+
     while True:
         try:
             # Check orderbook freshness
@@ -740,12 +759,12 @@ async def monitor_trading_session(exchange):
                 last_update = time.time() - exchange.orderbook.timestamp
                 if last_update > 10:  # Alert if no updates for 10 seconds
                     print(f"WARNING: Orderbook stale for {last_update:.1f} seconds")
-            
+
             # Check connection status
-            if hasattr(exchange, '_ws_client') and exchange._ws_client:
-                if not exchange._ws_client.ws_client.is_connected:
+            if hasattr(exchange, '_ws_client') and exchange._ws_public:
+                if not exchange._ws_public.ws_client.is_connected:
                     print("WARNING: WebSocket disconnected")
-            
+
             # Periodic balance verification
             if time.time() - last_balance_check > 300:  # Every 5 minutes
                 try:
@@ -754,14 +773,14 @@ async def monitor_trading_session(exchange):
                     last_balance_check = time.time()
                 except Exception as e:
                     print(f"Balance check failed: {e}")
-            
+
             # Get performance metrics
             metrics = exchange.get_performance_metrics()
             if metrics['cache_hit_rate_percent'] < 70:
                 print(f"WARNING: Low cache hit rate: {metrics['cache_hit_rate_percent']}%")
-            
+
             await asyncio.sleep(10)  # Check every 10 seconds
-            
+
         except Exception as e:
             print(f"Monitoring error: {e}")
             await asyncio.sleep(30)  # Back off on errors

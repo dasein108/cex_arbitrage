@@ -47,7 +47,10 @@
       "Bash(if grep -q \"from common.types\" \"$file\")",
       "Bash(then)",
       "Bash(fi)",
-      "Bash(done)"
+      "Bash(done)",
+      "Bash(pip --version)",
+      "Bash(cat:*)",
+      "WebFetch(domain:github.com)"
     ],
     "deny": [],
     "ask": []

@@ -16,32 +16,24 @@ impact on trading operations with async batching and buffering.
 """
 
 import asyncio
-import os
 import time
 import mmap
 import struct
 from abc import ABC, abstractmethod
 from typing import Optional, List, Dict, Any, Union, BinaryIO
 from pathlib import Path
-from datetime import datetime, timedelta
+from datetime import datetime
 import zmq
 import zmq.asyncio
-import msgspec
 
-from .structures import LogType, LogStatistics
-from common.exceptions import HftException
-
-
-class TransportException(HftException):
-    """Transport-specific exception for delivery failures"""
-    pass
-
+from .structures import LogType
+from core.exceptions.transport import TransportException
 
 class BaseTransport(ABC):
     """
-    Abstract base class for all log transports.
+    Abstract cex class for all log transports.
     
-    Defines the interface for async log delivery with HFT compliance.
+    Defines the cex for async log delivery with HFT compliance.
     """
     
     @abstractmethod
@@ -330,7 +322,7 @@ class FileTransport(BaseTransport):
         self._sync_task: Optional[asyncio.Task] = None
         self._shutdown_event = asyncio.Event()
         
-        # Ensure base directory exists
+        # Ensure cex directory exists
         self.base_path.mkdir(parents=True, exist_ok=True)
     
     async def _initialize_file(self, log_type: LogType) -> None:

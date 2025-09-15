@@ -21,8 +21,8 @@ import logging
 from typing import List
 
 from exchanges.gateio.ws.gateio_ws_public import GateioWebsocketPublic
-from exchanges.interface.structs import Symbol, AssetName, OrderBook, Trade
-from common.ws_client import WebSocketConfig
+from structs.exchange import Symbol, AssetName, OrderBook, Trade
+from core.transport.websocket.ws_client import WebSocketConfig
 
 
 class MarketDataProcessor:
@@ -111,7 +111,7 @@ async def demonstrate_websocket_streaming():
     # Initialize Gate.io WebSocket client
     logger.info("Initializing Gate.io WebSocket client...")
     ws_client = GateioWebsocketPublic(
-        config=ws_config,
+        websocket_config=ws_config,
         orderbook_handler=processor.handle_orderbook_update,
         trades_handler=processor.handle_trade_update
     )
@@ -120,13 +120,13 @@ async def demonstrate_websocket_streaming():
     symbols = [
         Symbol(base=AssetName("BTC"), quote=AssetName("USDT")),
         Symbol(base=AssetName("ETH"), quote=AssetName("USDT")),
-        # Symbol(base=AssetName("BNB"), quote=AssetName("USDT")),  # Add more as needed
+        # Symbol(cex=AssetName("BNB"), quote=AssetName("USDT")),  # Add more as needed
     ]
     
     try:
         # Start WebSocket streaming
         logger.info("Starting WebSocket streaming...")
-        await ws_client.init([])
+        await ws_client.initialize([])
         
         # Wait for connection to stabilize
         logger.info("Waiting for WebSocket connection to stabilize...")
@@ -229,7 +229,7 @@ async def demonstrate_symbol_management():
     )
     
     ws_client = GateioWebsocketPublic(
-        config=ws_config,
+        websocket_config=ws_config,
         orderbook_handler=processor.handle_orderbook_update,
         trades_handler=None  # Only orderbook for this demo
     )
@@ -238,7 +238,7 @@ async def demonstrate_symbol_management():
         logger.info("\n=== Symbol Management Demo ===")
         
         # Start with empty subscriptions
-        await ws_client.init([])
+        await ws_client.initialize([])
         
         symbols = [
             Symbol(base=AssetName("BTC"), quote=AssetName("USDT")),

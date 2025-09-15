@@ -111,11 +111,11 @@ NOT WebSocketExchange or other specialized inheritance!
 
 **Composition Pattern Implementation**:
 ```python
-class MexcExchange(BaseExchangeInterface):  # <- Inherits from BASE interface
+class MexcExchange(BaseExchangeInterface):  # <- Inherits from BASE cex
     """Uses composition, NOT inheritance from specialized classes"""
     
     def __init__(self, api_key: Optional[str] = None, secret_key: Optional[str] = None):
-        super().__init__('MEXC', api_key, secret_key)  # <- Call base constructor
+        super().__init__('MEXC', api_key, secret_key)  # <- Call cex constructor
         
         # Composition - delegate to specialized components
         self._public_api: Optional[MexcPublicExchange] = None

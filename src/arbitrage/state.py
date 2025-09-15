@@ -32,7 +32,6 @@ import logging
 from typing import Dict, List, Optional, Set, Callable, Any
 from dataclasses import dataclass
 from enum import Enum
-from weakref import WeakSet
 
 from .structures import (
     ArbitrageState,
@@ -40,9 +39,6 @@ from .structures import (
     ArbitrageOpportunity,
     ArbitrageConfig,
 )
-
-from common.exceptions import StateTransitionError
-
 
 logger = logging.getLogger(__name__)
 

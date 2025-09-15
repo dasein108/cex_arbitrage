@@ -33,28 +33,25 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from typing import Dict, List, Optional, Tuple, Any
+from typing import Dict, List, Optional, Any
 from dataclasses import dataclass
 from enum import IntEnum
 
 from .structures import (
     ArbitrageOpportunity,
     PositionEntry,
-    ExecutionStage,
     ArbitrageConfig,
 )
 
-from exchanges.interface.structs import (
+from structs.exchange import (
     Symbol,
     OrderSide,
     OrderType,
-    OrderStatus,
     Order,
 )
-from exchanges.interface.base_exchange import BaseExchangeInterface
-from exchanges.interface.structs import ExchangeName
-from common.exceptions import OrderExecutionError, ExchangeError
-
+from core.cex.composed import BasePrivateExchangeInterface
+from structs.exchange import ExchangeName
+from core.exceptions.exchange import OrderExecutionError
 
 logger = logging.getLogger(__name__)
 
@@ -161,7 +158,7 @@ class OrderOrchestrator:
     def __init__(
         self,
         config: ArbitrageConfig,
-        exchanges: Dict[str, BaseExchangeInterface],
+        exchanges: Dict[str, BasePrivateExchangeInterface],
     ):
         """
         Initialize order orchestrator with exchange connections and configuration.

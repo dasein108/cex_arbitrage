@@ -17,7 +17,7 @@ from typing import List
 from dataclasses import dataclass, field
 from sortedcontainers import SortedDict
 
-from exchanges.interface.structs import OrderBookEntry, OrderBook
+from structs.exchange import OrderBookEntry, OrderBook
 
 
 class RingBufferPool:

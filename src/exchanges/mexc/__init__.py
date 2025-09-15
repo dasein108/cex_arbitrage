@@ -24,10 +24,10 @@ Refactoring Achievements:
 - Enhanced performance with LRU caching
 """
 
-from exchanges.mexc.rest.mexc_public import MexcPublicExchange
+from exchanges.mexc.rest.mexc_public import MexcPublicSpotRest
 from exchanges.mexc.ws.mexc_ws_public import MexcWebsocketPublic
 
 __all__ = [
-    'MexcPublicExchange', 
+    'MexcPublicSpotRest',
     'MexcWebsocketPublic',
 ]

@@ -83,7 +83,7 @@ This document defines the architecture for a specialized arbitrage system target
 **Design Pattern**: Interface Extension (following Interface Segregation Principle)
 
 ```python
-# Extension interface - does not modify existing implementations
+# Extension cex - does not modify existing implementations
 class ArbitrageExchangeInterface(ABC):
     """Arbitrage-specific extensions to existing exchange interfaces"""
     
@@ -175,128 +175,128 @@ class TierThreeSymbolRepository:
 ```python
 class OpportunityDetector:
     """High-performance arbitrage opportunity detection"""
-    
+
     def __init__(self, exchanges: List[ArbitrageExchangeInterface]):
         self.exchanges = exchanges
         self.min_spread_pct = 1.0  # 1% minimum spread
         self.size_multipliers = [1, 2, 5, 10]  # Based on min_quote_amount
-        
+
         # Performance optimization: Pre-allocate structures
         self._opportunity_pool = collections.deque(maxlen=1000)
-        
+
     async def scan_symbols(self, symbols: List[Symbol]) -> List[ArbitrageOpportunity]:
         """Scan for opportunities across all symbol/exchange combinations"""
         opportunities = []
-        
+
         # Parallel orderbook fetching for speed
         orderbook_tasks = []
         for symbol in symbols:
             for exchange in self.exchanges:
                 task = exchange.get_orderbook_snapshot(symbol)
                 orderbook_tasks.append((symbol, exchange.exchange, task))
-        
+
         # Wait for all orderbooks
         orderbook_results = await asyncio.gather(*[task for _, _, task in orderbook_tasks])
-        
+
         # Build orderbook lookup table
         orderbooks = {}
         for i, (symbol, exchange_name, _) in enumerate(orderbook_tasks):
             orderbooks[(symbol, exchange_name)] = orderbook_results[i]
-        
+
         # Detect opportunities
         for symbol in symbols:
             opportunity = await self._analyze_symbol_opportunity(symbol, orderbooks)
             if opportunity and opportunity.best_opportunity.spread_pct > self.min_spread_pct:
                 opportunities.append(opportunity)
-        
+
         return opportunities
-    
+
     async def _analyze_symbol_opportunity(
-        self, 
-        symbol: Symbol, 
-        orderbooks: Dict[Tuple[Symbol, str], OrderBook]
+            self,
+            symbol: Symbol,
+            orderbooks: Dict[Tuple[Symbol, str], OrderBook]
     ) -> Optional[ArbitrageOpportunity]:
         """Analyze opportunity for single symbol across exchanges"""
-        
+
         exchange_books = {}
         for exchange in self.exchanges:
             book = orderbooks.get((symbol, exchange.exchange))
             if book and book.bids and book.asks:
                 exchange_books[exchange.exchange] = (exchange, book)
-        
+
         if len(exchange_books) < 2:
             return None
-        
+
         # Find best buy and sell opportunities
         best_opportunities = []
-        
+
         for buy_ex_name, (buy_ex, buy_book) in exchange_books.items():
             for sell_ex_name, (sell_ex, sell_book) in exchange_books.items():
                 if buy_ex_name == sell_ex_name:
                     continue
-                    
+
                 # Calculate opportunities for different sizes
                 sized_opps = self._calculate_sized_opportunities(
                     symbol, buy_ex, buy_book, sell_ex, sell_book
                 )
-                
+
                 if sized_opps:
                     best_opportunities.extend(sized_opps)
-        
+
         if not best_opportunities:
             return None
-        
+
         # Return opportunity with best profit
         best = max(best_opportunities, key=lambda x: x.net_profit)
-        
+
         return ArbitrageOpportunity(
             symbol=symbol,
             timestamp=time.time(),
             sized_opportunities=best_opportunities,
             best_opportunity=best
         )
-    
+
     def _calculate_sized_opportunities(
-        self, 
-        symbol: Symbol,
-        buy_exchange: ArbitrageExchangeInterface,
-        buy_book: OrderBook,
-        sell_exchange: ArbitrageExchangeInterface, 
-        sell_book: OrderBook
+            self,
+            symbol: Symbol,
+            buy_exchange: ArbitrageExchangeInterface,
+            buy_book: OrderBook,
+            sell_exchange: ArbitrageExchangeInterface,
+            sell_book: OrderBook
     ) -> List[SizedOpportunity]:
         """Calculate opportunities for multiple order sizes"""
-        
+
         # Get minimum order amount
         min_info = buy_exchange.get_min_order_info(symbol)
         base_amount = min_info.min_quote_amount / buy_book.asks[0].price
-        
+
         opportunities = []
-        
+
         for multiplier in self.size_multipliers:
             order_amount = base_amount * multiplier
-            
+
             # Calculate execution prices
             buy_price = buy_exchange.calculate_execution_price(
                 symbol, Side.BUY, order_amount
             )
             sell_price = sell_exchange.calculate_execution_price(
-                symbol, Side.SELL, order_amount  
+                symbol, Side.SELL, order_amount
             )
-            
+
             if buy_price <= 0 or sell_price <= 0:
                 continue
-            
+
             # Calculate profits
             quote_amount = buy_price * order_amount
             gross_profit = (sell_price - buy_price) * order_amount
-            
+
             # Calculate fees (exchange-specific)
             buy_fee = self._calculate_fee(buy_exchange.exchange, 'taker', quote_amount)
             sell_fee = self._calculate_fee(sell_exchange.exchange, 'taker', quote_amount)
-            
+
             net_profit = gross_profit - buy_fee - sell_fee
             spread_pct = (gross_profit / quote_amount) * 100
-            
+
             if net_profit > 0:
                 opportunity = SizedOpportunity(
                     symbol=symbol,
@@ -312,7 +312,7 @@ class OpportunityDetector:
                     confidence=self._calculate_confidence(symbol, order_amount, buy_book, sell_book)
                 )
                 opportunities.append(opportunity)
-        
+
         return opportunities
 ```
 
@@ -442,7 +442,7 @@ class MinimalOrderExecutor:
                 reason=f"Insufficient {opportunity.symbol.quote} balance on {opportunity.buy_exchange}"
             )
         
-        # Need base currency on sell exchange
+        # Need cex currency on sell exchange
         sell_balance = await sell_exchange.get_asset_balance(opportunity.symbol.base)
         if not sell_balance or sell_balance.free < opportunity.order_amount:
             return ValidationResult(
@@ -623,7 +623,7 @@ Opportunity ─► Risk Check ─► Validation ─► Simultaneous Orders ─�
 ### Exception Hierarchy (Following CLAUDE.md)
 
 ```python
-# Use existing unified exception system from src/common/exceptions.py
+# Use existing unified exception system from src/common/exchange.py
 
 class ArbitrageExecutionError(ExchangeAPIError):
     """Base exception for arbitrage execution errors"""

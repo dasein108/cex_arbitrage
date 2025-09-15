@@ -1,11 +1,11 @@
 """
 Gate.io Exchange Implementation
 
-High-performance Gate.io integration following unified interface system using composition pattern.
+High-performance Gate.io integration following unified cex system using composition pattern.
 Implements BaseExchangeInterface for seamless arbitrage engine integration.
 
 Architecture:
-- Composition pattern with separate public and private interface implementations
+- Composition pattern with separate public and private cex implementations
 - Delegates public market data operations to GateioPublicExchange
 - Delegates private trading operations to GateioPrivateExchange  
 - Manages WebSocket streaming for real-time data
@@ -31,26 +31,27 @@ from typing import Dict, List, Optional, Set
 from contextlib import asynccontextmanager
 from types import MappingProxyType
 
-from exchanges.interface.base_exchange import BaseExchangeInterface
-from exchanges.interface.structs import (
-    OrderBook, Symbol, SymbolInfo, AssetBalance, AssetName, Order, OrderId, 
-    OrderType, Side, TimeInForce, ExchangeStatus
+from core.cex.composed import BasePrivateExchangeInterface
+from structs.exchange import (
+    OrderBook, Symbol, SymbolInfo, SymbolsInfo, AssetBalance, AssetName, Order, OrderId, 
+    OrderType, Side, TimeInForce, ExchangeStatus, Position
 )
-from typing import Dict as TypingDict  # Avoid conflict with types.Dict
 from exchanges.gateio.ws.gateio_ws_public import GateioWebsocketPublic
-from exchanges.gateio.rest.gateio_private import GateioPrivateExchange
-from exchanges.gateio.rest.gateio_public import GateioPublicExchange
+from exchanges.gateio.rest.gateio_private import GateioPrivateExchangeSpot
+from exchanges.gateio.rest.gateio_public import GateioPublicExchangeSpotRest
 from exchanges.gateio.common.gateio_config import GateioConfig
-from common.ws_client import WebSocketConfig, ConnectionState
-from common.exceptions import ExchangeAPIError
+from core.transport.websocket.ws_client import WebSocketConfig
+from core.cex import ConnectionState
+from core.exceptions.exchange import BaseExchangeError
+from structs.config import ExchangeConfig
 
 
-class GateioExchange(BaseExchangeInterface):
+class GateioExchange(BasePrivateExchangeInterface):
     """
     Gate.io Exchange Implementation using Composition Pattern.
     
     This class follows SOLID principles by composing separate public and private
-    interface implementations rather than inheriting everything directly.
+    cex implementations rather than inheriting everything directly.
     
     Architecture:
     - Delegates public market data operations to GateioPublicExchange
@@ -64,8 +65,18 @@ class GateioExchange(BaseExchangeInterface):
     - Fresh API calls for all trading operations
     """
     
-    def __init__(self, api_key: Optional[str] = None, secret_key: Optional[str] = None):
-        super().__init__('GATEIO', api_key, secret_key)
+    def __init__(self, api_key: Optional[str] = None, secret_key: Optional[str] = None, config: ExchangeConfig = None):
+        # Create config if not provided
+        if config is None:
+            from config import get_exchange_config_struct
+            config = get_exchange_config_struct('GATEIO')
+        
+        # Update config with credentials if provided
+        if api_key and secret_key:
+            config.credentials.api_key = api_key
+            config.credentials.secret_key = secret_key
+            
+        super().__init__(config)
         
         self.logger = logging.getLogger(f"{__name__}.{self.__class__.__name__}")
         
@@ -82,9 +93,9 @@ class GateioExchange(BaseExchangeInterface):
         # Removed: balance caching, order status caching, orderbook persistence
         
         self._ws_client: Optional[GateioWebsocketPublic] = None
-        # Composition: Separate public and private interface implementations
-        self._public_api: Optional[GateioPublicExchange] = None
-        self._private_api: Optional[GateioPrivateExchange] = None
+        # Composition: Separate public and private cex implementations
+        self._public_api: Optional[GateioPublicExchangeSpotRest] = None
+        self._private_api: Optional[GateioPrivateExchangeSpot] = None
         
         self._ws_config = WebSocketConfig(
             name="gateio_orderbooks",
@@ -116,10 +127,23 @@ class GateioExchange(BaseExchangeInterface):
         Get symbol information dictionary.
         
         HFT COMPLIANT: Cached at initialization, no runtime API calls.
-        Implements the src interface abstract property.
+        Implements the src cex abstract property.
         
         Returns:
             Dict[Symbol, SymbolInfo] mapping symbols to symbol information
+        """
+        return self._symbol_info_cache.copy()
+    
+    @property
+    def symbols_info(self) -> SymbolsInfo:
+        """
+        Get symbol information dictionary (cex compliance).
+        
+        HFT COMPLIANT: Cached at initialization, no runtime API calls.
+        Implements BasePublicExchangeInterface abstract property.
+        
+        Returns:
+            SymbolsInfo mapping symbols to symbol information
         """
         return self._symbol_info_cache.copy()
     
@@ -205,8 +229,21 @@ class GateioExchange(BaseExchangeInterface):
     @property
     def open_orders(self) -> Dict[Symbol, List[Order]]:
         """Property required by BaseExchangeInterface - returns empty dict for composition-based design"""
-        # Note: This property exists for interface compliance
+        # Note: This property exists for cex compliance
         # Actual open orders should be accessed via get_open_orders() method
+        return {}
+    
+    async def positions(self) -> Dict[Symbol, Position]:
+        """
+        Get current open positions (for futures).
+        
+        HFT COMPLIANT: Real-time data, no caching.
+        Implements BasePrivateExchangeInterface abstract method.
+        
+        Returns:
+            Dict[Symbol, Position] mapping symbols to positions (empty for spot trading)
+        """
+        # Gate.io Spot Exchange - no futures positions
         return {}
     
     @property
@@ -225,20 +262,20 @@ class GateioExchange(BaseExchangeInterface):
     def get_all_orderbooks(self) -> Dict[Symbol, OrderBook]:
         return MappingProxyType(self._orderbooks)
     
-    async def init(self, symbols: Optional[List[Symbol]] = None) -> None:
+    async def initialize(self, symbols: Optional[List[Symbol]] = None) -> None:
         if self._initialized:
             self.logger.warning("Exchange already initialized")
             return
         
         try:
             # Initialize public API for market data
-            self._public_api = GateioPublicExchange()
-            self.logger.info("Initialized public API interface")
+            self._public_api = GateioPublicExchangeSpotRest()
+            self.logger.info("Initialized public API cex")
             
             # Initialize private API for trading (if credentials provided)
             if self.has_private:
-                self._private_api = GateioPrivateExchange(self.api_key, self.secret_key)
-                self.logger.info("Initialized private API interface")
+                self._private_api = GateioPrivateExchangeSpot(self.api_key, self.secret_key)
+                self.logger.info("Initialized private API cex")
                 
                 # Get initial balance state (HFT compliant - no caching)
                 await self.refresh_balances()
@@ -246,13 +283,13 @@ class GateioExchange(BaseExchangeInterface):
             # Initialize WebSocket through composition pattern
             # WebSocket handles real-time market data streaming
             self._ws_client = GateioWebsocketPublic(
-                config=self._ws_config,
+                websocket_config=self._ws_config,
                 orderbook_handler=self._on_orderbook_update,
                 trades_handler=None
             )
             
-            await self._ws_client.init([])
-            self.logger.info("Started WebSocket streaming interface")
+            await self._ws_client.initialize([])
+            self.logger.info("Started WebSocket streaming cex")
             
             # Load symbol information (HFT compliant - cached at startup)
             await self._load_symbol_info()
@@ -268,11 +305,11 @@ class GateioExchange(BaseExchangeInterface):
         except Exception as e:
             self.logger.error(f"Failed to initialize exchange: {e}")
             await self._cleanup_partial_init()
-            raise ExchangeAPIError(500, f"Exchange initialization failed: {str(e)}")
+            raise BaseExchangeError(500, f"Exchange initialization failed: {str(e)}")
     
     async def add_symbol(self, symbol: Symbol) -> None:
         if not self._initialized:
-            raise ExchangeAPIError(400, "Exchange not initialized. Call init() first.")
+            raise BaseExchangeError(400, "Exchange not initialized. Call init() first.")
         
         if symbol in self._active_symbols:
             self.logger.debug(f"Already subscribed to {symbol}")
@@ -294,7 +331,7 @@ class GateioExchange(BaseExchangeInterface):
             
         except Exception as e:
             self.logger.error(f"Failed to subscribe to {symbol}: {e}")
-            raise ExchangeAPIError(500, f"Symbol subscription failed: {str(e)}")
+            raise BaseExchangeError(500, f"Symbol subscription failed: {str(e)}")
     
     async def remove_symbol(self, symbol: Symbol) -> None:
         if symbol not in self._active_symbols:
@@ -312,11 +349,11 @@ class GateioExchange(BaseExchangeInterface):
             
         except Exception as e:
             self.logger.error(f"Failed to unsubscribe from {symbol}: {e}")
-            raise ExchangeAPIError(500, f"Symbol unsubscription failed: {str(e)}")
+            raise BaseExchangeError(500, f"Symbol unsubscription failed: {str(e)}")
     
     async def refresh_balances(self) -> None:
         if not self.has_private or not self._private_api:
-            raise ExchangeAPIError(400, "Private API access not configured")
+            raise BaseExchangeError(400, "Private API access not configured")
         
         try:
             balance_list = await self._private_api.get_account_balance()
@@ -332,7 +369,7 @@ class GateioExchange(BaseExchangeInterface):
             
         except Exception as e:
             self.logger.error(f"Failed to refresh balances: {e}")
-            raise ExchangeAPIError(500, f"Balance refresh failed: {str(e)}")
+            raise BaseExchangeError(500, f"Balance refresh failed: {str(e)}")
     
     async def get_fresh_balances(self, max_age: float = 30.0) -> Dict[AssetName, AssetBalance]:
         """HFT Policy: Always fetch fresh balance data, no cache checking"""
@@ -348,7 +385,7 @@ class GateioExchange(BaseExchangeInterface):
         time_in_force: TimeInForce = TimeInForce.GTC
     ) -> Order:
         if not self.has_private or not self._private_api:
-            raise ExchangeAPIError(400, "Private API credentials required for trading")
+            raise BaseExchangeError(400, "Private API credentials required for trading")
         
         try:
             order = await self._private_api.place_order(
@@ -379,7 +416,7 @@ class GateioExchange(BaseExchangeInterface):
         quote_amount: Optional[float] = None
     ) -> Order:
         if not self.has_private or not self._private_api:
-            raise ExchangeAPIError(400, "Private API credentials required for trading")
+            raise BaseExchangeError(400, "Private API credentials required for trading")
         
         if side == Side.BUY:
             if amount is None and quote_amount is None:
@@ -418,7 +455,7 @@ class GateioExchange(BaseExchangeInterface):
     
     async def cancel_order(self, symbol: Symbol, order_id: OrderId) -> Order:
         if not self.has_private or not self._private_api:
-            raise ExchangeAPIError(400, "Private API credentials required for trading")
+            raise BaseExchangeError(400, "Private API credentials required for trading")
         
         try:
             order = await self._private_api.cancel_order(symbol, order_id)
@@ -435,7 +472,7 @@ class GateioExchange(BaseExchangeInterface):
     
     async def cancel_all_orders(self, symbol: Symbol) -> List[Order]:
         if not self.has_private or not self._private_api:
-            raise ExchangeAPIError(400, "Private API credentials required for trading")
+            raise BaseExchangeError(400, "Private API credentials required for trading")
         
         try:
             orders = await self._private_api.cancel_all_orders(symbol)
@@ -452,7 +489,7 @@ class GateioExchange(BaseExchangeInterface):
     
     async def get_order_status(self, symbol: Symbol, order_id: OrderId) -> Order:
         if not self.has_private or not self._private_api:
-            raise ExchangeAPIError(400, "Private API credentials required for trading")
+            raise BaseExchangeError(400, "Private API credentials required for trading")
         
         # HFT Policy: Always fetch fresh order status, no caching
         try:
@@ -470,7 +507,7 @@ class GateioExchange(BaseExchangeInterface):
     
     async def get_open_orders(self, symbol: Optional[Symbol] = None) -> List[Order]:
         if not self.has_private or not self._private_api:
-            raise ExchangeAPIError(400, "Private API credentials required for trading")
+            raise BaseExchangeError(400, "Private API credentials required for trading")
         
         try:
             orders = await self._private_api.get_open_orders(symbol)
@@ -494,7 +531,7 @@ class GateioExchange(BaseExchangeInterface):
         new_time_in_force: Optional[TimeInForce] = None
     ) -> Order:
         if not self.has_private or not self._private_api:
-            raise ExchangeAPIError(400, "Private API credentials required for trading")
+            raise BaseExchangeError(400, "Private API credentials required for trading")
         
         try:
             order = await self._private_api.modify_order(
@@ -600,7 +637,7 @@ class GateioExchange(BaseExchangeInterface):
     @asynccontextmanager
     async def session(self, symbols: Optional[List[Symbol]] = None):
         try:
-            await self.init(symbols)
+            await self.initialize(symbols)
             yield self
         finally:
             await self.close()
@@ -648,7 +685,7 @@ class GateioExchange(BaseExchangeInterface):
         Load symbol information from exchange API and cache it.
         
         HFT COMPLIANT: Called once during initialization, cached for lifetime.
-        Uses only src interface types, no raw dependencies.
+        Uses only src cex types, no raw dependencies.
         """
         if not self._public_api:
             self.logger.warning("Cannot load symbol info - public API not available")

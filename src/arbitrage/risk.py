@@ -32,19 +32,18 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from typing import Dict, List, Optional, Set, Callable, Any, Tuple
+from typing import Dict, List, Optional, Callable, Any
 from dataclasses import dataclass
 
 from .structures import (
     ArbitrageOpportunity,
     PositionEntry,
-    RiskLimits,
     ArbitrageConfig,
 )
 
-from exchanges.interface.structs import Symbol
-from exchanges.interface.structs import ExchangeName
-from common.exceptions import RiskManagementError
+from structs.exchange import Symbol
+from structs.exchange import ExchangeName
+from core.exceptions.exchange import RiskManagementError
 
 
 logger = logging.getLogger(__name__)

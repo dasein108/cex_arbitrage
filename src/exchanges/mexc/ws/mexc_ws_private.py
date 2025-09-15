@@ -26,14 +26,14 @@ import asyncio
 import logging
 import time
 import msgspec
-from typing import List, Optional, Callable, Awaitable
-from exchanges.interface.websocket.base_ws import BaseExchangeWebsocketInterface
-from exchanges.interface.structs import Symbol, Order, AssetBalance, Trade, Side, OrderStatus, OrderId
+from typing import List, Optional, Callable, Awaitable, Dict
+from core.cex.websocket import BaseExchangeWebsocketInterface, SubscriptionAction
+from structs.exchange import Symbol, Order, AssetBalance, Trade, Side, OrderStatus, OrderId, AssetName
 from exchanges.mexc.common.mexc_config import MexcConfig
-from exchanges.mexc.rest.mexc_private import MexcPrivateExchange
-from common.ws_client import SubscriptionAction, WebSocketConfig
-from common.exceptions import ExchangeAPIError
-from exchanges.mexc.common.mexc_utils import MexcUtils
+from exchanges.mexc.rest.mexc_private import MexcPrivateSpotRest
+from core.transport.websocket.ws_client import WebSocketConfig
+from core.exceptions.exchange import BaseExchangeError
+from exchanges.mexc.common.mexc_mappings import MexcUtils
 
 
 # protobuf
@@ -45,15 +45,15 @@ from exchanges.mexc.protobuf.PrivateOrdersV3Api_pb2 import PrivateOrdersV3Api
 
 
 class MexcWebsocketPrivate(BaseExchangeWebsocketInterface):
-    """MEXC private websocket interface for account data streaming"""
+    """MEXC private websocket cex for account data streaming"""
 
     def __init__(
         self, 
-        private_client: MexcPrivateExchange,
-        config: WebSocketConfig,
+        private_rest_client: MexcPrivateSpotRest,
+        websocket_config: WebSocketConfig,
         # Event handlers for different private stream events
         order_handler: Optional[Callable[[Order], Awaitable[None]]] = None,
-        balance_handler: Optional[Callable[[List[AssetBalance]], Awaitable[None]]] = None,
+        balance_handler: Optional[Callable[[Dict[AssetName, AssetBalance]], Awaitable[None]]] = None,
         trade_handler: Optional[Callable[[Trade], Awaitable[None]]] = None,
         # Keep-alive interval in seconds (MEXC recommends 30 minutes = 1800s)
         keep_alive_interval: int = 1800
@@ -65,19 +65,18 @@ class MexcWebsocketPrivate(BaseExchangeWebsocketInterface):
         
         # Modify config for private endpoint
         private_config =WebSocketConfig(
-            name=MexcConfig.EXCHANGE_NAME + "_private",
+            name=self.exchange+ "_ws_private",
             url=None, # Should use get_connect_url
-            timeout=config.timeout,
-            max_reconnect_attempts=config.max_reconnect_attempts,
-            reconnect_delay=config.reconnect_delay,
-            ping_interval=config.ping_interval,
-            ping_timeout=config.ping_timeout
+            timeout=websocket_config.timeout,
+            max_reconnect_attempts=websocket_config.max_reconnect_attempts,
+            reconnect_delay=websocket_config.reconnect_delay,
+            ping_interval=websocket_config.ping_interval,
+            ping_timeout=websocket_config.ping_timeout
         )
-        super().__init__(MexcConfig.EXCHANGE_NAME, private_config,
-                         get_connect_url=self.get_connect_url)
+        super().__init__(self.exchange, private_config)
         
         self.logger = logging.getLogger(f"{__name__}.{self.__class__.__name__}")
-        self.private_client = private_client
+        self.rest_client = private_rest_client
         
         # Event handlers
         self.order_handler = order_handler
@@ -109,16 +108,7 @@ class MexcWebsocketPrivate(BaseExchangeWebsocketInterface):
         self._PRIVATE_DEALS_PATTERN = b'private.deals'
         self._PRIVATE_ORDERS_PATTERN = b'private.orders'
         
-    async  def get_connect_url(self):
-        """Override connect to set private URL dynamically."""
-        self.logger.info("Creating listen key for private stream authentication")
-        self.listen_key = await self.private_client.create_listen_key()
-        self.logger.info(f"Listen key created: {self.listen_key[:8]}...")
-
-        return MexcConfig.get_websocket_url() + f"?listenKey={self.listen_key}"
-
-
-    async def init(self, symbols: List[Symbol] = None):
+    async def initialize(self, symbols: List[Symbol] = None):
         """
         Initialize private WebSocket connection with listen key management.
         
@@ -126,12 +116,10 @@ class MexcWebsocketPrivate(BaseExchangeWebsocketInterface):
         for authentication and receive ALL account events.
         """
         try:
-            # Step 1: Listen key is created in get_connect_url() before connection
-            
-            # Step 2: Start WebSocket connection (this calls get_connect_url())
+            # Step 1: Start WebSocket connection
             await self.ws_client.start()
             
-            # Step 3: Subscribe to private stream using listen key
+            # Step 2: Subscribe to private stream using listen key
             private_streams = ["spot@private.account.v3.api.pb",
                                "spot@private.deals.v3.api.pb",
                               "spot@private.orders.v3.api.pb"]
@@ -139,14 +127,14 @@ class MexcWebsocketPrivate(BaseExchangeWebsocketInterface):
             await self.ws_client.subscribe(private_streams)
                 # self.logger.info(f"Subscribed to private stream with listen key: {self.listen_key[:8]}...")
             
-            # Step 4: Start keep-alive task to prevent listen key expiration
+            # Step 3: Start keep-alive task to prevent listen key expiration
             self.keep_alive_task = asyncio.create_task(self._keep_alive_loop())
             self.logger.info("Private WebSocket initialized with listen key authentication")
             
         except Exception as e:
             self.logger.error(f"Failed to initialize private WebSocket: {e}")
             await self._cleanup_listen_key()
-            raise ExchangeAPIError(500, f"Private WebSocket initialization failed: {e}")
+            raise BaseExchangeError(500, f"Private WebSocket initialization failed: {e}")
 
     def _create_subscriptions(self, symbol: Symbol, action: SubscriptionAction) -> List[str]:
         """
@@ -167,7 +155,7 @@ class MexcWebsocketPrivate(BaseExchangeWebsocketInterface):
         """Private streams don't support per-symbol stop - all account events are received."""
         self.logger.debug(f"Private streams receive all account events - cannot stop individual symbol {symbol}")
 
-    async def stop(self):
+    async def close(self):
         """Stop private WebSocket and cleanup listen key."""
         self.logger.info("Stopping private WebSocket connection")
         
@@ -182,7 +170,7 @@ class MexcWebsocketPrivate(BaseExchangeWebsocketInterface):
         # Cleanup listen key
         await self._cleanup_listen_key()
         
-        # Stop base WebSocket
+        # Stop cex WebSocket
         if hasattr(self.ws_client, 'stop'):
             await self.ws_client.stop()
         
@@ -198,7 +186,7 @@ class MexcWebsocketPrivate(BaseExchangeWebsocketInterface):
                 
                 if self.listen_key:
                     try:
-                        await self.private_client.keep_alive_listen_key(self.listen_key)
+                        await self.rest_client.keep_alive_listen_key(self.listen_key)
                         self.logger.debug(f"Listen key kept alive: {self.listen_key[:8]}...")
                     except Exception as e:
                         self.logger.error(f"Failed to keep listen key alive: {e}")
@@ -219,12 +207,12 @@ class MexcWebsocketPrivate(BaseExchangeWebsocketInterface):
             # Clean up old listen key
             if self.listen_key:
                 try:
-                    await self.private_client.delete_listen_key(self.listen_key)
+                    await self.rest_client.delete_listen_key(self.listen_key)
                 except:
                     pass  # Ignore errors - key might already be invalid
             
             # Create new listen key
-            self.listen_key = await self.private_client.create_listen_key()
+            self.listen_key = await self.rest_client.create_listen_key()
             self.logger.info(f"New listen key created: {self.listen_key[:8]}...")
             
             # Resubscribe with new listen key
@@ -232,13 +220,13 @@ class MexcWebsocketPrivate(BaseExchangeWebsocketInterface):
             
         except Exception as e:
             self.logger.error(f"Failed to regenerate listen key: {e}")
-            raise ExchangeAPIError(500, f"Listen key regeneration failed: {e}")
+            raise BaseExchangeError(500, f"Listen key regeneration failed: {e}")
 
     async def _cleanup_listen_key(self):
         """Clean up listen key on disconnect."""
         if self.listen_key:
             try:
-                await self.private_client.delete_listen_key(self.listen_key)
+                await self.rest_client.delete_listen_key(self.listen_key)
                 self.logger.info(f"Listen key deleted: {self.listen_key[:8]}...")
             except Exception as e:
                 self.logger.warning(f"Failed to delete listen key: {e}")
@@ -368,7 +356,7 @@ class MexcWebsocketPrivate(BaseExchangeWebsocketInterface):
             
             # HFT optimization: Removed logging from hot path (20-100μs saved)
             
-            # Pass as list to maintain interface compatibility
+            # Pass as list to maintain cex compatibility
             balances = [asset_balance]
             
             if self.balance_handler:
@@ -487,7 +475,7 @@ class MexcWebsocketPrivate(BaseExchangeWebsocketInterface):
 
     def _parse_protobuf_order_type_numeric(self, type_num: int):
         """Parse protobuf numeric order type to unified enum."""
-        from exchanges.interface.structs import OrderType
+        from structs.exchange import OrderType
         # Map MEXC protobuf numeric order type values
         type_mapping = {
             1: OrderType.LIMIT,
@@ -502,7 +490,7 @@ class MexcWebsocketPrivate(BaseExchangeWebsocketInterface):
 
     def _parse_protobuf_order_type(self, type_str: str):
         """Parse protobuf order type to unified enum."""
-        from exchanges.interface.structs import OrderType
+        from structs.exchange import OrderType
         type_mapping = {
             'LIMIT': OrderType.LIMIT,
             'MARKET': OrderType.MARKET,
@@ -548,18 +536,19 @@ class MexcWebsocketPrivate(BaseExchangeWebsocketInterface):
         """Handle account balance updates."""
         try:
             # Extract balance changes from outboundAccountPosition
-            balances = []
+            balances = {}
             
             # MEXC sends balance updates in 'B' array
             balance_data = msg.get('B', [])
             
             for balance_item in balance_data:
+                asset_name = balance_item.get('a', '')
                 asset_balance = AssetBalance(
-                    asset=balance_item.get('a', ''),  # Asset name
+                    asset=asset_name,  # Asset name
                     free=float(balance_item.get('f', 0)),  # Free balance
                     locked=float(balance_item.get('l', 0))  # Locked balance
                 )
-                balances.append(asset_balance)
+                balances[asset_name] = asset_balance
             
             if balances:
                 self.logger.debug(f"Balance update: {len(balances)} assets")
@@ -598,7 +587,7 @@ class MexcWebsocketPrivate(BaseExchangeWebsocketInterface):
 
     def _parse_order_type(self, type_str: str):
         """Parse MEXC order type string to unified enum."""
-        from exchanges.interface.structs import OrderType
+        from structs.exchange import OrderType
         type_mapping = {
             'LIMIT': OrderType.LIMIT,
             'MARKET': OrderType.MARKET,
@@ -617,7 +606,6 @@ class MexcWebsocketPrivate(BaseExchangeWebsocketInterface):
             'PARTIALLY_FILLED': OrderStatus.PARTIALLY_FILLED,
             'FILLED': OrderStatus.FILLED,
             'CANCELED': OrderStatus.CANCELED,
-            'PENDING_CANCEL': OrderStatus.PENDING_CANCEL,
             'REJECTED': OrderStatus.REJECTED,
             'EXPIRED': OrderStatus.EXPIRED
         }

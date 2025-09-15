@@ -18,32 +18,27 @@ Compliance: Full PublicExchangeInterface implementation
 Memory: O(1) per request with efficient pooling
 """
 
-import asyncio
 import time
 from datetime import datetime
 from typing import Dict, List, Optional, Any
-from enum import Enum
 from functools import lru_cache
 import logging
 
-# MANDATORY imports - unified interface compliance
-from exchanges.interface.structs import (
+# MANDATORY imports - unified cex compliance
+from structs.exchange import (
     Symbol, SymbolInfo, OrderBook, OrderBookEntry, Trade, Kline,
     ExchangeName, AssetName, Side, KlineInterval
 )
-from common.rest_client import RestClient
-from exchanges.interface.rest.base_rest_public import PublicExchangeInterface
-from exchanges.gateio.common.gateio_utils import GateioUtils
+from core.transport.rest.rest_client import RestClient
+from core.cex.rest import PublicExchangeSpotRestInterface
 from exchanges.gateio.common.gateio_config import GateioConfig
 from exchanges.gateio.common.gateio_mappings import GateioMappings
-
-import msgspec
 
 
 # Note: Using centralized GateioMappings for all interval conversions
 
 
-class GateioPublicFuturesExchange(PublicExchangeInterface):
+class GateioPublicFuturesExchangeSpotRest(PublicExchangeSpotRestInterface):
     """
     Ultra-high-performance Gate.io Futures public exchange implementation.
     
@@ -54,7 +49,7 @@ class GateioPublicFuturesExchange(PublicExchangeInterface):
     - Sub-10ms response time optimization for critical arbitrage paths
     - Zero code duplication with unified exception handling
     
-    Architecture Note: This is a public interface implementation that can be used
+    Architecture Note: This is a public cex implementation that can be used
     directly or composed into the GateioExchange facade for unified access.
     """
     
@@ -105,7 +100,7 @@ class GateioPublicFuturesExchange(PublicExchangeInterface):
         self._endpoint_configs['depth'].timeout = 2.0  # Fast orderbook
         self._endpoint_configs['ticker'].timeout = 3.0  # Market data
         
-        self.logger.info(f"Initialized {self.exchange} futures public interface with RestClient")
+        self.logger.info(f"Initialized {self.exchange_tag} futures public cex with RestClient")
     
     @staticmethod
     @lru_cache(maxsize=2000)
@@ -117,7 +112,7 @@ class GateioPublicFuturesExchange(PublicExchangeInterface):
         Optimized with LRU cache for maximum arbitrage speed.
         
         Args:
-            symbol: Symbol struct with base and quote assets
+            symbol: Symbol struct with cex and quote assets
             
         Returns:
             Gate.io futures contract string (e.g., "BTC_USDT")
@@ -134,7 +129,7 @@ class GateioPublicFuturesExchange(PublicExchangeInterface):
             contract: Gate.io futures contract string (e.g., "BTC_USDT")
             
         Returns:
-            Symbol struct with base and quote assets marked as futures
+            Symbol struct with cex and quote assets marked as futures
         
         Raises:
             ValueError: Invalid contract format (bubbles up via unified exception handling)
@@ -160,7 +155,7 @@ class GateioPublicFuturesExchange(PublicExchangeInterface):
             symbol = self.contract_to_symbol(contract_data.get('name', ''))
             
             return SymbolInfo(
-                exchange=self.exchange,
+                exchange=self.exchange_tag,
                 symbol=symbol,
                 base_precision=contract_data.get('order_price_round', 2),  # Default for Gate.io futures
                 quote_precision=contract_data.get('mark_price_round', 2),
@@ -250,7 +245,7 @@ class GateioPublicFuturesExchange(PublicExchangeInterface):
         Get order book depth for a futures symbol with sub-10ms optimization.
         
         Args:
-            symbol: Symbol struct with base and quote assets
+            symbol: Symbol struct with cex and quote assets
             limit: Order book depth limit (5, 10, 20, 50, 100)
             
         Returns:
@@ -296,7 +291,7 @@ class GateioPublicFuturesExchange(PublicExchangeInterface):
         Get recent trades for a futures symbol with optimized parsing.
         
         Args:
-            symbol: Symbol struct with base and quote assets
+            symbol: Symbol struct with cex and quote assets
             limit: Number of recent trades to return (max 1000)
             
         Returns:
@@ -348,7 +343,7 @@ class GateioPublicFuturesExchange(PublicExchangeInterface):
         Get kline/candlestick data for futures symbol.
         
         Args:
-            symbol: Symbol struct with base and quote assets
+            symbol: Symbol struct with cex and quote assets
             timeframe: Kline interval (standard KlineInterval enum)
             date_from: Start datetime (optional)
             date_to: End datetime (optional)
@@ -363,7 +358,7 @@ class GateioPublicFuturesExchange(PublicExchangeInterface):
         params = {
             'contract': contract,
             'interval': gateio_interval,
-            'limit': 500  # Default limit for interface compliance
+            'limit': 500  # Default limit for cex compliance
         }
         
         # Convert datetime to timestamp if provided
@@ -427,10 +422,10 @@ class GateioPublicFuturesExchange(PublicExchangeInterface):
     async def get_klines_batch(self, symbol: Symbol, timeframe: KlineInterval,
                          date_from: Optional[datetime], date_to: Optional[datetime]) -> List[Kline]:
         """
-        Get kline data for a single symbol (batch interface compliance).
+        Get kline data for a single symbol (batch cex compliance).
         
         Args:
-            symbol: Symbol struct with base and quote assets
+            symbol: Symbol struct with cex and quote assets
             timeframe: Kline interval (standard KlineInterval enum)
             date_from: Start datetime (optional)
             date_to: End datetime (optional)
@@ -474,7 +469,7 @@ class GateioPublicFuturesExchange(PublicExchangeInterface):
         Get futures ticker data for a symbol.
         
         Args:
-            symbol: Symbol struct with base and quote assets
+            symbol: Symbol struct with cex and quote assets
             
         Returns:
             Dictionary containing ticker information
@@ -513,7 +508,7 @@ class GateioPublicFuturesExchange(PublicExchangeInterface):
         Get current funding rate for a futures symbol.
         
         Args:
-            symbol: Symbol struct with base and quote assets
+            symbol: Symbol struct with cex and quote assets
             
         Returns:
             Dictionary containing funding rate information
@@ -612,10 +607,10 @@ class GateioPublicFuturesExchange(PublicExchangeInterface):
         )
         
         return {
-            'exchange': str(self.exchange),
+            'exchange': str(self.exchange_tag),
             'base_url': self.base_url,
             'http_client': 'RestClient',
-            'architecture': 'public-interface-inheritance',
+            'architecture': 'public-cex-inheritance',
             'total_requests': self._request_count,
             'average_response_time_ms': round(avg_response_time, 2),
             'performance_target_met': avg_response_time < 10.0,  # Sub-10ms target
@@ -633,7 +628,7 @@ class GateioPublicFuturesExchange(PublicExchangeInterface):
         if hasattr(self, '_rest_client'):
             await self._rest_client.close()
         
-        self.logger.info(f"Closed {self.exchange} futures public interface")
+        self.logger.info(f"Closed {self.exchange_tag} futures public cex")
     
     async def __aenter__(self):
         """Async context manager entry."""
@@ -645,21 +640,21 @@ class GateioPublicFuturesExchange(PublicExchangeInterface):
 
 
 # Factory function for optimized client creation
-async def create_gateio_futures_client(**kwargs) -> GateioPublicFuturesExchange:
+async def create_gateio_futures_client(**kwargs) -> GateioPublicFuturesExchangeSpotRest:
     """
     Create a Gate.io futures public client with optimized configuration.
     
     Returns:
         Configured GateioPublicFuturesExchange instance
     """
-    return GateioPublicFuturesExchange(**kwargs)
+    return GateioPublicFuturesExchangeSpotRest(**kwargs)
 
 
 # Performance monitoring utility with enhanced metrics
 class GateioFuturesPerformanceMonitor:
     """Enhanced performance monitor for Gate.io futures implementation."""
     
-    def __init__(self, client: GateioPublicFuturesExchange):
+    def __init__(self, client: GateioPublicFuturesExchangeSpotRest):
         self.client = client
         self.start_time = time.time()
     

@@ -9,7 +9,7 @@ Key Features:
 - Trade stream processing with minimal latency
 - HFT-optimized object pooling for reduced allocations
 - JSON-based message parsing (simpler than MEXC protobuf)
-- Unified interface compliance
+- Unified cex compliance
 
 Gate.io WebSocket Specifications:
 - URL: wss://api.gateio.ws/ws/v4/
@@ -28,13 +28,14 @@ import json
 from collections import deque
 from typing import List, Dict, Optional, Callable, Awaitable, Any
 
-from exchanges.interface.websocket.base_ws import BaseExchangeWebsocketInterface
-from exchanges.interface.structs import Symbol, Trade, OrderBook, OrderBookEntry, Side
+from core.cex.websocket import BaseExchangeWebsocketInterface
+from structs.exchange import Symbol, Trade, OrderBook, OrderBookEntry
 from exchanges.gateio.common.gateio_config import GateioConfig
 from exchanges.gateio.common.gateio_utils import GateioUtils
 from exchanges.gateio.common.gateio_mappings import GateioMappings
-from common.ws_client import SubscriptionAction, WebSocketConfig
-from common.exceptions import ExchangeAPIError
+from core.cex.websocket.structs import SubscriptionAction
+
+from core.transport.websocket.ws_client import WebSocketConfig
 
 
 class OrderBookEntryPool:
@@ -84,15 +85,15 @@ class OrderBookEntryPool:
 
 
 class GateioWebsocketPublic(BaseExchangeWebsocketInterface):
-    """Gate.io public websocket interface for market data streaming"""
+    """Gate.io public websocket cex for market data streaming"""
 
     def __init__(
         self, 
-        config: WebSocketConfig,
+        websocket_config: WebSocketConfig,
         orderbook_handler: Optional[Callable[[Symbol, OrderBook], Awaitable[None]]] = None,
         trades_handler: Optional[Callable[[Symbol, List[Trade]], Awaitable[None]]] = None
     ):
-        super().__init__(GateioConfig.EXCHANGE_NAME, config)
+        super().__init__(GateioConfig.EXCHANGE_NAME, websocket_config)
         self.logger = logging.getLogger(f"{__name__}.{self.__class__.__name__}")
         self.orderbook_handler = orderbook_handler
         self.trades_handler = trades_handler
@@ -111,7 +112,7 @@ class GateioWebsocketPublic(BaseExchangeWebsocketInterface):
             'parse_errors': 0
         }
 
-    async def init(self, symbols: List[Symbol]):
+    async def initialize(self, symbols: List[Symbol]):
         """Initialize the websocket connection using Gate.io specific approach."""
         self.symbols = symbols
         await self.ws_client.start()

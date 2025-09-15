@@ -226,73 +226,81 @@ src/exchanges/{exchange_name}/
 ### Required Interface Implementations
 
 #### 1. Unified Exchange Interface
+
 ```python
 # src/exchanges/{exchange}/exchange_exchange.py
-from exchanges.interface.base_exchange import BaseExchangeInterface
+from core.cex.composed import BaseExchangeInterface
+
 
 class ExchangeExchange(BaseExchangeInterface):
-    """High-level unified interface for Exchange"""
-    
+    """High-level unified cex for Exchange"""
+
     def __init__(self, api_key: Optional[str] = None, secret_key: Optional[str] = None):
         self.exchange = ExchangeName("EXCHANGE")
         self._rest_public = ExchangePublicExchange()
         self._rest_private = ExchangePrivateExchange(api_key, secret_key) if api_key else None
         self._ws_public = ExchangeWebSocketPublic(self.exchange)
-        
+
     # Implement all BaseExchangeInterface methods
 ```
 
 #### 2. Public REST Interface
+
 ```python
 # src/exchanges/{exchange}/rest/{exchange}_public.py
-from exchanges.interface.rest.base_rest_public import PublicExchangeInterface
+from core.cex.rest import PublicExchangeSpotRestInterface
 
-class ExchangePublicExchange(PublicExchangeInterface):
+
+class ExchangePublicExchange(PublicExchangeSpotRestInterface):
     """Public market data operations for Exchange"""
-    
+
     def __init__(self):
         self.rest_client = RestClient(ExchangeConfig.REST_CONFIG_PUBLIC)
-        
+
     async def get_exchange_info(self) -> Dict[Symbol, SymbolInfo]:
         # Implement exchange-specific logic
         pass
-        
+
     async def get_orderbook(self, symbol: Symbol, limit: int = 100) -> OrderBook:
         # Implement exchange-specific logic  
         pass
 ```
 
 #### 3. Private REST Interface
+
 ```python
 # src/exchanges/{exchange}/rest/{exchange}_private.py  
-from exchanges.interface.rest.base_rest_private import PrivateExchangeInterface
+from core.cex.rest.spot.base_rest_spot_private import PrivateExchangeSpotRestInterface
 
-class ExchangePrivateExchange(PrivateExchangeInterface):
+
+class ExchangePrivateExchange(PrivateExchangeSpotRestInterface):
     """Private trading operations for Exchange"""
-    
+
     def __init__(self, api_key: str, secret_key: str):
         self.api_key = api_key
         self.secret_key = secret_key
         self.rest_client = RestClient(ExchangeConfig.REST_CONFIG_PRIVATE)
-        
-    async def place_order(self, symbol: Symbol, side: Side, order_type: OrderType, 
-                         amount: float, price: Optional[float] = None, **kwargs) -> Order:
+
+    async def place_order(self, symbol: Symbol, side: Side, order_type: OrderType,
+                          amount: float, price: Optional[float] = None, **kwargs) -> Order:
         # Implement exchange-specific logic
         pass
 ```
 
 #### 4. WebSocket Implementation
+
 ```python
 # src/exchanges/{exchange}/ws/{exchange}_ws_public.py
-from exchanges.interface.websocket.base_ws import BaseExchangeWebsocketInterface
+from core.cex.websocket import BaseExchangeWebsocketInterface
+
 
 class ExchangeWebSocketPublic(BaseExchangeWebsocketInterface):
     """Public WebSocket streams for Exchange"""
-    
+
     def _create_subscriptions(self, symbol: Symbol, action: SubscriptionAction) -> List[str]:
         symbol_str = self._format_symbol_for_ws(symbol)
         return [f"orderbook@{symbol_str}", f"trades@{symbol_str}"]
-        
+
     async def _on_message(self, message: Dict[str, Any]):
         # Handle exchange-specific messages
         pass
@@ -531,35 +539,42 @@ class ExchangeWebSocketPublic(BaseExchangeWebsocketInterface):
 ### Phase 3: Testing and Validation (3-4 hours)
 
 #### 3.1 Unit Testing
+
 ```python
 # tests/test_{exchange}_integration.py
 import pytest
-from exchanges.{exchange}.{exchange}_exchange import ExchangeExchange
+from exchanges.
+
+{exchange}.
+{exchange}
+_exchange
+import ExchangeExchange
+
 
 class TestExchangeIntegration:
-    
+
     @pytest.fixture
     async def exchange(self):
         exchange = ExchangeExchange()
-        await exchange.init()
+        await exchange.initialize()
         yield exchange
         await exchange.close()
-    
+
     async def test_public_interface_compliance(self, exchange):
-        """Test public interface implementation"""
+        """Test public cex implementation"""
         assert isinstance(exchange, PublicExchangeInterface)
-        
+
         # Test orderbook
         orderbook = await exchange.get_orderbook(test_symbol)
         assert isinstance(orderbook, OrderBook)
         assert len(orderbook.bids) > 0
         assert len(orderbook.asks) > 0
-        
+
     async def test_private_interface_compliance(self, exchange):
-        """Test private interface implementation (requires API keys)"""
+        """Test private cex implementation (requires API keys)"""
         if not exchange._rest_private:
             pytest.skip("No API keys configured")
-            
+
         balances = await exchange.get_account_balance()
         assert isinstance(balances, list)
         assert all(isinstance(b, AssetBalance) for b in balances)
@@ -636,21 +651,23 @@ async def test_end_to_end_integration():
 ### Mandatory Requirements
 
 #### 1. Exception Handling
+
 ```python
 # NEVER use generic exceptions
 # ALWAYS map to unified exception hierarchy
-from common.exceptions import ExchangeAPIError, RateLimitError, TradingDisabled
+from core.exceptions.exchange import BaseExchangeError, RateLimitErrorBase, TradingDisabled
+
 
 def _handle_exchange_error(self, error):
     """Map exchange errors to unified exceptions"""
     if hasattr(error, 'status_code'):
         if error.status_code == 429:
-            return RateLimitError(429, error.message, 
-                                retry_after=error.headers.get('Retry-After', 60))
+            return RateLimitErrorBase(429, error.message,
+                                      retry_after=error.headers.get('Retry-After', 60))
         elif error.status_code == 418:  # Trading disabled
             return TradingDisabled(418, "Trading temporarily disabled")
-    
-    return ExchangeAPIError(error.status_code or 500, f"Exchange error: {error}")
+
+    return BaseExchangeError(error.status_code or 500, f"Exchange error: {error}")
 ```
 
 #### 2. Performance Requirements
@@ -682,10 +699,11 @@ async def place_order(
 ```
 
 #### 4. Data Structure Compliance
+
 ```python
-# ONLY use unified structs from src/exchanges/interface/structs.py
-from exchanges.interface.structs import (
-    Symbol, OrderBook, OrderBookEntry, Order, AssetBalance, 
+# ONLY use unified structs from src/exchanges/cex/exchange.py
+from structs import (
+    Symbol, OrderBook, OrderBookEntry, Order, AssetBalance,
     Side, OrderType, OrderStatus, TimeInForce
 )
 
@@ -745,7 +763,7 @@ class PrivateExchangeInterface(ABC):
     """Only private operations"""
     async def place_order(self, symbol: Symbol, ...) -> Order: pass
 
-# ❌ INCORRECT: Fat interface
+# ❌ INCORRECT: Fat cex
 class ExchangeInterface(ABC):
     async def get_orderbook(self, symbol: Symbol) -> OrderBook: pass  # Public
     async def place_order(self, symbol: Symbol, ...) -> Order: pass    # Private
@@ -892,12 +910,14 @@ class ExchangeSymbolConverter:
 ```
 
 #### Solution: Unified Rate Limit Handler
+
 ```python
-from common.rest_client import RestClient, RestConfig
+from core.transport.rest.rest_client import RestClient, RestConfig
+
 
 class ExchangeRateLimitConfig:
     """Exchange-specific rate limit configuration"""
-    
+
     RATE_LIMITS = {
         'public_endpoints': RestConfig(
             rate_limit_per_second=20,
@@ -906,7 +926,7 @@ class ExchangeRateLimitConfig:
         ),
         'private_endpoints': RestConfig(
             rate_limit_per_second=10,
-            timeout=6.0,  
+            timeout=6.0,
             require_auth=True
         ),
         'order_endpoints': RestConfig(
@@ -915,6 +935,7 @@ class ExchangeRateLimitConfig:
             require_auth=True
         )
     }
+
 
 # Usage in implementation
 class ExchangePrivateExchange(PrivateExchangeInterface):
@@ -935,12 +956,14 @@ class ExchangePrivateExchange(PrivateExchangeInterface):
 ```
 
 #### Solution: Standardized WebSocket Manager
+
 ```python
-from common.ws_client import WebsocketClient, WebSocketConfig
+from core.transport.websocket.ws_client import WebsocketClient, WebSocketConfig
+
 
 class ExchangeWebSocketManager:
     """Standardized WebSocket connection management"""
-    
+
     def __init__(self, exchange_name: ExchangeName):
         self.config = WebSocketConfig(
             url=self._get_websocket_url(),
@@ -954,12 +977,12 @@ class ExchangeWebSocketManager:
             message_handler=self._on_message,
             error_handler=self._on_error
         )
-    
+
     def _get_websocket_url(self) -> str:
         """Get exchange-specific WebSocket URL"""
         # Some exchanges require dynamic URL generation
         return f"wss://stream.{self.exchange_name.lower()}.com/ws"
-    
+
     async def subscribe_to_streams(self, streams: List[str]):
         """Handle exchange-specific subscription format"""
         if self.exchange_name == "BINANCE":
@@ -975,7 +998,7 @@ class ExchangeWebSocketManager:
                 "type": "subscribe",
                 "channels": streams
             }
-        
+
         await self.ws_client.send(msgspec.json.encode(message))
 ```
 
@@ -1066,11 +1089,11 @@ class TestExchangeCompliance:
     """Comprehensive compliance testing"""
     
     async def test_interface_compliance(self):
-        """Test all interface methods are implemented"""
-        # Public interface compliance
+        """Test all cex methods are implemented"""
+        # Public cex compliance
         assert isinstance(exchange, PublicExchangeInterface)
         
-        # Private interface compliance (if applicable)
+        # Private cex compliance (if applicable)
         if hasattr(exchange, '_rest_private') and exchange._rest_private:
             assert isinstance(exchange, PrivateExchangeInterface)
     
@@ -1284,32 +1307,34 @@ class MexcUtils:
 ```
 
 #### 4. Production-Grade Context Manager
+
 ```python
 class MexcExchange(BaseExchangeInterface):
-    """Production-ready unified interface with proper resource management"""
-    
+    """Production-ready unified cex with proper resource management"""
+
     async def session(self, symbols: Optional[List[Symbol]] = None) -> 'MexcExchange':
         """Context manager for proper resource cleanup"""
         return MexcExchangeSession(self, symbols or [])
 
+
 class MexcExchangeSession:
     """Ensures proper cleanup and error handling"""
-    
+
     async def __aenter__(self) -> MexcExchange:
         try:
-            await self.exchange.init(self.symbols)
+            await self.exchange.initialize(self.symbols)
             return self.exchange
         except Exception as e:
             await self._cleanup_partial_init()
             raise
-    
+
     async def __aexit__(self, exc_type, exc_val, exc_tb):
         await self.exchange.close()
-    
+
     async def _cleanup_partial_init(self):
         """Clean up resources during failed initialization"""
-        if self.exchange._ws_client:
-            await self.exchange._ws_client.ws_client.stop()
+        if self.exchange._ws_public:
+            await self.exchange._ws_public.ws_client.stop()
         if self.exchange._rest_private:
             await self.exchange._rest_private.close()
 ```
@@ -1399,17 +1424,19 @@ touch src/exchanges/{exchange_name}/ws/__init__.py
 ```
 
 #### Configuration Template
+
 ```python
 # src/exchanges/{exchange_name}/common/{exchange_name}_config.py
-from common.rest_client import RestConfig
+from core.transport.rest.rest_client import RestConfig
+
 
 class ExchangeConfig:
     """Exchange configuration and endpoints"""
-    
+
     EXCHANGE_NAME = "EXCHANGE"
     BASE_URL = "https://api.exchange.com"
     WEBSOCKET_URL = "wss://stream.exchange.com/ws"
-    
+
     # REST endpoint configurations  
     ENDPOINTS = {
         # Public endpoints
@@ -1419,7 +1446,7 @@ class ExchangeConfig:
         'ticker_24h': '/api/v3/ticker/24hr',
         'server_time': '/api/v3/time',
         'ping': '/api/v3/ping',
-        
+
         # Private endpoints
         'account': '/api/v3/account',
         'balance': '/api/v3/account',
@@ -1429,7 +1456,7 @@ class ExchangeConfig:
         'order_status': '/api/v3/order',
         'all_orders': '/api/v3/allOrders'
     }
-    
+
     # Optimized REST configurations for different operation types
     REST_CONFIGS = {
         'public_fast': RestConfig(
@@ -1457,7 +1484,7 @@ class ExchangeConfig:
             rate_limit_per_second=10
         )
     }
-    
+
     # Exchange-specific limits and parameters
     LIMITS = {
         'orderbook_max_limit': 5000,
@@ -1467,24 +1494,26 @@ class ExchangeConfig:
 ```
 
 #### Utilities Template
+
 ```python
 # src/exchanges/{exchange_name}/common/{exchange_name}_utils.py
 from typing import Dict
-from exchanges.interface.structs import Symbol, AssetName
+from structs import Symbol, AssetName
+
 
 class ExchangeUtils:
     """High-performance utility functions with caching"""
-    
+
     # Performance caches for HFT hot paths
     _symbol_to_pair_cache: Dict[Symbol, str] = {}
     _pair_to_symbol_cache: Dict[str, Symbol] = {}
-    
+
     @staticmethod
     def symbol_to_pair(symbol: Symbol) -> str:
         """Convert unified Symbol to exchange pair format"""
         if symbol in ExchangeUtils._symbol_to_pair_cache:
             return ExchangeUtils._symbol_to_pair_cache[symbol]
-        
+
         # Exchange-specific format (customize based on exchange)
         # Common formats:
         # - Binance: "BTCUSDT"
@@ -1492,50 +1521,51 @@ class ExchangeUtils:
         # - Kraken: "XXBTZUSD"
         # - Bitfinex: "tBTCUSD"
         pair = f"{symbol.base}{symbol.quote}"  # Default format
-        
+
         ExchangeUtils._symbol_to_pair_cache[symbol] = pair
         return pair
-    
+
     @staticmethod
     def pair_to_symbol(pair: str) -> Symbol:
         """Convert exchange pair to unified Symbol"""
         if pair in ExchangeUtils._pair_to_symbol_cache:
             return ExchangeUtils._pair_to_symbol_cache[pair]
-        
+
         symbol = ExchangeUtils._parse_pair(pair)
         ExchangeUtils._pair_to_symbol_cache[pair] = symbol
         return symbol
-    
+
     @staticmethod
     def _parse_pair(pair: str) -> Symbol:
         """Parse exchange-specific pair format"""
         # Implement exchange-specific parsing logic
         # This is the most exchange-specific part - customize heavily
-        
+
         # Example for standard format like "BTCUSDT"
         if len(pair) >= 6:
-            # Try common base assets first for better parsing
+            # Try common cex assets first for better parsing
             for base_len in [3, 4, 5]:  # BTC, USDT, USDC lengths
                 if base_len < len(pair):
                     base = pair[:base_len]
                     quote = pair[base_len:]
                     if base in COMMON_BASE_ASSETS and quote in COMMON_QUOTE_ASSETS:
                         return Symbol(base=AssetName(base), quote=AssetName(quote))
-        
+
         # Fallback parsing logic
         raise ValueError(f"Unable to parse pair: {pair}")
-    
+
     @staticmethod
     def format_price(price: float, symbol: Symbol) -> str:
         """Format price according to exchange precision requirements"""
         # Customize based on exchange precision rules
         return f"{price:.8f}".rstrip('0').rstrip('.')
-    
+
     @staticmethod
     def format_quantity(quantity: float, symbol: Symbol) -> str:
-        """Format quantity according to exchange precision requirements"""  
+        """Format quantity according to exchange precision requirements"""
         # Customize based on exchange precision rules
         return f"{quantity:.8f}".rstrip('0').rstrip('.')
+
 
 # Common assets for parsing optimization
 COMMON_BASE_ASSETS = {"BTC", "ETH", "BNB", "ADA", "DOT", "LINK", "LTC", "XRP"}
@@ -1543,13 +1573,15 @@ COMMON_QUOTE_ASSETS = {"USDT", "BUSD", "BTC", "ETH", "USD", "EUR", "USDC"}
 ```
 
 #### Mappings Template
+
 ```python
 # src/exchanges/{exchange_name}/common/{exchange_name}_mappings.py
-from exchanges.interface.structs import Side, OrderType, OrderStatus, TimeInForce
+from structs import Side, OrderType, OrderStatus, TimeInForce
+
 
 class ExchangeMappings:
     """Bi-directional mappings between exchange and unified formats"""
-    
+
     # Side mappings (customize based on exchange)
     EXCHANGE_SIDE_TO_UNIFIED = {
         "BUY": Side.BUY,
@@ -1558,7 +1590,7 @@ class ExchangeMappings:
         "bid": Side.BUY,
         "ask": Side.SELL,
     }
-    
+
     # Order type mappings (customize based on exchange)
     EXCHANGE_ORDER_TYPE_TO_UNIFIED = {
         "LIMIT": OrderType.LIMIT,
@@ -1571,7 +1603,7 @@ class ExchangeMappings:
         "IOC": OrderType.IMMEDIATE_OR_CANCEL,
         "FOK": OrderType.FILL_OR_KILL,
     }
-    
+
     # Order status mappings (customize based on exchange)
     EXCHANGE_ORDER_STATUS_TO_UNIFIED = {
         "NEW": OrderStatus.NEW,
@@ -1582,40 +1614,41 @@ class ExchangeMappings:
         "REJECTED": OrderStatus.REJECTED,
         "EXPIRED": OrderStatus.EXPIRED,
     }
-    
+
     # Time in force mappings
     EXCHANGE_TIME_IN_FORCE_TO_UNIFIED = {
         "GTC": TimeInForce.GTC,
-        "IOC": TimeInForce.IOC, 
+        "IOC": TimeInForce.IOC,
         "FOK": TimeInForce.FOK,
         "GTD": TimeInForce.GTD,
     }
-    
+
     # Reverse mappings for order placement
     UNIFIED_SIDE_TO_EXCHANGE = {v: k for k, v in EXCHANGE_SIDE_TO_UNIFIED.items() if k.upper() in ["BUY", "SELL"]}
-    UNIFIED_ORDER_TYPE_TO_EXCHANGE = {v: k for k, v in EXCHANGE_ORDER_TYPE_TO_UNIFIED.items() if k in ["LIMIT", "MARKET"]}
+    UNIFIED_ORDER_TYPE_TO_EXCHANGE = {v: k for k, v in EXCHANGE_ORDER_TYPE_TO_UNIFIED.items() if
+                                      k in ["LIMIT", "MARKET"]}
     UNIFIED_TIME_IN_FORCE_TO_EXCHANGE = {v: k for k, v in EXCHANGE_TIME_IN_FORCE_TO_UNIFIED.items()}
-    
+
     @staticmethod
     def get_unified_side(exchange_side: str) -> Side:
         """Convert exchange side to unified Side enum"""
         return ExchangeMappings.EXCHANGE_SIDE_TO_UNIFIED.get(exchange_side.upper(), Side.BUY)
-    
+
     @staticmethod
     def get_exchange_side(unified_side: Side) -> str:
         """Convert unified Side to exchange format"""
         return ExchangeMappings.UNIFIED_SIDE_TO_EXCHANGE.get(unified_side, "BUY")
-    
+
     @staticmethod
     def get_unified_order_type(exchange_type: str) -> OrderType:
         """Convert exchange order type to unified OrderType enum"""
         return ExchangeMappings.EXCHANGE_ORDER_TYPE_TO_UNIFIED.get(exchange_type.upper(), OrderType.LIMIT)
-    
+
     @staticmethod
     def get_exchange_order_type(unified_type: OrderType) -> str:
         """Convert unified OrderType to exchange format"""
         return ExchangeMappings.UNIFIED_ORDER_TYPE_TO_EXCHANGE.get(unified_type, "LIMIT")
-    
+
     @staticmethod
     def get_unified_order_status(exchange_status: str) -> OrderStatus:
         """Convert exchange order status to unified OrderStatus enum"""
@@ -1623,22 +1656,33 @@ class ExchangeMappings:
 ```
 
 #### Public REST Implementation Template
+
 ```python
 # src/exchanges/{exchange_name}/rest/{exchange_name}_public.py
 import msgspec
 from typing import Dict, List, Optional
-from exchanges.interface.rest.base_rest_public import PublicExchangeInterface
-from exchanges.interface.structs import Symbol, SymbolInfo, OrderBook, OrderBookEntry, Trade, Side
-from common.rest_client import RestClient
-from .common.{exchange_name}_config import ExchangeConfig
-from .common.{exchange_name}_utils import ExchangeUtils
+from core.cex.rest import PublicExchangeSpotRestInterface
+from structs import Symbol, SymbolInfo, OrderBook, OrderBookEntry, Trade, Side
+from core.transport.rest.rest_client import RestClient
+from .common.
+
+{exchange_name}
+_config
+import ExchangeConfig
+from .common.
+
+{exchange_name}
+_utils
+import ExchangeUtils
+
 
 # Exchange-specific response structures (customize based on API)
 class ExchangeOrderBookResponse(msgspec.Struct):
     bids: List[List[str]]  # [["price", "quantity"], ...]
     asks: List[List[str]]
     lastUpdateId: int
-    
+
+
 class ExchangeTradeResponse(msgspec.Struct):
     id: int
     price: str
@@ -1646,6 +1690,7 @@ class ExchangeTradeResponse(msgspec.Struct):
     quoteQty: str
     time: int
     isBuyerMaker: bool
+
 
 class ExchangeSymbolInfo(msgspec.Struct):
     symbol: str
@@ -1656,36 +1701,37 @@ class ExchangeSymbolInfo(msgspec.Struct):
     quotePrecision: int
     # Add other exchange-specific fields
 
-class ExchangePublic(PublicExchangeInterface):
+
+class ExchangePublic(PublicExchangeSpotRestInterface):
     """Public market data operations for Exchange"""
-    
+
     def __init__(self):
         self.rest_client = RestClient(ExchangeConfig.REST_CONFIGS['public_standard'])
         self._exchange_info_cache: Optional[Dict[Symbol, SymbolInfo]] = None
         self._cache_timestamp = 0.0
-        
+
     async def get_exchange_info(self) -> Dict[Symbol, SymbolInfo]:
         """Get trading rules and symbol information (cached)"""
         current_time = time.time()
-        
+
         # Cache for 5 minutes (static configuration data - safe to cache)
-        if (self._exchange_info_cache is None or 
-            current_time - self._cache_timestamp > 300):
-            
+        if (self._exchange_info_cache is None or
+                current_time - self._cache_timestamp > 300):
+
             response = await self.rest_client.get(ExchangeConfig.ENDPOINTS['exchange_info'])
             data = msgspec.json.decode(response, type=dict)
-            
+
             # Transform to unified format
             self._exchange_info_cache = {}
             for symbol_data in data.get('symbols', []):
                 exchange_symbol = msgspec.convert(symbol_data, ExchangeSymbolInfo)
-                
+
                 # Convert to unified format
                 symbol = Symbol(
                     base=AssetName(exchange_symbol.baseAsset),
                     quote=AssetName(exchange_symbol.quoteAsset)
                 )
-                
+
                 symbol_info = SymbolInfo(
                     exchange=ExchangeConfig.EXCHANGE_NAME,
                     symbol=symbol,
@@ -1693,29 +1739,29 @@ class ExchangePublic(PublicExchangeInterface):
                     quote_precision=exchange_symbol.quotePrecision,
                     inactive=(exchange_symbol.status != 'TRADING')
                 )
-                
+
                 self._exchange_info_cache[symbol] = symbol_info
-            
+
             self._cache_timestamp = current_time
-        
+
         return self._exchange_info_cache
-    
+
     async def get_orderbook(self, symbol: Symbol, limit: int = 100) -> OrderBook:
         """Get order book for symbol"""
         pair = ExchangeUtils.symbol_to_pair(symbol)
-        
+
         # Validate limit against exchange constraints
         max_limit = ExchangeConfig.LIMITS['orderbook_max_limit']
         limit = min(limit, max_limit)
-        
+
         response = await self.rest_client.get(
             ExchangeConfig.ENDPOINTS['orderbook'],
             params={"symbol": pair, "limit": limit}
         )
-        
+
         # Parse with msgspec (required - no fallback libraries)
         data = msgspec.json.decode(response, type=ExchangeOrderBookResponse)
-        
+
         # Transform to unified format
         return OrderBook(
             bids=[
@@ -1723,28 +1769,28 @@ class ExchangePublic(PublicExchangeInterface):
                 for bid in data.bids
             ],
             asks=[
-                OrderBookEntry(price=float(ask[0]), size=float(ask[1])) 
+                OrderBookEntry(price=float(ask[0]), size=float(ask[1]))
                 for ask in data.asks
             ],
             timestamp=time.time()  # Use current time if not provided
         )
-    
+
     async def get_recent_trades(self, symbol: Symbol, limit: int = 500) -> List[Trade]:
         """Get recent trades for symbol"""
         pair = ExchangeUtils.symbol_to_pair(symbol)
-        
+
         # Validate limit
         max_limit = ExchangeConfig.LIMITS['trades_max_limit']
         limit = min(limit, max_limit)
-        
+
         response = await self.rest_client.get(
             ExchangeConfig.ENDPOINTS['trades'],
             params={"symbol": pair, "limit": limit}
         )
-        
+
         # Parse response
         trades_data = msgspec.json.decode(response, type=List[ExchangeTradeResponse])
-        
+
         # Transform to unified format
         trades = []
         for trade_data in trades_data:
@@ -1756,15 +1802,15 @@ class ExchangePublic(PublicExchangeInterface):
                 is_maker=trade_data.isBuyerMaker
             )
             trades.append(trade)
-        
+
         return trades
-    
+
     async def get_server_time(self) -> int:
         """Get exchange server timestamp"""
         response = await self.rest_client.get(ExchangeConfig.ENDPOINTS['server_time'])
         data = msgspec.json.decode(response, type=dict)
         return data.get('serverTime', int(time.time() * 1000))
-    
+
     async def ping(self) -> bool:
         """Test connectivity to exchange"""
         try:
@@ -1775,6 +1821,7 @@ class ExchangePublic(PublicExchangeInterface):
 ```
 
 #### Private REST Implementation Template
+
 ```python
 # src/exchanges/{exchange_name}/rest/{exchange_name}_private.py
 import hashlib
@@ -1782,15 +1829,28 @@ import hmac
 import time
 import urllib.parse
 from typing import Dict, List, Optional, Any
-from exchanges.interface.rest.base_rest_private import PrivateExchangeInterface
-from exchanges.interface.structs import (
+from core.cex.rest.spot.base_rest_spot_private import PrivateExchangeSpotRestInterface
+from structs import (
     Symbol, AssetBalance, Order, Side, OrderType, OrderStatus, OrderId, AssetName
 )
-from common.rest_client import RestClient
-from common.exceptions import ExchangeAPIError, RateLimitError, InvalidOrderError
-from .common.{exchange_name}_config import ExchangeConfig
-from .common.{exchange_name}_utils import ExchangeUtils
-from .common.{exchange_name}_mappings import ExchangeMappings
+from core.transport.rest.rest_client import RestClient
+from core.exceptions.exchange import BaseExchangeError, RateLimitErrorBase, InvalidOrderError
+from .common.
+
+{exchange_name}
+_config
+import ExchangeConfig
+from .common.
+
+{exchange_name}
+_utils
+import ExchangeUtils
+from .common.
+
+{exchange_name}
+_mappings
+import ExchangeMappings
+
 
 # Exchange-specific response structures
 class ExchangeBalanceResponse(msgspec.Struct):
@@ -1798,11 +1858,13 @@ class ExchangeBalanceResponse(msgspec.Struct):
     free: str
     locked: str
 
+
 class ExchangeAccountResponse(msgspec.Struct):
     balances: List[ExchangeBalanceResponse]
     canTrade: bool
     canWithdraw: bool
     canDeposit: bool
+
 
 class ExchangeOrderResponse(msgspec.Struct):
     symbol: str
@@ -1824,64 +1886,65 @@ class ExchangeOrderResponse(msgspec.Struct):
     isWorking: bool = True
     origQuoteOrderQty: str = "0"
 
-class ExchangePrivate(PrivateExchangeInterface):
+
+class ExchangePrivate(PrivateExchangeSpotRestInterface):
     """Private trading operations for Exchange"""
-    
+
     def __init__(self, api_key: str, secret_key: str):
         self.api_key = api_key
         self.secret_key = secret_key
-        
+
         # Separate REST clients for different operation types
         self.account_client = RestClient(ExchangeConfig.REST_CONFIGS['private_account'])
         self.trading_client = RestClient(ExchangeConfig.REST_CONFIGS['private_trading'])
-        
+
     def _generate_signature(self, params: Dict[str, Any]) -> str:
         """Generate exchange-specific signature"""
         # Customize based on exchange authentication method
-        
+
         # Common pattern (Binance-style):
         query_string = urllib.parse.urlencode(sorted(params.items()))
         signature = hmac.new(
             self.secret_key.encode('utf-8'),
-            query_string.encode('utf-8'), 
+            query_string.encode('utf-8'),
             hashlib.sha256
         ).hexdigest()
         return signature
-        
+
         # Alternative patterns:
         # - Coinbase: timestamp + method + path + body
         # - Kraken: nonce + encoded parameters
         # - Custom: implement based on exchange documentation
-    
+
     def _add_authentication(self, params: Dict[str, Any]) -> Dict[str, str]:
         """Add authentication headers/parameters"""
         # Add timestamp
         params['timestamp'] = int(time.time() * 1000)
-        
+
         # Generate signature
         signature = self._generate_signature(params)
-        
+
         # Return headers (customize based on exchange)
         return {
             'X-API-Key': self.api_key,
             'X-Signature': signature,
             'Content-Type': 'application/json'
         }
-    
+
     async def get_account_balance(self) -> List[AssetBalance]:
         """Get account balance for all assets"""
         params = {}
         headers = self._add_authentication(params)
-        
+
         try:
             response = await self.account_client.get(
                 ExchangeConfig.ENDPOINTS['account'],
                 params=params,
                 headers=headers
             )
-            
+
             data = msgspec.json.decode(response, type=ExchangeAccountResponse)
-            
+
             balances = []
             for balance_data in data.balances:
                 if float(balance_data.free) > 0 or float(balance_data.locked) > 0:
@@ -1891,64 +1954,64 @@ class ExchangePrivate(PrivateExchangeInterface):
                         locked=float(balance_data.locked)
                     )
                     balances.append(balance)
-            
+
             return balances
-            
+
         except Exception as e:
             raise self._handle_exception(e)
-    
+
     async def get_asset_balance(self, asset: AssetName) -> Optional[AssetBalance]:
         """Get balance for specific asset"""
         balances = await self.get_account_balance()
         for balance in balances:
             if balance.asset == asset:
                 return balance
-        
+
         # Return zero balance if asset not found
         return AssetBalance(asset=asset, free=0.0, locked=0.0)
-    
+
     async def place_order(
-        self,
-        symbol: Symbol,
-        side: Side,
-        order_type: OrderType,
-        amount: Optional[float] = None,
-        price: Optional[float] = None,
-        **kwargs
+            self,
+            symbol: Symbol,
+            side: Side,
+            order_type: OrderType,
+            amount: Optional[float] = None,
+            price: Optional[float] = None,
+            **kwargs
     ) -> Order:
         """Place new order"""
         pair = ExchangeUtils.symbol_to_pair(symbol)
-        
+
         # Build order parameters
         params = {
             'symbol': pair,
             'side': ExchangeMappings.get_exchange_side(side),
             'type': ExchangeMappings.get_exchange_order_type(order_type)
         }
-        
+
         # Add quantity (customize field name based on exchange)
         if amount is not None:
             params['quantity'] = ExchangeUtils.format_quantity(amount, symbol)
-        
+
         # Add price for limit orders
         if price is not None and order_type in [OrderType.LIMIT, OrderType.STOP_LIMIT]:
             params['price'] = ExchangeUtils.format_price(price, symbol)
-        
+
         # Add optional parameters
         if 'time_in_force' in kwargs:
             params['timeInForce'] = ExchangeMappings.get_exchange_time_in_force(kwargs['time_in_force'])
-        
+
         headers = self._add_authentication(params)
-        
+
         try:
             response = await self.trading_client.post(
                 ExchangeConfig.ENDPOINTS['new_order'],
                 params=params,
                 headers=headers
             )
-            
+
             order_data = msgspec.json.decode(response, type=ExchangeOrderResponse)
-            
+
             # Transform to unified format
             return Order(
                 symbol=symbol,
@@ -1962,30 +2025,30 @@ class ExchangePrivate(PrivateExchangeInterface):
                 status=ExchangeMappings.get_unified_order_status(order_data.status),
                 timestamp=datetime.fromtimestamp(order_data.time / 1000) if order_data.time else datetime.now()
             )
-            
+
         except Exception as e:
             raise self._handle_exception(e)
-    
+
     async def cancel_order(self, symbol: Symbol, order_id: OrderId) -> Order:
         """Cancel existing order"""
         pair = ExchangeUtils.symbol_to_pair(symbol)
-        
+
         params = {
             'symbol': pair,
             'orderId': str(order_id)
         }
-        
+
         headers = self._add_authentication(params)
-        
+
         try:
             response = await self.trading_client.delete(
                 ExchangeConfig.ENDPOINTS['cancel_order'],
                 params=params,
                 headers=headers
             )
-            
+
             order_data = msgspec.json.decode(response, type=ExchangeOrderResponse)
-            
+
             return Order(
                 symbol=symbol,
                 side=ExchangeMappings.get_unified_side(order_data.side),
@@ -1996,30 +2059,30 @@ class ExchangePrivate(PrivateExchangeInterface):
                 order_id=order_id,
                 status=ExchangeMappings.get_unified_order_status(order_data.status)
             )
-            
+
         except Exception as e:
             raise self._handle_exception(e)
-    
+
     async def get_order(self, symbol: Symbol, order_id: OrderId) -> Order:
         """Get order status"""
         pair = ExchangeUtils.symbol_to_pair(symbol)
-        
+
         params = {
             'symbol': pair,
             'orderId': str(order_id)
         }
-        
+
         headers = self._add_authentication(params)
-        
+
         try:
             response = await self.account_client.get(
                 ExchangeConfig.ENDPOINTS['order_status'],
                 params=params,
                 headers=headers
             )
-            
+
             order_data = msgspec.json.decode(response, type=ExchangeOrderResponse)
-            
+
             return Order(
                 symbol=symbol,
                 side=ExchangeMappings.get_unified_side(order_data.side),
@@ -2031,28 +2094,28 @@ class ExchangePrivate(PrivateExchangeInterface):
                 status=ExchangeMappings.get_unified_order_status(order_data.status),
                 timestamp=datetime.fromtimestamp(order_data.time / 1000) if order_data.time else None
             )
-            
+
         except Exception as e:
             raise self._handle_exception(e)
-    
+
     async def get_open_orders(self, symbol: Optional[Symbol] = None) -> List[Order]:
         """Get all open orders"""
         params = {}
-        
+
         if symbol:
             params['symbol'] = ExchangeUtils.symbol_to_pair(symbol)
-        
+
         headers = self._add_authentication(params)
-        
+
         try:
             response = await self.account_client.get(
                 ExchangeConfig.ENDPOINTS['open_orders'],
                 params=params,
                 headers=headers
             )
-            
+
             orders_data = msgspec.json.decode(response, type=List[ExchangeOrderResponse])
-            
+
             orders = []
             for order_data in orders_data:
                 order_symbol = ExchangeUtils.pair_to_symbol(order_data.symbol)
@@ -2067,53 +2130,63 @@ class ExchangePrivate(PrivateExchangeInterface):
                     status=ExchangeMappings.get_unified_order_status(order_data.status)
                 )
                 orders.append(order)
-            
+
             return orders
-            
+
         except Exception as e:
             raise self._handle_exception(e)
-    
+
     def _handle_exception(self, error: Exception) -> Exception:
         """Map exchange errors to unified exceptions"""
         # Customize based on exchange error format
-        
+
         if hasattr(error, 'status') and hasattr(error, 'response_text'):
             try:
                 error_data = msgspec.json.decode(error.response_text)
                 error_code = error_data.get('code', 0)
                 error_msg = error_data.get('msg', str(error))
-                
+
                 # Map common error codes (customize based on exchange)
                 if error_code in [-1003, 429] or error.status == 429:
-                    return RateLimitError(429, error_msg, retry_after=60)
+                    return RateLimitErrorBase(429, error_msg, retry_after=60)
                 elif error_code in [-1013, -2010]:
                     return InvalidOrderError(400, error_msg)
                 elif error.status >= 500:
-                    return ExchangeAPIError(error.status, error_msg)
+                    return BaseExchangeError(error.status, error_msg)
                 else:
-                    return ExchangeAPIError(error.status, error_msg)
-                    
+                    return BaseExchangeError(error.status, error_msg)
+
             except Exception:
                 # Fallback if error parsing fails
                 pass
-        
-        return ExchangeAPIError(500, f"Exchange error: {str(error)}")
+
+        return BaseExchangeError(500, f"Exchange error: {str(error)}")
 ```
 
 #### WebSocket Implementation Template
+
 ```python
 # src/exchanges/{exchange_name}/ws/{exchange_name}_ws_public.py
 import msgspec
 from typing import Dict, List, Any
-from exchanges.interface.websocket.base_ws import BaseExchangeWebsocketInterface, SubscriptionAction
-from exchanges.interface.structs import Symbol, OrderBook, OrderBookEntry, Trade, Side, ExchangeName
-from common.ws_client import WebSocketConfig
-from .common.{exchange_name}_config import ExchangeConfig
-from .common.{exchange_name}_utils import ExchangeUtils
+from core.cex.websocket import BaseExchangeWebsocketInterface, SubscriptionAction
+from structs import Symbol, OrderBook, OrderBookEntry, Trade, Side, ExchangeName
+from core.transport.websocket.ws_client import WebSocketConfig
+from .common.
+
+{exchange_name}
+_config
+import ExchangeConfig
+from .common.
+
+{exchange_name}
+_utils
+import ExchangeUtils
+
 
 class ExchangeWebSocketPublic(BaseExchangeWebsocketInterface):
     """Public WebSocket streams for Exchange"""
-    
+
     def __init__(self, exchange: ExchangeName):
         config = WebSocketConfig(
             url=ExchangeConfig.WEBSOCKET_URL,
@@ -2121,20 +2194,20 @@ class ExchangeWebSocketPublic(BaseExchangeWebsocketInterface):
             ping_timeout=10,
             reconnect_delay=5
         )
-        
+
         super().__init__(exchange, config)
-        
+
         # Exchange-specific message handlers
         self.message_handlers = {
             'depthUpdate': self._handle_orderbook_update,
             'trade': self._handle_trade_update,
             'ticker': self._handle_ticker_update
         }
-    
+
     def _create_subscriptions(self, symbol: Symbol, action: SubscriptionAction) -> List[str]:
         """Create exchange-specific subscription messages"""
         symbol_str = ExchangeUtils.symbol_to_pair(symbol).lower()
-        
+
         streams = []
         if action == SubscriptionAction.SUBSCRIBE:
             # Customize stream names based on exchange format
@@ -2142,27 +2215,27 @@ class ExchangeWebSocketPublic(BaseExchangeWebsocketInterface):
             # - Binance: "btcusdt@depth20", "btcusdt@trade"
             # - Coinbase: {"type": "subscribe", "channels": ["level2", "matches"], "product_ids": ["BTC-USD"]}
             # - Kraken: {"method": "subscribe", "params": {"channel": "book", "symbol": ["BTC/USD"]}}
-            
-            streams.append(f"{symbol_str}@depth20")    # Orderbook
-            streams.append(f"{symbol_str}@trade")      # Trades
-            
+
+            streams.append(f"{symbol_str}@depth20")  # Orderbook
+            streams.append(f"{symbol_str}@trade")  # Trades
+
         return streams
-    
+
     async def _on_message(self, message: Dict[str, Any]):
         """Handle incoming WebSocket messages"""
         try:
             # Handle different message formats based on exchange
-            
+
             # Pattern 1: Stream-based messages (Binance style)
             if 'stream' in message and 'data' in message:
                 stream = message['stream']
                 data = message['data']
-                
+
                 if '@depth' in stream:
                     await self._handle_orderbook_update(data)
                 elif '@trade' in stream:
                     await self._handle_trade_update(data)
-                    
+
             # Pattern 2: Type-based messages (Coinbase style)
             elif 'type' in message:
                 msg_type = message['type']
@@ -2170,7 +2243,7 @@ class ExchangeWebSocketPublic(BaseExchangeWebsocketInterface):
                     await self._handle_orderbook_update(message)
                 elif msg_type == 'match':
                     await self._handle_trade_update(message)
-                    
+
             # Pattern 3: Channel-based messages (Kraken style)
             elif 'channelName' in message:
                 channel = message['channelName']
@@ -2178,58 +2251,58 @@ class ExchangeWebSocketPublic(BaseExchangeWebsocketInterface):
                     await self._handle_orderbook_update(message)
                 elif channel == 'trade':
                     await self._handle_trade_update(message)
-                    
+
         except Exception as e:
             await self.on_error(e)
-    
+
     async def _handle_orderbook_update(self, data: Dict[str, Any]):
         """Process orderbook update"""
         try:
             # Extract symbol (customize based on exchange format)
             symbol_str = data.get('s') or data.get('symbol') or data.get('product_id')
             symbol = ExchangeUtils.pair_to_symbol(symbol_str)
-            
+
             # Parse bids and asks (customize based on exchange format)
             # Common formats:
             # - Binance: {"b": [["price", "quantity"], ...], "a": [["price", "quantity"], ...]}
             # - Coinbase: {"changes": [["side", "price", "size"], ...]}
             # - Kraken: {"bids": [["price", "volume", "timestamp"], ...]}
-            
+
             bids = []
             asks = []
-            
+
             # Example for Binance-style format
             if 'b' in data and 'a' in data:
                 for bid in data['b']:
                     bids.append(OrderBookEntry(price=float(bid[0]), size=float(bid[1])))
                 for ask in data['a']:
                     asks.append(OrderBookEntry(price=float(ask[0]), size=float(ask[1])))
-            
+
             orderbook = OrderBook(
                 bids=bids,
                 asks=asks,
                 timestamp=time.time()
             )
-            
-            # Notify subscribers (implemented in base class)
+
+            # Notify subscribers (implemented in cex class)
             await self._notify_orderbook_update(symbol, orderbook)
-            
+
         except Exception as e:
             await self.on_error(e)
-    
+
     async def _handle_trade_update(self, data: Dict[str, Any]):
         """Process trade update"""
         try:
             # Extract trade information (customize based on exchange format)
             symbol_str = data.get('s') or data.get('symbol') or data.get('product_id')
             symbol = ExchangeUtils.pair_to_symbol(symbol_str)
-            
+
             # Parse trade data (customize based on exchange format)
             # Common formats:
             # - Binance: {"p": "price", "q": "quantity", "m": true/false}
             # - Coinbase: {"price": "price", "size": "size", "side": "buy/sell"}
             # - Kraken: [["price", "volume", "time", "side", "orderType", "misc"], ...]
-            
+
             trade = Trade(
                 price=float(data.get('p') or data.get('price')),
                 amount=float(data.get('q') or data.get('size') or data.get('quantity')),
@@ -2237,13 +2310,13 @@ class ExchangeWebSocketPublic(BaseExchangeWebsocketInterface):
                 timestamp=int(data.get('T') or data.get('time') or time.time() * 1000),
                 is_maker=data.get('m', False)  # Maker flag if available
             )
-            
+
             # Notify subscribers
             await self._notify_trade_update(symbol, trade)
-            
+
         except Exception as e:
             await self.on_error(e)
-    
+
     def _parse_trade_side(self, data: Dict[str, Any]) -> Side:
         """Parse trade side from exchange-specific format"""
         # Customize based on exchange format
@@ -2253,7 +2326,7 @@ class ExchangeWebSocketPublic(BaseExchangeWebsocketInterface):
             return Side.BUY if data['side'] == 'buy' else Side.SELL
         else:
             return Side.BUY  # Default fallback
-    
+
     async def on_error(self, error: Exception):
         """Handle WebSocket errors"""
         self.logger.error(f"WebSocket error in {self.exchange}: {error}")
@@ -2264,36 +2337,54 @@ class ExchangeWebSocketPublic(BaseExchangeWebsocketInterface):
 ```
 
 #### Main Exchange Interface Template
+
 ```python
 # src/exchanges/{exchange_name}/{exchange_name}_exchange.py
 from typing import Optional, List, Dict, Any
-from exchanges.interface.base_exchange import BaseExchangeInterface
-from exchanges.interface.structs import Symbol, OrderBook, AssetBalance, Order, Side, OrderType, OrderId, AssetName, ExchangeName
-from .rest.{exchange_name}_public import ExchangePublic
-from .rest.{exchange_name}_private import ExchangePrivate
-from .ws.{exchange_name}_ws_public import ExchangeWebSocketPublic
+from core.cex.composed import BaseExchangeInterface
+from structs import Symbol, OrderBook, AssetBalance, Order, Side, OrderType, OrderId,
+
+AssetName,
+
+ExchangeName
+from .rest.
+
+{exchange_name}
+_public
+import ExchangePublic
+from .rest.
+
+{exchange_name}
+_private
+import ExchangePrivate
+from .ws.
+
+{exchange_name}
+_ws_public
+import ExchangeWebSocketPublic
+
 
 class ExchangeExchange(BaseExchangeInterface):
-    """High-level unified interface for Exchange"""
-    
+    """High-level unified cex for Exchange"""
+
     def __init__(self, api_key: Optional[str] = None, secret_key: Optional[str] = None):
         self.exchange = ExchangeName("EXCHANGE")
-        
+
         # REST components
         self._rest_public = ExchangePublic()
         self._rest_private = ExchangePrivate(api_key, secret_key) if api_key and secret_key else None
-        
+
         # WebSocket component
         self._ws_public = ExchangeWebSocketPublic(self.exchange)
-        
+
         # State management
         self._active_symbols: List[Symbol] = []
         self._orderbooks: Dict[Symbol, OrderBook] = {}
         self._balances_dict: Dict[AssetName, AssetBalance] = {}
         self._initialized = False
-        
+
         self.logger = logging.getLogger(f"exchanges.{self.exchange.lower()}")
-    
+
     # Implement BaseExchangeInterface properties
     @property
     def orderbook(self) -> Optional[OrderBook]:
@@ -2301,49 +2392,49 @@ class ExchangeExchange(BaseExchangeInterface):
         if self._active_symbols:
             return self._orderbooks.get(self._active_symbols[0])
         return None
-    
+
     @property
     def balances(self) -> Dict[AssetName, AssetBalance]:
         """Current account balances"""
         return self._balances_dict.copy()
-    
+
     @property
     def active_symbols(self) -> List[Symbol]:
         """Currently subscribed symbols"""
         return self._active_symbols.copy()
-    
+
     # Implement BaseExchangeInterface methods
     async def init(self, symbols: Optional[List[Symbol]] = None) -> None:
         """Initialize exchange with optional symbol list"""
         try:
             if symbols:
                 self._active_symbols = symbols.copy()
-                
+
                 # Initialize WebSocket connections
-                await self._ws_public.init(symbols)
-                
+                await self._ws_public.initialize(symbols)
+
                 # Subscribe to orderbook updates
                 for symbol in symbols:
                     await self._ws_public.start_symbol(symbol)
-            
+
             # Load initial balances if private API available
             if self._rest_private:
                 await self._refresh_balances()
-            
+
             self._initialized = True
             self.logger.info(f"Initialized {self.exchange} exchange with {len(self._active_symbols)} symbols")
-            
+
         except Exception as e:
             await self._cleanup_partial_init()
             raise
-    
+
     async def add_symbol(self, symbol: Symbol) -> None:
         """Start data streaming for symbol"""
         if symbol not in self._active_symbols:
             self._active_symbols.append(symbol)
             await self._ws_public.start_symbol(symbol)
             self.logger.info(f"Added symbol {symbol} to {self.exchange}")
-    
+
     async def remove_symbol(self, symbol: Symbol) -> None:
         """Stop data streaming for symbol"""
         if symbol in self._active_symbols:
@@ -2351,13 +2442,13 @@ class ExchangeExchange(BaseExchangeInterface):
             await self._ws_public.stop_symbol(symbol)
             self._orderbooks.pop(symbol, None)
             self.logger.info(f"Removed symbol {symbol} from {self.exchange}")
-    
+
     # High-level trading methods
     async def place_limit_order(self, symbol: Symbol, side: Side, amount: float, price: float) -> Order:
         """Place limit order"""
         if not self._rest_private:
             raise ValueError("Private API not configured - API keys required")
-        
+
         return await self._rest_private.place_order(
             symbol=symbol,
             side=side,
@@ -2365,83 +2456,84 @@ class ExchangeExchange(BaseExchangeInterface):
             amount=amount,
             price=price
         )
-    
+
     async def place_market_order(self, symbol: Symbol, side: Side, amount: float) -> Order:
         """Place market order"""
         if not self._rest_private:
             raise ValueError("Private API not configured - API keys required")
-        
+
         return await self._rest_private.place_order(
             symbol=symbol,
             side=side,
             order_type=OrderType.MARKET,
             amount=amount
         )
-    
+
     async def cancel_order(self, symbol: Symbol, order_id: OrderId) -> Order:
         """Cancel order"""
         if not self._rest_private:
             raise ValueError("Private API not configured - API keys required")
-        
+
         return await self._rest_private.cancel_order(symbol, order_id)
-    
+
     async def get_fresh_balances(self) -> Dict[AssetName, AssetBalance]:
         """Get fresh account balances"""
         if not self._rest_private:
             raise ValueError("Private API not configured - API keys required")
-        
+
         await self._refresh_balances()
         return self.balances
-    
+
     def get_asset_balance(self, asset: AssetName) -> Optional[AssetBalance]:
         """Get balance for specific asset"""
         return self._balances_dict.get(asset)
-    
+
     # Context manager support
     def session(self, symbols: Optional[List[Symbol]] = None) -> 'ExchangeExchangeSession':
         """Context manager for proper resource cleanup"""
         return ExchangeExchangeSession(self, symbols or [])
-    
+
     # Internal methods
     async def _refresh_balances(self) -> None:
         """Refresh account balances"""
         if self._rest_private:
             balances = await self._rest_private.get_account_balance()
             self._balances_dict = {balance.asset: balance for balance in balances}
-    
+
     async def _cleanup_partial_init(self) -> None:
         """Clean up resources during failed initialization"""
         if self._ws_public:
             await self._ws_public.ws_client.stop()
-        
+
         self._active_symbols.clear()
         self._orderbooks.clear()
         self._balances_dict.clear()
         self._initialized = False
-    
+
     async def close(self) -> None:
         """Clean shutdown with proper resource cleanup"""
         if self._ws_public:
             await self._ws_public.ws_client.stop()
-        
+
         self._active_symbols.clear()
         self._orderbooks.clear()
         self._balances_dict.clear()
         self._initialized = False
-        
+
         self.logger.info(f"Successfully closed {self.exchange} exchange")
+
 
 class ExchangeExchangeSession:
     """Context manager for proper resource management"""
-    
+
     def __init__(self, exchange: ExchangeExchange, symbols: List[Symbol]):
         self.exchange = exchange
         self.symbols = symbols
-    
+
     async def __aenter__(self) -> ExchangeExchange:
         await self.exchange.init(self.symbols)
         return self.exchange
-    
+
     async def __aexit__(self, exc_type, exc_val, exc_tb):
         await self.exchange.close()
 ```
@@ -2449,132 +2541,140 @@ class ExchangeExchangeSession:
 ### Testing Template
 
 #### Unit Tests Template
+
 ```python
 # tests/test_{exchange_name}_integration.py
 import pytest
 import asyncio
-from exchanges.{exchange_name}.{exchange_name}_exchange import ExchangeExchange
-from exchanges.interface.structs import Symbol, AssetName, Side, OrderType
-from exchanges.interface.rest.base_rest_public import PublicExchangeInterface
-from exchanges.interface.rest.base_rest_private import PrivateExchangeInterface
+from exchanges.
+
+{exchange_name}.
+{exchange_name}
+_exchange
+import ExchangeExchange
+from structs import Symbol, AssetName, Side, OrderType
+from core.cex.rest import PublicExchangeSpotRestInterface
+from core.cex.rest.spot.base_rest_spot_private import PrivateExchangeSpotRestInterface
+
 
 class TestExchangeIntegration:
     """Comprehensive integration tests for Exchange"""
-    
+
     @pytest.fixture
     def test_symbol(self):
         return Symbol(base=AssetName("BTC"), quote=AssetName("USDT"))
-    
+
     @pytest.fixture
     async def exchange(self):
         exchange = ExchangeExchange()
         yield exchange
         await exchange.close()
-    
+
     @pytest.fixture
     async def private_exchange(self):
         """Requires environment variables: EXCHANGE_API_KEY, EXCHANGE_SECRET_KEY"""
         api_key = os.getenv('EXCHANGE_API_KEY')
         secret_key = os.getenv('EXCHANGE_SECRET_KEY')
-        
+
         if not api_key or not secret_key:
             pytest.skip("API credentials not configured")
-        
+
         exchange = ExchangeExchange(api_key=api_key, secret_key=secret_key)
         yield exchange
         await exchange.close()
-    
+
     # Interface compliance tests
     async def test_public_interface_compliance(self, exchange):
-        """Test public interface implementation"""
-        assert isinstance(exchange._rest_public, PublicExchangeInterface)
-        
+        """Test public cex implementation"""
+        assert isinstance(exchange._rest_public, PublicExchangeSpotRestInterface)
+
         # Test all public methods are implemented
         public_methods = [
             'get_exchange_info', 'get_orderbook', 'get_recent_trades',
             'get_server_time', 'ping'
         ]
-        
+
         for method in public_methods:
             assert hasattr(exchange._rest_public, method)
             assert callable(getattr(exchange._rest_public, method))
-    
+
     async def test_private_interface_compliance(self, private_exchange):
-        """Test private interface implementation"""
+        """Test private cex implementation"""
         if not private_exchange._rest_private:
             pytest.skip("Private API not configured")
-            
-        assert isinstance(private_exchange._rest_private, PrivateExchangeInterface)
-        
+
+        assert isinstance(private_exchange._rest_private, PrivateExchangeSpotRestInterface)
+
         # Test all private methods are implemented
         private_methods = [
             'get_account_balance', 'get_asset_balance', 'place_order',
             'cancel_order', 'get_order', 'get_open_orders'
         ]
-        
+
         for method in private_methods:
             assert hasattr(private_exchange._rest_private, method)
             assert callable(getattr(private_exchange._rest_private, method))
-    
+
     # Data structure compliance tests
     async def test_data_structure_compliance(self, exchange, test_symbol):
         """Test unified data structure usage"""
         # Test orderbook structure
         orderbook = await exchange._rest_public.get_orderbook(test_symbol)
-        
+
         assert isinstance(orderbook, OrderBook)
         assert hasattr(orderbook, 'bids')
         assert hasattr(orderbook, 'asks')
         assert hasattr(orderbook, 'timestamp')
-        
+
         # Verify OrderBookEntry structure
         if orderbook.bids:
             assert isinstance(orderbook.bids[0], OrderBookEntry)
             assert hasattr(orderbook.bids[0], 'price')
             assert hasattr(orderbook.bids[0], 'size')
-        
+
         # Test trades structure
         trades = await exchange._rest_public.get_recent_trades(test_symbol, limit=10)
         assert isinstance(trades, list)
-        
+
         if trades:
             trade = trades[0]
             assert isinstance(trade, Trade)
             assert hasattr(trade, 'price')
             assert hasattr(trade, 'amount')
             assert hasattr(trade, 'side')
-    
+
     # Performance tests
     async def test_latency_requirements(self, exchange, test_symbol):
         """Test latency requirements (<50ms)"""
         import time
-        
+
         # Test REST operation latency
         start_time = time.time()
         orderbook = await exchange._rest_public.get_orderbook(test_symbol)
         latency = time.time() - start_time
-        
+
         assert latency < 0.05, f"Latency {latency:.3f}s exceeds 50ms requirement"
         assert orderbook is not None
         assert len(orderbook.bids) > 0
         assert len(orderbook.asks) > 0
-    
+
     async def test_concurrent_operations(self, exchange, test_symbol):
         """Test concurrent request handling"""
+
         # Test multiple concurrent requests
         async def fetch_orderbook():
             return await exchange._rest_public.get_orderbook(test_symbol)
-        
+
         # Run 20 concurrent requests
         tasks = [fetch_orderbook() for _ in range(20)]
         results = await asyncio.gather(*tasks, return_exceptions=True)
-        
+
         # Verify results
         errors = [r for r in results if isinstance(r, Exception)]
         success_rate = (len(results) - len(errors)) / len(results)
-        
+
         assert success_rate > 0.9, f"Success rate {success_rate:.2f} too low"
-    
+
     # Functional tests
     async def test_exchange_info_caching(self, exchange):
         """Test exchange info caching behavior"""
@@ -2582,53 +2682,57 @@ class TestExchangeIntegration:
         start_time = time.time()
         info1 = await exchange._rest_public.get_exchange_info()
         first_call_time = time.time() - start_time
-        
+
         # Second call (should be cached)
         start_time = time.time()
         info2 = await exchange._rest_public.get_exchange_info()
         second_call_time = time.time() - start_time
-        
+
         # Verify caching worked
         assert info1 == info2
         assert second_call_time < first_call_time / 2  # Should be much faster
-    
+
     async def test_symbol_conversion(self, test_symbol):
         """Test symbol conversion utilities"""
-        from exchanges.{exchange_name}.common.{exchange_name}_utils import ExchangeUtils
-        
+        from exchanges.
+        {exchange_name}.common.
+        {exchange_name}
+        _utils
+        import ExchangeUtils
+
         # Test conversion both ways
         pair = ExchangeUtils.symbol_to_pair(test_symbol)
         assert isinstance(pair, str)
         assert len(pair) > 0
-        
+
         converted_symbol = ExchangeUtils.pair_to_symbol(pair)
         assert converted_symbol == test_symbol
-    
+
     # Trading tests (testnet only)
     async def test_account_balance(self, private_exchange):
         """Test account balance retrieval"""
         if not private_exchange._rest_private:
             pytest.skip("Private API not configured")
-        
+
         balances = await private_exchange._rest_private.get_account_balance()
         assert isinstance(balances, list)
-        
+
         # Test individual asset balance
         if balances:
             asset = balances[0].asset
             asset_balance = await private_exchange._rest_private.get_asset_balance(asset)
             assert asset_balance.asset == asset
-    
+
     @pytest.mark.skipif(not os.getenv('ENABLE_TESTNET_TRADING'), reason="Testnet trading not enabled")
     async def test_order_lifecycle(self, private_exchange, test_symbol):
         """Test complete order lifecycle (testnet only)"""
         if not private_exchange._rest_private:
             pytest.skip("Private API not configured")
-        
+
         # Get current orderbook for safe price
         orderbook = await private_exchange._rest_public.get_orderbook(test_symbol)
         safe_price = orderbook.bids[0].price * 0.5  # Very safe price
-        
+
         # Place limit order
         order = await private_exchange._rest_private.place_order(
             symbol=test_symbol,
@@ -2637,44 +2741,45 @@ class TestExchangeIntegration:
             amount=0.001,  # Minimum amount
             price=safe_price
         )
-        
+
         # Verify order placement
         assert order.order_id is not None
         assert order.status == OrderStatus.NEW
         assert order.symbol == test_symbol
-        
+
         try:
             # Check order status
             order_status = await private_exchange._rest_private.get_order(test_symbol, order.order_id)
             assert order_status.order_id == order.order_id
-            
+
             # Verify order appears in open orders
             open_orders = await private_exchange._rest_private.get_open_orders(test_symbol)
             order_ids = [o.order_id for o in open_orders]
             assert order.order_id in order_ids
-            
+
         finally:
             # Clean up - cancel order
             cancelled_order = await private_exchange._rest_private.cancel_order(test_symbol, order.order_id)
             assert cancelled_order.status in [OrderStatus.CANCELED, OrderStatus.PARTIALLY_CANCELED]
-    
+
     # WebSocket tests
     async def test_websocket_connection(self, exchange, test_symbol):
         """Test WebSocket connection and data streaming"""
         async with exchange.session([test_symbol]) as ex:
             # Wait for initial connection
             await asyncio.sleep(2)
-            
+
             # Verify orderbook data received
             orderbook = ex.orderbook
             assert orderbook is not None
             assert len(orderbook.bids) > 0
             assert len(orderbook.asks) > 0
-            
+
             # Verify spread is reasonable
             best_bid = orderbook.bids[0].price
             best_ask = orderbook.asks[0].price
             assert best_ask > best_bid, "Invalid spread - ask should be higher than bid"
+
 
 if __name__ == "__main__":
     # Run specific test

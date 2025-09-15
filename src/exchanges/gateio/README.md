@@ -42,7 +42,7 @@ This implementation follows strict HFT compliance rules:
 
 ```python
 from exchanges.gateio import GateioExchange
-from exchanges.interface.structs import Symbol, AssetName, Side
+from structs import Symbol, AssetName, Side
 
 # Initialize exchange
 exchange = GateioExchange(api_key="your_key", secret_key="your_secret")
@@ -50,10 +50,10 @@ exchange = GateioExchange(api_key="your_key", secret_key="your_secret")
 # Basic usage
 async with exchange.session() as session:
     symbol = Symbol(base=AssetName("BTC"), quote=AssetName("USDT"))
-    
+
     # Get real-time orderbook
     orderbook = session.get_orderbook(symbol)
-    
+
     # Place order
     order = await session.place_limit_order(
         symbol=symbol,

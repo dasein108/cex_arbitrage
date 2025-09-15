@@ -40,3 +40,4 @@ py-spy==0.3.14  # Sampling profiler for Python programs
 memory-profiler==0.61.0  # Memory usage monitoring
 pandas
 pyyaml
+zmq

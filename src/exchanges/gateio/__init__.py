@@ -1,7 +1,7 @@
 """
 Gate.io Exchange Implementation
 
-High-performance Gate.io integration following unified interface system.
+High-performance Gate.io integration following unified cex system.
 Implements PublicExchangeInterface and PrivateExchangeInterface for seamless
 arbitrage engine integration.
 
