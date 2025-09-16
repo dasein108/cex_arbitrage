@@ -36,12 +36,12 @@ from structs.exchange import (
     AssetName, Side, KlineInterval
 )
 from core.cex.rest.spot.base_rest_spot_public import PublicExchangeSpotRestInterface
-from .rest_mappings import MexcUtils
 from .rest_config import MexcConfig
 from .custom_exception_handler import handle_custom_exception
 from core.config.structs import ExchangeConfig
 from core.cex.utils import get_interval_seconds
 from core.transport.rest.structs import HTTPMethod
+from core.cex.services.mapping_factory import ExchangeMappingsFactory
 
 
 class MexcPublicSpotRest(PublicExchangeSpotRestInterface):
@@ -54,15 +54,17 @@ class MexcPublicSpotRest(PublicExchangeSpotRestInterface):
 
     def __init__(self, config: ExchangeConfig):
         """
-        Initialize MEXC private REST client.
+        Initialize MEXC public REST client with dependency injection.
 
         Args:
-            api_key: MEXC API key for authentication
-            secret_key: MEXC secret key for signature generation
+            config: ExchangeConfig with base URL and rate limits
         """
         super().__init__(config, MexcConfig.rest_config['market_data'], handle_custom_exception)
 
         self._exchange_info: Optional[Dict[Symbol, SymbolInfo]] = None
+        
+        # Create exchange-agnostic mappings service using factory
+        self._mappings = ExchangeMappingsFactory.create_mappings('MEXC', self.symbol_mapper)
 
     def _extract_symbol_precision(self, mexc_symbol: MexcSymbolResponse) -> tuple[int, int, float, float]:
         """
@@ -305,7 +307,7 @@ class MexcPublicSpotRest(PublicExchangeSpotRestInterface):
             ExchangeAPIError: If unable to fetch kline data
         """
         pair = self.symbol_mapper.symbol_to_pair(symbol)
-        interval = MexcUtils.get_mexc_kline_interval(timeframe)
+        interval = self._mappings.get_exchange_kline_interval(timeframe)
         
         params = {
             'symbol': pair,

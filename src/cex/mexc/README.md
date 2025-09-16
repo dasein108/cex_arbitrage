@@ -187,18 +187,19 @@ open_orders = await private.get_open_orders(symbol)
 ```
 
 ##### Error Handling
+
 ```python
 def _handle_mexc_exception(self, error: Exception) -> Exception:
     if hasattr(error, 'status') and hasattr(error, 'response_text'):
         error_data = msgspec.json.decode(error.response_text)
         mexc_error = msgspec.convert(error_data, MexcErrorResponse)
-        
+
         # Map MEXC error codes to unified exceptions
-        if mexc_error.code in MEXC_RATE_LIMIT_CODES:
+        if mexc_error.status_code in MEXC_RATE_LIMIT_CODES:
             return RateLimitError(error.status, mexc_error.msg)
-        elif mexc_error.code in MEXC_TRADING_DISABLED_CODES:
+        elif mexc_error.status_code in MEXC_TRADING_DISABLED_CODES:
             return TradingDisabled(error.status, mexc_error.msg)
-        
+
     return ExchangeAPIError(error.status, f"MEXC Error: {error}")
 ```
 

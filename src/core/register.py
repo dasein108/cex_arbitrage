@@ -1,7 +1,7 @@
 from core.cex.services.symbol_mapper.symbol_mapper_factory import ExchangeSymbolMapperFactory
 from cex.mexc.services.symbol_mapper import MexcSymbolMapper  # Import to register mappers
 from cex.gateio.common.gateio_symbol_mapper import GateioSymbolMapper  # Import
-from core.config.config import config
+from core.config.config_manager import config
 
 SYMBOL_MAPPERS = {
     "MEXC": MexcSymbolMapper,

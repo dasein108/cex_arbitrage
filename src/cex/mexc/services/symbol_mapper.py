@@ -59,5 +59,3 @@ class MexcSymbolMapper(BaseSymbolMapper):
 # Register MEXC mapper with factory
 ExchangeSymbolMapperFactory.register_mapper('MEXC', MexcSymbolMapper)
 
-# Convenience instance using factory pattern
-mexc_symbol_mapper = ExchangeSymbolMapperFactory.get_mapper('MEXC')

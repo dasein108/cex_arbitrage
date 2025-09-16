@@ -107,7 +107,7 @@ class TradingFeesDemo:
             return trading_fee
             
         except BaseExchangeError as e:
-            logger.error(f"❌ Gate.io API Error: {e.code} - {e.message}")
+            logger.error(f"❌ Gate.io API Error: {e.status_code} - {e.message}")
             if e.api_code:
                 logger.error(f"   Gate.io Error Code: {e.api_code}")
             return None
@@ -155,7 +155,7 @@ class TradingFeesDemo:
             return trading_fee
             
         except BaseExchangeError as e:
-            logger.error(f"❌ Gate.io API Error: {e.code} - {e.message}")
+            logger.error(f"❌ Gate.io API Error: {e.status_code} - {e.message}")
             return None
         
         except Exception as e:
@@ -182,7 +182,7 @@ class TradingFeesDemo:
             await invalid_client.get_trading_fees()
             
         except BaseExchangeError as e:
-            logger.info(f"✅ Expected authentication error caught: {e.code} - {e.message}")
+            logger.info(f"✅ Expected authentication error caught: {e.status_code} - {e.message}")
             
         except Exception as e:
             logger.info(f"✅ Expected error caught: {str(e)}")

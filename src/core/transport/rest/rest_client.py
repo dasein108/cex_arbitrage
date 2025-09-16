@@ -1,24 +1,22 @@
 """
-Ultra-Simple High-Performance REST API Client for Cryptocurrency Trading
+High-Performance REST API Client with Strategy-Based Transport
 
-Streamlined async REST client optimized for ultra-low latency trading with minimal complexity.
-Focuses on essential functionality while maintaining maximum performance characteristics.
+DEPRECATED: Legacy RestClient - Use RestTransportManager with strategies for new code.
 
-Key Features:
-- Connection pooling and session reuse with aiohttp
-- Ultra-fast JSON parsing with msgspec
-- Just-in-time auth signature generation
-- Simple exponential backoff retry logic
-- Aggressive timeout configurations for trading
-- Memory-efficient request/response handling
-- Generic authentication suitable for most cex
+Maintained for backward compatibility with existing exchange implementations.
+New implementations should use the strategy-based transport system for flexible
+rate limiting, authentication, and retry policies.
+
+Migration Path:
+- RestClient (legacy) → RestTransportManager + RestStrategySet
+- Fixed RestConfig → Flexible strategy composition
+- No rate limiting → Integrated RateLimitStrategy
+- No auth support → AuthStrategy for private endpoints
 
 Performance Targets:
 - Time Complexity: O(1) for all core operations
 - Space Complexity: O(1) per request, O(n) for connection pool
 - <50ms HTTP request latency, <1ms JSON parsing
-
-Note: Rate limiting removed for simplicity - add externally via decorators/middleware.
 """
 
 import asyncio
@@ -31,6 +29,9 @@ import aiohttp
 import msgspec
 from core.exceptions.exchange import BaseExchangeError, RateLimitErrorBase, ExchangeConnectionError
 from core.transport.rest.structs import HTTPMethod
+from core.config.structs import ExchangeConfig, ExchangeCredentials, NetworkConfig
+from .transport_manager import RestTransportManager
+from .strategies import RestStrategyFactory
 
 # Use msgspec for maximum JSON performance
 # Note: msgspec.json.encode returns bytes, but aiohttp expects string serializer
@@ -291,3 +292,135 @@ class RestClient:
             await self._connector.close()
 
         self.logger.info("RestClient closed successfully")
+
+
+def create_transport_manager(
+    exchange: str,
+    is_private: bool = False,
+    api_key: Optional[str] = None,
+    secret_key: Optional[str] = None,
+    **kwargs
+) -> RestTransportManager:
+    """
+    Factory function to create RestTransportManager with exchange strategies.
+    
+    Preferred method for creating REST transport with integrated rate limiting,
+    authentication, and retry policies.
+    
+    Args:
+        exchange: Exchange name ('mexc', 'gateio')
+        is_private: Whether to use private API (requires credentials)
+        api_key: API key for private endpoints
+        secret_key: Secret key for private endpoints
+        **kwargs: Additional strategy configuration
+        
+    Returns:
+        RestTransportManager with configured strategies
+        
+    Example:
+        # Public API
+        transport = create_transport_manager("mexc", is_private=False)
+        
+        # Private API
+        transport = create_transport_manager(
+            "mexc", is_private=True, 
+            api_key="your_key", secret_key="your_secret"
+        )
+        
+        # Use with context manager
+        async with transport:
+            response = await transport.get("/api/v3/ticker/24hr", 
+                                         params={"symbol": "BTCUSDT"})
+    """
+    if is_private and (not api_key or not secret_key):
+        raise ValueError("API key and secret key required for private API access")
+    
+    # Add credentials to kwargs for strategy creation
+    strategy_kwargs = kwargs.copy()
+    if api_key:
+        strategy_kwargs['api_key'] = api_key
+    if secret_key:
+        strategy_kwargs['secret_key'] = secret_key
+    
+    # Create strategy set
+    strategy_set = RestStrategyFactory.create_strategies(
+        exchange=exchange,
+        is_private=is_private,
+        **strategy_kwargs
+    )
+    
+    # Create and return transport manager
+    return RestTransportManager(strategy_set)
+
+
+def create_transport_from_config(
+    exchange_config: ExchangeConfig,
+    is_private: bool = False,
+    **kwargs
+) -> RestTransportManager:
+    """
+    Factory function to create RestTransportManager from ExchangeConfig.
+    
+    Integrates with the centralized configuration system for consistent
+    exchange setup across the application.
+    
+    Args:
+        exchange_config: Complete exchange configuration
+        is_private: Whether to use private API
+        **kwargs: Additional strategy configuration (overrides config values)
+        
+    Returns:
+        RestTransportManager with configured strategies
+        
+    Example:
+        # Using ExchangeConfig
+        config = ExchangeConfig(
+            name="mexc",
+            credentials=ExchangeCredentials(api_key="...", secret_key="..."),
+            base_url="https://api.mexc.com",
+            websocket_url="wss://wbs.mexc.com/ws",
+            network=NetworkConfig(
+                request_timeout=8.0,
+                connect_timeout=2.0,
+                max_retries=3,
+                retry_delay=0.5
+            )
+        )
+        
+        transport = create_transport_from_config(config, is_private=True)
+    """
+    if is_private and not exchange_config.has_credentials():
+        raise ValueError(f"Exchange {exchange_config.name} requires credentials for private API access")
+    
+    # Extract strategy configuration from ExchangeConfig
+    strategy_kwargs = kwargs.copy()
+    
+    # Add credentials if available and needed
+    if is_private and exchange_config.has_credentials():
+        strategy_kwargs['api_key'] = exchange_config.credentials.api_key
+        strategy_kwargs['secret_key'] = exchange_config.credentials.secret_key
+    
+    # Override with network configuration if provided
+    if exchange_config.network:
+        # Map NetworkConfig to strategy parameters
+        strategy_kwargs.setdefault('request_timeout', exchange_config.network.request_timeout)
+        strategy_kwargs.setdefault('connect_timeout', exchange_config.network.connect_timeout)
+        strategy_kwargs.setdefault('max_retries', exchange_config.network.max_retries)
+        strategy_kwargs.setdefault('retry_delay', exchange_config.network.retry_delay)
+    
+    # Override with rate limit configuration if provided
+    if exchange_config.rate_limit:
+        strategy_kwargs.setdefault('requests_per_second', float(exchange_config.rate_limit.requests_per_second))
+    
+    # Override base URL if needed
+    strategy_kwargs.setdefault('base_url', exchange_config.base_url)
+    
+    # Create strategy set
+    strategy_set = RestStrategyFactory.create_strategies(
+        exchange=exchange_config.name,
+        is_private=is_private,
+        **strategy_kwargs
+    )
+    
+    # Create and return transport manager
+    return RestTransportManager(strategy_set)

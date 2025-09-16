@@ -5,7 +5,7 @@ from typing import Optional, Dict, Any, List, AsyncIterator
 import msgspec
 
 from common.orderbook_entry_pool import OrderBookEntryPool
-from core.config.config import ExchangeEnum
+from core.config.config_manager import ExchangeEnum
 from core.cex.services import get_symbol_mapper
 from core.cex.websocket import MessageParser, ParsedMessage, MessageType
 from cex.mexc.ws.protobuf_parser import MexcProtobufParser

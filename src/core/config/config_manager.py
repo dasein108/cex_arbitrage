@@ -63,6 +63,54 @@ def guess_file_paths(file_name: str) -> list[Path]:
         Path.home() / file_name,                          # User home directory (fallback)
     ]
 
+def parse_network_config(part_config: Dict[str, Any]) -> NetworkConfig:
+    """
+    Parse network configuration from dictionary.
+
+    Args:
+        part_config: Dictionary with network configuration keys
+
+    Returns:
+        NetworkConfig struct with parsed values
+    """
+    return NetworkConfig(
+        request_timeout=float(part_config.get('request_timeout', 10.0)),
+        connect_timeout=float(part_config.get('connect_timeout', 5.0)),
+        max_retries=int(part_config.get('max_retries', 3)),
+        retry_delay=float(part_config.get('retry_delay', 1.0))
+    )
+
+def parse_rate_limit_config(part_config: Dict[str, Any]) -> RateLimitConfig:
+    """
+    Parse rate limiting configuration from dictionary.
+
+    Args:
+        part_config: Dictionary with rate limiting configuration keys
+
+    Returns:
+        RateLimitConfig struct with parsed values
+    """
+    return RateLimitConfig(
+        requests_per_second=int(part_config.get('requests_per_second', 15))
+    )
+
+def parse_websocket_config(part_config: Dict[str, Any]) -> WebSocketConfig:
+    """
+    Parse WebSocket configuration from dictionary.
+
+    Args:
+        part_config: Dictionary with WebSocket configuration keys
+
+    Returns:
+        WebSocketConfig struct with parsed values
+    """
+    return WebSocketConfig(
+        connect_timeout=float(part_config.get('connect_timeout', 10.0)),
+        heartbeat_interval=float(part_config.get('heartbeat_interval', 30.0)),
+        max_reconnect_attempts=int(part_config.get('max_reconnect_attempts', 10)),
+        reconnect_delay=float(part_config.get('reconnect_delay', 5.0))
+    )
+
 class HftConfig:
     """
     Comprehensive HFT configuration management with YAML support.
@@ -180,12 +228,7 @@ class HftConfig:
         self.DEBUG_MODE = bool(self._config_data.get('debug_mode', False))
 
         network_config = self._config_data.get('network', {})
-        self._network_config = NetworkConfig(
-            request_timeout=float(network_config.get('request_timeout', 10.0)),
-            connect_timeout=float(network_config.get('connect_timeout', 5.0)),
-            max_retries=int(network_config.get('max_retries', 3)),
-            retry_delay=float(network_config.get('retry_delay', 1.0))
-        )
+        self._network_config = parse_network_config(network_config)
         
         # Create WebSocket configuration
         websocket_config = self._config_data.get('websocket', {})
@@ -195,6 +238,9 @@ class HftConfig:
             max_reconnect_attempts=int(websocket_config.get('max_reconnect_attempts', 10)),
             reconnect_delay=float(websocket_config.get('reconnect_delay', 5.0))
         )
+        
+        # Get global rate limiting config for fallback
+        global_rate_limiting = self._config_data.get('rate_limiting', {})
         
         # Create exchange configurations
         self._exchange_configs: Dict[str, ExchangeConfig] = {}
@@ -206,26 +252,29 @@ class HftConfig:
                 secret_key=exchange_data.get('secret_key', '')
             )
             
-            # Create rate limit config
-            # TODO: rate limiting can be tuned for each endpoint later
-            rate_limit_config = self._config_data.get('rate_limiting', {})
-            rate_limit_key = f'{exchange_name}_requests_per_second'
-            default_rate_limit = 18 if exchange_name == 'mexc' else 15
-            rate_limit = RateLimitConfig(
-                requests_per_second=int(rate_limit_config.get(rate_limit_key, default_rate_limit))
-            )
-            
+            # Use global network config unless overridden at exchange level
+            network_config = self._network_config
+            if 'network_config' in exchange_data:
+                network_config = parse_network_config(exchange_data['network_config'])
+
+            # Handle rate limiting - check exchange-specific first, or default to global
+            rate_limit = parse_rate_limit_config(exchange_data.get('rate_limiting', {}))
+
+            # Use global WebSocket config unless overridden at exchange level
+            websocket_config = self._websocket_config
+            if 'websocket_config' in exchange_data:
+                websocket_config = parse_websocket_config(exchange_data['websocket_config'])
+
             # Create exchange config
             exchange_config = ExchangeConfig(
                 name=exchange_name,
                 credentials=credentials,
                 base_url=exchange_data.get('base_url', ''),
                 websocket_url=exchange_data.get('websocket_url', ''),
-                testnet_base_url=exchange_data.get('testnet_base_url'),
-                testnet_websocket_url=exchange_data.get('testnet_websocket_url'),
                 enabled=exchange_data.get('enabled', True),
-                network=self._network_config,
-                rate_limit=rate_limit
+                network=network_config,
+                rate_limit=rate_limit,
+                websocket=websocket_config
             )
             
             self._exchange_configs[exchange_name] = exchange_config

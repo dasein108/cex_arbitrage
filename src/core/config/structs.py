@@ -77,19 +77,17 @@ class ExchangeConfig(Struct, frozen=True):
         credentials: API credentials
         base_url: REST API cex URL
         websocket_url: WebSocket URL
-        testnet_base_url: Testnet REST API URL (optional)
-        testnet_websocket_url: Testnet WebSocket URL (optional)
         network: Network configuration
         rate_limit: Rate limiting configuration
+        websocket: WebSocket configuration
     """
     name: ExchangeName
     credentials: ExchangeCredentials
     base_url: str
     websocket_url: str
-    testnet_base_url: Optional[str] = None
-    testnet_websocket_url: Optional[str] = None
     network: Optional[NetworkConfig] = None
     rate_limit: Optional[RateLimitConfig] = None
+    websocket: Optional[WebSocketConfig] = None
     enabled: bool = True
 
     def has_credentials(self) -> bool:

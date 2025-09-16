@@ -14,7 +14,7 @@ from typing import Dict, Any, List, Optional, Type
 from dataclasses import dataclass
 from enum import Enum
 
-from core.config.config import config
+from core.config.config_manager import config
 from core.exceptions.exchange import BaseExchangeError
 from cex.mexc.mexc_exchange import MexcExchange
 from cex.gateio.gateio_exchange import GateioExchange

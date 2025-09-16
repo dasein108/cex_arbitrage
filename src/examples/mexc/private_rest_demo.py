@@ -168,7 +168,7 @@ async def main():
     
     try:
         # Load config to get API credentials
-        from core.config.config import config
+        from core.config.config_manager import config
         from core.register import install_exchange_dependencies
 
         install_exchange_dependencies()

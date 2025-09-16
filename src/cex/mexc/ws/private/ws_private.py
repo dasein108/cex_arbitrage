@@ -30,7 +30,6 @@ from common.logging import getLogger
 from structs.exchange import Symbol, Order, AssetBalance, Trade, Side, OrderStatus, AssetName
 from cex.mexc.rest.rest_private import MexcPrivateSpotRest
 from core.transport.websocket.ws_client import WebSocketConfig
-from cex.mexc.rest.rest_mappings import MexcUtils
 
 # Strategy pattern imports
 from core.cex.websocket.strategies import WebSocketStrategySet
@@ -62,7 +61,7 @@ class MexcWebsocketPrivate:
         self.trade_handler = trade_handler
         
         # Get exchange config for strategy
-        from core.config.config import get_exchange_config_struct
+        from core.config.config_manager import get_exchange_config_struct
         mexc_config = get_exchange_config_struct("mexc")
         
         # Create strategy set for MEXC private WebSocket
@@ -188,7 +187,7 @@ class MexcWebsocketPrivate:
             order = Order(
                 order_id=data.get("order_id", ""),
                 client_order_id="",
-                symbol=MexcUtils.pair_to_symbol(data.get("symbol", "")) if data.get("symbol") else None,
+                symbol=self.rest_client._mappings.pair_to_symbol(data.get("symbol", "")) if data.get("symbol") else None,
                 side=side,
                 order_type=self._parse_order_type_numeric(1),  # Default to LIMIT
                 amount=data.get("quantity", 0.0),

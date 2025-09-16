@@ -9,7 +9,7 @@ HFT COMPLIANT: Fast configuration loading with validation caching.
 
 import logging
 from typing import Dict, Any, List, Optional
-from core.config.config import config
+from core.config.config_manager import config
 from core.exceptions.exchange import ConfigurationError
 from arbitrage.types import (
     ArbitrageConfig, RiskLimits, OpportunityType, ArbitragePairMap

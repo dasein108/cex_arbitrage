@@ -26,7 +26,7 @@ import logging
 from cex.gateio.ws.gateio_ws_private import GateioWebsocketPrivate
 from structs.exchange import Symbol, AssetName, Order, AssetBalance
 from core.transport.websocket.ws_client import WebSocketConfig
-from core.config.config import config
+from core.config.config_manager import config
 
 
 class AccountDataProcessor:

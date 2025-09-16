@@ -187,19 +187,20 @@ if __name__ == "__main__":
 ```
 
 #### Trading Safety Patterns
+
 ```python
 async def safe_order_placement(exchange, symbol, side, amount, price):
     """Safe order placement with validation and cleanup"""
-    
+
     # Pre-flight checks
     balance = await exchange.get_asset_balance(
         symbol.quote if side == Side.BUY else symbol.base
     )
-    
+
     required_amount = amount * price if side == Side.BUY else amount
     if balance.free < required_amount:
         raise ValueError(f"Insufficient balance: need {required_amount}, have {balance.free}")
-    
+
     # Place order with error handling
     try:
         order = await exchange.place_order(
@@ -210,10 +211,10 @@ async def safe_order_placement(exchange, symbol, side, amount, price):
             price=price,
             time_in_force=TimeInForce.GTC
         )
-        
+
         print(f"Order placed successfully: {order.order_id}")
         return order
-        
+
     except RateLimitError as e:
         print(f"Rate limited, retry after {e.retry_after} seconds")
         raise
@@ -221,7 +222,7 @@ async def safe_order_placement(exchange, symbol, side, amount, price):
         print(f"Trading disabled: {e.message}")
         raise
     except ExchangeAPIError as e:
-        print(f"API error: {e.code} - {e.message}")
+        print(f"API error: {e.status_code} - {e.message}")
         raise
 ```
 
@@ -627,36 +628,37 @@ if not config.mexc_api_key or not config.mexc_secret_key:
 ```
 
 ### Error Handling Patterns
+
 ```python
 async def robust_trading_operation(exchange, operation_func, *args, **kwargs):
     """Execute trading operation with comprehensive error handling"""
-    
+
     max_retries = 3
     base_delay = 1.0
-    
+
     for attempt in range(max_retries):
         try:
             return await operation_func(*args, **kwargs)
-            
+
         except RateLimitError as e:
             if attempt == max_retries - 1:
                 raise
             delay = e.retry_after or (base_delay * (2 ** attempt))
             print(f"Rate limited, waiting {delay} seconds...")
             await asyncio.sleep(delay)
-            
+
         except TradingDisabled as e:
             print(f"Trading disabled: {e.message}")
             raise  # Don't retry trading disabled errors
-            
+
         except ExchangeAPIError as e:
-            if e.code >= 500 and attempt < max_retries - 1:
+            if e.status_code >= 500 and attempt < max_retries - 1:
                 delay = base_delay * (2 ** attempt)
                 print(f"Server error, retrying in {delay} seconds...")
                 await asyncio.sleep(delay)
             else:
                 raise
-                
+
         except Exception as e:
             print(f"Unexpected error: {e}")
             raise

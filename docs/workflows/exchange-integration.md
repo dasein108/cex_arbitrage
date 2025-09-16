@@ -225,7 +225,7 @@ class ExchangeFactory:
 import pytest
 from exchanges.binance.binance_exchange import BinanceExchange
 from structs import Symbol, AssetName
-from core.config.config import config
+from core.config.config_manager import config
 
 
 @pytest.mark.asyncio

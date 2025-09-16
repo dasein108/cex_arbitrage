@@ -5,7 +5,7 @@ class BaseExchangeError(Exception):
     def __init__(self, code: int, message: str, api_code: int | None = None) -> None:
         self.api_code = api_code
         self.message = message
-        self.code = code
+        self.status_code = code
     """Default exception."""
 
 
@@ -21,7 +21,7 @@ class RateLimitErrorBase(BaseExchangeError):
         self.retry_after = retry_after
 
     def __str__(self):
-        return f"RateLimitError: {self.code} - {self.message} - {self.api_code} - {self.retry_after}"
+        return f"RateLimitError: {self.status_code} - {self.message} - {self.api_code} - {self.retry_after}"
 
 
 

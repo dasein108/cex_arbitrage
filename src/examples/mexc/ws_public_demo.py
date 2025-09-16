@@ -39,7 +39,7 @@ class TestWebSocketClient:
         self.trades_handler = trades_handler
         
         # Get MEXC exchange config for strategy
-        from core.config.config import get_exchange_config_struct
+        from core.config.config_manager import get_exchange_config_struct
         mexc_config = get_exchange_config_struct("mexc")
         
         # Create strategy set for MEXC public WebSocket

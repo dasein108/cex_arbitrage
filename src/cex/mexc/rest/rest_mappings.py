@@ -19,10 +19,14 @@ Performance: Dict-based lookups optimized for O(1) access with minimal allocatio
 
 from datetime import datetime
 from structs.exchange import Symbol, Order, OrderId, OrderStatus, OrderType, Side, TimeInForce, KlineInterval
+from cex.mexc.services.symbol_mapper import MexcSymbolMapper
 
 class MexcMappings:
-    """Static mapping constants for MEXC API integration."""
+    """MEXC API mapping service using dependency injection pattern."""
     
+    def __init__(self, symbol_mapper: MexcSymbolMapper):
+        """Initialize mappings with injected symbol mapper dependency."""
+        self._symbol_mapper = symbol_mapper
 
     
     # MEXC Order Status Mapping to Unified Status
@@ -69,8 +73,7 @@ class MexcMappings:
     # Reverse mapping for API responses (MEXC -> Unified)
     TIME_IN_FORCE_REVERSE_MAPPING = {v: k for k, v in TIME_IN_FORCE_MAPPING.items()}
     
-    @classmethod
-    def get_unified_order_status(cls, mexc_status: str) -> OrderStatus:
+    def get_unified_order_status(self, mexc_status: str) -> OrderStatus:
         """
         Convert MEXC order status string to unified OrderStatus enum.
         
@@ -80,10 +83,9 @@ class MexcMappings:
         Returns:
             Unified OrderStatus enum value
         """
-        return cls.ORDER_STATUS_MAPPING.get(mexc_status, OrderStatus.UNKNOWN)
+        return self.ORDER_STATUS_MAPPING.get(mexc_status, OrderStatus.UNKNOWN)
     
-    @classmethod
-    def get_mexc_order_type(cls, unified_type: OrderType) -> str:
+    def get_mexc_order_type(self, unified_type: OrderType) -> str:
         """
         Convert unified OrderType to MEXC API order type string.
         
@@ -93,10 +95,9 @@ class MexcMappings:
         Returns:
             MEXC API order type string
         """
-        return cls.ORDER_TYPE_MAPPING.get(unified_type, 'LIMIT')
+        return self.ORDER_TYPE_MAPPING.get(unified_type, 'LIMIT')
     
-    @classmethod
-    def get_unified_order_type(cls, mexc_type: str) -> OrderType:
+    def get_unified_order_type(self, mexc_type: str) -> OrderType:
         """
         Convert MEXC order type string to unified OrderType enum.
         
@@ -106,10 +107,9 @@ class MexcMappings:
         Returns:
             Unified OrderType enum value
         """
-        return cls.ORDER_TYPE_REVERSE_MAPPING.get(mexc_type, OrderType.LIMIT)
+        return self.ORDER_TYPE_REVERSE_MAPPING.get(mexc_type, OrderType.LIMIT)
     
-    @classmethod
-    def get_mexc_side(cls, unified_side: Side) -> str:
+    def get_mexc_side(self, unified_side: Side) -> str:
         """
         Convert unified Side to MEXC API side string.
         
@@ -119,10 +119,9 @@ class MexcMappings:
         Returns:
             MEXC API side string
         """
-        return cls.SIDE_MAPPING.get(unified_side, 'BUY')
+        return self.SIDE_MAPPING.get(unified_side, 'BUY')
     
-    @classmethod
-    def get_unified_side(cls, mexc_side: str) -> Side:
+    def get_unified_side(self, mexc_side: str) -> Side:
         """
         Convert MEXC side string to unified Side enum.
         
@@ -132,10 +131,9 @@ class MexcMappings:
         Returns:
             Unified Side enum value
         """
-        return cls.SIDE_REVERSE_MAPPING.get(mexc_side, Side.BUY)
+        return self.SIDE_REVERSE_MAPPING.get(mexc_side, Side.BUY)
     
-    @classmethod
-    def get_mexc_time_in_force(cls, unified_tif: TimeInForce) -> str:
+    def get_mexc_time_in_force(self, unified_tif: TimeInForce) -> str:
         """
         Convert unified TimeInForce to MEXC API time in force string.
         
@@ -145,10 +143,9 @@ class MexcMappings:
         Returns:
             MEXC API time in force string
         """
-        return cls.TIME_IN_FORCE_MAPPING.get(unified_tif, 'GTC')
+        return self.TIME_IN_FORCE_MAPPING.get(unified_tif, 'GTC')
     
-    @classmethod
-    def get_unified_time_in_force(cls, mexc_tif: str) -> TimeInForce:
+    def get_unified_time_in_force(self, mexc_tif: str) -> TimeInForce:
         """
         Convert MEXC time in force string to unified TimeInForce enum.
         
@@ -158,12 +155,11 @@ class MexcMappings:
         Returns:
             Unified TimeInForce enum value
         """
-        return cls.TIME_IN_FORCE_REVERSE_MAPPING.get(mexc_tif, TimeInForce.GTC)
+        return self.TIME_IN_FORCE_REVERSE_MAPPING.get(mexc_tif, TimeInForce.GTC)
     
     # Utility functions merged from mexc_utils.py
     
-    @staticmethod
-    def format_mexc_quantity(quantity: float, precision: int = 8) -> str:
+    def format_mexc_quantity(self, quantity: float, precision: int = 8) -> str:
         """
         Format quantity to MEXC precision requirements.
         
@@ -177,8 +173,7 @@ class MexcMappings:
         formatted = f"{quantity:.{precision}f}".rstrip('0').rstrip('.')
         return formatted if formatted else "0"
     
-    @staticmethod
-    def format_mexc_price(price: float, precision: int = 8) -> str:
+    def format_mexc_price(self, price: float, precision: int = 8) -> str:
         """
         Format price to MEXC precision requirements.
         
@@ -192,8 +187,7 @@ class MexcMappings:
         formatted = f"{price:.{precision}f}".rstrip('0').rstrip('.')
         return formatted if formatted else "0"
     
-    @staticmethod
-    def get_mexc_kline_interval(interval: KlineInterval) -> str:
+    def get_mexc_kline_interval(self, interval: KlineInterval) -> str:
         """
         Convert unified KlineInterval to MEXC API interval string.
         
@@ -218,8 +212,7 @@ class MexcMappings:
         
         return interval_map.get(interval, "1h")  # Default to 1 hour
     
-    @staticmethod
-    def pair_to_symbol(pair_str: str) -> Symbol:
+    def pair_to_symbol(self, pair_str: str) -> Symbol:
         """
         Convert MEXC pair string to unified Symbol struct.
         
@@ -229,13 +222,9 @@ class MexcMappings:
         Returns:
             Unified Symbol struct
         """
-        # Import here to avoid circular imports
-        from cex.mexc.services.symbol_mapper import MexcSymbolMapper
-        mapper = MexcSymbolMapper()
-        return mapper.pair_to_symbol(pair_str)
+        return self._symbol_mapper.pair_to_symbol(pair_str)
     
-    @staticmethod
-    def transform_mexc_order_to_unified(mexc_order) -> Order:
+    def transform_mexc_order_to_unified(self, mexc_order) -> Order:
         """
         Transform MEXC order response to unified Order struct.
         
@@ -246,7 +235,7 @@ class MexcMappings:
             Unified Order struct
         """
         # Convert MEXC symbol to unified Symbol
-        symbol = MexcMappings.pair_to_symbol(mexc_order.symbol)
+        symbol = self.pair_to_symbol(mexc_order.symbol)
 
         # Calculate fee from fills if available
         fee = 0.0
@@ -255,38 +244,13 @@ class MexcMappings:
         
         return Order(
             symbol=symbol,
-            side=MexcMappings.get_unified_side(mexc_order.side),
-            order_type=MexcMappings.get_unified_order_type(mexc_order.type),
+            side=self.get_unified_side(mexc_order.side),
+            order_type=self.get_unified_order_type(mexc_order.type),
             price=float(mexc_order.price),
             amount=float(mexc_order.origQty),
             amount_filled=float(mexc_order.executedQty),
             order_id=OrderId(str(mexc_order.orderId)),
-            status=MexcMappings.get_unified_order_status(mexc_order.status),
+            status=self.get_unified_order_status(mexc_order.status),
             timestamp=datetime.fromtimestamp(mexc_order.transactTime / 1000) if mexc_order.transactTime else None,
             fee=fee
         )
-
-
-# Legacy alias for backward compatibility
-class MexcUtils:
-    """Legacy alias for MexcMappings - use MexcMappings instead."""
-    
-    @staticmethod
-    def format_mexc_quantity(quantity: float, precision: int = 8) -> str:
-        return MexcMappings.format_mexc_quantity(quantity, precision)
-    
-    @staticmethod
-    def format_mexc_price(price: float, precision: int = 8) -> str:
-        return MexcMappings.format_mexc_price(price, precision)
-    
-    @staticmethod
-    def get_mexc_kline_interval(interval: KlineInterval) -> str:
-        return MexcMappings.get_mexc_kline_interval(interval)
-    
-    @staticmethod
-    def pair_to_symbol(pair_str: str) -> Symbol:
-        return MexcMappings.pair_to_symbol(pair_str)
-    
-    @staticmethod
-    def transform_mexc_order_to_unified(mexc_order) -> Order:
-        return MexcMappings.transform_mexc_order_to_unified(mexc_order)

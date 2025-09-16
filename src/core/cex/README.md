@@ -389,13 +389,14 @@ def transform_exchange_order_to_unified(exchange_order) -> Order:
 ```
 
 #### 2. Error Handling
+
 ```python
 def handle_exchange_error(exchange_error) -> ExchangeAPIError:
     # Map exchange-specific errors to unified exceptions
-    error_code = exchange_error.code
+    error_code = exchange_error.status_code
     if error_code in RATE_LIMIT_CODES:
-        return RateLimitError(429, exchange_error.message, 
-                            retry_after=exchange_error.retry_after)
+        return RateLimitError(429, exchange_error.message,
+                              retry_after=exchange_error.retry_after)
     elif error_code in TRADING_DISABLED_CODES:
         return TradingDisabled(403, exchange_error.message)
     else:
@@ -498,6 +499,7 @@ def _handle_api_error(self, response):
 ```
 
 ### Retry Logic
+
 ```python
 # Implement intelligent retry logic
 async def with_retry(self, operation, max_retries=3):
@@ -509,7 +511,7 @@ async def with_retry(self, operation, max_retries=3):
                 raise
             await asyncio.sleep(e.retry_after or 1.0)
         except ExchangeAPIError as e:
-            if e.code >= 500 and attempt < max_retries - 1:
+            if e.status_code >= 500 and attempt < max_retries - 1:
                 await asyncio.sleep(2 ** attempt)
             else:
                 raise

@@ -3,7 +3,7 @@ from typing import Any, List, Dict, Optional
 
 import msgspec
 
-from core.config.config import ExchangeEnum
+from core.config.config_manager import ExchangeEnum
 from core.cex.services import get_symbol_mapper
 
 from core.cex.websocket import ConnectionStrategy, ConnectionContext, SubscriptionStrategy, SubscriptionAction, \

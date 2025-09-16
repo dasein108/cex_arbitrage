@@ -39,11 +39,10 @@ from core.exceptions.exchange import BaseExchangeError
 from core.config.structs import ExchangeConfig
 
 from core.cex.rest.spot.base_rest_spot_private import PrivateExchangeSpotRestInterface
-from .rest_mappings import MexcUtils, MexcMappings
 from .rest_config import MexcConfig
 from .custom_exception_handler import handle_custom_exception
-from cex.mexc.services.symbol_mapper import mexc_symbol_mapper
 from core.transport.rest.structs import HTTPMethod
+from core.cex.services.mapping_factory import ExchangeMappingsFactory
 
 
 class MexcPrivateSpotRest(PrivateExchangeSpotRestInterface):
@@ -56,12 +55,15 @@ class MexcPrivateSpotRest(PrivateExchangeSpotRestInterface):
 
     def __init__(self, config: ExchangeConfig):
         """
-        Initialize MEXC private REST client.
+        Initialize MEXC private REST client with dependency injection.
         
         Args:
             config: ExchangeConfig with API credentials
         """
         super().__init__(config, MexcConfig.rest_config['default'], handle_custom_exception)
+        
+        # Create exchange-agnostic mappings service using factory
+        self._mappings = ExchangeMappingsFactory.create_mappings('MEXC', self.symbol_mapper)
 
     def generate_auth_signature(self, params: Dict[str, Any]) -> str:
         """
@@ -201,7 +203,7 @@ class MexcPrivateSpotRest(PrivateExchangeSpotRestInterface):
             ExchangeAPIError: If unable to place order
             ValueError: If required parameters are missing
         """
-        pair = mexc_symbol_mapper.symbol_to_pair(symbol)
+        pair = self.symbol_mapper.symbol_to_pair(symbol)
 
         # Validate required parameters based on order type
         if order_type in [OrderType.LIMIT, OrderType.LIMIT_MAKER, OrderType.STOP_LIMIT]:
@@ -222,34 +224,34 @@ class MexcPrivateSpotRest(PrivateExchangeSpotRestInterface):
         # Prepare cex order parameters
         params = {
             'symbol': pair,
-            'side': MexcMappings.get_mexc_side(side),
-            'type': MexcMappings.get_mexc_order_type(order_type)
+            'side': self._mappings.get_exchange_side(side),
+            'type': self._mappings.get_exchange_order_type(order_type)
         }
 
         # Add quantity parameters
         if amount is not None:
-            params['quantity'] = MexcUtils.format_mexc_quantity(amount)
+            params['quantity'] = self._mappings.format_quantity(amount)
 
         if quote_quantity is not None:
-            params['quoteOrderQty'] = MexcUtils.format_mexc_quantity(quote_quantity)
+            params['quoteOrderQty'] = self._mappings.format_quantity(quote_quantity)
 
         # Add price parameters
         if price is not None:
-            params['price'] = MexcUtils.format_mexc_price(price)
+            params['price'] = self._mappings.format_price(price)
 
         if stop_price is not None:
-            params['stopPrice'] = MexcUtils.format_mexc_price(stop_price)
+            params['stopPrice'] = self._mappings.format_price(stop_price)
 
         # Add time in force (default to GTC if not specified for applicable order types)
         if order_type in [OrderType.LIMIT, OrderType.LIMIT_MAKER, OrderType.STOP_LIMIT]:
             tif = time_in_force or TimeInForce.GTC
-            params['timeInForce'] = MexcMappings.get_mexc_time_in_force(tif)
+            params['timeInForce'] = self._mappings.get_exchange_time_in_force(tif)
         elif time_in_force is not None:
-            params['timeInForce'] = MexcMappings.get_mexc_time_in_force(time_in_force)
+            params['timeInForce'] = self._mappings.get_exchange_time_in_force(time_in_force)
 
         # Add optional parameters
         if iceberg_qty is not None:
-            params['icebergQty'] = MexcUtils.format_mexc_quantity(iceberg_qty)
+            params['icebergQty'] = self._mappings.format_quantity(iceberg_qty)
 
         if new_order_resp_type is not None:
             params['newOrderRespType'] = new_order_resp_type
@@ -265,7 +267,7 @@ class MexcPrivateSpotRest(PrivateExchangeSpotRestInterface):
         order_response = msgspec.convert(response_data, MexcOrderResponse)
 
         # Transform to unified format
-        unified_order = MexcUtils.transform_mexc_order_to_unified(order_response)
+        unified_order = self._mappings.transform_exchange_order_to_unified(order_response)
 
         # Log order placement with relevant details
         amount_str = f"{amount} {symbol.base}" if amount else f"{quote_quantity} {symbol.quote}"
@@ -287,7 +289,7 @@ class MexcPrivateSpotRest(PrivateExchangeSpotRestInterface):
         Raises:
             ExchangeAPIError: If unable to cancel order
         """
-        pair = mexc_symbol_mapper.symbol_to_pair(symbol)
+        pair = self.symbol_mapper.symbol_to_pair(symbol)
 
         params = {
             'symbol': pair,
@@ -305,7 +307,7 @@ class MexcPrivateSpotRest(PrivateExchangeSpotRestInterface):
         order_response = msgspec.convert(response_data, MexcOrderResponse)
 
         # Transform to unified format
-        unified_order = MexcUtils.transform_mexc_order_to_unified(order_response)
+        unified_order = self._mappings.transform_exchange_order_to_unified(order_response)
 
         self.logger.info(f"Cancelled order {order_id} for {symbol.base}/{symbol.quote}")
         return unified_order
@@ -323,7 +325,7 @@ class MexcPrivateSpotRest(PrivateExchangeSpotRestInterface):
         Raises:
             ExchangeAPIError: If unable to cancel orders
         """
-        pair = mexc_symbol_mapper.symbol_to_pair(symbol)
+        pair = self.symbol_mapper.symbol_to_pair(symbol)
 
         params = {'symbol': pair}
 
@@ -340,7 +342,7 @@ class MexcPrivateSpotRest(PrivateExchangeSpotRestInterface):
         # Transform to unified format
         cancelled_orders = []
         for order_response in order_responses:
-            unified_order = MexcUtils.transform_mexc_order_to_unified(order_response)
+            unified_order = self._mappings.transform_exchange_order_to_unified(order_response)
             cancelled_orders.append(unified_order)
 
         self.logger.info(f"Cancelled {len(cancelled_orders)} orders for {symbol.base}/{symbol.quote}")
@@ -360,7 +362,7 @@ class MexcPrivateSpotRest(PrivateExchangeSpotRestInterface):
         Raises:
             ExchangeAPIError: If unable to fetch order
         """
-        pair = mexc_symbol_mapper.symbol_to_pair(symbol)
+        pair = self.symbol_mapper.symbol_to_pair(symbol)
 
         params = {
             'symbol': pair,
@@ -378,7 +380,7 @@ class MexcPrivateSpotRest(PrivateExchangeSpotRestInterface):
         order_response = msgspec.convert(response_data, MexcOrderResponse)
 
         # Transform to unified format
-        unified_order = MexcUtils.transform_mexc_order_to_unified(order_response)
+        unified_order = self._mappings.transform_exchange_order_to_unified(order_response)
 
         self.logger.debug(f"Retrieved order {order_id} status: {unified_order.status}")
         return unified_order
@@ -398,7 +400,7 @@ class MexcPrivateSpotRest(PrivateExchangeSpotRestInterface):
         """
         params = {}
         if symbol:
-            params['symbol'] = mexc_symbol_mapper.symbol_to_pair(symbol)
+            params['symbol'] = self.symbol_mapper.symbol_to_pair(symbol)
 
         response_data = await self.request(
             HTTPMethod.GET,
@@ -413,7 +415,7 @@ class MexcPrivateSpotRest(PrivateExchangeSpotRestInterface):
         # Transform to unified format
         open_orders = []
         for order_response in order_responses:
-            unified_order = MexcUtils.transform_mexc_order_to_unified(order_response)
+            unified_order = self._mappings.transform_exchange_order_to_unified(order_response)
             open_orders.append(unified_order)
 
         symbol_str = f" for {symbol.base}/{symbol.quote}" if symbol else ""

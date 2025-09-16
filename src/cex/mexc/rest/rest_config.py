@@ -5,7 +5,7 @@ Simple, centralized configuration for MEXC exchange REST configs.
 Uses the new YAML-based configuration system.
 """
 
-from core.config.config import config
+from core.config.config_manager import config
 from core.transport.rest.rest_client import RestConfig
 
 

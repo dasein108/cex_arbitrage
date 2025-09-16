@@ -22,7 +22,7 @@ import logging
 
 from cex.gateio.rest.gateio_private import GateioPrivateExchangeSpot
 from structs.exchange import Symbol, AssetName, Side, OrderType, TimeInForce
-from core.config.config import config
+from core.config.config_manager import config
 
 
 async def demonstrate_private_api():

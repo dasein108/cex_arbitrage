@@ -287,7 +287,7 @@ try:
 except RateLimitError as e:
     print(f"Rate limited, retry after {e.retry_after} seconds")
 except ExchangeAPIError as e:
-    print(f"API Error {e.code}: {e.message}")
+    print(f"API Error {e.status_code}: {e.message}")
 ```
 
 ### Configuration (`config.py`)
@@ -303,7 +303,7 @@ YAML-based configuration management system for environment-specific settings.
 #### Usage Example
 
 ```python
-from core.config.config import config
+from core.config.config_manager import config
 
 # Access configuration values
 base_url = config.MEXC_BASE_URL

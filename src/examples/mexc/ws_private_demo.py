@@ -23,7 +23,7 @@ from core.cex.websocket.strategies import WebSocketStrategySet
 from core.cex.websocket.ws_manager import WebSocketManager, WebSocketManagerConfig
 from cex.mexc.ws.private.ws_message_parser import MexcPrivateMessageParser
 from cex.mexc.ws.private.ws_strategies import MexcPrivateConnectionStrategy, MexcPrivateSubscriptionStrategy
-from core.config.config import get_exchange_config_struct, config
+from core.config.config_manager import get_exchange_config_struct, config
 from cex.mexc.rest.rest_private import MexcPrivateSpotRest
 
 # Set up logging

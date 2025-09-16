@@ -122,7 +122,7 @@ class ArbitrageController:
         """
         try:
             # Get log level from config
-            from core.config.config import config as base_config
+            from core.config.config_manager import config as base_config
             
             # Get environment settings for log level
             log_level = base_config.LOG_LEVEL

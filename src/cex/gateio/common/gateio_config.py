@@ -5,7 +5,7 @@ Simple, centralized configuration for Gate.io exchange REST configs.
 Uses the YAML-based configuration system following MEXC patterns.
 """
 
-from core.config.config import config
+from core.config.config_manager import config
 from core.transport.rest.rest_client import RestConfig
 
 
