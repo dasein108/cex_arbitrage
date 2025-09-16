@@ -1,14 +1,14 @@
 """
-MEXC-Specific REST Transport Strategies
+Gate.io-Specific REST Transport Strategies
 
-HFT-optimized strategies for MEXC exchange API with aggressive performance targets.
-Implements MEXC-specific rate limiting, authentication, and retry logic.
+Conservative HFT strategies for Gate.io exchange API with stricter rate limiting.
+Implements Gate.io-specific authentication, rate limiting, and retry logic.
 
-MEXC API Characteristics:
-- Base URL: https://api.mexc.com
-- Rate Limits: 1200 requests/minute (20 req/sec) for most endpoints
-- Authentication: API Key + HMAC SHA256 signature
-- Timeout: Aggressive timeouts for HFT (40ms target)
+Gate.io API Characteristics:
+- Base URL: https://api.gateio.ws
+- Rate Limits: Conservative (200 requests/10 seconds for most endpoints)
+- Authentication: API Key + HMAC SHA512 signature with complex signing
+- Timeout: Conservative timeouts (60ms target) due to higher latency
 """
 
 import asyncio
@@ -19,32 +19,32 @@ from typing import Dict, Any, Optional
 from urllib.parse import urlencode
 
 from core.exceptions.exchange import RateLimitErrorBase, ExchangeConnectionError
-from .strategies import (
+from core.transport.rest.strategies import (
     RequestStrategy, RateLimitStrategy, RetryStrategy, AuthStrategy,
     RequestContext, RateLimitContext, PerformanceTargets
 )
-from .structs import HTTPMethod
+from core.transport.rest.structs import HTTPMethod
 
 
-class MexcRequestStrategy(RequestStrategy):
-    """MEXC-specific request configuration with aggressive HFT settings."""
+class GateioRequestStrategy(RequestStrategy):
+    """Gate.io-specific request configuration with conservative HFT settings."""
     
     def __init__(self, **kwargs):
-        self.base_url = "https://api.mexc.com"
+        self.base_url = "https://api.gateio.ws"
     
     async def create_request_context(self) -> RequestContext:
-        """Create MEXC-optimized request configuration."""
+        """Create Gate.io-optimized request configuration."""
         return RequestContext(
             base_url=self.base_url,
-            timeout=8.0,  # Aggressive timeout for HFT
-            max_concurrent=5,  # MEXC-specific concurrency limit
-            connection_timeout=1.5,  # Fast connection establishment
-            read_timeout=4.0,  # Fast read timeout
-            keepalive_timeout=30,  # Shorter keepalive for fresh connections
+            timeout=12.0,  # Conservative timeout for Gate.io
+            max_concurrent=2,  # Very conservative concurrency
+            connection_timeout=3.0,  # Slower connection establishment
+            read_timeout=8.0,  # Longer read timeout
+            keepalive_timeout=60,  # Longer keepalive
             default_headers={
                 "Content-Type": "application/json",
                 "Accept": "application/json",
-                "User-Agent": "HFTArbitrageEngine-MEXC/1.0"
+                "User-Agent": "HFTArbitrageEngine-Gateio/1.0"
             }
         )
     
@@ -55,76 +55,71 @@ class MexcRequestStrategy(RequestStrategy):
         params: Dict[str, Any],
         headers: Dict[str, str]
     ) -> Dict[str, Any]:
-        """Prepare MEXC-specific request parameters."""
+        """Prepare Gate.io-specific request parameters."""
         request_kwargs = {
             'headers': headers.copy(),
         }
         
-        # MEXC uses query parameters for most requests
+        # Gate.io prefers query parameters for most requests
         if method == HTTPMethod.GET:
             if params:
                 request_kwargs['params'] = params
         elif method in [HTTPMethod.POST, HTTPMethod.PUT, HTTPMethod.DELETE]:
-            # For trading endpoints, MEXC typically uses form data
+            # Gate.io typically uses JSON for POST/PUT requests
             if params:
-                if 'Content-Type' not in headers or headers['Content-Type'] == 'application/json':
-                    # Use JSON for complex data
-                    request_kwargs['json'] = params
-                else:
-                    # Use form data for simple parameters
-                    request_kwargs['data'] = params
+                request_kwargs['json'] = params
         
         return request_kwargs
     
     def get_performance_targets(self) -> PerformanceTargets:
-        """Get MEXC-specific HFT performance targets."""
+        """Get Gate.io-specific HFT performance targets."""
         return PerformanceTargets(
-            max_latency_ms=40.0,  # MEXC has good latency characteristics
-            max_retry_attempts=2,  # Fast failure for HFT
-            connection_timeout_ms=1500.0,
-            read_timeout_ms=4000.0,
-            target_throughput_rps=15.0  # Conservative for stability
+            max_latency_ms=60.0,  # Gate.io needs more conservative targets
+            max_retry_attempts=3,  # More retries due to higher error rates
+            connection_timeout_ms=3000.0,
+            read_timeout_ms=8000.0,
+            target_throughput_rps=5.0  # Very conservative for stability
         )
 
 
-class MexcRateLimitStrategy(RateLimitStrategy):
-    """MEXC-specific rate limiting with endpoint awareness."""
+class GateioRateLimitStrategy(RateLimitStrategy):
+    """Gate.io-specific rate limiting with very strict controls."""
     
     def __init__(self, **kwargs):
-        # MEXC endpoint-specific rate limits
+        # Gate.io endpoint-specific rate limits (very conservative)
         self._endpoint_limits = {
-            # Public endpoints - more generous limits
-            "/api/v3/ticker/24hr": RateLimitContext(
-                requests_per_second=10.0, burst_capacity=20, endpoint_weight=1
+            # Public endpoints
+            "/api/v4/spot/tickers": RateLimitContext(
+                requests_per_second=2.0, burst_capacity=5, endpoint_weight=1
             ),
-            "/api/v3/depth": RateLimitContext(
-                requests_per_second=10.0, burst_capacity=20, endpoint_weight=1
+            "/api/v4/spot/order_book": RateLimitContext(
+                requests_per_second=3.0, burst_capacity=6, endpoint_weight=1
             ),
-            "/api/v3/klines": RateLimitContext(
-                requests_per_second=5.0, burst_capacity=10, endpoint_weight=1
+            "/api/v4/spot/candlesticks": RateLimitContext(
+                requests_per_second=2.0, burst_capacity=4, endpoint_weight=1
             ),
-            "/api/v3/trades": RateLimitContext(
-                requests_per_second=5.0, burst_capacity=10, endpoint_weight=1
+            "/api/v4/spot/trades": RateLimitContext(
+                requests_per_second=2.0, burst_capacity=4, endpoint_weight=1
             ),
             
-            # Private endpoints - more restrictive
-            "/api/v3/order": RateLimitContext(
-                requests_per_second=2.0, burst_capacity=5, endpoint_weight=3
+            # Private endpoints - very restrictive
+            "/api/v4/spot/orders": RateLimitContext(
+                requests_per_second=0.5, burst_capacity=2, endpoint_weight=5
             ),
-            "/api/v3/account": RateLimitContext(
-                requests_per_second=1.0, burst_capacity=3, endpoint_weight=2
+            "/api/v4/spot/accounts": RateLimitContext(
+                requests_per_second=0.3, burst_capacity=1, endpoint_weight=3
             ),
-            "/api/v3/openOrders": RateLimitContext(
-                requests_per_second=1.0, burst_capacity=3, endpoint_weight=2
+            "/api/v4/spot/open_orders": RateLimitContext(
+                requests_per_second=0.3, burst_capacity=1, endpoint_weight=3
             ),
-            "/api/v3/allOrders": RateLimitContext(
-                requests_per_second=0.5, burst_capacity=2, endpoint_weight=3
+            "/api/v4/spot/my_trades": RateLimitContext(
+                requests_per_second=0.2, burst_capacity=1, endpoint_weight=5
             ),
         }
         
-        # Default rate limit for unknown endpoints
+        # Default rate limit for unknown endpoints (very conservative)
         self._default_limit = RateLimitContext(
-            requests_per_second=5.0, burst_capacity=10, endpoint_weight=1
+            requests_per_second=1.0, burst_capacity=2, endpoint_weight=1
         )
         
         # Semaphores for each endpoint
@@ -138,13 +133,13 @@ class MexcRateLimitStrategy(RateLimitStrategy):
             self._last_request_times[endpoint] = 0.0
             self._request_counts[endpoint] = 0
         
-        # Global rate limiting
-        self._global_semaphore = asyncio.Semaphore(5)  # Max 5 concurrent requests
+        # Global rate limiting (very strict)
+        self._global_semaphore = asyncio.Semaphore(2)  # Max 2 concurrent requests
         self._global_last_request = 0.0
-        self._global_min_delay = 0.1  # 100ms between any requests
+        self._global_min_delay = 0.3  # 300ms between any requests
     
     async def acquire_permit(self, endpoint: str, request_weight: int = 1) -> bool:
-        """Acquire rate limit permit for MEXC endpoint."""
+        """Acquire rate limit permit for Gate.io endpoint."""
         # Get rate limit context
         context = self.get_rate_limit_context(endpoint)
         
@@ -152,7 +147,7 @@ class MexcRateLimitStrategy(RateLimitStrategy):
         await self._global_semaphore.acquire()
         
         try:
-            # Global rate limiting
+            # Global rate limiting with strict delays
             current_time = time.time()
             time_since_last = current_time - self._global_last_request
             if time_since_last < self._global_min_delay:
@@ -164,7 +159,7 @@ class MexcRateLimitStrategy(RateLimitStrategy):
                 semaphore = self._semaphores[endpoint]
                 await semaphore.acquire()
                 
-                # Apply delay if needed
+                # Apply stricter delay
                 last_time = self._last_request_times[endpoint]
                 required_delay = (1.0 / context.requests_per_second) - (current_time - last_time)
                 if required_delay > 0:
@@ -180,7 +175,7 @@ class MexcRateLimitStrategy(RateLimitStrategy):
             raise
     
     def release_permit(self, endpoint: str, request_weight: int = 1) -> None:
-        """Release rate limit permit for MEXC endpoint."""
+        """Release rate limit permit for Gate.io endpoint."""
         # Release endpoint-specific semaphore
         if endpoint in self._semaphores:
             self._semaphores[endpoint].release()
@@ -189,7 +184,7 @@ class MexcRateLimitStrategy(RateLimitStrategy):
         self._global_semaphore.release()
     
     def get_rate_limit_context(self, endpoint: str) -> RateLimitContext:
-        """Get rate limiting configuration for MEXC endpoint."""
+        """Get rate limiting configuration for Gate.io endpoint."""
         # Find best matching endpoint
         for known_endpoint, context in self._endpoint_limits.items():
             if endpoint.startswith(known_endpoint):
@@ -199,9 +194,9 @@ class MexcRateLimitStrategy(RateLimitStrategy):
         return self._default_limit
     
     def get_stats(self) -> Dict[str, Any]:
-        """Get MEXC rate limiting statistics."""
+        """Get Gate.io rate limiting statistics."""
         stats = {
-            "exchange": "mexc",
+            "exchange": "gateio",
             "global_available": self._global_semaphore._value,
             "endpoints": {}
         }
@@ -220,16 +215,16 @@ class MexcRateLimitStrategy(RateLimitStrategy):
         return stats
 
 
-class MexcRetryStrategy(RetryStrategy):
-    """MEXC-specific retry logic with fast failure for HFT."""
+class GateioRetryStrategy(RetryStrategy):
+    """Gate.io-specific retry logic with more aggressive retries."""
     
     def __init__(self, **kwargs):
-        self.max_attempts = 2  # Fast failure for HFT
-        self.base_delay = 0.1  # 100ms base delay
-        self.max_delay = 2.0   # 2 second max delay
+        self.max_attempts = 3  # More retries for Gate.io
+        self.base_delay = 0.5  # 500ms base delay
+        self.max_delay = 5.0   # 5 second max delay
     
     def should_retry(self, attempt: int, error: Exception) -> bool:
-        """Determine if request should be retried for MEXC."""
+        """Determine if request should be retried for Gate.io."""
         if attempt >= self.max_attempts:
             return False
         
@@ -245,21 +240,25 @@ class MexcRetryStrategy(RetryStrategy):
         if hasattr(error, 'status_code') and 500 <= error.status_code < 600:
             return True
         
+        # Gate.io specific: retry on 502/503 more aggressively
+        if hasattr(error, 'status_code') and error.status_code in [502, 503]:
+            return True
+        
         return False
     
     async def calculate_delay(self, attempt: int, error: Exception) -> float:
-        """Calculate retry delay with MEXC-specific backoff."""
+        """Calculate retry delay with Gate.io-specific backoff."""
         if isinstance(error, RateLimitErrorBase):
-            # Longer delay for rate limits
-            return min(self.base_delay * (3 ** attempt), self.max_delay)
+            # Much longer delay for rate limits
+            return min(self.base_delay * (4 ** attempt), self.max_delay)
         
         # Exponential backoff for other errors
         delay = self.base_delay * (2 ** (attempt - 1))
         return min(delay, self.max_delay)
     
     def handle_rate_limit(self, response_headers: Dict[str, str]) -> float:
-        """Extract rate limit information from MEXC response headers."""
-        # MEXC-specific rate limit headers
+        """Extract rate limit information from Gate.io response headers."""
+        # Gate.io-specific rate limit headers
         retry_after = response_headers.get('Retry-After')
         if retry_after:
             try:
@@ -267,22 +266,24 @@ class MexcRetryStrategy(RetryStrategy):
             except ValueError:
                 pass
         
-        # Check X-MBX-USED-WEIGHT headers (Binance-style)
-        used_weight = response_headers.get('X-MBX-USED-WEIGHT-1M')
-        if used_weight:
+        # Check custom Gate.io headers
+        rate_limit_remaining = response_headers.get('X-Gate-Rate-Limit-Remaining')
+        if rate_limit_remaining:
             try:
-                weight = int(used_weight)
-                if weight > 1000:  # Near limit
+                remaining = int(rate_limit_remaining)
+                if remaining < 5:  # Very low remaining requests
                     return 60.0  # Wait 1 minute
+                elif remaining < 20:
+                    return 30.0  # Wait 30 seconds
             except ValueError:
                 pass
         
-        # Default rate limit delay
-        return 30.0  # 30 seconds default
+        # Default rate limit delay (longer for Gate.io)
+        return 45.0  # 45 seconds default
 
 
-class MexcAuthStrategy(AuthStrategy):
-    """MEXC-specific authentication using API Key + HMAC SHA256."""
+class GateioAuthStrategy(AuthStrategy):
+    """Gate.io-specific authentication using API Key + HMAC SHA512."""
     
     def __init__(self, api_key: str, secret_key: str, **kwargs):
         self.api_key = api_key
@@ -295,36 +296,54 @@ class MexcAuthStrategy(AuthStrategy):
         params: Dict[str, Any],
         timestamp: int
     ) -> Dict[str, str]:
-        """Generate MEXC authentication headers."""
-        # Add timestamp to parameters
-        params = params.copy()
-        params['timestamp'] = timestamp
+        """Generate Gate.io authentication headers."""
+        # Gate.io uses a complex signing process
         
-        # Create query string
-        query_string = urlencode(sorted(params.items()))
+        # Create the request body
+        if method == HTTPMethod.GET:
+            query_string = urlencode(sorted(params.items())) if params else ""
+            body = ""
+        else:
+            import json
+            body = json.dumps(params, separators=(',', ':')) if params else ""
+            query_string = ""
         
-        # Create signature
+        # Create the signing payload
+        # Format: METHOD\n/path/to/endpoint\nquery_string\nbody_hash\ntimestamp
+        body_hash = hashlib.sha512(body.encode('utf-8')).hexdigest()
+        
+        signing_string = f"{method.value}\n{endpoint}\n{query_string}\n{body_hash}\n{timestamp}"
+        
+        # Create signature using HMAC SHA512
         signature = hmac.new(
             self.secret_key,
-            query_string.encode('utf-8'),
-            hashlib.sha256
+            signing_string.encode('utf-8'),
+            hashlib.sha512
         ).hexdigest()
         
         # Return authentication headers
-        return {
-            'X-MEXC-APIKEY': self.api_key,
-            'signature': signature
+        headers = {
+            'KEY': self.api_key,
+            'Timestamp': str(timestamp),
+            'SIGN': signature
         }
+        
+        # Add content type for non-GET requests
+        if method != HTTPMethod.GET:
+            headers['Content-Type'] = 'application/json'
+        
+        return headers
     
     def requires_auth(self, endpoint: str) -> bool:
-        """Check if MEXC endpoint requires authentication."""
+        """Check if Gate.io endpoint requires authentication."""
         # Private endpoints that require authentication
         private_endpoints = [
-            '/api/v3/account',
-            '/api/v3/order',
-            '/api/v3/openOrders',
-            '/api/v3/allOrders',
-            '/api/v3/myTrades',
+            '/api/v4/spot/accounts',
+            '/api/v4/spot/orders',
+            '/api/v4/spot/open_orders',
+            '/api/v4/spot/my_trades',
+            '/api/v4/wallet/deposits',
+            '/api/v4/wallet/withdrawals',
         ]
         
         return any(endpoint.startswith(private_ep) for private_ep in private_endpoints)

@@ -17,11 +17,10 @@ from structs.exchange import (
     ExchangeStatus
 )
 from cex.gateio.ws.gateio_ws_public import GateioWebsocketPublic
-from cex.gateio.rest.gateio_public import GateioPublicExchange as GateioPublicRest
-from cex.gateio.common.gateio_config import GateioConfig
-from core.transport.websocket.ws_client import WebSocketConfig
-from core.cex import ConnectionState
+from cex.gateio.rest.gateio_public import GateioPublicExchangeSpotRest
+from core.cex.websocket.structs import ConnectionState
 from core.exceptions.exchange import BaseExchangeError
+from core.config.structs import ExchangeConfig
 
 
 class GateioPublicExchange(BasePublicExchangeInterface):
@@ -42,244 +41,155 @@ class GateioPublicExchange(BasePublicExchangeInterface):
     - Zero-copy data processing where possible
     - Event-driven data distribution
     """
-    
-    def __init__(self):
+    exchange_name = "GATEIO_public"
+
+    def __init__(self, config: ExchangeConfig):
         """Initialize Gate.io public exchange for market data operations."""
-        super().__init__()
-        
         self.logger = logging.getLogger(f"{__name__}.{self.__class__.__name__}")
+        self.config = config
+        self.start_time = time.time()
         
-        # HFT Optimized: Real-time streaming data structures
-        self._orderbooks: Dict[Symbol, OrderBook] = {}
-        self._symbols_info_dict: Dict[Symbol, SymbolInfo] = {}
+        # Initialize REST client for public data
+        # TODO: Update REST client to use unified config pattern
+        self.rest_client = None  # Temporarily disabled until REST client is updated
+        
+        # WebSocket client for real-time data streaming
+        self.ws_client: Optional[GateioWebsocketPublic] = None
+        
+        # HFT State Management (CRITICAL: NO CACHING OF REAL-TIME DATA)
+        self._symbols_info: Optional[SymbolsInfo] = None  # Static data - safe to cache
         self._active_symbols: Set[Symbol] = set()
+        self._orderbook_cache: Dict[Symbol, OrderBook] = {}  # Real-time cache - managed carefully
         
-        # Current streaming state (not cached)
-        self._latest_orderbook: Optional[OrderBook] = None
-        self._connection_state = ConnectionState.DISCONNECTED
-        
-        # Initialize components using composition pattern
-        self._public_rest = GateioPublicRest()
-        self._websocket_client: Optional[GateioWebsocketPublic] = None
-        
-        # HFT Performance tracking
-        self._market_data_updates = 0
-        self._last_update_time = 0.0
-        
-        self.logger.info("Gate.io Public Exchange initialized for market data operations")
+        self.logger.info(f"Gate.io public exchange initialized")
     
-    @property
-    def status(self) -> ExchangeStatus:
-        """Get current exchange connection status."""
-        if self._connection_state == ConnectionState.CONNECTED:
-            return ExchangeStatus.ACTIVE
-        elif self._connection_state == ConnectionState.CONNECTING:
-            return ExchangeStatus.CONNECTING
-        else:
-            return ExchangeStatus.INACTIVE
+    # BasePublicExchangeInterface Implementation
     
     @property
     def orderbook(self) -> OrderBook:
-        """Get current orderbook snapshot."""
-        if self._latest_orderbook is None:
-            raise BaseExchangeError("No orderbook data available")
-        return self._latest_orderbook
+        """
+        Get current aggregated orderbook from WebSocket stream.
+        
+        HFT COMPLIANT: Returns real-time streamed data, no stale cache.
+        """
+        if not self._orderbook_cache:
+            raise BaseExchangeError(500, "No orderbook data available - initialize WebSocket first")
+        
+        # Return the most recent orderbook (first symbol)
+        # In HFT, each symbol typically tracked separately
+        if self._orderbook_cache:
+            return next(iter(self._orderbook_cache.values()))
+        else:
+            raise BaseExchangeError(500, "No orderbook data available")
     
     @property
     def symbols_info(self) -> SymbolsInfo:
-        """Get all symbol information."""
-        return self._symbols_info_dict.copy()
+        """Get cached symbols information (safe to cache - static data)."""
+        if not self._symbols_info:
+            raise BaseExchangeError(500, "Symbols info not initialized - call initialize() first")
+        return self._symbols_info
     
     @property
     def active_symbols(self) -> List[Symbol]:
-        """Get list of actively streaming symbols."""
+        """Get list of actively tracked symbols."""
         return list(self._active_symbols)
     
     async def initialize(self, symbols: List[Symbol] = None) -> None:
         """
-        Initialize exchange with symbol information and prepare for streaming.
+        Initialize exchange with symbol list for market data streaming.
         
         Args:
-            symbols: Optional list of symbols to initialize for streaming
+            symbols: List of symbols to track for market data
         """
-        self.logger.info("Initializing Gate.io public exchange...")
-        
         try:
-            # Load exchange information and trading rules
-            await self._load_exchange_info()
+            start_time = time.perf_counter()
             
-            # Initialize WebSocket client for real-time data
-            await self._initialize_websocket()
+            # Load symbols information (static data - safe to cache)
+            # TODO: Implement when REST client is updated
+            self._symbols_info = {}  # Placeholder until REST client is updated
             
-            # Setup symbol subscriptions if provided
             if symbols:
-                for symbol in symbols:
-                    await self.add_symbol(symbol)
+                # Initialize WebSocket for real-time data
+                if not self.config.websocket:
+                    raise ValueError("Gate.io exchange configuration missing WebSocket settings")
+                
+                self.ws_client = GateioWebsocketPublic(
+                    config=self.config,
+                    orderbook_handler=self._handle_orderbook_update
+                )
+                
+                await self.ws_client.initialize(symbols)
+                self._active_symbols.update(symbols)
             
-            self.logger.info(f"Gate.io public exchange initialized with {len(self._active_symbols)} symbols")
+            load_time = time.perf_counter() - start_time
+            self.logger.info(
+                f"Gate.io public exchange initialized in {load_time*1000:.2f}ms with {len(symbols or [])} symbols"
+            )
             
         except Exception as e:
             self.logger.error(f"Failed to initialize Gate.io public exchange: {e}")
-            raise BaseExchangeError(f"Gate.io initialization failed: {e}")
+            raise BaseExchangeError(500, f"Initialization failed: {str(e)}")
     
     async def add_symbol(self, symbol: Symbol) -> None:
-        """
-        Start streaming market data for a symbol.
-        
-        Args:
-            symbol: Symbol to start streaming
-        """
+        """Start streaming data for new symbol."""
         if symbol in self._active_symbols:
-            self.logger.debug(f"Symbol {symbol} already active")
-            return
+            return  # Already tracking
         
-        try:
-            # Add to active symbols
+        if self.ws_client and self.ws_client.is_connected():
+            # Add to existing WebSocket connection
+            await self.ws_client.add_symbol(symbol)
             self._active_symbols.add(symbol)
-            
-            # Subscribe to WebSocket data if client is available
-            if self._websocket_client:
-                await self._websocket_client.subscribe_orderbook(symbol)
-            
-            self.logger.debug(f"Added symbol {symbol} for streaming")
-            
-        except Exception as e:
-            self.logger.error(f"Failed to add symbol {symbol}: {e}")
-            self._active_symbols.discard(symbol)
-            raise BaseExchangeError(f"Failed to add symbol: {e}")
+            self.logger.info(f"Added symbol {symbol} to Gate.io public streaming")
+        else:
+            # Store for future WebSocket initialization
+            self._active_symbols.add(symbol)
     
     async def remove_symbol(self, symbol: Symbol) -> None:
-        """
-        Stop streaming market data for a symbol.
-        
-        Args:
-            symbol: Symbol to stop streaming
-        """
+        """Stop streaming data for symbol."""
         if symbol not in self._active_symbols:
-            self.logger.debug(f"Symbol {symbol} not active")
-            return
+            return  # Not tracking
         
-        try:
-            # Remove from active symbols
-            self._active_symbols.discard(symbol)
-            
-            # Unsubscribe from WebSocket data
-            if self._websocket_client:
-                await self._websocket_client.unsubscribe_orderbook(symbol)
-            
-            # Clean up cached data
-            self._orderbooks.pop(symbol, None)
-            
-            self.logger.debug(f"Removed symbol {symbol} from streaming")
-            
-        except Exception as e:
-            self.logger.error(f"Failed to remove symbol {symbol}: {e}")
-            raise BaseExchangeError(f"Failed to remove symbol: {e}")
-    
-    async def close(self) -> None:
-        """Close all connections and cleanup resources."""
-        self.logger.info("Closing Gate.io public exchange...")
+        if self.ws_client and self.ws_client.is_connected():
+            await self.ws_client.remove_symbol(symbol)
         
-        try:
-            # Close WebSocket connections
-            if self._websocket_client:
-                await self._websocket_client.close()
-                self._websocket_client = None
-            
-            # Clean up state
-            self._active_symbols.clear()
-            self._orderbooks.clear()
-            self._connection_state = ConnectionState.DISCONNECTED
-            
-            self.logger.info("Gate.io public exchange closed successfully")
-            
-        except Exception as e:
-            self.logger.error(f"Error closing Gate.io public exchange: {e}")
+        self._active_symbols.discard(symbol)
+        self._orderbook_cache.pop(symbol, None)  # Remove cached data
+        self.logger.info(f"Removed symbol {symbol} from Gate.io public streaming")
     
-    async def _load_exchange_info(self) -> None:
-        """Load symbol information and trading rules from REST API."""
-        try:
-            # Get symbol information from REST API
-            symbols_info = await self._public_rest.get_symbols_info()
-            self._symbols_info_dict.update(symbols_info)
-            
-            self.logger.info(f"Loaded {len(symbols_info)} symbols from Gate.io")
-            
-        except Exception as e:
-            self.logger.error(f"Failed to load exchange info: {e}")
-            raise
+    # Real-time Data Handlers
     
-    async def _initialize_websocket(self) -> None:
-        """Initialize WebSocket client for real-time market data."""
-        try:
-            # Create WebSocket configuration
-            ws_config = WebSocketConfig(
-                url=GateioConfig.WEBSOCKET_PUBLIC_URL,
-                ping_interval=30,
-                ping_timeout=10,
-                close_timeout=10
-            )
-            
-            # Initialize WebSocket client
-            self._websocket_client = GateioWebsocketPublic(
-                websocket_config=ws_config,
-                orderbook_callback=self._handle_orderbook_update
-            )
-            
-            # Connect to WebSocket
-            await self._websocket_client.connect()
-            self._connection_state = ConnectionState.CONNECTED
-            
-            self.logger.info("Gate.io WebSocket client initialized and connected")
-            
-        except Exception as e:
-            self.logger.error(f"Failed to initialize WebSocket: {e}")
-            self._connection_state = ConnectionState.DISCONNECTED
-            raise
-    
-    def _handle_orderbook_update(self, symbol: Symbol, orderbook: OrderBook) -> None:
+    async def _handle_orderbook_update(self, symbol: Symbol, orderbook: OrderBook) -> None:
         """
         Handle real-time orderbook updates from WebSocket.
         
-        HFT COMPLIANT: Sub-millisecond processing, no blocking operations.
-        
-        Args:
-            symbol: Symbol for the orderbook update
-            orderbook: Updated orderbook data
+        HFT COMPLIANT: Updates real-time cache immediately.
         """
-        # HFT Optimization: Update counters with minimal overhead
-        self._market_data_updates += 1
-        self._last_update_time = time.perf_counter()
+        self._orderbook_cache[symbol] = orderbook
         
-        # Store current orderbook (overwrites previous)
-        self._orderbooks[symbol] = orderbook
-        self._latest_orderbook = orderbook
-        
-        # Log periodically to avoid spam
-        if self._market_data_updates % 1000 == 0:
-            self.logger.debug(
-                f"Processed {self._market_data_updates} market data updates "
-                f"for {len(self._orderbooks)} symbols"
-            )
+        # Optional: Trigger downstream handlers/events
+        # await self._notify_orderbook_update(symbol, orderbook)
     
-    def get_symbol_orderbook(self, symbol: Symbol) -> Optional[OrderBook]:
-        """
-        Get current orderbook for a specific symbol.
-        
-        Args:
-            symbol: Symbol to get orderbook for
-            
-        Returns:
-            Current orderbook or None if not available
-        """
-        return self._orderbooks.get(symbol)
+    # Status and Health
     
-    def get_market_data_statistics(self) -> Dict[str, any]:
-        """Get market data processing statistics."""
-        return {
-            'active_symbols': len(self._active_symbols),
-            'market_data_updates': self._market_data_updates,
-            'last_update_time': self._last_update_time,
-            'connection_state': self._connection_state.name,
-            'orderbooks_cached': len(self._orderbooks)
-        }
+    def get_connection_status(self) -> ExchangeStatus:
+        """Get current connection status."""
+        if self.ws_client:
+            return ExchangeStatus.CONNECTED if self.ws_client.is_connected() else ExchangeStatus.DISCONNECTED
+        return ExchangeStatus.DISCONNECTED
+    
+    def get_websocket_health(self) -> Dict[str, any]:
+        """Get WebSocket health metrics."""
+        if self.ws_client:
+            return self.ws_client.get_performance_metrics()
+        return {"status": "not_initialized"}
+    
+    async def close(self) -> None:
+        """Clean shutdown of all connections."""
+        if self.ws_client:
+            await self.ws_client.close()
+            self.ws_client = None
+        
+        self._orderbook_cache.clear()
+        self._active_symbols.clear()
+        
+        self.logger.info("Gate.io public exchange closed")

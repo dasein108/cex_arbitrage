@@ -28,14 +28,20 @@ import json
 from collections import deque
 from typing import List, Dict, Optional, Callable, Awaitable, Any
 
-from core.cex.websocket import BaseExchangeWebsocketInterface
 from structs.exchange import Symbol, Trade, OrderBook, OrderBookEntry
-from cex.gateio.common.gateio_config import GateioConfig
-from cex.gateio.common.gateio_utils import GateioUtils
-from cex.gateio.common.gateio_mappings import GateioMappings
+from core.config.structs import WebSocketConfig, ExchangeConfig
+from common.logging import getLogger
+
+# Strategy pattern imports
+from core.cex.websocket import BaseExchangeWebsocketInterface
+from core.cex.websocket.strategies import WebSocketStrategySet
+from core.cex.websocket.ws_manager import WebSocketManager, WebSocketManagerConfig
+from core.cex.websocket import MessageType
 from core.cex.websocket.structs import SubscriptionAction
 
-from core.transport.websocket.ws_client import WebSocketConfig
+# Create placeholder strategy imports - these need to be implemented
+# from cex.gateio.ws.public.ws_strategies import GateioPublicConnectionStrategy, GateioPublicSubscriptionStrategy
+# from cex.gateio.ws.public.ws_message_parser import GateioPublicMessageParser
 
 
 class OrderBookEntryPool:
@@ -85,16 +91,20 @@ class OrderBookEntryPool:
 
 
 class GateioWebsocketPublic(BaseExchangeWebsocketInterface):
-    """Gate.io public websocket cex for market data streaming"""
+    """Gate.io public websocket client for market data streaming"""
 
     def __init__(
         self, 
-        websocket_config: WebSocketConfig,
+        config: ExchangeConfig,
         orderbook_handler: Optional[Callable[[Symbol, OrderBook], Awaitable[None]]] = None,
         trades_handler: Optional[Callable[[Symbol, List[Trade]], Awaitable[None]]] = None
     ):
-        super().__init__(GateioConfig.EXCHANGE_NAME, websocket_config)
-        self.logger = logging.getLogger(f"{__name__}.{self.__class__.__name__}")
+        super().__init__(config)
+        self.logger = getLogger(f"{__name__}.{self.__class__.__name__}")
+        self.config = config
+        
+        if not config.websocket:
+            raise ValueError("Gate.io exchange configuration missing WebSocket settings")
         self.orderbook_handler = orderbook_handler
         self.trades_handler = trades_handler
         

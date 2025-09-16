@@ -6,49 +6,8 @@ from .strategies import (
     RequestContext, RateLimitContext, PerformanceTargets, RequestMetrics
 )
 from .transport_manager import RestTransportManager
-from .strategies_mexc import (
-    MexcRequestStrategy, MexcRateLimitStrategy, MexcRetryStrategy, MexcAuthStrategy
-)
-from .strategies_gateio import (
-    GateioRequestStrategy, GateioRateLimitStrategy, GateioRetryStrategy, GateioAuthStrategy
-)
-
-# Register exchange strategies
-RestStrategyFactory.register_strategies(
-    exchange="mexc",
-    is_private=False,
-    request_strategy_cls=MexcRequestStrategy,
-    rate_limit_strategy_cls=MexcRateLimitStrategy,
-    retry_strategy_cls=MexcRetryStrategy,
-    auth_strategy_cls=None
-)
-
-RestStrategyFactory.register_strategies(
-    exchange="mexc",
-    is_private=True,
-    request_strategy_cls=MexcRequestStrategy,
-    rate_limit_strategy_cls=MexcRateLimitStrategy,
-    retry_strategy_cls=MexcRetryStrategy,
-    auth_strategy_cls=MexcAuthStrategy
-)
-
-RestStrategyFactory.register_strategies(
-    exchange="gateio",
-    is_private=False,
-    request_strategy_cls=GateioRequestStrategy,
-    rate_limit_strategy_cls=GateioRateLimitStrategy,
-    retry_strategy_cls=GateioRetryStrategy,
-    auth_strategy_cls=None
-)
-
-RestStrategyFactory.register_strategies(
-    exchange="gateio",
-    is_private=True,
-    request_strategy_cls=GateioRequestStrategy,
-    rate_limit_strategy_cls=GateioRateLimitStrategy,
-    retry_strategy_cls=GateioRetryStrategy,
-    auth_strategy_cls=GateioAuthStrategy
-)
+# Exchange-specific strategies are now registered in their respective exchange modules
+# This keeps the core transport module free of exchange-specific code
 
 __all__ = [
     "HTTPMethod",
@@ -61,9 +20,6 @@ __all__ = [
     # Data structures
     "RequestContext", "RateLimitContext", "PerformanceTargets", "RequestMetrics",
     # Transport manager
-    "RestTransportManager",
-    # MEXC strategies
-    "MexcRequestStrategy", "MexcRateLimitStrategy", "MexcRetryStrategy", "MexcAuthStrategy",
-    # Gate.io strategies
-    "GateioRequestStrategy", "GateioRateLimitStrategy", "GateioRetryStrategy", "GateioAuthStrategy"
+    "RestTransportManager"
+    # Exchange-specific strategies are now exported from their respective exchange modules
 ]
