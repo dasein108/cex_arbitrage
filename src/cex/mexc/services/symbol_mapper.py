@@ -1,9 +1,9 @@
-from core.cex.services.symbol_mapper.base_symbol_mapper import BaseSymbolMapper
+from core.cex.services.symbol_mapper.base_symbol_mapper import SymbolMapperInterface
 from core.cex.services.symbol_mapper.symbol_mapper_factory import ExchangeSymbolMapperFactory
 from structs.exchange import Symbol, AssetName
 
 
-class MexcSymbolMapper(BaseSymbolMapper):
+class MexcSymbolMapperInterface(SymbolMapperInterface):
     """
     MEXC-specific symbol mapper implementation.
     
@@ -57,5 +57,5 @@ class MexcSymbolMapper(BaseSymbolMapper):
 
 
 # Register MEXC mapper with factory
-ExchangeSymbolMapperFactory.register_mapper('MEXC', MexcSymbolMapper)
+ExchangeSymbolMapperFactory.register_mapper('MEXC', MexcSymbolMapperInterface)
 

@@ -141,6 +141,7 @@ arbitrage:
     - id: "neiroeth_usdt_spot_arb"
       base_asset: "NEIROETH"
       quote_asset: "USDT"
+      opportunity_type: "SPOT_SPOT"
       min_profit_bps: 45
       max_exposure_usd: 8000
       is_enabled: true
@@ -148,42 +149,48 @@ arbitrage:
     - id: "hippo_usdt_spot_arb"
       base_asset: "HIPPO"
       quote_asset: "USDT"
+      opportunity_type: "SPOT_SPOT"
       min_profit_bps: 50
       max_exposure_usd: 7000
       is_enabled: true
-      priority: 6
+      priority: 7
     - id: "myria_usdt_spot_arb"
       base_asset: "MYRIA"
       quote_asset: "USDT"
+      opportunity_type: "SPOT_SPOT"
       min_profit_bps: 50
       max_exposure_usd: 7000
       is_enabled: true
-      priority: 6
+      priority: 8
     - id: "myx_usdt_spot_arb"
       base_asset: "MYX"
       quote_asset: "USDT"
+      opportunity_type: "SPOT_SPOT"
       min_profit_bps: 50
       max_exposure_usd: 7000
       is_enabled: true
-      priority: 6
+      priority: 9
     - id: "tai_usdt_spot_arb"
       base_asset: "TAI"
       quote_asset: "USDT"
+      opportunity_type: "SPOT_SPOT"
       min_profit_bps: 50
       max_exposure_usd: 7000
       is_enabled: true
-      priority: 6
+      priority: 10
     - id: "ai16z_usdt_spot_arb"
       base_asset: "AI16Z"
       quote_asset: "USDT"
+      opportunity_type: "SPOT_SPOT"
       min_profit_bps: 50
       max_exposure_usd: 7000
       is_enabled: true
-      priority: 6
+      priority: 11
     - id: "badger_usdt_spot_arb"
       base_asset: "BADGER"
       quote_asset: "USDT"
+      opportunity_type: "SPOT_SPOT"
       min_profit_bps: 50
       max_exposure_usd: 7000
       is_enabled: true
-      priority: 6
+      priority: 12

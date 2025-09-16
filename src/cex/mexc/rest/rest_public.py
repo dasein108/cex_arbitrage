@@ -63,9 +63,6 @@ class MexcPublicSpotRest(PublicExchangeSpotRestInterface):
 
         self._exchange_info: Optional[Dict[Symbol, SymbolInfo]] = None
         
-        # Create exchange-agnostic mappings service using factory
-        self._mappings = ExchangeMappingsFactory.create_mappings('MEXC', self.symbol_mapper)
-
     def _extract_symbol_precision(self, mexc_symbol: MexcSymbolResponse) -> tuple[int, int, float, float]:
         """
         Extract precision and size limits from MEXC symbol data.

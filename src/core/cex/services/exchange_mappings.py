@@ -9,16 +9,14 @@ HFT COMPLIANCE: Sub-microsecond mapping operations, zero-copy patterns.
 """
 
 from abc import ABC, abstractmethod
-from typing import Dict, Any, TYPE_CHECKING
-from datetime import datetime
+from typing import Dict, Any
 
 from structs.exchange import (
-    Symbol, Order, OrderId, OrderStatus, OrderType, Side, 
+    Symbol, Order, OrderStatus, OrderType, Side,
     TimeInForce, KlineInterval
 )
 
-if TYPE_CHECKING:
-    from core.cex.services.symbol_mapper.base_symbol_mapper import BaseSymbolMapper
+from core.cex.services.symbol_mapper.base_symbol_mapper import SymbolMapperInterface
 
 
 class ExchangeMappingsInterface(ABC):
@@ -30,7 +28,7 @@ class ExchangeMappingsInterface(ABC):
     mapping dictionaries and transformation logic.
     """
     
-    def __init__(self, symbol_mapper: 'BaseSymbolMapper'):
+    def __init__(self, symbol_mapper: SymbolMapperInterface):
         """Initialize with injected symbol mapper dependency."""
         self._symbol_mapper = symbol_mapper
     
@@ -149,7 +147,7 @@ class BaseExchangeMappings(ExchangeMappingsInterface):
     Exchange-specific implementations inherit and provide configuration.
     """
     
-    def __init__(self, symbol_mapper: 'BaseSymbolMapper', config: MappingConfiguration):
+    def __init__(self, symbol_mapper: SymbolMapperInterface, config: MappingConfiguration):
         """Initialize with symbol mapper and mapping configuration."""
         super().__init__(symbol_mapper)
         self._config = config
@@ -157,11 +155,11 @@ class BaseExchangeMappings(ExchangeMappingsInterface):
     # Order Status Mapping Implementation
     def get_unified_order_status(self, exchange_status: str) -> OrderStatus:
         """Convert exchange order status to unified OrderStatus."""
-        return self._config.order_status_reverse.get(exchange_status, OrderStatus.UNKNOWN)
+        return self._config.order_status_mapping.get(exchange_status, OrderStatus.UNKNOWN)
     
     def get_exchange_order_status(self, unified_status: OrderStatus) -> str:
         """Convert unified OrderStatus to exchange format."""
-        return self._config.order_status_mapping.get(unified_status, 'UNKNOWN')
+        return self._config.order_status_reverse.get(unified_status, 'UNKNOWN')
     
     # Order Type Mapping Implementation
     def get_exchange_order_type(self, unified_type: OrderType) -> str:

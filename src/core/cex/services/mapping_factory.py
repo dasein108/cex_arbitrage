@@ -9,9 +9,7 @@ HFT COMPLIANCE: Fast service instantiation, cached instances.
 
 from typing import Dict, Type, TYPE_CHECKING
 from core.cex.services.exchange_mappings import ExchangeMappingsInterface
-
-if TYPE_CHECKING:
-    from core.cex.services.symbol_mapper.base_symbol_mapper import BaseSymbolMapper
+from core.cex.services.symbol_mapper.base_symbol_mapper import SymbolMapperInterface
 
 
 class ExchangeMappingsFactory:
@@ -44,7 +42,7 @@ class ExchangeMappingsFactory:
     def create_mappings(
         cls, 
         exchange_name: str, 
-        symbol_mapper: 'BaseSymbolMapper',
+        symbol_mapper: SymbolMapperInterface,
         use_singleton: bool = True
     ) -> ExchangeMappingsInterface:
         """

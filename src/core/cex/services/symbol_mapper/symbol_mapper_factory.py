@@ -19,7 +19,7 @@ HFT Performance:
 
 import logging
 from typing import Dict, Type, Optional, Any
-from .base_symbol_mapper import BaseSymbolMapper
+from .base_symbol_mapper import SymbolMapperInterface
 
 logger = logging.getLogger(__name__)
 
@@ -33,13 +33,13 @@ class ExchangeSymbolMapperFactory:
     """
     
     # Class-level mapper type registry
-    _mapper_classes: Dict[str, Type[BaseSymbolMapper]] = {}
+    _mapper_classes: Dict[str, Type[SymbolMapperInterface]] = {}
     
     # Instance cache - one instance per exchange type
-    _mapper_instances: Dict[str, BaseSymbolMapper] = {}
+    _mapper_instances: Dict[str, SymbolMapperInterface] = {}
     
     @classmethod
-    def register_mapper(cls, exchange_name: str, mapper_class: Type[BaseSymbolMapper]) -> None:
+    def register_mapper(cls, exchange_name: str, mapper_class: Type[SymbolMapperInterface]) -> None:
         """
         Register a symbol mapper class for an exchange.
         
@@ -49,14 +49,14 @@ class ExchangeSymbolMapperFactory:
         """
         exchange_key = exchange_name.upper()
         
-        if not issubclass(mapper_class, BaseSymbolMapper):
+        if not issubclass(mapper_class, SymbolMapperInterface):
             raise ValueError(f"Mapper class must inherit from BaseSymbolMapper")
         
         cls._mapper_classes[exchange_key] = mapper_class
         logger.info(f"Registered symbol mapper for {exchange_key}: {mapper_class.__name__}")
     
     @classmethod
-    def get_mapper(cls, exchange_name: str) -> BaseSymbolMapper:
+    def get_mapper(cls, exchange_name: str) -> SymbolMapperInterface:
         """
         Get or create symbol mapper for specified exchange.
         
@@ -119,7 +119,7 @@ class ExchangeSymbolMapperFactory:
         return list(cls._mapper_classes.keys())
     
     @classmethod
-    def get_all_mappers(cls) -> Dict[str, BaseSymbolMapper]:
+    def get_all_mappers(cls) -> Dict[str, SymbolMapperInterface]:
         """
         Get all active mapper instances.
         
@@ -213,7 +213,7 @@ class ExchangeSymbolMapperFactory:
 
 
 # Convenience function for common usage
-def get_symbol_mapper(exchange_name: str) -> BaseSymbolMapper:
+def get_symbol_mapper(exchange_name: str) -> SymbolMapperInterface:
     """
     Convenience function to get symbol mapper for an exchange.
     

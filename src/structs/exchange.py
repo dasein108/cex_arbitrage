@@ -170,13 +170,6 @@ class Kline(Struct):
     trades_count: int = 0
 
 
-class TradingFee(Struct):
-    """Trading fee structure"""
-    symbol: Symbol
-    maker_fee: float
-    taker_fee: float
-    
-
 class Position(Struct):
     """Futures position information"""
     symbol: Symbol

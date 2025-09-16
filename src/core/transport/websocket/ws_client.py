@@ -9,32 +9,7 @@ import msgspec
 
 from core.exceptions.exchange import BaseExchangeError
 from core.transport.websocket.structs import ConnectionState
-
-
-class WebSocketConfig(msgspec.Struct):
-    """Configuration for WebSocket connections optimized for trading"""
-    # Connection settings
-    name: str
-    url: Optional[str] = None
-    timeout: float = 30.0
-    ping_interval: float = 20.0
-    ping_timeout: float = 10.0
-    close_timeout: float = 5.0
-    
-    # Reconnection settings
-    max_reconnect_attempts: int = 10
-    reconnect_delay: float = 1.0
-    reconnect_backoff: float = 2.0
-    max_reconnect_delay: float = 60.0
-    
-    # Performance settings
-    max_message_size: int = 1024 * 1024  # 1MB
-    max_queue_size: int = 1000
-    heartbeat_interval: float = 30.0
-    
-    # Compression and encoding
-    enable_compression: bool = True
-    text_encoding: str = "utf-8"
+from core.config.structs import WebSocketConfig
 
 
 class WebsocketClient:
@@ -50,12 +25,11 @@ class WebsocketClient:
     """
 
     __slots__ = (
-        'exchange', 'config', '_message_handler', '_error_handler',
+        'config', '_message_handler', '_error_handler',
         '_state', '_ws', '_loop', '_connection_task', '_reader_task',
-        '_subscriptions', '_reconnect_attempts',
-        '_should_reconnect', '_last_pong', 'logger',
-        '_cached_backoff_delays', '_message_count', '_time_cache',
-        '_connection_handler'
+        '_reconnect_attempts', '_should_reconnect', '_last_pong', 
+        'logger', 'url_name', '_cached_backoff_delays', '_message_count', 
+        '_time_cache', '_connection_handler'
     )
     
     def __init__(
@@ -89,7 +63,9 @@ class WebsocketClient:
         self._message_count = 0  # Local counter to reduce time() calls
         self._time_cache = time.time()  # Cache time for batched updates
         
-        self.logger = logging.getLogger(f"{__name__}.{self.config.name}")
+        # Extract name from URL for logging (fallback to class name)
+        self.url_name = self.config.url.split('/')[-1] if self.config.url else "websocket"
+        self.logger = logging.getLogger(f"{__name__}.{self.url_name}")
     
     def _precompute_backoff_delays(self) -> List[float]:
         """Pre-compute exponential backoff delays to avoid power calculations in hot path"""
@@ -166,7 +142,7 @@ class WebsocketClient:
         self._connection_task = asyncio.create_task(self._connection_loop())
         
         if self.logger.isEnabledFor(logging.INFO):
-            self.logger.info("Started WebSocket connection for %s", self.config.name)
+            self.logger.info("Started WebSocket connection for %s", self.url_name)
     
     async def stop(self) -> None:
         """Stop the WebSocket connection gracefully - optimized"""
@@ -197,7 +173,7 @@ class WebsocketClient:
         await self._update_state(ConnectionState.CLOSED)
 
         if self.logger.isEnabledFor(logging.INFO):
-            self.logger.info("Stopped WebSocket connection for %s", self.config.name)
+            self.logger.info("Stopped WebSocket connection for %s", self.url_name)
     
     async def restart(self) -> None:
         """Restart the WebSocket connection - optimized restart sequence"""
@@ -248,7 +224,7 @@ class WebsocketClient:
                 self._reader_task = asyncio.create_task(self._message_reader())
                 
                 if self.logger.isEnabledFor(logging.INFO):
-                    self.logger.info("WebSocket connected to %s", self.config.name)
+                    self.logger.info("WebSocket connected to %s", self.url_name)
                 
                 # Wait for connection to close
                 await self._reader_task
@@ -314,7 +290,7 @@ class WebsocketClient:
 
         if self._reconnect_attempts >= self.config.max_reconnect_attempts:
             if self.logger.isEnabledFor(logging.ERROR):
-                self.logger.error("Max reconnection attempts reached for %s", self.config.name)
+                self.logger.error("Max reconnection attempts reached for %s", self.url_name)
             self._should_reconnect = False
             return
         
@@ -327,7 +303,7 @@ class WebsocketClient:
         if self.logger.isEnabledFor(logging.WARNING):
             self.logger.warning(
                 "Connection error for %s (attempt %d): %s. Reconnecting in %.1fs",
-                self.config.name, self._reconnect_attempts, error, delay
+                self.url_name, self._reconnect_attempts, error, delay
             )
         
         await self._update_state(ConnectionState.RECONNECTING)

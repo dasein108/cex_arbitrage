@@ -21,7 +21,7 @@ from typing import Tuple, Dict
 from structs.exchange import Symbol
 
 
-class BaseSymbolMapper(ABC):
+class SymbolMapperInterface(ABC):
     """
     Abstract cex for exchange-specific symbol mapping.
     

@@ -6,7 +6,7 @@ from core.transport.rest.rest_client import RestClient
 from core.transport.rest.structs import HTTPMethod, RestConfig
 from core.config.structs import ExchangeConfig
 from core.cex.services.symbol_mapper.symbol_mapper_factory import get_symbol_mapper
-
+from core.cex.services import ExchangeMappingsFactory
 
 class BaseExchangeRestInterface(ABC):
     """Abstract cex for private exchange operations (trading, account management)"""
@@ -29,6 +29,8 @@ class BaseExchangeRestInterface(ABC):
 
         # Symbol mapper injection
         self.symbol_mapper = get_symbol_mapper(config.name)
+        # Create exchange-agnostic mappings service using factory
+        self._mappings = ExchangeMappingsFactory.create_mappings('MEXC', self.symbol_mapper)
 
         self.logger.info(f"Initialized REST client")
 

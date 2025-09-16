@@ -18,8 +18,8 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from core.cex.utils import ExchangeSymbolMapperFactory, get_symbol_mapper
 from structs.exchange import Symbol, AssetName
-from cex.mexc.services.symbol_mapper import MexcSymbolMapper  # Import to register mappers
-from cex.gateio.common.gateio_symbol_mapper import GateioSymbolMapper
+from cex.mexc.services.symbol_mapper import MexcSymbolMapperInterface  # Import to register mappers
+from cex.gateio.common.gateio_symbol_mapper import GateioSymbolMapperInterface
 
 # Import to register mappers
 
@@ -28,8 +28,8 @@ def demo_factory_usage():
     """Demonstrate factory pattern usage."""
     print("🏭 Symbol Mapper Factory Demo")
     print("=" * 50)
-    ExchangeSymbolMapperFactory.register_mapper("MEXC", MexcSymbolMapper)
-    ExchangeSymbolMapperFactory.register_mapper("GATEIO", GateioSymbolMapper)
+    ExchangeSymbolMapperFactory.register_mapper("MEXC", MexcSymbolMapperInterface)
+    ExchangeSymbolMapperFactory.register_mapper("GATEIO", GateioSymbolMapperInterface)
     # Show supported cex
     supported = ExchangeSymbolMapperFactory.get_supported_exchanges()
     print(f"📋 Supported Exchanges: {supported}")

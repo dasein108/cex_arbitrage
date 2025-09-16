@@ -47,8 +47,7 @@ class MexcPrivateExchange(BasePrivateExchangeInterface):
         Initialize MEXC private exchange with authentication.
         
         Args:
-            api_key: MEXC API key for authentication
-            secret_key: MEXC secret key for signing
+            config: Exchange configuration with API credentials
         """
         super().__init__(config)
         
@@ -65,18 +64,10 @@ class MexcPrivateExchange(BasePrivateExchangeInterface):
         # Initialize private trading capabilities
         self._private_rest = MexcPrivateSpotRest(config)
 
-        # Create private WebSocket configuration
-        ws_config = WebSocketConfig(
-            url=self._config.websocket_url,
-            ping_interval=30,
-            ping_timeout=10,
-            close_timeout=10
-        )
-
         # Initialize private WebSocket client
         self._private_websocket = MexcWebsocketPrivate(
             private_rest_client=self._private_rest,
-            ws_config=ws_config,
+            config=self._config,
             order_handler=self._handle_order_update,
             balance_handler=self._handle_balance_update,
             trade_handler=self._handle_trade_update

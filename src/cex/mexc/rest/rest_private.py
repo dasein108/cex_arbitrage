@@ -61,9 +61,6 @@ class MexcPrivateSpotRest(PrivateExchangeSpotRestInterface):
             config: ExchangeConfig with API credentials
         """
         super().__init__(config, MexcConfig.rest_config['default'], handle_custom_exception)
-        
-        # Create exchange-agnostic mappings service using factory
-        self._mappings = ExchangeMappingsFactory.create_mappings('MEXC', self.symbol_mapper)
 
     def generate_auth_signature(self, params: Dict[str, Any]) -> str:
         """

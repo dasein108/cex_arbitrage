@@ -16,10 +16,9 @@ Usage:
     from common.config import config
     
     # NEW: Structured configuration access (HFT-optimized)
-    mexc_config = config.get_exchange_config_struct('mexc')  # Returns ExchangeConfig
-    mexc_credentials = config.get_exchange_credentials_struct('mexc')  # Returns ExchangeCredentials
+    mexc_config = config.get_exchange_config_struct('mexc')  # Returns ExchangeConfig with WebSocket config
     network_config = config.get_network_config()  # Returns NetworkConfig
-    websocket_config = config.get_websocket_config()  # Returns WebSocketConfig
+    websocket_template = config.get_websocket_config_template()  # Returns Dict (template for exchange configs)
     
     # Legacy: Dictionary access (maintained for backward compatibility)
     mexc_credentials_dict = config.get_exchange_credentials('mexc')  # Returns Dict[str, str]
@@ -37,20 +36,49 @@ Usage:
 import os
 import re
 import logging
-from typing import Dict, Optional, Any
+import time
+from typing import Dict, Optional, Any, Union, TypeVar, Type
 from pathlib import Path
 import yaml
 from dotenv import load_dotenv
 import traceback
+from dataclasses import dataclass
 from core.exceptions.exchange import ConfigurationError
 from core.config.structs import ExchangeCredentials, NetworkConfig, RateLimitConfig, WebSocketConfig, ExchangeConfig
 from common.logging.simple_logger import getLogger
 from enum import Enum
+from msgspec import Struct
 
-# Exchange constants
-class ExchangeEnum(str, Enum):
-    MEXC = 'mexc'
-    GATEIO = 'gateio'
+# Type aliases and constants
+T = TypeVar('T')
+
+# Performance monitoring
+@dataclass
+class ConfigLoadingMetrics:
+    """HFT performance metrics for configuration loading."""
+    yaml_load_time: float = 0.0
+    env_substitution_time: float = 0.0
+    validation_time: float = 0.0
+    total_load_time: float = 0.0
+    
+    def is_hft_compliant(self) -> bool:
+        """Check if configuration loading meets HFT requirements (<50ms)."""
+        return self.total_load_time < 0.050  # 50ms in seconds
+    
+    def get_performance_report(self) -> str:
+        """Generate human-readable performance report."""
+        return (
+            f"Configuration Loading Performance:\n"
+            f"  YAML Load: {self.yaml_load_time*1000:.2f}ms\n"
+            f"  Env Substitution: {self.env_substitution_time*1000:.2f}ms\n"
+            f"  Validation: {self.validation_time*1000:.2f}ms\n"
+            f"  Total: {self.total_load_time*1000:.2f}ms\n"
+            f"  HFT Compliant: {'✓' if self.is_hft_compliant() else '✗'}"
+        )
+
+# Pre-compiled regex patterns for performance
+ENV_VAR_PATTERN = re.compile(r'\$\{([^}]+)\}')
+ENV_VAR_DEFAULT_PATTERN = re.compile(r'^([^:]+):(.*)$')
 
 def guess_file_paths(file_name: str) -> list[Path]:
     """
@@ -63,69 +91,209 @@ def guess_file_paths(file_name: str) -> list[Path]:
         Path.home() / file_name,                          # User home directory (fallback)
     ]
 
+def validate_config_dict(config: Dict[str, Any], required_keys: list[str], config_name: str) -> None:
+    """Validate that required configuration keys are present.
+    
+    Args:
+        config: Configuration dictionary to validate
+        required_keys: List of required keys
+        config_name: Name of configuration section for error reporting
+        
+    Raises:
+        ConfigurationError: If required keys are missing
+    """
+    missing_keys = [key for key in required_keys if key not in config]
+    if missing_keys:
+        raise ConfigurationError(
+            f"Missing required keys in {config_name}: {missing_keys}",
+            config_name
+        )
+
+def safe_get_config_value(config: Dict[str, Any], key: str, default: T, value_type: Type[T], config_name: str) -> T:
+    """Safely extract and validate configuration value with type checking.
+    
+    Args:
+        config: Configuration dictionary
+        key: Configuration key
+        default: Default value if key is missing
+        value_type: Expected type for validation
+        config_name: Configuration section name for error reporting
+        
+    Returns:
+        Configuration value cast to expected type
+        
+    Raises:
+        ConfigurationError: If value cannot be cast to expected type
+    """
+    try:
+        value = config.get(key, default)
+        if value_type == float:
+            return float(value)
+        elif value_type == int:
+            return int(value)
+        elif value_type == bool:
+            return bool(value)
+        elif value_type == str:
+            return str(value)
+        else:
+            return value_type(value)
+    except (ValueError, TypeError) as e:
+        raise ConfigurationError(
+            f"Invalid value for {config_name}.{key}: {config.get(key)} (expected {value_type.__name__})",
+            f"{config_name}.{key}"
+        ) from e
+
 def parse_network_config(part_config: Dict[str, Any]) -> NetworkConfig:
     """
-    Parse network configuration from dictionary.
+    Parse network configuration from dictionary with comprehensive validation.
 
     Args:
         part_config: Dictionary with network configuration keys
 
     Returns:
-        NetworkConfig struct with parsed values
+        NetworkConfig struct with parsed and validated values
+        
+    Raises:
+        ConfigurationError: If configuration values are invalid
     """
-    return NetworkConfig(
-        request_timeout=float(part_config.get('request_timeout', 10.0)),
-        connect_timeout=float(part_config.get('connect_timeout', 5.0)),
-        max_retries=int(part_config.get('max_retries', 3)),
-        retry_delay=float(part_config.get('retry_delay', 1.0))
-    )
+    try:
+        return NetworkConfig(
+            request_timeout=safe_get_config_value(part_config, 'request_timeout', 10.0, float, 'network'),
+            connect_timeout=safe_get_config_value(part_config, 'connect_timeout', 5.0, float, 'network'),
+            max_retries=safe_get_config_value(part_config, 'max_retries', 3, int, 'network'),
+            retry_delay=safe_get_config_value(part_config, 'retry_delay', 1.0, float, 'network')
+        )
+    except Exception as e:
+        raise ConfigurationError(f"Failed to parse network configuration: {e}", "network") from e
 
 def parse_rate_limit_config(part_config: Dict[str, Any]) -> RateLimitConfig:
     """
-    Parse rate limiting configuration from dictionary.
+    Parse rate limiting configuration from dictionary with validation.
 
     Args:
         part_config: Dictionary with rate limiting configuration keys
 
     Returns:
-        RateLimitConfig struct with parsed values
+        RateLimitConfig struct with parsed and validated values
+        
+    Raises:
+        ConfigurationError: If configuration values are invalid
     """
-    return RateLimitConfig(
-        requests_per_second=int(part_config.get('requests_per_second', 15))
-    )
+    try:
+        requests_per_second = safe_get_config_value(part_config, 'requests_per_second', 15, int, 'rate_limiting')
+        
+        # HFT validation: Ensure reasonable rate limits
+        if requests_per_second <= 0:
+            raise ConfigurationError(
+                f"requests_per_second must be positive, got: {requests_per_second}",
+                "rate_limiting.requests_per_second"
+            )
+        if requests_per_second > 1000:  # Reasonable upper bound
+            raise ConfigurationError(
+                f"requests_per_second exceeds reasonable limit (1000), got: {requests_per_second}",
+                "rate_limiting.requests_per_second"
+            )
+            
+        return RateLimitConfig(requests_per_second=requests_per_second)
+    except Exception as e:
+        raise ConfigurationError(f"Failed to parse rate limiting configuration: {e}", "rate_limiting") from e
 
-def parse_websocket_config(part_config: Dict[str, Any]) -> WebSocketConfig:
+def parse_websocket_config(part_config: Dict[str, Any], websocket_url: str) -> WebSocketConfig:
     """
-    Parse WebSocket configuration from dictionary.
+    Parse WebSocket configuration from dictionary with URL injection and validation.
 
     Args:
         part_config: Dictionary with WebSocket configuration keys
+        websocket_url: WebSocket URL from exchange configuration
 
     Returns:
-        WebSocketConfig struct with parsed values
+        WebSocketConfig struct with parsed, validated values and injected URL
+        
+    Raises:
+        ConfigurationError: If configuration values are invalid
     """
-    return WebSocketConfig(
-        connect_timeout=float(part_config.get('connect_timeout', 10.0)),
-        heartbeat_interval=float(part_config.get('heartbeat_interval', 30.0)),
-        max_reconnect_attempts=int(part_config.get('max_reconnect_attempts', 10)),
-        reconnect_delay=float(part_config.get('reconnect_delay', 5.0))
-    )
+    try:
+        # Validate WebSocket URL
+        if not websocket_url or not isinstance(websocket_url, str):
+            raise ConfigurationError(
+                f"Invalid WebSocket URL: {websocket_url}",
+                "websocket_url"
+            )
+        if not (websocket_url.startswith('ws://') or websocket_url.startswith('wss://')):
+            raise ConfigurationError(
+                f"WebSocket URL must start with ws:// or wss://, got: {websocket_url}",
+                "websocket_url"
+            )
+        
+        return WebSocketConfig(
+            # Injected URL from exchange config
+            url=websocket_url,
+            
+            # Connection settings with validation
+            connect_timeout=safe_get_config_value(part_config, 'connect_timeout', 10.0, float, 'websocket'),
+            ping_interval=safe_get_config_value(part_config, 'ping_interval', 20.0, float, 'websocket'),
+            ping_timeout=safe_get_config_value(part_config, 'ping_timeout', 10.0, float, 'websocket'),
+            close_timeout=safe_get_config_value(part_config, 'close_timeout', 5.0, float, 'websocket'),
+            
+            # Reconnection settings with validation
+            max_reconnect_attempts=safe_get_config_value(part_config, 'max_reconnect_attempts', 10, int, 'websocket'),
+            reconnect_delay=safe_get_config_value(part_config, 'reconnect_delay', 1.0, float, 'websocket'),
+            reconnect_backoff=safe_get_config_value(part_config, 'reconnect_backoff', 2.0, float, 'websocket'),
+            max_reconnect_delay=safe_get_config_value(part_config, 'max_reconnect_delay', 60.0, float, 'websocket'),
+            
+            # Performance settings with validation
+            max_message_size=safe_get_config_value(part_config, 'max_message_size', 1048576, int, 'websocket'),  # 1MB
+            max_queue_size=safe_get_config_value(part_config, 'max_queue_size', 1000, int, 'websocket'),
+            heartbeat_interval=safe_get_config_value(part_config, 'heartbeat_interval', 30.0, float, 'websocket'),
+            
+            # Optimization settings with validation
+            enable_compression=safe_get_config_value(part_config, 'enable_compression', True, bool, 'websocket'),
+            text_encoding=safe_get_config_value(part_config, 'text_encoding', 'utf-8', str, 'websocket')
+        )
+    except Exception as e:
+        raise ConfigurationError(f"Failed to parse WebSocket configuration: {e}", "websocket") from e
 
 class HftConfig:
     """
-    Comprehensive HFT configuration management with YAML support.
+    Comprehensive HFT configuration management with YAML support and performance monitoring.
     
-    Loads configuration from config.yaml file and provides type-safe access
-    to multi-exchange settings including MEXC, Gate.io, and arbitrage engine
-    configuration with risk limits and performance parameters.
+    This class implements a singleton pattern to ensure consistent configuration access
+    across the application. It loads configuration from config.yaml file and provides
+    type-safe access to multi-exchange settings including MEXC, Gate.io, and arbitrage
+    engine configuration with risk limits and performance parameters.
+    
+    Features:
+    - HFT-compliant configuration loading (<50ms)
+    - Type-safe configuration access with validation
+    - Environment variable substitution with fallbacks
+    - Comprehensive error reporting and debugging
+    - Performance monitoring and metrics
+    - Singleton pattern for consistent access
+    
+    Usage Examples:
+        # Get exchange configuration (structured)
+        config = HftConfig()
+        mexc_config = config.get_exchange_config('mexc')
+        
+        # Get network configuration
+        network_config = config.get_network_config()
+        
+        # Check performance metrics
+        metrics = config.get_loading_metrics()
+        if not metrics.is_hft_compliant():
+            logger.warning("Configuration loading exceeds HFT requirements")
     """
     
     # Class-level cache for singleton pattern
     _instance: Optional['HftConfig'] = None
     _initialized: bool = False
 
-    ENVIRONMENT = None
-    DEBUG_MODE = True
+    # Class-level configuration state
+    ENVIRONMENT: Optional[str] = None
+    DEBUG_MODE: bool = True
+    
+    # Performance monitoring
+    _loading_metrics: Optional[ConfigLoadingMetrics] = None
 
     def __new__(cls) -> 'HftConfig':
         """Singleton pattern for configuration management."""
@@ -134,21 +302,42 @@ class HftConfig:
         return cls._instance
     
     def __init__(self):
-        """Initialize configuration with YAML loading and validation."""
+        """Initialize configuration with YAML loading, validation, and performance monitoring."""
         if self._initialized:
             return
         
+        # Initialize performance tracking
+        start_time = time.perf_counter()
+        HftConfig._loading_metrics = ConfigLoadingMetrics()
+        
         self._logger = logging.getLogger(__name__)
         
-        # Load environment variables from .env file
-        self._load_env_file()
-        
-        # Load configuration from YAML
-        self._load_yaml_config()
-
-        # Mark as initialized
-        HftConfig._initialized = True
-        self._logger.info(f"HFT configuration initialized for environment: {HftConfig.ENVIRONMENT}")
+        try:
+            # Load environment variables from .env file
+            self._load_env_file()
+            
+            # Load configuration from YAML
+            self._load_yaml_config()
+            
+            # Calculate total loading time
+            total_time = time.perf_counter() - start_time
+            HftConfig._loading_metrics.total_load_time = total_time
+            
+            # Mark as initialized
+            HftConfig._initialized = True
+            
+            # Log performance metrics
+            self._logger.info(f"HFT configuration initialized for environment: {HftConfig.ENVIRONMENT}")
+            if HftConfig._loading_metrics.is_hft_compliant():
+                self._logger.info(f"Configuration loading: {total_time*1000:.2f}ms (HFT compliant)")
+            else:
+                self._logger.warning(
+                    f"Configuration loading: {total_time*1000:.2f}ms (EXCEEDS HFT requirement of 50ms)"
+                )
+                
+        except Exception as e:
+            self._logger.error(f"Failed to initialize HFT configuration: {e}")
+            raise ConfigurationError(f"Configuration initialization failed: {e}") from e
     
     def _load_env_file(self) -> None:
         """
@@ -183,145 +372,245 @@ class HftConfig:
                 pass
     
     def _load_yaml_config(self) -> None:
-        """Load configuration from YAML file with environment variable substitution."""
+        """Load configuration from YAML file with environment variable substitution and performance monitoring."""
+        yaml_start = time.perf_counter()
         
-
         config_data = None
         config_file_path = None
         
-        for config_path in guess_file_paths('config.yaml'):
+        # Search for config.yaml in standard locations
+        config_paths = guess_file_paths('config.yaml')
+        
+        for config_path in config_paths:
             if config_path.exists():
                 try:
-                    with open(config_path, 'r') as f:
+                    # Load and parse YAML
+                    with open(config_path, 'r', encoding='utf-8') as f:
                         raw_content = f.read()
                     
-                    # Substitute environment variables
+                    # Time environment variable substitution
+                    env_start = time.perf_counter()
                     substituted_content = self._substitute_env_vars(raw_content)
+                    env_time = time.perf_counter() - env_start
+                    HftConfig._loading_metrics.env_substitution_time = env_time
+                    
+                    # Parse YAML
                     config_data = yaml.safe_load(substituted_content)
                     config_file_path = config_path
                     break
+                    
+                except yaml.YAMLError as e:
+                    self._logger.error(f"YAML parsing error in {config_path}: {e}")
+                    raise ConfigurationError(
+                        f"Invalid YAML syntax in {config_path}: {e}",
+                        str(config_path)
+                    ) from e
                 except Exception as e:
-                    traceback.print_exc()
                     self._logger.warning(f"Failed to load config from {config_path}: {e}")
                     continue
         
         if config_data is None:
+            searched_paths = ", ".join(str(p) for p in config_paths)
             raise ConfigurationError(
-                f"No valid config.yaml found"
+                f"No valid config.yaml found. Searched paths: {searched_paths}",
+                "config_file"
             )
         
+        # Record YAML loading time
+        yaml_time = time.perf_counter() - yaml_start
+        HftConfig._loading_metrics.yaml_load_time = yaml_time
+        
         self._logger.info(f"Configuration loaded from: {config_file_path}")
+        
+        # Validate and process configuration
+        validation_start = time.perf_counter()
+        self._validate_and_process_config(config_data)
+        validation_time = time.perf_counter() - validation_start
+        HftConfig._loading_metrics.validation_time = validation_time
 
+    def _validate_and_process_config(self, config_data: Dict[str, Any]) -> None:
+        """Validate and process configuration data with comprehensive error checking.
+        
+        Args:
+            config_data: Parsed YAML configuration data
+            
+        Raises:
+            ConfigurationError: If configuration is invalid
+        """
         # Store complete config data for arbitrage access
         self._config_data = config_data
-
-
-
-        environment_config = self._config_data.get('environment', {})
+        
+        # Validate top-level structure
+        validate_config_dict(config_data, ['environment'], 'config')
+        
+        # Process environment configuration
+        environment_config = config_data.get('environment', {})
         if isinstance(environment_config, dict):
-            self.ENVIRONMENT = environment_config.get('name', 'dev').lower()
+            HftConfig.ENVIRONMENT = environment_config.get('name', 'dev').lower()
         else:
-            self.ENVIRONMENT = str(environment_config).lower()
-        if self.ENVIRONMENT not in ('dev', 'prod'):
-            raise ConfigurationError(f"Invalid environment '{self.ENVIRONMENT}' in config.yaml", 'environment')
+            HftConfig.ENVIRONMENT = str(environment_config).lower()
 
-        self.DEBUG_MODE = bool(self._config_data.get('debug_mode', False))
+        # Validate environment
+        valid_environments = ('dev', 'prod', 'test')
+        if HftConfig.ENVIRONMENT not in valid_environments:
+            raise ConfigurationError(
+                f"Invalid environment '{HftConfig.ENVIRONMENT}'. Valid options: {valid_environments}",
+                'environment.name'
+            )
 
-        network_config = self._config_data.get('network', {})
+        # Process debug mode
+        HftConfig.DEBUG_MODE = bool(environment_config.get('debug', False))
+
+        # Parse network configuration with validation
+        network_config = config_data.get('network', {})
         self._network_config = parse_network_config(network_config)
         
-        # Create WebSocket configuration
-        websocket_config = self._config_data.get('websocket', {})
-        self._websocket_config = WebSocketConfig(
-            connect_timeout=float(websocket_config.get('connect_timeout', 10.0)),
-            heartbeat_interval=float(websocket_config.get('heartbeat_interval', 30.0)),
-            max_reconnect_attempts=int(websocket_config.get('max_reconnect_attempts', 10)),
-            reconnect_delay=float(websocket_config.get('reconnect_delay', 5.0))
-        )
+        # Create global WebSocket configuration template (without URL)
+        websocket_config = config_data.get('websocket', {})
+        # Store as template - will be used as fallback for exchange-specific configs
+        self._websocket_config_template = websocket_config
         
-        # Get global rate limiting config for fallback
-        global_rate_limiting = self._config_data.get('rate_limiting', {})
+        # Process exchange configurations
+        self._process_exchange_configs(config_data)
+    
+    def _process_exchange_configs(self, config_data: Dict[str, Any]) -> None:
+        """Process exchange configurations with validation.
+        
+        Args:
+            config_data: Complete configuration data
+            
+        Raises:
+            ConfigurationError: If exchange configuration is invalid
+        """
+        exchanges_config = config_data.get('exchanges', {})
+        if not exchanges_config:
+            raise ConfigurationError(
+                "No exchanges configured. At least one exchange must be configured.",
+                "exchanges"
+            )
         
         # Create exchange configurations
         self._exchange_configs: Dict[str, ExchangeConfig] = {}
         
-        for exchange_name, exchange_data in self._config_data.get('exchanges', {}).items():
-            # Create credentials
-            credentials = ExchangeCredentials(
-                api_key=exchange_data.get('api_key', ''),
-                secret_key=exchange_data.get('secret_key', '')
-            )
-            
-            # Use global network config unless overridden at exchange level
-            network_config = self._network_config
-            if 'network_config' in exchange_data:
-                network_config = parse_network_config(exchange_data['network_config'])
+        for exchange_name, exchange_data in exchanges_config.items():
+            try:
+                # Validate exchange data structure
+                required_exchange_keys = ['base_url', 'websocket_url']
+                validate_config_dict(exchange_data, required_exchange_keys, f'exchanges.{exchange_name}')
+                
+                # Create credentials with validation
+                api_key = exchange_data.get('api_key', '')
+                secret_key = exchange_data.get('secret_key', '')
+                credentials = ExchangeCredentials(api_key=api_key, secret_key=secret_key)
 
-            # Handle rate limiting - check exchange-specific first, or default to global
-            rate_limit = parse_rate_limit_config(exchange_data.get('rate_limiting', {}))
+                # Use global network config unless overridden at exchange level
+                network_config = self._network_config
+                if 'network_config' in exchange_data:
+                    network_config = parse_network_config(exchange_data['network_config'])
 
-            # Use global WebSocket config unless overridden at exchange level
-            websocket_config = self._websocket_config
-            if 'websocket_config' in exchange_data:
-                websocket_config = parse_websocket_config(exchange_data['websocket_config'])
+                # Handle rate limiting - check exchange-specific first, then global fallback
+                rate_limit_config = exchange_data.get('rate_limiting', {})
+                if not rate_limit_config:
+                    # Fallback to global rate limiting
+                    rate_limit_config = config_data.get('rate_limiting', {})
+                rate_limit = parse_rate_limit_config(rate_limit_config)
 
-            # Create exchange config
-            exchange_config = ExchangeConfig(
-                name=exchange_name,
-                credentials=credentials,
-                base_url=exchange_data.get('base_url', ''),
-                websocket_url=exchange_data.get('websocket_url', ''),
-                enabled=exchange_data.get('enabled', True),
-                network=network_config,
-                rate_limit=rate_limit,
-                websocket=websocket_config
-            )
-            
-            self._exchange_configs[exchange_name] = exchange_config
+                # Create WebSocket config with URL injection from exchange config
+                websocket_config_data = self._websocket_config_template.copy()
+                if 'websocket_config' in exchange_data:
+                    websocket_config_data.update(exchange_data['websocket_config'])
+
+                # Inject URL from exchange configuration
+                websocket_url = exchange_data.get('websocket_url', '')
+                websocket_config = parse_websocket_config(websocket_config_data, websocket_url)
+
+                # Validate base URL
+                base_url = exchange_data.get('base_url', '')
+                if not base_url or not isinstance(base_url, str):
+                    raise ConfigurationError(
+                        f"Invalid base_url for exchange {exchange_name}: {base_url}",
+                        f"exchanges.{exchange_name}.base_url"
+                    )
+                if not (base_url.startswith('http://') or base_url.startswith('https://')):
+                    raise ConfigurationError(
+                        f"base_url must start with http:// or https:// for exchange {exchange_name}: {base_url}",
+                        f"exchanges.{exchange_name}.base_url"
+                    )
+
+                # Create exchange config
+                exchange_config = ExchangeConfig(
+                    name=exchange_name,
+                    credentials=credentials,
+                    base_url=base_url,
+                    websocket_url=websocket_url,
+                    enabled=exchange_data.get('enabled', True),
+                    network=network_config,
+                    rate_limit=rate_limit,
+                    websocket=websocket_config
+                )
+
+                self._exchange_configs[exchange_name] = exchange_config
+                self._logger.debug(f"Configured exchange: {exchange_name} (enabled: {exchange_config.enabled})")
+                
+            except Exception as e:
+                raise ConfigurationError(
+                    f"Failed to configure exchange '{exchange_name}': {e}",
+                    f"exchanges.{exchange_name}"
+                ) from e
     
     def _substitute_env_vars(self, content: str) -> str:
         """
-        Substitute environment variables in configuration content.
+        Substitute environment variables in configuration content with improved performance.
         
         Supports syntax:
         - ${VAR_NAME} - Required environment variable
         - ${VAR_NAME:default} - Optional with default value
+        
+        Performance optimizations:
+        - Pre-compiled regex patterns
+        - Cached environment variable access
+        - Efficient string operations
         
         Args:
             content: Raw configuration content
             
         Returns:
             Content with environment variables substituted
-        """
-        env_var_pattern = re.compile(r'\$\{([^}]+)\}')
-        
-        def replace_var(match):
-            var_expr = match.group(1)
             
-            # Check for default value syntax
-            if ':' in var_expr:
-                var_name, default_value = var_expr.split(':', 1)
-                env_value = os.getenv(var_name.strip())
-                if env_value is None:
-                    self._logger.debug(f"Using default value for {var_name}: {default_value}")
-                    return default_value
-                return env_value
-            else:
-                # Required environment variable (but allow empty for public mode)
-                var_name = var_expr.strip()
-                env_value = os.getenv(var_name)
-                if env_value is None:
-                    self._logger.warning(f"Environment variable {var_name} not set - using empty value")
-                    return ""
-                return env_value
-        
-        # Perform substitution
-        result = env_var_pattern.sub(replace_var, content)
-        return result
+        Raises:
+            ConfigurationError: If environment variable substitution fails
+        """
+        try:
+            def replace_var(match):
+                var_expr = match.group(1)
+                
+                # Check for default value syntax using pre-compiled pattern
+                default_match = ENV_VAR_DEFAULT_PATTERN.match(var_expr)
+                if default_match:
+                    var_name, default_value = default_match.groups()
+                    env_value = os.getenv(var_name.strip())
+                    if env_value is None:
+                        self._logger.debug(f"Using default value for {var_name}: {default_value}")
+                        return default_value
+                    return env_value
+                else:
+                    # Required environment variable (but allow empty for public mode)
+                    var_name = var_expr.strip()
+                    env_value = os.getenv(var_name)
+                    if env_value is None:
+                        self._logger.warning(f"Environment variable {var_name} not set - using empty value")
+                        return ""
+                    return env_value
+            
+            # Perform substitution using pre-compiled pattern
+            result = ENV_VAR_PATTERN.sub(replace_var, content)
+            return result
+        except Exception as e:
+            raise ConfigurationError(f"Failed to substitute environment variables: {e}") from e
     
     # New structured configuration methods (HFT-optimized)
     
-    def get_exchange_config_struct(self, exchange_name: str) -> ExchangeConfig:
+    def get_exchange_config(self, exchange_name: str) -> ExchangeConfig:
         """
         Get exchange configuration as structured object.
         
@@ -336,24 +625,41 @@ class HftConfig:
         """
         exchange_name = exchange_name.lower()
         if exchange_name not in self._exchange_configs:
-            raise ConfigurationError(f"Exchange '{exchange_name}' is not configured", exchange_name)
+            available_exchanges = list(self._exchange_configs.keys())
+            raise ConfigurationError(
+                f"Exchange '{exchange_name}' is not configured. Available exchanges: {available_exchanges}",
+                exchange_name
+            )
         return self._exchange_configs[exchange_name]
     
-    def get_exchange_credentials_struct(self, exchange_name: str) -> ExchangeCredentials:
+    def get_loading_metrics(self) -> ConfigLoadingMetrics:
         """
-        Get exchange credentials as structured object.
-        
-        Args:
-            exchange_name: Name of the exchange (e.g., 'mexc', 'gateio')
+        Get configuration loading performance metrics.
         
         Returns:
-            ExchangeCredentials struct with API credentials
-        
-        Raises:
-            ConfigurationError: If exchange is not configured
+            ConfigLoadingMetrics with performance data
         """
-        exchange_config = self.get_exchange_config_struct(exchange_name)
-        return exchange_config.credentials
+        if HftConfig._loading_metrics is None:
+            return ConfigLoadingMetrics()  # Return empty metrics if not initialized
+        return HftConfig._loading_metrics
+    
+    def validate_hft_compliance(self) -> bool:
+        """
+        Validate that configuration loading meets HFT performance requirements.
+        
+        Returns:
+            True if configuration loading is HFT compliant (<50ms)
+        """
+        return self.get_loading_metrics().is_hft_compliant()
+    
+    def get_performance_report(self) -> str:
+        """
+        Get detailed configuration loading performance report.
+        
+        Returns:
+            Formatted performance report string
+        """
+        return self.get_loading_metrics().get_performance_report()
     
     def get_network_config(self) -> NetworkConfig:
         """
@@ -364,14 +670,14 @@ class HftConfig:
         """
         return self._network_config
     
-    def get_websocket_config(self) -> WebSocketConfig:
+    def get_websocket_config_template(self) -> Dict[str, Any]:
         """
-        Get WebSocket configuration as structured object.
+        Get global WebSocket configuration template.
         
         Returns:
-            WebSocketConfig struct with WebSocket settings
+            Dictionary with global WebSocket configuration template
         """
-        return self._websocket_config
+        return self._websocket_config_template
     
     def get_all_exchange_configs(self) -> Dict[str, ExchangeConfig]:
         """
@@ -391,18 +697,6 @@ class HftConfig:
         """
         return list(self._exchange_configs.keys())
     
-    def get_exchanges_with_credentials(self) -> list[str]:
-        """
-        Get list of cex that have valid credentials configured.
-        
-        Returns:
-            List of exchange names with valid API credentials
-        """
-        return [
-            name for name, config in self._exchange_configs.items() 
-            if config.has_credentials()
-        ]
-
     def get_arbitrage_config(self) -> Dict[str, Any]:
         """
         Get arbitrage-specific configuration dictionary.
@@ -443,6 +737,81 @@ class HftConfig:
             Configured logger instance
         """
         return getLogger(name)
+    
+    def validate_configuration(self) -> bool:
+        """
+        Perform comprehensive configuration validation.
+        
+        Returns:
+            True if all configuration is valid
+            
+        Raises:
+            ConfigurationError: If configuration validation fails
+        """
+        try:
+            # Validate that at least one exchange is enabled
+            enabled_exchanges = [name for name, config in self._exchange_configs.items() if config.enabled]
+            if not enabled_exchanges:
+                raise ConfigurationError(
+                    "No exchanges are enabled. At least one exchange must be enabled.",
+                    "exchanges"
+                )
+            
+            # Validate exchange credentials for enabled exchanges
+            for exchange_name, exchange_config in self._exchange_configs.items():
+                if exchange_config.enabled and not exchange_config.has_credentials():
+                    self._logger.warning(
+                        f"Exchange '{exchange_name}' is enabled but has no credentials - running in public mode only"
+                    )
+            
+            # Validate arbitrage configuration if present
+            if self.has_arbitrage_config():
+                arbitrage_config = self.get_arbitrage_config()
+                if 'enabled_exchanges' in arbitrage_config:
+                    arbitrage_exchanges = arbitrage_config['enabled_exchanges']
+                    for arb_exchange in arbitrage_exchanges:
+                        if arb_exchange.lower() not in self._exchange_configs:
+                            raise ConfigurationError(
+                                f"Arbitrage references unconfigured exchange: {arb_exchange}",
+                                "arbitrage.enabled_exchanges"
+                            )
+            
+            self._logger.info("Configuration validation passed")
+            return True
+            
+        except Exception as e:
+            self._logger.error(f"Configuration validation failed: {e}")
+            raise
+    
+    def get_config_summary(self) -> str:
+        """
+        Get a summary of the current configuration state.
+        
+        Returns:
+            Formatted configuration summary string
+        """
+        summary_lines = [
+            "=== HFT Configuration Summary ===",
+            f"Environment: {HftConfig.ENVIRONMENT}",
+            f"Debug Mode: {HftConfig.DEBUG_MODE}",
+            f"Configured Exchanges: {len(self._exchange_configs)}",
+        ]
+        
+        # Add exchange details
+        for name, config in self._exchange_configs.items():
+            status = "enabled" if config.enabled else "disabled"
+            auth_status = "authenticated" if config.has_credentials() else "public-only"
+            summary_lines.append(f"  - {name.upper()}: {status}, {auth_status}")
+        
+        # Add performance metrics
+        if HftConfig._loading_metrics:
+            summary_lines.extend([
+                "",
+                "=== Performance Metrics ===",
+                HftConfig._loading_metrics.get_performance_report()
+            ])
+        
+        return "\n".join(summary_lines)
 
 
 # Create singleton instance
@@ -454,7 +823,7 @@ def get_config() -> HftConfig:
     Get the global configuration instance.
     
     Returns:
-        Singleton MexcConfig instance
+        Singleton HftConfig instance
     """
     return config
 
@@ -491,7 +860,7 @@ def get_arbitrage_risk_limits() -> Dict[str, Any]:
 
 # New structured convenience functions (HFT-optimized)
 
-def get_exchange_config_struct(exchange_name: str) -> ExchangeConfig:
+def get_exchange_config(exchange_name: str) -> ExchangeConfig:
     """
     Get exchange configuration as structured object.
     
@@ -501,21 +870,7 @@ def get_exchange_config_struct(exchange_name: str) -> ExchangeConfig:
     Returns:
         ExchangeConfig struct with complete exchange configuration
     """
-    return config.get_exchange_config_struct(exchange_name)
-
-
-def get_exchange_credentials_struct(exchange_name: str) -> ExchangeCredentials:
-    """
-    Get exchange credentials as structured object.
-    
-    Args:
-        exchange_name: Name of the exchange (e.g., 'mexc', 'gateio')
-    
-    Returns:
-        ExchangeCredentials struct with API credentials
-    """
-    return config.get_exchange_credentials_struct(exchange_name)
-
+    return config.get_exchange_config(exchange_name)
 
 def get_network_config() -> NetworkConfig:
     """
@@ -526,13 +881,39 @@ def get_network_config() -> NetworkConfig:
     """
     return config.get_network_config()
 
-
-def get_websocket_config() -> WebSocketConfig:
+def get_all_exchange_configs() -> Dict[str, ExchangeConfig]:
     """
-    Get WebSocket configuration as structured object.
+    Get all configured exchanges as structured objects.
     
     Returns:
-        WebSocketConfig struct with WebSocket settings
+        Dictionary mapping exchange names to ExchangeConfig structs
     """
-    return config.get_websocket_config()
+    return config.get_all_exchange_configs()
+
+def validate_hft_compliance() -> bool:
+    """
+    Validate that configuration loading meets HFT performance requirements.
+    
+    Returns:
+        True if configuration loading is HFT compliant (<50ms)
+    """
+    return config.validate_hft_compliance()
+
+def get_performance_report() -> str:
+    """
+    Get detailed configuration loading performance report.
+    
+    Returns:
+        Formatted performance report string
+    """
+    return config.get_performance_report()
+
+def get_loading_metrics() -> ConfigLoadingMetrics:
+    """
+    Get configuration loading performance metrics.
+    
+    Returns:
+        ConfigLoadingMetrics with performance data
+    """
+    return config.get_loading_metrics()
 

@@ -5,8 +5,7 @@ from typing import Optional, Dict, Any, List, AsyncIterator
 import msgspec
 
 from common.orderbook_entry_pool import OrderBookEntryPool
-from core.config.config_manager import ExchangeEnum
-from core.cex.services import get_symbol_mapper
+from core.cex.services.symbol_mapper import SymbolMapperInterface
 from core.cex.websocket import MessageParser, ParsedMessage, MessageType
 from cex.mexc.ws.protobuf_parser import MexcProtobufParser
 from structs.exchange import OrderBook, Trade, Side
@@ -22,9 +21,9 @@ class MexcPublicMessageParser(MessageParser):
         0x12: 'stream',   # '\\x12' - Stream name field tag
         0x1a: 'symbol',   # '\\x1a' - Symbol field tag
     }
-    symbol_mapper = get_symbol_mapper(ExchangeEnum.MEXC)
 
-    def __init__(self):
+    def __init__(self, symbol_mapper: SymbolMapperInterface):
+        super().__init__(symbol_mapper)
         self.logger = logging.getLogger(f"{__name__}.{self.__class__.__name__}")
         self.entry_pool = OrderBookEntryPool(initial_size=200, max_size=500)
 

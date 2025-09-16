@@ -26,9 +26,10 @@ from typing import List, Dict, Optional, Callable, Awaitable
 from common.logging import getLogger
 
 from structs.exchange import Symbol, Trade, OrderBook
-from core.transport.websocket.ws_client import WebSocketConfig
+from core.config.structs import WebSocketConfig, ExchangeConfig
 
 # Strategy pattern imports
+from core.cex.websocket import BaseExchangeWebsocketInterface
 from core.cex.websocket.strategies import WebSocketStrategySet
 from core.cex.websocket.ws_manager import WebSocketManager, WebSocketManagerConfig
 from core.cex.websocket import MessageType
@@ -40,29 +41,30 @@ from cex.mexc.structs.protobuf.PublicLimitDepthsV3Api_pb2 import PublicLimitDept
 from cex.mexc.structs.protobuf.PublicAggreDealsV3Api_pb2 import PublicAggreDealsV3Api
 # from cex.mexc.protobuf.PublicAggreDepthsV3Api_pb2 import PublicAggreDepthsV3Api
 
-
-class MexcWebsocketPublic:
+class MexcWebsocketPublic(BaseExchangeWebsocketInterface):
     """MEXC public WebSocket client using strategy pattern architecture."""
 
     def __init__(
         self,
-        ws_config: WebSocketConfig,
+        config: ExchangeConfig,
         orderbook_handler: Optional[Callable[[Symbol, OrderBook], Awaitable[None]]] = None,
         trades_handler: Optional[Callable[[Symbol, List[Trade]], Awaitable[None]]] = None
     ):
+        super().__init__(config)
         self.logger = getLogger(f"{__name__}.{self.__class__.__name__}")
         self.orderbook_handler = orderbook_handler
         self.trades_handler = trades_handler
         
-        # Get exchange config for strategy
-        from core.config.config_manager import get_exchange_config_struct
-        mexc_config = get_exchange_config_struct("mexc")
+        # Get exchange config with WebSocket configuration
+
+        if not config.websocket:
+            raise ValueError("MEXC exchange configuration missing WebSocket settings")
         
         # Create strategy set for MEXC public WebSocket
         strategies = WebSocketStrategySet(
-            connection_strategy=MexcPublicConnectionStrategy(mexc_config),
+            connection_strategy=MexcPublicConnectionStrategy(config),
             subscription_strategy=MexcPublicSubscriptionStrategy(),
-            message_parser=MexcPublicMessageParser()
+            message_parser=MexcPublicMessageParser(self.symbol_mapper)
         )
         
         # Configure manager for HFT performance
@@ -73,9 +75,9 @@ class MexcWebsocketPublic:
             enable_performance_tracking=True
         )
         
-        # Initialize WebSocket manager with strategy pattern
+        # Initialize WebSocket manager with WebSocket config from exchange config
         self.ws_manager = WebSocketManager(
-            config=ws_config,
+            config=config.websocket,
             strategies=strategies,
             message_handler=self._handle_parsed_message,
             manager_config=manager_config

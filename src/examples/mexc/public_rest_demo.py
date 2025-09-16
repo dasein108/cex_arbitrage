@@ -8,7 +8,7 @@ Used for API validation and response verification.
 import asyncio
 from structs.exchange import Symbol, AssetName
 from cex.mexc.rest.rest_public import MexcPublicSpotRest
-from core.config.config_manager import get_exchange_config_struct
+from core.config.config_manager import get_exchange_config
 
 async def check_ping(exchange: MexcPublicSpotRest):
     """Check ping method."""
@@ -106,7 +106,10 @@ async def main():
     print("MEXC PUBLIC API INTEGRATION CHECKS")
     print("=" * 50)
 
-    config = get_exchange_config_struct('MEXC')
+    from core.register import install_exchange_dependencies
+    install_exchange_dependencies()
+
+    config = get_exchange_config('MEXC')
     exchange = MexcPublicSpotRest(config)
     
     await check_ping(exchange)

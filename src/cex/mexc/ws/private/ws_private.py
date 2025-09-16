@@ -27,46 +27,43 @@ import time
 from typing import List, Dict, Optional, Callable, Awaitable
 from common.logging import getLogger
 
-from structs.exchange import Symbol, Order, AssetBalance, Trade, Side, OrderStatus, AssetName
+from structs.exchange import Symbol, Order, AssetBalance, Trade, Side, AssetName
 from cex.mexc.rest.rest_private import MexcPrivateSpotRest
-from core.transport.websocket.ws_client import WebSocketConfig
-
+from .mapping import status_mapping, type_mapping
 # Strategy pattern imports
 from core.cex.websocket.strategies import WebSocketStrategySet
 from core.cex.websocket.ws_manager import WebSocketManager, WebSocketManagerConfig
-from core.cex.websocket import MessageType
+from core.cex.websocket import MessageType, BaseExchangeWebsocketInterface
 from cex.mexc.ws.private.ws_message_parser import MexcPrivateMessageParser
 from cex.mexc.ws.private.ws_strategies import MexcPrivateConnectionStrategy, MexcPrivateSubscriptionStrategy
 
 from cex.mexc.structs.protobuf.PrivateAccountV3Api_pb2 import PrivateAccountV3Api
 from cex.mexc.structs.protobuf.PrivateOrdersV3Api_pb2 import PrivateOrdersV3Api
 from cex.mexc.structs.protobuf.PrivateDealsV3Api_pb2 import PrivateDealsV3Api
+from core.config.structs import ExchangeConfig
 
-
-class MexcWebsocketPrivate:
+class MexcWebsocketPrivate(BaseExchangeWebsocketInterface):
     """MEXC private WebSocket client using strategy pattern architecture."""
 
     def __init__(
         self,
         private_rest_client: MexcPrivateSpotRest,
-        ws_config: WebSocketConfig,
+        config: ExchangeConfig,
         order_handler: Optional[Callable[[Order], Awaitable[None]]] = None,
         balance_handler: Optional[Callable[[Dict[AssetName, AssetBalance]], Awaitable[None]]] = None,
         trade_handler: Optional[Callable[[Trade], Awaitable[None]]] = None
     ):
+        super().__init__(config)
         self.logger = getLogger(f"{__name__}.{self.__class__.__name__}")
         self.rest_client = private_rest_client
         self.order_handler = order_handler
         self.balance_handler = balance_handler
         self.trade_handler = trade_handler
         
-        # Get exchange config for strategy
-        from core.config.config_manager import get_exchange_config_struct
-        mexc_config = get_exchange_config_struct("mexc")
-        
+
         # Create strategy set for MEXC private WebSocket
         strategies = WebSocketStrategySet(
-            connection_strategy=MexcPrivateConnectionStrategy(mexc_config, private_rest_client),
+            connection_strategy=MexcPrivateConnectionStrategy(config, private_rest_client),
             subscription_strategy=MexcPrivateSubscriptionStrategy(),
             message_parser=MexcPrivateMessageParser()
         )
@@ -81,7 +78,7 @@ class MexcWebsocketPrivate:
         
         # Initialize WebSocket manager with strategy pattern
         self.ws_manager = WebSocketManager(
-            config=ws_config,
+            config=config.websocket,
             strategies=strategies,
             message_handler=self._handle_parsed_message,
             manager_config=manager_config
@@ -176,25 +173,28 @@ class MexcWebsocketPrivate:
                 return
                 
             # Parse order status from numeric value
-            status_num = data.get("status", 1)
-            status = self._parse_order_status_numeric(status_num)
+            status = status_mapping.get( data.get("status", 1))
+
+            order_type = type_mapping.get(data.get("orderType", 1))
             
             # Parse side
             side_str = data.get("side", "BUY")
             side = Side.BUY if side_str == "BUY" else Side.SELL
+
+            timestamp = data.get("updateTime", int(time.time() * 1000))
             
             # Create Order object from parsed data
             order = Order(
                 order_id=data.get("order_id", ""),
                 client_order_id="",
-                symbol=self.rest_client._mappings.pair_to_symbol(data.get("symbol", "")) if data.get("symbol") else None,
+                symbol=self.symbol_mapper.pair_to_symbol(data.get("symbol", "")) if data.get("symbol") else None,
                 side=side,
-                order_type=self._parse_order_type_numeric(1),  # Default to LIMIT
+                order_type=order_type,
                 amount=data.get("quantity", 0.0),
                 price=data.get("price", 0.0),
                 amount_filled=data.get("filled_qty", 0.0),
                 status=status,
-                timestamp=int(time.time() * 1000)
+                timestamp=timestamp
             )
             
             if self.order_handler:
@@ -232,33 +232,6 @@ class MexcWebsocketPrivate:
                 
         except Exception as e:
             self.logger.error(f"Error handling trade message: {e}")
-
-    def _parse_order_status_numeric(self, status_num: int) -> OrderStatus:
-        """Parse protobuf numeric order status to unified enum."""
-        status_mapping = {
-            1: OrderStatus.NEW,
-            2: OrderStatus.PARTIALLY_FILLED, 
-            3: OrderStatus.FILLED,
-            4: OrderStatus.CANCELED,
-            5: OrderStatus.PARTIALLY_CANCELED,
-            6: OrderStatus.REJECTED,
-            7: OrderStatus.EXPIRED
-        }
-        return status_mapping.get(status_num, OrderStatus.UNKNOWN)
-
-    def _parse_order_type_numeric(self, type_num: int):
-        """Parse protobuf numeric order type to unified enum."""
-        from structs.exchange import OrderType
-        type_mapping = {
-            1: OrderType.LIMIT,
-            2: OrderType.MARKET,
-            3: OrderType.LIMIT_MAKER,
-            4: OrderType.IMMEDIATE_OR_CANCEL,
-            5: OrderType.FILL_OR_KILL,
-            6: OrderType.STOP_LIMIT,
-            7: OrderType.STOP_MARKET
-        }
-        return type_mapping.get(type_num, OrderType.LIMIT)
 
     # Default event handlers (can be overridden by dependency injection)
     

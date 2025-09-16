@@ -68,8 +68,8 @@ class GateioExchange(BasePrivateExchangeInterface):
     def __init__(self, api_key: Optional[str] = None, secret_key: Optional[str] = None, config: ExchangeConfig = None):
         # Create config if not provided
         if config is None:
-            from core.config.config_manager import get_exchange_config_struct
-            config = get_exchange_config_struct('GATEIO')
+            from core.config.config_manager import get_exchange_config
+            config = get_exchange_config('GATEIO')
         
         # Update config with credentials if provided
         if api_key and secret_key:

@@ -10,12 +10,12 @@ Supported Quote Assets: USDT, USDC, BTC, ETH, DAI, USD
 Integration with existing GateioUtils while following factory pattern.
 """
 
-from core.cex.services.symbol_mapper.base_symbol_mapper import BaseSymbolMapper
+from core.cex.services.symbol_mapper.base_symbol_mapper import SymbolMapperInterface
 from core.cex.services.symbol_mapper.symbol_mapper_factory import ExchangeSymbolMapperFactory
 from structs.exchange import Symbol, AssetName
 
 
-class GateioSymbolMapper(BaseSymbolMapper):
+class GateioSymbolMapperInterface(SymbolMapperInterface):
     """
     Gate.io-specific symbol mapper implementation.
     
@@ -83,7 +83,7 @@ class GateioSymbolMapper(BaseSymbolMapper):
 
 
 # Register Gate.io mapper with factory
-ExchangeSymbolMapperFactory.register_mapper('GATEIO', GateioSymbolMapper)
+ExchangeSymbolMapperFactory.register_mapper('GATEIO', GateioSymbolMapperInterface)
 
 # Convenience instance using factory pattern
 gateio_symbol_mapper = ExchangeSymbolMapperFactory.get_mapper('GATEIO')

@@ -25,28 +25,30 @@ from core.cex.websocket.strategies import WebSocketStrategySet
 from core.cex.websocket.ws_manager import WebSocketManager, WebSocketManagerConfig
 from cex.mexc.ws.public.ws_message_parser import MexcPublicMessageParser
 from cex.mexc.ws.public.ws_strategies import MexcPublicConnectionStrategy, MexcPublicSubscriptionStrategy
-
+from core.cex.services import get_symbol_mapper
+from core.register import install_exchange_dependencies
 # Set up logging
 logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
+install_exchange_dependencies()
 
 class TestWebSocketClient:
     """Simple test client using the new strategy architecture."""
     
-    def __init__(self, config: WebSocketConfig, orderbook_handler, trades_handler):
-        self.config = config
+    def __init__(self, orderbook_handler, trades_handler):
         self.orderbook_handler = orderbook_handler
         self.trades_handler = trades_handler
         
         # Get MEXC exchange config for strategy
-        from core.config.config_manager import get_exchange_config_struct
-        mexc_config = get_exchange_config_struct("mexc")
+        from core.config.config_manager import get_exchange_config
+        mexc_config = get_exchange_config("mexc")
+        symbol_mapper = get_symbol_mapper("mexc")
         
         # Create strategy set for MEXC public WebSocket
         strategies = WebSocketStrategySet(
             connection_strategy=MexcPublicConnectionStrategy(mexc_config),
-            subscription_strategy=MexcPublicSubscriptionStrategy(), 
-            message_parser=MexcPublicMessageParser()
+            subscription_strategy=MexcPublicSubscriptionStrategy(symbol_mapper=symbol_mapper),
+            message_parser=MexcPublicMessageParser(symbol_mapper=symbol_mapper)
         )
         
         # Configure manager for HFT performance
@@ -59,7 +61,7 @@ class TestWebSocketClient:
         
         # Initialize WebSocket manager
         self.ws_manager = WebSocketManager(
-            config=config,
+            config=mexc_config.websocket,
             strategies=strategies,
             message_handler=self._handle_parsed_message,
             manager_config=manager_config
@@ -155,21 +157,11 @@ class OrderBookManager:
 async def main():
     """Test MEXC WebSocket refactored functionality."""
     logger.info("🚀 Starting MEXC WebSocket Refactored Test...")
-    
-    # Configure WebSocket
-    config = WebSocketConfig(
-        name="MEXC_Refactored_Test",
-        url="wss://wbs.mexc.com/ws",
-        timeout=30.0,
-        ping_interval=20.0
-    )
-    
     # Create OrderBook manager for external storage
     manager = OrderBookManager()
     
     # Create test WebSocket client
     ws = TestWebSocketClient(
-        config=config,
         orderbook_handler=manager.handle_orderbook_update,
         trades_handler=manager.handle_trades_update
     )

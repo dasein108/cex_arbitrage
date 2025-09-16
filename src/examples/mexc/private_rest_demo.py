@@ -174,7 +174,7 @@ async def main():
         install_exchange_dependencies()
 
         # Create exchange with explicit API credentials from config
-        mexc_config = config.get_exchange_config_struct('mexc')
+        mexc_config = config.get_exchange_config('mexc')
         if not mexc_config:
             raise ValueError("MEXC configuration not found")
         exchange = MexcPrivateSpotRest(mexc_config)

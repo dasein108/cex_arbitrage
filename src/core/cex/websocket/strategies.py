@@ -13,6 +13,7 @@ from typing import List, Dict, Optional, Any
 from core.cex.websocket.message_parser import MessageParser
 from core.cex.websocket.structs import SubscriptionAction, ConnectionContext, SubscriptionContext
 from structs.exchange import Symbol
+from core.cex.services import SymbolMapperInterface
 
 
 class ConnectionStrategy(ABC):
@@ -154,6 +155,8 @@ class SubscriptionStrategy(ABC):
         """
         pass
 
+    def __init__(self, symbol_mapper: SymbolMapperInterface):
+        self.symbol_mapper = symbol_mapper
 
 class WebSocketStrategySet:
     """
@@ -171,7 +174,6 @@ class WebSocketStrategySet:
         self.connection_strategy = connection_strategy
         self.subscription_strategy = subscription_strategy
         self.message_parser = message_parser
-        
         # HFT Optimization: Pre-validate strategy compatibility
         self._validate_strategies()
     

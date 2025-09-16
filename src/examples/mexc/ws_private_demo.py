@@ -23,7 +23,7 @@ from core.cex.websocket.strategies import WebSocketStrategySet
 from core.cex.websocket.ws_manager import WebSocketManager, WebSocketManagerConfig
 from cex.mexc.ws.private.ws_message_parser import MexcPrivateMessageParser
 from cex.mexc.ws.private.ws_strategies import MexcPrivateConnectionStrategy, MexcPrivateSubscriptionStrategy
-from core.config.config_manager import get_exchange_config_struct, config
+from core.config.config_manager import get_exchange_config, config
 from cex.mexc.rest.rest_private import MexcPrivateSpotRest
 
 # Set up logging
@@ -40,14 +40,7 @@ class TestPrivateWebSocketClient:
         # Get MEXC exchange config for strategy
 
         
-        mexc_config = get_exchange_config_struct("mexc")
-
-        config = WebSocketConfig(
-            name="MEXC_Private_Test",
-            url=mexc_config.websocket_url,  # Private uses same endpoint with auth
-            timeout=30.0,
-            ping_interval=20.0
-        )
+        mexc_config = get_exchange_config("mexc")
 
         # Verify credentials are available
         if not mexc_config.credentials.api_key or not mexc_config.credentials.secret_key:
@@ -75,7 +68,7 @@ class TestPrivateWebSocketClient:
         
         # Initialize WebSocket manager
         self.ws_manager = WebSocketManager(
-            config=config,
+            config=mexc_config.websocket,
             strategies=strategies,
             message_handler=self._handle_parsed_message,
             manager_config=manager_config

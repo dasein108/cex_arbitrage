@@ -368,11 +368,11 @@ async def demo_config_integration():
     # Demo 2: Load from YAML config system
     print(f"\n📋 Loading from YAML Configuration System:")
     try:
-        from core.config.config_manager import get_exchange_config_struct
+        from core.config.config_manager import get_exchange_config
         
         # Try to load actual config from config.yaml
         try:
-            yaml_mexc_config = get_exchange_config_struct('mexc')
+            yaml_mexc_config = get_exchange_config('mexc')
             print(f"✅ MEXC from YAML:")
             print(f"   Base URL: {yaml_mexc_config.base_url}")
             print(f"   Credentials: {yaml_mexc_config.credentials.get_preview()}")
@@ -405,7 +405,7 @@ async def demo_config_integration():
             print(f"⚠️  YAML MEXC Config: {e}")
         
         try:
-            yaml_gateio_config = get_exchange_config_struct('gateio')
+            yaml_gateio_config = get_exchange_config('gateio')
             print(f"✅ Gate.io from YAML:")
             print(f"   Base URL: {yaml_gateio_config.base_url}")
             print(f"   Credentials: {yaml_gateio_config.credentials.get_preview()}")

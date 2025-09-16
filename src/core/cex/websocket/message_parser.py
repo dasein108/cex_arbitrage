@@ -3,6 +3,7 @@ from typing import Optional, Dict, Any, List, AsyncIterator
 
 from core.cex.websocket.structs import ParsedMessage, MessageType
 from structs.exchange import OrderBook
+from core.cex.services.symbol_mapper import SymbolMapperInterface
 
 
 class MessageParser(ABC):
@@ -41,8 +42,8 @@ class MessageParser(ABC):
 
     @abstractmethod
     async def parse_orderbook_message(
-        self,
-        message: Dict[str, Any]
+            self,
+            message: Dict[str, Any]
     ) -> Optional[OrderBook]:
         """
         Parse orderbook-specific message.
@@ -66,8 +67,8 @@ class MessageParser(ABC):
         pass
 
     async def parse_batch_messages(
-        self,
-        raw_messages: List[str]
+            self,
+            raw_messages: List[str]
     ) -> AsyncIterator[ParsedMessage]:
         """
         Parse multiple messages efficiently.
@@ -83,3 +84,6 @@ class MessageParser(ABC):
             parsed = await self.parse_message(raw_message)
             if parsed:
                 yield parsed
+
+    def __init__(self, symbol_mapper: Optional[SymbolMapperInterface] = None):
+        self.symbol_mapper = symbol_mapper

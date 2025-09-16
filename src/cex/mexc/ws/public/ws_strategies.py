@@ -3,12 +3,11 @@ from typing import Any, List, Dict, Optional
 
 import msgspec
 
-from core.config.config_manager import ExchangeEnum
-from core.cex.services import get_symbol_mapper
 
 from core.cex.websocket import ConnectionStrategy, ConnectionContext, SubscriptionStrategy, SubscriptionAction, \
     SubscriptionContext
 from core.config.structs import ExchangeConfig
+from core.cex.services.symbol_mapper import SymbolMapperInterface
 from structs.exchange import Symbol
 
 
@@ -55,9 +54,9 @@ class MexcPublicConnectionStrategy(ConnectionStrategy):
 class MexcPublicSubscriptionStrategy(SubscriptionStrategy):
     """MEXC public WebSocket subscription strategy."""
 
-    def __init__(self):
+    def __init__(self, symbol_mapper: SymbolMapperInterface):
+        super().__init__(symbol_mapper)
         self.logger = logging.getLogger(f"{__name__}.{self.__class__.__name__}")
-        self.symbol_mapper = get_symbol_mapper(ExchangeEnum.MEXC)
 
     def _get_channels_for_symbol(self, symbol: Symbol) -> List[str]:
         """Generate channel list for a symbol (single source of truth).

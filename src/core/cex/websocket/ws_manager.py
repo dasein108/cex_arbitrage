@@ -18,7 +18,8 @@ from core.cex.websocket.strategies import (
 )
 from core.cex.websocket.structs import MessageType, SubscriptionAction, ParsedMessage, WebSocketManagerConfig, \
     PerformanceMetrics
-from core.transport.websocket.ws_client import WebSocketConfig, WebsocketClient
+from core.config.structs import WebSocketConfig
+from core.transport.websocket.ws_client import WebsocketClient
 from core.transport.websocket.structs import ConnectionState
 from core.exceptions.exchange import BaseExchangeError
 
@@ -94,11 +95,11 @@ class WebSocketManager:
             connection_context = await self.strategies.connection_strategy.create_connection_context()
             
             # Update WebSocket config with strategy context
-            self.config.url = connection_context.url
+            # self.config.url = connection_context.url
             
             # Initialize WebSocket client
             self.ws_client = WebsocketClient(
-                config=self.config,
+                config=self.config.with_url(connection_context.url),
                 message_handler=self._on_raw_message,
                 error_handler=self._on_error,
                 connection_handler=self._on_state_change

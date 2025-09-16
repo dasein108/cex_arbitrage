@@ -28,7 +28,7 @@ class MexcMappings(BaseExchangeMappings):
     
     def __init__(self, symbol_mapper):
         """Initialize MEXC mappings with exchange-specific configuration."""
-        config = self._create_mexc_config()
+        config = MexcMappings._create_mexc_config()
         super().__init__(symbol_mapper, config)
     
     @staticmethod
