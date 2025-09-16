@@ -33,9 +33,9 @@ from typing import List, Dict, Optional, Callable, Awaitable, Any
 
 from core.cex.websocket import BaseExchangeWebsocketInterface
 from structs.exchange import Symbol, Order, AssetBalance
-from cex.gateio.common.gateio_config import GateioConfig
-from cex.gateio.common.gateio_utils import GateioUtils
-from cex.gateio.common.gateio_mappings import GateioMappings
+from cex.gateio.services.gateio_config import GateioConfig
+from cex.gateio.services.gateio_utils import GateioUtils
+from cex.gateio.services.gateio_mappings import GateioMappings
 from core.cex.websocket.structs import SubscriptionAction
 
 from core.transport.websocket.ws_client import WebSocketConfig

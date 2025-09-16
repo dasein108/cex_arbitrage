@@ -12,15 +12,18 @@ from structs.exchange import (
 )
 
 from core.config.structs import ExchangeConfig
-from core.transport.rest.structs import RestConfig
 
 
 class PublicExchangeSpotRestInterface(BaseExchangeRestInterface):
-    """Abstract cex for public exchange operations (market data)"""
-
-    def __init__(self, config: ExchangeConfig, rest_config: RestConfig,
-                 custom_exception_handler: Callable = None):
-        super().__init__(f'{config.name}_public', config, rest_config, custom_exception_handler)
+    """Abstract interface for public exchange operations (market data)"""
+    
+    def __init__(self, config: ExchangeConfig, custom_exception_handler: Callable):
+        """Initialize public interface with transport manager."""
+        super().__init__(
+            exchange_tag=f"{config.name}_public",
+            config=config,
+            is_private=False  # Public API operations
+        )
 
     @abstractmethod
     async def get_exchange_info(self) -> Dict[Symbol, SymbolInfo]:

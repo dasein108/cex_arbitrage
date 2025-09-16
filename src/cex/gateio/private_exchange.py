@@ -17,8 +17,8 @@ from structs.exchange import (
     Order, OrderId, OrderType, Side, TimeInForce, Position,
     ExchangeStatus
 )
-from cex.gateio.gateio_public_exchange import GateioPublicExchange
-from cex.gateio.rest.gateio_private import GateioPrivateExchangeSpot
+from cex.gateio.public_exchange import GateioPublicExchange
+from cex.gateio.rest.rest_private import GateioPrivateSpotRest
 from core.exceptions.exchange import BaseExchangeError
 from core.config.structs import ExchangeConfig
 

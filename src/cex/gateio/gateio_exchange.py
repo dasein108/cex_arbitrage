@@ -18,8 +18,8 @@ HFT Compliance:
 """
 
 # Re-export the main Gate.io exchange implementations
-from cex.gateio.gateio_public_exchange import GateioPublicExchange
-from cex.gateio.gateio_private_exchange import GateioPrivateExchange
+from cex.gateio.public_exchange import GateioPublicExchange
+from cex.gateio.private_exchange import GateioPrivateExchange
 
 # For backward compatibility, alias the private exchange as the main exchange
 GateioExchange = GateioPrivateExchange

@@ -39,8 +39,6 @@ from core.exceptions.exchange import BaseExchangeError
 from core.config.structs import ExchangeConfig
 
 from core.cex.rest.spot.base_rest_spot_private import PrivateExchangeSpotRestInterface
-from .rest_config import MexcConfig
-from .custom_exception_handler import handle_custom_exception
 from core.transport.rest.structs import HTTPMethod
 from core.cex.services.mapping_factory import ExchangeMappingsFactory
 
@@ -53,60 +51,7 @@ class MexcPrivateSpotRest(PrivateExchangeSpotRestInterface):
     Optimized for high-frequency trading operations with minimal overhead.
     """
 
-    def __init__(self, config: ExchangeConfig):
-        """
-        Initialize MEXC private REST client with dependency injection.
-        
-        Args:
-            config: ExchangeConfig with API credentials
-        """
-        super().__init__(config, MexcConfig.rest_config['default'], handle_custom_exception)
-
-    def generate_auth_signature(self, params: Dict[str, Any]) -> str:
-        """
-        Generate MEXC HMAC-SHA256 signature for authentication.
-        
-        Args:
-            params: Request parameters including timestamp and recvWindow
-            
-        Returns:
-            HMAC-SHA256 signature string
-        """
-        # Create query string from parameters
-        query_string = urllib.parse.urlencode(params)
-
-        # Generate HMAC-SHA256 signature
-        signature = hmac.new(
-            self.secret_key.encode('utf-8'),
-            query_string.encode('utf-8'),
-            hashlib.sha256
-        ).hexdigest()
-
-        return signature
-
-    async def add_auth(self, params: Optional[Dict[str, Any]] = None, headers: Optional[Dict[str, str]] = None) -> Tuple[Dict[str, Any], Dict[str, str]]:
-        # Prepare parameters
-        request_params = params.copy() if params else {}
-
-        # Add required MEXC authentication parameters
-        request_params['timestamp'] = round(time.time() * 1000)
-        request_params['recvWindow'] = 15000
-
-        # Generate signature
-        signature = self.generate_auth_signature(request_params)
-        request_params['signature'] = signature
-
-        # Prepare headers with API key and required content-type for MEXC
-        auth_headers = {
-            'X-MEXC-APIKEY': self.api_key,
-            'Content-Type': 'application/json'  # MEXC requires this for authenticated requests
-        }
-        
-        # Merge with any existing headers, allowing them to override if needed
-        if headers:
-            auth_headers.update(headers)
-
-        return request_params, auth_headers
+    # Authentication is now handled automatically by the transport system
 
     async def get_account_balance(self) -> List[AssetBalance]:
         """
@@ -120,9 +65,7 @@ class MexcPrivateSpotRest(PrivateExchangeSpotRestInterface):
         """
         response_data = await self.request(
             HTTPMethod.GET,
-            '/api/v3/account',
-            config=MexcConfig.rest_config['account'],
-            auth=True
+            '/api/v3/account'
         )
 
         account_data = msgspec.convert(response_data, MexcAccountResponse)
@@ -256,9 +199,7 @@ class MexcPrivateSpotRest(PrivateExchangeSpotRestInterface):
         response_data = await self.request(
             HTTPMethod.POST,
             '/api/v3/order',
-            params=params,
-            config=MexcConfig.rest_config['order'],
-            auth=True
+            params=params
         )
 
         order_response = msgspec.convert(response_data, MexcOrderResponse)
@@ -296,9 +237,7 @@ class MexcPrivateSpotRest(PrivateExchangeSpotRestInterface):
         response_data = await self.request(
             HTTPMethod.DELETE,
             '/api/v3/order',
-            params=params,
-            config=MexcConfig.rest_config['order'],
-            auth=True
+            params=params
         )
 
         order_response = msgspec.convert(response_data, MexcOrderResponse)
@@ -329,9 +268,7 @@ class MexcPrivateSpotRest(PrivateExchangeSpotRestInterface):
         response_data = await self.request(
             HTTPMethod.DELETE,
             '/api/v3/openOrders',
-            params=params,
-            config=MexcConfig.rest_config['order'],
-            auth=True
+            params=params
         )
 
         order_responses = msgspec.convert(response_data, list[MexcOrderResponse])
@@ -369,9 +306,7 @@ class MexcPrivateSpotRest(PrivateExchangeSpotRestInterface):
         response_data = await self.request(
             HTTPMethod.GET,
             '/api/v3/order',
-            params=params,
-            config=MexcConfig.rest_config['order'],
-            auth=True
+            params=params
         )
 
         order_response = msgspec.convert(response_data, MexcOrderResponse)
@@ -402,9 +337,7 @@ class MexcPrivateSpotRest(PrivateExchangeSpotRestInterface):
         response_data = await self.request(
             HTTPMethod.GET,
             '/api/v3/openOrders',
-            params=params,
-            config=MexcConfig.rest_config['my_orders'],
-            auth=True
+            params=params
         )
 
         order_responses = msgspec.convert(response_data, list[MexcOrderResponse])
@@ -486,9 +419,7 @@ class MexcPrivateSpotRest(PrivateExchangeSpotRestInterface):
         """
         response_data = await self.request(
             HTTPMethod.POST,
-            '/api/v3/userDataStream',
-            config=MexcConfig.rest_config['account'],
-            auth=True
+            '/api/v3/userDataStream'
         )
 
         listen_key = response_data.get('listenKey')
@@ -510,9 +441,7 @@ class MexcPrivateSpotRest(PrivateExchangeSpotRestInterface):
         """
         response_data = await self.request(
             HTTPMethod.GET,
-            '/api/v3/userDataStream',
-            config=MexcConfig.rest_config['account'],
-            auth=True
+            '/api/v3/userDataStream'
         )
 
         self.logger.debug("Retrieved all listen keys")
@@ -533,9 +462,7 @@ class MexcPrivateSpotRest(PrivateExchangeSpotRestInterface):
         await self.request(
             HTTPMethod.PUT,
             '/api/v3/userDataStream',
-            params=params,
-            config=MexcConfig.rest_config['account'],
-            auth=True
+            params=params
         )
 
         self.logger.debug(f"Kept alive listen key: {listen_key[:8]}...")
@@ -555,9 +482,7 @@ class MexcPrivateSpotRest(PrivateExchangeSpotRestInterface):
         await self.request(
             HTTPMethod.DELETE,
             '/api/v3/userDataStream',
-            params=params,
-            config=MexcConfig.rest_config['account'],
-            auth=True
+            params=params
         )
 
         self.logger.debug(f"Deleted listen key: {listen_key[:8]}...")

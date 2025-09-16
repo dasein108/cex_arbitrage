@@ -32,7 +32,7 @@ from core.config.structs import WebSocketConfig, ExchangeConfig
 from core.cex.websocket import BaseExchangeWebsocketInterface
 from core.cex.websocket.strategies import WebSocketStrategySet
 from core.cex.websocket.ws_manager import WebSocketManager, WebSocketManagerConfig
-from core.cex.websocket import MessageType
+from core.cex.websocket import MessageType, ConnectionState
 from cex.mexc.ws.public.ws_message_parser import MexcPublicMessageParser
 from cex.mexc.ws.public.ws_strategies import MexcPublicConnectionStrategy, MexcPublicSubscriptionStrategy
 
@@ -47,12 +47,13 @@ class MexcWebsocketPublic(BaseExchangeWebsocketInterface):
     def __init__(
         self,
         config: ExchangeConfig,
-        orderbook_handler: Optional[Callable[[Symbol, OrderBook], Awaitable[None]]] = None,
-        trades_handler: Optional[Callable[[Symbol, List[Trade]], Awaitable[None]]] = None
+        orderbook_diff_handler: Optional[Callable[[any, Symbol], Awaitable[None]]] = None,
+        trades_handler: Optional[Callable[[Symbol, List[Trade]], Awaitable[None]]] = None,
+        state_change_handler: Optional[Callable[[ConnectionState], Awaitable[None]]] = None
     ):
         super().__init__(config)
         self.logger = getLogger(f"{__name__}.{self.__class__.__name__}")
-        self.orderbook_handler = orderbook_handler
+        self.orderbook_diff_handler = orderbook_diff_handler
         self.trades_handler = trades_handler
         
         # Get exchange config with WebSocket configuration
@@ -63,7 +64,7 @@ class MexcWebsocketPublic(BaseExchangeWebsocketInterface):
         # Create strategy set for MEXC public WebSocket
         strategies = WebSocketStrategySet(
             connection_strategy=MexcPublicConnectionStrategy(config),
-            subscription_strategy=MexcPublicSubscriptionStrategy(),
+            subscription_strategy=MexcPublicSubscriptionStrategy(self.symbol_mapper),
             message_parser=MexcPublicMessageParser(self.symbol_mapper)
         )
         
@@ -80,7 +81,8 @@ class MexcWebsocketPublic(BaseExchangeWebsocketInterface):
             config=config.websocket,
             strategies=strategies,
             message_handler=self._handle_parsed_message,
-            manager_config=manager_config
+            manager_config=manager_config,
+            state_change_handler=state_change_handler
         )
         
         self.logger.info("MEXC public WebSocket initialized with strategy pattern")
@@ -91,8 +93,19 @@ class MexcWebsocketPublic(BaseExchangeWebsocketInterface):
             message_type = parsed_message.message_type
             
             if message_type == MessageType.ORDERBOOK:
-                if parsed_message.symbol and parsed_message.data and self.orderbook_handler:
-                    await self.orderbook_handler(parsed_message.symbol, parsed_message.data)
+                if parsed_message.symbol and self.orderbook_diff_handler:
+                    # Parse raw message to get diff information
+                    message_parser = self.ws_manager.strategies.message_parser
+                    if hasattr(message_parser, 'parse_orderbook_diff_message'):
+                        diff_update = message_parser.parse_orderbook_diff_message(
+                            parsed_message.raw_data, 
+                            parsed_message.symbol
+                        )
+                        if diff_update:
+                            await self.orderbook_diff_handler(diff_update, parsed_message.symbol)
+                    else:
+                        # Fallback to legacy handler
+                        await self.orderbook_diff_handler(parsed_message.raw_data, parsed_message.symbol)
                 elif parsed_message.symbol and parsed_message.data:
                     await self.on_orderbook_update(parsed_message.symbol, parsed_message.data)
                     

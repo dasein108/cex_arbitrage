@@ -1,5 +1,5 @@
 from abc import abstractmethod
-from typing import List
+from typing import List, Dict
 from structs.exchange import (Symbol, SymbolsInfo,
                      OrderBook)
 
@@ -9,7 +9,7 @@ class BasePublicExchangeInterface(BaseExchangeInterface):
     """Base cex containing common methods for both public and private exchange operations"""
     @property
     @abstractmethod
-    def orderbook(self) -> OrderBook:
+    def orderbooks(self) -> Dict[Symbol, OrderBook]:
         """Abstract property to get the current orderbook"""
         pass
 

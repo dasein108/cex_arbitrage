@@ -1,7 +1,7 @@
 """Gate.io REST API Implementations"""
 
-from .gateio_public import GateioPublicExchangeSpotRest
-from .gateio_private import GateioPrivateExchangeSpot
+from .rest_public import GateioPublicSpotRest
+from .rest_private import GateioPrivateSpotRest
 from .strategies_gateio_rest import (
     GateioRequestStrategy, GateioRateLimitStrategy, GateioRetryStrategy, GateioAuthStrategy
 )
@@ -29,8 +29,8 @@ RestStrategyFactory.register_strategies(
 )
 
 __all__ = [
-    'GateioPublicExchangeSpotRest', 
-    'GateioPrivateExchangeSpot',
+    'GateioPublicSpotRest', 
+    'GateioPrivateSpotRest',
     'GateioRequestStrategy', 
     'GateioRateLimitStrategy', 
     'GateioRetryStrategy', 

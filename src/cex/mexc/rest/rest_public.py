@@ -36,8 +36,6 @@ from structs.exchange import (
     AssetName, Side, KlineInterval
 )
 from core.cex.rest.spot.base_rest_spot_public import PublicExchangeSpotRestInterface
-from .rest_config import MexcConfig
-from .custom_exception_handler import handle_custom_exception
 from core.config.structs import ExchangeConfig
 from core.cex.utils import get_interval_seconds
 from core.transport.rest.structs import HTTPMethod
@@ -59,9 +57,9 @@ class MexcPublicSpotRest(PublicExchangeSpotRestInterface):
         Args:
             config: ExchangeConfig with base URL and rate limits
         """
-        super().__init__(config, MexcConfig.rest_config['market_data'], handle_custom_exception)
+        super().__init__(config, custom_exception_handler=None)
 
-        self._exchange_info: Optional[Dict[Symbol, SymbolInfo]] = None
+        self._symbols_info: Optional[Dict[Symbol, SymbolInfo]] = None
         
     def _extract_symbol_precision(self, mexc_symbol: MexcSymbolResponse) -> tuple[int, int, float, float]:
         """
@@ -110,10 +108,7 @@ class MexcPublicSpotRest(PublicExchangeSpotRestInterface):
         current_time = time.time()
         
         # Fetch fresh exchange info from MEXC
-        response_data = await self.request(HTTPMethod.GET,
-            '/api/v3/exchangeInfo',
-            config=MexcConfig.rest_config['default']
-        )
+        response_data = await self.request(HTTPMethod.GET, '/api/v3/exchangeInfo')
         
         # Parse response with msgspec
         exchange_info = msgspec.convert(response_data, MexcExchangeInfoResponse)
@@ -146,7 +141,7 @@ class MexcPublicSpotRest(PublicExchangeSpotRestInterface):
             symbol_info_map[symbol] = symbol_info
         
         # Update cache
-        self._exchange_info = symbol_info_map
+        self._symbols_info = symbol_info_map
 
         self.logger.info(f"Retrieved exchange info for {len(symbol_info_map)} symbols")
         return symbol_info_map
@@ -175,8 +170,7 @@ class MexcPublicSpotRest(PublicExchangeSpotRestInterface):
         response_data = await self.request(
             HTTPMethod.GET,
             '/api/v3/depth',
-            params=params,
-            config=MexcConfig.rest_config['market_data_fast']
+            params=params
         )
         
         orderbook_data = msgspec.convert(response_data, MexcOrderBookResponse)
@@ -223,8 +217,7 @@ class MexcPublicSpotRest(PublicExchangeSpotRestInterface):
         response_data = await self.request(
             HTTPMethod.GET,
             '/api/v3/trades',
-            params=params,
-            config=MexcConfig.rest_config['market_data']
+            params=params
         )
         
         trade_responses = msgspec.convert(response_data, list[MexcTradeResponse])
@@ -262,8 +255,7 @@ class MexcPublicSpotRest(PublicExchangeSpotRestInterface):
         """
         response_data = await self.request(
             HTTPMethod.GET,
-            '/api/v3/time',
-            config=MexcConfig.rest_config['default_fast_time']
+            '/api/v3/time'
         )
         
         time_response = msgspec.convert(response_data, MexcServerTimeResponse)
@@ -279,8 +271,7 @@ class MexcPublicSpotRest(PublicExchangeSpotRestInterface):
         try:
             await self.request(
                 HTTPMethod.GET,
-                '/api/v3/ping',
-                config=MexcConfig.rest_config['default_fast_ping']
+                '/api/v3/ping'
             )
             return True
         except Exception:
@@ -321,8 +312,7 @@ class MexcPublicSpotRest(PublicExchangeSpotRestInterface):
         response_data = await self.request(
             HTTPMethod.GET,
             '/api/v3/klines',
-            params=params,
-            config=MexcConfig.rest_config['market_data']
+            params=params
         )
         
         # MEXC returns array of arrays, each with 8 elements:

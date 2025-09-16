@@ -39,6 +39,7 @@ class WebSocketManager:
         config: WebSocketConfig,
         strategies: WebSocketStrategySet,
         message_handler: Callable[[ParsedMessage], Awaitable[None]],
+        state_change_handler: Optional[Callable[[ConnectionState], Awaitable[None]]] = None,
         manager_config: Optional[WebSocketManagerConfig] = None
     ):
         """
@@ -53,6 +54,7 @@ class WebSocketManager:
         self.config = config
         self.strategies = strategies
         self.message_handler = message_handler
+        self.state_change_handler = state_change_handler
         self.manager_config = manager_config or WebSocketManagerConfig()
         
         self.logger = logging.getLogger(f"{__name__}.{self.__class__.__name__}")
@@ -393,7 +395,10 @@ class WebSocketManager:
                     await self.add_symbols(symbols_list)
                 else:
                     self.logger.debug("Skipping reconnection renewal - no active symbols or not required")
-    
+
+            if self.state_change_handler:
+                await self.state_change_handler(state)
+
     def get_performance_metrics(self) -> Dict[str, Any]:
         """
         Get current performance metrics.

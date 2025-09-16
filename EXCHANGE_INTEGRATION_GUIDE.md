@@ -138,13 +138,14 @@ class ExchangePublic(PublicExchangeInterface):
 ```
 
 **WebSocket Implementation:**
+
 ```python
 async def _on_message(self, message):
     # Standard JSON message processing
     if isinstance(message, (str, bytes)):
         parsed = msgspec.json.decode(message)
         if self._is_orderbook_update(parsed):
-            await self._handle_orderbook_update(parsed)
+            await self._handle_orderbook_diff_update(parsed)
 ```
 
 ### Pattern B: Protocol Buffer APIs (10% of exchanges)
@@ -156,10 +157,12 @@ async def _on_message(self, message):
 - Examples: MEXC (our reference), some institutional APIs
 
 **Implementation Requirements:**
+
 ```python
 # Protobuf integration
 from google.protobuf import json_format
 from exchange_pb2 import OrderBookMessage
+
 
 async def _on_message(self, message):
     if isinstance(message, bytes):
@@ -168,7 +171,7 @@ async def _on_message(self, message):
         pb_message.ParseFromString(message)
         # Convert to dict for processing
         data = json_format.MessageToDict(pb_message)
-        await self._handle_orderbook_update(data)
+        await self._handle_orderbook_diff_update(data)
 ```
 
 **Performance Optimization:**
@@ -1238,23 +1241,24 @@ async def test_high_frequency_operations():
 The MEXC exchange serves as our reference implementation, demonstrating:
 
 #### 1. Protobuf Integration (Advanced Pattern)
+
 ```python
 # MEXC uses Protocol Buffers for WebSocket efficiency
 async def _handle_protobuf_message_typed(self, data: bytes, msg_type: str):
     """Handle typed protobuf messages with performance optimization"""
-    
+
     # Fast message type detection with binary patterns
     if b'aggre.deals' in data[:50]:
         wrapper = PushDataV3ApiWrapper()
         wrapper.ParseFromString(data)
         if wrapper.HasField('publicAggreDeals'):
             await self._handle_trades_update(wrapper.publicAggreDeals)
-            
+
     elif b'limit.depth' in data[:50]:
-        wrapper = PushDataV3ApiWrapper() 
+        wrapper = PushDataV3ApiWrapper()
         wrapper.ParseFromString(data)
         if wrapper.HasField('publicLimitDepths'):
-            await self._handle_orderbook_update(wrapper.publicLimitDepths)
+            await self._handle_orderbook_diff_update(wrapper.publicLimitDepths)
 ```
 
 #### 2. Object Pooling for Performance (HFT Optimization)

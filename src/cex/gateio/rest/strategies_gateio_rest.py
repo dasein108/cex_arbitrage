@@ -21,7 +21,7 @@ from urllib.parse import urlencode
 from core.exceptions.exchange import RateLimitErrorBase, ExchangeConnectionError
 from core.transport.rest.strategies import (
     RequestStrategy, RateLimitStrategy, RetryStrategy, AuthStrategy,
-    RequestContext, RateLimitContext, PerformanceTargets
+    RequestContext, RateLimitContext, PerformanceTargets, AuthenticationData
 )
 from core.transport.rest.structs import HTTPMethod
 
@@ -30,8 +30,8 @@ class GateioRequestStrategy(RequestStrategy):
     """Gate.io-specific request configuration with conservative HFT settings."""
     
     def __init__(self, **kwargs):
-        self.base_url = "https://api.gateio.ws"
-    
+        self.base_url = "" #"https://api.gateio.ws"
+
     async def create_request_context(self) -> RequestContext:
         """Create Gate.io-optimized request configuration."""
         return RequestContext(
@@ -295,8 +295,8 @@ class GateioAuthStrategy(AuthStrategy):
         endpoint: str,
         params: Dict[str, Any],
         timestamp: int
-    ) -> Dict[str, str]:
-        """Generate Gate.io authentication headers."""
+    ) -> AuthenticationData:
+        """Generate Gate.io authentication data."""
         # Gate.io uses a complex signing process
         
         # Create the request body
@@ -321,7 +321,7 @@ class GateioAuthStrategy(AuthStrategy):
             hashlib.sha512
         ).hexdigest()
         
-        # Return authentication headers
+        # Prepare authentication headers
         headers = {
             'KEY': self.api_key,
             'Timestamp': str(timestamp),
@@ -332,7 +332,11 @@ class GateioAuthStrategy(AuthStrategy):
         if method != HTTPMethod.GET:
             headers['Content-Type'] = 'application/json'
         
-        return headers
+        # Return authentication data (Gate.io uses headers only, no additional params)
+        return AuthenticationData(
+            headers=headers,
+            params={}  # Gate.io doesn't add auth params to URL/body
+        )
     
     def requires_auth(self, endpoint: str) -> bool:
         """Check if Gate.io endpoint requires authentication."""

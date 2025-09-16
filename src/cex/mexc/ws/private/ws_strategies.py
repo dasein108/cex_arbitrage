@@ -7,6 +7,7 @@ import msgspec
 from core.cex.websocket import ConnectionStrategy, ConnectionContext, SubscriptionStrategy, SubscriptionAction, \
     SubscriptionContext
 from core.config.structs import ExchangeConfig
+from cex.mexc.rest import MexcPrivateSpotRest
 from structs.exchange import Symbol
 
 
@@ -31,9 +32,7 @@ class MexcPrivateConnectionStrategy(ConnectionStrategy):
         self.keep_alive_interval = 1800  # 30 minutes in seconds
 
         # Import REST client if not provided
-        if self.rest_client is None:
-            from cex.mexc.rest.mexc_private import MexcPrivateSpotRest
-            self.rest_client = MexcPrivateSpotRest(config)
+        self.rest_client = MexcPrivateSpotRest(config)
 
     async def create_connection_context(self) -> ConnectionContext:
         """Create MEXC private WebSocket connection context with listen key."""

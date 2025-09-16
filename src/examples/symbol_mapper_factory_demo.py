@@ -19,7 +19,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 from core.cex.utils import ExchangeSymbolMapperFactory, get_symbol_mapper
 from structs.exchange import Symbol, AssetName
 from cex.mexc.services.symbol_mapper import MexcSymbolMapperInterface  # Import to register mappers
-from cex.gateio.common.gateio_symbol_mapper import GateioSymbolMapperInterface
+from cex.gateio.services.symbol_mapper import GateioSymbolMapperInterface
 
 # Import to register mappers
 

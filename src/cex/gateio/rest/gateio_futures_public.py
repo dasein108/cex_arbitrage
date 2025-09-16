@@ -31,8 +31,8 @@ from structs.exchange import (
 )
 from core.transport.rest.rest_client import RestClient
 from core.cex.rest import PublicExchangeSpotRestInterface
-from cex.gateio.common.gateio_config import GateioConfig
-from cex.gateio.common.gateio_mappings import GateioMappings
+from cex.gateio.services.gateio_config import GateioConfig
+from cex.gateio.services.gateio_mappings import GateioMappings
 
 
 # Note: Using centralized GateioMappings for all interval conversions

@@ -39,10 +39,10 @@ from structs.exchange import (
 from core.transport.rest.rest_client import RestClient
 from core.transport.rest.structs import HTTPMethod
 from core.cex.rest.spot.base_rest_spot_private import PrivateExchangeSpotRestInterface
-from cex.gateio.common.gateio_utils import GateioUtils
-from cex.gateio.common.gateio_config import GateioConfig
-from cex.gateio.common.gateio_config_service import GateioConfigurationService
-from cex.gateio.common.gateio_endpoints import GateioFuturesEndpoints, GateioFuturesEndpoint
+from cex.gateio.services.gateio_utils import GateioUtils
+from cex.gateio.services.gateio_config import GateioConfig
+from cex.gateio.services.gateio_config_service import GateioConfigurationService
+from cex.gateio.services.gateio_endpoints import GateioFuturesEndpoints, GateioFuturesEndpoint
 
 
 class GateioPrivateFuturesExchangeSpot(PrivateExchangeSpotRestInterface):

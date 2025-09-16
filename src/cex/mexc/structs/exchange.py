@@ -108,3 +108,47 @@ class MexcErrorResponse(msgspec.Struct):
     """MEXC error response structure."""
     code: int
     msg: str
+
+
+# WebSocket-specific structures for HFT orderbook processing
+
+class MexcWSDepthEntry(msgspec.Struct):
+    """MEXC WebSocket depth entry for HFT processing."""
+    price: str  # MEXC sends as string
+    quantity: str  # MEXC sends as string
+
+
+class MexcWSOrderbookData(msgspec.Struct):
+    """MEXC WebSocket orderbook data structure."""
+    bids: list[list[str]]  # [[price, size], ...]
+    asks: list[list[str]]  # [[price, size], ...]
+    version: Optional[str] = None  # Sequence number for ordering
+
+
+class MexcWSOrderbookMessage(msgspec.Struct):
+    """MEXC WebSocket orderbook message structure."""
+    c: str  # Channel: spot@public.limit.depth.v3.api@BTCUSDT@20
+    d: MexcWSOrderbookData  # Data
+    s: str  # Symbol
+    t: int  # Timestamp in milliseconds
+
+
+class MexcWSTradeEntry(msgspec.Struct):
+    """MEXC WebSocket trade entry structure."""
+    p: str  # Price
+    q: str  # Quantity
+    t: int  # Trade type (1=buy, 2=sell)
+    T: int  # Timestamp
+
+
+class MexcWSTradeData(msgspec.Struct):
+    """MEXC WebSocket trade data structure."""
+    deals: list[MexcWSTradeEntry]
+
+
+class MexcWSTradeMessage(msgspec.Struct):
+    """MEXC WebSocket trade message structure."""
+    c: str  # Channel
+    d: MexcWSTradeData  # Data
+    s: str  # Symbol
+    t: int  # Timestamp

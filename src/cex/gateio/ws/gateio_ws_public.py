@@ -96,7 +96,7 @@ class GateioWebsocketPublic(BaseExchangeWebsocketInterface):
     def __init__(
         self, 
         config: ExchangeConfig,
-        orderbook_handler: Optional[Callable[[Symbol, OrderBook], Awaitable[None]]] = None,
+        orderbook_handler: Optional[Callable[[any, Symbol], Awaitable[None]]] = None,
         trades_handler: Optional[Callable[[Symbol, List[Trade]], Awaitable[None]]] = None
     ):
         super().__init__(config)
@@ -250,7 +250,7 @@ class GateioWebsocketPublic(BaseExchangeWebsocketInterface):
             
             # Route message based on channel
             if channel == 'spot.order_book_update':
-                await self._handle_orderbook_update(result)
+                await self._handle_orderbook_update(message)  # Pass full message for diff parsing
             elif channel == 'spot.trades':
                 await self._handle_trades_update(result)
             else:
@@ -260,87 +260,46 @@ class GateioWebsocketPublic(BaseExchangeWebsocketInterface):
             self.logger.error(f"Error processing WebSocket message: {e}")
             self._performance_metrics['parse_errors'] += 1
 
-    async def _handle_orderbook_update(self, data: Dict[str, Any]):
-        """Handle orderbook update messages.
-        
-        Gate.io orderbook update format:
-        {
-            "t": 1234567890123,
-            "e": "depthUpdate",
-            "E": 1234567890456, 
-            "s": "BTC_USDT",
-            "U": 157,
-            "u": 160,
-            "b": [["50000", "0.001"], ["49999", "0.0"]],  # 0 size = remove
-            "a": [["50001", "0.002"], ["50002", "0.0"]]
-        }
-        """
+    async def _handle_orderbook_update(self, raw_message: Dict[str, Any]):
+        """Handle Gate.io orderbook update messages with HFT diff processing."""
         try:
             if not self.orderbook_handler:
                 return
-                
+
             # Extract symbol from message
-            pair = data.get('s', '')
-            symbol = GateioUtils.pair_to_symbol(pair)
+            result = raw_message.get('result', {})
+            pair = result.get('s', '')
             
-            # Extract timestamp (Gate.io provides multiple timestamps)
-            timestamp = float(data.get('E', time.time() * 1000)) / 1000.0
+            # Convert Gate.io pair to Symbol
+            try:
+                from cex.gateio.services.gateio_utils import GateioUtils
+                symbol = GateioUtils.pair_to_symbol(pair)
+            except ImportError:
+                # Fallback: create symbol from pair string
+                if '_' in pair:
+                    base, quote = pair.split('_', 1)
+                    from structs.exchange import Symbol, AssetName
+                    symbol = Symbol(base=AssetName(base), quote=AssetName(quote), is_futures=False)
+                else:
+                    self.logger.warning(f"Unable to parse symbol from pair: {pair}")
+                    return
+
+            # Parse orderbook diff message using HFT-optimized parser
+            from cex.gateio.ws.public.ws_message_parser import GateioPublicMessageParser
             
-            # Process bids and asks updates
-            bids_data = data.get('b', [])
-            asks_data = data.get('a', [])
+            # Create temporary parser instance (in practice, this should be cached)
+            parser = GateioPublicMessageParser(symbol_mapper=None)
+            diff_update = parser.parse_orderbook_diff_message(raw_message, symbol)
             
-            # Transform to unified format using object pool
-            bids = []
-            for bid_data in bids_data:
-                if isinstance(bid_data, list) and len(bid_data) >= 2:
-                    # Gate.io uses array format ["price", "size"] (primary)
-                    price = float(bid_data[0])
-                    size = float(bid_data[1])
-                    if size > 0:
-                        entry = self.entry_pool.get_entry(price, size)
-                        bids.append(entry)
-                elif isinstance(bid_data, dict) and 'p' in bid_data and 's' in bid_data:
-                    # Fallback for object format (backup support)
-                    price = float(bid_data['p'])
-                    size = float(bid_data['s'])
-                    if size > 0:
-                        entry = self.entry_pool.get_entry(price, size)
-                        bids.append(entry)
-            
-            asks = []
-            for ask_data in asks_data:
-                if isinstance(ask_data, list) and len(ask_data) >= 2:
-                    # Gate.io uses array format ["price", "size"] (primary)
-                    price = float(ask_data[0])
-                    size = float(ask_data[1])
-                    if size > 0:
-                        entry = self.entry_pool.get_entry(price, size)
-                        asks.append(entry)
-                elif isinstance(ask_data, dict) and 'p' in ask_data and 's' in ask_data:
-                    # Fallback for object format (backup support)
-                    price = float(ask_data['p'])
-                    size = float(ask_data['s'])
-                    if size > 0:
-                        entry = self.entry_pool.get_entry(price, size)
-                        asks.append(entry)
-            
-            # Create orderbook update
-            orderbook = OrderBook(
-                bids=bids,
-                asks=asks,
-                timestamp=timestamp
-            )
-            
-            # Call handler
-            await self.orderbook_handler(symbol, orderbook)
-            self._performance_metrics['orderbook_updates'] += 1
-            
-            # Return entries to pool for reuse
-            self.entry_pool.return_entries(bids + asks)
-            
+            if diff_update:
+                # Call handler with parsed diff update
+                await self.orderbook_handler(diff_update, symbol)
+                self._performance_metrics['orderbook_updates'] += 1
+            else:
+                self.logger.debug(f"Failed to parse orderbook diff for {symbol}")
+
         except Exception as e:
-            self.logger.error(f"Error handling orderbook update: {e}")
+            self.logger.error(f"Error handling Gate.io orderbook update: {e}")
 
     async def _handle_trades_update(self, data: Dict[str, Any]):
         """Handle trades update messages.

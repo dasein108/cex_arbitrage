@@ -11,13 +11,14 @@ import time
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from enum import IntEnum
-from typing import List, Dict, Optional, Any, Callable
+from typing import List, Dict, Optional, Any, Callable, Union
 import asyncio
 import logging
 
 import msgspec
 
 from .structs import HTTPMethod
+from core.exceptions.exchange import BaseExchangeError
 
 
 @dataclass(frozen=True)
@@ -40,6 +41,13 @@ class RateLimitContext:
     endpoint_weight: int = 1
     global_weight: int = 1
     cooldown_period: float = 0.1
+
+
+@dataclass(frozen=True)
+class AuthenticationData:
+    """Authentication data containing headers and parameters."""
+    headers: Dict[str, str]
+    params: Dict[str, Any]
 
 
 @dataclass(frozen=True)
@@ -115,6 +123,9 @@ class RequestStrategy(ABC):
             PerformanceTargets with latency and throughput requirements
         """
         pass
+
+    def __init__(self, base_url: str, **kwargs):
+        self.base_url = base_url
 
 
 class RateLimitStrategy(ABC):
@@ -239,9 +250,9 @@ class AuthStrategy(ABC):
         endpoint: str,
         params: Dict[str, Any],
         timestamp: int
-    ) -> Dict[str, str]:
+    ) -> AuthenticationData:
         """
-        Generate authentication headers for request.
+        Generate authentication data for request.
         
         Args:
             method: HTTP method
@@ -250,7 +261,7 @@ class AuthStrategy(ABC):
             timestamp: Request timestamp
             
         Returns:
-            Dictionary of authentication headers
+            AuthenticationData with headers and additional parameters
         """
         pass
     
@@ -268,6 +279,43 @@ class AuthStrategy(ABC):
         pass
 
 
+class ExceptionHandlerStrategy(ABC):
+    """
+    Strategy for handling exchange-specific API errors.
+    
+    Converts exchange-specific error responses to unified exception types.
+    HFT COMPLIANT: <10μs error processing overhead.
+    """
+    
+    @abstractmethod
+    def handle_error(self, status_code: int, response_text: str) -> BaseExchangeError:
+        """
+        Handle exchange-specific API error.
+        
+        Args:
+            status_code: HTTP status code
+            response_text: Raw response text from the API
+            
+        Returns:
+            Unified BaseExchangeError or subclass
+        """
+        pass
+    
+    @abstractmethod
+    def should_handle_error(self, status_code: int, response_text: str) -> bool:
+        """
+        Check if this strategy should handle the error.
+        
+        Args:
+            status_code: HTTP status code
+            response_text: Raw response text from the API
+            
+        Returns:
+            True if this strategy can handle the error
+        """
+        pass
+
+
 class RestStrategySet:
     """
     Container for complete REST strategy configuration.
@@ -280,12 +328,14 @@ class RestStrategySet:
         request_strategy: RequestStrategy,
         rate_limit_strategy: RateLimitStrategy,
         retry_strategy: RetryStrategy,
-        auth_strategy: Optional[AuthStrategy] = None
+        auth_strategy: Optional[AuthStrategy] = None,
+        exception_handler_strategy: Optional[ExceptionHandlerStrategy] = None
     ):
         self.request_strategy = request_strategy
         self.rate_limit_strategy = rate_limit_strategy
         self.retry_strategy = retry_strategy
         self.auth_strategy = auth_strategy
+        self.exception_handler_strategy = exception_handler_strategy
         
         # HFT Optimization: Pre-validate strategy compatibility
         self._validate_strategies()
@@ -324,7 +374,8 @@ class RestStrategyFactory:
         request_strategy_cls: type,
         rate_limit_strategy_cls: type,
         retry_strategy_cls: type,
-        auth_strategy_cls: Optional[type] = None
+        auth_strategy_cls: Optional[type] = None,
+        exception_handler_strategy_cls: Optional[type] = None
     ) -> None:
         """
         Register strategy implementations for an exchange.
@@ -336,6 +387,7 @@ class RestStrategyFactory:
             rate_limit_strategy_cls: RateLimitStrategy implementation
             retry_strategy_cls: RetryStrategy implementation
             auth_strategy_cls: AuthStrategy implementation (required for private)
+            exception_handler_strategy_cls: ExceptionHandlerStrategy implementation (optional)
         """
         if is_private and auth_strategy_cls is None:
             raise ValueError("AuthStrategy required for private API")
@@ -345,7 +397,8 @@ class RestStrategyFactory:
             'request': request_strategy_cls,
             'rate_limit': rate_limit_strategy_cls,
             'retry': retry_strategy_cls,
-            'auth': auth_strategy_cls
+            'auth': auth_strategy_cls,
+            'exception_handler': exception_handler_strategy_cls
         }
     
     @classmethod
@@ -378,11 +431,17 @@ class RestStrategyFactory:
         if strategies['auth']:
             auth_strategy = strategies['auth'](**kwargs)
         
+        # Create exception handler strategy if available
+        exception_handler_strategy = None
+        if strategies['exception_handler']:
+            exception_handler_strategy = strategies['exception_handler'](**kwargs)
+        
         return RestStrategySet(
             request_strategy=strategies['request'](**kwargs),
             rate_limit_strategy=strategies['rate_limit'](**kwargs),
             retry_strategy=strategies['retry'](**kwargs),
-            auth_strategy=auth_strategy
+            auth_strategy=auth_strategy,
+            exception_handler_strategy=exception_handler_strategy
         )
     
     @classmethod

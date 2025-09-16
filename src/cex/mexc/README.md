@@ -370,6 +370,7 @@ MEXC uses Protocol Buffers for efficient WebSocket data transmission:
 - `PrivateOrdersV3Api` - Order status updates
 
 #### Parsing Optimization
+
 ```python
 async def _handle_protobuf_message_typed(self, data: bytes, msg_type: str):
     """Optimized protobuf handling based on message type hints"""
@@ -379,13 +380,13 @@ async def _handle_protobuf_message_typed(self, data: bytes, msg_type: str):
         wrapper.ParseFromString(data)
         if wrapper.HasField('publicAggreDeals'):
             await self._handle_trades_update(wrapper.publicAggreDeals, symbol_str)
-            
+
     elif b'limit.depth' in data[:50]:
         # Handle order book depth
-        wrapper = PushDataV3ApiWrapper() 
+        wrapper = PushDataV3ApiWrapper()
         wrapper.ParseFromString(data)
         if wrapper.HasField('publicLimitDepths'):
-            await self._handle_orderbook_update(wrapper.publicLimitDepths, symbol_str)
+            await self._handle_orderbook_diff_update(wrapper.publicLimitDepths, symbol_str)
 ```
 
 ## Production Features

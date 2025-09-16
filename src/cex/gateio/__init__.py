@@ -12,6 +12,12 @@ Architecture:
 - Unified exception handling system
 """
 
+from .private_exchange import GateioPrivateExchange
+from .public_exchange import GateioPublicExchange
 from .gateio_exchange import GateioExchange
 
-__all__ = ['GateioExchange']
+__all__ = [
+    'GateioPrivateExchange',
+    'GateioPublicExchange', 
+    'GateioExchange'
+]

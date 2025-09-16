@@ -7,7 +7,9 @@ Provides centralized service creation with proper dependency injection.
 HFT COMPLIANCE: Fast service instantiation, cached instances.
 """
 
-from typing import Dict, Type, TYPE_CHECKING
+from typing import Dict, Type
+
+from structs.exchange import ExchangeName
 from core.cex.services.exchange_mappings import ExchangeMappingsInterface
 from core.cex.services.symbol_mapper.base_symbol_mapper import SymbolMapperInterface
 
@@ -41,7 +43,7 @@ class ExchangeMappingsFactory:
     @classmethod
     def create_mappings(
         cls, 
-        exchange_name: str, 
+        exchange_name: ExchangeName,
         symbol_mapper: SymbolMapperInterface,
         use_singleton: bool = True
     ) -> ExchangeMappingsInterface:

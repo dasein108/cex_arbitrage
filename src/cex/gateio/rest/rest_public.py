@@ -30,15 +30,20 @@ from structs.exchange import (
     Symbol, SymbolInfo, OrderBook, OrderBookEntry, Trade, Kline,
     ExchangeName, KlineInterval
 )
-from core.transport.rest.rest_client import RestClient
 from core.cex.rest import PublicExchangeSpotRestInterface
-from cex.gateio.common.gateio_utils import GateioUtils
-from cex.gateio.common.gateio_config import GateioConfig
-from cex.gateio.common.gateio_mappings import GateioMappings
+from core.transport.rest.structs import HTTPMethod
+from cex.gateio.services.gateio_utils import GateioUtils
+from cex.gateio.services.gateio_mappings import GateioMappings
+from core.config.structs import ExchangeConfig
 from core.exceptions.exchange import BaseExchangeError
 
 
-class GateioPublicExchangeSpotRest(PublicExchangeSpotRestInterface):
+def handle_gateio_exception(status_code: int, message: str) -> BaseExchangeError:
+    """Handle Gate.io specific exceptions."""
+    return BaseExchangeError(f"Gate.io error {status_code}: {message}")
+
+
+class GateioPublicSpotRest(PublicExchangeSpotRestInterface):
     """
     Gate.io public REST API client focused on direct API calls.
     
@@ -46,26 +51,19 @@ class GateioPublicExchangeSpotRest(PublicExchangeSpotRestInterface):
     Optimized for high-frequency market data retrieval with minimal overhead.
     """
     
-    def __init__(self):
+    def __init__(self, config: ExchangeConfig):
         """
         Initialize Gate.io public REST client.
         
-        No authentication required for public endpoints.
+        Args:
+            config: ExchangeConfig with Gate.io configuration
         """
-        super().__init__(ExchangeName(GateioConfig.EXCHANGE_NAME), GateioConfig.BASE_URL)
-        
-        # Initialize REST client for public endpoints
-        self.client = RestClient(
-            base_url=self.base_url,
-            config=GateioConfig.rest_config['market_data']
-        )
+        super().__init__(config, handle_gateio_exception)
         
         # Simple caching for exchange info to reduce API calls (HFT compliant - config data only)
         self._exchange_info: Optional[Dict[Symbol, SymbolInfo]] = None
         self._cache_timestamp: float = 0
         self._cache_ttl: float = 300.0  # 5-minute cache TTL
-        
-        self.logger.info(f"Initialized {self.exchange_tag} public REST client")
     
     def _extract_symbol_precision(self, gateio_symbol: Dict[str, Any]) -> tuple[int, int, float, float]:
         """
@@ -73,14 +71,14 @@ class GateioPublicExchangeSpotRest(PublicExchangeSpotRestInterface):
         
         Gate.io currency_pair response format:
         {
-            "id": "BTC_USDT",
-            "cex": "BTC",
-            "quote": "USDT", 
-            "fee": "0.2",
-            "min_base_amount": "0.001",
-            "min_quote_amount": "1",
-            "amount_precision": 4,
-            "precision": 2,
+            "id": "BTC_USDT"
+            "cex": "BTC"
+            "quote": "USDT"
+            "fee": "0.2"
+            "min_base_amount": "0.001"
+            "min_quote_amount": "1"
+            "amount_precision": 4
+            "precision": 2
             "trade_status": "tradable"
         }
         
@@ -120,9 +118,9 @@ class GateioPublicExchangeSpotRest(PublicExchangeSpotRestInterface):
         
         try:
             # Fetch fresh exchange info from Gate.io
-            response_data = await self.client.get(
-                GateioConfig.SPOT_ENDPOINTS['currency_pairs'],
-                config=GateioConfig.rest_config['default']
+            response_data = await self.request(
+                HTTPMethod.GET,
+                '/spot/currency_pairs'
             )
             
             # Gate.io returns list of currency pairs directly
@@ -200,18 +198,18 @@ class GateioPublicExchangeSpotRest(PublicExchangeSpotRestInterface):
                 'with_id': 'false'  # Don't need order IDs for performance
             }
             
-            response_data = await self.client.get(
-                GateioConfig.SPOT_ENDPOINTS['order_book'],
-                params=params,
-                config=GateioConfig.rest_config['market_data_fast']
+            response_data = await self.request(
+                HTTPMethod.GET,
+                '/spot/order_book',
+                params=params
             )
             
             # Gate.io orderbook response format:
             # {
-            #   "id": 123456789,
-            #   "current": 1234567890123,
-            #   "update": 1234567890456,
-            #   "asks": [["50000", "0.001"], ...],
+            #   "id": 123456789
+            #   "current": 1234567890123
+            #   "update": 1234567890456
+            #   "asks": [["50000", "0.001"], ...]
             #   "bids": [["49999", "0.002"], ...]
             # }
             
@@ -268,19 +266,19 @@ class GateioPublicExchangeSpotRest(PublicExchangeSpotRestInterface):
                 'limit': optimized_limit
             }
             
-            response_data = await self.client.get(
-                GateioConfig.SPOT_ENDPOINTS['trades'],
-                params=params,
-                config=GateioConfig.rest_config['market_data_fast']
+            response_data = await self.request(
+                HTTPMethod.GET,
+                '/spot/trades',
+                params=params
             )
             
             # Gate.io trades response format:
             # [
             #   {
-            #     "id": "12345",
-            #     "create_time": "1234567890",
-            #     "side": "buy",
-            #     "amount": "0.001",
+            #     "id": "12345"
+            #     "create_time": "1234567890"
+            #     "side": "buy"
+            #     "amount": "0.001"
             #     "price": "50000"
             #   }, ...
             # ]
@@ -319,9 +317,9 @@ class GateioPublicExchangeSpotRest(PublicExchangeSpotRestInterface):
             ExchangeAPIError: If unable to get server time
         """
         try:
-            response_data = await self.client.get(
-                '/spot/time',  # Gate.io server time endpoint
-                config=GateioConfig.rest_config['default_fast_ping']
+            response_data = await self.request(
+                HTTPMethod.GET,
+                '/spot/time'  # Gate.io server time endpoint
             )
             
             # Gate.io time response format: {"server_time": 1234567890}
@@ -395,10 +393,10 @@ class GateioPublicExchangeSpotRest(PublicExchangeSpotRestInterface):
                 # Use limit mode (max 720 klines - Gate.io limit is ~12 hours for 1m data)
                 params['limit'] = 720
             
-            response_data = await self.client.get(
-                GateioConfig.SPOT_ENDPOINTS['candlesticks'],
-                params=params,
-                config=GateioConfig.rest_config['market_data']
+            response_data = await self.request(
+                HTTPMethod.GET,
+                '/spot/candlesticks',
+                params=params
             )
             
             # Gate.io returns array of arrays with different format than MEXC:
@@ -603,7 +601,7 @@ class GateioPublicExchangeSpotRest(PublicExchangeSpotRestInterface):
     async def close(self) -> None:
         """Close the REST client and clean up resources."""
         try:
-            await self.client.close()
+            # Transport manager handles cleanup automatically
             self.logger.info("Closed Gate.io public REST client")
         except Exception as e:
             self.logger.error(f"Error closing public REST client: {e}")

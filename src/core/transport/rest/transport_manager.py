@@ -17,7 +17,7 @@ import aiohttp
 import msgspec
 
 from core.exceptions.exchange import BaseExchangeError, RateLimitErrorBase, ExchangeConnectionError
-from .strategies import RestStrategySet, RequestMetrics, PerformanceTargets
+from .strategies import RestStrategySet, RequestMetrics, PerformanceTargets, AuthenticationData
 from .structs import HTTPMethod
 
 
@@ -35,6 +35,7 @@ class RestTransportManager:
         custom_exception_handler: Optional[callable] = None
     ):
         self.strategy_set = strategy_set
+        # Support legacy custom_exception_handler for backward compatibility
         self.custom_exception_handler = custom_exception_handler
         
         # Session management
@@ -156,8 +157,7 @@ class RestTransportManager:
         endpoint: str,
         params: Optional[Dict[str, Any]] = None,
         json_data: Optional[Dict[str, Any]] = None,
-        headers: Optional[Dict[str, str]] = None,
-        require_auth: bool = False
+        headers: Optional[Dict[str, str]] = None
     ) -> Any:
         """
         Execute request with full strategy coordination.
@@ -170,8 +170,7 @@ class RestTransportManager:
             params: Request parameters
             json_data: JSON data for POST/PUT requests
             headers: Additional headers
-            require_auth: Whether authentication is required
-            
+
         Returns:
             Parsed response data
         """
@@ -201,15 +200,23 @@ class RestTransportManager:
                 )
                 
                 # Step 3: Authentication if required (via AuthStrategy)
-                if require_auth and self.strategy_set.auth_strategy:
+                if self.strategy_set.auth_strategy:
                     if not self.strategy_set.auth_strategy.requires_auth(endpoint):
                         # Skip auth if strategy says it's not needed
                         pass
                     else:
-                        auth_headers = await self.strategy_set.auth_strategy.sign_request(
+                        auth_data = await self.strategy_set.auth_strategy.sign_request(
                             method, endpoint, params or {}, int(time.time() * 1000)
                         )
-                        request_params.setdefault('headers', {}).update(auth_headers)
+                        # Apply authentication headers
+                        request_params.setdefault('headers', {}).update(auth_data.headers)
+                        # Apply authentication parameters
+                        # MEXC requires all parameters in query string for proper signature verification
+                        request_params.setdefault('params', {}).update(auth_data.params)
+                        
+                        # Remove JSON body for authenticated requests since all params go to query string
+                        if 'json' in request_params:
+                            request_params.pop('json', {})
                 
                 # Step 4: Execute with retry logic (via RetryStrategy)
                 response = await self._execute_with_retry(method, url, request_params)
@@ -259,8 +266,10 @@ class RestTransportManager:
                                 await asyncio.sleep(delay)
                             raise RateLimitErrorBase(response.status, f"Rate limit exceeded: {response_text}")
                         
-                        # Use custom exception handler if provided
-                        if self.custom_exception_handler:
+                        # Use exception handler strategy if available, fallback to legacy handler
+                        if self.strategy_set.exception_handler_strategy:
+                            raise self.strategy_set.exception_handler_strategy.handle_error(response.status, response_text)
+                        elif self.custom_exception_handler:
                             raise self.custom_exception_handler(response.status, response_text)
                         else:
                             raise BaseExchangeError(response.status, f"HTTP {response.status}: {response_text}")
@@ -309,11 +318,10 @@ class RestTransportManager:
         endpoint: str,
         params: Optional[Dict[str, Any]] = None,
         headers: Optional[Dict[str, str]] = None,
-        require_auth: bool = False
     ) -> Any:
         """Execute GET request."""
         return await self.request(
-            HTTPMethod.GET, endpoint, params=params, headers=headers, require_auth=require_auth
+            HTTPMethod.GET, endpoint, params=params, headers=headers
         )
     
     async def post(
@@ -322,12 +330,11 @@ class RestTransportManager:
         json_data: Optional[Dict[str, Any]] = None,
         params: Optional[Dict[str, Any]] = None,
         headers: Optional[Dict[str, str]] = None,
-        require_auth: bool = False
     ) -> Any:
         """Execute POST request."""
         return await self.request(
             HTTPMethod.POST, endpoint, params=params, json_data=json_data, 
-            headers=headers, require_auth=require_auth
+            headers=headers
         )
     
     async def put(
@@ -336,24 +343,22 @@ class RestTransportManager:
         json_data: Optional[Dict[str, Any]] = None,
         params: Optional[Dict[str, Any]] = None,
         headers: Optional[Dict[str, str]] = None,
-        require_auth: bool = False
     ) -> Any:
         """Execute PUT request."""
         return await self.request(
             HTTPMethod.PUT, endpoint, params=params, json_data=json_data,
-            headers=headers, require_auth=require_auth
+            headers=headers
         )
     
     async def delete(
         self,
         endpoint: str,
         params: Optional[Dict[str, Any]] = None,
-        headers: Optional[Dict[str, str]] = None,
-        require_auth: bool = False
+        headers: Optional[Dict[str, str]] = None
     ) -> Any:
         """Execute DELETE request."""
         return await self.request(
-            HTTPMethod.DELETE, endpoint, params=params, headers=headers, require_auth=require_auth
+            HTTPMethod.DELETE, endpoint, params=params, headers=headers
         )
     
     def get_metrics(self) -> RequestMetrics:

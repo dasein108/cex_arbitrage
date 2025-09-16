@@ -29,16 +29,15 @@ from structs.exchange import (
     Symbol, Order, OrderId, OrderType, Side, AssetBalance,
     AssetName, TimeInForce, ExchangeName, TradingFee
 )
-from core.transport.rest.rest_client import RestClient
 from core.transport.rest.structs import HTTPMethod
 from core.exceptions.exchange import BaseExchangeError
 from core.cex.rest.spot.base_rest_spot_private import PrivateExchangeSpotRestInterface
-from cex.gateio.common.gateio_utils import GateioUtils
-from cex.gateio.common.gateio_mappings import GateioMappings
-from cex.gateio.common.gateio_config import GateioConfig
+from core.config.structs import ExchangeConfig
+from cex.gateio.services.gateio_utils import GateioUtils
+from cex.gateio.services.gateio_mappings import GateioMappings
 
 
-class GateioPrivateExchangeSpot(PrivateExchangeSpotRestInterface):
+class GateioPrivateSpotRest(PrivateExchangeSpotRestInterface):
     """
     Gate.io private REST API client focused on trading operations.
     
@@ -46,56 +45,23 @@ class GateioPrivateExchangeSpot(PrivateExchangeSpotRestInterface):
     Optimized for high-frequency trading operations with minimal overhead.
     """
 
-    def __init__(self, api_key: str, secret_key: str):
+    def __init__(self, config: ExchangeConfig):
         """
         Initialize Gate.io private REST client.
         
         Args:
-            api_key: Gate.io API key for authentication
-            secret_key: Gate.io secret key for signature generation
+            config: ExchangeConfig with Gate.io configuration and credentials
         """
-        if not api_key or not secret_key:
-            raise ValueError("Gate.io API credentials must be provided")
-
-        super().__init__(
-            ExchangeName(GateioConfig.EXCHANGE_NAME),
-            api_key,
-            secret_key,
-            GateioConfig.BASE_URL
-        )
+        super().__init__(config, self._handle_gateio_exception)
 
         self.logger = logging.getLogger(f"{__name__}.{self.__class__.__name__}")
+        self.logger.info(f"Initialized {config.name} private REST client")
+    
+    def _handle_gateio_exception(self, status_code: int, message: str) -> BaseExchangeError:
+        """Handle Gate.io specific exceptions."""
+        return BaseExchangeError(f"Gate.io error {status_code}: {message}")
 
-        # Initialize REST client with Gate.io-specific authentication
-        self.client = RestClient(
-            base_url=self.base_url,
-            config=GateioConfig.rest_config['default']
-        )
-
-        self.logger.info(f"Initialized {self.exchange} private REST client")
-
-    def _create_authenticated_headers(
-        self, 
-        method: str, 
-        url_path: str, 
-        query_string: str = '', 
-        payload: str = ''
-    ) -> Dict[str, str]:
-        """
-        Create authentication headers for Gate.io API requests.
-        
-        Args:
-            method: HTTP method (GET, POST, etc.)
-            url_path: API endpoint path
-            query_string: URL query parameters
-            payload: Request body JSON
-            
-        Returns:
-            Dictionary of authentication headers
-        """
-        return GateioUtils.create_auth_headers(
-            method, url_path, query_string, payload, self.api_key, self.secret_key
-        )
+    # Authentication is now handled automatically by the transport system
 
     async def get_account_balance(self) -> List[AssetBalance]:
         """
@@ -110,21 +76,18 @@ class GateioPrivateExchangeSpot(PrivateExchangeSpotRestInterface):
             ExchangeAPIError: If unable to fetch balance data
         """
         try:
-            endpoint = GateioConfig.SPOT_ENDPOINTS['accounts']
-            signature_path = GateioConfig.SIGNATURE_ENDPOINTS['accounts']
-            headers = self._create_authenticated_headers('GET', signature_path)
+            endpoint = "/spot/accounts"
             
-            response_data = await self.client.get(
-                endpoint,
-                headers=headers,
-                config=GateioConfig.rest_config['account']
+            response_data = await self.request(
+                HTTPMethod.GET,
+                endpoint
             )
             
             # Gate.io accounts response format:
             # [
             #   {
-            #     "currency": "USDT",
-            #     "available": "1000.0", 
+            #     "currency": "USDT"
+            #     "available": "1000.0"
             #     "locked": "0.0"
             #   }, ...
             # ]
@@ -253,28 +216,12 @@ class GateioPrivateExchangeSpot(PrivateExchangeSpotRestInterface):
             payload.update(order_params)
             
             # Make authenticated request
-            endpoint = GateioConfig.SPOT_ENDPOINTS['orders']
-            signature_path = GateioConfig.SIGNATURE_ENDPOINTS['orders']
+            endpoint = '/spot/orders'
             
-            # Use msgspec to ensure identical JSON for signature and request body
-            payload_json_bytes = msgspec.json.encode(payload)
-            payload_json = payload_json_bytes.decode('utf-8')
-            headers = self._create_authenticated_headers('POST', signature_path, '', payload_json)
-            
-            self.logger.debug(f"Order payload for signature: {payload_json}")
-            self.logger.debug(f"Signature path: {signature_path}")
-            
-            # Set Content-Type to match signature
-            headers['Content-Type'] = 'application/json'
-            
-            # Use the RestClient's low-level request method to pass raw JSON string
-            response_data = await self.client.request(
+            response_data = await self.request(
                 HTTPMethod.POST,
                 endpoint,
-                params=None,
-                json_data=payload,  # Pass the dict - RestClient will use msgspec encoder which produces same JSON
-                headers=headers,
-                config=GateioConfig.rest_config['order']
+                data=payload
             )
             
             # Transform Gate.io response to unified Order
@@ -305,19 +252,14 @@ class GateioPrivateExchangeSpot(PrivateExchangeSpotRestInterface):
         """
         try:
             pair = GateioUtils.symbol_to_pair(symbol)
-            endpoint = GateioConfig.SPOT_ENDPOINTS['cancel_order'].format(order_id=order_id)
-            signature_path = GateioConfig.SIGNATURE_ENDPOINTS['cancel_order'].format(order_id=order_id)
+            endpoint = f'/spot/orders/{order_id}'
             
             params = {'currency_pair': pair}
-            query_string = '&'.join(f"{k}={v}" for k, v in params.items())
             
-            headers = self._create_authenticated_headers('DELETE', signature_path, query_string)
-            
-            response_data = await self.client.delete(
+            response_data = await self.request(
+                HTTPMethod.DELETE,
                 endpoint,
-                params=params,
-                headers=headers,
-                config=GateioConfig.rest_config['order']
+                params=params
             )
             
             # Transform Gate.io response to unified Order
@@ -345,18 +287,14 @@ class GateioPrivateExchangeSpot(PrivateExchangeSpotRestInterface):
         """
         try:
             pair = GateioUtils.symbol_to_pair(symbol)
-            endpoint = GateioConfig.SPOT_ENDPOINTS['cancel_orders']
-            signature_path = GateioConfig.SIGNATURE_ENDPOINTS['cancel_orders']
+            endpoint = '/spot/orders'
             
             params = {'currency_pair': pair}
-            query_string = '&'.join(f"{k}={v}" for k, v in params.items())
-            headers = self._create_authenticated_headers('DELETE', signature_path, query_string, '')
             
-            response_data = await self.client.delete(
+            response_data = await self.request(
+                HTTPMethod.DELETE,
                 endpoint,
-                params=params,
-                headers=headers,
-                config=GateioConfig.rest_config['order']
+                params=params
             )
             
             # Gate.io returns list of cancelled orders
@@ -393,19 +331,14 @@ class GateioPrivateExchangeSpot(PrivateExchangeSpotRestInterface):
         """
         try:
             pair = GateioUtils.symbol_to_pair(symbol)
-            endpoint = GateioConfig.SPOT_ENDPOINTS['cancel_order'].format(order_id=order_id)  # Same path for GET
-            signature_path = GateioConfig.SIGNATURE_ENDPOINTS['cancel_order'].format(order_id=order_id)
+            endpoint = f'/spot/orders/{order_id}'
             
             params = {'currency_pair': pair}
-            query_string = '&'.join(f"{k}={v}" for k, v in params.items())
             
-            headers = self._create_authenticated_headers('GET', signature_path, query_string)
-            
-            response_data = await self.client.get(
+            response_data = await self.request(
+                HTTPMethod.GET,
                 endpoint,
-                params=params,
-                headers=headers,
-                config=GateioConfig.rest_config['my_orders']
+                params=params
             )
             
             # Transform Gate.io response to unified Order
@@ -422,7 +355,7 @@ class GateioPrivateExchangeSpot(PrivateExchangeSpotRestInterface):
         """
         Get open orders for a specific symbol.
         
-        Note: Gate.io requires currency_pair parameter. If no symbol is provided,
+        Note: Gate.io requires currency_pair parameter. If no symbol is provided
         this method will return an empty list instead of making an API call.
         
         HFT COMPLIANT: Never caches order data - always fresh API call.
@@ -442,21 +375,16 @@ class GateioPrivateExchangeSpot(PrivateExchangeSpotRestInterface):
                 self.logger.debug("No symbol provided for get_open_orders - returning empty list (Gate.io API requirement)")
                 return []
             
-            endpoint = GateioConfig.SPOT_ENDPOINTS['orders']
-            signature_path = GateioConfig.SIGNATURE_ENDPOINTS['orders']
+            endpoint = '/spot/orders'
             params = {
                 'status': 'open',
                 'currency_pair': GateioUtils.symbol_to_pair(symbol)
             }
             
-            query_string = '&'.join(f"{k}={v}" for k, v in params.items())
-            headers = self._create_authenticated_headers('GET', signature_path, query_string)
-            
-            response_data = await self.client.get(
+            response_data = await self.request(
+                HTTPMethod.GET,
                 endpoint,
-                params=params,
-                headers=headers,
-                config=GateioConfig.rest_config['my_orders']
+                params=params
             )
             
             # Gate.io returns list of orders
@@ -582,25 +510,22 @@ class GateioPrivateExchangeSpot(PrivateExchangeSpotRestInterface):
             else:
                 self.logger.debug("Retrieving account-level trading fees")
             
-            endpoint = GateioConfig.SPOT_ENDPOINTS['fee']
-            signature_path = GateioConfig.SIGNATURE_ENDPOINTS['fee']
-            headers = self._create_authenticated_headers('GET', signature_path)
+            endpoint = '/spot/fee'
             
-            response_data = await self.client.get(
-                endpoint,
-                headers=headers,
-                config=GateioConfig.rest_config['account']
+            response_data = await self.request(
+                HTTPMethod.GET,
+                endpoint
             )
             
             # Gate.io fee response format based on API docs:
             # {
-            #   "user_id": 10003,
-            #   "taker_fee": "0.002",
-            #   "maker_fee": "0.002",
-            #   "gt_discount": false,
-            #   "gt_taker_fee": "0.0015", 
-            #   "gt_maker_fee": "0.0015",
-            #   "loan_fee": "0.18",
+            #   "user_id": 10003
+            #   "taker_fee": "0.002"
+            #   "maker_fee": "0.002"
+            #   "gt_discount": false
+            #   "gt_taker_fee": "0.0015"
+            #   "gt_maker_fee": "0.0015"
+            #   "loan_fee": "0.18"
             #   "point_type": "0" // fee tier
             # }
             
@@ -638,7 +563,7 @@ class GateioPrivateExchangeSpot(PrivateExchangeSpotRestInterface):
     async def close(self) -> None:
         """Close the REST client and clean up resources."""
         try:
-            await self.client.close()
+            # Transport manager handles cleanup automatically
             self.logger.info("Closed Gate.io private REST client")
         except Exception as e:
             self.logger.error(f"Error closing private REST client: {e}")

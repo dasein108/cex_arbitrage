@@ -13,23 +13,21 @@ from structs.exchange import (
 )
 
 from core.config.structs import ExchangeConfig
-from core.transport.rest.structs import RestConfig
 
 
 class PrivateExchangeSpotRestInterface(BaseExchangeRestInterface):
-    """Abstract cex for private exchange operations (trading, account management)"""
-    def __init__(self, config: ExchangeConfig, rest_config: RestConfig,
-                 custom_exception_handler: Callable = None):
-
+    """Abstract interface for private exchange operations (trading, account management)"""
+    
+    def __init__(self, config: ExchangeConfig):
+        """Initialize private interface with transport manager."""
         if not config.has_credentials():
             raise ValueError(f"{config.name} API credentials must be provided")
-
-        super().__init__(f'{config.name}_private', config, rest_config, custom_exception_handler)
-
-    @abstractmethod
-    async def add_auth(self, params: Optional[Dict[str, Any]] = None, headers: Optional[Dict[str, str]] = None) -> Tuple[Dict[str, Any], Dict[str, str]]:
-        """Add authentication parameters to request"""
-        pass
+            
+        super().__init__(
+            exchange_tag=f"{config.name}_private",
+            config=config,
+            is_private=True  # Private API operations with authentication
+        )
 
     @abstractmethod
     async def get_account_balance(self) -> List[AssetBalance]:

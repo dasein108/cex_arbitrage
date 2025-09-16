@@ -5,6 +5,7 @@ from typing import Optional, Dict, Any, List, AsyncIterator
 import msgspec
 
 from common.orderbook_entry_pool import OrderBookEntryPool
+from common.orderbook_diff_processor import ParsedOrderbookUpdate
 from core.cex.services.symbol_mapper import SymbolMapperInterface
 from core.cex.websocket import MessageParser, ParsedMessage, MessageType
 from cex.mexc.ws.protobuf_parser import MexcProtobufParser
@@ -85,7 +86,7 @@ class MexcPublicMessageParser(MessageParser):
         self,
         message: Dict[str, Any]
     ) -> Optional[OrderBook]:
-        """Parse orderbook message."""
+        """Parse orderbook message (legacy method for compatibility)."""
         try:
             data = message.get('d', {})
             symbol_str = message.get('s', '')
@@ -123,6 +124,205 @@ class MexcPublicMessageParser(MessageParser):
         except Exception as e:
             self.logger.error(f"Error parsing orderbook: {e}")
             return None
+
+    def parse_orderbook_diff_message(
+        self, 
+        raw_message: Any, 
+        symbol
+    ) -> Optional[ParsedOrderbookUpdate]:
+        """
+        Parse MEXC orderbook diff message with HFT-optimized processing.
+        
+        MEXC JSON Format:
+        {
+            "c": "spot@public.limit.depth.v3.api@BTCUSDT@20",
+            "d": {
+                "bids": [["50000", "0.1"], ["49999", "0.0"]], // 0 size = remove
+                "asks": [["50001", "0.2"], ["50002", "0.0"]], 
+                "version": "12345"
+            },
+            "t": 1672531200000
+        }
+        """
+        try:
+            # Handle JSON format
+            if isinstance(raw_message, dict):
+                return self._parse_json_diff(raw_message, symbol)
+            
+            # Handle protobuf format
+            elif isinstance(raw_message, bytes):
+                return self._parse_protobuf_diff(raw_message, symbol)
+                
+            else:
+                self.logger.warning(f"Unknown message type: {type(raw_message)}")
+                return None
+                
+        except Exception as e:
+            self.logger.error(f"Error parsing MEXC diff message: {e}")
+            return None
+    
+    def _parse_json_diff(
+        self, 
+        message: Dict[str, Any], 
+        symbol
+    ) -> Optional[ParsedOrderbookUpdate]:
+        """Parse MEXC JSON diff message with HFT optimization using msgspec structs."""
+        try:
+            # Use msgspec to decode structured message for validation
+            from cex.mexc.structs.exchange import MexcWSOrderbookMessage
+            
+            # Convert to msgspec struct for fast validation
+            ws_message = msgspec.convert(message, MexcWSOrderbookMessage)
+            
+            # Extract timestamp (MEXC provides millisecond timestamps)
+            timestamp = float(ws_message.t) / 1000.0
+            
+            # Extract sequence/version for ordering
+            sequence = None
+            if ws_message.d.version:
+                try:
+                    sequence = int(ws_message.d.version)
+                except (ValueError, TypeError):
+                    pass
+            
+            # Parse bid updates with zero-allocation approach
+            bid_updates = []
+            for bid_item in ws_message.d.bids:
+                if len(bid_item) >= 2:
+                    try:
+                        price = float(bid_item[0])
+                        size = float(bid_item[1])
+                        bid_updates.append((price, size))
+                    except (ValueError, TypeError, IndexError):
+                        continue
+            
+            # Parse ask updates with zero-allocation approach
+            ask_updates = []
+            for ask_item in ws_message.d.asks:
+                if len(ask_item) >= 2:
+                    try:
+                        price = float(ask_item[0])
+                        size = float(ask_item[1])
+                        ask_updates.append((price, size))
+                    except (ValueError, TypeError, IndexError):
+                        continue
+            
+            # Determine if this is a snapshot (based on channel name)
+            is_snapshot = 'limit.depth' in ws_message.c  # vs 'increase.depth'
+            
+            return ParsedOrderbookUpdate(
+                symbol=symbol,
+                bid_updates=bid_updates,
+                ask_updates=ask_updates,
+                timestamp=timestamp,
+                sequence=sequence,
+                is_snapshot=is_snapshot
+            )
+            
+        except (msgspec.ValidationError, msgspec.DecodeError, KeyError) as e:
+            self.logger.debug(f"Failed to parse as msgspec struct, falling back: {e}")
+            # Fallback to original parsing for malformed messages
+            return self._parse_json_diff_fallback(message, symbol)
+    
+    def _parse_json_diff_fallback(
+        self, 
+        message: Dict[str, Any], 
+        symbol
+    ) -> Optional[ParsedOrderbookUpdate]:
+        """Fallback JSON diff parsing for malformed messages."""
+        # Fast validation - check for required fields
+        data = message.get('d')
+        if not data or not isinstance(data, dict):
+            return None
+        
+        # Extract timestamp (MEXC provides millisecond timestamps)
+        timestamp = float(message.get('t', time.time() * 1000)) / 1000.0
+        
+        # Extract sequence/version for ordering
+        sequence = None
+        version_str = data.get('version')
+        if version_str:
+            try:
+                sequence = int(version_str)
+            except (ValueError, TypeError):
+                pass
+        
+        # Parse bid updates with zero-allocation approach
+        bid_updates = []
+        bids_data = data.get('bids', [])
+        for bid_item in bids_data:
+            if isinstance(bid_item, list) and len(bid_item) >= 2:
+                try:
+                    price = float(bid_item[0])
+                    size = float(bid_item[1])
+                    bid_updates.append((price, size))
+                except (ValueError, TypeError, IndexError):
+                    continue
+        
+        # Parse ask updates with zero-allocation approach
+        ask_updates = []
+        asks_data = data.get('asks', [])
+        for ask_item in asks_data:
+            if isinstance(ask_item, list) and len(ask_item) >= 2:
+                try:
+                    price = float(ask_item[0])
+                    size = float(ask_item[1])
+                    ask_updates.append((price, size))
+                except (ValueError, TypeError, IndexError):
+                    continue
+        
+        # Determine if this is a snapshot (based on channel name)
+        channel = message.get('c', '')
+        is_snapshot = 'limit.depth' in channel  # vs 'increase.depth'
+        
+        return ParsedOrderbookUpdate(
+            symbol=symbol,
+            bid_updates=bid_updates,
+            ask_updates=ask_updates,
+            timestamp=timestamp,
+            sequence=sequence,
+            is_snapshot=is_snapshot
+        )
+    
+    def _parse_protobuf_diff(
+        self, 
+        data: bytes, 
+        symbol
+    ) -> Optional[ParsedOrderbookUpdate]:
+        """Parse MEXC protobuf diff message."""
+        try:
+            # Use MEXC protobuf parser utilities
+            wrapper = MexcProtobufParser.parse_wrapper_message(data)
+            
+            # Check for depth data
+            if wrapper.HasField('publicAggreDepths'):
+                depth_data = wrapper.publicAggreDepths
+                
+                bid_updates = []
+                for bid_item in depth_data.bids:
+                    price = float(bid_item.price)
+                    size = float(bid_item.quantity)
+                    bid_updates.append((price, size))
+                
+                ask_updates = []
+                for ask_item in depth_data.asks:
+                    price = float(ask_item.price)
+                    size = float(ask_item.quantity)
+                    ask_updates.append((price, size))
+                
+                return ParsedOrderbookUpdate(
+                    symbol=symbol,
+                    bid_updates=bid_updates,
+                    ask_updates=ask_updates,
+                    timestamp=time.time(),  # Protobuf doesn't always include timestamp
+                    sequence=None,  # Extract if available in protobuf
+                    is_snapshot=True  # Protobuf messages are typically snapshots
+                )
+                
+        except Exception as e:
+            self.logger.error(f"Error parsing MEXC protobuf: {e}")
+        
+        return None
 
     def supports_batch_parsing(self) -> bool:
         """MEXC parser supports batch processing."""

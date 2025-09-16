@@ -404,13 +404,14 @@ def handle_exchange_error(exchange_error) -> ExchangeAPIError:
 ```
 
 #### 3. WebSocket Integration
+
 ```python
 async def _on_message(self, message):
     """Process exchange-specific WebSocket messages"""
     if self._is_orderbook_update(message):
         orderbook = self._parse_orderbook(message)
         symbol = self._extract_symbol(message)
-        await self._handle_orderbook_update(symbol, orderbook)
+        await self._handle_orderbook_diff_update(symbol, orderbook)
     elif self._is_trade_update(message):
         trades = self._parse_trades(message)
         symbol = self._extract_symbol(message)

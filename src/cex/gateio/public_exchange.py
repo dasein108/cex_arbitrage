@@ -1,5 +1,5 @@
 """
-MEXC Public Exchange Implementation
+Gate.io Public Exchange Implementation
 
 HFT-compliant public market data operations only.
 No authentication required - focuses on real-time market data streaming.
@@ -16,17 +16,15 @@ from structs.exchange import (
     OrderBook, Symbol, SymbolInfo, SymbolsInfo, 
     ExchangeStatus
 )
-from cex.mexc.ws.public.ws_public import MexcWebsocketPublic
-from cex.mexc.rest.rest_public import MexcPublicSpotRest
-from core.transport.websocket.ws_client import WebSocketConfig
-from core.cex.websocket import ConnectionState
+from cex.gateio.ws.gateio_ws_public import GateioWebsocketPublic
+from cex.gateio.rest.rest_public import GateioPublicSpotRest
+from core.cex.websocket.structs import ConnectionState
 from core.exceptions.exchange import BaseExchangeError
 from core.config.structs import ExchangeConfig
 
-
-class MexcPublicExchange(BaseExchangeInterface):
+class GateioPublicExchange(BaseExchangeInterface):
     """
-    MEXC Public Exchange - Market Data Only
+    Gate.io Public Exchange - Market Data Only
     
     Provides real-time market data streaming without authentication.
     Optimized for HFT market data aggregation and opportunity detection.
@@ -42,38 +40,37 @@ class MexcPublicExchange(BaseExchangeInterface):
     - Zero-copy data processing where possible
     - Event-driven data distribution
     """
-    exchange_name = "MEXC_public"
+    exchange_name = "GATEIO_public"
 
     def __init__(self, config: ExchangeConfig):
-        """Initialize MEXC public exchange for market data operations."""
+        """Initialize Gate.io public exchange for market data operations."""
         super().__init__(config)
         
         # Exchange-specific state
         self._symbols_info_dict: Dict[Symbol, SymbolInfo] = {}
         self._connection_state = ConnectionState.DISCONNECTED
         
-        # Initialize components using composition pattern
-        self._public_rest = MexcPublicSpotRest(config)
-        self._websocket_client = MexcWebsocketPublic(
-            config=self._config,
-            orderbook_diff_handler=self._handle_raw_orderbook_message,
-            state_change_handler=self._state_change_handler
-        )
-        # HFT Performance tracking
+        # Initialize REST client for public data
+        # TODO: Update REST client to use unified config pattern
+        self.rest_client = None  # Temporarily disabled until REST client is updated
+        
+        # WebSocket client for real-time data streaming
+        self.ws_client: Optional[GateioWebsocketPublic] = None
+        
+        # Performance tracking
         self._market_data_updates = 0
         self._last_update_time = 0.0
         
-        self.logger.info("MEXC Public Exchange initialized for HFT orderbook processing")
+        self.logger.info("Gate.io public exchange initialized for HFT orderbook processing")
     
     async def _load_symbols_info(self) -> None:
         """Load symbol information from REST API."""
         try:
-            # Get symbol information from REST API
-            symbols_info = await self._public_rest.get_exchange_info()
-            self._symbols_info_dict.update(symbols_info)
-            self._symbols_info = self._symbols_info_dict.copy()
+            # TODO: Implement when REST client is updated
+            # For now, use placeholder
+            self._symbols_info = {}  # Placeholder until REST client is updated
             
-            self.logger.info(f"Loaded {len(symbols_info)} symbols from MEXC")
+            self.logger.info("Gate.io symbols info loaded (placeholder)")
             
         except Exception as e:
             self.logger.error(f"Failed to load exchange info: {e}")
@@ -82,9 +79,16 @@ class MexcPublicExchange(BaseExchangeInterface):
     async def _get_orderbook_snapshot(self, symbol: Symbol) -> OrderBook:
         """Get orderbook snapshot from REST API."""
         try:
-            # Use REST client to get orderbook snapshot
-            orderbook = await self._public_rest.get_orderbook(symbol, limit=20)
-            return orderbook
+            # TODO: Implement when REST client is updated
+            # For now, create a placeholder orderbook
+            from structs.exchange import OrderBookEntry
+            
+            placeholder_orderbook = OrderBook(
+                bids=[OrderBookEntry(price=0.0, size=0.0)],
+                asks=[OrderBookEntry(price=0.0, size=0.0)],
+                timestamp=time.time()
+            )
+            return placeholder_orderbook
             
         except Exception as e:
             self.logger.error(f"Failed to get orderbook snapshot for {symbol}: {e}")
@@ -94,10 +98,18 @@ class MexcPublicExchange(BaseExchangeInterface):
         """Start real-time WebSocket streaming for symbols."""
         try:
             # Initialize WebSocket client for real-time data
-            await self._websocket_client.initialize(symbols)
+            if not self.config.websocket:
+                raise ValueError("Gate.io exchange configuration missing WebSocket settings")
+            
+            self.ws_client = GateioWebsocketPublic(
+                config=self.config,
+                orderbook_handler=self._handle_raw_orderbook_message
+            )
+            
+            await self.ws_client.initialize(symbols)
             self._connection_state = ConnectionState.CONNECTED
             
-            self.logger.info("MEXC WebSocket client initialized and connected")
+            self.logger.info("Gate.io WebSocket client initialized and connected")
             
         except Exception as e:
             self.logger.error(f"Failed to initialize WebSocket: {e}")
@@ -107,57 +119,39 @@ class MexcPublicExchange(BaseExchangeInterface):
     async def _stop_real_time_streaming(self) -> None:
         """Stop real-time WebSocket streaming."""
         try:
-            if self._websocket_client:
-                await self._websocket_client.close()
+            if self.ws_client:
+                await self.ws_client.close()
+                self.ws_client = None
             self._connection_state = ConnectionState.DISCONNECTED
             
-            self.logger.info("MEXC WebSocket streaming stopped")
+            self.logger.info("Gate.io WebSocket streaming stopped")
             
         except Exception as e:
             self.logger.error(f"Error stopping WebSocket streaming: {e}")
     
-    @property
-    def status(self) -> ExchangeStatus:
-        """Get current exchange connection status."""
-        if self._connection_state == ConnectionState.CONNECTED:
-            return ExchangeStatus.ACTIVE
-        elif self._connection_state == ConnectionState.CONNECTING:
-            return ExchangeStatus.CONNECTING
-        else:
-            return ExchangeStatus.INACTIVE
+    # BasePublicExchangeInterface Implementation
     
     @property
     def symbols_info(self) -> SymbolsInfo:
-        """Get all symbol information."""
-        return self._symbols_info_dict.copy()
-
-    async def _state_change_handler(self, new_state: ConnectionState) -> None:
-        """Handle WebSocket connection state changes."""
-        self._connection_state = new_state
-        self.logger.info(f"MEXC WebSocket connection state changed to {new_state.name}")
-        if self._connection_state == ConnectionState.CONNECTED:
-            pass
-
+        """Get cached symbols information (safe to cache - static data)."""
+        if not self._symbols_info:
+            raise BaseExchangeError(500, "Symbols info not initialized - call initialize() first")
+        return self._symbols_info
+    
     async def initialize(self, symbols: List[Symbol] = None) -> None:
         """
-        Initialize exchange with symbol information and prepare for streaming.
+        Initialize exchange with symbol list for market data streaming.
         
         Args:
-            symbols: Optional list of symbols to initialize for streaming
+            symbols: List of symbols to track for market data
         """
         # Call the base class initialize method which handles the common sequence
         await super().initialize(symbols)
     
     async def add_symbol(self, symbol: Symbol) -> None:
-        """
-        Start streaming market data for a symbol.
-        
-        Args:
-            symbol: Symbol to start streaming
-        """
+        """Start streaming data for new symbol."""
         if symbol in self._active_symbols:
-            self.logger.debug(f"Symbol {symbol} already active")
-            return
+            return  # Already tracking
         
         try:
             # Add to active symbols set
@@ -167,7 +161,7 @@ class MexcPublicExchange(BaseExchangeInterface):
             await self._load_orderbook_snapshot(symbol)
             
             # WebSocket subscription is handled during initialization
-            # Individual symbol subscription not supported by strategy pattern
+            # Individual symbol subscription not supported by current pattern
             self.logger.debug(f"Added symbol {symbol} for streaming")
             
         except Exception as e:
@@ -176,15 +170,9 @@ class MexcPublicExchange(BaseExchangeInterface):
             raise
     
     async def remove_symbol(self, symbol: Symbol) -> None:
-        """
-        Stop streaming market data for a symbol.
-        
-        Args:
-            symbol: Symbol to stop streaming
-        """
+        """Stop streaming data for symbol."""
         if symbol not in self._active_symbols:
-            self.logger.debug(f"Symbol {symbol} not active")
-            return
+            return  # Not tracking
         
         try:
             # Remove from active symbols
@@ -195,40 +183,21 @@ class MexcPublicExchange(BaseExchangeInterface):
                 del self._orderbooks[symbol]
             
             # WebSocket unsubscription is handled during close
-            # Individual symbol unsubscription not supported by strategy pattern
+            # Individual symbol unsubscription not supported by current pattern
             self.logger.debug(f"Removed symbol {symbol} from streaming")
             
         except Exception as e:
             self.logger.error(f"Failed to remove symbol {symbol}: {e}")
             raise
     
-    async def close(self) -> None:
-        """Close all connections and cleanup resources."""
-        self.logger.info("Closing MEXC public exchange...")
-        
-        try:
-            # Stop real-time streaming
-            await self._stop_real_time_streaming()
-            
-            # Call base class close for common cleanup
-            await super().close()
-            
-            # Clean up exchange-specific state
-            self._symbols_info_dict.clear()
-            
-            self.logger.info("MEXC public exchange closed successfully")
-            
-        except Exception as e:
-            self.logger.error(f"Error closing MEXC public exchange: {e}")
-    
+    # Real-time Data Handlers
     
     async def _handle_raw_orderbook_message(self, parsed_update_or_raw: any, symbol: Symbol) -> None:
         """
         Handle orderbook messages from WebSocket with HFT diff processing.
         
         HFT COMPLIANT: Uses base class orderbook management for consistency.
-        Processes MEXC orderbook diffs per documentation:
-        https://mexcdevelop.github.io/apidocs/spot_v3_en/#diff-depth-stream
+        Processes Gate.io orderbook diffs for optimal performance.
         
         Args:
             parsed_update_or_raw: ParsedOrderbookUpdate from message parser OR raw message
@@ -273,6 +242,20 @@ class MexcPublicExchange(BaseExchangeInterface):
         # For now, return the current orderbook (would implement proper diff application)
         return current_orderbook
     
+    # Status and Health
+    
+    def get_connection_status(self) -> ExchangeStatus:
+        """Get current connection status."""
+        if self.ws_client:
+            return ExchangeStatus.CONNECTED if self.ws_client.is_connected() else ExchangeStatus.DISCONNECTED
+        return ExchangeStatus.DISCONNECTED
+    
+    def get_websocket_health(self) -> Dict[str, any]:
+        """Get WebSocket health metrics."""
+        if self.ws_client:
+            return self.ws_client.get_performance_metrics()
+        return {"status": "not_initialized"}
+    
     def get_symbol_orderbook(self, symbol: Symbol) -> Optional[OrderBook]:
         """
         Get current orderbook for a specific symbol with HFT-optimized access.
@@ -299,3 +282,22 @@ class MexcPublicExchange(BaseExchangeInterface):
             'connection_state': self._connection_state.name,
             'exchange_stats': base_stats
         }
+
+    async def close(self) -> None:
+        """Clean shutdown of all connections."""
+        self.logger.info("Closing Gate.io public exchange...")
+        
+        try:
+            # Stop real-time streaming
+            await self._stop_real_time_streaming()
+            
+            # Call base class close for common cleanup
+            await super().close()
+            
+            # Clean up exchange-specific state
+            self._symbols_info_dict.clear()
+            
+            self.logger.info("Gate.io public exchange closed successfully")
+            
+        except Exception as e:
+            self.logger.error(f"Error closing Gate.io public exchange: {e}")

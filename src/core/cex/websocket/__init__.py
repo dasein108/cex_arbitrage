@@ -13,7 +13,7 @@ from .message_parser import MessageParser
 from .structs import (
     MessageType, SubscriptionAction, ConnectionContext, 
     SubscriptionContext, ParsedMessage, WebSocketManagerConfig,
-    PerformanceMetrics
+    PerformanceMetrics, ConnectionState
 )
 
 from .base_ws import BaseExchangeWebsocketInterface
@@ -32,5 +32,6 @@ __all__ = [
     'WebSocketManagerConfig',
     'PerformanceMetrics',
     'BaseExchangeWebsocketInterface',
-    'MessageParser'
+    'MessageParser',
+    'ConnectionState'
 ]
