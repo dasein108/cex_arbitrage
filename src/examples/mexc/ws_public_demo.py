@@ -23,11 +23,8 @@ from typing import List, Dict
 # Import strategy components directly
 from core.cex.websocket.strategies import WebSocketStrategySet
 from core.cex.websocket.ws_manager import WebSocketManager, WebSocketManagerConfig
-from exchanges.mexc.ws.strategies_mexc import (
-    MexcPublicConnectionStrategy,
-    MexcPublicSubscriptionStrategy,
-    MexcPublicMessageParser
-)
+from exchanges.mexc.ws.public.parser import MexcPublicMessageParser
+from exchanges.mexc.ws.public.ws_strategies import MexcPublicConnectionStrategy, MexcPublicSubscriptionStrategy
 
 # Set up logging
 logging.basicConfig(level=logging.DEBUG)

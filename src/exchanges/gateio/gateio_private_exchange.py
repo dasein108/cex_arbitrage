@@ -11,7 +11,7 @@ import logging
 import time
 from typing import List, Dict, Optional
 
-from core.cex.composed import BasePrivateExchangeInterface
+from core.cex.base import BasePrivateExchangeInterface
 from structs.exchange import (
     Symbol, AssetBalance, AssetName, Order, Position
 )
@@ -78,7 +78,7 @@ class GateioPrivateExchange(BasePrivateExchangeInterface):
         self.logger.info("Gate.io Private Exchange initialized with trading capabilities")
     
     # === Public Interface Delegation ===
-    # Delegate all public operations to the composed public exchange
+    # Delegate all public operations to the base public exchange
     
     @property
     def status(self):

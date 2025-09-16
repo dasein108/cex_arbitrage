@@ -101,7 +101,7 @@ KRAKEN_SECRET_KEY=your_kraken_secret_key
 
 ```python
 # src/exchanges/binance/binance_exchange.py
-from core.cex.composed import BaseExchangeInterface
+from core.cex.base import BaseExchangeInterface
 from structs import (
     Symbol, SymbolInfo, OrderBook, AssetBalance, ExchangeStatus, Order
 )

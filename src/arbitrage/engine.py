@@ -44,7 +44,7 @@ from .balance import BalanceMonitor
 from .recovery import RecoveryManager
 from .aggregator import MarketDataAggregator
 
-from core.cex.composed.base_private_exchange import BasePrivateExchangeInterface
+from core.cex.base.base_private_exchange import BasePrivateExchangeInterface
 from core.exceptions.exchange import ArbitrageEngineError
 
 logger = logging.getLogger(__name__)

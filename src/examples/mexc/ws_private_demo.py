@@ -21,11 +21,8 @@ from structs.exchange import Symbol, AssetName
 from core.transport.websocket.ws_client import WebSocketConfig
 from core.cex.websocket.strategies import WebSocketStrategySet
 from core.cex.websocket.ws_manager import WebSocketManager, WebSocketManagerConfig
-from exchanges.mexc.ws.strategies_mexc import (
-    MexcPrivateConnectionStrategy,
-    MexcPrivateSubscriptionStrategy,
-    MexcPrivateMessageParser
-)
+from exchanges.mexc.ws.private.parser import MexcPrivateMessageParser
+from exchanges.mexc.ws.private.connection_strategy import MexcPrivateConnectionStrategy, MexcPrivateSubscriptionStrategy
 
 from config import get_exchange_config_struct
 # Set up logging

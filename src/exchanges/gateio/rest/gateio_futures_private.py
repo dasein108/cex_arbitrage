@@ -57,7 +57,7 @@ class GateioPrivateFuturesExchangeSpot(PrivateExchangeSpotRestInterface):
     - Comprehensive position and balance management for futures trading
     
     Architecture Note: This is a private cex implementation that can be used
-    directly or composed into the GateioExchange facade for unified access.
+    directly or base into the GateioExchange facade for unified access.
     """
     
     def __init__(self, api_key: str, secret_key: str, config_service: Optional[GateioConfigurationService] = None):

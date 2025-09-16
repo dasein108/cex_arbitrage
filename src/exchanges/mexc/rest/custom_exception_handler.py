@@ -3,7 +3,7 @@ from core.exceptions.exchange import (
     InsufficientPosition, OversoldException, ExchangeOrderCancelledOrNotExist
 )
 import msgspec
-from exchanges.mexc.common.mexc_structs import MexcErrorResponse
+from exchanges.mexc.common.structs import MexcErrorResponse
 
 
 ERROR_CODE_MAPPING = {

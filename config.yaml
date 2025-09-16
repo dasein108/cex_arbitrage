@@ -13,7 +13,7 @@ exchanges:
     api_key: "${MEXC_API_KEY}"  # Set via environment variable MEXC_API_KEY
     secret_key: "${MEXC_SECRET_KEY}"  # Set via environment variable MEXC_SECRET_KEY
     base_url: "https://api.mexc.com"
-    websocket_url: "wss://wbs.mexc.com/ws"
+    websocket_url: "wss://wbs-api.mexc.com/ws"
     enabled: true
   gateio:
     api_key: "${GATEIO_API_KEY}"  # Set via environment variable GATEIO_API_KEY (empty for public-only access)

@@ -44,7 +44,7 @@ from structs.exchange import (
     Trade,
     SymbolInfo,
 )
-from core.cex.composed import BasePublicExchangeInterface
+from core.cex.base import BasePublicExchangeInterface
 from structs.exchange import ExchangeName
 from core.exceptions.exchange import BaseExchangeError as MarketDataError
 

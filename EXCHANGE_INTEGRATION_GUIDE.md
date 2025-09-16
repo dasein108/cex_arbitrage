@@ -229,7 +229,7 @@ src/exchanges/{exchange_name}/
 
 ```python
 # src/exchanges/{exchange}/exchange_exchange.py
-from core.cex.composed import BaseExchangeInterface
+from core.cex.base import BaseExchangeInterface
 
 
 class ExchangeExchange(BaseExchangeInterface):
@@ -2341,7 +2341,7 @@ class ExchangeWebSocketPublic(BaseExchangeWebsocketInterface):
 ```python
 # src/exchanges/{exchange_name}/{exchange_name}_exchange.py
 from typing import Optional, List, Dict, Any
-from core.cex.composed import BaseExchangeInterface
+from core.cex.base import BaseExchangeInterface
 from structs import Symbol, OrderBook, AssetBalance, Order, Side, OrderType, OrderId,
 
 AssetName,

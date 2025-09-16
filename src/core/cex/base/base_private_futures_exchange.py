@@ -2,7 +2,7 @@ from abc import abstractmethod
 from typing import Dict
 from structs.exchange import (Symbol, Position)
 
-from core.cex.composed.base_private_exchange import BasePrivateExchangeInterface
+from core.cex.base.base_private_exchange import BasePrivateExchangeInterface
 
 
 class BasePrivateFuturesExchangeInterface(BasePrivateExchangeInterface):

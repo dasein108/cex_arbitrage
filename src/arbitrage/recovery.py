@@ -44,7 +44,7 @@ from .structures import (
 )
 
 from structs.exchange import Symbol, OrderSide
-from core.cex.composed.base_private_exchange import BasePrivateExchangeInterface
+from core.cex.base.base_private_exchange import BasePrivateExchangeInterface
 from structs.exchange import ExchangeName
 from core.exceptions.exchange import RecoveryError
 

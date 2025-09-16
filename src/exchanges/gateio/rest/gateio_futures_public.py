@@ -50,7 +50,7 @@ class GateioPublicFuturesExchangeSpotRest(PublicExchangeSpotRestInterface):
     - Zero code duplication with unified exception handling
     
     Architecture Note: This is a public cex implementation that can be used
-    directly or composed into the GateioExchange facade for unified access.
+    directly or base into the GateioExchange facade for unified access.
     """
     
     def __init__(self, api_key: Optional[str] = None, secret_key: Optional[str] = None):

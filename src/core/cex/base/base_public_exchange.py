@@ -3,7 +3,7 @@ from typing import List
 from structs.exchange import (Symbol, SymbolsInfo,
                      OrderBook)
 
-from core.cex.composed.base_exchange import BaseExchangeInterface
+from core.cex.base.base_exchange import BaseExchangeInterface
 
 class BasePublicExchangeInterface(BaseExchangeInterface):
     """Base cex containing common methods for both public and private exchange operations"""

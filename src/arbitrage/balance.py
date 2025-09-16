@@ -39,7 +39,7 @@ from dataclasses import dataclass
 from .structures import ArbitrageConfig
 
 from structs.exchange import AssetBalance
-from core.cex.composed.base_private_exchange import BasePrivateExchangeInterface
+from core.cex.base.base_private_exchange import BasePrivateExchangeInterface
 from structs.exchange import ExchangeName
 from core.exceptions.exchange import BalanceManagementError
 

@@ -97,14 +97,14 @@ These components need both market data and trading capabilities:
 
 ```python
 # BEFORE
-from core.cex.composed import BaseExchangeInterface
+from core.cex.base import BaseExchangeInterface
 
 
 class MexcExchange(BaseExchangeInterface):
 
 
 # AFTER
-from core.cex.composed import BasePrivateExchangeInterface
+from core.cex.base import BasePrivateExchangeInterface
 
 
 class MexcExchange(BasePrivateExchangeInterface):
@@ -115,14 +115,14 @@ class MexcExchange(BasePrivateExchangeInterface):
 
 ```python
 # BEFORE
-from core.cex.composed import BaseExchangeInterface
+from core.cex.base import BaseExchangeInterface
 
 
 class GateioExchange(BaseExchangeInterface):
 
 
 # AFTER
-from core.cex.composed import BasePrivateExchangeInterface
+from core.cex.base import BasePrivateExchangeInterface
 
 
 class GateioExchange(BasePrivateExchangeInterface):
@@ -135,10 +135,10 @@ class GateioExchange(BasePrivateExchangeInterface):
 
 ```python
 # BEFORE (line 47)
-from core.cex.composed import BaseExchangeInterface
+from core.cex.base import BaseExchangeInterface
 
 # AFTER
-from core.cex.composed import BasePublicExchangeInterface
+from core.cex.base import BasePublicExchangeInterface
 
 # Update type hints throughout the file
 # BEFORE
@@ -153,10 +153,10 @@ exchanges: Dict[ExchangeName, BasePublicExchangeInterface]
 
 ```python
 # BEFORE (line 15)
-from core.cex.composed import BaseExchangeInterface
+from core.cex.base import BaseExchangeInterface
 
 # AFTER
-from core.cex.composed import BasePublicExchangeInterface
+from core.cex.base import BasePublicExchangeInterface
 
 
 # Update constructor and type hints
@@ -175,10 +175,10 @@ def __init__(self, exchanges: Dict[str, BasePublicExchangeInterface]):
 
 ```python
 # BEFORE (line 42)
-from core.cex.composed import BaseExchangeInterface
+from core.cex.base import BaseExchangeInterface
 
 # AFTER
-from core.cex.composed import BasePrivateExchangeInterface
+from core.cex.base import BasePrivateExchangeInterface
 
 # Update type hints
 # BEFORE
@@ -193,10 +193,10 @@ exchanges: Dict[ExchangeName, BasePrivateExchangeInterface]
 
 ```python
 # BEFORE (line 49)
-from core.cex.composed import BaseExchangeInterface
+from core.cex.base import BaseExchangeInterface
 
 # AFTER
-from core.cex.composed import BasePrivateExchangeInterface
+from core.cex.base import BasePrivateExchangeInterface
 ```
 
 #### 4.3 Recovery Manager
@@ -204,10 +204,10 @@ from core.cex.composed import BasePrivateExchangeInterface
 
 ```python
 # BEFORE (line 48)
-from core.cex.composed import BaseExchangeInterface
+from core.cex.base import BaseExchangeInterface
 
 # AFTER
-from core.cex.composed import BasePrivateExchangeInterface
+from core.cex.base import BasePrivateExchangeInterface
 ```
 
 ### Phase 5: Update Trading Components
@@ -217,10 +217,10 @@ from core.cex.composed import BasePrivateExchangeInterface
 
 ```python
 # BEFORE (line 48)
-from core.cex.composed import BaseExchangeInterface
+from core.cex.base import BaseExchangeInterface
 
 # AFTER
-from core.cex.composed import BasePrivateExchangeInterface
+from core.cex.base import BasePrivateExchangeInterface
 
 # Update all type hints
 exchanges: Dict[ExchangeName, BasePrivateExchangeInterface]
@@ -231,10 +231,10 @@ exchanges: Dict[ExchangeName, BasePrivateExchangeInterface]
 
 ```python
 # BEFORE (line 19)
-from core.cex.composed import BaseExchangeInterface
+from core.cex.base import BaseExchangeInterface
 
 # AFTER
-from core.cex.composed import BasePrivateExchangeInterface
+from core.cex.base import BasePrivateExchangeInterface
 ```
 
 #### 5.3 Controller
@@ -242,10 +242,10 @@ from core.cex.composed import BasePrivateExchangeInterface
 
 ```python
 # BEFORE (line 20)
-from core.cex.composed import BaseExchangeInterface
+from core.cex.base import BaseExchangeInterface
 
 # AFTER
-from core.cex.composed import BasePrivateExchangeInterface
+from core.cex.base import BasePrivateExchangeInterface
 ```
 
 #### 5.4 Orchestrator
@@ -253,10 +253,10 @@ from core.cex.composed import BasePrivateExchangeInterface
 
 ```python
 # BEFORE (line 54)
-from core.cex.composed import BaseExchangeInterface
+from core.cex.base import BaseExchangeInterface
 
 # AFTER
-from core.cex.composed import BasePrivateExchangeInterface
+from core.cex.base import BasePrivateExchangeInterface
 ```
 
 ### Phase 6: Update Factory Components
@@ -266,10 +266,10 @@ from core.cex.composed import BasePrivateExchangeInterface
 
 ```python
 # BEFORE (line 22)
-from core.cex.composed import BaseExchangeInterface
+from core.cex.base import BaseExchangeInterface
 
 # AFTER
-from core.cex.composed import BasePrivateExchangeInterface
+from core.cex.base import BasePrivateExchangeInterface
 
 
 # Update return types
@@ -281,10 +281,10 @@ async def create_exchanges(...) -> Dict[str, BasePrivateExchangeInterface]:
 
 ```python
 # BEFORE (line 13)
-from core.cex.composed import BaseExchangeInterface
+from core.cex.base import BaseExchangeInterface
 
 # AFTER
-from core.cex.composed import BasePrivateExchangeInterface
+from core.cex.base import BasePrivateExchangeInterface
 ```
 
 ### Phase 7: Update Interface Package Exports
@@ -293,9 +293,9 @@ from core.cex.composed import BasePrivateExchangeInterface
 
 ```python
 # UPDATED EXPORTS
-from core.cex.composed import BaseExchangeInterface
-from core.cex.composed import BasePublicExchangeInterface
-from core.cex.composed import BasePrivateExchangeInterface
+from core.cex.base import BaseExchangeInterface
+from core.cex.base import BasePublicExchangeInterface
+from core.cex.base import BasePrivateExchangeInterface
 from core.cex.rest import PublicExchangeSpotRestInterface
 from core.cex.rest.spot.base_rest_spot_private import PrivateExchangeSpotRestInterface
 
@@ -330,13 +330,13 @@ mypy src/arbitrage/ --strict
 ```python
 # Test public-only component (aggregator)
 from arbitrage.aggregator import MarketDataAggregator
-from core.cex.composed import BasePublicExchangeInterface
+from core.cex.base import BasePublicExchangeInterface
 
 # Should work without private cex methods
 
 # Test private component (balance manager)
 from arbitrage.balance import BalanceManager
-from core.cex.composed import BasePrivateExchangeInterface
+from core.cex.base import BasePrivateExchangeInterface
 
 # Should have access to trading methods
 ```
@@ -396,7 +396,7 @@ PYTHONPATH=src python src/main.py --log-level DEBUG
 ### Public-Only Component Pattern
 
 ```python
-from core.cex.composed import BasePublicExchangeInterface
+from core.cex.base import BasePublicExchangeInterface
 from typing import Dict
 
 
@@ -413,7 +413,7 @@ class MarketDataComponent:
 ### Private Component Pattern
 
 ```python
-from core.cex.composed import BasePrivateExchangeInterface
+from core.cex.base import BasePrivateExchangeInterface
 from typing import Dict
 
 

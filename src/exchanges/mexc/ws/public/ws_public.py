@@ -36,16 +36,13 @@ from core.transport.websocket.ws_client import WebSocketConfig
 from core.cex.websocket.strategies import WebSocketStrategySet
 from core.cex.websocket.ws_manager import WebSocketManager, WebSocketManagerConfig
 from core.cex.websocket import MessageType
-from exchanges.mexc.ws.strategies_mexc import (
-    MexcPublicConnectionStrategy,
-    MexcPublicSubscriptionStrategy,
-    MexcPublicMessageParser
-)
+from exchanges.mexc.ws.public.ws_message_parser import MexcPublicMessageParser
+from exchanges.mexc.ws.public.ws_strategies import MexcPublicConnectionStrategy, MexcPublicSubscriptionStrategy
 
-# Legacy protobuf imports for backward compatibility
 from exchanges.mexc.protobuf.PushDataV3ApiWrapper_pb2 import PushDataV3ApiWrapper
 from exchanges.mexc.protobuf.PublicLimitDepthsV3Api_pb2 import PublicLimitDepthsV3Api
 from exchanges.mexc.protobuf.PublicAggreDealsV3Api_pb2 import PublicAggreDealsV3Api
+# from exchanges.mexc.protobuf.PublicAggreDepthsV3Api_pb2 import PublicAggreDepthsV3Api
 
 
 class MexcWebsocketPublic:

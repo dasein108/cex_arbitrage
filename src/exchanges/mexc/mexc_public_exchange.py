@@ -11,13 +11,13 @@ import logging
 import time
 from typing import List, Dict, Optional, Set
 
-from core.cex.composed import BasePublicExchangeInterface
+from core.cex.base import BasePublicExchangeInterface
 from structs.exchange import (
     OrderBook, Symbol, SymbolInfo, SymbolsInfo, 
     ExchangeStatus
 )
-from exchanges.mexc.ws.mexc_ws_public import MexcWebsocketPublic
-from exchanges.mexc.rest.mexc_public import MexcPublicSpotRest
+from exchanges.mexc.ws.public.mexc_ws_public import MexcWebsocketPublic
+from exchanges.mexc.rest.rest_public import MexcPublicSpotRest
 from core.transport.websocket.ws_client import WebSocketConfig
 from core.cex.websocket.structs import ConnectionState
 from core.exceptions.exchange import BaseExchangeError
@@ -140,7 +140,9 @@ class MexcPublicExchange(BasePublicExchangeInterface):
             
             # Subscribe to WebSocket data if client is available
             if self._websocket_client:
-                await self._websocket_client.start_symbol(symbol)
+                # Note: Strategy pattern WebSocket doesn't have start_symbol method
+                # Symbols are managed during initialization
+                self.logger.debug(f"Symbol {symbol} added to active set")
             
             self.logger.debug(f"Added symbol {symbol} for streaming")
             
@@ -166,7 +168,9 @@ class MexcPublicExchange(BasePublicExchangeInterface):
             
             # Unsubscribe from WebSocket data
             if self._websocket_client:
-                await self._websocket_client.stop_symbol(symbol)
+                # Note: Strategy pattern WebSocket doesn't have stop_symbol method
+                # Symbols are managed during initialization
+                self.logger.debug(f"Symbol {symbol} removed from active set")
             
             # Clean up cached data
             self._orderbooks.pop(symbol, None)

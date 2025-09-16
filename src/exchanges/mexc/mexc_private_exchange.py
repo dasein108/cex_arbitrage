@@ -9,14 +9,14 @@ HFT COMPLIANCE: Sub-50ms order execution, real-time balance updates.
 
 import logging
 import time
-from typing import List, Dict, Optional
+from typing import List, Dict
 
-from core.cex.composed import BasePrivateExchangeInterface
+from core.cex.base import BasePrivateExchangeInterface
 from structs.exchange import (
-    Symbol, AssetBalance, AssetName, Order, OrderId, SymbolsInfo
+    Symbol, AssetBalance, AssetName, Order, OrderId, SymbolsInfo, Trade
 )
-from exchanges.mexc.ws import MexcWebsocketPrivate
-from exchanges.mexc.rest import MexcPrivateSpotRest
+from exchanges.mexc.ws.private.ws_private import MexcWebsocketPrivate
+from exchanges.mexc.rest.rest_private import MexcPrivateSpotRest
 from core.transport.websocket.ws_client import WebSocketConfig
 from core.exceptions.exchange import BaseExchangeError
 from structs.config import ExchangeConfig
@@ -76,9 +76,10 @@ class MexcPrivateExchange(BasePrivateExchangeInterface):
         # Initialize private WebSocket client
         self._private_websocket = MexcWebsocketPrivate(
             private_rest_client=self._private_rest,
-            websocket_config=ws_config,
+            ws_config=ws_config,
+            order_handler=self._handle_order_update,
             balance_handler=self._handle_balance_update,
-            trade_handler=self._handle_order_update
+            trade_handler=self._handle_trade_update
         )
 
 
@@ -89,7 +90,7 @@ class MexcPrivateExchange(BasePrivateExchangeInterface):
         self.logger.info("MEXC Private Exchange initialized with trading capabilities")
     
     # === Public Interface Delegation ===
-    # Delegate all public operations to the composed public exchange
+    # Delegate all public operations to the base public exchange
     
     async def initialize(self, symbols_info: SymbolsInfo) -> None:
         """
@@ -310,24 +311,34 @@ class MexcPrivateExchange(BasePrivateExchangeInterface):
         self._balances_dict.update(balances)
         self._last_balance_update = time.perf_counter()
     
-    async def _handle_order_update(self, symbol: Symbol, order: Order) -> None:
+    async def _handle_order_update(self, order: Order) -> None:
         """
         Handle real-time order updates from WebSocket.
         
         HFT COMPLIANT: Sub-millisecond processing.
         """
-        if symbol not in self._open_orders_dict:
-            self._open_orders_dict[symbol] = []
+        if order.symbol and order.symbol not in self._open_orders_dict:
+            self._open_orders_dict[order.symbol] = []
         
         # Update or add order
-        existing_orders = self._open_orders_dict[symbol]
-        for i, existing_order in enumerate(existing_orders):
-            if existing_order.order_id == order.order_id:
-                existing_orders[i] = order
-                return
+        if order.symbol:
+            existing_orders = self._open_orders_dict[order.symbol]
+            for i, existing_order in enumerate(existing_orders):
+                if existing_order.order_id == order.order_id:
+                    existing_orders[i] = order
+                    return
+            
+            # Add new order
+            existing_orders.append(order)
+
+    async def _handle_trade_update(self, trade: Trade) -> None:
+        """
+        Handle real-time trade updates from WebSocket.
         
-        # Add new order
-        existing_orders.append(order)
+        HFT COMPLIANT: Sub-millisecond processing.
+        """
+        # Log trade execution for audit trail
+        self.logger.debug(f"Trade executed: {trade.side.name} {trade.amount} at {trade.price}")
     
     def get_trading_statistics(self) -> Dict[str, any]:
         """Get trading performance statistics."""

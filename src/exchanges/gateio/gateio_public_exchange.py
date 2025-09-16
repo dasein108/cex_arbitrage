@@ -11,7 +11,7 @@ import logging
 import time
 from typing import List, Dict, Optional, Set
 
-from core.cex.composed import BasePublicExchangeInterface
+from core.cex.base import BasePublicExchangeInterface
 from structs.exchange import (
     OrderBook, Symbol, SymbolInfo, SymbolsInfo, 
     ExchangeStatus

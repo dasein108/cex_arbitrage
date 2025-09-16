@@ -31,7 +31,7 @@ from typing import Dict, List, Optional, Set
 from contextlib import asynccontextmanager
 from types import MappingProxyType
 
-from core.cex.composed import BasePrivateExchangeInterface
+from core.cex.base import BasePrivateExchangeInterface
 from structs.exchange import (
     OrderBook, Symbol, SymbolInfo, SymbolsInfo, AssetBalance, AssetName, Order, OrderId, 
     OrderType, Side, TimeInForce, ExchangeStatus, Position

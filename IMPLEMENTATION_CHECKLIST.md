@@ -16,13 +16,13 @@ This checklist provides step-by-step instructions for implementing the separated
 **Current line 8**:
 
 ```python
-from core.cex.composed import BaseExchangeInterface
+from core.cex.base import BaseExchangeInterface
 ```
 
 **Replace with**:
 
 ```python
-from core.cex.composed import BasePrivateExchangeInterface
+from core.cex.base import BasePrivateExchangeInterface
 ```
 
 **Current line 19**:
@@ -48,13 +48,13 @@ class MexcExchange(BasePrivateExchangeInterface):
 **Current line 47**:
 
 ```python
-from core.cex.composed import BaseExchangeInterface
+from core.cex.base import BaseExchangeInterface
 ```
 
 **Replace with**:
 
 ```python
-from core.cex.composed import BasePublicExchangeInterface
+from core.cex.base import BasePublicExchangeInterface
 ```
 
 **Update all type hints throughout file**:
@@ -67,13 +67,13 @@ from core.cex.composed import BasePublicExchangeInterface
 **Current line 15**:
 
 ```python
-from core.cex.composed import BaseExchangeInterface
+from core.cex.base import BaseExchangeInterface
 ```
 
 **Replace with**:
 
 ```python
-from core.cex.composed import BasePublicExchangeInterface
+from core.cex.base import BasePublicExchangeInterface
 ```
 
 **Current line 63**:
@@ -94,13 +94,13 @@ def __init__(self, exchanges: Dict[str, BasePublicExchangeInterface]):
 **Current line 42**:
 
 ```python
-from core.cex.composed import BaseExchangeInterface
+from core.cex.base import BaseExchangeInterface
 ```
 
 **Replace with**:
 
 ```python
-from core.cex.composed import BasePrivateExchangeInterface
+from core.cex.base import BasePrivateExchangeInterface
 ```
 
 **Update all type hints**:
@@ -113,13 +113,13 @@ from core.cex.composed import BasePrivateExchangeInterface
 **Current line 49**:
 
 ```python
-from core.cex.composed import BaseExchangeInterface
+from core.cex.base import BaseExchangeInterface
 ```
 
 **Replace with**:
 
 ```python
-from core.cex.composed import BasePrivateExchangeInterface
+from core.cex.base import BasePrivateExchangeInterface
 ```
 
 ### 3.3 Recovery Manager
@@ -128,13 +128,13 @@ from core.cex.composed import BasePrivateExchangeInterface
 **Current line 48**:
 
 ```python
-from core.cex.composed import BaseExchangeInterface
+from core.cex.base import BaseExchangeInterface
 ```
 
 **Replace with**:
 
 ```python
-from core.cex.composed import BasePrivateExchangeInterface
+from core.cex.base import BasePrivateExchangeInterface
 ```
 
 ## Phase 4: Trading Components
@@ -145,13 +145,13 @@ from core.cex.composed import BasePrivateExchangeInterface
 **Current line 48**:
 
 ```python
-from core.cex.composed import BaseExchangeInterface
+from core.cex.base import BaseExchangeInterface
 ```
 
 **Replace with**:
 
 ```python
-from core.cex.composed import BasePrivateExchangeInterface
+from core.cex.base import BasePrivateExchangeInterface
 ```
 
 ### 4.2 Simple Engine
@@ -160,13 +160,13 @@ from core.cex.composed import BasePrivateExchangeInterface
 **Current line 19**:
 
 ```python
-from core.cex.composed import BaseExchangeInterface
+from core.cex.base import BaseExchangeInterface
 ```
 
 **Replace with**:
 
 ```python
-from core.cex.composed import BasePrivateExchangeInterface
+from core.cex.base import BasePrivateExchangeInterface
 ```
 
 ### 4.3 Controller
@@ -175,13 +175,13 @@ from core.cex.composed import BasePrivateExchangeInterface
 **Current line 20**:
 
 ```python
-from core.cex.composed import BaseExchangeInterface
+from core.cex.base import BaseExchangeInterface
 ```
 
 **Replace with**:
 
 ```python
-from core.cex.composed import BasePrivateExchangeInterface
+from core.cex.base import BasePrivateExchangeInterface
 ```
 
 ### 4.4 Orchestrator
@@ -190,13 +190,13 @@ from core.cex.composed import BasePrivateExchangeInterface
 **Current line 54**:
 
 ```python
-from core.cex.composed import BaseExchangeInterface
+from core.cex.base import BaseExchangeInterface
 ```
 
 **Replace with**:
 
 ```python
-from core.cex.composed import BasePrivateExchangeInterface
+from core.cex.base import BasePrivateExchangeInterface
 ```
 
 ## Phase 5: Factory Components
@@ -207,13 +207,13 @@ from core.cex.composed import BasePrivateExchangeInterface
 **Current line 22**:
 
 ```python
-from core.cex.composed import BaseExchangeInterface
+from core.cex.base import BaseExchangeInterface
 ```
 
 **Replace with**:
 
 ```python
-from core.cex.composed import BasePrivateExchangeInterface
+from core.cex.base import BasePrivateExchangeInterface
 ```
 
 **Update return type annotations**:
@@ -226,13 +226,13 @@ from core.cex.composed import BasePrivateExchangeInterface
 **Current line 13**:
 
 ```python
-from core.cex.composed import BaseExchangeInterface
+from core.cex.base import BaseExchangeInterface
 ```
 
 **Replace with**:
 
 ```python
-from core.cex.composed import BasePrivateExchangeInterface
+from core.cex.base import BasePrivateExchangeInterface
 ```
 
 ## Phase 6: Update Interface Package
@@ -243,50 +243,50 @@ from core.cex.composed import BasePrivateExchangeInterface
 **Current content**:
 
 ```python
-from core.cex.composed import BaseExchangeInterface
+from core.cex.base import BaseExchangeInterface
 from core.cex.rest import PublicExchangeSpotRestInterface
 from core.cex.rest.spot.base_rest_spot_private import PrivateExchangeSpotRestInterface
 from core.transport.websocket.ws_client import (
-    WebsocketClient,
-    WebSocketConfig,
-    SubscriptionAction
+   WebsocketClient,
+   WebSocketConfig,
+   SubscriptionAction
 )
 from core.cex import ConnectionState
 
 __all__ = [
-    "BaseExchangeInterface",
-    "PublicExchangeSpotRestInterface",
-    "PrivateExchangeSpotRestInterface",
-    "WebsocketClient",
-    "WebSocketConfig",
-    "SubscriptionAction",
+   "BaseExchangeInterface",
+   "PublicExchangeSpotRestInterface",
+   "PrivateExchangeSpotRestInterface",
+   "WebsocketClient",
+   "WebSocketConfig",
+   "SubscriptionAction",
 ]
 ```
 
 **Replace with**:
 
 ```python
-from core.cex.composed import BaseExchangeInterface
-from core.cex.composed import BasePublicExchangeInterface
-from core.cex.composed import BasePrivateExchangeInterface
+from core.cex.base import BaseExchangeInterface
+from core.cex.base import BasePublicExchangeInterface
+from core.cex.base import BasePrivateExchangeInterface
 from core.cex.rest import PublicExchangeSpotRestInterface
 from core.cex.rest.spot.base_rest_spot_private import PrivateExchangeSpotRestInterface
 from core.transport.websocket.ws_client import (
-    WebsocketClient,
-    WebSocketConfig,
-    SubscriptionAction
+   WebsocketClient,
+   WebSocketConfig,
+   SubscriptionAction
 )
 from core.cex import ConnectionState
 
 __all__ = [
-    "BaseExchangeInterface",  # Base cex for all exchanges
-    "BasePublicExchangeInterface",  # Public market data operations
-    "BasePrivateExchangeInterface",  # Private trading operations
-    "PublicExchangeSpotRestInterface",  # REST-specific public
-    "PrivateExchangeSpotRestInterface",  # REST-specific private
-    "WebsocketClient",
-    "WebSocketConfig",
-    "SubscriptionAction",
+   "BaseExchangeInterface",  # Base cex for all exchanges
+   "BasePublicExchangeInterface",  # Public market data operations
+   "BasePrivateExchangeInterface",  # Private trading operations
+   "PublicExchangeSpotRestInterface",  # REST-specific public
+   "PrivateExchangeSpotRestInterface",  # REST-specific private
+   "WebsocketClient",
+   "WebSocketConfig",
+   "SubscriptionAction",
 ]
 ```
 

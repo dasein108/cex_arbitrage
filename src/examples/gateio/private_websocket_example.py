@@ -359,4 +359,6 @@ def main():
 
 
 if __name__ == "__main__":
+    from core.register import install_exchange_dependencies
+    install_exchange_dependencies()
     main()

@@ -27,7 +27,7 @@ from typing import Dict, List, Optional
 from datetime import datetime
 import msgspec
 
-from exchanges.mexc.common.mexc_structs import (
+from exchanges.mexc.common.structs import (
     MexcSymbolResponse, MexcExchangeInfoResponse, 
     MexcOrderBookResponse, MexcTradeResponse, MexcServerTimeResponse
 )

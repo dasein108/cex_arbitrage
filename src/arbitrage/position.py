@@ -45,7 +45,7 @@ from .structures import (
 )
 
 from structs.exchange import Symbol, OrderSide
-from core.cex.composed import BasePrivateExchangeInterface
+from core.cex.base import BasePrivateExchangeInterface
 from structs.exchange import ExchangeName
 from core.exceptions.exchange import PositionManagementError
 

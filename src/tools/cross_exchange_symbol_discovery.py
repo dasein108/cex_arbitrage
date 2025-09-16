@@ -33,7 +33,7 @@ sys.path.insert(0, str(project_root))
 
 # Direct imports from src directory
 from structs.exchange import Symbol, SymbolInfo, AssetName, ExchangeName
-from exchanges.mexc.rest.mexc_public import MexcPublicSpotRest
+from exchanges.mexc.rest.rest_public import MexcPublicSpotRest
 from exchanges.gateio.rest.gateio_public import GateioPublicExchangeSpotRest
 from exchanges.gateio.rest.gateio_futures_public import GateioPublicFuturesExchangeSpotRest
 from core.exceptions.exchange import BaseExchangeError

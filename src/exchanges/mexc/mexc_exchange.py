@@ -3,11 +3,11 @@ import time
 from typing import List, Dict, Optional, Set
 from contextlib import asynccontextmanager
 
-from core.cex.composed import BasePrivateExchangeInterface
+from core.cex.base import BasePrivateExchangeInterface
 from structs.exchange import OrderBook, Symbol, SymbolInfo, SymbolsInfo, AssetBalance, AssetName, Order, OrderId, OrderType, Side, TimeInForce, ExchangeStatus, Position
 from exchanges.mexc.ws import MexcWebsocketPublic, MexcWebsocketPrivate
 from exchanges.mexc.rest.mexc_private import MexcPrivateSpotRest
-from exchanges.mexc.rest.mexc_public import MexcPublicSpotRest
+from exchanges.mexc.rest.rest_public import MexcPublicSpotRest
 from core.transport.websocket.ws_client import WebSocketConfig
 from core.cex.websocket.structs import ConnectionState
 from core.exceptions.exchange import BaseExchangeError

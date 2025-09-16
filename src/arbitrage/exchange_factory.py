@@ -19,7 +19,7 @@ from core.exceptions.exchange import BaseExchangeError
 from exchanges.mexc.mexc_exchange import MexcExchange
 from exchanges.gateio.gateio_exchange import GateioExchange
 from structs.exchange import Symbol, AssetName, ExchangeStatus
-from core.cex.composed.base_private_exchange import BasePrivateExchangeInterface
+from core.cex.base.base_private_exchange import BasePrivateExchangeInterface
 
 logger = logging.getLogger(__name__)
 

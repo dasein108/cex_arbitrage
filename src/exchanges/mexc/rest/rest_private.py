@@ -28,7 +28,7 @@ import time
 from typing import Dict, List, Optional, Any, Tuple
 import msgspec
 
-from exchanges.mexc.common.mexc_structs import (
+from exchanges.mexc.common.structs import (
     MexcAccountResponse, MexcOrderResponse
 )
 from structs.exchange import (

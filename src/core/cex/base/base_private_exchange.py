@@ -3,7 +3,7 @@ from typing import Dict, List
 from structs.exchange import (Symbol, SymbolsInfo,
                               AssetBalance, Order, OrderBook)
 from structs.config import ExchangeConfig
-from core.cex.composed.base_exchange import BaseExchangeInterface
+from core.cex.base.base_exchange import BaseExchangeInterface
 
 
 class BasePrivateExchangeInterface(BaseExchangeInterface):

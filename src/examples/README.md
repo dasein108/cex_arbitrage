@@ -41,7 +41,7 @@ Complete validation of MEXC public API endpoints.
 """MEXC Public API Integration Check"""
 import asyncio
 from structs import Symbol, AssetName
-from exchanges.mexc.rest.mexc_public import MexcPublicSpotRest
+from exchanges.mexc.rest.rest_public import MexcPublicSpotRest
 
 
 async def main():
@@ -245,7 +245,7 @@ import asyncio
 import logging
 from typing import Dict, List
 from structs import Symbol, AssetName, OrderBook, Trade
-from exchanges.mexc.ws.mexc_ws_public import MexcWebsocketPublic
+from exchanges.mexc.ws.public.mexc_ws_public import MexcWebsocketPublic
 from core.transport.websocket.ws_client import WebSocketConfig
 
 
@@ -389,7 +389,7 @@ class RobustWebSocketManager:
 
 ```python
 import pytest
-from exchanges.mexc.rest.mexc_public import MexcPublicSpotRest
+from exchanges.mexc.rest.rest_public import MexcPublicSpotRest
 from structs import Symbol, AssetName
 
 
