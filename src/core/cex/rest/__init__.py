@@ -1,12 +1,12 @@
 """
 CEX REST interface exports.
 
-This module provides access to all REST interfaces for cryptocurrency exchanges.
+This module provides access to all REST interfaces for cryptocurrency cex.
 Includes spot trading, futures trading, and common base interfaces.
 """
 
 # Common base interfaces
-from .common import BaseExchangeRestInterface
+from .base_rest import BaseExchangeRestInterface
 
 # Spot trading interfaces
 from .spot import (

@@ -300,7 +300,7 @@ from core.cex.rest import PublicExchangeSpotRestInterface
 from core.cex.rest.spot.base_rest_spot_private import PrivateExchangeSpotRestInterface
 
 __all__ = [
-    "BaseExchangeInterface",  # Base for all exchanges
+    "BaseExchangeInterface",  # Base for all cex
     "BasePublicExchangeInterface",  # Public market data operations
     "BasePrivateExchangeInterface",  # Private trading operations
     "PublicExchangeSpotRestInterface",  # REST-specific public

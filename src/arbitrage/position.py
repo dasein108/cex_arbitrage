@@ -2,10 +2,10 @@
 HFT Arbitrage Position Manager
 
 Ultra-high-performance position tracking and management for atomic arbitrage
-operations across multiple exchanges with comprehensive recovery capabilities.
+operations across multiple cex with comprehensive recovery capabilities.
 
 Architecture:
-- Atomic position coordination across exchanges
+- Atomic position coordination across cex
 - Real-time position tracking and aging
 - Automatic hedge ratio maintenance
 - Comprehensive recovery from partial executions
@@ -13,7 +13,7 @@ Architecture:
 - HFT-compliant position data (no caching)
 
 Core Responsibilities:
-- Track all positions across multiple exchanges
+- Track all positions across multiple cex
 - Coordinate atomic spot + futures hedge operations
 - Monitor position health and aging
 - Handle partial execution recovery
@@ -75,11 +75,11 @@ class PositionManager:
     """
     Comprehensive position management for HFT arbitrage operations.
     
-    Manages all positions across multiple exchanges with atomic operation
+    Manages all positions across multiple cex with atomic operation
     coordination, hedge maintenance, and recovery capabilities.
     
     HFT Design:
-    - Real-time position tracking across all exchanges
+    - Real-time position tracking across all cex
     - Zero-copy data structures for optimal performance
     - Atomic operation coordination for spot + futures
     - No position data caching per HFT compliance requirements
@@ -104,7 +104,7 @@ class PositionManager:
         - Initialize recovery and cleanup procedures
         
         Questions:
-        - Should we pre-load existing positions from exchanges?
+        - Should we pre-load existing positions from cex?
         - How to handle position synchronization during startup?
         - Should we validate exchange position data against local tracking?
         
@@ -136,7 +136,7 @@ class PositionManager:
         self._orphaned_positions: Set[str] = set()
         self._positions_requiring_recovery: Set[str] = set()
         
-        logger.info(f"Position manager initialized for {len(private_exchanges)} exchanges")
+        logger.info(f"Position manager initialized for {len(private_exchanges)} cex")
     
     async def start_monitoring(self) -> None:
         """
@@ -147,7 +147,7 @@ class PositionManager:
         Logic Requirements:
         - Start position aging and health monitoring
         - Begin real-time P&L tracking
-        - Initialize position synchronization with exchanges
+        - Initialize position synchronization with cex
         - Set up stale position detection
         - Configure recovery alerting and automation
         
@@ -165,7 +165,7 @@ class PositionManager:
             self._monitoring_task = asyncio.create_task(self._monitoring_loop())
             
             # TODO: Initialize exchange position synchronization
-            # - Load existing positions from all exchanges
+            # - Load existing positions from all cex
             # - Reconcile with local position tracking
             # - Set up real-time position updates
             # - Initialize position health monitoring

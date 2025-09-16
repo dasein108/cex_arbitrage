@@ -11,7 +11,7 @@ Key Features:
 - Simple exponential backoff retry logic
 - Aggressive timeout configurations for trading
 - Memory-efficient request/response handling
-- Generic authentication suitable for most exchanges
+- Generic authentication suitable for most cex
 
 Performance Targets:
 - Time Complexity: O(1) for all core operations
@@ -30,18 +30,11 @@ import aiohttp
 
 import msgspec
 from core.exceptions.exchange import BaseExchangeError, RateLimitErrorBase, ExchangeConnectionError
+from core.transport.rest.structs import HTTPMethod
 
 # Use msgspec for maximum JSON performance
 # Note: msgspec.json.encode returns bytes, but aiohttp expects string serializer
 MSGSPEC_ENCODER = lambda obj: msgspec.json.encode(obj).decode('utf-8')
-
-
-class HTTPMethod(Enum):
-    """HTTP methods with performance-optimized string values."""
-    GET = "GET"
-    POST = "POST"
-    PUT = "PUT"
-    DELETE = "DELETE"
 
 
 class RestConfig(msgspec.Struct):
@@ -190,7 +183,7 @@ class RestClient:
                         request_kwargs['json'] = json_data
                     elif request_params and method != HTTPMethod.GET:
                         # For POST/PUT/DELETE with parameters, use query parameters by default
-                        # Individual exchanges can override this behavior via headers/json_data
+                        # Individual cex can override this behavior via headers/json_data
                         request_kwargs['params'] = request_params
 
                     # Execute request

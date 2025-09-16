@@ -50,7 +50,7 @@ async def example_date_range_download():
 
 
 async def example_multiple_downloads():
-    """Example: Download from multiple exchanges concurrently"""
+    """Example: Download from multiple cex concurrently"""
     print("\n=== Multiple Downloads Example ===")
     
     downloader = CandlesDownloader(output_dir="./data")
@@ -103,12 +103,12 @@ async def example_custom_filename():
 
 
 def example_info_methods():
-    """Example: Get information about supported exchanges and timeframes"""
+    """Example: Get information about supported cex and timeframes"""
     print("\n=== Available Options ===")
     
     downloader = CandlesDownloader()
     
-    print("Supported exchanges:")
+    print("Supported cex:")
     for exchange in downloader.list_available_exchanges():
         print(f"  - {exchange}")
     

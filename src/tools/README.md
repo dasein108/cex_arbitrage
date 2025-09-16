@@ -273,7 +273,7 @@ optional arguments:
 Here's the complete 3-step arbitrage analysis workflow:
 
 ```bash
-# Step 1: Discover symbols available on multiple exchanges
+# Step 1: Discover symbols available on multiple cex
 python cross_exchange_symbol_discovery.py
 # Output: symbol_discovery_detailed_YYYYMMDD_HHMMSS.json
 #         arbitrage_opportunities.md

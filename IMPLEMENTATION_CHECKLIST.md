@@ -279,7 +279,7 @@ from core.transport.websocket.ws_client import (
 from core.cex import ConnectionState
 
 __all__ = [
-   "BaseExchangeInterface",  # Base cex for all exchanges
+   "BaseExchangeInterface",  # Base cex for all cex
    "BasePublicExchangeInterface",  # Public market data operations
    "BasePrivateExchangeInterface",  # Private trading operations
    "PublicExchangeSpotRestInterface",  # REST-specific public

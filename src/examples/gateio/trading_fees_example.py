@@ -20,7 +20,7 @@ import logging
 import os
 from typing import Optional
 
-from exchanges.gateio.rest.gateio_private import GateioPrivateExchangeSpot
+from cex.gateio.rest.gateio_private import GateioPrivateExchangeSpot
 from structs.exchange import TradingFee, Symbol, AssetName
 from core.exceptions.exchange import BaseExchangeError
 
@@ -207,7 +207,7 @@ class TradingFeesDemo:
         
         # Example arbitrage scenario parameters
         trade_amount_usdt = 1000  # $1000 trade size
-        spread_percentage = 0.25  # 0.25% spread between exchanges
+        spread_percentage = 0.25  # 0.25% spread between cex
         
         # Calculate trading costs
         entry_cost = trade_amount_usdt * trading_fee.taker_rate  # Market buy (taker)

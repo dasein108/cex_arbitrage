@@ -1,7 +1,7 @@
 """
 Symbol Resolver and Auto-Discovery System
 
-Automatically fetches and maps symbol information from exchanges using get_exchange_info().
+Automatically fetches and maps symbol information from cex using get_exchange_info().
 Eliminates need for manual configuration of symbol details.
 
 HFT COMPLIANT: Symbol info cached at startup, no runtime API calls.
@@ -21,7 +21,7 @@ logger = logging.getLogger(__name__)
 
 @dataclass
 class SymbolMatch:
-    """Result of symbol matching across exchanges."""
+    """Result of symbol matching across cex."""
     base_asset: str
     quote_asset: str
     exchanges: Dict[str, SymbolInfo] = field(default_factory=dict)
@@ -41,7 +41,7 @@ class SymbolMatch:
             configs[exchange_name] = ExchangePairConfig(
                 symbol=symbol_str,
                 min_amount=Decimal(str(symbol_info.min_base_amount)) if symbol_info.min_base_amount else Decimal('0.0001'),
-                max_amount=Decimal('1000000'),  # Default max, exchanges rarely provide this
+                max_amount=Decimal('1000000'),  # Default max, cex rarely provide this
                 min_notional=Decimal(str(symbol_info.min_quote_amount)) if symbol_info.min_quote_amount else None,
                 price_precision=symbol_info.quote_precision,
                 amount_precision=symbol_info.base_precision,
@@ -55,7 +55,7 @@ class SymbolMatch:
 
 class SymbolResolver:
     """
-    Resolves and auto-discovers symbol information from exchanges.
+    Resolves and auto-discovers symbol information from cex.
     
     HFT COMPLIANT: All symbol info fetched once at startup and cached.
     """
@@ -72,10 +72,10 @@ class SymbolResolver:
         
     async def initialize(self) -> None:
         """
-        Fetch and cache all symbol information from exchanges.
+        Fetch and cache all symbol information from cex.
         
         HFT COMPLIANT: One-time initialization, no runtime API calls.
-        Uses the get_exchange_info() method from exchanges.
+        Uses the get_exchange_info() method from cex.
         """
         if self._initialized:
             logger.debug("Symbol resolver already initialized")
@@ -104,7 +104,7 @@ class SymbolResolver:
         self._build_performance_caches()
         
         self._initialized = True
-        logger.info(f"Symbol resolver initialized with {len(self._symbol_cache)} exchanges, "
+        logger.info(f"Symbol resolver initialized with {len(self._symbol_cache)} cex, "
                    f"{len(self._symbol_lookup)} unique symbols, "
                    f"{len(self._common_symbols_cache or [])} common symbols")
     
@@ -146,7 +146,7 @@ class SymbolResolver:
         if not self._symbol_lookup:
             return []
         
-        # Get all symbols that appear on exactly len(exchanges) exchanges
+        # Get all symbols that appear on exactly len(cex) cex
         required_exchange_count = len([ex for ex in self.exchanges.values() if ex is not None])
         
         common_pairs = []
@@ -164,7 +164,7 @@ class SymbolResolver:
     
     def resolve_symbol(self, base_asset: str, quote_asset: str) -> SymbolMatch:
         """
-        Resolve a trading pair across all exchanges.
+        Resolve a trading pair across all cex.
         
         HFT OPTIMIZED: O(1) lookup using pre-computed hash table.
         
@@ -173,7 +173,7 @@ class SymbolResolver:
             quote_asset: Quote asset (e.g., "USDT")
             
         Returns:
-            SymbolMatch with info from all exchanges that support this pair
+            SymbolMatch with info from all cex that support this pair
         """
         if not self._initialized:
             raise RuntimeError("Symbol resolver not initialized - call initialize() first")
@@ -186,11 +186,11 @@ class SymbolResolver:
         
         if exchanges_info:
             match.exchanges = exchanges_info.copy()
-            logger.debug(f"Found {base_asset}/{quote_asset} on {len(exchanges_info)} exchanges: {list(exchanges_info.keys())}")
+            logger.debug(f"Found {base_asset}/{quote_asset} on {len(exchanges_info)} cex: {list(exchanges_info.keys())}")
         else:
             logger.debug(f"Symbol {base_asset}/{quote_asset} not found on any exchange")
         
-        # Validate we have at least 2 exchanges for arbitrage
+        # Validate we have at least 2 cex for arbitrage
         if len(match.exchanges) < 2:
             match.is_valid = False
             match.errors.append(
@@ -217,7 +217,7 @@ class SymbolResolver:
     
     def get_common_symbols(self) -> List[Tuple[str, str]]:
         """
-        Get list of symbols available on ALL exchanges.
+        Get list of symbols available on ALL cex.
         
         HFT OPTIMIZED: O(1) lookup using pre-computed cache.
         
@@ -247,7 +247,7 @@ class SymbolResolver:
             logger.error(f"Invalid pair config: missing base_asset or quote_asset")
             return None
         
-        # Resolve symbol across exchanges
+        # Resolve symbol across cex
         match = self.resolve_symbol(base_asset, quote_asset)
         
         if not match.is_valid:
@@ -313,5 +313,5 @@ class SymbolResolver:
         if formatter:
             return formatter(base, quote)
         
-        # Default format for unknown exchanges
+        # Default format for unknown cex
         return f"{base}{quote}"

@@ -18,7 +18,8 @@ from core.cex.websocket.strategies import (
 )
 from core.cex.websocket.structs import MessageType, SubscriptionAction, ParsedMessage, WebSocketManagerConfig, \
     PerformanceMetrics
-from core.transport.websocket.ws_client import WebSocketConfig, WebsocketClient, ConnectionState
+from core.transport.websocket.ws_client import WebSocketConfig, WebsocketClient
+from core.transport.websocket.structs import ConnectionState
 from core.exceptions.exchange import BaseExchangeError
 
 

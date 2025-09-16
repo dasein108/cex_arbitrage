@@ -173,7 +173,7 @@ scripts/verify_interface_compliance.py your_exchange
 pytest tests/performance/test_your_exchange.py --benchmark
 
 # Integration tests
-pytest tests/exchanges/your_exchange/ --integration
+pytest tests/cex/your_exchange/ --integration
 ```
 
 See **`INTERFACE_STANDARDS.md`** for complete implementation guidelines.

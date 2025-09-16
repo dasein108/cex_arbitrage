@@ -1,6 +1,6 @@
 from abc import abstractmethod
 from typing import Dict, List, Optional, Callable, Tuple, Any
-from core.cex.rest.common.base_rest import BaseExchangeRestInterface
+from core.cex.rest.base_rest import BaseExchangeRestInterface
 from structs.exchange import (
     Symbol,
     Order,
@@ -12,8 +12,9 @@ from structs.exchange import (
     TimeInForce
 )
 
-from structs.config import ExchangeConfig
-from core.transport.rest.rest_client import RestConfig
+from core.config.structs import ExchangeConfig
+from core.transport.rest.structs import RestConfig
+
 
 class PrivateExchangeSpotRestInterface(BaseExchangeRestInterface):
     """Abstract cex for private exchange operations (trading, account management)"""

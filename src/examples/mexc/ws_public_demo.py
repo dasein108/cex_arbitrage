@@ -23,8 +23,8 @@ from typing import List, Dict
 # Import strategy components directly
 from core.cex.websocket.strategies import WebSocketStrategySet
 from core.cex.websocket.ws_manager import WebSocketManager, WebSocketManagerConfig
-from exchanges.mexc.ws.public.parser import MexcPublicMessageParser
-from exchanges.mexc.ws.public.ws_strategies import MexcPublicConnectionStrategy, MexcPublicSubscriptionStrategy
+from cex.mexc.ws.public.ws_message_parser import MexcPublicMessageParser
+from cex.mexc.ws.public.ws_strategies import MexcPublicConnectionStrategy, MexcPublicSubscriptionStrategy
 
 # Set up logging
 logging.basicConfig(level=logging.DEBUG)
@@ -39,7 +39,7 @@ class TestWebSocketClient:
         self.trades_handler = trades_handler
         
         # Get MEXC exchange config for strategy
-        from config import get_exchange_config_struct
+        from core.config.config import get_exchange_config_struct
         mexc_config = get_exchange_config_struct("mexc")
         
         # Create strategy set for MEXC public WebSocket

@@ -8,18 +8,7 @@ from websockets import connect #, State
 import msgspec
 
 from core.exceptions.exchange import BaseExchangeError
-
-
-class ConnectionState(Enum):
-    """WebSocket connection states"""
-    DISCONNECTED = "disconnected"
-    CONNECTING = "connecting"
-    CONNECTED = "connected"
-    RECONNECTING = "reconnecting"
-    ERROR = "error"
-    CLOSING = "closing"
-    CLOSED = "closed"
-
+from core.transport.websocket.structs import ConnectionState
 
 
 class WebSocketConfig(msgspec.Struct):

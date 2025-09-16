@@ -30,7 +30,7 @@ from .structures import (
 )
 from .correlation import CorrelationManager
 from .transport import CompositeTransport, FileTransport
-from core.exceptions.common import LoggingDisabledException
+from core.exceptions.system import LoggingDisabledException
 
 
 class BufferPool:

@@ -1,7 +1,7 @@
 from abc import abstractmethod
 from datetime import datetime
 from typing import Dict, List, Optional, Callable
-from core.cex.rest.common.base_rest import BaseExchangeRestInterface
+from core.cex.rest.base_rest import BaseExchangeRestInterface
 from structs.exchange import (
     Symbol,
     SymbolInfo,
@@ -11,8 +11,9 @@ from structs.exchange import (
     KlineInterval
 )
 
-from structs.config import ExchangeConfig
-from core.transport.rest.rest_client import RestConfig
+from core.config.structs import ExchangeConfig
+from core.transport.rest.structs import RestConfig
+
 
 class PublicExchangeSpotRestInterface(BaseExchangeRestInterface):
     """Abstract cex for public exchange operations (market data)"""

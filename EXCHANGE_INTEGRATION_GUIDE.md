@@ -228,7 +228,7 @@ src/exchanges/{exchange_name}/
 #### 1. Unified Exchange Interface
 
 ```python
-# src/exchanges/{exchange}/exchange_exchange.py
+# src/cex/{exchange}/exchange_exchange.py
 from core.cex.base import BaseExchangeInterface
 
 
@@ -247,7 +247,7 @@ class ExchangeExchange(BaseExchangeInterface):
 #### 2. Public REST Interface
 
 ```python
-# src/exchanges/{exchange}/rest/{exchange}_public.py
+# src/cex/{exchange}/rest/{exchange}_public.py
 from core.cex.rest import PublicExchangeSpotRestInterface
 
 
@@ -269,7 +269,7 @@ class ExchangePublicExchange(PublicExchangeSpotRestInterface):
 #### 3. Private REST Interface
 
 ```python
-# src/exchanges/{exchange}/rest/{exchange}_private.py  
+# src/cex/{exchange}/rest/{exchange}_private.py  
 from core.cex.rest.spot.base_rest_spot_private import PrivateExchangeSpotRestInterface
 
 
@@ -290,7 +290,7 @@ class ExchangePrivateExchange(PrivateExchangeSpotRestInterface):
 #### 4. WebSocket Implementation
 
 ```python
-# src/exchanges/{exchange}/ws/{exchange}_ws_public.py
+# src/cex/{exchange}/ws/{exchange}_ws_public.py
 from core.cex.websocket import BaseExchangeWebsocketInterface
 
 
@@ -310,7 +310,7 @@ class ExchangeWebSocketPublic(BaseExchangeWebsocketInterface):
 
 #### Mapping Exchange Data to Unified Structures
 ```python
-# src/exchanges/{exchange}/common/{exchange}_mappings.py
+# src/cex/{exchange}/common/{exchange}_mappings.py
 class ExchangeMappings:
     """Bi-directional mappings between Exchange and unified formats"""
     
@@ -412,7 +412,7 @@ ORDER_TYPE_MAPPING = {
 
 #### 2.1 Configuration Setup
 ```python
-# src/exchanges/{exchange}/common/{exchange}_config.py
+# src/cex/{exchange}/common/{exchange}_config.py
 class ExchangeConfig:
     EXCHANGE_NAME = "EXCHANGE"
     BASE_URL = "https://api.exchange.com"
@@ -439,7 +439,7 @@ class ExchangeConfig:
 
 #### 2.2 Utility Functions Implementation
 ```python
-# src/exchanges/{exchange}/common/{exchange}_utils.py
+# src/cex/{exchange}/common/{exchange}_utils.py
 class ExchangeUtils:
     """High-performance utility functions with caching"""
     
@@ -478,7 +478,7 @@ class ExchangeUtils:
 
 #### 2.3 REST Implementation
 ```python
-# src/exchanges/{exchange}/rest/{exchange}_public.py
+# src/cex/{exchange}/rest/{exchange}_public.py
 class ExchangePublicExchange(PublicExchangeInterface):
     
     async def get_orderbook(self, symbol: Symbol, limit: int = 100) -> OrderBook:
@@ -505,7 +505,7 @@ class ExchangePublicExchange(PublicExchangeInterface):
 
 #### 2.4 WebSocket Implementation
 ```python
-# src/exchanges/{exchange}/ws/{exchange}_ws_public.py
+# src/cex/{exchange}/ws/{exchange}_ws_public.py
 class ExchangeWebSocketPublic(BaseExchangeWebsocketInterface):
     
     async def _on_message(self, message):
@@ -607,7 +607,7 @@ async def test_performance_requirements():
 
 #### 4.1 Documentation Creation
 ```python
-# Create src/exchanges/{exchange}/README.md
+# Create src/cex/{exchange}/README.md
 # Use MEXC README.md as template
 # Include:
 # - Exchange-specific implementation details
@@ -701,7 +701,7 @@ async def place_order(
 #### 4. Data Structure Compliance
 
 ```python
-# ONLY use unified structs from src/exchanges/cex/exchange.py
+# ONLY use unified structs from src/cex/cex/exchange.py
 from structs import (
     Symbol, OrderBook, OrderBookEntry, Order, AssetBalance,
     Side, OrderType, OrderStatus, TimeInForce
@@ -810,7 +810,7 @@ class OrderBookParser:
 
 #### Problem: Different Signature Methods
 ```python
-# Different exchanges use different signature schemes:
+# Different cex use different signature schemes:
 # - Binance: Query string + body + timestamp
 # - Coinbase: Timestamp + method + path + body  
 # - Kraken: Nonce + encoded parameters
@@ -833,7 +833,7 @@ class ExchangeAuthenticator:
             return self._binance_signature(params, timestamp)
         elif self.exchange_name == "COINBASE":
             return self._coinbase_signature(method, endpoint, params, timestamp)
-        # ... other exchanges
+        # ... other cex
     
     def _binance_signature(self, params: Dict, timestamp: int) -> str:
         """Binance HMAC-SHA256 signature"""
@@ -845,7 +845,7 @@ class ExchangeAuthenticator:
 
 #### Problem: Inconsistent Symbol Representations
 ```python
-# Different exchanges use different formats:
+# Different cex use different formats:
 # Binance: "BTCUSDT"
 # Coinbase: "BTC-USD"  
 # Kraken: "XXBTZUSD"
@@ -912,7 +912,8 @@ class ExchangeSymbolConverter:
 #### Solution: Unified Rate Limit Handler
 
 ```python
-from core.transport.rest.rest_client import RestClient, RestConfig
+from core.transport.rest.rest_client import RestClient
+from core.transport.rest.structs import RestConfig
 
 
 class ExchangeRateLimitConfig:
@@ -958,14 +959,15 @@ class ExchangePrivateExchange(PrivateExchangeInterface):
 #### Solution: Standardized WebSocket Manager
 
 ```python
-from core.transport.websocket.ws_client import WebsocketClient, WebSocketConfig
+from core.transport.websocket.ws_client import WebsocketClient
+from core.transport.websocket.structs import WebsocketConfig
 
 
 class ExchangeWebSocketManager:
     """Standardized WebSocket connection management"""
 
     def __init__(self, exchange_name: ExchangeName):
-        self.config = WebSocketConfig(
+        self.config = WebsocketConfig(
             url=self._get_websocket_url(),
             ping_interval=20,  # Exchange-specific
             ping_timeout=10,
@@ -980,7 +982,7 @@ class ExchangeWebSocketManager:
 
     def _get_websocket_url(self) -> str:
         """Get exchange-specific WebSocket URL"""
-        # Some exchanges require dynamic URL generation
+        # Some cex require dynamic URL generation
         return f"wss://stream.{self.exchange_name.lower()}.com/ws"
 
     async def subscribe_to_streams(self, streams: List[str]):
@@ -1411,23 +1413,23 @@ def get_performance_metrics(self) -> Dict[str, int]:
 #### Directory Structure Creation
 ```bash
 # Create complete exchange directory structure
-mkdir -p src/exchanges/{exchange_name}
-mkdir -p src/exchanges/{exchange_name}/common
-mkdir -p src/exchanges/{exchange_name}/rest
-mkdir -p src/exchanges/{exchange_name}/ws
+mkdir -p src/cex/{exchange_name}
+mkdir -p src/cex/{exchange_name}/common
+mkdir -p src/cex/{exchange_name}/rest
+mkdir -p src/cex/{exchange_name}/ws
 
 # Create init files
-touch src/exchanges/{exchange_name}/__init__.py
-touch src/exchanges/{exchange_name}/common/__init__.py
-touch src/exchanges/{exchange_name}/rest/__init__.py
-touch src/exchanges/{exchange_name}/ws/__init__.py
+touch src/cex/{exchange_name}/__init__.py
+touch src/cex/{exchange_name}/common/__init__.py
+touch src/cex/{exchange_name}/rest/__init__.py
+touch src/cex/{exchange_name}/ws/__init__.py
 ```
 
 #### Configuration Template
 
 ```python
-# src/exchanges/{exchange_name}/common/{exchange_name}_config.py
-from core.transport.rest.rest_client import RestConfig
+# src/cex/{exchange_name}/common/{exchange_name}_config.py
+from core.transport.rest.structs import RestConfig
 
 
 class ExchangeConfig:
@@ -1496,7 +1498,7 @@ class ExchangeConfig:
 #### Utilities Template
 
 ```python
-# src/exchanges/{exchange_name}/common/{exchange_name}_utils.py
+# src/cex/{exchange_name}/common/{exchange_name}_utils.py
 from typing import Dict
 from structs import Symbol, AssetName
 
@@ -1575,7 +1577,7 @@ COMMON_QUOTE_ASSETS = {"USDT", "BUSD", "BTC", "ETH", "USD", "EUR", "USDC"}
 #### Mappings Template
 
 ```python
-# src/exchanges/{exchange_name}/common/{exchange_name}_mappings.py
+# src/cex/{exchange_name}/common/{exchange_name}_mappings.py
 from structs import Side, OrderType, OrderStatus, TimeInForce
 
 
@@ -1658,7 +1660,7 @@ class ExchangeMappings:
 #### Public REST Implementation Template
 
 ```python
-# src/exchanges/{exchange_name}/rest/{exchange_name}_public.py
+# src/cex/{exchange_name}/rest/{exchange_name}_public.py
 import msgspec
 from typing import Dict, List, Optional
 from core.cex.rest import PublicExchangeSpotRestInterface
@@ -1823,7 +1825,7 @@ class ExchangePublic(PublicExchangeSpotRestInterface):
 #### Private REST Implementation Template
 
 ```python
-# src/exchanges/{exchange_name}/rest/{exchange_name}_private.py
+# src/cex/{exchange_name}/rest/{exchange_name}_private.py
 import hashlib
 import hmac
 import time
@@ -2166,12 +2168,12 @@ class ExchangePrivate(PrivateExchangeSpotRestInterface):
 #### WebSocket Implementation Template
 
 ```python
-# src/exchanges/{exchange_name}/ws/{exchange_name}_ws_public.py
+# src/cex/{exchange_name}/ws/{exchange_name}_ws_public.py
 import msgspec
 from typing import Dict, List, Any
 from core.cex.websocket import BaseExchangeWebsocketInterface, SubscriptionAction
 from structs import Symbol, OrderBook, OrderBookEntry, Trade, Side, ExchangeName
-from core.transport.websocket.ws_client import WebSocketConfig
+from core.transport.websocket.structs import WebsocketConfig
 from .common.
 
 {exchange_name}
@@ -2188,7 +2190,7 @@ class ExchangeWebSocketPublic(BaseExchangeWebsocketInterface):
     """Public WebSocket streams for Exchange"""
 
     def __init__(self, exchange: ExchangeName):
-        config = WebSocketConfig(
+        config = WebsocketConfig(
             url=ExchangeConfig.WEBSOCKET_URL,
             ping_interval=20,  # Customize based on exchange
             ping_timeout=10,
@@ -2339,7 +2341,7 @@ class ExchangeWebSocketPublic(BaseExchangeWebsocketInterface):
 #### Main Exchange Interface Template
 
 ```python
-# src/exchanges/{exchange_name}/{exchange_name}_exchange.py
+# src/cex/{exchange_name}/{exchange_name}_exchange.py
 from typing import Optional, List, Dict, Any
 from core.cex.base import BaseExchangeInterface
 from structs import Symbol, OrderBook, AssetBalance, Order, Side, OrderType, OrderId,
@@ -2383,7 +2385,7 @@ class ExchangeExchange(BaseExchangeInterface):
         self._balances_dict: Dict[AssetName, AssetBalance] = {}
         self._initialized = False
 
-        self.logger = logging.getLogger(f"exchanges.{self.exchange.lower()}")
+        self.logger = logging.getLogger(f"cex.{self.exchange.lower()}")
 
     # Implement BaseExchangeInterface properties
     @property

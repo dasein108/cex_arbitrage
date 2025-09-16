@@ -16,7 +16,7 @@ from dataclasses import dataclass, field
 
 class OpportunityType(IntEnum):
     """Types of arbitrage opportunities the engine can detect and execute."""
-    SPOT_SPOT = 1  # Price differences between spot markets on different exchanges
+    SPOT_SPOT = 1  # Price differences between spot markets on different cex
     SPOT_FUTURES_HEDGE = 2  # Spot vs futures arbitrage with hedging
     TRIANGULAR = 3  # Three-way arbitrage within single exchange
     FUNDING_RATE = 4  # Funding rate arbitrage in perpetual futures
@@ -24,7 +24,7 @@ class OpportunityType(IntEnum):
 
 
 class ExchangeName(IntEnum):
-    """Supported cryptocurrency exchanges."""
+    """Supported cryptocurrency cex."""
     MEXC = 1
     GATEIO = 2
     BINANCE = 3  # Future expansion
@@ -203,7 +203,7 @@ class ExchangePairConfig:
 @dataclass(frozen=True)
 class ArbitragePair:
     """
-    Definition of an arbitrage trading pair across multiple exchanges.
+    Definition of an arbitrage trading pair across multiple cex.
     
     HFT COMPLIANT: Immutable pair definition with pre-validated configurations.
     """
@@ -231,7 +231,7 @@ class ArbitragePair:
         
         # Exchange configuration validation
         if len(self.exchanges) < 2:
-            errors.append(f"At least 2 exchanges required for arbitrage, got {len(self.exchanges)}")
+            errors.append(f"At least 2 cex required for arbitrage, got {len(self.exchanges)}")
         
         for exchange_name, config in self.exchanges.items():
             config_errors = config.validate()
@@ -251,15 +251,15 @@ class ArbitragePair:
         return {exchange: config.symbol for exchange, config in self.exchanges.items()}
     
     def get_min_trade_amount(self) -> float:
-        """Get the minimum trade amount across all exchanges."""
+        """Get the minimum trade amount across all cex."""
         return max(config.min_amount for config in self.exchanges.values())
     
     def get_max_trade_amount(self) -> float:
-        """Get the maximum trade amount across all exchanges."""
+        """Get the maximum trade amount across all cex."""
         return min(config.max_amount for config in self.exchanges.values())
     
     def get_active_exchanges(self) -> List[str]:
-        """Get list of active exchanges for this pair."""
+        """Get list of active cex for this pair."""
         return [name for name, config in self.exchanges.items() if config.is_active]
 
 

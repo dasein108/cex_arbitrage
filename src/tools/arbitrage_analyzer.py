@@ -3,7 +3,7 @@
 Arbitrage Spread Analyzer
 
 Standalone script for analyzing collected arbitrage data and generating reports.
-Analyzes spread patterns between exchanges to identify profitable opportunities.
+Analyzes spread patterns between cex to identify profitable opportunities.
 
 Key Features:
 - Analyzes collected candles data from arbitrage_data_fetcher.py

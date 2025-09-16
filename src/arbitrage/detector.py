@@ -2,7 +2,7 @@
 HFT Arbitrage Opportunity Detector
 
 Ultra-high-performance real-time arbitrage opportunity detection across
-multiple cryptocurrency exchanges with sub-millisecond scanning capabilities.
+multiple cryptocurrency cex with sub-millisecond scanning capabilities.
 
 Architecture:
 - Real-time cross-exchange price monitoring
@@ -191,7 +191,7 @@ class OpportunityDetector:
 
         # Get from market data aggregator
         try:
-            # This should access the exchanges from the aggregator
+            # This should access the cex from the aggregator
             exchange_instance = getattr(self.market_data_aggregator, 'public_exchanges', {}).get(exchange)
             if exchange_instance:
                 self._exchange_connections[exchange] = exchange_instance
@@ -416,7 +416,7 @@ class OpportunityDetector:
         Logic Requirements:
         - Scan for cross-exchange spot arbitrage opportunities
         - Detect spot + futures hedge opportunities
-        - Identify triangular arbitrage within exchanges
+        - Identify triangular arbitrage within cex
         - Check funding rate arbitrage potential
         - Validate all opportunities for profitability and feasibility
         
@@ -432,7 +432,7 @@ class OpportunityDetector:
         HFT Critical: Use zero-copy data processing throughout
         """
         # TODO: Get latest market data (HFT COMPLIANT - NO CACHING)
-        # - Fetch current orderbooks for all symbols and exchanges
+        # - Fetch current orderbooks for all symbols and cex
         # - Get latest ticker data for price comparison
         # - Retrieve current market depth for liquidity validation
         # - Ensure all data is fresh (not cached)
@@ -548,7 +548,7 @@ class OpportunityDetector:
 
     async def _detect_triangular_arbitrage(self) -> None:
         """
-        Detect triangular arbitrage opportunities within exchanges.
+        Detect triangular arbitrage opportunities within cex.
         
         TODO: Implement triangular arbitrage detection.
         
@@ -579,7 +579,7 @@ class OpportunityDetector:
         TODO: Implement funding rate arbitrage detection.
         
         Logic Requirements:
-        - Monitor funding rates across exchanges
+        - Monitor funding rates across cex
         - Identify rate differentials and timing opportunities
         - Calculate optimal position sizes and durations
         - Account for margin requirements and costs
@@ -592,7 +592,7 @@ class OpportunityDetector:
 
     async def _compare_cross_exchange_prices(self, symbol: Symbol) -> List[PriceComparison]:
         """
-        Compare prices across all enabled exchanges for given symbol.
+        Compare prices across all enabled cex for given symbol.
         
         Performance Target: <5ms per symbol comparison
         HFT Compliance: Fresh data only, no caching
@@ -600,7 +600,7 @@ class OpportunityDetector:
         comparisons: List[PriceComparison] = []
         exchanges = self.config.enabled_exchanges
 
-        # Get fresh orderbook data from all exchanges (concurrent)
+        # Get fresh orderbook data from all cex (concurrent)
         orderbook_tasks = [
             self._get_current_orderbook(exchange, symbol)
             for exchange in exchanges
@@ -616,7 +616,7 @@ class OpportunityDetector:
         # Create all exchange pair combinations
         for i, buy_exchange in enumerate(exchanges):
             for j, sell_exchange in enumerate(exchanges):
-                if i != j:  # Different exchanges only
+                if i != j:  # Different cex only
                     buy_orderbook = orderbooks[i] if not isinstance(orderbooks[i], Exception) else None
                     sell_orderbook = orderbooks[j] if not isinstance(orderbooks[j], Exception) else None
 
@@ -683,7 +683,7 @@ class OpportunityDetector:
             if max_quantity <= 0.0:
                 return None
 
-            # Get trading fees for both exchanges (cached for performance)
+            # Get trading fees for both cex (cached for performance)
             buy_fees = self.get_trading_fees(symbol, buy_exchange)
             sell_fees = self.get_trading_fees(symbol, sell_exchange)
 
@@ -724,7 +724,7 @@ class OpportunityDetector:
         Logic Requirements:
         - Check profit margin against minimum threshold
         - Validate sufficient market depth for desired quantity
-        - Verify balances available on both exchanges
+        - Verify balances available on both cex
         - Consider execution timing and slippage estimates
         - Account for withdrawal/deposit limitations
         
@@ -732,7 +732,7 @@ class OpportunityDetector:
         1. Profit margin >= minimum threshold (from risk limits)
         2. Market depth >= minimum order size
         3. Account balances sufficient for execution
-        4. No recent execution failures on these exchanges
+        4. No recent execution failures on these cex
         5. Price data is fresh and not stale
         6. No exchange connectivity issues
         
@@ -968,7 +968,7 @@ class OpportunityDetector:
         TODO: Add new symbol to monitoring set.
         
         Logic Requirements:
-        - Validate symbol is supported across enabled exchanges
+        - Validate symbol is supported across enabled cex
         - Set up market data subscriptions
         - Load trading rules and fee schedules
         - Initialize detection for new symbol

@@ -303,7 +303,7 @@ YAML-based configuration management system for environment-specific settings.
 #### Usage Example
 
 ```python
-from config import config
+from core.config.config import config
 
 # Access configuration values
 base_url = config.MEXC_BASE_URL

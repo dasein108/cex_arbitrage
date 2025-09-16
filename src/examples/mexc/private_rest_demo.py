@@ -7,7 +7,7 @@ Used for API validation and response verification for authenticated endpoints.
 
 import asyncio
 from structs.exchange import Symbol, AssetName, Side, OrderType, TimeInForce
-from exchanges.mexc.rest.mexc_private import MexcPrivateSpotRest
+from cex.mexc.rest.rest_private import MexcPrivateSpotRest
 
 
 async def check_get_account_balance(exchange: MexcPrivateSpotRest):
@@ -168,7 +168,7 @@ async def main():
     
     try:
         # Load config to get API credentials
-        from config import config
+        from core.config.config import config
         from core.register import install_exchange_dependencies
 
         install_exchange_dependencies()

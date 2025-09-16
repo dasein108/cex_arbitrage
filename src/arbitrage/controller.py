@@ -70,9 +70,9 @@ class ArbitrageController:
         
         # Extract symbols from arbitrage pairs for exchange initialization
         arbitrage_symbols = self.config_manager.extract_symbols_from_arbitrage_pairs()
-        logger.info(f"Initializing exchanges with {len(arbitrage_symbols)} symbols from arbitrage configuration")
+        logger.info(f"Initializing cex with {len(arbitrage_symbols)} symbols from arbitrage configuration")
         
-        # HFT OPTIMIZATION: Initialize exchanges with arbitrage symbols
+        # HFT OPTIMIZATION: Initialize cex with arbitrage symbols
         from arbitrage.exchange_factory import InitializationStrategy
         
         strategy = InitializationStrategy.CONTINUE_ON_ERROR if self.config.enable_dry_run else InitializationStrategy.RETRY_WITH_BACKOFF
@@ -82,7 +82,7 @@ class ArbitrageController:
             symbols=arbitrage_symbols
         )
         
-        # Wait for exchanges to complete first (symbol resolver depends on them)
+        # Wait for cex to complete first (symbol resolver depends on them)
         self.exchanges = await exchanges_task
         
         # Initialize symbol resolver with exchange information
@@ -112,7 +112,7 @@ class ArbitrageController:
         elapsed = time.perf_counter() - start_time
         
         logger.info(f"Symbol resolver initialized in {elapsed*1000:.2f}ms")
-        logger.info(f"Found {len(common_symbols)} symbols available on all exchanges")
+        logger.info(f"Found {len(common_symbols)} symbols available on all cex")
         if common_symbols[:5]:  # Show first 5
             logger.info(f"Sample common symbols: {common_symbols[:5]}")
     
@@ -122,7 +122,7 @@ class ArbitrageController:
         """
         try:
             # Get log level from config
-            from config import config as base_config
+            from core.config.config import config as base_config
             
             # Get environment settings for log level
             log_level = base_config.LOG_LEVEL
@@ -148,7 +148,7 @@ class ArbitrageController:
     def _validate_initialization(self):
         """Validate that initialization was successful."""
         if not self.exchanges:
-            raise RuntimeError("No exchanges available - cannot proceed")
+            raise RuntimeError("No cex available - cannot proceed")
         
         # Check for private access in live mode
         if not self.config.enable_dry_run:
@@ -211,7 +211,7 @@ class ArbitrageController:
             try:
                 # Check engine health
                 if not self.engine.is_healthy():
-                    logger.warning("Engine health check failed - checking exchanges...")
+                    logger.warning("Engine health check failed - checking cex...")
                     self._log_exchange_health()
                 
                 # Let engine process (in production, this would be event-driven)
@@ -232,7 +232,7 @@ class ArbitrageController:
                     break
     
     def _log_exchange_health(self):
-        """Log health status of all exchanges."""
+        """Log health status of all cex."""
         for name, exchange in self.exchanges.items():
             if exchange:
                 status = exchange.status
@@ -259,7 +259,7 @@ class ArbitrageController:
             except Exception as e:
                 logger.error(f"Error stopping engine: {e}")
         
-        # Close exchanges
+        # Close cex
         await self.exchange_factory.close_all()
         
         logger.info("All components shut down")

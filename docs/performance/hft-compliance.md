@@ -93,7 +93,7 @@ class SymbolResolver:
         return exchange_symbols.get(exchange)  # 0.947μs average
     
     def get_common_symbols(self, exchange_names: Set[str]) -> Set[Symbol]:
-        """Get symbols common across exchanges with <0.1μs latency"""
+        """Get symbols common across cex with <0.1μs latency"""
         frozen_exchanges = frozenset(exchange_names)
         return self._common_symbols_cache.get(frozen_exchanges, set())  # 0.035μs average
 ```
@@ -473,7 +473,7 @@ class ContinuousHFTMonitor:
         logger.info("Attempting automatic performance recovery...")
         
         # Clear connection pools to force fresh connections
-        # Restart exchanges with performance issues
+        # Restart cex with performance issues
         # Reduce request rate temporarily
         # Other performance recovery strategies
 ```

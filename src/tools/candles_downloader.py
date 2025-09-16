@@ -7,7 +7,7 @@ Works both as a Python class and CLI tool for downloading historical candlestick
 
 Key Features:
 - Multi-exchange support (MEXC, Gate.io)
-- Unified CSV format across all exchanges
+- Unified CSV format across all cex
 - Batch processing for large time ranges
 - Data validation and error handling
 - Progress tracking for large downloads
@@ -32,8 +32,8 @@ from typing import Dict, List, Optional, Any
 import logging
 
 # Import the exchange implementations
-from exchanges.mexc.rest.rest_public import MexcPublicSpotRest
-from exchanges.gateio.rest.gateio_public import GateioPublicExchangeSpotRest
+from cex.mexc.rest.rest_public import MexcPublicSpotRest
+from cex.gateio.rest.gateio_public import GateioPublicExchangeSpotRest
 from structs.exchange import Symbol, AssetName, KlineInterval, Kline
 from common.rate_limiter import get_rate_limiter
 
@@ -42,7 +42,7 @@ class CandlesDownloader:
     """
     Multi-exchange candles downloader with unified CSV output format.
     
-    Supports downloading historical candlestick data from multiple exchanges
+    Supports downloading historical candlestick data from multiple cex
     with consistent output format and comprehensive error handling.
     """
     
@@ -309,7 +309,7 @@ class CandlesDownloader:
         download_configs: List[Dict[str, Any]]
     ) -> List[str]:
         """
-        Download candles from multiple exchanges/symbols with coordinated rate limiting.
+        Download candles from multiple cex/symbols with coordinated rate limiting.
         
         Implements intelligent batching and rate limiting to prevent API throttling
         while maintaining optimal performance through controlled concurrency.
@@ -361,7 +361,7 @@ class CandlesDownloader:
             all_results.extend(exchange_results)
             
             # Add inter-exchange delay to prevent cross-exchange rate limit conflicts
-            if len(exchange_groups) > 1:  # Only delay if multiple exchanges
+            if len(exchange_groups) > 1:  # Only delay if multiple cex
                 await asyncio.sleep(0.5)  # 500ms between exchange groups
         
         # Process and categorize results
@@ -389,7 +389,7 @@ class CandlesDownloader:
         return successful_files
     
     def list_available_exchanges(self) -> List[str]:
-        """Get list of supported exchanges."""
+        """Get list of supported cex."""
         return list(self.EXCHANGES.keys())
     
     def list_available_timeframes(self) -> List[str]:
@@ -413,7 +413,7 @@ def parse_date(date_str: str) -> datetime:
 def main():
     """CLI entry point for candles downloader."""
     parser = argparse.ArgumentParser(
-        description="Download historical candlestick data from cryptocurrency exchanges",
+        description="Download historical candlestick data from cryptocurrency cex",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:

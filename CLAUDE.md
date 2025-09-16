@@ -502,8 +502,8 @@ The abstract interface pattern enables easy addition of new exchanges:
 - **[Exchange Interfaces](src/core/cex/README.md)** - Separated public/private interface system
   - **BasePublicExchangeInterface** - Market data operations (no authentication required)
   - **BasePrivateExchangeInterface** - Trading operations (authentication required)
-- **[MEXC Implementation](src/exchanges/mexc/README.md)** - MEXC-specific implementation (implements BasePrivateExchangeInterface)
-- **[Gate.io Implementation](src/exchanges/gateio/README.md)** - Gate.io-specific implementation (implements BasePrivateExchangeInterface)
+- **[MEXC Implementation](src/cex/mexc/README.md)** - MEXC-specific implementation (implements BasePrivateExchangeInterface)
+- **[Gate.io Implementation](src/cex/gateio/README.md)** - Gate.io-specific implementation (implements BasePrivateExchangeInterface)
 - **[Usage Examples](src/examples/README.md)** - Usage patterns and testing approaches
 
 ## Development Guidelines

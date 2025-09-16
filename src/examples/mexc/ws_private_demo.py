@@ -17,14 +17,15 @@ src_dir = Path(__file__).parent.parent.parent
 sys.path.insert(0, str(src_dir))
 
 # Import required structs and configs
-from structs.exchange import Symbol, AssetName
+from structs.exchange import Symbol
 from core.transport.websocket.ws_client import WebSocketConfig
 from core.cex.websocket.strategies import WebSocketStrategySet
 from core.cex.websocket.ws_manager import WebSocketManager, WebSocketManagerConfig
-from exchanges.mexc.ws.private.parser import MexcPrivateMessageParser
-from exchanges.mexc.ws.private.connection_strategy import MexcPrivateConnectionStrategy, MexcPrivateSubscriptionStrategy
+from cex.mexc.ws.private.ws_message_parser import MexcPrivateMessageParser
+from cex.mexc.ws.private.ws_strategies import MexcPrivateConnectionStrategy, MexcPrivateSubscriptionStrategy
+from core.config.config import get_exchange_config_struct, config
+from cex.mexc.rest.rest_private import MexcPrivateSpotRest
 
-from config import get_exchange_config_struct
 # Set up logging
 logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
@@ -37,8 +38,7 @@ class TestPrivateWebSocketClient:
         self.order_handler = order_handler
         
         # Get MEXC exchange config for strategy
-        from config import get_exchange_config_struct
-        from exchanges.mexc.rest.mexc_private import MexcPrivateSpotRest
+
         
         mexc_config = get_exchange_config_struct("mexc")
 

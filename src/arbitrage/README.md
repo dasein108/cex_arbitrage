@@ -278,7 +278,7 @@ async def main():
     controller = ArbitrageController()
     
     try:
-        # Initialize all components (configuration, exchanges, monitors)
+        # Initialize all components (configuration, cex, monitors)
         await controller.initialize(dry_run=True)  # Safe mode for testing
         
         # Run the arbitrage session
@@ -307,7 +307,7 @@ async def custom_arbitrage_setup():
     config_manager = ConfigurationManager()
     config = await config_manager.load_configuration(dry_run=True)
     
-    # Create exchanges using Factory pattern
+    # Create cex using Factory pattern
     exchange_factory = ExchangeFactory()
     exchanges = await exchange_factory.create_exchanges(
         exchange_names=config.enabled_exchanges,
@@ -324,7 +324,7 @@ async def custom_arbitrage_setup():
     
     try:
         # Your custom arbitrage logic here
-        print(f"Initialized {len(exchanges)} exchanges")
+        print(f"Initialized {len(exchanges)} cex")
         print(f"Configuration: {config.engine_name}")
         
         # Example: Monitor performance
@@ -620,7 +620,7 @@ async def test_risk_validation():
 ```python
 @pytest.mark.integration
 async def test_full_arbitrage_cycle():
-    """Test complete arbitrage cycle with real exchanges"""
+    """Test complete arbitrage cycle with real cex"""
     async with create_test_engine().session() as engine:
         # Monitor for opportunities
         opportunities_detected = 0

@@ -5,16 +5,15 @@ from core.cex.rest.spot.base_rest_spot_public import PublicExchangeSpotRestInter
 from core.cex.rest.spot.base_rest_spot_private import PrivateExchangeSpotRestInterface
 from core.transport.websocket.ws_client import (
     WebsocketClient,
-    WebSocketConfig,
 )
+from core.transport.websocket.structs import WebsocketConfig
 from core.cex.websocket.structs import ConnectionState
 
 __all__ = [
-    "BaseExchangeInterface",  # Base cex for all exchanges
+    "BaseExchangeInterface",  # Base cex for all cex
     "BasePublicExchangeInterface",  # Public market data operations
     "BasePrivateExchangeInterface",  # Private trading operations
     "PublicExchangeSpotRestInterface",  # REST-specific public
     "PrivateExchangeSpotRestInterface",  # REST-specific private
     "WebsocketClient",
-    "WebSocketConfig",
 ]

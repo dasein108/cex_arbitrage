@@ -162,7 +162,7 @@ async def initialize_exchanges():
 ```python
 async def discover_symbols(exchanges):
     """
-    Discover and filter tradable symbols across exchanges
+    Discover and filter tradable symbols across cex
     """
     # Step 1: Collect all symbols
     symbol_exchange_map = defaultdict(set)
@@ -191,11 +191,11 @@ async def discover_symbols(exchanges):
         
         # Apply filters
         if (base not in TOP_COINS and
-            len(exchange_set) >= 2 and  # Available on 2+ exchanges
+            len(exchange_set) >= 2 and  # Available on 2+ cex
             quote in ['USDT', 'USDC', 'USD']):  # USD-stable quotes
             
             filtered_symbols[symbol] = {
-                'exchanges': list(exchange_set),
+                'cex': list(exchange_set),
                 'cex': base,
                 'quote': normalize_quote(quote),  # USDT/USDC -> USD_STABLE
                 'exchange_count': len(exchange_set)
@@ -204,7 +204,7 @@ async def discover_symbols(exchanges):
     return filtered_symbols
 
 def normalize_symbol(symbol):
-    """Normalize symbol format across exchanges"""
+    """Normalize symbol format across cex"""
     # Handle different naming conventions
     symbol = symbol.replace('USDT', 'USD_STABLE')
     symbol = symbol.replace('USDC', 'USD_STABLE')
@@ -233,7 +233,7 @@ async def collect_historical_data(exchanges, symbols, days=3):
                 
             # Fetch OHLCV data with pagination
             all_candles = []
-            limit = 1000  # Most exchanges limit
+            limit = 1000  # Most cex limit
             
             while True:
                 candles = await exchange.fetch_ohlcv(
@@ -272,7 +272,7 @@ async def collect_historical_data(exchanges, symbols, days=3):
     
     tasks = []
     for symbol, symbol_info in symbols.items():
-        for exchange_id in symbol_info['exchanges']:
+        for exchange_id in symbol_info['cex']:
             task = fetch_with_semaphore(exchange_id, symbol)
             tasks.append((symbol, exchange_id, task))
     
@@ -307,7 +307,7 @@ class SpreadAnalyzer:
         """
         for symbol, exchange_data in historical_data.items():
             if len(exchange_data) < 2:
-                continue  # Need at least 2 exchanges
+                continue  # Need at least 2 cex
                 
             # Get latest prices from each exchange
             latest_prices = {}
@@ -484,7 +484,7 @@ class SymbolFilter:
         filtered = {}
         for symbol, data in symbols.items():
             # Fetch volume data
-            total_volume = await self.get_total_volume(symbol, data['exchanges'])
+            total_volume = await self.get_total_volume(symbol, data['cex'])
             if MIN_VOLUME < total_volume < MAX_VOLUME:
                 data['total_volume_24h'] = total_volume
                 filtered[symbol] = data
@@ -493,14 +493,14 @@ class SymbolFilter:
     
     async def exchange_presence_filter(self, symbols):
         """
-        Require presence on multiple exchanges
+        Require presence on multiple cex
         """
         MIN_EXCHANGES = 2
         MAX_EXCHANGES = 8  # Too many = mainstream
         
         return {
             symbol: data for symbol, data in symbols.items()
-            if MIN_EXCHANGES <= len(data['exchanges']) <= MAX_EXCHANGES
+            if MIN_EXCHANGES <= len(data['cex']) <= MAX_EXCHANGES
         }
     
     async def liquidity_filter(self, symbols):
@@ -512,7 +512,7 @@ class SymbolFilter:
         
         filtered = {}
         for symbol, data in symbols.items():
-            spreads = await self.get_spreads(symbol, data['exchanges'])
+            spreads = await self.get_spreads(symbol, data['cex'])
             avg_spread = sum(spreads.values()) / len(spreads)
             
             if MIN_SPREAD < avg_spread < MAX_SPREAD:
@@ -529,7 +529,7 @@ class SymbolFilter:
         
         filtered = {}
         for symbol, data in symbols.items():
-            volatility = await self.calculate_volatility(symbol, data['exchanges'])
+            volatility = await self.calculate_volatility(symbol, data['cex'])
             if volatility < MAX_DAILY_VOLATILITY:
                 data['volatility'] = volatility
                 filtered[symbol] = data
@@ -550,7 +550,7 @@ class DataCollectionPipeline:
         
     async def collect_all_data(self, symbols, timeframe='1m', days=3):
         """
-        Comprehensive data collection across all exchanges
+        Comprehensive data collection across all cex
         """
         # Phase 1: Historical OHLCV
         historical_data = await self.collect_historical_ohlcv(
@@ -590,7 +590,7 @@ class DataCollectionPipeline:
             
             # Create tasks for parallel fetching
             tasks = []
-            for exchange_id in symbol_info['exchanges']:
+            for exchange_id in symbol_info['cex']:
                 if self.exchanges[exchange_id]['has_ohlcv']:
                     task = self.fetch_ohlcv_batch(
                         exchange_id, 
@@ -661,7 +661,7 @@ class DataCollectionPipeline:
         for symbol, symbol_info in symbols.items():
             data[symbol] = {}
             
-            for exchange_id in symbol_info['exchanges']:
+            for exchange_id in symbol_info['cex']:
                 if self.exchanges[exchange_id]['has_orderbook']:
                     try:
                         orderbook = await self.exchanges[exchange_id]['instance'].fetch_order_book(
@@ -716,7 +716,7 @@ class ArbitrageAnalyzer:
         # 1. Simple spread arbitrage
         simple_arbs = await self.find_simple_arbitrage(data)
         
-        # 2. Triangular arbitrage within exchanges
+        # 2. Triangular arbitrage within cex
         triangular_arbs = await self.find_triangular_arbitrage(data)
         
         # 3. Statistical arbitrage patterns
@@ -935,16 +935,16 @@ class ExchangeManager:
         self.connection_pool = {}
         
     async def initialize_all(self):
-        """Initialize all configured exchanges"""
+        """Initialize all configured cex"""
         tasks = []
-        for exchange_config in self.config['exchanges']:
+        for exchange_config in self.config['cex']:
             task = self.initialize_exchange(exchange_config)
             tasks.append(task)
         
         results = await asyncio.gather(*tasks, return_exceptions=True)
         
         # Log initialization results
-        for config, result in zip(self.config['exchanges'], results):
+        for config, result in zip(self.config['cex'], results):
             if isinstance(result, Exception):
                 logger.error(f"Failed to initialize {config['id']}: {result}")
             else:
@@ -1000,7 +1000,7 @@ class SymbolDiscoveryEngine:
         return enriched
     
     async def fetch_all_symbols(self):
-        """Fetch symbols from all exchanges"""
+        """Fetch symbols from all cex"""
         all_symbols = {}
         
         for exchange_id, exchange in self.exchange_manager.exchanges.items():
@@ -1019,10 +1019,10 @@ class SymbolDiscoveryEngine:
                             all_symbols[normalized] = {
                                 'cex': market['cex'],
                                 'quote': market['quote'],
-                                'exchanges': set()
+                                'cex': set()
                             }
                         
-                        all_symbols[normalized]['exchanges'].add(exchange_id)
+                        all_symbols[normalized]['cex'].add(exchange_id)
                         
             except Exception as e:
                 logger.error(f"Error fetching symbols from {exchange_id}: {e}")
@@ -1340,7 +1340,7 @@ class RiskManager:
     
     async def validate_exchange_status(self, opportunity):
         """
-        Check if exchanges are operational
+        Check if cex are operational
         """
         # Check withdrawal status
         # Check maintenance windows

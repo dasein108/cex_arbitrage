@@ -6,7 +6,7 @@ symbol mappers. Replaces singleton pattern with controlled instance management.
 
 Key Features:
 - One instance per exchange type (not global singleton)
-- Extensible registration system for new exchanges
+- Extensible registration system for new cex
 - Unified caching strategy across all mappers
 - Thread-safe mapper instance management
 - Performance monitoring and cache statistics
@@ -82,8 +82,8 @@ class ExchangeSymbolMapperFactory:
             available_exchanges = list(cls._mapper_classes.keys())
             raise ValueError(
                 f"Unknown exchange: {exchange_name}. "
-                f"Available exchanges: {available_exchanges}. "
-                f"Use register_mapper() to add new exchanges."
+                f"Available cex: {available_exchanges}. "
+                f"Use register_mapper() to add new cex."
             )
         
         mapper_class = cls._mapper_classes[exchange_key]
@@ -126,7 +126,7 @@ class ExchangeSymbolMapperFactory:
         Returns:
             Dictionary mapping exchange names to mapper instances
         """
-        # Create instances for all registered exchanges
+        # Create instances for all registered cex
         for exchange_name in cls._mapper_classes:
             if exchange_name not in cls._mapper_instances:
                 cls.get_mapper(exchange_name)  # Creates instance

@@ -449,14 +449,14 @@ class SpreadHistoryAnalyzer:
 #### Exchange Pair Verification
 ```python
 class CrossExchangeValidator:
-    """Validate symbol availability across target exchanges"""
+    """Validate symbol availability across target cex"""
     
     def validate_cross_exchange_availability(
         self, 
         symbol: Symbol,
         required_exchanges: List[str]
     ) -> CrossExchangeValidation:
-        """Check if symbol is tradeable on all required exchanges"""
+        """Check if symbol is tradeable on all required cex"""
         
         availability = {}
         
@@ -487,7 +487,7 @@ class CrossExchangeValidator:
         )
     
     def _check_order_size_compatibility(self, availability: Dict) -> bool:
-        """Check if minimum order sizes are compatible across exchanges"""
+        """Check if minimum order sizes are compatible across cex"""
         available_exchanges = [av for av in availability.values() if av.available]
         
         if len(available_exchanges) < 2:

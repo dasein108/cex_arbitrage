@@ -34,7 +34,7 @@ class ExchangeRateConfig:
 
 class ExchangeRateLimiter:
     """
-    Centralized rate limiter for coordinating requests across exchanges.
+    Centralized rate limiter for coordinating requests across cex.
     
     Prevents API throttling through intelligent concurrency control and timing.
     Designed for HFT systems requiring sub-millisecond coordination overhead.
@@ -52,7 +52,7 @@ class ExchangeRateLimiter:
             delay_seconds=0.1,     # 100ms between requests  
             name='MEXC'
         ),
-        # Future exchanges can be added here
+        # Future cex can be added here
         'binance': ExchangeRateConfig(
             max_concurrent=10,
             delay_seconds=0.05,

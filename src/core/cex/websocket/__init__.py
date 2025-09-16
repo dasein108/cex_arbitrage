@@ -7,9 +7,9 @@ composition for exchange-agnostic trading implementations.
 
 from .ws_manager import WebSocketManager
 from .strategies import (
-    ConnectionStrategy, SubscriptionStrategy, MessageParser,
-    WebSocketStrategySet, WebSocketStrategyFactory
+    ConnectionStrategy, SubscriptionStrategy, WebSocketStrategySet, WebSocketStrategyFactory
 )
+from .message_parser import MessageParser
 from .structs import (
     MessageType, SubscriptionAction, ConnectionContext, 
     SubscriptionContext, ParsedMessage, WebSocketManagerConfig,
@@ -21,8 +21,7 @@ from .base_ws import BaseExchangeWebsocketInterface
 __all__ = [
     'WebSocketManager',
     'ConnectionStrategy',
-    'SubscriptionStrategy', 
-    'MessageParser',
+    'SubscriptionStrategy',
     'WebSocketStrategySet',
     'WebSocketStrategyFactory',
     'MessageType',
@@ -32,5 +31,6 @@ __all__ = [
     'ParsedMessage',
     'WebSocketManagerConfig',
     'PerformanceMetrics',
-    'BaseExchangeWebsocketInterface'
+    'BaseExchangeWebsocketInterface',
+    'MessageParser'
 ]

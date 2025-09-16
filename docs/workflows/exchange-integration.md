@@ -33,7 +33,7 @@ The CEX Arbitrage Engine's **unified configuration architecture** enables seamle
 **Add to config.yaml under exchanges: dictionary**:
 ```yaml
 exchanges:
-  # Existing exchanges
+  # Existing cex
   mexc:
     api_key: "${MEXC_API_KEY}"
     secret_key: "${MEXC_SECRET_KEY}"
@@ -100,7 +100,7 @@ KRAKEN_SECRET_KEY=your_kraken_secret_key
 **Create exchange implementation following composition pattern**:
 
 ```python
-# src/exchanges/binance/binance_exchange.py
+# src/cex/binance/binance_exchange.py
 from core.cex.base import BaseExchangeInterface
 from structs import (
     Symbol, SymbolInfo, OrderBook, AssetBalance, ExchangeStatus, Order
@@ -200,7 +200,7 @@ class BinanceExchange(BaseExchangeInterface):
 class ExchangeFactory:
     """Factory for creating and managing exchange instances"""
     
-    # EXCHANGE CLASS REGISTRY - Add new exchanges here
+    # EXCHANGE CLASS REGISTRY - Add new cex here
     EXCHANGE_CLASSES: Dict[str, Type[BaseExchangeInterface]] = {
         'MEXC': MexcExchange,
         'GATEIO': GateioExchange,
@@ -225,7 +225,7 @@ class ExchangeFactory:
 import pytest
 from exchanges.binance.binance_exchange import BinanceExchange
 from structs import Symbol, AssetName
-from config import config
+from core.config.config import config
 
 
 @pytest.mark.asyncio
@@ -308,7 +308,7 @@ arbitrage:
       quote_asset: "USDT"
       opportunity_type: "SPOT_SPOT"
       min_profit_bps: 25
-      exchanges:        # Optional: specify which exchanges
+      exchanges:        # Optional: specify which cex
         - "MEXC"
         - "GATEIO"
         - "BINANCE"    # <- Include new exchange
@@ -544,7 +544,7 @@ class OptimizedExchange(BaseExchangeInterface):
 
 ```bash
 # Run integration tests for new exchange
-PYTHONPATH=src pytest tests/exchanges/test_new_exchange_integration.py -v
+PYTHONPATH=src pytest tests/cex/test_new_exchange_integration.py -v
 
 # Run full system test with new exchange
 PYTHONPATH=src python src/main.py --log-level DEBUG --dry-run

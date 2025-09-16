@@ -1,7 +1,7 @@
 from abc import ABC, abstractmethod
 
 from structs.exchange import ExchangeName
-from structs.config import ExchangeConfig
+from core.config.structs import ExchangeConfig
 
 
 class BaseExchangeInterface(ABC):

@@ -1147,7 +1147,7 @@ class RealTimeAnalyzer:
 
 ```python
 class AlignedMarketData(Struct):
-    """Time-aligned market data across exchanges"""
+    """Time-aligned market data across cex"""
     timestamps: List[int]  # Aligned timestamps
     exchange_data: Dict[ExchangeName, Dict[Symbol, List[Kline]]]
     alignment_quality: float  # 0.0-1.0, data completeness score

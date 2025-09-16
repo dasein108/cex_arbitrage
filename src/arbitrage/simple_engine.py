@@ -122,7 +122,7 @@ class SimpleArbitrageEngine:
             except Exception as e:
                 logger.error(f"Error stopping market data aggregator: {e}")
         
-        # Close exchanges
+        # Close cex
         for name, exchange in self.exchanges.items():
             try:
                 if exchange:
@@ -138,7 +138,7 @@ class SimpleArbitrageEngine:
         logger.info("Initializing market data aggregator...")
         
         try:
-            # Create market data aggregator with exchanges
+            # Create market data aggregator with cex
             self.market_data_aggregator = MarketDataAggregator(
                 self.config,
                 self.exchanges
@@ -320,10 +320,10 @@ class SimpleArbitrageEngine:
         
         active_pairs = self.config.pair_map.get_active_pairs()
         
-        # Filter pairs based on enabled exchanges
+        # Filter pairs based on enabled cex
         filtered_pairs = []
         for pair in active_pairs:
-            # Check if all required exchanges are available
+            # Check if all required cex are available
             exchanges_available = all(
                 exchange_name in self.exchanges 
                 for exchange_name in pair.exchanges.keys()

@@ -1,7 +1,8 @@
 from abc import ABC
 from typing import List, Set, Optional, Callable, Awaitable
 from structs.exchange import Symbol, ExchangeName
-from core.transport.websocket.ws_client import WebSocketConfig, WebsocketClient
+from core.transport.websocket.ws_client import WebsocketClient
+from core.transport.websocket.structs import WebsocketConfig
 from core.cex.websocket.structs import ConnectionState,SubscriptionAction
 from itertools import chain
 from core.cex.services.symbol_mapper.symbol_mapper_factory import get_symbol_mapper
@@ -9,7 +10,7 @@ from core.cex.services.symbol_mapper.symbol_mapper_factory import get_symbol_map
 class BaseExchangeWebsocketInterface(ABC):
     """Abstract cex for private exchange operations (trading, account management)"""
 
-    def __init__(self, exchange: ExchangeName, websocket_config: WebSocketConfig):
+    def __init__(self, exchange: ExchangeName, websocket_config: WebsocketConfig):
         self.exchange = exchange
         self.websocket_config = websocket_config
         self.symbols: List[Symbol] = []

@@ -129,7 +129,7 @@ class TierThreeSymbolRepository:
         self._cache_ttl = 3600  # 1 hour TTL for configuration
         
     async def discover_symbols(self) -> List[Symbol]:
-        """Discover 3-tier USDT pairs available on both exchanges"""
+        """Discover 3-tier USDT pairs available on both cex"""
         # Fresh API calls to get current symbol lists
         mexc_symbols = await self.mexc_exchange.get_exchange_info()
         gateio_symbols = await self.gateio_exchange.get_exchange_info()
@@ -216,7 +216,7 @@ class OpportunityDetector:
             symbol: Symbol,
             orderbooks: Dict[Tuple[Symbol, str], OrderBook]
     ) -> Optional[ArbitrageOpportunity]:
-        """Analyze opportunity for single symbol across exchanges"""
+        """Analyze opportunity for single symbol across cex"""
 
         exchange_books = {}
         for exchange in self.exchanges:

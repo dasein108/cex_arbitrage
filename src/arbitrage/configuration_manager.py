@@ -9,7 +9,7 @@ HFT COMPLIANT: Fast configuration loading with validation caching.
 
 import logging
 from typing import Dict, Any, List, Optional
-from config import config
+from core.config.config import config
 from core.exceptions.exchange import ConfigurationError
 from arbitrage.types import (
     ArbitrageConfig, RiskLimits, OpportunityType, ArbitragePairMap
@@ -109,7 +109,7 @@ class ConfigurationManager:
             except KeyError:
                 logger.warning(f"Unknown opportunity type: {ot_str}")
         
-        # Get enabled exchanges
+        # Get enabled cex
         enabled_exchanges = base_config.get('enabled_exchanges', ['MEXC', 'GATEIO'])
         
         return ArbitrageConfig(
@@ -151,7 +151,7 @@ class ConfigurationManager:
     
     def _load_arbitrage_pairs(self) -> None:
         """Load arbitrage pairs from simplified configuration."""
-        # Note: Symbol resolver needs to be set up by controller after exchanges are initialized
+        # Note: Symbol resolver needs to be set up by controller after cex are initialized
         pairs_config = self._base_config.get('arbitrage_pairs', [])
         
         # Store raw config for later processing
@@ -162,7 +162,7 @@ class ConfigurationManager:
     
     async def resolve_arbitrage_pairs(self, symbol_resolver: SymbolResolver) -> None:
         """
-        Resolve arbitrage pairs using symbol resolver after exchanges are initialized.
+        Resolve arbitrage pairs using symbol resolver after cex are initialized.
         
         Args:
             symbol_resolver: Initialized symbol resolver with exchange info
@@ -180,7 +180,7 @@ class ConfigurationManager:
                     self._config.arbitrage_pairs.append(pair)
                     logger.info(
                         f"Resolved pair: {pair.id} ({pair.base_asset}/{pair.quote_asset}) "
-                        f"on {len(pair.exchanges)} exchanges"
+                        f"on {len(pair.exchanges)} cex"
                     )
                 else:
                     logger.warning(f"Could not resolve pair: {pair_dict.get('id', 'unknown')}")
@@ -193,7 +193,7 @@ class ConfigurationManager:
         logger.info(f"Resolved {len(self._config.arbitrage_pairs)} arbitrage pairs successfully")
         if self._config.arbitrage_pairs:
             for pair in self._config.arbitrage_pairs[:3]:  # Log first 3
-                logger.info(f"  ✅ {pair.id}: {pair.base_asset}/{pair.quote_asset} on {len(pair.exchanges)} exchanges")
+                logger.info(f"  ✅ {pair.id}: {pair.base_asset}/{pair.quote_asset} on {len(pair.exchanges)} cex")
     
     # Note: _build_arbitrage_pair is now handled by SymbolResolver.build_arbitrage_pair()
     
@@ -222,7 +222,7 @@ class ConfigurationManager:
         if len(pair_ids) != len(set(pair_ids)):
             all_errors.append("Duplicate pair IDs found")
         
-        # Validate pairs against enabled exchanges
+        # Validate pairs against enabled cex
         for pair in self._config.arbitrage_pairs:
             for exchange in pair.exchanges.keys():
                 if exchange not in self._config.enabled_exchanges:
@@ -265,7 +265,7 @@ class ConfigurationManager:
                 if pair.is_enabled:
                     logger.info(f"    - {pair.id}: {pair.base_asset}/{pair.quote_asset} "
                               f"(min profit: {pair.min_profit_bps} bps, "
-                              f"exchanges: {', '.join(pair.get_active_exchanges())})")
+                              f"cex: {', '.join(pair.get_active_exchanges())})")
         else:
             logger.warning("  No arbitrage pairs configured")
         

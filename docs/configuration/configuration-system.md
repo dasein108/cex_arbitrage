@@ -218,7 +218,7 @@ exchanges:
     testnet_base_url: "https://api-testnet.gateapi.io/api/v4"
     testnet_websocket_url: "wss://ws-testnet.gate.com/v4/ws/spot"
   
-  # Future exchanges can be added here without code changes
+  # Future cex can be added here without code changes
   # binance:
   #   api_key: "${BINANCE_API_KEY}"
   #   secret_key: "${BINANCE_SECRET_KEY}"
@@ -274,7 +274,7 @@ arbitrage:
 Add to `config.yaml`:
 ```yaml
 exchanges:
-  # Existing exchanges...
+  # Existing cex...
   
   newexchange:
     api_key: "${NEWEXCHANGE_API_KEY}"
@@ -383,7 +383,7 @@ def _get_key_preview(self, api_key: Optional[str]) -> str:
 ```python
 # Test configuration without real credentials
 test_config = {
-    'exchanges': {
+    'cex': {
         'testexchange': {
             'api_key': 'test_key_1234567890',
             'secret_key': 'test_secret_1234567890abcdef',

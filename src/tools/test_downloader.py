@@ -2,7 +2,7 @@
 """
 Quick test script for CandlesDownloader
 
-Simple test to verify the downloader works correctly with both exchanges.
+Simple test to verify the downloader works correctly with both cex.
 Downloads a small amount of recent data for validation.
 """
 
@@ -12,7 +12,7 @@ import os
 from datetime import datetime, timedelta
 from pathlib import Path
 
-# Add src to path so we can import from exchanges
+# Add src to path so we can import from cex
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from candles_downloader import CandlesDownloader
@@ -103,7 +103,7 @@ def test_info_methods():
     exchanges = downloader.list_available_exchanges()
     timeframes = downloader.list_available_timeframes()
     
-    print(f"✅ Available exchanges: {exchanges}")
+    print(f"✅ Available cex: {exchanges}")
     print(f"✅ Available timeframes: {timeframes}")
     
     return len(exchanges) > 0 and len(timeframes) > 0
