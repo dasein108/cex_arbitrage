@@ -11,10 +11,10 @@ import logging
 import time
 from typing import List, Dict, Optional, Set
 
-from core.cex.base.base_exchange import BaseExchangeInterface, OrderbookUpdateType
+from core.cex.base import BasePublicExchangeInterface
 from structs.exchange import (
     OrderBook, Symbol, SymbolInfo, SymbolsInfo, 
-    ExchangeStatus
+    ExchangeStatus, OrderbookUpdateType
 )
 from cex.gateio.ws.gateio_ws_public import GateioWebsocketPublic
 from cex.gateio.rest.rest_public import GateioPublicSpotRest
@@ -22,7 +22,7 @@ from core.cex.websocket.structs import ConnectionState
 from core.exceptions.exchange import BaseExchangeError
 from core.config.structs import ExchangeConfig
 
-class GateioPublicExchange(BaseExchangeInterface):
+class GateioPublicExchange(BasePublicExchangeInterface):
     """
     Gate.io Public Exchange - Market Data Only
     
@@ -40,7 +40,6 @@ class GateioPublicExchange(BaseExchangeInterface):
     - Zero-copy data processing where possible
     - Event-driven data distribution
     """
-    exchange_name = "GATEIO_public"
 
     def __init__(self, config: ExchangeConfig):
         """Initialize Gate.io public exchange for market data operations."""
@@ -48,7 +47,6 @@ class GateioPublicExchange(BaseExchangeInterface):
         
         # Exchange-specific state
         self._symbols_info_dict: Dict[Symbol, SymbolInfo] = {}
-        self._connection_state = ConnectionState.DISCONNECTED
         
         # Initialize REST client for public data
         # TODO: Update REST client to use unified config pattern
@@ -103,17 +101,16 @@ class GateioPublicExchange(BaseExchangeInterface):
             
             self.ws_client = GateioWebsocketPublic(
                 config=self.config,
-                orderbook_handler=self._handle_raw_orderbook_message
+                orderbook_handler=self._handle_raw_orderbook_message,
+                state_change_handler=self._handle_connection_state_change
             )
             
             await self.ws_client.initialize(symbols)
-            self._connection_state = ConnectionState.CONNECTED
             
             self.logger.info("Gate.io WebSocket client initialized and connected")
             
         except Exception as e:
             self.logger.error(f"Failed to initialize WebSocket: {e}")
-            self._connection_state = ConnectionState.DISCONNECTED
             raise
     
     async def _stop_real_time_streaming(self) -> None:
@@ -122,12 +119,37 @@ class GateioPublicExchange(BaseExchangeInterface):
             if self.ws_client:
                 await self.ws_client.close()
                 self.ws_client = None
-            self._connection_state = ConnectionState.DISCONNECTED
             
             self.logger.info("Gate.io WebSocket streaming stopped")
             
         except Exception as e:
             self.logger.error(f"Error stopping WebSocket streaming: {e}")
+    
+    async def _refresh_exchange_data(self) -> None:
+        """
+        Refresh orderbook data after WebSocket reconnection.
+        
+        For Gate.io public exchange, this refreshes:
+        - Orderbook snapshots from REST API (when REST client is implemented)
+        - Notifies arbitrage layer of reconnection
+        """
+        try:
+            if self._active_symbols:
+                # TODO: Implement when REST client is available
+                # For now, create placeholder orderbooks and notify of reconnection
+                for symbol in self._active_symbols:
+                    if symbol in self._orderbooks:
+                        # Use existing orderbook and notify of reconnection
+                        orderbook = self._orderbooks[symbol]
+                        await self._notify_orderbook_update(symbol, orderbook, OrderbookUpdateType.RECONNECT)
+                
+                self.logger.info(f"Gate.io reconnection handled for {len(self._active_symbols)} symbols")
+            else:
+                self.logger.info("No active symbols to refresh after Gate.io reconnection")
+                
+        except Exception as e:
+            self.logger.error(f"Failed to refresh Gate.io exchange data after reconnection: {e}")
+            raise
     
     # BasePublicExchangeInterface Implementation
     
@@ -246,9 +268,12 @@ class GateioPublicExchange(BaseExchangeInterface):
     
     def get_connection_status(self) -> ExchangeStatus:
         """Get current connection status."""
-        if self.ws_client:
-            return ExchangeStatus.CONNECTED if self.ws_client.is_connected() else ExchangeStatus.DISCONNECTED
-        return ExchangeStatus.DISCONNECTED
+        if self.is_connected:
+            return ExchangeStatus.CONNECTED
+        elif self.connection_state == ConnectionState.CONNECTING:
+            return ExchangeStatus.CONNECTING
+        else:
+            return ExchangeStatus.DISCONNECTED
     
     def get_websocket_health(self) -> Dict[str, any]:
         """Get WebSocket health metrics."""
@@ -279,7 +304,7 @@ class GateioPublicExchange(BaseExchangeInterface):
             'active_symbols': len(self._active_symbols),
             'market_data_updates': self._market_data_updates,
             'last_update_time': self._last_update_time,
-            'connection_state': self._connection_state.name,
+            'connection_state': self.connection_state.name,
             'exchange_stats': base_stats
         }
 

@@ -169,9 +169,6 @@ async def main():
     try:
         # Load config to get API credentials
         from core.config.config_manager import config
-        from core.register import install_exchange_dependencies
-
-        install_exchange_dependencies()
 
         # Create exchange with explicit API credentials from config
         mexc_config = config.get_exchange_config('mexc')

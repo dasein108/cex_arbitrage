@@ -29,6 +29,12 @@ from cex.mexc.ws.public.ws_public import MexcWebsocketPublic
 from .private_exchange import MexcPrivateExchange
 from .public_exchange import MexcPublicExchange
 
+# Auto-register MEXC services (symbol mapper, mappings) 
+from . import services
+
+# Auto-register MEXC REST strategies
+from .rest import strategies
+
 __all__ = [
     'MexcPublicSpotRest',
     'MexcWebsocketPublic',

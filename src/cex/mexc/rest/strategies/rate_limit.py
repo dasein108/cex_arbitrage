@@ -3,12 +3,32 @@ import time
 from typing import Dict, Any
 
 from core.transport.rest import RateLimitStrategy, RateLimitContext
+from core.config.structs import ExchangeConfig
 
 
 class MexcRateLimitStrategy(RateLimitStrategy):
-    """MEXC-specific rate limiting with endpoint awareness."""
+    """MEXC-specific rate limiting based on ExchangeConfig."""
 
-    def __init__(self, **kwargs):
+    def __init__(self, exchange_config: ExchangeConfig):
+        """
+        Initialize MEXC rate limiting strategy from ExchangeConfig.
+        
+        Args:
+            exchange_config: Exchange configuration containing rate_limit settings
+        """
+        # Extract rate limits from config or use MEXC defaults
+        if exchange_config.rate_limit:
+            self.default_rps = float(exchange_config.rate_limit.requests_per_second)
+            self.default_burst = self.default_rps * 3  # 3x burst capacity
+            self.global_limit = 5  # MEXC default
+        else:
+            # MEXC HFT defaults
+            self.default_rps = 20.0
+            self.default_burst = 60
+            self.global_limit = 5
+        
+        self.exchange_config = exchange_config
+        
         # MEXC endpoint-specific rate limits
         self._endpoint_limits = {
             # Public endpoints - more generous limits
@@ -57,7 +77,7 @@ class MexcRateLimitStrategy(RateLimitStrategy):
             self._request_counts[endpoint] = 0
 
         # Global rate limiting
-        self._global_semaphore = asyncio.Semaphore(5)  # Max 5 concurrent requests
+        self._global_semaphore = asyncio.Semaphore(self.global_limit)  # Max concurrent requests
         self._global_last_request = 0.0
         self._global_min_delay = 0.1  # 100ms between any requests
 

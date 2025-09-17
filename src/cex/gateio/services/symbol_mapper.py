@@ -11,7 +11,7 @@ Integration with existing GateioUtils while following factory pattern.
 """
 
 from core.cex.services.symbol_mapper.base_symbol_mapper import SymbolMapperInterface
-from core.cex.services.symbol_mapper.symbol_mapper_factory import ExchangeSymbolMapperFactory
+from core.cex.services.symbol_mapper.factory import ExchangeSymbolMapperFactory
 from structs.exchange import Symbol, AssetName
 
 
@@ -83,7 +83,7 @@ class GateioSymbolMapperInterface(SymbolMapperInterface):
 
 
 # Register Gate.io mapper with factory
-ExchangeSymbolMapperFactory.register_mapper('GATEIO', GateioSymbolMapperInterface)
+ExchangeSymbolMapperFactory.register('GATEIO', GateioSymbolMapperInterface)
 
 # Convenience instance using factory pattern
-gateio_symbol_mapper = ExchangeSymbolMapperFactory.get_mapper('GATEIO')
+gateio_symbol_mapper = ExchangeSymbolMapperFactory.inject('GATEIO')

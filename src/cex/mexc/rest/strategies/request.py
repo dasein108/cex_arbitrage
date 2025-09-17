@@ -1,23 +1,42 @@
 from typing import Dict, Any
 
 from core.transport.rest import RequestStrategy, RequestContext, HTTPMethod, PerformanceTargets
+from core.config.structs import ExchangeConfig
 
 
 class MexcRequestStrategy(RequestStrategy):
-    """MEXC-specific request configuration with aggressive HFT settings."""
+    """MEXC-specific request configuration based on ExchangeConfig."""
 
-    def __init__(self, base_url: str = "https://api.mexc.com", **kwargs):
-        super().__init__(base_url, **kwargs)
+    def __init__(self, exchange_config: ExchangeConfig):
+        """
+        Initialize MEXC request strategy from ExchangeConfig.
+        
+        Args:
+            exchange_config: Exchange configuration containing base_url and settings
+        """
+        super().__init__(exchange_config.base_url)
+        self.exchange_config = exchange_config
 
     async def create_request_context(self) -> RequestContext:
-        """Create MEXC-optimized request configuration."""
+        """Create MEXC request configuration from ExchangeConfig."""
+        # Use network config if available, otherwise MEXC defaults
+        if self.exchange_config.network:
+            connection_timeout = self.exchange_config.network.connect_timeout
+            read_timeout = self.exchange_config.network.request_timeout - connection_timeout
+            max_concurrent = 5  # MEXC default
+        else:
+            # MEXC HFT defaults
+            connection_timeout = 1.5
+            read_timeout = 4.0
+            max_concurrent = 5
+        
         return RequestContext(
             base_url=self.base_url,
-            timeout=8.0,  # Aggressive timeout for HFT
-            max_concurrent=5,  # MEXC-specific concurrency limit
-            connection_timeout=1.5,  # Fast connection establishment
-            read_timeout=4.0,  # Fast read timeout
-            keepalive_timeout=30,  # Shorter keepalive for fresh connections
+            timeout=connection_timeout + read_timeout,
+            max_concurrent=max_concurrent,
+            connection_timeout=connection_timeout,
+            read_timeout=read_timeout,
+            keepalive_timeout=30,  # MEXC default
             default_headers={
                 "Content-Type": "application/json",
                 "Accept": "application/json",

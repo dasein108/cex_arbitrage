@@ -41,7 +41,7 @@ This implementation follows strict HFT compliance rules:
 ## Usage
 
 ```python
-from exchanges.gateio import GateioExchange
+from cex.gateio import GateioExchange
 from structs import Symbol, AssetName, Side
 
 # Initialize exchange

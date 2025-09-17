@@ -20,7 +20,7 @@ from urllib.parse import urlencode
 
 from core.exceptions.exchange import RateLimitErrorBase, ExchangeConnectionError
 from core.transport.rest.strategies import (
-    RequestStrategy, RateLimitStrategy, RetryStrategy, AuthStrategy,
+    RequestStrategy, RateLimitStrategy, RetryStrategy, AuthStrategy, ExceptionHandlerStrategy,
     RequestContext, RateLimitContext, PerformanceTargets, AuthenticationData
 )
 from core.transport.rest.structs import HTTPMethod
@@ -29,8 +29,14 @@ from core.transport.rest.structs import HTTPMethod
 class GateioRequestStrategy(RequestStrategy):
     """Gate.io-specific request configuration with conservative HFT settings."""
     
-    def __init__(self, **kwargs):
-        self.base_url = "" #"https://api.gateio.ws"
+    def __init__(self, base_url: str = "https://api.gateio.ws/api/v4"):
+        """
+        Initialize Gate.io request strategy.
+        
+        Args:
+            base_url: Gate.io API base URL
+        """
+        self.base_url = base_url
 
     async def create_request_context(self) -> RequestContext:
         """Create Gate.io-optimized request configuration."""
@@ -85,7 +91,25 @@ class GateioRequestStrategy(RequestStrategy):
 class GateioRateLimitStrategy(RateLimitStrategy):
     """Gate.io-specific rate limiting with very strict controls."""
     
-    def __init__(self, **kwargs):
+    def __init__(
+        self,
+        requests_per_second: float = 15.0,
+        burst_capacity: int = 45,
+        global_concurrent_limit: int = 8
+    ):
+        """
+        Initialize Gate.io rate limiting strategy.
+        
+        Args:
+            requests_per_second: Maximum requests per second
+            burst_capacity: Burst capacity for rate limiting
+            global_concurrent_limit: Maximum concurrent requests
+        """
+        # Store configuration
+        self.requests_per_second = requests_per_second
+        self.burst_capacity = burst_capacity
+        self.global_concurrent_limit = global_concurrent_limit
+        
         # Gate.io endpoint-specific rate limits (very conservative)
         self._endpoint_limits = {
             # Public endpoints
@@ -133,8 +157,8 @@ class GateioRateLimitStrategy(RateLimitStrategy):
             self._last_request_times[endpoint] = 0.0
             self._request_counts[endpoint] = 0
         
-        # Global rate limiting (very strict)
-        self._global_semaphore = asyncio.Semaphore(2)  # Max 2 concurrent requests
+        # Global rate limiting (using configured values)
+        self._global_semaphore = asyncio.Semaphore(self.global_concurrent_limit)
         self._global_last_request = 0.0
         self._global_min_delay = 0.3  # 300ms between any requests
     
@@ -218,10 +242,23 @@ class GateioRateLimitStrategy(RateLimitStrategy):
 class GateioRetryStrategy(RetryStrategy):
     """Gate.io-specific retry logic with more aggressive retries."""
     
-    def __init__(self, **kwargs):
-        self.max_attempts = 3  # More retries for Gate.io
-        self.base_delay = 0.5  # 500ms base delay
-        self.max_delay = 5.0   # 5 second max delay
+    def __init__(
+        self,
+        max_attempts: int = 3,
+        base_delay: float = 0.5,
+        max_delay: float = 5.0
+    ):
+        """
+        Initialize Gate.io retry strategy.
+        
+        Args:
+            max_attempts: Maximum retry attempts
+            base_delay: Base delay between retries in seconds
+            max_delay: Maximum delay between retries in seconds
+        """
+        self.max_attempts = max_attempts
+        self.base_delay = base_delay
+        self.max_delay = max_delay
     
     def should_retry(self, attempt: int, error: Exception) -> bool:
         """Determine if request should be retried for Gate.io."""
@@ -351,3 +388,48 @@ class GateioAuthStrategy(AuthStrategy):
         ]
         
         return any(endpoint.startswith(private_ep) for private_ep in private_endpoints)
+
+
+class GateioExceptionHandlerStrategy(ExceptionHandlerStrategy):
+    """Gate.io-specific exception handling strategy."""
+    
+    def __init__(self):
+        """Initialize Gate.io exception handler."""
+        pass
+    
+    def handle_error(self, status_code: int, response_text: str):
+        """Handle Gate.io-specific API errors."""
+        from core.exceptions.exchange import (
+            BaseExchangeError, RateLimitErrorBase, ExchangeConnectionError,
+            InsufficientFundsError, InvalidOrderError, MarketNotFoundError
+        )
+        
+        # Parse Gate.io error response
+        try:
+            import json
+            error_data = json.loads(response_text)
+            error_message = error_data.get('message', response_text)
+        except:
+            error_message = response_text
+        
+        # Map Gate.io status codes to appropriate exceptions
+        if status_code == 429:
+            return RateLimitErrorBase(status_code, f"Rate limit exceeded: {error_message}")
+        elif status_code == 400:
+            if "insufficient" in error_message.lower():
+                return InsufficientFundsError(status_code, error_message)
+            elif "order" in error_message.lower():
+                return InvalidOrderError(status_code, error_message)
+            elif "market" in error_message.lower() or "symbol" in error_message.lower():
+                return MarketNotFoundError(status_code, error_message)
+            else:
+                return BaseExchangeError(status_code, error_message)
+        elif status_code >= 500:
+            return ExchangeConnectionError(status_code, f"Gate.io server error: {error_message}")
+        else:
+            return BaseExchangeError(status_code, f"Gate.io error: {error_message}")
+    
+    def should_handle_error(self, status_code: int, response_text: str) -> bool:
+        """Check if this strategy should handle the error."""
+        # Handle all Gate.io errors
+        return True

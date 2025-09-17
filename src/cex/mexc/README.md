@@ -48,7 +48,7 @@ Production-ready high-level interface implementing `BaseExchangeInterface`.
 #### Usage Example
 
 ```python
-from exchanges.mexc.mexc_exchange import MexcExchange
+from cex.mexc.mexc_exchange import MexcExchange
 from structs import Symbol, AssetName, Side
 
 # Initialize exchange
@@ -105,7 +105,7 @@ High-performance REST client for MEXC public API endpoints.
 ##### Usage Example
 
 ```python
-from exchanges.mexc.rest.rest_public import MexcPublicSpotRest
+from cex.mexc.rest.rest_public import MexcPublicSpotRest
 
 public = MexcPublicSpotRest()
 
@@ -161,7 +161,7 @@ def _mexc_signature_generator(self, params: Dict[str, any]) -> str:
 ##### Trading Operations
 
 ```python
-from exchanges.mexc.rest.mexc_private import MexcPrivateSpotRest
+from cex.mexc.rest.mexc_private import MexcPrivateSpotRest
 
 private = MexcPrivateSpotRest(api_key="key", secret_key="secret")
 

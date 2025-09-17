@@ -3,15 +3,31 @@ from typing import Dict
 
 from core.exceptions.exchange import RateLimitErrorBase, ExchangeConnectionError
 from core.transport.rest import RetryStrategy
+from core.config.structs import ExchangeConfig
 
 
 class MexcRetryStrategy(RetryStrategy):
-    """MEXC-specific retry logic with fast failure for HFT."""
+    """MEXC-specific retry logic based on ExchangeConfig."""
 
-    def __init__(self, **kwargs):
-        self.max_attempts = 2  # Fast failure for HFT
-        self.base_delay = 0.1  # 100ms base delay
-        self.max_delay = 2.0   # 2 second max delay
+    def __init__(self, exchange_config: ExchangeConfig):
+        """
+        Initialize MEXC retry strategy from ExchangeConfig.
+        
+        Args:
+            exchange_config: Exchange configuration containing network retry settings
+        """
+        # Extract retry settings from config or use MEXC defaults
+        if exchange_config.network:
+            self.max_attempts = exchange_config.network.max_retries
+            self.base_delay = exchange_config.network.retry_delay
+            self.max_delay = self.base_delay * 10  # 10x max
+        else:
+            # MEXC HFT defaults
+            self.max_attempts = 2
+            self.base_delay = 0.1
+            self.max_delay = 2.0
+        
+        self.exchange_config = exchange_config
 
     def should_retry(self, attempt: int, error: Exception) -> bool:
         """Determine if request should be retried for MEXC."""

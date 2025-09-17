@@ -4,14 +4,25 @@ from typing import Dict, Any
 from urllib.parse import urlencode
 
 from core.transport.rest import AuthStrategy, HTTPMethod, AuthenticationData
+from core.config.structs import ExchangeConfig
 
 
 class MexcAuthStrategy(AuthStrategy):
-    """MEXC-specific authentication using API Key + HMAC SHA256."""
+    """MEXC-specific authentication based on ExchangeConfig credentials."""
 
-    def __init__(self, api_key: str, secret_key: str, **kwargs):
-        self.api_key = api_key
-        self.secret_key = secret_key.encode('utf-8')
+    def __init__(self, exchange_config: ExchangeConfig):
+        """
+        Initialize MEXC authentication strategy from ExchangeConfig.
+        
+        Args:
+            exchange_config: Exchange configuration containing credentials
+        """
+        if not exchange_config.credentials.is_configured():
+            raise ValueError("MEXC credentials not configured in ExchangeConfig")
+        
+        self.api_key = exchange_config.credentials.api_key
+        self.secret_key = exchange_config.credentials.secret_key.encode('utf-8')
+        self.exchange_config = exchange_config
 
     async def sign_request(
         self,
@@ -55,6 +66,7 @@ class MexcAuthStrategy(AuthStrategy):
             '/api/v3/openOrders',
             '/api/v3/allOrders',
             '/api/v3/myTrades',
+            '/api/v3/userDataStream'
         ]
 
         return any(endpoint.startswith(private_ep) for private_ep in private_endpoints)

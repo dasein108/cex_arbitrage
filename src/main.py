@@ -36,6 +36,8 @@ import logging
 import sys
 from pathlib import Path
 
+# Factory system is now self-contained in core/
+
 from arbitrage.controller import ArbitrageController
 
 logger = logging.getLogger(__name__)

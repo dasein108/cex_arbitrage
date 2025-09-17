@@ -465,8 +465,8 @@ from core.cex import PublicExchangeInterface
 from core.cex import PrivateExchangeInterface
 
 # Existing MEXC and Gate.io implementations work directly
-from exchanges.mexc import MexcPublicSpotRest, MexcPrivateExchange
-from exchanges.gateio import GateioPublicExchange, GateioPrivateExchange
+from cex.mexc import MexcPublicSpotRest, MexcPrivateExchange
+from cex.gateio import GateioPublicExchange, GateioPrivateExchange
 
 # No modifications needed - plug and play integration
 ```

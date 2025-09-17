@@ -310,7 +310,7 @@ class ExchangeConfig(Struct, frozen=True):
         # Create default transport config for this exchange
         exchange_defaults = self._get_exchange_transport_defaults()
         return RestTransportConfig(
-            exchange_name=str(self.name),
+            exchange_name=self.name,
             is_private=is_private,
             **exchange_defaults
         )

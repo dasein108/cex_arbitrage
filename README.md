@@ -286,30 +286,30 @@ trading_config = RequestConfig(
 ### Basic REST Client Usage
 
 ```python
-from core.transport.rest.rest_client import create_trading_client, create_market_data_config
+from core.transport.rest.rest_client_legacy import create_trading_client, create_market_data_config
 
 
 async def example_usage():
-   async with create_trading_client(
-           base_url="https://api.exchange.com",
-           api_key="your_api_key",
-           secret_key="your_secret_key",
-           enable_metrics=True
-   ) as client:
-      # Get market data
-      config = create_market_data_config()
-      ticker = await client.get("/api/v3/ticker/24hr", config=config)
+    async with create_trading_client(
+            base_url="https://api.exchange.com",
+            api_key="your_api_key",
+            secret_key="your_secret_key",
+            enable_metrics=True
+    ) as client:
+        # Get market data
+        config = create_market_data_config()
+        ticker = await client.get("/api/v3/ticker/24hr", config=config)
 
-      # Execute batch requests
-      batch_requests = [
-         (HTTPMethod.GET, "/api/v3/ticker/price", {"symbol": "BTCUSDT"}, config),
-         (HTTPMethod.GET, "/api/v3/ticker/price", {"symbol": "ETHUSDT"}, config),
-      ]
-      results = await client.batch_request(batch_requests)
+        # Execute batch requests
+        batch_requests = [
+            (HTTPMethod.GET, "/api/v3/ticker/price", {"symbol": "BTCUSDT"}, config),
+            (HTTPMethod.GET, "/api/v3/ticker/price", {"symbol": "ETHUSDT"}, config),
+        ]
+        results = await client.batch_request(batch_requests)
 
-      # Monitor performance
-      metrics = client.get_metrics()
-      print(f"Average response time: {metrics.get('avg_response_time', 0):.3f}s")
+        # Monitor performance
+        metrics = client.get_metrics()
+        print(f"Average response time: {metrics.get('avg_response_time', 0):.3f}s")
 ```
 
 ### **Compliant Exchange Implementation Example**
@@ -319,41 +319,41 @@ async def example_usage():
 from core.cex.rest import PublicExchangeSpotRestInterface
 from core.cex.rest.spot.base_rest_spot_private import PrivateExchangeSpotRestInterface
 from structs import Symbol, OrderBook, Order, ExchangeName
-from core.transport.rest.rest_client import HighPerformanceRestClient, RequestConfig
+from core.transport.rest.rest_client_legacy import HighPerformanceRestClient, RequestConfig
 from core.exceptions.exchange import BaseExchangeError, RateLimitErrorBase
 
 
 class BinancePublic(PublicExchangeSpotRestInterface):
-   """COMPLIANT implementation using unified standards"""
+    """COMPLIANT implementation using unified standards"""
 
-   def __init__(self):
-      super().__init__(ExchangeName("binance"), "https://api.binance.com")
+    def __init__(self):
+        super().__init__(ExchangeName("binance"), "https://api.binance.com")
 
-      # MANDATORY: Use standardized REST client
-      self.client = HighPerformanceRestClient(
-         base_url=self.base_url,
-         max_concurrent_requests=40,
-         enable_metrics=True
-      )
+        # MANDATORY: Use standardized REST client
+        self.client = HighPerformanceRestClient(
+            base_url=self.base_url,
+            max_concurrent_requests=40,
+            enable_metrics=True
+        )
 
-   @property
-   def exchange_name(self) -> ExchangeName:
-      return ExchangeName("binance")
+    @property
+    def exchange_name(self) -> ExchangeName:
+        return ExchangeName("binance")
 
-   async def get_orderbook(self, symbol: Symbol, limit: int = 100) -> OrderBook:
-      """Implementation using unified data structures and REST client"""
-      try:
-         config = RequestConfig(timeout=5.0, max_retries=2)
-         response = await self.client.get(f"/api/v3/depth",
-                                          params={"symbol": self.symbol_to_pair(symbol)},
-                                          config=config)
+    async def get_orderbook(self, symbol: Symbol, limit: int = 100) -> OrderBook:
+        """Implementation using unified data structures and REST client"""
+        try:
+            config = RequestConfig(timeout=5.0, max_retries=2)
+            response = await self.client.get(f"/api/v3/depth",
+                                             params={"symbol": self.symbol_to_pair(symbol)},
+                                             config=config)
 
-         # Transform to unified OrderBook structure
-         return self._transform_orderbook_response(response)
+            # Transform to unified OrderBook structure
+            return self._transform_orderbook_response(response)
 
-      except Exception as e:
-         # MANDATORY: Use unified exception mapping
-         raise self._map_exchange_error(e)
+        except Exception as e:
+            # MANDATORY: Use unified exception mapping
+            raise self._map_exchange_error(e)
 ```
 
 **Reference Implementation**: See `/Users/dasein/dev/cex_arbitrage/src/exchanges/mexc/public.py` for complete compliant implementation.
@@ -482,7 +482,7 @@ The `raw/` directory contains legacy code that is **incompatible with unified in
            data = await response.json()
    
    # ✅ Use standardized client:
-   from core.transport.rest.rest_client import HighPerformanceRestClient
+   from core.transport.rest.rest_client_legacy import HighPerformanceRestClient
    async with HighPerformanceRestClient(base_url) as client:
        data = await client.get(endpoint)
    ```

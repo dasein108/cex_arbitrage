@@ -11,7 +11,8 @@ import logging
 from typing import List, Optional, Callable, Awaitable, Dict, Any
 
 from core.cex.websocket import WebSocketManager, WebSocketManagerConfig
-from core.cex.websocket import WebSocketStrategySet, ParsedMessage, MessageType
+from core.cex.websocket import ParsedMessage, MessageType
+from core.transport.websocket.strategies import WebSocketStrategySet
 from cex.gateio.ws.strategies_gateio import (
     GateioPublicConnectionStrategy, GateioPublicSubscriptionStrategy, GateioPublicMessageParser,
     GateioPrivateConnectionStrategy, GateioPrivateSubscriptionStrategy, GateioPrivateMessageParser

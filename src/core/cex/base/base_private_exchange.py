@@ -27,10 +27,14 @@ class BasePrivateExchangeInterface(BaseExchangeInterface):
 
 
     def __init__(self, config: ExchangeConfig):
-        super().__init__(config)
+        super().__init__(f'{config.name}_private', config)
         self._balances: Dict[Symbol, AssetBalance] = {}
         self._open_orders: Dict[Symbol, List[Order]] = {}
         self._symbols_info: SymbolsInfo = {}
+
+        # Authentication validation
+        if not config.has_credentials():
+            self.logger.warning("No API credentials provided - trading operations will fail")
 
     async def initialize(self, symbols_info: SymbolsInfo) -> None:
         """Initialize exchange with symbols"""

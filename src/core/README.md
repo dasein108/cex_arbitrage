@@ -171,11 +171,12 @@ class SymbolMapperInterface(ABC):
 ```
 
 **Registration Pattern**:
+
 ```python
 # Factory-based mapper registration
-ExchangeSymbolMapperFactory.register_mapper(
-    exchange_name="MEXC", 
-    mapper_class=MexcSymbolMapperInterface
+ExchangeSymbolMapperFactory.register(
+   exchange_name="MEXC",
+   mapper_class=MexcSymbolMapperInterface
 )
 ```
 
@@ -491,15 +492,15 @@ except ConfigurationError as e:
 
 ```python
 def install_exchange_dependencies():
-    """Ensure all enabled exchanges have their symbol mappers registered"""
-    exchanges = config.get_all_exchange_configs()
-    
-    for exchange_name, exchange_cfg in exchanges.items():
-        if exchange_cfg.enabled:
-            ExchangeSymbolMapperFactory.register_mapper(
-                exchange_name, 
-                SYMBOL_MAPPERS[exchange_name.upper()]
-            )
+   """Ensure all enabled exchanges have their symbol mappers registered"""
+   exchanges = config.get_all_exchange_configs()
+
+   for exchange_name, exchange_cfg in exchanges.items():
+      if exchange_cfg.enabled:
+         ExchangeSymbolMapperFactory.register(
+            exchange_name,
+            SYMBOL_MAPPERS[exchange_name.upper()]
+         )
 ```
 
 **Symbol Mapper Registry**:
@@ -553,15 +554,16 @@ class NewExchangeMappings(BaseExchangeMappings):
 ```
 
 #### Step 4: Register Services
+
 ```python
 # Register symbol mapper
-ExchangeSymbolMapperFactory.register_mapper(
-    "NEWEXCHANGE", NewExchangeSymbolMapper
+ExchangeSymbolMapperFactory.register(
+   "NEWEXCHANGE", NewExchangeSymbolMapper
 )
 
 # Register mapping service  
-ExchangeMappingsFactory.register_implementation(
-    "NEWEXCHANGE", NewExchangeMappings
+ExchangeMappingsFactory.register(
+   "NEWEXCHANGE", NewExchangeMappings
 )
 ```
 

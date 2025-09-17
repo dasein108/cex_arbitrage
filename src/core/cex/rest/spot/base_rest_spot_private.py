@@ -24,7 +24,6 @@ class PrivateExchangeSpotRestInterface(BaseExchangeRestInterface):
             raise ValueError(f"{config.name} API credentials must be provided")
             
         super().__init__(
-            exchange_tag=f"{config.name}_private",
             config=config,
             is_private=True  # Private API operations with authentication
         )

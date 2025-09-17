@@ -1,28 +1,10 @@
-from cex.mexc.ws.public import (MexcWebsocketPublic,
-                                      MexcPublicSubscriptionStrategy,
-                                      MexcPublicConnectionStrategy, MexcPublicMessageParser)
+from .public import (MexcWebsocketPublic)
 
-from cex.mexc.ws.private import (MexcWebsocketPrivate, MexcPrivateConnectionStrategy,
-                                       MexcPrivateSubscriptionStrategy,
-                                       MexcPrivateMessageParser)
+from .strategies import MexcPublicConnectionStrategy, MexcPublicSubscriptionStrategy, MexcPublicMessageParser
 
-from core.cex.websocket.strategies import (
-    WebSocketStrategyFactory
-)
+from .private import (MexcWebsocketPrivate, MexcPrivateMessageParser,
+                                 MexcPrivateConnectionStrategy, MexcPrivateSubscriptionStrategy)
 
-# Register strategies with factory
-WebSocketStrategyFactory.register_strategies(
-    'mexc', False,
-    MexcPublicConnectionStrategy,
-    MexcPublicSubscriptionStrategy,
-    MexcPublicMessageParser
-)
 
-WebSocketStrategyFactory.register_strategies(
-    'mexc', True,
-    MexcPrivateConnectionStrategy,
-    MexcPrivateSubscriptionStrategy,
-    MexcPrivateMessageParser
-)
 
 __all__ = ["MexcWebsocketPublic", "MexcWebsocketPrivate"]

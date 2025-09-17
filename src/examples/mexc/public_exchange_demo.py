@@ -21,10 +21,7 @@ from core.config.structs import ExchangeConfig, ExchangeCredentials, NetworkConf
 from structs.exchange import Symbol, AssetName
 from core.config import get_exchange_config
 from cex.mexc.public_exchange import MexcPublicExchange
-from core.register import install_exchange_dependencies
-from core.cex.services.symbol_mapper import get_symbol_mapper
 
-install_exchange_dependencies()
 
 
 async def main():

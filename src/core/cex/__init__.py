@@ -7,7 +7,7 @@ from core.transport.websocket.ws_client import (
     WebsocketClient,
 )
 from core.transport.websocket.structs import WebsocketConfig
-from core.cex.websocket.structs import ConnectionState
+from core.transport.websocket.structs import ConnectionState
 
 __all__ = [
     "BaseExchangeInterface",  # Base cex for all cex

@@ -39,7 +39,6 @@ from core.cex.rest.spot.base_rest_spot_public import PublicExchangeSpotRestInter
 from core.config.structs import ExchangeConfig
 from core.cex.utils import get_interval_seconds
 from core.transport.rest.structs import HTTPMethod
-from core.cex.services.mapping_factory import ExchangeMappingsFactory
 
 
 class MexcPublicSpotRest(PublicExchangeSpotRestInterface):
@@ -57,7 +56,7 @@ class MexcPublicSpotRest(PublicExchangeSpotRestInterface):
         Args:
             config: ExchangeConfig with base URL and rate limits
         """
-        super().__init__(config, custom_exception_handler=None)
+        super().__init__(config)
 
         self._symbols_info: Optional[Dict[Symbol, SymbolInfo]] = None
         
@@ -126,7 +125,7 @@ class MexcPublicSpotRest(PublicExchangeSpotRestInterface):
             base_prec, quote_prec, min_quote, min_base = self._extract_symbol_precision(mexc_symbol)
             
             symbol_info = SymbolInfo(
-                exchange=self.exchange,
+                exchange=self.exchange_name,
                 symbol=symbol,
                 base_precision=base_prec,
                 quote_precision=quote_prec,

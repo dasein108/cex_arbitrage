@@ -16,9 +16,9 @@ from enum import Enum
 
 from core.config.config_manager import config
 from core.exceptions.exchange import BaseExchangeError
-from cex.mexc.mexc_exchange import MexcExchange
+from cex.mexc.private_exchange import MexcPrivateExchange as MexcExchange
 from cex.gateio.gateio_exchange import GateioExchange
-from structs.exchange import Symbol, AssetName, ExchangeStatus
+from structs.exchange import Symbol, AssetName, ExchangeStatus, ExchangeName
 from core.cex.base.base_private_exchange import BasePrivateExchangeInterface
 
 logger = logging.getLogger(__name__)
@@ -83,9 +83,9 @@ class ExchangeFactory:
     
     Responsibilities:
     - Create exchange instances with proper credentials
-    - Initialize cex with default symbols
-    - Manage exchange lifecycle
-    - Provide unified cex for exchange operations
+    - Initialize exchanges with BaseExchangeFactory infrastructure
+    - Manage exchange lifecycle and operations
+    - Provide unified interface for exchange operations
     """
     
     # Exchange class registry
@@ -144,10 +144,10 @@ class ExchangeFactory:
         self, 
         exchange_name: str,
         symbols: Optional[List[Symbol]] = None,
-        max_attempts: Optional[int] = None
+        max_attempts: Optional[int] = None,
     ) -> BasePrivateExchangeInterface:
         """
-        Create and initialize exchange instance with retry logic.
+        Create and initialize exchange instance.
         
         Args:
             exchange_name: Name of the exchange
@@ -173,6 +173,7 @@ class ExchangeFactory:
                     available = list(self.EXCHANGE_CLASSES.keys())
                     raise ValueError(f"Unsupported exchange: {exchange_name}. Available: {available}")
                 
+                
                 # Get and validate credentials
                 credentials = self._get_credentials(exchange_name)
                 credential_errors = credentials.validate()
@@ -190,8 +191,8 @@ class ExchangeFactory:
                 # Get exchange class
                 exchange_class = self._get_exchange_class(exchange_name)
                 
-                # Create exchange instance with validation
-                exchange = await self._create_exchange_instance(
+                # Create exchange instance with enhanced validation
+                exchange = await self._create_exchange_instance_enhanced(
                     exchange_class, 
                     credentials, 
                     exchange_name
@@ -220,6 +221,7 @@ class ExchangeFactory:
                 )
                 
                 logger.info(f"Successfully created {exchange_name} exchange in {init_time:.2f}s")
+                
                 return exchange
                 
             except Exception as e:
@@ -248,14 +250,15 @@ class ExchangeFactory:
         logger.error(error_msg)
         raise BaseExchangeError(500, error_msg)
     
-    async def _create_exchange_instance(
+    async def _create_exchange_instance_enhanced(
         self,
         exchange_class: Type[BasePrivateExchangeInterface],
         credentials: ExchangeCredentials,
-        exchange_name: str
+        exchange_name: str,
     ) -> BasePrivateExchangeInterface:
-        """Create exchange instance with proper error handling."""
+        """Create exchange instance."""
         try:
+            # Create basic exchange instance
             if credentials.has_private_access:
                 exchange = exchange_class(
                     api_key=credentials.api_key,
@@ -272,6 +275,17 @@ class ExchangeFactory:
             
         except Exception as e:
             raise BaseExchangeError(500, f"Failed to instantiate {exchange_name}: {e}")
+    
+    async def _create_exchange_instance(
+        self,
+        exchange_class: Type[BasePrivateExchangeInterface],
+        credentials: ExchangeCredentials,
+        exchange_name: str
+    ) -> BasePrivateExchangeInterface:
+        """Create exchange instance with proper error handling (legacy method)."""
+        return await self._create_exchange_instance_enhanced(
+            exchange_class, credentials, exchange_name
+        )
     
     async def _initialize_exchange_with_validation(
         self,
@@ -562,9 +576,13 @@ class ExchangeFactory:
         return self.exchanges.get(name)
     
     def get_active_exchanges(self) -> Dict[str, BasePrivateExchangeInterface]:
-        """Get all active cex."""
+        """Get all active exchanges."""
         return {
             name: exchange
             for name, exchange in self.exchanges.items()
             if exchange and exchange.status == ExchangeStatus.ACTIVE
         }
+    
+    def get_factory_statistics(self) -> Dict[str, Any]:
+        """Get comprehensive factory statistics."""
+        return self.get_initialization_summary()

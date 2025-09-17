@@ -21,11 +21,7 @@ Threading: Fully async/await compatible, thread-safe
 Memory: O(1) per request, optimized for trading operations
 """
 
-import hashlib
-import hmac
-import urllib.parse
-import time
-from typing import Dict, List, Optional, Any, Tuple
+from typing import Dict, List, Optional, Any
 import msgspec
 
 from cex.mexc.structs.exchange import (
@@ -36,11 +32,9 @@ from structs.exchange import (
     AssetName, TimeInForce
 )
 from core.exceptions.exchange import BaseExchangeError
-from core.config.structs import ExchangeConfig
 
 from core.cex.rest.spot.base_rest_spot_private import PrivateExchangeSpotRestInterface
 from core.transport.rest.structs import HTTPMethod
-from core.cex.services.mapping_factory import ExchangeMappingsFactory
 
 
 class MexcPrivateSpotRest(PrivateExchangeSpotRestInterface):

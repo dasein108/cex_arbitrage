@@ -18,13 +18,13 @@ sys.path.insert(0, str(src_dir))
 
 # Import required structs and configs
 from structs.exchange import Symbol
-from core.transport.websocket.ws_client import WebSocketConfig
-from core.cex.websocket.strategies import WebSocketStrategySet
-from core.cex.websocket.ws_manager import WebSocketManager, WebSocketManagerConfig
-from cex.mexc.ws.private.ws_message_parser import MexcPrivateMessageParser
-from cex.mexc.ws.private.ws_strategies import MexcPrivateConnectionStrategy, MexcPrivateSubscriptionStrategy
-from core.config.config_manager import get_exchange_config, config
-from cex.mexc.rest.rest_private import MexcPrivateSpotRest
+from core.transport.websocket.ws_manager import WebSocketManager, WebSocketManagerConfig
+
+# Import factory infrastructure
+from core.transport.websocket.strategies.factory import WebSocketStrategyFactory
+
+import cex.mexc.ws.strategies  # Triggers strategy registration  
+import cex.mexc  # Triggers services registration (symbol mapper, mappings)
 
 # Set up logging
 logging.basicConfig(level=logging.DEBUG)
@@ -38,8 +38,7 @@ class TestPrivateWebSocketClient:
         self.order_handler = order_handler
         
         # Get MEXC exchange config for strategy
-
-        
+        from core.config.config_manager import get_exchange_config
         mexc_config = get_exchange_config("mexc")
 
         # Verify credentials are available
@@ -48,15 +47,9 @@ class TestPrivateWebSocketClient:
         
         logger.info(f"Using MEXC credentials - API Key: {mexc_config.credentials.api_key[:8]}...")
         
-        # Create REST client for listen key management
-        rest_client = MexcPrivateSpotRest(mexc_config)
-        
-        # Create strategy set for MEXC private WebSocket with REST client injection
-        strategies = WebSocketStrategySet(
-            connection_strategy=MexcPrivateConnectionStrategy(mexc_config, rest_client),
-            subscription_strategy=MexcPrivateSubscriptionStrategy(), 
-            message_parser=MexcPrivateMessageParser()
-        )
+        # Use factory to create WebSocket strategy set with auto-injection
+        # Factory automatically resolves and injects symbol_mapper and other dependencies
+        strategies = WebSocketStrategyFactory.inject('MEXC_PRIVATE', config=mexc_config)
         
         # Configure manager for HFT performance
         manager_config = WebSocketManagerConfig(
@@ -74,7 +67,7 @@ class TestPrivateWebSocketClient:
             manager_config=manager_config
         )
         
-        logger.info("Test private WebSocket client initialized with strategy pattern")
+        logger.info("Test private WebSocket client initialized with WebSocketStrategyFactory")
     
     async def initialize(self, symbols: List[Symbol] = None) -> None:
         """Initialize WebSocket connection and subscriptions."""
@@ -97,7 +90,7 @@ class TestPrivateWebSocketClient:
     async def _handle_parsed_message(self, parsed_message) -> None:
         """Handle parsed messages from WebSocketManager."""
         try:
-            from core.cex.websocket.structs import MessageType
+            from core.transport.websocket.structs import MessageType
             
             if parsed_message.message_type == MessageType.BALANCE:
                 logger.info("📊 Received BALANCE update")
@@ -195,11 +188,8 @@ class AccountDataManager:
         return self.order_updates[-limit:] if self.order_updates else []
 
 async def main():
-    """Test MEXC Private WebSocket refactored functionality."""
-    logger.info("🚀 Starting MEXC Private WebSocket Refactored Test...")
-    from core.register import install_exchange_dependencies
-
-    install_exchange_dependencies()
+    """Test MEXC Private WebSocket factory functionality."""
+    logger.info("🚀 Starting MEXC Private WebSocket Factory Test...")
     try:
         # Configure WebSocket for private connection
 
@@ -213,7 +203,7 @@ async def main():
             order_handler=manager.handle_order_update
         )
         
-        logger.info("🔌 Testing private WebSocket strategy architecture...")
+        logger.info("🔌 Testing private WebSocket factory architecture...")
         # Create a dummy symbol to trigger subscription process
         from structs.exchange import Symbol, AssetName
         dummy_symbol = Symbol(base=AssetName("BTC"), quote=AssetName("USDT"), is_futures=False)
@@ -246,7 +236,7 @@ async def main():
             logger.info(f"   {i}. {order}")
         
         if metrics['messages_processed'] > 0:
-            logger.info("✅ Private WebSocket strategy pattern test successful!")
+            logger.info("✅ Private WebSocket factory pattern test successful!")
             logger.info("🎉 Received private data - your account has activity!")
         else:
             logger.info("ℹ️  No private messages received - this is NORMAL behavior")

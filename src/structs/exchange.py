@@ -237,3 +237,10 @@ class AccountInfo(Struct):
 
 # composite types
 type SymbolsInfo = Dict[Symbol, SymbolInfo]
+
+
+class OrderbookUpdateType(Enum):
+    """Type of orderbook update for downstream processing."""
+    SNAPSHOT = "snapshot"
+    DIFF = "diff"
+    RECONNECT = "reconnect"

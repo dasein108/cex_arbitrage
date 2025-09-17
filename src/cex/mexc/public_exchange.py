@@ -11,10 +11,10 @@ import logging
 import time
 from typing import List, Dict, Optional, Set
 
-from core.cex.base.base_exchange import BaseExchangeInterface, OrderbookUpdateType
+from core.cex.base import BasePublicExchangeInterface
 from structs.exchange import (
     OrderBook, Symbol, SymbolInfo, SymbolsInfo, 
-    ExchangeStatus
+    ExchangeStatus, OrderbookUpdateType
 )
 from cex.mexc.ws.public.ws_public import MexcWebsocketPublic
 from cex.mexc.rest.rest_public import MexcPublicSpotRest
@@ -24,7 +24,7 @@ from core.exceptions.exchange import BaseExchangeError
 from core.config.structs import ExchangeConfig
 
 
-class MexcPublicExchange(BaseExchangeInterface):
+class MexcPublicExchange(BasePublicExchangeInterface):
     """
     MEXC Public Exchange - Market Data Only
     
@@ -42,22 +42,18 @@ class MexcPublicExchange(BaseExchangeInterface):
     - Zero-copy data processing where possible
     - Event-driven data distribution
     """
-    exchange_name = "MEXC_public"
 
     def __init__(self, config: ExchangeConfig):
         """Initialize MEXC public exchange for market data operations."""
         super().__init__(config)
-        
-        # Exchange-specific state
-        self._symbols_info_dict: Dict[Symbol, SymbolInfo] = {}
-        self._connection_state = ConnectionState.DISCONNECTED
-        
+
+
         # Initialize components using composition pattern
         self._public_rest = MexcPublicSpotRest(config)
         self._websocket_client = MexcWebsocketPublic(
             config=self._config,
             orderbook_diff_handler=self._handle_raw_orderbook_message,
-            state_change_handler=self._state_change_handler
+            state_change_handler=self._handle_connection_state_change
         )
         # HFT Performance tracking
         self._market_data_updates = 0
@@ -95,13 +91,11 @@ class MexcPublicExchange(BaseExchangeInterface):
         try:
             # Initialize WebSocket client for real-time data
             await self._websocket_client.initialize(symbols)
-            self._connection_state = ConnectionState.CONNECTED
             
             self.logger.info("MEXC WebSocket client initialized and connected")
             
         except Exception as e:
             self.logger.error(f"Failed to initialize WebSocket: {e}")
-            self._connection_state = ConnectionState.DISCONNECTED
             raise
     
     async def _stop_real_time_streaming(self) -> None:
@@ -109,19 +103,43 @@ class MexcPublicExchange(BaseExchangeInterface):
         try:
             if self._websocket_client:
                 await self._websocket_client.close()
-            self._connection_state = ConnectionState.DISCONNECTED
             
             self.logger.info("MEXC WebSocket streaming stopped")
             
         except Exception as e:
             self.logger.error(f"Error stopping WebSocket streaming: {e}")
     
+    async def _refresh_exchange_data(self) -> None:
+        """
+        Refresh orderbook data after WebSocket reconnection.
+        
+        For public exchanges, this refreshes:
+        - Orderbook snapshots from REST API
+        - Notifies arbitrage layer of reconnection
+        """
+        try:
+            if self._active_symbols:
+                # Reload orderbook snapshots to ensure consistency after reconnection
+                await self._initialize_orderbooks_from_rest(list(self._active_symbols))
+                
+                # Notify arbitrage layer of reconnection for each symbol
+                for symbol, orderbook in self._orderbooks.items():
+                    await self._notify_orderbook_update(symbol, orderbook, OrderbookUpdateType.RECONNECT)
+                
+                self.logger.info(f"Refreshed {len(self._orderbooks)} orderbooks after reconnection")
+            else:
+                self.logger.info("No active symbols to refresh after reconnection")
+                
+        except Exception as e:
+            self.logger.error(f"Failed to refresh exchange data after reconnection: {e}")
+            raise
+    
     @property
     def status(self) -> ExchangeStatus:
         """Get current exchange connection status."""
-        if self._connection_state == ConnectionState.CONNECTED:
+        if self.is_connected:
             return ExchangeStatus.ACTIVE
-        elif self._connection_state == ConnectionState.CONNECTING:
+        elif self.connection_state == ConnectionState.CONNECTING:
             return ExchangeStatus.CONNECTING
         else:
             return ExchangeStatus.INACTIVE
@@ -131,12 +149,6 @@ class MexcPublicExchange(BaseExchangeInterface):
         """Get all symbol information."""
         return self._symbols_info_dict.copy()
 
-    async def _state_change_handler(self, new_state: ConnectionState) -> None:
-        """Handle WebSocket connection state changes."""
-        self._connection_state = new_state
-        self.logger.info(f"MEXC WebSocket connection state changed to {new_state.name}")
-        if self._connection_state == ConnectionState.CONNECTED:
-            pass
 
     async def initialize(self, symbols: List[Symbol] = None) -> None:
         """
@@ -296,6 +308,6 @@ class MexcPublicExchange(BaseExchangeInterface):
             'active_symbols': len(self._active_symbols),
             'market_data_updates': self._market_data_updates,
             'last_update_time': self._last_update_time,
-            'connection_state': self._connection_state.name,
+            'connection_state': self.connection_state.name,
             'exchange_stats': base_stats
         }

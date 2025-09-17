@@ -154,7 +154,7 @@ Ultra-simple high-performance REST API client optimized for cryptocurrency tradi
 #### Usage Example
 
 ```python
-from core.transport.rest.rest_client import RestClient, RestConfig
+from core.transport.rest.rest_client_legacy import RestClient, RestConfig
 
 # Initialize client
 config = RestConfig(timeout=10.0, max_retries=3, require_auth=True)

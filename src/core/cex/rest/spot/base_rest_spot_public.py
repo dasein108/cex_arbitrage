@@ -17,10 +17,9 @@ from core.config.structs import ExchangeConfig
 class PublicExchangeSpotRestInterface(BaseExchangeRestInterface):
     """Abstract interface for public exchange operations (market data)"""
     
-    def __init__(self, config: ExchangeConfig, custom_exception_handler: Callable):
+    def __init__(self, config: ExchangeConfig):
         """Initialize public interface with transport manager."""
         super().__init__(
-            exchange_tag=f"{config.name}_public",
             config=config,
             is_private=False  # Public API operations
         )

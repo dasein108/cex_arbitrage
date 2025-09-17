@@ -2,10 +2,10 @@ from abc import ABC
 from typing import Callable
 import logging
 
-from core.transport.rest.rest_client import create_transport_from_config
+from core.transport.rest.utils import create_rest_transport_manager
 from core.transport.rest.structs import HTTPMethod
 from core.config.structs import ExchangeConfig
-from core.cex.services.symbol_mapper.symbol_mapper_factory import get_symbol_mapper
+from core.cex.services.symbol_mapper.factory import get_symbol_mapper
 from core.cex.services import ExchangeMappingsFactory
 
 class BaseExchangeRestInterface(ABC):
@@ -16,14 +16,15 @@ class BaseExchangeRestInterface(ABC):
     with automatic strategy selection, authentication, and rate limiting.
     """
 
-    def __init__(self, exchange_tag: str, config: ExchangeConfig, is_private: bool = False):
-        self.exchange = config.name
-        self.exchange_tag = exchange_tag
-        self.api_key = config.credentials.api_key
-        self.secret_key = config.credentials.secret_key
+
+    def __init__(self, config: ExchangeConfig, is_private: bool = False):
+        self.exchange_name = config.name
+        tag = '_private' if is_private else '_public'
+
+        self.exchange_tag = f'{self.exchange_name}{tag}'
 
         # Initialize REST transport manager using factory
-        self._transport = create_transport_from_config(
+        self._transport = create_rest_transport_manager(
             exchange_config=config,
             is_private=is_private,
         )
@@ -33,13 +34,9 @@ class BaseExchangeRestInterface(ABC):
         # Symbol mapper injection
         self.symbol_mapper = get_symbol_mapper(config.name)
         # Create exchange-agnostic mappings service using factory - FIX: use actual exchange name
-        self._mappings = ExchangeMappingsFactory.create_mappings(str(config.name), self.symbol_mapper)
+        self._mappings = ExchangeMappingsFactory.create(config.name, self.symbol_mapper)
 
         self.logger.info(f"Initialized REST transport manager for {config.name}")
-
-
-    async def _handle_exception(self, exception: Exception):
-        raise Exception(f"Error in {self.exchange_tag} REST transport: {str(exception)}")
 
     async def close(self):
         """Clean up resources and close connections."""

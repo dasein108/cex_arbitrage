@@ -29,7 +29,7 @@ from structs.exchange import (
     Symbol, SymbolInfo, OrderBook, OrderBookEntry, Trade, Kline,
     ExchangeName, AssetName, Side, KlineInterval
 )
-from core.transport.rest.rest_client import RestClient
+from core.transport.rest.rest_client_legacy import RestClient
 from core.cex.rest import PublicExchangeSpotRestInterface
 from cex.gateio.services.gateio_config import GateioConfig
 from cex.gateio.services.gateio_mappings import GateioMappings

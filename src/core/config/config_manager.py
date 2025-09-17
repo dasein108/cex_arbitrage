@@ -44,7 +44,7 @@ from dotenv import load_dotenv
 import traceback
 from dataclasses import dataclass
 from core.exceptions.exchange import ConfigurationError
-from core.config.structs import ExchangeCredentials, NetworkConfig, RateLimitConfig, WebSocketConfig, ExchangeConfig
+from core.config.structs import ExchangeCredentials, NetworkConfig, RateLimitConfig, WebSocketConfig, ExchangeConfig, RestTransportConfig
 from common.logging.simple_logger import getLogger
 from enum import Enum
 from msgspec import Struct
@@ -252,6 +252,49 @@ def parse_websocket_config(part_config: Dict[str, Any], websocket_url: str) -> W
         )
     except Exception as e:
         raise ConfigurationError(f"Failed to parse WebSocket configuration: {e}", "websocket") from e
+
+def parse_transport_config(part_config: Dict[str, Any], exchange_name: str, is_private: bool = False) -> RestTransportConfig:
+    """
+    Parse REST transport configuration from dictionary with validation.
+
+    Args:
+        part_config: Dictionary with transport configuration keys
+        exchange_name: Exchange name for strategy selection
+        is_private: Whether this is for private API operations
+
+    Returns:
+        RestTransportConfig struct with parsed and validated values
+        
+    Raises:
+        ConfigurationError: If configuration values are invalid
+    """
+    try:
+        return RestTransportConfig(
+            # Strategy Selection
+            exchange_name=exchange_name,
+            is_private=is_private,
+            
+            # Performance Targets
+            max_latency_ms=safe_get_config_value(part_config, 'max_latency_ms', 50.0, float, 'transport'),
+            target_throughput_rps=safe_get_config_value(part_config, 'target_throughput_rps', 100.0, float, 'transport'),
+            max_retry_attempts=safe_get_config_value(part_config, 'max_retry_attempts', 3, int, 'transport'),
+            
+            # Connection Settings
+            connection_timeout_ms=safe_get_config_value(part_config, 'connection_timeout_ms', 2000.0, float, 'transport'),
+            read_timeout_ms=safe_get_config_value(part_config, 'read_timeout_ms', 5000.0, float, 'transport'),
+            max_concurrent_requests=safe_get_config_value(part_config, 'max_concurrent_requests', 10, int, 'transport'),
+            
+            # Rate Limiting
+            requests_per_second=safe_get_config_value(part_config, 'requests_per_second', 20.0, float, 'transport'),
+            burst_capacity=safe_get_config_value(part_config, 'burst_capacity', 50, int, 'transport'),
+            
+            # Advanced Settings
+            enable_connection_pooling=safe_get_config_value(part_config, 'enable_connection_pooling', True, bool, 'transport'),
+            enable_compression=safe_get_config_value(part_config, 'enable_compression', True, bool, 'transport'),
+            user_agent=safe_get_config_value(part_config, 'user_agent', "HFTArbitrageEngine/1.0", str, 'transport')
+        )
+    except Exception as e:
+        raise ConfigurationError(f"Failed to parse transport configuration for {exchange_name}: {e}", f"{exchange_name}.transport") from e
 
 class HftConfig:
     """
@@ -494,6 +537,7 @@ class HftConfig:
         
         for exchange_name, exchange_data in exchanges_config.items():
             try:
+                
                 # Validate exchange data structure
                 required_exchange_keys = ['base_url', 'websocket_url']
                 validate_config_dict(exchange_data, required_exchange_keys, f'exchanges.{exchange_name}')
@@ -524,6 +568,13 @@ class HftConfig:
                 websocket_url = exchange_data.get('websocket_url', '')
                 websocket_config = parse_websocket_config(websocket_config_data, websocket_url)
 
+                # Parse transport configuration if present
+                transport_config = None
+                if 'transport' in exchange_data:
+                    transport_config_data = exchange_data['transport']
+                    # Parse transport config (is_private=False for base config)
+                    transport_config = parse_transport_config(transport_config_data, exchange_name, is_private=False)
+
                 # Validate base URL
                 base_url = exchange_data.get('base_url', '')
                 if not base_url or not isinstance(base_url, str):
@@ -546,7 +597,8 @@ class HftConfig:
                     enabled=exchange_data.get('enabled', True),
                     network=network_config,
                     rate_limit=rate_limit,
-                    websocket=websocket_config
+                    websocket=websocket_config,
+                    transport=transport_config
                 )
 
                 self._exchange_configs[exchange_name] = exchange_config

@@ -1,9 +1,9 @@
 """
-MEXC Public WebSocket Refactored Test
+MEXC Public WebSocket Factory Demo
 
-Standalone test for the new MEXC WebSocket refactored implementation.
-Tests the new strategy pattern architecture with composition.
-Avoids circular imports by being completely self-contained.
+Demonstrates using the new WebSocketStrategyFactory with auto-injection.
+Uses the BaseExchangeFactory infrastructure for clean dependency management.
+Shows factory-to-factory coordination and automatic symbol_mapper injection.
 """
 
 import asyncio
@@ -17,23 +17,21 @@ sys.path.insert(0, str(src_dir))
 
 # Import required structs and configs
 from structs.exchange import Symbol, AssetName, OrderBook, Trade
-from core.transport.websocket.ws_client import WebSocketConfig
 from typing import List, Dict
 
-# Import strategy components directly
-from core.cex.websocket.strategies import WebSocketStrategySet
-from core.cex.websocket.ws_manager import WebSocketManager, WebSocketManagerConfig
-from cex.mexc.ws.public.ws_message_parser import MexcPublicMessageParser
-from cex.mexc.ws.public.ws_strategies import MexcPublicConnectionStrategy, MexcPublicSubscriptionStrategy
-from core.cex.services import get_symbol_mapper
-from core.register import install_exchange_dependencies
+# Import factory infrastructure
+from core.transport.websocket.strategies.factory import WebSocketStrategyFactory
+from core.transport.websocket.ws_manager import WebSocketManager, WebSocketManagerConfig
+
+import cex.mexc.ws.strategies  # Triggers strategy registration  
+import cex.mexc  # Triggers services registration (symbol mapper, mappings)
+
 # Set up logging
 logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
-install_exchange_dependencies()
 
 class TestWebSocketClient:
-    """Simple test client using the new strategy architecture."""
+    """Test client using WebSocketStrategyFactory with auto-injection."""
     
     def __init__(self, orderbook_handler, trades_handler):
         self.orderbook_handler = orderbook_handler
@@ -42,14 +40,10 @@ class TestWebSocketClient:
         # Get MEXC exchange config for strategy
         from core.config.config_manager import get_exchange_config
         mexc_config = get_exchange_config("mexc")
-        symbol_mapper = get_symbol_mapper("mexc")
         
-        # Create strategy set for MEXC public WebSocket
-        strategies = WebSocketStrategySet(
-            connection_strategy=MexcPublicConnectionStrategy(mexc_config),
-            subscription_strategy=MexcPublicSubscriptionStrategy(symbol_mapper=symbol_mapper),
-            message_parser=MexcPublicMessageParser(symbol_mapper=symbol_mapper)
-        )
+        # Use factory to create WebSocket strategy set with auto-injection
+        # Factory automatically resolves and injects symbol_mapper and exchange_mappings
+        strategies = WebSocketStrategyFactory.inject('MEXC_PUBLIC', config=mexc_config)
         
         # Configure manager for HFT performance
         manager_config = WebSocketManagerConfig(
@@ -67,7 +61,7 @@ class TestWebSocketClient:
             manager_config=manager_config
         )
         
-        logger.info("Test WebSocket client initialized with strategy pattern")
+        logger.info("Test WebSocket client initialized with WebSocketStrategyFactory")
     
     async def initialize(self, symbols: List[Symbol]) -> None:
         """Initialize WebSocket connection and subscriptions."""
@@ -155,8 +149,8 @@ class OrderBookManager:
         return self.trade_history.get(symbol, [])
 
 async def main():
-    """Test MEXC WebSocket refactored functionality."""
-    logger.info("🚀 Starting MEXC WebSocket Refactored Test...")
+    """Test MEXC WebSocket factory functionality."""
+    logger.info("🚀 Starting MEXC WebSocket Factory Test...")
     # Create OrderBook manager for external storage
     manager = OrderBookManager()
     
@@ -174,11 +168,11 @@ async def main():
 
 
     try:
-        logger.info("🔌 Testing WebSocket strategy architecture...")
+        logger.info("🔌 Testing WebSocket factory architecture...")
         await ws.initialize(symbols)
         await asyncio.sleep(30)
-        # The client was successfully created with the strategy pattern
-        logger.info("✅ Strategy pattern architecture test successful!")
+        # The client was successfully created with the factory pattern
+        logger.info("✅ WebSocketStrategyFactory test successful!")
         
 
     except Exception as e:

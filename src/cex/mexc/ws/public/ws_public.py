@@ -23,25 +23,26 @@ Architecture: Strategy pattern with WebSocketManager coordination
 """
 
 from typing import List, Dict, Optional, Callable, Awaitable
-from common.logging import getLogger
 
 from structs.exchange import Symbol, Trade, OrderBook
-from core.config.structs import WebSocketConfig, ExchangeConfig
+from core.config.structs import ExchangeConfig
 
 # Strategy pattern imports
-from core.cex.websocket import BaseExchangeWebsocketInterface
-from core.cex.websocket.strategies import WebSocketStrategySet
-from core.cex.websocket.ws_manager import WebSocketManager, WebSocketManagerConfig
+from core.cex.websocket import BaseExchangePublicWebsocketInterface
+from core.transport.websocket.strategies import WebSocketStrategySet
+from core.transport.websocket.ws_manager import WebSocketManager, WebSocketManagerConfig
 from core.cex.websocket import MessageType, ConnectionState
-from cex.mexc.ws.public.ws_message_parser import MexcPublicMessageParser
-from cex.mexc.ws.public.ws_strategies import MexcPublicConnectionStrategy, MexcPublicSubscriptionStrategy
+from cex.mexc.ws.strategies.public import (MexcPublicMessageParser,
+                                           MexcPublicSubscriptionStrategy, MexcPublicConnectionStrategy)
 
 from cex.mexc.structs.protobuf.PushDataV3ApiWrapper_pb2 import PushDataV3ApiWrapper
 from cex.mexc.structs.protobuf.PublicLimitDepthsV3Api_pb2 import PublicLimitDepthsV3Api
 from cex.mexc.structs.protobuf.PublicAggreDealsV3Api_pb2 import PublicAggreDealsV3Api
 # from cex.mexc.protobuf.PublicAggreDepthsV3Api_pb2 import PublicAggreDepthsV3Api
 
-class MexcWebsocketPublic(BaseExchangeWebsocketInterface):
+# ExchangeFactoryBundle is no longer needed with BaseExchangeFactory infrastructure
+
+class MexcWebsocketPublic(BaseExchangePublicWebsocketInterface):
     """MEXC public WebSocket client using strategy pattern architecture."""
 
     def __init__(
@@ -49,23 +50,26 @@ class MexcWebsocketPublic(BaseExchangeWebsocketInterface):
         config: ExchangeConfig,
         orderbook_diff_handler: Optional[Callable[[any, Symbol], Awaitable[None]]] = None,
         trades_handler: Optional[Callable[[Symbol, List[Trade]], Awaitable[None]]] = None,
-        state_change_handler: Optional[Callable[[ConnectionState], Awaitable[None]]] = None
+        state_change_handler: Optional[Callable[[ConnectionState], Awaitable[None]]] = None,
     ):
-        super().__init__(config)
-        self.logger = getLogger(f"{__name__}.{self.__class__.__name__}")
-        self.orderbook_diff_handler = orderbook_diff_handler
-        self.trades_handler = trades_handler
-        
-        # Get exchange config with WebSocket configuration
+        super().__init__(config,
+                         orderbook_diff_handler=orderbook_diff_handler,
+                         trades_handler=trades_handler,
+                         state_change_handler=state_change_handler)
 
+        # Get exchange config with WebSocket configuration
         if not config.websocket:
             raise ValueError("MEXC exchange configuration missing WebSocket settings")
         
-        # Create strategy set for MEXC public WebSocket
+        # Use factory to get symbol mapper
+        from core.cex.services.symbol_mapper.factory import ExchangeSymbolMapperFactory
+        symbol_mapper = ExchangeSymbolMapperFactory.inject('MEXC')
+        
+        # Create strategy set for MEXC public WebSocket with resolved dependencies
         strategies = WebSocketStrategySet(
             connection_strategy=MexcPublicConnectionStrategy(config),
-            subscription_strategy=MexcPublicSubscriptionStrategy(self.symbol_mapper),
-            message_parser=MexcPublicMessageParser(self.symbol_mapper)
+            subscription_strategy=MexcPublicSubscriptionStrategy(symbol_mapper),
+            message_parser=MexcPublicMessageParser(symbol_mapper)
         )
         
         # Configure manager for HFT performance
@@ -85,7 +89,11 @@ class MexcWebsocketPublic(BaseExchangeWebsocketInterface):
             state_change_handler=state_change_handler
         )
         
-        self.logger.info("MEXC public WebSocket initialized with strategy pattern")
+        # Store factory bundle for potential future use
+        self._factory_bundle = factory_bundle
+        
+        injection_method = "factory-mediated" if factory_bundle else "constructor"
+        self.logger.info(f"MEXC public WebSocket initialized with strategy pattern using {injection_method} injection")
 
     async def _handle_parsed_message(self, parsed_message) -> None:
         """Handle parsed messages from WebSocketManager."""
@@ -158,3 +166,4 @@ class MexcWebsocketPublic(BaseExchangeWebsocketInterface):
     async def on_trades_update(self, symbol: Symbol, trades: List[Trade]):
         """Default trade update handler."""
         self.logger.info(f"Trades update for {symbol}: {len(trades)} trades")
+    

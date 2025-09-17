@@ -36,7 +36,7 @@ from structs.exchange import (
     Symbol, Order, OrderId, OrderType, Side, AssetBalance, AssetName,
     ExchangeName, TimeInForce, Position
 )
-from core.transport.rest.rest_client import RestClient
+from core.transport.rest.rest_client_legacy import RestClient
 from core.transport.rest.structs import HTTPMethod
 from core.cex.rest.spot.base_rest_spot_private import PrivateExchangeSpotRestInterface
 from cex.gateio.services.gateio_utils import GateioUtils

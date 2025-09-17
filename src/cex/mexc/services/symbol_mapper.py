@@ -1,9 +1,8 @@
 from core.cex.services.symbol_mapper.base_symbol_mapper import SymbolMapperInterface
-from core.cex.services.symbol_mapper.symbol_mapper_factory import ExchangeSymbolMapperFactory
 from structs.exchange import Symbol, AssetName
 
 
-class MexcSymbolMapperInterface(SymbolMapperInterface):
+class MexcSymbolMapper(SymbolMapperInterface):
     """
     MEXC-specific symbol mapper implementation.
     
@@ -55,7 +54,4 @@ class MexcSymbolMapperInterface(SymbolMapperInterface):
         
         raise ValueError(f"Unrecognized MEXC pair format: {pair}. Supported quotes: {self._quote_assets}")
 
-
-# Register MEXC mapper with factory
-ExchangeSymbolMapperFactory.register_mapper('MEXC', MexcSymbolMapperInterface)
 

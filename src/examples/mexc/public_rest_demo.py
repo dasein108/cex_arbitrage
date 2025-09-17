@@ -9,6 +9,8 @@ import asyncio
 from structs.exchange import Symbol, AssetName
 from cex.mexc.rest.rest_public import MexcPublicSpotRest
 from core.config.config_manager import get_exchange_config
+import cex.mexc.rest.strategies  # Triggers strategy registration
+import cex.mexc.services  # Register symbol mapper
 
 async def check_ping(exchange: MexcPublicSpotRest):
     """Check ping method."""
@@ -105,9 +107,6 @@ async def main():
     """Run all integration checks."""
     print("MEXC PUBLIC API INTEGRATION CHECKS")
     print("=" * 50)
-
-    from core.register import install_exchange_dependencies
-    install_exchange_dependencies()
 
     config = get_exchange_config('MEXC')
     exchange = MexcPublicSpotRest(config)

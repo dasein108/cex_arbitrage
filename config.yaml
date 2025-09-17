@@ -7,7 +7,7 @@ environment:
   debug: true
   log_level: DEBUG  # CRITICAL, ERROR, WARNING, INFO, DEBUG
 
-# Exchange API settings - Unified structure
+# Exchange API settings - Enhanced with RestTransportConfig
 exchanges:
   mexc:
     api_key: "${MEXC_API_KEY}"  # Set via environment variable MEXC_API_KEY
@@ -15,6 +15,28 @@ exchanges:
     base_url: "https://api.mexc.com"
     websocket_url: "wss://wbs-api.mexc.com/ws"
     enabled: true
+    
+    # REST Transport Configuration (HFT-optimized for MEXC)
+    transport:
+      # Performance Targets
+      max_latency_ms: 40.0              # MEXC has good latency characteristics
+      target_throughput_rps: 100.0      # Target throughput for HFT
+      max_retry_attempts: 2              # Fast failure for HFT
+      
+      # Connection Settings (aggressive for HFT)
+      connection_timeout_ms: 1500.0      # Fast connection establishment
+      read_timeout_ms: 4000.0            # Fast read timeout
+      max_concurrent_requests: 5         # MEXC-specific concurrency limit
+      
+      # Rate Limiting (MEXC: 1200 req/min = 20 req/sec)
+      requests_per_second: 20.0          # Conservative for stability
+      burst_capacity: 60                 # 3x burst capacity
+      
+      # Advanced Settings
+      enable_connection_pooling: true
+      enable_compression: true
+      user_agent: "HFTArbitrageEngine-MEXC/1.0"
+      
   gateio:
     api_key: "${GATEIO_API_KEY}"  # Set via environment variable GATEIO_API_KEY (empty for public-only access)
     secret_key: "${GATEIO_SECRET_KEY}"  # Set via environment variable GATEIO_SECRET_KEY (empty for public-only access)
@@ -23,6 +45,27 @@ exchanges:
     testnet_base_url: "https://api-testnet.gateapi.io/api/v4"  # Testnet URL
     testnet_websocket_url: "wss://ws-testnet.gate.com/v4/ws/spot" # Testnet WebSocket URL
     enabled: true
+    
+    # REST Transport Configuration (HFT-optimized for Gate.io)
+    transport:
+      # Performance Targets  
+      max_latency_ms: 60.0              # Gate.io typically has higher latency
+      target_throughput_rps: 80.0       # Conservative target
+      max_retry_attempts: 3              # More retries due to higher latency
+      
+      # Connection Settings (balanced for Gate.io)
+      connection_timeout_ms: 2500.0      # Longer for Gate.io
+      read_timeout_ms: 6000.0            # Longer read timeout
+      max_concurrent_requests: 8         # Higher concurrency for Gate.io
+      
+      # Rate Limiting (Gate.io: 200 req/10sec = 20 req/sec)
+      requests_per_second: 15.0          # Conservative under limit
+      burst_capacity: 45                 # 3x burst capacity
+      
+      # Advanced Settings
+      enable_connection_pooling: true
+      enable_compression: true
+      user_agent: "HFTArbitrageEngine-GATEIO/1.0"
 
 # Network configuration
 network:

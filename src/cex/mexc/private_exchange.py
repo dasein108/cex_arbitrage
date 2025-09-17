@@ -50,13 +50,7 @@ class MexcPrivateExchange(BasePrivateExchangeInterface):
             config: Exchange configuration with API credentials
         """
         super().__init__(config)
-        
-        self.logger = logging.getLogger(f"{__name__}.{self.__class__.__name__}")
 
-        # Authentication validation
-        if not config.has_credentials():
-            self.logger.warning("No API credentials provided - trading operations will fail")
-        
         # HFT Optimized: Real-time trading data structures (not cached)
         self._balances_dict: Dict[AssetName, AssetBalance] = {}
         self._open_orders_dict: Dict[Symbol, List[Order]] = {}
@@ -220,7 +214,7 @@ class MexcPrivateExchange(BasePrivateExchangeInterface):
         """
         start_time = time.perf_counter()
         self._trading_operations += 1
-        
+
         try:
             # Place order via REST API
             order = self._private_rest.place_market_order(

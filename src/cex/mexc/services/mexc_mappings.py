@@ -11,11 +11,10 @@ from datetime import datetime
 from typing import Any
 
 from structs.exchange import (
-    Symbol, Order, OrderId, OrderStatus, OrderType, Side, 
+    Order, OrderId, OrderStatus, OrderType, Side,
     TimeInForce, KlineInterval
 )
-from core.cex.services.exchange_mappings import BaseExchangeMappings, MappingConfiguration
-from core.cex.services.mapping_factory import ExchangeMappingsFactory
+from core.cex.services.unified_mapper.exchange_mappings import BaseExchangeMappings, MappingConfiguration
 
 
 class MexcMappings(BaseExchangeMappings):
@@ -115,7 +114,3 @@ class MexcMappings(BaseExchangeMappings):
             timestamp=datetime.fromtimestamp(mexc_order.transactTime / 1000) if mexc_order.transactTime else None,
             fee=fee
         )
-
-
-# Register MEXC implementation with factory
-ExchangeMappingsFactory.register_implementation('MEXC', MexcMappings)

@@ -16,7 +16,7 @@ HFT Performance:
 """
 
 from core.cex.services.symbol_mapper.base_symbol_mapper import SymbolMapperInterface
-from core.cex.services.symbol_mapper.symbol_mapper_factory import ExchangeSymbolMapperFactory, get_symbol_mapper
+from core.cex.services.symbol_mapper.factory import ExchangeSymbolMapperFactory, get_symbol_mapper
 from .kline_utils import get_interval_seconds
 
 __all__ = [

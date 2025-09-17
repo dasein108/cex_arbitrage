@@ -6,7 +6,7 @@ Uses the YAML-based configuration system following MEXC patterns.
 """
 
 from core.config.config_manager import config
-from core.transport.rest.rest_client import RestConfig
+from core.transport.rest.rest_client_legacy import RestConfig
 
 
 def _create_gateio_config(endpoint_type: str, timeout_multiplier: float = 1.0, max_retries: int = None) -> RestConfig:

@@ -24,9 +24,13 @@ ERROR_CODE_MAPPING = {
 class MexcExceptionHandlerStrategy(ExceptionHandlerStrategy):
     """MEXC-specific exception handling strategy."""
     
-    def __init__(self, **kwargs):
-        """Initialize MEXC exception handler strategy."""
-        pass  # No initialization needed for this strategy
+    def __init__(self):
+        """
+        Initialize MEXC exception handler strategy.
+        
+        No parameters needed - uses static error code mappings.
+        """
+        pass  # No initialization needed - static error mappings
 
     def handle_error(self, status_code: int, response_text: str) -> BaseExchangeError:
         """

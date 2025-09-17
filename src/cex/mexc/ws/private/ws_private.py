@@ -25,24 +25,23 @@ Architecture: Strategy pattern with WebSocketManager coordination
 
 import time
 from typing import List, Dict, Optional, Callable, Awaitable
-from common.logging import getLogger
 
 from structs.exchange import Symbol, Order, AssetBalance, Trade, Side, AssetName
 from cex.mexc.rest.rest_private import MexcPrivateSpotRest
 from .mapping import status_mapping, type_mapping
 # Strategy pattern imports
-from core.cex.websocket.strategies import WebSocketStrategySet
-from core.cex.websocket.ws_manager import WebSocketManager, WebSocketManagerConfig
-from core.cex.websocket import MessageType, BaseExchangeWebsocketInterface
-from cex.mexc.ws.private.ws_message_parser import MexcPrivateMessageParser
-from cex.mexc.ws.private.ws_strategies import MexcPrivateConnectionStrategy, MexcPrivateSubscriptionStrategy
+from core.transport.websocket.strategies import WebSocketStrategySet
+from core.transport.websocket.ws_manager import WebSocketManager, WebSocketManagerConfig
+from core.cex.websocket import MessageType, BaseExchangePrivateWebsocketInterface
+from cex.mexc.ws.strategies.private import MexcPrivateMessageParser
+from cex.mexc.ws.strategies.private import MexcPrivateConnectionStrategy, MexcPrivateSubscriptionStrategy
 
 from cex.mexc.structs.protobuf.PrivateAccountV3Api_pb2 import PrivateAccountV3Api
 from cex.mexc.structs.protobuf.PrivateOrdersV3Api_pb2 import PrivateOrdersV3Api
 from cex.mexc.structs.protobuf.PrivateDealsV3Api_pb2 import PrivateDealsV3Api
 from core.config.structs import ExchangeConfig
 
-class MexcWebsocketPrivate(BaseExchangeWebsocketInterface):
+class MexcWebsocketPrivate(BaseExchangePrivateWebsocketInterface):
     """MEXC private WebSocket client using strategy pattern architecture."""
 
     def __init__(
@@ -54,7 +53,6 @@ class MexcWebsocketPrivate(BaseExchangeWebsocketInterface):
         trade_handler: Optional[Callable[[Trade], Awaitable[None]]] = None
     ):
         super().__init__(config)
-        self.logger = getLogger(f"{__name__}.{self.__class__.__name__}")
         self.rest_client = private_rest_client
         self.order_handler = order_handler
         self.balance_handler = balance_handler

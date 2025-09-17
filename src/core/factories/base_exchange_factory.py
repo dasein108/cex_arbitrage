@@ -1,0 +1,268 @@
+"""
+Generic Exchange Factory Base Class
+
+Provides standardized factory patterns for all exchange-based services,
+eliminating code duplication and ensuring consistency across the system.
+
+HFT COMPLIANCE: Sub-millisecond factory operations with efficient singleton management.
+"""
+
+import logging
+from typing import TypeVar, Generic, Dict, Type, Any, Optional, List
+from abc import ABC, abstractmethod
+
+logger = logging.getLogger(__name__)
+
+# Generic type for the service/strategy being managed
+T = TypeVar('T')
+
+
+class BaseExchangeFactory(Generic[T], ABC):
+    """
+    Abstract base factory for exchange-specific service management.
+    
+    Provides standardized patterns for all exchange-based factories:
+    - Exchange-based service registration and retrieval
+    - Singleton instance management with efficient caching
+    - Automatic dependency injection infrastructure
+    - Factory-to-factory coordination
+    - Consistent error handling and validation
+    
+    Design Principles:
+    - Generic type safety with TypeVar
+    - Standardized API across all factory types
+    - Auto-injection of common dependencies
+    - Registry isolation per factory subclass
+    - HFT-compliant performance characteristics
+    """
+    
+    # NOTE: Each subclass gets its own registry by explicit initialization
+    # This ensures complete isolation between factory types
+    _implementations: Dict[str, Type[T]]
+    _instances: Dict[str, T]
+    
+    def __init_subclass__(cls, **kwargs):
+        """Initialize separate registries for each factory subclass."""
+        super().__init_subclass__(**kwargs)
+        cls._implementations = {}
+        cls._instances = {}
+    
+    @classmethod
+    @abstractmethod
+    def register(cls, exchange_name: str, implementation_class: Type[T], **kwargs) -> None:
+        """
+        Register implementation for an exchange.
+        
+        Must be implemented by subclass to handle factory-specific registration logic.
+        Should use base class infrastructure for consistency.
+        
+        Args:
+            exchange_name: Exchange identifier (e.g., 'MEXC', 'GATEIO')
+            implementation_class: Implementation class for the exchange
+            **kwargs: Additional registration parameters
+        """
+        pass
+    
+    @classmethod
+    @abstractmethod  
+    def inject(cls, exchange_name: str, **kwargs) -> T:
+        """
+        Create or retrieve instance for an exchange.
+        
+        Must be implemented by subclass to handle factory-specific creation logic.
+        Should use base class infrastructure and auto-injection patterns.
+        
+        Args:
+            exchange_name: Exchange identifier
+            **kwargs: Additional creation parameters
+            
+        Returns:
+            Instance of the registered type for the exchange
+            
+        Raises:
+            ValueError: If exchange not registered
+        """
+        pass
+    
+    # Standard utility methods - implemented in base class
+    
+    @classmethod
+    def is_registered(cls, exchange_name: str) -> bool:
+        """
+        Check if exchange has registered implementation.
+        
+        Args:
+            exchange_name: Exchange identifier
+            
+        Returns:
+            True if exchange is registered, False otherwise
+        """
+        exchange_key = cls._normalize_exchange_key(exchange_name)
+        return exchange_key in cls._implementations
+    
+    @classmethod
+    def get_registered_exchanges(cls) -> List[str]:
+        """
+        Get list of exchanges with registered implementations.
+        
+        Returns:
+            List of registered exchange identifiers
+        """
+        return list(cls._implementations.keys())
+    
+    @classmethod
+    def clear_cache(cls) -> None:
+        """
+        Clear cached singleton instances.
+        
+        Useful for testing or memory management. Does not affect registrations.
+        """
+        cls._instances.clear()
+        logger.debug(f"Cleared cache for {cls.__name__}")
+    
+    @classmethod
+    def reset_factory(cls) -> None:
+        """
+        Reset factory state - clear instances and registrations.
+        
+        WARNING: This will break existing references to instances.
+        Use only for testing or complete system reset.
+        """
+        cls._instances.clear()
+        cls._implementations.clear()
+        logger.warning(f"Factory reset: {cls.__name__} - all instances and registrations cleared")
+    
+    @classmethod
+    def get_factory_statistics(cls) -> Dict[str, Any]:
+        """
+        Get comprehensive factory statistics.
+        
+        Returns:
+            Dictionary with factory state and performance metrics
+        """
+        return {
+            'factory_name': cls.__name__,
+            'registered_exchanges_count': len(cls._implementations),
+            'active_instances_count': len(cls._instances),
+            'registered_exchanges': list(cls._implementations.keys()),
+            'cached_instances': list(cls._instances.keys()),
+        }
+    
+    @staticmethod
+    def _normalize_exchange_key(exchange_name: str) -> str:
+        """
+        Normalize exchange name to standard key format.
+        
+        Args:
+            exchange_name: Exchange identifier in any case
+            
+        Returns:
+            Normalized exchange key (uppercase)
+        """
+        return str(exchange_name).upper()
+    
+    @classmethod
+    def _resolve_dependencies(cls, exchange_name: str, **context) -> Dict[str, Any]:
+        """
+        Generic dependency resolution infrastructure.
+        
+        Automatically resolves common dependencies used across factories:
+        - symbol_mapper via ExchangeSymbolMapperFactory
+        - exchange_mappings via ExchangeMappingsFactory
+        
+        Args:
+            exchange_name: Exchange identifier for dependency resolution
+            **context: Additional context for dependency resolution
+            
+        Returns:
+            Dictionary with resolved dependencies for injection
+            
+        Performance: Sub-millisecond resolution via factory caching
+        """
+        resolved = {}
+        exchange_key = cls._normalize_exchange_key(exchange_name)
+        
+        try:
+            # Import factories lazily to avoid circular dependencies
+            from core.cex.services.symbol_mapper.factory import ExchangeSymbolMapperFactory
+            from core.cex.services.unified_mapper.factory import ExchangeMappingsFactory
+            
+            # Auto-resolve symbol mapper if available
+            if 'symbol_mapper' not in context:
+                try:
+                    symbol_mapper = ExchangeSymbolMapperFactory.inject(exchange_key)
+                    resolved['symbol_mapper'] = symbol_mapper
+                    
+                    # Auto-resolve exchange mappings if symbol mapper available
+                    if 'exchange_mappings' not in context:
+                        try:
+                            exchange_mappings = ExchangeMappingsFactory.inject(exchange_key)
+                            resolved['exchange_mappings'] = exchange_mappings
+                        except Exception:
+                            # Graceful fallback - exchange mappings not available
+                            pass
+                            
+                except Exception:
+                    # Graceful fallback - symbol mapper not available
+                    pass
+            
+        except ImportError:
+            # Graceful fallback - factories not available
+            # This allows the system to work even if some factories aren't implemented yet
+            pass
+        except Exception as e:
+            # Log unexpected errors but don't fail
+            logger.debug(f"Dependency resolution failed for {exchange_name}: {e}")
+        
+        return resolved
+    
+    @classmethod
+    def _create_instance_with_auto_injection(
+        cls, 
+        exchange_name: str, 
+        implementation_class: Type[T], 
+        **kwargs
+    ) -> T:
+        """
+        Create instance with automatic dependency injection.
+        
+        Helper method for subclasses to create instances with auto-resolved dependencies.
+        
+        Args:
+            exchange_name: Exchange identifier
+            implementation_class: Class to instantiate
+            **kwargs: Additional constructor arguments
+            
+        Returns:
+            Instance with auto-injected dependencies
+        """
+        # Resolve dependencies automatically
+        auto_deps = cls._resolve_dependencies(exchange_name, **kwargs)
+        
+        # Merge with provided kwargs (provided kwargs take precedence)
+        merged_kwargs = {**auto_deps, **kwargs}
+        
+        try:
+            # Try to create instance with all dependencies
+            return implementation_class(**merged_kwargs)
+        except TypeError as e:
+            # Fallback: try without auto-injected dependencies
+            logger.debug(f"Auto-injection failed for {implementation_class.__name__}: {e}")
+            return implementation_class(**kwargs)
+    
+    @classmethod
+    def _validate_implementation_class(cls, implementation_class: Type[T], expected_base: Type) -> None:
+        """
+        Validate that implementation class inherits from expected base class.
+        
+        Args:
+            implementation_class: Class to validate
+            expected_base: Expected base class
+            
+        Raises:
+            ValueError: If implementation doesn't inherit from expected base
+        """
+        if not issubclass(implementation_class, expected_base):
+            raise ValueError(
+                f"Implementation class {implementation_class.__name__} must inherit from {expected_base.__name__}"
+            )

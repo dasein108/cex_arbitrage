@@ -22,22 +22,18 @@ Memory: Optimized object pooling for high-frequency updates
 Performance: <1ms message processing, >1000 updates/second throughput
 """
 
-import logging
 import time
 import json
 from collections import deque
 from typing import List, Dict, Optional, Callable, Awaitable, Any
 
-from structs.exchange import Symbol, Trade, OrderBook, OrderBookEntry
-from core.config.structs import WebSocketConfig, ExchangeConfig
+from structs.exchange import Symbol, Trade, OrderBookEntry
+from core.config.structs import ExchangeConfig
 from common.logging import getLogger
 
 # Strategy pattern imports
 from core.cex.websocket import BaseExchangeWebsocketInterface
-from core.cex.websocket.strategies import WebSocketStrategySet
-from core.cex.websocket.ws_manager import WebSocketManager, WebSocketManagerConfig
-from core.cex.websocket import MessageType
-from core.cex.websocket.structs import SubscriptionAction
+from core.transport.websocket.structs import SubscriptionAction
 
 # Create placeholder strategy imports - these need to be implemented
 # from cex.gateio.ws.public.ws_strategies import GateioPublicConnectionStrategy, GateioPublicSubscriptionStrategy

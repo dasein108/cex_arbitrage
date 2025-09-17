@@ -915,7 +915,7 @@ class ExchangeSymbolConverter:
 #### Solution: Unified Rate Limit Handler
 
 ```python
-from core.transport.rest.rest_client import RestClient
+from core.transport.rest.rest_client_legacy import RestClient
 from core.transport.rest.structs import RestConfig
 
 
@@ -1669,7 +1669,7 @@ import msgspec
 from typing import Dict, List, Optional
 from core.cex.rest import PublicExchangeSpotRestInterface
 from structs import Symbol, SymbolInfo, OrderBook, OrderBookEntry, Trade, Side
-from core.transport.rest.rest_client import RestClient
+from core.transport.rest.rest_client_legacy import RestClient
 from .common.
 
 {exchange_name}
@@ -1839,7 +1839,7 @@ from core.cex.rest.spot.base_rest_spot_private import PrivateExchangeSpotRestInt
 from structs import (
     Symbol, AssetBalance, Order, Side, OrderType, OrderStatus, OrderId, AssetName
 )
-from core.transport.rest.rest_client import RestClient
+from core.transport.rest.rest_client_legacy import RestClient
 from core.exceptions.exchange import BaseExchangeError, RateLimitErrorBase, InvalidOrderError
 from .common.
 
