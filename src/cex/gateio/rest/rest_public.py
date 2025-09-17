@@ -30,17 +30,10 @@ from structs.exchange import (
     Symbol, SymbolInfo, OrderBook, OrderBookEntry, Trade, Kline,
     ExchangeName, KlineInterval
 )
-from core.cex.rest import PublicExchangeSpotRestInterface
+from core.cex.rest.spot.base_rest_spot_public import PublicExchangeSpotRestInterface
 from core.transport.rest.structs import HTTPMethod
-from cex.gateio.services.gateio_utils import GateioUtils
-from cex.gateio.services.gateio_mappings import GateioMappings
 from core.config.structs import ExchangeConfig
 from core.exceptions.exchange import BaseExchangeError
-
-
-def handle_gateio_exception(status_code: int, message: str) -> BaseExchangeError:
-    """Handle Gate.io specific exceptions."""
-    return BaseExchangeError(f"Gate.io error {status_code}: {message}")
 
 
 class GateioPublicSpotRest(PublicExchangeSpotRestInterface):
@@ -58,7 +51,7 @@ class GateioPublicSpotRest(PublicExchangeSpotRestInterface):
         Args:
             config: ExchangeConfig with Gate.io configuration
         """
-        super().__init__(config, handle_gateio_exception)
+        super().__init__(config)
         
         # Simple caching for exchange info to reduce API calls (HFT compliant - config data only)
         self._exchange_info: Optional[Dict[Symbol, SymbolInfo]] = None
@@ -133,7 +126,7 @@ class GateioPublicSpotRest(PublicExchangeSpotRestInterface):
             for gateio_symbol in response_data:
                 # Parse symbol from Gate.io format
                 pair_id = gateio_symbol.get('id', '')
-                symbol = GateioUtils.pair_to_symbol(pair_id)
+                symbol = self._mapper.to_symbol(pair_id)
                 
                 base_prec, quote_prec, min_quote, min_base = self._extract_symbol_precision(gateio_symbol)
                 
@@ -187,7 +180,7 @@ class GateioPublicSpotRest(PublicExchangeSpotRestInterface):
             ExchangeAPIError: If unable to fetch order book data
         """
         try:
-            pair = GateioUtils.symbol_to_pair(symbol)
+            pair = self._mapper.to_pair(symbol)
             
             # Validate limit for Gate.io API (1-100)
             optimized_limit = max(1, min(100, limit))
@@ -256,7 +249,7 @@ class GateioPublicSpotRest(PublicExchangeSpotRestInterface):
             ExchangeAPIError: If unable to fetch trade data
         """
         try:
-            pair = GateioUtils.symbol_to_pair(symbol)
+            pair = self._mapper.to_pair(symbol)
             
             # Validate limit for Gate.io API (1-1000)
             optimized_limit = max(1, min(1000, limit))
@@ -288,7 +281,7 @@ class GateioPublicSpotRest(PublicExchangeSpotRestInterface):
             
             trades = []
             for trade_data in response_data:
-                side = GateioMappings.get_unified_side(trade_data.get('side', 'buy'))
+                side = self._mapper.get_unified_side(trade_data.get('side', 'buy'))
                 
                 trade = Trade(
                     price=float(trade_data.get('price', '0')),
@@ -374,8 +367,8 @@ class GateioPublicSpotRest(PublicExchangeSpotRestInterface):
         """
         klines = []
         try:
-            pair = GateioUtils.symbol_to_pair(symbol)
-            interval = GateioUtils.get_gateio_kline_interval(timeframe)
+            pair = self._mapper.to_pair(symbol)
+            interval = self._mapper.get_exchange_interval(timeframe)
             
             params = {
                 'currency_pair': pair,

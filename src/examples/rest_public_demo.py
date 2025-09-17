@@ -1,20 +1,27 @@
 """
-MEXC Public API Integration Check
+Generic Public REST API Integration Demo
 
-Simple integration checks that call each API method and display raw responses.
-Used for API validation and response verification.
+Demonstrates public API functionality across multiple exchanges.
+Tests core public methods: ping, server time, exchange info, orderbook, recent trades.
+
+Usage:
+    python src/examples/rest_public_demo.py mexc
+    python src/examples/rest_public_demo.py gateio
 """
 
 import asyncio
+import sys
 from structs.exchange import Symbol, AssetName
-from cex.mexc.rest.rest_public import MexcPublicSpotRest
 from core.config.config_manager import get_exchange_config
-import cex.mexc.rest.strategies  # Triggers strategy registration
-import cex.mexc.services  # Register symbol mapper
 
-async def check_ping(exchange: MexcPublicSpotRest):
+from examples.utils.rest_api_factory import get_exchange_rest_class
+
+
+
+
+async def check_ping(exchange, exchange_name: str):
     """Check ping method."""
-    print("=== PING CHECK ===")
+    print(f"=== {exchange_name.upper()} PING CHECK ===")
     try:
         result = await exchange.ping()
         print(f"Result: {result}")
@@ -22,9 +29,9 @@ async def check_ping(exchange: MexcPublicSpotRest):
         print(f"Error: {e}")
 
 
-async def check_get_server_time(exchange: MexcPublicSpotRest):
+async def check_get_server_time(exchange, exchange_name: str):
     """Check get_server_time method."""
-    print("\n=== GET SERVER TIME CHECK ===")
+    print(f"\n=== {exchange_name.upper()} GET SERVER TIME CHECK ===")
     try:
         result = await exchange.get_server_time()
         print(f"Server time: {result}")
@@ -32,9 +39,9 @@ async def check_get_server_time(exchange: MexcPublicSpotRest):
         print(f"Error: {e}")
 
 
-async def check_get_exchange_info(exchange: MexcPublicSpotRest):
+async def check_get_exchange_info(exchange, exchange_name: str):
     """Check get_exchange_info method."""
-    print("\n=== GET EXCHANGE INFO CHECK ===")
+    print(f"\n=== {exchange_name.upper()} GET EXCHANGE INFO CHECK ===")
     try:
         result = await exchange.get_exchange_info()
         print(f"Total symbols: {len(result)}")
@@ -57,9 +64,9 @@ async def check_get_exchange_info(exchange: MexcPublicSpotRest):
         print(f"Error: {e}")
 
 
-async def check_get_orderbook(exchange: MexcPublicSpotRest):
+async def check_get_orderbook(exchange, exchange_name: str):
     """Check get_orderbook method."""
-    print("\n=== GET ORDERBOOK CHECK ===")
+    print(f"\n=== {exchange_name.upper()} GET ORDERBOOK CHECK ===")
     symbol = Symbol(base=AssetName('BTC'), quote=AssetName('USDT'), is_futures=False)
     
     try:
@@ -81,9 +88,9 @@ async def check_get_orderbook(exchange: MexcPublicSpotRest):
         print(f"Error: {e}")
 
 
-async def check_get_recent_trades(exchange: MexcPublicSpotRest):
+async def check_get_recent_trades(exchange, exchange_name: str):
     """Check get_recent_trades method.""" 
-    print("\n=== GET RECENT TRADES CHECK ===")
+    print(f"\n=== {exchange_name.upper()} GET RECENT TRADES CHECK ===")
     symbol = Symbol(base=AssetName('BTC'), quote=AssetName('USDT'), is_futures=False)
     
     try:
@@ -103,23 +110,45 @@ async def check_get_recent_trades(exchange: MexcPublicSpotRest):
         print(f"Error: {e}")
 
 
-async def main():
-    """Run all integration checks."""
-    print("MEXC PUBLIC API INTEGRATION CHECKS")
+async def main(exchange_name: str):
+    """Run all public API integration checks for the specified exchange."""
+    print(f"{exchange_name.upper()} PUBLIC REST API INTEGRATION DEMO")
     print("=" * 50)
 
-    config = get_exchange_config('MEXC')
-    exchange = MexcPublicSpotRest(config)
+    try:
+        # Load exchange configuration
+        config = get_exchange_config(exchange_name.upper())
+        exchange_class = get_exchange_rest_class(exchange_name, is_private=False)
+        exchange = exchange_class(config)
+        
+        # Execute all public API checks
+        await check_ping(exchange, exchange_name)
+        await check_get_server_time(exchange, exchange_name)
+        await check_get_exchange_info(exchange, exchange_name)
+        await check_get_orderbook(exchange, exchange_name)
+        await check_get_recent_trades(exchange, exchange_name)
+        
+        await exchange.close()
+        
+    except ValueError as e:
+        print(f"Configuration Error: {e}")
+        print(f"Make sure {exchange_name.upper()} configuration is available")
+    except Exception as e:
+        print(f"Initialization Error: {e}")
+        import traceback
+        traceback.print_exc()
     
-    await check_ping(exchange)
-    await check_get_server_time(exchange)
-    await check_get_exchange_info(exchange)
-    await check_get_orderbook(exchange)
-    await check_get_recent_trades(exchange)
-    await exchange.close()
     print("\n" + "=" * 50)
-    print("INTEGRATION CHECKS COMPLETE")
+    print(f"{exchange_name.upper()} PUBLIC API DEMO COMPLETE")
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    exchange_name = sys.argv[1] if len(sys.argv) > 1 else "gateio"
+
+    try:
+        asyncio.run(main(exchange_name))
+        print(f"\n✅ {exchange_name.upper()} public API demo completed successfully!")
+    except Exception as e:
+        print(f"\n❌ {exchange_name.upper()} public API demo failed: {e}")
+        import traceback
+        traceback.print_exc()

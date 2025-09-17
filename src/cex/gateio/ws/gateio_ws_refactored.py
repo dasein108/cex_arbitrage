@@ -72,11 +72,11 @@ class GateioWebsocketPublicRefactored:
     
     async def start_symbol(self, symbol: Symbol) -> None:
         """Start streaming data for a symbol."""
-        await self.ws_manager.add_symbols([symbol])
+        await self.ws_manager.add_subscriptions(symbols=[symbol])
     
     async def stop_symbol(self, symbol: Symbol) -> None:
         """Stop streaming data for a symbol."""
-        await self.ws_manager.remove_symbols([symbol])
+        await self.ws_manager.remove_subscriptions(symbols=[symbol])
     
     async def close(self) -> None:
         """Close WebSocket connection."""

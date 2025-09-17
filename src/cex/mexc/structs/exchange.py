@@ -152,3 +152,57 @@ class MexcWSTradeMessage(msgspec.Struct):
     d: MexcWSTradeData  # Data
     s: str  # Symbol
     t: int  # Timestamp
+
+
+# Private WebSocket message structures
+
+class MexcWSPrivateOrderData(msgspec.Struct):
+    """MEXC private WebSocket order data structure."""
+    order_id: str
+    symbol: str
+    side: str  # "BUY" or "SELL" 
+    status: int  # Order status code
+    orderType: int  # Order type code
+    price: str
+    quantity: str
+    filled_qty: str = "0"
+    updateTime: int = 0
+
+
+class MexcWSPrivateOrderMessage(msgspec.Struct):
+    """MEXC private WebSocket order message structure."""
+    c: str  # Channel: spot@private.orders.v3.api.pb
+    d: MexcWSPrivateOrderData  # Order data
+    t: int  # Timestamp
+
+
+class MexcWSPrivateBalanceData(msgspec.Struct):
+    """MEXC private WebSocket balance data structure."""
+    asset: str
+    free: str
+    locked: str
+    total: str = "0"
+
+
+class MexcWSPrivateBalanceMessage(msgspec.Struct):
+    """MEXC private WebSocket balance message structure."""
+    c: str  # Channel: spot@private.account.v3.api.pb
+    d: MexcWSPrivateBalanceData  # Balance data
+    t: int  # Timestamp
+
+
+class MexcWSPrivateTradeData(msgspec.Struct):
+    """MEXC private WebSocket trade data structure."""
+    symbol: str
+    side: str  # "BUY" or "SELL"
+    price: str
+    quantity: str
+    timestamp: int
+    is_maker: bool = False
+
+
+class MexcWSPrivateTradeMessage(msgspec.Struct):
+    """MEXC private WebSocket trade message structure."""
+    c: str  # Channel: spot@private.deals.v3.api.pb
+    d: MexcWSPrivateTradeData  # Trade data
+    t: int  # Timestamp

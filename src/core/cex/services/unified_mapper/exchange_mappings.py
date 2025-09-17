@@ -31,7 +31,15 @@ class ExchangeMappingsInterface(ABC):
     def __init__(self, symbol_mapper: SymbolMapperInterface):
         """Initialize with injected symbol mapper dependency."""
         self._symbol_mapper = symbol_mapper
-    
+
+    def to_symbol(self, pair: str) -> Symbol:
+        """Convert exchange pair string to unified Symbol."""
+        return self._symbol_mapper.to_symbol(pair)
+
+    def to_pair(self, symbol: Symbol) -> str:
+        """Convert unified Symbol to exchange pair string."""
+        return self._symbol_mapper.to_pair(symbol)
+
     # Order Status Mapping
     @abstractmethod
     def get_unified_order_status(self, exchange_status: str) -> OrderStatus:
@@ -96,11 +104,11 @@ class ExchangeMappingsInterface(ABC):
     # Symbol Conversion
     def pair_to_symbol(self, pair_str: str) -> Symbol:
         """Convert exchange pair string to unified Symbol."""
-        return self._symbol_mapper.pair_to_symbol(pair_str)
+        return self._symbol_mapper.to_symbol(pair_str)
     
     def symbol_to_pair(self, symbol: Symbol) -> str:
         """Convert unified Symbol to exchange pair string."""
-        return self._symbol_mapper.symbol_to_pair(symbol)
+        return self._symbol_mapper.to_pair(symbol)
     
     # Order Transformation
     @abstractmethod

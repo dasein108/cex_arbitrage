@@ -75,7 +75,7 @@ class SymbolMapperInterface(ABC):
         """
         pass
     
-    def symbol_to_pair(self, symbol: Symbol) -> str:
+    def to_pair(self, symbol: Symbol) -> str:
         """
         Convert Symbol to exchange-specific pair string with caching.
         
@@ -96,7 +96,7 @@ class SymbolMapperInterface(ABC):
         
         return pair
     
-    def pair_to_symbol(self, pair: str) -> Symbol:
+    def to_symbol(self, pair: str) -> Symbol:
         """
         Convert exchange-specific pair string to Symbol with caching.
         

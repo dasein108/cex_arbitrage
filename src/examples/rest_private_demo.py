@@ -1,18 +1,27 @@
 """
-MEXC Private API Integration Check
+Generic Private REST API Integration Demo
 
-Simple integration checks that call each private API method and display raw responses.
-Used for API validation and response verification for authenticated endpoints.
+Demonstrates private API functionality across multiple exchanges.
+Tests core private methods: account balance, orders, trading operations.
+
+Usage:
+    python src/examples/rest_private_demo.py mexc
+    python src/examples/rest_private_demo.py gateio
 """
 
 import asyncio
+import sys
 from structs.exchange import Symbol, AssetName, Side, OrderType, TimeInForce
-from cex.mexc.rest.rest_private import MexcPrivateSpotRest
+from core.cex.rest import PrivateExchangeSpotRestInterface
+from core.config.config_manager import get_exchange_config
+
+from examples.utils.rest_api_factory import get_exchange_rest_class
 
 
-async def check_get_account_balance(exchange: MexcPrivateSpotRest):
+
+async def check_get_account_balance(exchange: PrivateExchangeSpotRestInterface, exchange_name: str):
     """Check get_account_balance method."""
-    print("=== GET ACCOUNT BALANCE CHECK ===")
+    print(f"\n=== {exchange_name.upper()} GET ACCOUNT BALANCE CHECK ===")
     try:
         result = await exchange.get_account_balance()
         print(f"Total balances: {len(result)}")
@@ -28,9 +37,9 @@ async def check_get_account_balance(exchange: MexcPrivateSpotRest):
         print(f"Error: {e}")
 
 
-async def check_get_asset_balance(exchange: MexcPrivateSpotRest):
+async def check_get_asset_balance(exchange: PrivateExchangeSpotRestInterface, exchange_name: str):
     """Check get_asset_balance method."""
-    print("\n=== GET ASSET BALANCE CHECK ===")
+    print(f"\n=== {exchange_name.upper()} GET ASSET BALANCE CHECK ===")
     asset = AssetName('USDT')
     
     try:
@@ -47,9 +56,9 @@ async def check_get_asset_balance(exchange: MexcPrivateSpotRest):
         print(f"Error: {e}")
 
 
-async def check_place_order(exchange: MexcPrivateSpotRest):
+async def check_place_order(exchange: PrivateExchangeSpotRestInterface, exchange_name: str):
     """Check place_order method."""
-    print("\n=== PLACE ORDER CHECK ===")
+    print(f"\n=== {exchange_name.upper()} PLACE ORDER CHECK ===")
     symbol = Symbol(base=AssetName('ADA'), quote=AssetName('USDT'), is_futures=False)
     
     try:
@@ -76,9 +85,9 @@ async def check_place_order(exchange: MexcPrivateSpotRest):
         print(f"Error: {e}")
 
 
-async def check_get_open_orders(exchange: MexcPrivateSpotRest):
+async def check_get_open_orders(exchange: PrivateExchangeSpotRestInterface, exchange_name: str):
     """Check get_open_orders method."""
-    print("\n=== GET OPEN ORDERS CHECK ===")
+    print(f"\n=== {exchange_name.upper()} GET OPEN ORDERS CHECK ===")
     
     try:
         result = await exchange.get_open_orders()
@@ -100,9 +109,9 @@ async def check_get_open_orders(exchange: MexcPrivateSpotRest):
         print(f"Error: {e}")
 
 
-async def check_get_order(exchange: MexcPrivateSpotRest):
+async def check_get_order(exchange: PrivateExchangeSpotRestInterface, exchange_name: str):
     """Check get_order method."""
-    print("\n=== GET ORDER CHECK ===")
+    print(f"\n=== {exchange_name.upper()} GET ORDER CHECK ===")
     symbol = Symbol(base=AssetName('BTC'), quote=AssetName('USDT'), is_futures=False)
     order_id = "123456789"  # This will likely fail as order doesn't exist
     
@@ -123,9 +132,9 @@ async def check_get_order(exchange: MexcPrivateSpotRest):
         print(f"Error: {e}")
 
 
-async def check_cancel_order(exchange: MexcPrivateSpotRest):
+async def check_cancel_order(exchange: PrivateExchangeSpotRestInterface, exchange_name: str):
     """Check cancel_order method."""
-    print("\n=== CANCEL ORDER CHECK ===")
+    print(f"\n=== {exchange_name.upper()} CANCEL ORDER CHECK ===")
     symbol = Symbol(base=AssetName('BTC'), quote=AssetName('USDT'), is_futures=False)
     order_id = "123456789"  # This will likely fail as order doesn't exist
     
@@ -141,9 +150,9 @@ async def check_cancel_order(exchange: MexcPrivateSpotRest):
         print(f"Error: {e}")
 
 
-async def check_cancel_all_orders(exchange: MexcPrivateSpotRest):
+async def check_cancel_all_orders(exchange: PrivateExchangeSpotRestInterface, exchange_name: str):
     """Check cancel_all_orders method."""
-    print("\n=== CANCEL ALL ORDERS CHECK ===")
+    print(f"\n=== {exchange_name.upper()} CANCEL ALL ORDERS CHECK ===")
     symbol = Symbol(base=AssetName('BTC'), quote=AssetName('USDT'), is_futures=False)
     
     try:
@@ -161,40 +170,47 @@ async def check_cancel_all_orders(exchange: MexcPrivateSpotRest):
         print(f"Error: {e}")
 
 
-async def main():
-    """Run all integration checks."""
-    print("MEXC PRIVATE API INTEGRATION CHECKS")
+async def main(exchange_name: str):
+    """Run all private API integration checks for the specified exchange."""
+    print(f"{exchange_name.upper()} PRIVATE REST API INTEGRATION DEMO")
     print("=" * 50)
     
     try:
-        # Load config to get API credentials
-        from core.config.config_manager import config
-
-        # Create exchange with explicit API credentials from config
-        mexc_config = config.get_exchange_config('mexc')
-        if not mexc_config:
-            raise ValueError("MEXC configuration not found")
-        exchange = MexcPrivateSpotRest(mexc_config)
+        # Load exchange configuration and API credentials
+        config = get_exchange_config(exchange_name.upper())
+        exchange_class = get_exchange_rest_class(exchange_name, is_private=True)
+        exchange = exchange_class(config)
         
-        await check_get_account_balance(exchange)
-        await check_get_asset_balance(exchange)
-        await check_get_open_orders(exchange)
-        await check_get_order(exchange)
-        await check_place_order(exchange)
-        await check_cancel_order(exchange)
-        await check_cancel_all_orders(exchange)
+        # Execute all private API checks
+        await check_get_account_balance(exchange, exchange_name)
+        await check_get_asset_balance(exchange, exchange_name)
+        await check_get_open_orders(exchange, exchange_name)
+        await check_get_order(exchange, exchange_name)
+        await check_place_order(exchange, exchange_name)
+        await check_cancel_order(exchange, exchange_name)
+        await check_cancel_all_orders(exchange, exchange_name)
 
         await exchange.close()
         
     except ValueError as e:
         print(f"Configuration Error: {e}")
-        print("Make sure MEXC API credentials are configured in config.yaml")
+        print(f"Make sure {exchange_name.upper()} API credentials are configured")
     except Exception as e:
         print(f"Initialization Error: {e}")
+        import traceback
+        traceback.print_exc()
     
     print("\n" + "=" * 50)
-    print("INTEGRATION CHECKS COMPLETE")
+    print(f"{exchange_name.upper()} PRIVATE API DEMO COMPLETE")
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    exchange_name = sys.argv[1] if len(sys.argv) > 1 else "gateio"
+
+    try:
+        asyncio.run(main(exchange_name))
+        print(f"\n✅ {exchange_name.upper()} private API demo completed successfully!")
+    except Exception as e:
+        print(f"\n❌ {exchange_name.upper()} private API demo failed: {e}")
+        import traceback
+        traceback.print_exc()

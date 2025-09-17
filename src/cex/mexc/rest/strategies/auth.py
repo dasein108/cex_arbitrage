@@ -29,11 +29,22 @@ class MexcAuthStrategy(AuthStrategy):
         method: HTTPMethod,
         endpoint: str,
         params: Dict[str, Any],
+        json_data: Dict[str, Any],
         timestamp: int
     ) -> AuthenticationData:
         """Generate MEXC authentication data with proper signature handling."""
-        # Prepare parameters for signature (include timestamp and recvWindow)
-        auth_params = params.copy()
+        # MEXC puts ALL parameters (including json_data) in query string for authenticated requests
+        auth_params = {}
+        
+        # Add query parameters if any
+        if params:
+            auth_params.update(params)
+        
+        # Add JSON data parameters if any (MEXC requirement)
+        if json_data:
+            auth_params.update(json_data)
+        
+        # Add required MEXC auth parameters
         auth_params['timestamp'] = timestamp
         auth_params['recvWindow'] = 5000  # MEXC default, can be made configurable
 
@@ -54,7 +65,8 @@ class MexcAuthStrategy(AuthStrategy):
                 'X-MEXC-APIKEY': self.api_key,
                 'Content-Type': 'application/json'
             },
-            params=auth_params | {'signature': signature}
+            params=auth_params | {'signature': signature},
+            data=None  # MEXC uses query parameters, not request body
         )
 
     def requires_auth(self, endpoint: str) -> bool:

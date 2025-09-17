@@ -225,17 +225,3 @@ class ExchangeSymbolMapperFactory(BaseExchangeFactory[SymbolMapperInterface]):
                 logger.error(f"Mapper {exchange_name} validation failed: {e}")
         
         return validation_results
-
-
-# Convenience function for common usage
-def get_symbol_mapper(exchange_name: str) -> SymbolMapperInterface:
-    """
-    Convenience function to get symbol mapper for an exchange.
-    
-    Args:
-        exchange_name: Exchange identifier
-        
-    Returns:
-        Symbol mapper instance
-    """
-    return ExchangeSymbolMapperFactory.inject(exchange_name)

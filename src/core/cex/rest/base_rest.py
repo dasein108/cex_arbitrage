@@ -5,7 +5,6 @@ import logging
 from core.transport.rest.utils import create_rest_transport_manager
 from core.transport.rest.structs import HTTPMethod
 from core.config.structs import ExchangeConfig
-from core.cex.services.symbol_mapper.factory import get_symbol_mapper
 from core.cex.services import ExchangeMappingsFactory
 
 class BaseExchangeRestInterface(ABC):
@@ -24,7 +23,7 @@ class BaseExchangeRestInterface(ABC):
         self.exchange_tag = f'{self.exchange_name}{tag}'
 
         # Initialize REST transport manager using factory
-        self._transport = create_rest_transport_manager(
+        self._rest = create_rest_transport_manager(
             exchange_config=config,
             is_private=is_private,
         )
@@ -32,20 +31,20 @@ class BaseExchangeRestInterface(ABC):
         self.logger = logging.getLogger(f"{__name__}.{self.exchange_tag}")
 
         # Symbol mapper injection
-        self.symbol_mapper = get_symbol_mapper(config.name)
+
         # Create exchange-agnostic mappings service using factory - FIX: use actual exchange name
-        self._mappings = ExchangeMappingsFactory.create(config.name, self.symbol_mapper)
+        self._mapper = ExchangeMappingsFactory.inject(config.name)
 
         self.logger.info(f"Initialized REST transport manager for {config.name}")
 
     async def close(self):
         """Clean up resources and close connections."""
-        await self._transport.close()
+        await self._rest.close()
 
     async def request(self, method: HTTPMethod, endpoint: str, params: dict = None, data: dict = None, headers: dict = None):
         """Make an HTTP request using the REST transport manager."""
         # The new transport system handles authentication automatically based on configuration
-        return await self._transport.request(method, endpoint, params=params, json_data=data, headers=headers)
+        return await self._rest.request(method, endpoint, params=params, json_data=data, headers=headers)
 
     async def __aenter__(self):
         """Async context manager entry."""

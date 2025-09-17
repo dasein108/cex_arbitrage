@@ -33,8 +33,6 @@ from core.transport.rest.structs import HTTPMethod
 from core.exceptions.exchange import BaseExchangeError
 from core.cex.rest.spot.base_rest_spot_private import PrivateExchangeSpotRestInterface
 from core.config.structs import ExchangeConfig
-from cex.gateio.services.gateio_utils import GateioUtils
-from cex.gateio.services.gateio_mappings import GateioMappings
 
 
 class GateioPrivateSpotRest(PrivateExchangeSpotRestInterface):
@@ -52,10 +50,8 @@ class GateioPrivateSpotRest(PrivateExchangeSpotRestInterface):
         Args:
             config: ExchangeConfig with Gate.io configuration and credentials
         """
-        super().__init__(config, self._handle_gateio_exception)
+        super().__init__(config)
 
-        self.logger = logging.getLogger(f"{__name__}.{self.__class__.__name__}")
-        self.logger.info(f"Initialized {config.name} private REST client")
     
     def _handle_gateio_exception(self, status_code: int, message: str) -> BaseExchangeError:
         """Handle Gate.io specific exceptions."""
@@ -97,7 +93,7 @@ class GateioPrivateSpotRest(PrivateExchangeSpotRestInterface):
             
             balances = []
             for balance_data in response_data:
-                balance = GateioUtils.transform_gateio_balance_to_unified(balance_data)
+                balance = self._mapper.transform_balance_to_unified(balance_data)
                 # Only include assets with non-zero total balance
                 if balance.total > 0:
                     balances.append(balance)
@@ -175,19 +171,19 @@ class GateioPrivateSpotRest(PrivateExchangeSpotRestInterface):
             ExchangeAPIError: If order placement fails
         """
         try:
-            pair = GateioUtils.symbol_to_pair(symbol)
+            pair = self._mapper.to_pair(symbol)
             
             # Build order payload
             payload = {
                 'currency_pair': pair,
-                'side': GateioMappings.get_gateio_side(side),
-                'type': GateioMappings.get_gateio_order_type(order_type)
+                'side': self._mapper.get_exchange_side(side),
+                'type': self._mapper.get_exchange_order_type(order_type)
             }
             
             # Set time in force
             if time_in_force is None:
                 time_in_force = TimeInForce.GTC
-            payload['time_in_force'] = GateioMappings.get_gateio_time_in_force(time_in_force)
+            payload['time_in_force'] = self._mapper.get_exchange_time_in_force(time_in_force)
             
             # Handle different order configurations
             if order_type == OrderType.MARKET:
@@ -197,22 +193,22 @@ class GateioPrivateSpotRest(PrivateExchangeSpotRestInterface):
                         if amount is None or price is None:
                             raise ValueError("Market buy orders require quote_quantity or (amount + price)")
                         quote_quantity = amount * price
-                    payload['amount'] = GateioUtils.format_gateio_quantity(quote_quantity)
+                    payload['amount'] = self._mapper.format_quantity(quote_quantity)
                 else:
                     # Market sell: specify cex quantity
                     if amount is None:
                         raise ValueError("Market sell orders require amount")
-                    payload['amount'] = GateioUtils.format_gateio_quantity(amount)
+                    payload['amount'] = self._mapper.format_quantity(amount)
             else:
                 # Limit order: require both price and amount
                 if price is None or amount is None:
                     raise ValueError("Limit orders require both price and amount")
                 
-                payload['price'] = GateioUtils.format_gateio_price(price)
-                payload['amount'] = GateioUtils.format_gateio_quantity(amount)
+                payload['price'] = self._mapper.format_price(price)
+                payload['amount'] = self._mapper.format_quantity(amount)
             
             # Add special parameters for specific order types
-            order_params = GateioMappings.get_order_params(order_type, time_in_force)
+            order_params = self._mapper.get_order_params(order_type, time_in_force)
             payload.update(order_params)
             
             # Make authenticated request
@@ -225,7 +221,7 @@ class GateioPrivateSpotRest(PrivateExchangeSpotRestInterface):
             )
             
             # Transform Gate.io response to unified Order
-            order = GateioUtils.transform_gateio_order_to_unified(response_data)
+            order = self._mapper.transform_exchange_order_to_unified(response_data)
             
             self.logger.info(f"Placed {side.name} order: {order.order_id}")
             return order
@@ -251,7 +247,7 @@ class GateioPrivateSpotRest(PrivateExchangeSpotRestInterface):
             ExchangeAPIError: If order cancellation fails
         """
         try:
-            pair = GateioUtils.symbol_to_pair(symbol)
+            pair = self._mapper.to_pair(symbol)
             endpoint = f'/spot/orders/{order_id}'
             
             params = {'currency_pair': pair}
@@ -263,7 +259,7 @@ class GateioPrivateSpotRest(PrivateExchangeSpotRestInterface):
             )
             
             # Transform Gate.io response to unified Order
-            order = GateioUtils.transform_gateio_order_to_unified(response_data)
+            order = self._mapper.transform_exchange_order_to_unified(response_data)
             
             self.logger.info(f"Cancelled order: {order_id}")
             return order
@@ -286,7 +282,7 @@ class GateioPrivateSpotRest(PrivateExchangeSpotRestInterface):
             ExchangeAPIError: If mass cancellation fails
         """
         try:
-            pair = GateioUtils.symbol_to_pair(symbol)
+            pair = self._mapper.to_pair(symbol)
             endpoint = '/spot/orders'
             
             params = {'currency_pair': pair}
@@ -303,7 +299,7 @@ class GateioPrivateSpotRest(PrivateExchangeSpotRestInterface):
             
             cancelled_orders = []
             for order_data in response_data:
-                order = GateioUtils.transform_gateio_order_to_unified(order_data)
+                order = self._mapper.transform_exchange_order_to_unified(order_data)
                 cancelled_orders.append(order)
             
             self.logger.info(f"Cancelled {len(cancelled_orders)} orders for {symbol}")
@@ -330,7 +326,7 @@ class GateioPrivateSpotRest(PrivateExchangeSpotRestInterface):
             ExchangeAPIError: If order query fails
         """
         try:
-            pair = GateioUtils.symbol_to_pair(symbol)
+            pair = self._mapper.to_pair(symbol)
             endpoint = f'/spot/orders/{order_id}'
             
             params = {'currency_pair': pair}
@@ -342,7 +338,7 @@ class GateioPrivateSpotRest(PrivateExchangeSpotRestInterface):
             )
             
             # Transform Gate.io response to unified Order
-            order = GateioUtils.transform_gateio_order_to_unified(response_data)
+            order = self._mapper.transform_exchange_order_to_unified(response_data)
             
             self.logger.debug(f"Retrieved order status: {order_id}")
             return order
@@ -378,7 +374,7 @@ class GateioPrivateSpotRest(PrivateExchangeSpotRestInterface):
             endpoint = '/spot/orders'
             params = {
                 'status': 'open',
-                'currency_pair': GateioUtils.symbol_to_pair(symbol)
+                'currency_pair': self._mapper.to_pair(symbol)
             }
             
             response_data = await self.request(
@@ -393,7 +389,7 @@ class GateioPrivateSpotRest(PrivateExchangeSpotRestInterface):
             
             open_orders = []
             for order_data in response_data:
-                order = GateioUtils.transform_gateio_order_to_unified(order_data)
+                order = self._mapper.transform_exchange_order_to_unified(order_data)
                 open_orders.append(order)
             
             symbol_str = f" for {symbol}" if symbol else ""

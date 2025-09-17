@@ -5,14 +5,20 @@ import msgspec
 
 from core.cex.websocket import MessageParser, ParsedMessage, MessageType
 from cex.mexc.ws.protobuf_parser import MexcProtobufParser
+from cex.mexc.structs.exchange import (
+    MexcWSPrivateOrderMessage, MexcWSPrivateBalanceMessage, MexcWSPrivateTradeMessage,
+    MexcWSPrivateOrderData, MexcWSPrivateBalanceData, MexcWSPrivateTradeData
+)
+from cex.mexc.services.mapper import MexcMappings
 from structs.exchange import OrderBook
 
 
 class MexcPrivateMessageParser(MessageParser):
     """MEXC private WebSocket message parser."""
 
-    def __init__(self):
+    def __init__(self, symbol_mapper):
         self.logger = logging.getLogger(f"{__name__}.{self.__class__.__name__}")
+        self.mexc_mapper = MexcMappings(symbol_mapper)
 
     async def parse_message(self, raw_message: str) -> Optional[ParsedMessage]:
         """Parse MEXC private WebSocket message.
@@ -57,7 +63,7 @@ class MexcPrivateMessageParser(MessageParser):
             return None
 
     async def _parse_protobuf_message(self, raw_message: bytes) -> Optional[ParsedMessage]:
-        """Unified protobuf message parser for MEXC private messages."""
+        """Unified protobuf message parser for MEXC private messages using MEXC structs."""
         try:
             # Use consolidated protobuf utilities
             wrapper = MexcProtobufParser.parse_wrapper_message(raw_message)
@@ -67,55 +73,75 @@ class MexcPrivateMessageParser(MessageParser):
             symbol = wrapper.symbol if hasattr(wrapper, 'symbol') else ""
 
             if "account" in channel:
-                # Account/balance update
+                # Account/balance update - create MEXC struct then convert to unified
                 if wrapper.HasField('privateAccount'):
                     account_data = wrapper.privateAccount
+                    # Create MEXC-specific balance data struct
+                    mexc_balance = MexcWSPrivateBalanceData(
+                        asset=account_data.vcoinName if hasattr(account_data, 'vcoinName') else "",
+                        free=str(float(account_data.balanceAmount) - float(account_data.frozenAmount)) if hasattr(account_data, 'balanceAmount') and hasattr(account_data, 'frozenAmount') else "0.0",
+                        locked=str(account_data.frozenAmount) if hasattr(account_data, 'frozenAmount') else "0.0",
+                        total=str(account_data.balanceAmount) if hasattr(account_data, 'balanceAmount') else "0.0"
+                    )
+                    
+                    # Convert MEXC struct to unified AssetBalance
+                    unified_balance = self.mexc_mapper.transform_ws_balance_to_unified(mexc_balance)
+                    
                     return ParsedMessage(
                         message_type=MessageType.BALANCE,
                         channel=channel,
-                        data={
-                            "asset": account_data.vcoinName if hasattr(account_data, 'vcoinName') else "",
-                            "free": float(account_data.balanceAmount) - float(account_data.frozenAmount) if hasattr(account_data, 'balanceAmount') and hasattr(account_data, 'frozenAmount') else 0.0,
-                            "locked": float(account_data.frozenAmount) if hasattr(account_data, 'frozenAmount') else 0.0,
-                            "symbol": symbol
-                        },
+                        data=unified_balance,  # Return unified type
                         raw_data={"channel": channel, "symbol": symbol, "type": "account"}
                     )
 
             elif "orders" in channel:
-                # Order update
+                # Order update - create MEXC struct then convert to unified
                 if wrapper.HasField('privateOrders'):
                     order_data = wrapper.privateOrders
+                    # Create MEXC-specific order data struct
+                    mexc_order = MexcWSPrivateOrderData(
+                        order_id=order_data.id if hasattr(order_data, 'id') else "",
+                        symbol=symbol,
+                        side="BUY" if getattr(order_data, 'tradeType', 0) == 1 else "SELL",
+                        status=getattr(order_data, 'status', 0),
+                        orderType=1,  # Default to LIMIT if not available
+                        price=str(order_data.price) if hasattr(order_data, 'price') else "0.0",
+                        quantity=str(order_data.quantity) if hasattr(order_data, 'quantity') else "0.0",
+                        filled_qty=str(order_data.cumulativeQuantity) if hasattr(order_data, 'cumulativeQuantity') else "0.0",
+                        updateTime=int(getattr(order_data, 'time', 0))
+                    )
+                    
+                    # Convert MEXC struct to unified Order
+                    unified_order = self.mexc_mapper.transform_ws_order_to_unified(mexc_order)
+                    
                     return ParsedMessage(
                         message_type=MessageType.ORDER,
                         channel=channel,
-                        data={
-                            "order_id": order_data.id if hasattr(order_data, 'id') else "",
-                            "symbol": symbol,
-                            "side": "BUY" if getattr(order_data, 'tradeType', 0) == 1 else "SELL",
-                            "status": getattr(order_data, 'status', 0),
-                            "price": float(order_data.price) if hasattr(order_data, 'price') else 0.0,
-                            "quantity": float(order_data.quantity) if hasattr(order_data, 'quantity') else 0.0,
-                            "filled_qty": float(order_data.cumulativeQuantity) if hasattr(order_data, 'cumulativeQuantity') else 0.0
-                        },
+                        data=unified_order,  # Return unified type
                         raw_data={"channel": channel, "symbol": symbol, "type": "order"}
                     )
 
             elif "deals" in channel:
-                # Trade/execution update
+                # Trade/execution update - create MEXC struct then convert to unified
                 if wrapper.HasField('privateDeals'):
                     deal_data = wrapper.privateDeals
+                    # Create MEXC-specific trade data struct
+                    mexc_trade = MexcWSPrivateTradeData(
+                        symbol=symbol,
+                        side="BUY" if getattr(deal_data, 'tradeType', 0) == 1 else "SELL",
+                        price=str(deal_data.price) if hasattr(deal_data, 'price') else "0.0",
+                        quantity=str(deal_data.quantity) if hasattr(deal_data, 'quantity') else "0.0",
+                        timestamp=int(getattr(deal_data, 'time', 0)),
+                        is_maker=getattr(deal_data, 'isMaker', False)
+                    )
+                    
+                    # Convert MEXC struct to unified Trade
+                    unified_trade = self.mexc_mapper.transform_ws_trade_to_unified(mexc_trade)
+                    
                     return ParsedMessage(
                         message_type=MessageType.TRADE,
                         channel=channel,
-                        data={
-                            "symbol": symbol,
-                            "side": "BUY" if getattr(deal_data, 'tradeType', 0) == 1 else "SELL",
-                            "price": float(deal_data.price) if hasattr(deal_data, 'price') else 0.0,
-                            "quantity": float(deal_data.quantity) if hasattr(deal_data, 'quantity') else 0.0,
-                            "timestamp": getattr(deal_data, 'time', 0),
-                            "is_maker": getattr(deal_data, 'isMaker', False)
-                        },
+                        data=unified_trade,  # Return unified type
                         raw_data={"channel": channel, "symbol": symbol, "type": "deal"}
                     )
 

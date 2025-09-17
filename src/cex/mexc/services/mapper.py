@@ -12,7 +12,7 @@ from typing import Any
 
 from structs.exchange import (
     Order, OrderId, OrderStatus, OrderType, Side,
-    TimeInForce, KlineInterval
+    TimeInForce, KlineInterval, Trade, AssetBalance, AssetName
 )
 from core.cex.services.unified_mapper.exchange_mappings import BaseExchangeMappings, MappingConfiguration
 
@@ -113,4 +113,88 @@ class MexcMappings(BaseExchangeMappings):
             status=self.get_unified_order_status(mexc_order.status),
             timestamp=datetime.fromtimestamp(mexc_order.transactTime / 1000) if mexc_order.transactTime else None,
             fee=fee
+        )
+    
+    def transform_ws_order_to_unified(self, mexc_ws_order) -> Order:
+        """
+        Transform MEXC WebSocket order data to unified Order struct.
+        
+        Args:
+            mexc_ws_order: MEXC WebSocket order data (MexcWSPrivateOrderData)
+            
+        Returns:
+            Unified Order struct
+        """
+        # Import status and type mappings
+        from cex.mexc.ws.private.mapping import status_mapping, type_mapping
+        
+        # Convert MEXC symbol to unified Symbol
+        symbol = self.pair_to_symbol(mexc_ws_order.symbol)
+        
+        # Map MEXC status codes to unified statuses
+        status = status_mapping.get(mexc_ws_order.status, OrderStatus.UNKNOWN)
+        order_type = type_mapping.get(mexc_ws_order.orderType, OrderType.LIMIT)
+        
+        # Parse side
+        side = Side.BUY if mexc_ws_order.side == "BUY" else Side.SELL
+        
+        return Order(
+            symbol=symbol,
+            side=side,
+            order_type=order_type,
+            price=float(mexc_ws_order.price),
+            amount=float(mexc_ws_order.quantity),
+            amount_filled=float(mexc_ws_order.filled_qty),
+            order_id=OrderId(mexc_ws_order.order_id),
+            status=status,
+            timestamp=mexc_ws_order.updateTime,
+            client_order_id=""
+        )
+    
+    def transform_ws_trade_to_unified(self, mexc_ws_trade, symbol_str: str) -> Trade:
+        """
+        Transform MEXC WebSocket trade data to unified Trade struct.
+        
+        Args:
+            mexc_ws_trade: MEXC WebSocket trade data (MexcWSPrivateTradeData or MexcWSTradeEntry)
+            
+        Returns:
+            Unified Trade struct
+        """
+        # Handle both public and private trade structures
+        if hasattr(mexc_ws_trade, 'p'):  # Public trade entry
+            side = Side.BUY if mexc_ws_trade.t == 1 else Side.SELL
+            return Trade(
+                symbol=self.pair_to_symbol(symbol_str),
+                price=float(mexc_ws_trade.p),
+                amount=float(mexc_ws_trade.q),
+                side=side,
+                timestamp=mexc_ws_trade.T,
+                is_maker=False
+            )
+        else:  # Private trade data
+            side = Side.BUY if mexc_ws_trade.side == "BUY" else Side.SELL
+            return Trade(
+                symbol=self.pair_to_symbol(symbol_str),
+                price=float(mexc_ws_trade.price),
+                amount=float(mexc_ws_trade.quantity),
+                side=side,
+                timestamp=mexc_ws_trade.timestamp,
+                is_maker=mexc_ws_trade.is_maker
+            )
+    
+    def transform_ws_balance_to_unified(self, mexc_ws_balance) -> AssetBalance:
+        """
+        Transform MEXC WebSocket balance data to unified AssetBalance struct.
+        
+        Args:
+            mexc_ws_balance: MEXC WebSocket balance data (MexcWSPrivateBalanceData)
+            
+        Returns:
+            Unified AssetBalance struct
+        """
+        return AssetBalance(
+            asset=AssetName(mexc_ws_balance.asset),
+            free=float(mexc_ws_balance.free),
+            locked=float(mexc_ws_balance.locked)
         )

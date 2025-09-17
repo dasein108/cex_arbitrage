@@ -32,9 +32,10 @@ class RateLimitContext:
 
 @dataclass(frozen=True)
 class AuthenticationData:
-    """Authentication data containing headers and parameters."""
+    """Authentication data containing headers, parameters, and optional request data."""
     headers: Dict[str, str]
     params: Dict[str, Any]
+    data: Optional[str] = None  # For exchanges that need to control request body directly
 
 
 @dataclass(frozen=True)

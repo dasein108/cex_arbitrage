@@ -159,7 +159,7 @@ class MexcPublicSpotRest(PublicExchangeSpotRestInterface):
         Raises:
             ExchangeAPIError: If unable to fetch order book data
         """
-        pair = self.symbol_mapper.symbol_to_pair(symbol)
+        pair = self._mapper.to_pair(symbol)
         
         params = {
             'symbol': pair,
@@ -205,7 +205,7 @@ class MexcPublicSpotRest(PublicExchangeSpotRestInterface):
         Raises:
             ExchangeAPIError: If unable to fetch trade data
         """
-        pair = self.symbol_mapper.symbol_to_pair(symbol)
+        pair = self._mapper.to_pair(symbol)
         optimized_limit = min(limit, 1000)  # MEXC max limit
         
         params = {
@@ -293,8 +293,8 @@ class MexcPublicSpotRest(PublicExchangeSpotRestInterface):
         Raises:
             ExchangeAPIError: If unable to fetch kline data
         """
-        pair = self.symbol_mapper.symbol_to_pair(symbol)
-        interval = self._mappings.get_exchange_kline_interval(timeframe)
+        pair = self._mapper.symbol_mapper.to_pair(symbol)
+        interval = self._mapper.get_exchange_kline_interval(timeframe)
         
         params = {
             'symbol': pair,

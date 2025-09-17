@@ -1,46 +1,48 @@
 """
-Generic Exchange Factory Base Class
+Base Composite Factory for Strategy Sets
 
-Provides standardized factory patterns for all exchange-based services,
-eliminating code duplication and ensuring consistency across the system.
+Specialized factory for creating composite objects (strategy sets) from multiple
+component strategies. Provides the same standardized API as BaseExchangeFactory
+but optimized for assembly patterns rather than single component creation.
 
-HFT COMPLIANCE: Sub-millisecond factory operations with efficient singleton management.
+HFT COMPLIANCE: Sub-millisecond strategy set creation with efficient assembly.
 """
 
 import logging
-from typing import TypeVar, Generic, Dict, Type, Any, Optional, List
+from typing import TypeVar, Generic, Dict, Type, Any, List
 from abc import ABC, abstractmethod
 
 from .factory_interface import ExchangeFactoryInterface
 
 logger = logging.getLogger(__name__)
 
-# Generic type for the service/strategy being managed
+# Generic type for the composite product (e.g., RestStrategySet, WebSocketStrategySet)
 T = TypeVar('T')
 
 
-class BaseExchangeFactory(Generic[T], ExchangeFactoryInterface, ABC):
+class BaseCompositeFactory(Generic[T], ExchangeFactoryInterface, ABC):
     """
-    Abstract base factory for exchange-specific service management.
+    Abstract base factory for composite object creation from multiple components.
     
-    Provides standardized patterns for all exchange-based factories:
-    - Exchange-based service registration and retrieval
-    - Singleton instance management with efficient caching
-    - Automatic dependency injection infrastructure
-    - Factory-to-factory coordination
-    - Consistent error handling and validation
+    Designed for factories that need to:
+    - Store component configurations (Dict[str, type])
+    - Assemble multiple strategies into composite objects
+    - Handle different constructor patterns for different components
+    - Maintain type safety with proper generics
+    
+    Examples: RestStrategyFactory, WebSocketStrategyFactory
     
     Design Principles:
-    - Generic type safety with TypeVar
-    - Standardized API across all factory types
-    - Auto-injection of common dependencies
+    - Same API as BaseExchangeFactory (unified interface)
+    - Component configuration storage instead of single types
+    - Abstract assembly method for flexible composite creation
+    - Auto-dependency injection for each component
     - Registry isolation per factory subclass
-    - HFT-compliant performance characteristics
     """
     
     # NOTE: Each subclass gets its own registry by explicit initialization
-    # This ensures complete isolation between factory types
-    _implementations: Dict[str, Type[T]]
+    # Stores component configurations: Dict[exchange_key, Dict[component_name, component_class]]
+    _implementations: Dict[str, Dict[str, type]]
     _instances: Dict[str, T]
     
     def __init_subclass__(cls, **kwargs):
@@ -51,38 +53,51 @@ class BaseExchangeFactory(Generic[T], ExchangeFactoryInterface, ABC):
     
     @classmethod
     @abstractmethod
-    def register(cls, exchange_name: str, implementation_class: Type[T], **kwargs) -> None:
+    def register(cls, exchange_name: str, strategy_config: Dict[str, type], **kwargs) -> None:
         """
-        Register implementation for an exchange.
-        
-        Must be implemented by subclass to handle factory-specific registration logic.
-        Should use base class infrastructure for consistency.
+        Register component configuration for an exchange.
         
         Args:
-            exchange_name: Exchange identifier (e.g., 'MEXC', 'GATEIO')
-            implementation_class: Implementation class for the exchange
+            exchange_name: Exchange identifier (e.g., 'MEXC_PUBLIC', 'MEXC_PRIVATE')
+            strategy_config: Dictionary mapping component names to implementation classes
             **kwargs: Additional registration parameters
         """
         pass
     
     @classmethod
-    @abstractmethod  
+    @abstractmethod
     def inject(cls, exchange_name: str, **kwargs) -> T:
         """
-        Create or retrieve instance for an exchange.
+        Create composite object for an exchange.
         
-        Must be implemented by subclass to handle factory-specific creation logic.
-        Should use base class infrastructure and auto-injection patterns.
+        Must be implemented by subclass to handle component assembly.
+        Should use _assemble_components() for consistent dependency injection.
         
         Args:
             exchange_name: Exchange identifier
-            **kwargs: Additional creation parameters
+            **kwargs: Creation parameters (config, dependencies, etc.)
             
         Returns:
-            Instance of the registered type for the exchange
+            Assembled composite object
+        """
+        pass
+    
+    @classmethod
+    @abstractmethod
+    def _assemble_components(cls, exchange_name: str, strategy_config: Dict[str, type], **kwargs) -> T:
+        """
+        Assemble components into composite object.
+        
+        Must be implemented by subclass to define assembly logic.
+        Base class provides dependency resolution infrastructure.
+        
+        Args:
+            exchange_name: Exchange identifier
+            strategy_config: Component configuration
+            **kwargs: Assembly parameters
             
-        Raises:
-            ValueError: If exchange not registered
+        Returns:
+            Assembled composite object
         """
         pass
     
@@ -91,7 +106,7 @@ class BaseExchangeFactory(Generic[T], ExchangeFactoryInterface, ABC):
     @classmethod
     def is_registered(cls, exchange_name: str) -> bool:
         """
-        Check if exchange has registered implementation.
+        Check if exchange has registered component configuration.
         
         Args:
             exchange_name: Exchange identifier
@@ -105,7 +120,7 @@ class BaseExchangeFactory(Generic[T], ExchangeFactoryInterface, ABC):
     @classmethod
     def get_registered_exchanges(cls) -> List[str]:
         """
-        Get list of exchanges with registered implementations.
+        Get list of exchanges with registered configurations.
         
         Returns:
             List of registered exchange identifiers
@@ -115,9 +130,10 @@ class BaseExchangeFactory(Generic[T], ExchangeFactoryInterface, ABC):
     @classmethod
     def clear_cache(cls) -> None:
         """
-        Clear cached singleton instances.
+        Clear cached composite instances.
         
-        Useful for testing or memory management. Does not affect registrations.
+        Note: Composite objects are typically not cached as they often need fresh
+        configurations, but this method maintains API consistency.
         """
         cls._instances.clear()
         logger.debug(f"Cleared cache for {cls.__name__}")
@@ -140,14 +156,19 @@ class BaseExchangeFactory(Generic[T], ExchangeFactoryInterface, ABC):
         Get comprehensive factory statistics.
         
         Returns:
-            Dictionary with factory state and performance metrics
+            Dictionary with factory state and component metrics
         """
+        component_counts = {}
+        for exchange, config in cls._implementations.items():
+            component_counts[exchange] = len(config)
+            
         return {
             'factory_name': cls.__name__,
             'registered_exchanges_count': len(cls._implementations),
             'active_instances_count': len(cls._instances),
             'registered_exchanges': list(cls._implementations.keys()),
             'cached_instances': list(cls._instances.keys()),
+            'component_counts_per_exchange': component_counts,
         }
     
     @staticmethod
@@ -178,11 +199,11 @@ class BaseExchangeFactory(Generic[T], ExchangeFactoryInterface, ABC):
             
         Returns:
             Dictionary with resolved dependencies for injection
-            
-        Performance: Sub-millisecond resolution via factory caching
         """
         resolved = {}
-        exchange_key = cls._normalize_exchange_key(exchange_name)
+        # Strip API type suffixes for base exchange name
+        base_exchange_name = exchange_name.replace('_PUBLIC', '').replace('_PRIVATE', '')
+        exchange_key = cls._normalize_exchange_key(base_exchange_name)
         
         try:
             # Import factories lazily to avoid circular dependencies
@@ -210,7 +231,6 @@ class BaseExchangeFactory(Generic[T], ExchangeFactoryInterface, ABC):
             
         except ImportError:
             # Graceful fallback - factories not available
-            # This allows the system to work even if some factories aren't implemented yet
             pass
         except Exception as e:
             # Log unexpected errors but don't fail
@@ -219,52 +239,58 @@ class BaseExchangeFactory(Generic[T], ExchangeFactoryInterface, ABC):
         return resolved
     
     @classmethod
-    def _create_instance_with_auto_injection(
-        cls, 
-        exchange_name: str, 
-        implementation_class: Type[T], 
-        **kwargs
-    ) -> T:
+    def _create_component_with_fallback(
+        cls,
+        component_class: type,
+        exchange_name: str,
+        primary_kwargs: Dict[str, Any],
+        fallback_kwargs: Dict[str, Any]
+    ) -> Any:
         """
-        Create instance with automatic dependency injection.
+        Create component with intelligent constructor parameter handling.
         
-        Helper method for subclasses to create instances with auto-resolved dependencies.
+        Tries primary kwargs first, falls back to simpler kwargs if constructor
+        doesn't accept all parameters. Useful for components with different
+        constructor signatures (e.g., public vs private strategies).
         
         Args:
-            exchange_name: Exchange identifier
-            implementation_class: Class to instantiate
-            **kwargs: Additional constructor arguments
+            component_class: Class to instantiate
+            exchange_name: Exchange identifier (for logging)
+            primary_kwargs: Primary constructor arguments (with all dependencies)
+            fallback_kwargs: Fallback constructor arguments (minimal set)
             
         Returns:
-            Instance with auto-injected dependencies
+            Instantiated component
         """
-        # Resolve dependencies automatically
-        auto_deps = cls._resolve_dependencies(exchange_name, **kwargs)
-        
-        # Merge with provided kwargs (provided kwargs take precedence)
-        merged_kwargs = {**auto_deps, **kwargs}
-        
         try:
-            # Try to create instance with all dependencies
-            return implementation_class(**merged_kwargs)
+            # Try with all dependencies first
+            return component_class(**primary_kwargs)
         except TypeError as e:
-            # Fallback: try without auto-injected dependencies
-            logger.debug(f"Auto-injection failed for {implementation_class.__name__}: {e}")
-            return implementation_class(**kwargs)
+            logger.debug(f"Primary constructor failed for {component_class.__name__}: {e}")
+            try:
+                # Fall back to minimal arguments
+                return component_class(**fallback_kwargs)
+            except TypeError as e2:
+                logger.debug(f"Fallback constructor failed for {component_class.__name__}: {e2}")
+                # Last resort: try with no arguments
+                return component_class()
     
     @classmethod
-    def _validate_implementation_class(cls, implementation_class: Type[T], expected_base: Type) -> None:
+    def _validate_strategy_config(cls, strategy_config: Dict[str, type], required_components: List[str]) -> None:
         """
-        Validate that implementation class inherits from expected base class.
+        Validate that strategy configuration contains all required components.
         
         Args:
-            implementation_class: Class to validate
-            expected_base: Expected base class
+            strategy_config: Component configuration to validate
+            required_components: List of required component names
             
         Raises:
-            ValueError: If implementation doesn't inherit from expected base
+            ValueError: If required components are missing
         """
-        if not issubclass(implementation_class, expected_base):
-            raise ValueError(
-                f"Implementation class {implementation_class.__name__} must inherit from {expected_base.__name__}"
-            )
+        missing_components = []
+        for component in required_components:
+            if component not in strategy_config:
+                missing_components.append(component)
+        
+        if missing_components:
+            raise ValueError(f"Missing required components: {missing_components}")

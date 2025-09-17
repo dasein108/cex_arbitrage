@@ -12,7 +12,7 @@ Registration happens automatically when this module is imported.
 """
 
 from .symbol_mapper import MexcSymbolMapper
-from .mexc_mappings import MexcMappings
+from .mapper import MexcMappings
 
 from cex import ExchangeEnum
 

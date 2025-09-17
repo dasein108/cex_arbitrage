@@ -57,12 +57,13 @@ class WebSocketManager:
         
         self.logger = logging.getLogger(f"{__name__}.{self.__class__.__name__}")
         
-        # Connection management
+        # Connection management (stateless - no symbol tracking)
         self.ws_client: Optional[WebsocketClient] = None
         self.connection_state = ConnectionState.DISCONNECTED
-        self.active_symbols: Set[Symbol] = set()
-        self.pending_symbols: Set[Symbol] = set()  # Queue for symbols to subscribe when connected
-        self._is_initial_connection = True  # Flag to prevent duplicate subscriptions on first connection
+        self._is_initial_connection = True  # Flag for initial connection handling
+        
+        # Store initial subscription parameters for first connection
+        self._initial_subscription_kwargs: Optional[Dict[str, Any]] = None
         
         # Performance tracking
         self.metrics = PerformanceMetrics()
@@ -75,13 +76,15 @@ class WebSocketManager:
         self._processing_task: Optional[asyncio.Task] = None
         self._connection_task: Optional[asyncio.Task] = None
         
-        # HFT Optimizations
-        self._symbol_channel_cache: Dict[Symbol, List[str]] = {}
-        self._channel_symbol_cache: Dict[str, Symbol] = {}
+        # Channel-based subscription management (symbol agnostic)
+        self._active_channels: Set[str] = set()
+        
+        # HFT Optimizations (caching removed - handled by implementations)
+        # Note: Symbol state management moved to WebSocket implementations
         
         self.logger.info("WebSocket manager initialized with strategy composition")
     
-    async def initialize(self, symbols: List[Symbol]) -> None:
+    async def initialize(self, symbols: List[Symbol] = None) -> None:
         """
         Initialize WebSocket connection and subscriptions.
         
@@ -114,132 +117,52 @@ class WebSocketManager:
                 if not auth_success:
                     raise BaseExchangeError(401, "WebSocket authentication failed")
             
-            # Queue symbols for subscription (will be sent when CONNECTED state is reached)
-            if symbols:
-                self.pending_symbols.update(symbols)
-                self.logger.info(f"Queued {len(symbols)} symbols for subscription")
-            
-            # NOTE: Subscriptions will be processed automatically when state changes to CONNECTED
-            # via _on_state_change() callback
-            
             # Start message processing
             self._processing_task = asyncio.create_task(self._process_messages())
             
-            self.logger.info(f"WebSocket manager initialized with {len(symbols)} symbols")
+            # Store initial subscription parameters for when connection is established
+            if symbols:
+                self._initial_subscription_kwargs = {'symbols': symbols}
+                self.logger.info(f"Stored initial subscription for {len(symbols)} symbols")
+            else:
+                self._initial_subscription_kwargs = {}
+                self.logger.info("Stored initial subscription for private channels")
+            
+            self.logger.info("WebSocket manager initialized")
             
         except Exception as e:
             self.logger.error(f"Failed to initialize WebSocket manager: {e}")
             await self.close()
             raise BaseExchangeError(500, f"WebSocket initialization failed: {e}")
     
-    async def add_symbols(self, symbols: List[Symbol]) -> None:
+    async def send_message(self, message: Any) -> None:
         """
-        Add symbols to active subscriptions.
+        Send message through WebSocket connection.
+        
+        Stateless message sending - no subscription state management.
         
         Args:
-            symbols: Symbols to subscribe to
+            message: Message to send (dict or string)
         """
         if not self.ws_client or self.connection_state != ConnectionState.CONNECTED:
-            # Queue symbols for later subscription when connected
-            self.pending_symbols.update(symbols)
-            self.logger.info(f"Queued {len(symbols)} symbols for subscription (not connected yet)")
-            return
-        
-        # Filter already active symbols
-        new_symbols = [s for s in symbols if s not in self.active_symbols]
-        if not new_symbols:
-            return
+            raise BaseExchangeError(503, "WebSocket not connected")
         
         try:
-            # Create subscription messages using strategy
-            subscription_messages = self.strategies.subscription_strategy.create_subscription_messages(
-                new_symbols, SubscriptionAction.SUBSCRIBE
-            )
-            
-            # Send subscriptions
-            for message in subscription_messages:
-                if isinstance(message, str):
-                    # Strategy returns JSON string - parse it back to dict for send_message
-                    import msgspec
-                    message_dict = msgspec.json.decode(message)
-                    self.logger.debug(f"Sending subscription message: {message_dict}")
-                    await self.ws_client.send_message(message_dict)
-                else:
-                    # Strategy returns dict directly
-                    self.logger.debug(f"Sending subscription message: {message}")
-                    await self.ws_client.send_message(message)
-            
-            # Update active symbols and cache
-            for symbol in new_symbols:
-                self.active_symbols.add(symbol)
+            if isinstance(message, str):
+                # JSON string - parse to dict for WebSocket client
+                import msgspec
+                message_dict = msgspec.json.decode(message)
+                await self.ws_client.send_message(message_dict)
+            else:
+                # Dict or other object
+                await self.ws_client.send_message(message)
                 
-                # Cache channel mappings for fast lookup
-                context = self.strategies.subscription_strategy.get_subscription_context(symbol)
-                self._symbol_channel_cache[symbol] = context.channels
-                for channel in context.channels:
-                    self._channel_symbol_cache[channel] = symbol
-            
-            self.logger.debug(f"Added {len(new_symbols)} symbols to subscriptions")
+            self.logger.debug(f"Sent WebSocket message: {message}")
             
         except Exception as e:
-            self.logger.error(f"Failed to add symbols: {e}")
-            raise BaseExchangeError(400, f"Symbol subscription failed: {e}")
+            self.logger.error(f"Failed to send message: {e}")
+            raise BaseExchangeError(400, f"Message send failed: {e}")
     
-    async def _process_pending_subscriptions(self) -> None:
-        """Process queued symbol subscriptions when connection is established."""
-        if self.pending_symbols and self.connection_state == ConnectionState.CONNECTED:
-            pending_list = list(self.pending_symbols)
-            self.pending_symbols.clear()
-            self.logger.info(f"Processing {len(pending_list)} pending symbol subscriptions")
-            await self.add_symbols(pending_list)
-    
-    async def remove_symbols(self, symbols: List[Symbol]) -> None:
-        """
-        Remove symbols from active subscriptions.
-        
-        Args:
-            symbols: Symbols to unsubscribe from
-        """
-        if not self.ws_client:
-            return
-        
-        # Filter to only active symbols
-        active_symbols = [s for s in symbols if s in self.active_symbols]
-        if not active_symbols:
-            return
-        
-        try:
-            # Create unsubscription messages using strategy
-            unsubscription_messages = self.strategies.subscription_strategy.create_subscription_messages(
-                active_symbols, SubscriptionAction.UNSUBSCRIBE
-            )
-            
-            # Send unsubscriptions
-            for message in unsubscription_messages:
-                if isinstance(message, str):
-                    # Strategy returns JSON string - parse it back to dict for send_message
-                    import msgspec
-                    message_dict = msgspec.json.decode(message)
-                    await self.ws_client.send_message(message_dict)
-                else:
-                    # Strategy returns dict directly
-                    await self.ws_client.send_message(message)
-            
-            # Update active symbols and clear cache
-            for symbol in active_symbols:
-                self.active_symbols.discard(symbol)
-                
-                # Clear channel mappings
-                if symbol in self._symbol_channel_cache:
-                    channels = self._symbol_channel_cache.pop(symbol)
-                    for channel in channels:
-                        self._channel_symbol_cache.pop(channel, None)
-            
-            self.logger.debug(f"Removed {len(active_symbols)} symbols from subscriptions")
-            
-        except Exception as e:
-            self.logger.error(f"Failed to remove symbols: {e}")
-            raise BaseExchangeError(400, f"Symbol unsubscription failed: {e}")
     
     async def _on_raw_message(self, raw_message: str) -> None:
         """
@@ -371,31 +294,26 @@ class WebSocketManager:
         """Handle WebSocket connection state changes."""
         previous_state = self.connection_state
         self.connection_state = state
-        self.logger.debug(f"WebSocket state changed from {previous_state.name} to {state.name} (initial_connection: {self._is_initial_connection}, active_symbols: {len(self.active_symbols)})")
+        self.logger.debug(f"WebSocket state changed from {previous_state.name} to {state.name} (active_channels: {len(self._active_channels)})")
         
         # Only process on transition to CONNECTED, not repeated CONNECTED events
         if state == ConnectionState.CONNECTED and previous_state != ConnectionState.CONNECTED:
             if self._is_initial_connection:
-                # Process pending subscriptions for initial connection
-                if self.pending_symbols:
-                    self.logger.info(f"Processing {len(self.pending_symbols)} pending subscriptions on initial connection")
-                    await self._process_pending_subscriptions()
+                # First connection - handle initial subscriptions
+                if self._initial_subscription_kwargs is not None:
+                    self.logger.info("Creating initial subscriptions on first connection")
+                    await self.add_subscription(**self._initial_subscription_kwargs)
                 self._is_initial_connection = False
-                self.logger.debug("Initial connection flag cleared")
             else:
-                # Handle reconnection subscription renewal
+                # Reconnection - restore all active channels
                 if (self.strategies.subscription_strategy.should_resubscribe_on_reconnect() and
-                    self.active_symbols):
+                    self._active_channels):
                     
-                    self.logger.info(f"Renewing {len(self.active_symbols)} subscriptions after reconnection")
-                    symbols_list = list(self.active_symbols)
-                    self.active_symbols.clear()  # Clear to force resubscription
-                    await self.add_symbols(symbols_list)
-                else:
-                    self.logger.debug("Skipping reconnection renewal - no active symbols or not required")
+                    self.logger.info(f"Restoring {len(self._active_channels)} channel subscriptions after reconnect")
+                    await self.restore_all_subscriptions()
 
-            if self.state_change_handler:
-                await self.state_change_handler(state)
+        if self.state_change_handler:
+            await self.state_change_handler(state)
 
     def get_performance_metrics(self) -> Dict[str, Any]:
         """
@@ -429,7 +347,7 @@ class WebSocketManager:
             'orderbook_updates': self.metrics.orderbook_updates,
             'hft_compliance_rate_percent': round(hft_compliance_rate, 1),
             'latency_violations': self.metrics.latency_violations,
-            'active_symbols_count': len(self.active_symbols),
+            'active_channels_count': len(self._active_channels),
             'connection_state': self.connection_state.name
         }
     
@@ -459,9 +377,9 @@ class WebSocketManager:
                     self.logger.error(f"Error during strategy cleanup: {e}")
             
             # Clear state
-            self.active_symbols.clear()
-            self._symbol_channel_cache.clear()
-            self._channel_symbol_cache.clear()
+            self._active_channels.clear()
+            self._initial_subscription_kwargs = None
+            self._is_initial_connection = True
             self.connection_state = ConnectionState.DISCONNECTED
             
             self.logger.info("WebSocket manager closed successfully")
@@ -473,6 +391,127 @@ class WebSocketManager:
         """Check if WebSocket is connected."""
         return self.connection_state == ConnectionState.CONNECTED
     
-    def get_active_symbols(self) -> List[Symbol]:
-        """Get list of active symbols."""
-        return list(self.active_symbols)
+    def get_active_channels(self) -> List[str]:
+        """Get list of active channels."""
+        return list(self._active_channels)
+    
+    async def add_channels(self, channels: List[str]) -> None:
+        """
+        Add channels to subscription and store for restoration.
+        
+        Args:
+            channels: List of channel names to subscribe to
+        """
+        if not channels:
+            return
+        
+        # Store channels for restoration
+        self._active_channels.update(channels)
+        
+        # Create subscription messages using strategy
+        messages = self.strategies.subscription_strategy.format_subscription_messages({
+            'action': 'subscribe',
+            'channels': channels
+        })
+        
+        # Send subscription messages
+        for message in messages:
+            await self.send_message(message)
+            
+        self.logger.debug(f"Added {len(channels)} channels")
+    
+    async def remove_channels(self, channels: List[str]) -> None:
+        """
+        Remove channels from subscription.
+        
+        Args:
+            channels: List of channel names to unsubscribe from
+        """
+        if not channels:
+            return
+        
+        # Filter to only remove channels we actually have
+        channels_to_remove = [c for c in channels if c in self._active_channels]
+        if not channels_to_remove:
+            return
+        
+        # Remove from active channels
+        self._active_channels.difference_update(channels_to_remove)
+        
+        # Create unsubscription messages using strategy
+        messages = self.strategies.subscription_strategy.format_subscription_messages({
+            'action': 'unsubscribe',
+            'channels': channels_to_remove
+        })
+        
+        # Send unsubscription messages
+        for message in messages:
+            await self.send_message(message)
+            
+        self.logger.debug(f"Removed {len(channels_to_remove)} channels")
+    
+    async def restore_all_subscriptions(self) -> None:
+        """
+        Restore all active channel subscriptions after reconnection.
+        
+        Uses stored channel names to restore subscriptions without symbol knowledge.
+        """
+        if not self._active_channels:
+            self.logger.debug("No active channels to restore")
+            return
+        
+        # Create restoration messages using strategy
+        messages = self.strategies.subscription_strategy.format_subscription_messages({
+            'action': 'subscribe',
+            'channels': list(self._active_channels)
+        })
+        
+        # Send all restoration messages
+        for message in messages:
+            await self.send_message(message)
+            
+        self.logger.info(f"Restored {len(self._active_channels)} channel subscriptions")
+    
+    async def add_subscription(self, **kwargs) -> None:
+        """
+        Add subscription using strategy-generated channels.
+        
+        Unified method that generates channels via strategy and subscribes.
+        
+        Args:
+            **kwargs: Strategy-specific subscription parameters:
+                - For public: symbols=[Symbol, ...]
+                - For private: (no params needed - uses fixed channels)
+        """
+        # Generate channels using unified strategy method
+        channels = self.strategies.subscription_strategy.generate_channels(**kwargs)
+        
+        if not channels:
+            return
+            
+        # Subscribe to generated channels
+        await self.add_channels(channels)
+        
+        self.logger.debug(f"Added subscription with {len(channels)} channels")
+    
+    async def remove_subscription(self, **kwargs) -> None:
+        """
+        Remove subscription using strategy-generated channels.
+        
+        Unified method that generates channels via strategy and unsubscribes.
+        
+        Args:
+            **kwargs: Strategy-specific subscription parameters:
+                - For public: symbols=[Symbol, ...]
+                - For private: (no params needed - uses fixed channels)
+        """
+        # Generate channels using unified strategy method
+        channels = self.strategies.subscription_strategy.generate_channels(**kwargs)
+        
+        if not channels:
+            return
+            
+        # Unsubscribe from generated channels
+        await self.remove_channels(channels)
+        
+        self.logger.debug(f"Removed subscription with {len(channels)} channels")

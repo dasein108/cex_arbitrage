@@ -18,7 +18,7 @@ from structs.exchange import (
 )
 from cex.gateio.ws.gateio_ws_public import GateioWebsocketPublic
 from cex.gateio.rest.rest_public import GateioPublicSpotRest
-from core.cex.websocket.structs import ConnectionState
+from core.transport.websocket.structs import ConnectionState
 from core.exceptions.exchange import BaseExchangeError
 from core.config.structs import ExchangeConfig
 

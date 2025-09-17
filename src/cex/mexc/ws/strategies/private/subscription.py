@@ -27,13 +27,17 @@ class MexcPrivateSubscriptionStrategy(SubscriptionStrategy):
 
     def create_subscription_messages(
         self,
-        symbols: List[Symbol],
-        action: SubscriptionAction
+        action: SubscriptionAction,
+        **kwargs
     ) -> List[str]:
         """Create MEXC private subscription messages.
 
         MEXC private WebSocket requires explicit subscription to private channels
         after authentication with listen key.
+        
+        Args:
+            action: Subscribe or unsubscribe action
+            **kwargs: No parameters needed for private exchanges
         """
         messages = []
 
@@ -78,4 +82,52 @@ class MexcPrivateSubscriptionStrategy(SubscriptionStrategy):
 
     def get_symbol_from_channel(self, channel: str) -> Optional[Symbol]:
         """Private channels don't typically contain symbols."""
+        return None
+
+    # UNIFIED CHANNEL GENERATION IMPLEMENTATION
+    
+    def generate_channels(self, **kwargs) -> List[str]:
+        """
+        Generate channel names based on parameters (unified method).
+        
+        For private exchanges, no parameters needed - returns fixed private channels.
+        """
+        return self._get_private_channels()
+    
+    def format_subscription_messages(self, subscription_data: Dict[str, Any]) -> List[str]:
+        """
+        Format channel-based subscription messages for private channels.
+        
+        Args:
+            subscription_data: {
+                'action': 'subscribe'|'unsubscribe',
+                'channels': [channel_names...]
+            }
+        """
+        messages = []
+        action = subscription_data.get('action', 'subscribe')
+        channels = subscription_data.get('channels', [])
+        
+        if not channels:
+            return []
+        
+        method = "SUBSCRIPTION" if action == 'subscribe' else "UNSUBSCRIPTION"
+        
+        subscription_message = {
+            "method": method,
+            "params": channels
+        }
+        messages.append(msgspec.json.encode(subscription_message).decode())
+        
+        action_word = "subscription" if action == 'subscribe' else "unsubscription"
+        self.logger.debug(f"Created {action_word} for {len(channels)} private channels")
+        
+        return messages
+    
+    def extract_symbol_from_channel(self, channel: str) -> Optional[Symbol]:
+        """
+        Private channels don't contain symbols.
+        
+        MEXC private channels like "spot@private.account.v3.api.pb" are symbol agnostic.
+        """
         return None

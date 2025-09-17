@@ -480,27 +480,28 @@ class ExchangeUtils:
 ```
 
 #### 2.3 REST Implementation
+
 ```python
 # src/cex/{exchange}/rest/{exchange}_public.py
 class ExchangePublicExchange(PublicExchangeInterface):
-    
+
     async def get_orderbook(self, symbol: Symbol, limit: int = 100) -> OrderBook:
         """Get order book for symbol"""
-        pair = ExchangeUtils.symbol_to_pair(symbol)
-        
+        pair = ExchangeUtils.to_pair(symbol)
+
         response = await self.rest_client.get(
             "/api/v3/depth",
             params={"symbol": pair, "limit": limit}
         )
-        
+
         # Parse with msgspec (required)
         data = msgspec.json.decode(response, type=ExchangeOrderBookResponse)
-        
+
         # Transform to unified format
         return OrderBook(
-            bids=[OrderBookEntry(price=float(bid[0]), size=float(bid[1])) 
+            bids=[OrderBookEntry(price=float(bid[0]), size=float(bid[1]))
                   for bid in data.bids],
-            asks=[OrderBookEntry(price=float(ask[0]), size=float(ask[1])) 
+            asks=[OrderBookEntry(price=float(ask[0]), size=float(ask[1]))
                   for ask in data.asks],
             timestamp=data.timestamp / 1000.0
         )
@@ -1364,17 +1365,18 @@ def _mexc_signature_generator(self, params: Dict[str, any]) -> str:
 ```
 
 #### WebSocket Subscription Format
+
 ```python
 def _create_subscriptions(self, symbol: Symbol, action: SubscriptionAction) -> List[str]:
     """MEXC uses complex subscription string format"""
-    symbol_str = MexcUtils.symbol_to_pair(symbol).upper()
-    
+    symbol_str = MexcUtils.to_pair(symbol).upper()
+
     streams = []
     # MEXC-specific stream format
     if action == SubscriptionAction.SUBSCRIBE:
         streams.append(f"spot@public.limit.depth.v3.api@{symbol_str}@20")  # Orderbook
         streams.append(f"spot@public.aggre.deals.v3.api.pb@10ms@{symbol_str}")  # Trades
-    
+
     return streams
 ```
 
@@ -1754,7 +1756,7 @@ class ExchangePublic(PublicExchangeSpotRestInterface):
 
     async def get_orderbook(self, symbol: Symbol, limit: int = 100) -> OrderBook:
         """Get order book for symbol"""
-        pair = ExchangeUtils.symbol_to_pair(symbol)
+        pair = ExchangeUtils.to_pair(symbol)
 
         # Validate limit against exchange constraints
         max_limit = ExchangeConfig.LIMITS['orderbook_max_limit']
@@ -1783,7 +1785,7 @@ class ExchangePublic(PublicExchangeSpotRestInterface):
 
     async def get_recent_trades(self, symbol: Symbol, limit: int = 500) -> List[Trade]:
         """Get recent trades for symbol"""
-        pair = ExchangeUtils.symbol_to_pair(symbol)
+        pair = ExchangeUtils.to_pair(symbol)
 
         # Validate limit
         max_limit = ExchangeConfig.LIMITS['trades_max_limit']
@@ -1986,7 +1988,7 @@ class ExchangePrivate(PrivateExchangeSpotRestInterface):
             **kwargs
     ) -> Order:
         """Place new order"""
-        pair = ExchangeUtils.symbol_to_pair(symbol)
+        pair = ExchangeUtils.to_pair(symbol)
 
         # Build order parameters
         params = {
@@ -2037,7 +2039,7 @@ class ExchangePrivate(PrivateExchangeSpotRestInterface):
 
     async def cancel_order(self, symbol: Symbol, order_id: OrderId) -> Order:
         """Cancel existing order"""
-        pair = ExchangeUtils.symbol_to_pair(symbol)
+        pair = ExchangeUtils.to_pair(symbol)
 
         params = {
             'symbol': pair,
@@ -2071,7 +2073,7 @@ class ExchangePrivate(PrivateExchangeSpotRestInterface):
 
     async def get_order(self, symbol: Symbol, order_id: OrderId) -> Order:
         """Get order status"""
-        pair = ExchangeUtils.symbol_to_pair(symbol)
+        pair = ExchangeUtils.to_pair(symbol)
 
         params = {
             'symbol': pair,
@@ -2109,7 +2111,7 @@ class ExchangePrivate(PrivateExchangeSpotRestInterface):
         params = {}
 
         if symbol:
-            params['symbol'] = ExchangeUtils.symbol_to_pair(symbol)
+            params['symbol'] = ExchangeUtils.to_pair(symbol)
 
         headers = self._add_authentication(params)
 
@@ -2124,7 +2126,7 @@ class ExchangePrivate(PrivateExchangeSpotRestInterface):
 
             orders = []
             for order_data in orders_data:
-                order_symbol = ExchangeUtils.pair_to_symbol(order_data.symbol)
+                order_symbol = ExchangeUtils.to_symbol(order_data.symbol)
                 order = Order(
                     symbol=order_symbol,
                     side=ExchangeMappings.get_unified_side(order_data.side),
@@ -2212,7 +2214,7 @@ class ExchangeWebSocketPublic(BaseExchangeWebsocketInterface):
 
     def _create_subscriptions(self, symbol: Symbol, action: SubscriptionAction) -> List[str]:
         """Create exchange-specific subscription messages"""
-        symbol_str = ExchangeUtils.symbol_to_pair(symbol).lower()
+        symbol_str = ExchangeUtils.to_pair(symbol).lower()
 
         streams = []
         if action == SubscriptionAction.SUBSCRIBE:
@@ -2266,7 +2268,7 @@ class ExchangeWebSocketPublic(BaseExchangeWebsocketInterface):
         try:
             # Extract symbol (customize based on exchange format)
             symbol_str = data.get('s') or data.get('symbol') or data.get('product_id')
-            symbol = ExchangeUtils.pair_to_symbol(symbol_str)
+            symbol = ExchangeUtils.to_symbol(symbol_str)
 
             # Parse bids and asks (customize based on exchange format)
             # Common formats:
@@ -2301,7 +2303,7 @@ class ExchangeWebSocketPublic(BaseExchangeWebsocketInterface):
         try:
             # Extract trade information (customize based on exchange format)
             symbol_str = data.get('s') or data.get('symbol') or data.get('product_id')
-            symbol = ExchangeUtils.pair_to_symbol(symbol_str)
+            symbol = ExchangeUtils.to_symbol(symbol_str)
 
             # Parse trade data (customize based on exchange format)
             # Common formats:
@@ -2707,11 +2709,11 @@ class TestExchangeIntegration:
         import ExchangeUtils
 
         # Test conversion both ways
-        pair = ExchangeUtils.symbol_to_pair(test_symbol)
+        pair = ExchangeUtils.to_pair(test_symbol)
         assert isinstance(pair, str)
         assert len(pair) > 0
 
-        converted_symbol = ExchangeUtils.pair_to_symbol(pair)
+        converted_symbol = ExchangeUtils.to_symbol(pair)
         assert converted_symbol == test_symbol
 
     # Trading tests (testnet only)

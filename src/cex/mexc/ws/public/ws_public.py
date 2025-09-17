@@ -1,49 +1,42 @@
 """
-MEXC Public WebSocket Implementation (Refactored)
+MEXC Public WebSocket Implementation
 
-Modernized implementation using the new strategy pattern architecture.
+Clean implementation using dependency injection similar to REST pattern.
 Handles public WebSocket streams for market data including:
 - Orderbook depth updates
 - Trade stream data
 - Real-time market information
 
 Features:
-- Strategy pattern architecture with composition
-- HFT-optimized message processing with WebSocketManager
-- Event-driven architecture with dependency injection handlers
+- Dependency injection via base class (like REST pattern)
+- HFT-optimized message processing 
+- Event-driven architecture with injected handlers
 - Clean separation of concerns
-- Legacy message handling for backward compatibility
+- MEXC-specific protobuf message parsing
 
 MEXC Public WebSocket Specifications:
 - Endpoint: wss://wbs.mexc.com/ws
 - Protocol: JSON and Protocol Buffers
 - Performance: <50ms latency with batch processing
 
-Architecture: Strategy pattern with WebSocketManager coordination
+Architecture: Dependency injection with base class coordination
 """
 
-from typing import List, Dict, Optional, Callable, Awaitable
+from typing import List, Dict, Optional, Callable, Awaitable, Set
 
 from structs.exchange import Symbol, Trade, OrderBook
 from core.config.structs import ExchangeConfig
+from core.cex.websocket.spot.base_ws_public import BaseExchangePublicWebsocketInterface
+from core.transport.websocket.structs import ConnectionState, MessageType
 
-# Strategy pattern imports
-from core.cex.websocket import BaseExchangePublicWebsocketInterface
-from core.transport.websocket.strategies import WebSocketStrategySet
-from core.transport.websocket.ws_manager import WebSocketManager, WebSocketManagerConfig
-from core.cex.websocket import MessageType, ConnectionState
-from cex.mexc.ws.strategies.public import (MexcPublicMessageParser,
-                                           MexcPublicSubscriptionStrategy, MexcPublicConnectionStrategy)
-
+# MEXC-specific protobuf imports for message parsing
 from cex.mexc.structs.protobuf.PushDataV3ApiWrapper_pb2 import PushDataV3ApiWrapper
 from cex.mexc.structs.protobuf.PublicLimitDepthsV3Api_pb2 import PublicLimitDepthsV3Api
 from cex.mexc.structs.protobuf.PublicAggreDealsV3Api_pb2 import PublicAggreDealsV3Api
-# from cex.mexc.protobuf.PublicAggreDepthsV3Api_pb2 import PublicAggreDepthsV3Api
 
-# ExchangeFactoryBundle is no longer needed with BaseExchangeFactory infrastructure
 
 class MexcWebsocketPublic(BaseExchangePublicWebsocketInterface):
-    """MEXC public WebSocket client using strategy pattern architecture."""
+    """MEXC public WebSocket client using dependency injection pattern."""
 
     def __init__(
         self,
@@ -52,118 +45,87 @@ class MexcWebsocketPublic(BaseExchangePublicWebsocketInterface):
         trades_handler: Optional[Callable[[Symbol, List[Trade]], Awaitable[None]]] = None,
         state_change_handler: Optional[Callable[[ConnectionState], Awaitable[None]]] = None,
     ):
-        super().__init__(config,
-                         orderbook_diff_handler=orderbook_diff_handler,
-                         trades_handler=trades_handler,
-                         state_change_handler=state_change_handler)
-
-        # Get exchange config with WebSocket configuration
+        """
+        Initialize MEXC public WebSocket with dependency injection.
+        
+        Base class handles all strategy creation, WebSocket manager setup, and dependency injection.
+        Only MEXC-specific initialization logic goes here.
+        """
+        # Validate MEXC-specific requirements
         if not config.websocket:
             raise ValueError("MEXC exchange configuration missing WebSocket settings")
         
-        # Use factory to get symbol mapper
-        from core.cex.services.symbol_mapper.factory import ExchangeSymbolMapperFactory
-        symbol_mapper = ExchangeSymbolMapperFactory.inject('MEXC')
-        
-        # Create strategy set for MEXC public WebSocket with resolved dependencies
-        strategies = WebSocketStrategySet(
-            connection_strategy=MexcPublicConnectionStrategy(config),
-            subscription_strategy=MexcPublicSubscriptionStrategy(symbol_mapper),
-            message_parser=MexcPublicMessageParser(symbol_mapper)
-        )
-        
-        # Configure manager for HFT performance
-        manager_config = WebSocketManagerConfig(
-            batch_processing_enabled=True,
-            batch_size=100,
-            max_pending_messages=1000,
-            enable_performance_tracking=True
-        )
-        
-        # Initialize WebSocket manager with WebSocket config from exchange config
-        self.ws_manager = WebSocketManager(
-            config=config.websocket,
-            strategies=strategies,
-            message_handler=self._handle_parsed_message,
-            manager_config=manager_config,
+        # Initialize via base class dependency injection (like REST pattern)
+        super().__init__(
+            config=config,
+            orderbook_diff_handler=orderbook_diff_handler,
+            trades_handler=trades_handler,
             state_change_handler=state_change_handler
         )
         
-        # Store factory bundle for potential future use
-        self._factory_bundle = factory_bundle
-        
-        injection_method = "factory-mediated" if factory_bundle else "constructor"
-        self.logger.info(f"MEXC public WebSocket initialized with strategy pattern using {injection_method} injection")
+        # State management for symbols (moved from WebSocket manager)
+        self._active_symbols: Set[Symbol] = set()
 
-    async def _handle_parsed_message(self, parsed_message) -> None:
-        """Handle parsed messages from WebSocketManager."""
-        try:
-            message_type = parsed_message.message_type
+        self.logger.info("MEXC public WebSocket initialized with dependency injection")
+
+    # MEXC-specific message handling can be added here if needed
+    # Base class handles all common WebSocket operations:
+    # - initialize(), close(), is_connected(), get_performance_metrics()
+    # - Message routing for ORDERBOOK, TRADE, HEARTBEAT, etc.
+    # - Default event handlers with dependency injection support
+    
+    # Enhanced symbol management using symbol-channel mapping
+    async def add_symbols(self, symbols: List[Symbol]) -> None:
+        """Add symbols for subscription using enhanced symbol-channel mapping."""
+        if not symbols:
+            return
             
-            if message_type == MessageType.ORDERBOOK:
-                if parsed_message.symbol and self.orderbook_diff_handler:
-                    # Parse raw message to get diff information
-                    message_parser = self.ws_manager.strategies.message_parser
-                    if hasattr(message_parser, 'parse_orderbook_diff_message'):
-                        diff_update = message_parser.parse_orderbook_diff_message(
-                            parsed_message.raw_data, 
-                            parsed_message.symbol
-                        )
-                        if diff_update:
-                            await self.orderbook_diff_handler(diff_update, parsed_message.symbol)
-                    else:
-                        # Fallback to legacy handler
-                        await self.orderbook_diff_handler(parsed_message.raw_data, parsed_message.symbol)
-                elif parsed_message.symbol and parsed_message.data:
-                    await self.on_orderbook_update(parsed_message.symbol, parsed_message.data)
-                    
-            elif message_type == MessageType.TRADE:
-                if parsed_message.symbol and parsed_message.data and self.trades_handler:
-                    await self.trades_handler(parsed_message.symbol, parsed_message.data)
-                elif parsed_message.symbol and parsed_message.data:
-                    await self.on_trades_update(parsed_message.symbol, parsed_message.data)
-                    
-            elif message_type == MessageType.HEARTBEAT:
-                self.logger.debug("Received public heartbeat")
-                
-            elif message_type == MessageType.SUBSCRIPTION_CONFIRM:
-                self.logger.info("Public subscription confirmed")
-                
-            elif message_type == MessageType.ERROR:
-                self.logger.error(f"Public WebSocket error: {parsed_message.raw_data}")
 
-        except Exception as e:
-            self.logger.error(f"Error handling parsed public message: {e}")
-
-    async def initialize(self, symbols: List[Symbol]) -> None:
-        """Initialize public WebSocket connection using strategy pattern."""
-        try:
-            await self.ws_manager.initialize(symbols)
-            self.logger.info(f"Public WebSocket initialized with {len(symbols)} symbols")
-        except Exception as e:
-            self.logger.error(f"Failed to initialize public WebSocket: {e}")
-            raise
-
-    def is_connected(self) -> bool:
-        """Check if WebSocket is connected."""
-        return self.ws_manager.is_connected()
+        # Use unified subscription method with symbols parameter
+        await self._ws_manager.add_subscription(symbols=symbols)
         
-    def get_performance_metrics(self) -> Dict:
-        """Get HFT performance metrics."""
-        return self.ws_manager.get_performance_metrics()
+        # Move from pending to active on successful subscription
+        self._active_symbols.update(symbols)
+
+        self.logger.info(f"Added {len(symbols)} symbols: {[str(s) for s in symbols]}")
+    
+    async def remove_symbols(self, symbols: List[Symbol]) -> None:
+        """Remove symbols from subscription using enhanced symbol-channel mapping."""
+        if not symbols:
+            return
+            
+        # Filter to only remove symbols we actually have
+        symbols_to_remove = [s for s in symbols if s in self._active_symbols]
+        if not symbols_to_remove:
+            return
         
-    async def close(self) -> None:
-        """Close WebSocket connection."""
-        self.logger.info("Stopping public WebSocket connection")
-        await self.ws_manager.close()
-        self.logger.info("Public WebSocket stopped")
-
-
+        # Use unified subscription removal method with symbols parameter
+        await self._ws_manager.remove_subscription(symbols=symbols_to_remove)
+        
+        # Remove from active state
+        self._active_symbols.difference_update(symbols_to_remove)
+        
+        self.logger.info(f"Removed {len(symbols_to_remove)} symbols: {[str(s) for s in symbols_to_remove]}")
+    
+    async def restore_subscriptions(self) -> None:
+        """Restore all active subscriptions after reconnect using ws_manager restoration."""
+        if not self._active_symbols:
+            self.logger.info("No active symbols to restore")
+            return
+        
+        # ws_manager handles restoration automatically using stored channels
+        # No action needed here - channels are restored by ws_manager
+        self.logger.info(f"Symbol subscriptions will be restored by ws_manager ({len(self._active_symbols)} symbols)")
+    
+    def get_active_symbols(self) -> Set[Symbol]:
+        """Get currently active symbols."""
+        return self._active_symbols.copy()
+    
+    # Override default handlers if MEXC needs specific behavior
     async def on_orderbook_update(self, symbol: Symbol, orderbook: OrderBook):
-        """Default orderbook update handler."""
-        self.logger.info(f"Orderbook update for {symbol}: {len(orderbook.bids)} bids, {len(orderbook.asks)} asks")
+        """MEXC-specific orderbook update handler."""
+        self.logger.info(f"MEXC orderbook update for {symbol}: {len(orderbook.bids)} bids, {len(orderbook.asks)} asks")
 
     async def on_trades_update(self, symbol: Symbol, trades: List[Trade]):
-        """Default trade update handler."""
-        self.logger.info(f"Trades update for {symbol}: {len(trades)} trades")
-    
+        """MEXC-specific trade update handler."""
+        self.logger.info(f"MEXC trades update for {symbol}: {len(trades)} trades")

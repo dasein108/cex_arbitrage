@@ -10,6 +10,8 @@ from core.cex.services.symbol_mapper import SymbolMapperInterface
 from core.cex.websocket import MessageParser, ParsedMessage, MessageType
 from cex.mexc.ws.protobuf_parser import MexcProtobufParser
 from structs.exchange import OrderBook, Trade, Side
+from cex.mexc.structs.exchange import MexcWSOrderbookMessage, MexcWSTradeMessage, MexcWSTradeEntry
+from cex.mexc.services.mapper import MexcMappings
 
 
 class MexcPublicMessageParser(MessageParser):
@@ -27,6 +29,7 @@ class MexcPublicMessageParser(MessageParser):
         super().__init__(symbol_mapper)
         self.logger = logging.getLogger(f"{__name__}.{self.__class__.__name__}")
         self.entry_pool = OrderBookEntryPool(initial_size=200, max_size=500)
+        self.mexc_mapper = MexcMappings(symbol_mapper)
 
     async def parse_message(self, raw_message: str) -> Optional[ParsedMessage]:
         """Parse MEXC WebSocket message with fast type detection."""
@@ -346,7 +349,7 @@ class MexcPublicMessageParser(MessageParser):
 
             if message_type == MessageType.ORDERBOOK:
                 symbol_str = msg.get('s', '')
-                symbol = self.symbol_mapper.pair_to_symbol(symbol_str) if symbol_str else None
+                symbol = self.symbol_mapper.to_symbol(symbol_str) if symbol_str else None
                 orderbook = await self.parse_orderbook_message(msg)
 
                 return ParsedMessage(
@@ -359,7 +362,7 @@ class MexcPublicMessageParser(MessageParser):
 
             elif message_type == MessageType.TRADE:
                 symbol_str = msg.get('s', '')
-                symbol = self.symbol_mapper.pair_to_symbol(symbol_str) if symbol_str else None
+                symbol = self.symbol_mapper.to_symbol(symbol_str) if symbol_str else None
                 trades = await self._parse_trades_from_json(msg)
 
                 return ParsedMessage(
@@ -397,7 +400,7 @@ class MexcPublicMessageParser(MessageParser):
         try:
             # Extract symbol from protobuf data using consolidated utility
             symbol_str = MexcProtobufParser.extract_symbol_from_protobuf(data)
-            symbol = self.symbol_mapper.pair_to_symbol(symbol_str) if symbol_str else None
+            symbol = self.symbol_mapper.to_symbol(symbol_str) if symbol_str else None
 
             # Process based on message type - check actual MEXC V3 format
             if b'aggre.deals' in data[:50]:
@@ -475,7 +478,7 @@ class MexcPublicMessageParser(MessageParser):
             data: bytes,
             symbol_str: str
     ) -> Optional[List[Trade]]:
-        """Parse trades from protobuf data using consolidated utilities."""
+        """Parse trades from protobuf data using MEXC structs and mapper service."""
         try:
             # Use consolidated protobuf utilities
             wrapper = MexcProtobufParser.parse_wrapper_message(data)
@@ -484,22 +487,26 @@ class MexcPublicMessageParser(MessageParser):
             if wrapper.HasField('publicAggreDeals'):
                 deals_data = wrapper.publicAggreDeals
 
-                # Convert to Trade list
-                trades = []
+                # Convert to MEXC trade entries list
+                mexc_trades = []
 
                 for deal_item in deals_data.deals:
-                    side = Side.BUY if deal_item.tradeType == 1 else Side.SELL
-
-                    trade = Trade(
-                        price=float(deal_item.price),
-                        amount=float(deal_item.quantity),
-                        side=side,
-                        timestamp=deal_item.time,
-                        is_maker=False
+                    # Create MEXC-specific struct for performance
+                    mexc_trade = MexcWSTradeEntry(
+                        p=str(deal_item.price),  # Price as string
+                        q=str(deal_item.quantity),  # Quantity as string  
+                        t=deal_item.tradeType,  # Trade type (1=buy, 2=sell)
+                        T=int(deal_item.time)  # Timestamp
                     )
-                    trades.append(trade)
+                    mexc_trades.append(mexc_trade)
 
-                return trades
+                # Use mapper service to convert MEXC structs to unified Trade structs
+                unified_trades = []
+                for mexc_trade in mexc_trades:
+                    unified_trade = self.mexc_mapper.transform_ws_trade_to_unified(mexc_trade, symbol_str)
+                    unified_trades.append(unified_trade)
+
+                return unified_trades
 
             return None
 
@@ -508,24 +515,30 @@ class MexcPublicMessageParser(MessageParser):
             return None
 
     async def _parse_trades_from_json(self, msg: Dict[str, Any]) -> Optional[List[Trade]]:
-        """Parse trades from JSON message."""
+        """Parse trades from JSON message using MEXC structs and mapper service."""
         try:
             data = msg.get('d', {})
-            trades = []
-
+            
+            # Convert to MEXC trade entries list using msgspec struct
+            mexc_trades = []
+            
             for deal in data.get('deals', []):
-                side = Side.BUY if deal.get('t') == 1 else Side.SELL
-
-                trade = Trade(
-                    price=float(deal.get('p', 0)),
-                    amount=float(deal.get('q', 0)),
-                    side=side,
-                    timestamp=int(deal.get('T', time.time() * 1000)),
-                    is_maker=False
+                # Create MEXC-specific struct for performance
+                mexc_trade = MexcWSTradeEntry(
+                    p=str(deal.get('p', '0')),  # Price as string
+                    q=str(deal.get('q', '0')),  # Quantity as string
+                    t=int(deal.get('t', 1)),  # Trade type (1=buy, 2=sell)
+                    T=int(deal.get('T', time.time() * 1000))  # Timestamp
                 )
-                trades.append(trade)
+                mexc_trades.append(mexc_trade)
 
-            return trades
+            # Use mapper service to convert MEXC structs to unified Trade structs
+            unified_trades = []
+            for mexc_trade in mexc_trades:
+                unified_trade = self.mexc_mapper.transform_ws_trade_to_unified(mexc_trade)
+                unified_trades.append(unified_trade)
+
+            return unified_trades
 
         except Exception as e:
             self.logger.error(f"Error parsing trades from JSON: {e}")

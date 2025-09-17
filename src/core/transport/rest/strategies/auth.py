@@ -28,6 +28,7 @@ class AuthStrategy(ABC):
         method: HTTPMethod,
         endpoint: str,
         params: Dict[str, Any],
+        json_data: Dict[str, Any],
         timestamp: int
     ) -> AuthenticationData:
         """
@@ -37,6 +38,7 @@ class AuthStrategy(ABC):
             method: HTTP method
             endpoint: API endpoint
             params: Request parameters
+            json_data: JSON data for POST/PUT requests
             timestamp: Request timestamp
             
         Returns:

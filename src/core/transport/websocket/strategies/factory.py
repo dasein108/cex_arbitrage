@@ -12,15 +12,15 @@ from typing import List, Dict, Type, Optional, Any
 
 from core.transport.websocket.strategies import (ConnectionStrategy, SubscriptionStrategy, MessageParser,
                                                  WebSocketStrategySet)
-from core.factories.base_exchange_factory import BaseExchangeFactory
+from core.factories.base_composite_factory import BaseCompositeFactory
 
 
-class WebSocketStrategyFactory(BaseExchangeFactory[WebSocketStrategySet]):
+class WebSocketStrategyFactory(BaseCompositeFactory[WebSocketStrategySet]):
     """
     Factory for creating WebSocket strategy sets with standardized infrastructure.
     
-    Inherits from BaseExchangeFactory to provide standardized factory patterns:
-    - Registry management via base class (_implementations stores strategy configurations)
+    Inherits from BaseCompositeFactory to provide standardized factory patterns:
+    - Component configuration management (stores strategy configurations)
     - Enhanced auto-injection with symbol_mapper and exchange_mappings
     - Standardized inject() method for consistent API
     - Factory-to-factory coordination for seamless dependency management
@@ -39,7 +39,7 @@ class WebSocketStrategyFactory(BaseExchangeFactory[WebSocketStrategySet]):
         """
         Register strategy configuration for an exchange.
         
-        Implements BaseExchangeFactory.register() for WebSocket strategies.
+        Implements BaseCompositeFactory.register() for WebSocket strategies.
         
         Args:
             exchange_name: Exchange identifier with API type (e.g., 'MEXC_public', 'MEXC_private')
@@ -49,11 +49,9 @@ class WebSocketStrategyFactory(BaseExchangeFactory[WebSocketStrategySet]):
         # Use base class validation and normalization
         exchange_key = cls._normalize_exchange_key(exchange_name)
         
-        # Validate strategy configuration
+        # Validate strategy configuration using base class method
         required_strategies = ['connection', 'subscription', 'parser']
-        for strategy_type in required_strategies:
-            if strategy_type not in strategy_config:
-                raise ValueError(f"Missing required strategy: {strategy_type}")
+        cls._validate_strategy_config(strategy_config, required_strategies)
         
         # Register with base class registry
         cls._implementations[exchange_key] = strategy_config
@@ -63,7 +61,7 @@ class WebSocketStrategyFactory(BaseExchangeFactory[WebSocketStrategySet]):
         """
         Create or retrieve WebSocket strategy set for an exchange.
         
-        Implements BaseExchangeFactory.inject() with auto-dependency injection.
+        Implements BaseCompositeFactory.inject() with auto-dependency injection.
         
         Args:
             exchange_name: Exchange identifier with API type (e.g., 'MEXC_public')
@@ -90,36 +88,55 @@ class WebSocketStrategyFactory(BaseExchangeFactory[WebSocketStrategySet]):
         if config is None:
             raise ValueError(f"Config required for WebSocket strategy creation for {exchange_name}")
         
-        # For strategy sets, we don't use singleton pattern as they need fresh dependencies
-        # Get strategy configuration
+        # Get strategy configuration and delegate to assembly method
         strategy_config = cls._implementations[exchange_key]
+        return cls._assemble_components(exchange_name, strategy_config, config=config, **kwargs)
+    
+    @classmethod
+    def _assemble_components(cls, exchange_name: str, strategy_config: Dict[str, type], **kwargs) -> WebSocketStrategySet:
+        """
+        Assemble WebSocket strategy components into WebSocketStrategySet.
+        
+        Implements BaseCompositeFactory._assemble_components() for WebSocket strategies.
+        
+        Args:
+            exchange_name: Exchange identifier
+            strategy_config: Component configuration
+            **kwargs: Assembly parameters including config
+            
+        Returns:
+            Assembled WebSocketStrategySet
+        """
+        config = kwargs.get('config')
+        if not config:
+            raise ValueError("Config required for WebSocket strategy assembly")
         
         # Auto-resolve dependencies - strip _PUBLIC/_PRIVATE suffix for base exchange name
         base_exchange_name = exchange_name.replace('_PUBLIC', '').replace('_PRIVATE', '')
-        resolved_kwargs = cls._resolve_dependencies(base_exchange_name, config=config, **kwargs)
+        resolved_kwargs = cls._resolve_dependencies(base_exchange_name, **{k: v for k, v in kwargs.items() if k != 'config'})
         
         # Create WebSocket strategy set with appropriate parameters for each strategy type
         # Connection strategy takes only config (no other dependencies)
         connection_strategy = strategy_config['connection'](config)
         
-        # Create subscription and parser strategies with appropriate parameters
-        # Some strategies (like private) don't need symbol_mapper, so try with and without
+        # Create subscription and parser strategies with intelligent parameter handling
         symbol_mapper = resolved_kwargs.get('symbol_mapper')
         filtered_kwargs = {k: v for k, v in resolved_kwargs.items() if k not in ['symbol_mapper', 'exchange_mappings']}
         
-        # Try creating subscription strategy - first with symbol_mapper, then without
-        try:
-            subscription_strategy = strategy_config['subscription'](symbol_mapper, **filtered_kwargs)
-        except TypeError:
-            # Constructor doesn't take symbol_mapper (e.g., private strategies)
-            subscription_strategy = strategy_config['subscription'](**filtered_kwargs)
+        # Use base class helper for fallback constructor patterns
+        subscription_strategy = cls._create_component_with_fallback(
+            strategy_config['subscription'],
+            exchange_name,
+            {**({'symbol_mapper': symbol_mapper} if symbol_mapper else {}), **filtered_kwargs},  # Primary
+            filtered_kwargs  # Fallback: without symbol_mapper
+        )
         
-        # Try creating message parser - first with symbol_mapper, then without  
-        try:
-            message_parser = strategy_config['parser'](symbol_mapper, **filtered_kwargs)
-        except TypeError:
-            # Constructor doesn't take symbol_mapper (e.g., private strategies)
-            message_parser = strategy_config['parser'](**filtered_kwargs)
+        message_parser = cls._create_component_with_fallback(
+            strategy_config['parser'],
+            exchange_name,
+            {**({'symbol_mapper': symbol_mapper} if symbol_mapper else {}), **filtered_kwargs},  # Primary
+            filtered_kwargs  # Fallback: without symbol_mapper
+        )
         
         return WebSocketStrategySet(
             connection_strategy=connection_strategy,
@@ -127,8 +144,6 @@ class WebSocketStrategyFactory(BaseExchangeFactory[WebSocketStrategySet]):
             message_parser=message_parser
         )
     
-    # Note: _resolve_dependencies() inherited from BaseExchangeFactory
-
     @classmethod
     def register_strategies(
             cls,

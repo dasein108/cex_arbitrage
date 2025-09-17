@@ -202,17 +202,15 @@ class RestTransportManager:
                         pass
                     else:
                         auth_data = await self.strategy_set.auth_strategy.sign_request(
-                            method, endpoint, params or {}, int(time.time() * 1000)
+                            method, endpoint, params or {}, json_data, int(time.time() * 1000)
                         )
                         # Apply authentication headers
                         request_params.setdefault('headers', {}).update(auth_data.headers)
                         # Apply authentication parameters
-                        # MEXC requires all parameters in query string for proper signature verification
                         request_params.setdefault('params', {}).update(auth_data.params)
-                        
-                        # Remove JSON body for authenticated requests since all params go to query string
-                        if 'json' in request_params:
-                            request_params.pop('json', {})
+                        # Apply authentication data if provided (Gate.io needs this for POST/PUT)
+                        if auth_data.data is not None:
+                            request_params['data'] = auth_data.data
                 
                 # Step 4: Execute with retry logic (via RetryStrategy)
                 response = await self._execute_with_retry(method, url, request_params)

@@ -249,9 +249,10 @@ async def _on_message(self, message):
 ```
 
 ##### Subscription Management
+
 ```python
 def _create_subscriptions(self, symbol: Symbol, action: SubscriptionAction) -> List[str]:
-    symbol_str = MexcUtils.symbol_to_pair(symbol).upper()
+    symbol_str = MexcUtils.to_pair(symbol).upper()
     return [
         f"spot@public.aggre.deals.v3.api.pb@10ms@{symbol_str}"  # Trades
         # Additional streams as needed
@@ -312,12 +313,13 @@ class MexcUtils:
 ```
 
 ##### Data Transformation
+
 ```python
 @staticmethod
 def transform_mexc_order_to_unified(mexc_order: MexcOrderResponse) -> Order:
     """Transform MEXC order response to unified Order struct"""
-    symbol = MexcUtils.pair_to_symbol(mexc_order.symbol)
-    
+    symbol = MexcUtils.to_symbol(mexc_order.symbol)
+
     return Order(
         symbol=symbol,
         side=MexcMappings.get_unified_side(mexc_order.side),

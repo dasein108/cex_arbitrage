@@ -117,11 +117,12 @@ class Order(Struct):
     order_id: Optional[OrderId] = None
     client_order_id: Optional[str] = None
     status: OrderStatus = OrderStatus.NEW
-    timestamp: Optional[datetime] = None
+    timestamp: Optional[float] = None
     fee: float = 0.0
 
 
 class Trade(Struct):
+    symbol: Symbol
     price: float
     amount: float
     side: Side

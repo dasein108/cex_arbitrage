@@ -36,7 +36,7 @@ from structs.exchange import Symbol, Order, AssetBalance
 from cex.gateio.services.gateio_config import GateioConfig
 from cex.gateio.services.gateio_utils import GateioUtils
 from cex.gateio.services.gateio_mappings import GateioMappings
-from core.cex.websocket.structs import SubscriptionAction
+from core.transport.websocket.structs import SubscriptionAction
 
 from core.transport.websocket.ws_client import WebSocketConfig
 

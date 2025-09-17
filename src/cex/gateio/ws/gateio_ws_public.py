@@ -133,7 +133,7 @@ class GateioWebsocketPublic(BaseExchangeWebsocketInterface):
         
         Reference implementation uses format: "spot.order_book_update@BTC_USDT@1000ms@20"
         """
-        pair = GateioUtils.symbol_to_pair(symbol)
+        pair = GateioUtils.to_pair(symbol)
         
         # Create subscription streams for different channels using @ format
         subscriptions = []
@@ -329,7 +329,7 @@ class GateioWebsocketPublic(BaseExchangeWebsocketInterface):
             for trade_data in trades_data:
                 # Extract symbol
                 pair = trade_data.get('currency_pair', '')
-                symbol = GateioUtils.pair_to_symbol(pair)
+                symbol = GateioUtils.to_symbol(pair)
                 
                 # Parse trade data
                 side = GateioMappings.get_unified_side(trade_data.get('side', 'buy'))

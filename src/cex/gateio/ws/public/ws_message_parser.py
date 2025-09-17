@@ -289,7 +289,7 @@ class GateioPublicMessageParser(MessageParser):
                         symbol = GateioUtils.pair_to_symbol(symbol_str)
                     except ImportError:
                         # Fallback if utils not available
-                        symbol = self.symbol_mapper.pair_to_symbol(symbol_str)
+                        symbol = self.symbol_mapper.to_symbol(symbol_str)
 
                 orderbook = await self.parse_orderbook_message(message)
 
@@ -313,7 +313,7 @@ class GateioPublicMessageParser(MessageParser):
                         from cex.gateio.services.gateio_utils import GateioUtils
                         symbol = GateioUtils.pair_to_symbol(symbol_str)
                     except ImportError:
-                        symbol = self.symbol_mapper.pair_to_symbol(symbol_str)
+                        symbol = self.symbol_mapper.to_symbol(symbol_str)
 
                 trades = await self._parse_trades_from_json(message)
 

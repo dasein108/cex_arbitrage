@@ -4,6 +4,7 @@ from enum import IntEnum, Enum
 from typing import Dict, Optional, Any, List
 
 import msgspec
+from structs.exchange import Symbol
 
 
 class ConnectionState(Enum):
@@ -86,7 +87,7 @@ class SubscriptionContext:
 class ParsedMessage:
     """Parsed WebSocket message with routing information."""
     message_type: MessageType
-    symbol: Optional[str] = None
+    symbol: Optional[Symbol] = None
     channel: Optional[str] = None
     data: Optional[Any] = None
     timestamp: float = 0.0

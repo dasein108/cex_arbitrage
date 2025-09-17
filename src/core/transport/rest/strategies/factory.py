@@ -11,21 +11,16 @@ import logging
 from typing import List, Dict, Optional, Any
 
 from ....config.structs import ExchangeConfig, ExchangeName
-from .request import RequestStrategy
-from .rate_limit import RateLimitStrategy
-from .retry import RetryStrategy
-from .auth import AuthStrategy
-from .exception_handler import ExceptionHandlerStrategy
 from .strategy_set import RestStrategySet
-from core.factories.base_exchange_factory import BaseExchangeFactory
+from core.factories.base_composite_factory import BaseCompositeFactory
 
 
-class RestStrategyFactory(BaseExchangeFactory[RestStrategySet]):
+class RestStrategyFactory(BaseCompositeFactory[RestStrategySet]):
     """
     Factory for creating REST strategy sets with exchange-specific configurations.
     
-    Inherits from BaseExchangeFactory to provide standardized factory patterns:
-    - Registry management via base class (_implementations stores strategy configurations)
+    Inherits from BaseCompositeFactory to provide standardized factory patterns:
+    - Component configuration management (stores strategy configurations)
     - Enhanced auto-injection with symbol_mapper and exchange_mappings
     - Standardized inject() method for consistent API
     - Factory-to-factory coordination for seamless dependency management
@@ -43,7 +38,7 @@ class RestStrategyFactory(BaseExchangeFactory[RestStrategySet]):
         """
         Register strategy configuration for an exchange.
         
-        Implements BaseExchangeFactory.register() for REST strategies.
+        Implements BaseCompositeFactory.register() for REST strategies.
         
         Args:
             exchange_name: Exchange identifier with API type (e.g., 'MEXC_public', 'MEXC_private')
@@ -53,24 +48,19 @@ class RestStrategyFactory(BaseExchangeFactory[RestStrategySet]):
         # Use base class validation and normalization
         exchange_key = cls._normalize_exchange_key(exchange_name)
         
-        # Validate strategy configuration
+        # Validate strategy configuration using base class method
         required_strategies = ['request', 'rate_limit', 'retry']
-        for strategy_type in required_strategies:
-            if strategy_type not in strategy_config:
-                raise ValueError(f"Missing required strategy: {strategy_type}")
+        cls._validate_strategy_config(strategy_config, required_strategies)
         
-        # Register with base class registry (strategy_config is our "implementation")
+        # Register with base class registry
         cls._implementations[exchange_key] = strategy_config
-        
-        # Note: We don't auto-create instances for strategy sets as they require ExchangeConfig
-        # Instances will be created on-demand via inject()
     
     @classmethod
     def inject(cls, exchange_name: str, config: ExchangeConfig = None, **kwargs) -> RestStrategySet:
         """
         Create or retrieve REST strategy set for an exchange.
         
-        Implements BaseExchangeFactory.inject() with auto-dependency injection.
+        Implements BaseCompositeFactory.inject() with auto-dependency injection.
         
         Args:
             exchange_name: Exchange identifier with API type (e.g., 'MEXC_public')
@@ -96,34 +86,64 @@ class RestStrategyFactory(BaseExchangeFactory[RestStrategySet]):
                 f"No strategies registered for {exchange_name}. Available: {available}"
             )
         
-        # For strategy sets, we don't use singleton pattern as they need fresh config
-        # Get strategy configuration
+        # Get strategy configuration and delegate to assembly method
         strategy_config = cls._implementations[exchange_key]
+        return cls._assemble_components(exchange_name, strategy_config, config=config, **kwargs)
+    
+    @classmethod
+    def _assemble_components(cls, exchange_name: str, strategy_config: Dict[str, type], **kwargs) -> RestStrategySet:
+        """
+        Assemble REST strategy components into RestStrategySet.
+        
+        Implements BaseCompositeFactory._assemble_components() for REST strategies.
+        
+        Args:
+            exchange_name: Exchange identifier
+            strategy_config: Component configuration
+            **kwargs: Assembly parameters including config
+            
+        Returns:
+            Assembled RestStrategySet
+        """
+        config = kwargs.get('config')
+        if not config:
+            raise ValueError("ExchangeConfig required for REST strategy assembly")
         
         # Auto-resolve dependencies
-        resolved_kwargs = cls._resolve_dependencies(exchange_name, config=config, **kwargs)
+        resolved_kwargs = cls._resolve_dependencies(exchange_name, **{k: v for k, v in kwargs.items() if k != 'config'})
         
-        # Create strategies with ExchangeConfig and auto-injected dependencies
-        request_strategy = strategy_config['request'](config, **resolved_kwargs)
-        rate_limit_strategy = strategy_config['rate_limit'](config, **resolved_kwargs) 
-        retry_strategy = strategy_config['retry'](config, **resolved_kwargs)
+        # Create strategies with ExchangeConfig - use fallback for constructor differences
+        request_strategy = cls._create_component_with_fallback(
+            strategy_config['request'], exchange_name, 
+            {'exchange_config': config, **resolved_kwargs}, {'exchange_config': config}
+        )
+        rate_limit_strategy = cls._create_component_with_fallback(
+            strategy_config['rate_limit'], exchange_name,
+            {'exchange_config': config, **resolved_kwargs}, {'exchange_config': config}
+        )
+        retry_strategy = cls._create_component_with_fallback(
+            strategy_config['retry'], exchange_name,
+            {'exchange_config': config, **resolved_kwargs}, {'exchange_config': config}
+        )
         
         # Auth strategy for private endpoints
         auth_strategy = None
         is_private = 'private' in exchange_name.lower()
         if is_private and strategy_config.get('auth'):
-            auth_strategy = strategy_config['auth'](config, **resolved_kwargs)
+            auth_strategy = cls._create_component_with_fallback(
+                strategy_config['auth'], exchange_name,
+                {'exchange_config': config, **resolved_kwargs}, {'exchange_config': config}
+            )
         
-        # Exception handler (optional)
+        # Exception handler with fallback constructor patterns
         exception_handler_strategy = None
         if strategy_config.get('exception_handler'):
-            try:
-                exception_handler_strategy = strategy_config['exception_handler'](config, **resolved_kwargs)
-            except TypeError:
-                try:
-                    exception_handler_strategy = strategy_config['exception_handler'](config)
-                except TypeError:
-                    exception_handler_strategy = strategy_config['exception_handler']()
+            exception_handler_strategy = cls._create_component_with_fallback(
+                strategy_config['exception_handler'],
+                exchange_name,
+                {'config': config, **resolved_kwargs},  # Primary: with all dependencies
+                {'config': config},  # Fallback: just config
+            )
         
         return RestStrategySet(
             request_strategy=request_strategy,
@@ -201,9 +221,6 @@ class RestStrategyFactory(BaseExchangeFactory[RestStrategySet]):
         
         # Delegate to standardized inject() method
         return cls.inject(exchange_key, config=exchange_config)
-
-    # Note: _resolve_dependencies() is inherited from BaseExchangeFactory
-    # It provides automatic symbol_mapper and exchange_mappings resolution
 
     @classmethod
     def list_available_strategies(cls) -> Dict[str, List[str]]:
