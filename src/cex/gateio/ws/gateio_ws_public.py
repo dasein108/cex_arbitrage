@@ -1,387 +1,126 @@
 """
 Gate.io Public WebSocket Implementation
 
-High-performance WebSocket client for Gate.io public market data streams.
-Optimized for real-time orderbook and trade data processing.
+Clean implementation using dependency injection similar to REST pattern.
+Handles public WebSocket streams for market data including:
+- Orderbook depth updates  
+- Trade stream data
+- Real-time market information
 
-Key Features:
-- Real-time orderbook streaming with differential updates
-- Trade stream processing with minimal latency
-- HFT-optimized object pooling for reduced allocations
-- JSON-based message parsing (simpler than MEXC protobuf)
-- Unified cex compliance
+Features:
+- Dependency injection via base class (like REST pattern)
+- HFT-optimized message processing
+- Event-driven architecture with injected handlers
+- Clean separation of concerns
+- Gate.io-specific JSON message parsing
 
-Gate.io WebSocket Specifications:
-- URL: wss://api.gateio.ws/ws/v4/
-- Authentication: Not required for public channels
-- Message Format: JSON with subscription-based model
-- Channels: spot.order_book_update, spot.trades, spot.tickers
+Gate.io Public WebSocket Specifications:
+- Endpoint: wss://api.gateio.ws/ws/v4/
+- Protocol: JSON-based message format
+- Performance: <50ms latency with optimized processing
 
-Threading: Fully async/await compatible, thread-safe
-Memory: Optimized object pooling for high-frequency updates
-Performance: <1ms message processing, >1000 updates/second throughput
+Architecture: Dependency injection with base class coordination
 """
 
-import time
-import json
-from collections import deque
-from typing import List, Dict, Optional, Callable, Awaitable, Any
+from typing import List, Dict, Optional, Callable, Awaitable, Set
 
-from structs.exchange import Symbol, Trade, OrderBookEntry
+from structs.exchange import Symbol, Trade, OrderBook
 from core.config.structs import ExchangeConfig
-from common.logging import getLogger
-
-# Strategy pattern imports
-from core.cex.websocket import BaseExchangeWebsocketInterface
-from core.transport.websocket.structs import SubscriptionAction
-
-# Create placeholder strategy imports - these need to be implemented
-# from cex.gateio.ws.public.ws_strategies import GateioPublicConnectionStrategy, GateioPublicSubscriptionStrategy
-# from cex.gateio.ws.public.ws_message_parser import GateioPublicMessageParser
+from core.cex.websocket.spot.base_ws_public import BaseExchangePublicWebsocketInterface
+from core.transport.websocket.structs import ConnectionState, MessageType
 
 
-class OrderBookEntryPool:
-    """High-performance object pool for OrderBookEntry instances (HFT optimized).
-    
-    Reduces allocation overhead by 75% through object reuse.
-    Critical for processing 1000+ orderbook updates per second.
-    """
-    
-    __slots__ = ('_pool', '_pool_size', '_max_pool_size')
-    
-    def __init__(self, initial_size: int = 200, max_size: int = 500):
-        self._pool = deque()
-        self._pool_size = 0
-        self._max_pool_size = max_size
-        
-        # Pre-allocate pool for immediate availability
-        for _ in range(initial_size):
-            self._pool.append(OrderBookEntry(price=0.0, size=0.0))
-            self._pool_size += 1
-    
-    def get_entry(self, price: float, size: float) -> OrderBookEntry:
-        """Get pooled entry with values or create new one (optimized path)."""
-        if self._pool:
-            # Pool available - zero allocation reuse
-            self._pool.popleft()
-            self._pool_size -= 1
-        
-        # Create entry with actual values (msgspec.Struct is immutable)
-        return OrderBookEntry(price=price, size=size)
-    
-    def return_entries(self, entries: List[OrderBookEntry]):
-        """Return entries to pool for future reuse (batch operation)."""
-        for entry in entries:
-            if self._pool_size < self._max_pool_size:
-                # Return to pool for reuse
-                self._pool.append(entry)
-                self._pool_size += 1
-    
-    def get_pool_stats(self) -> Dict[str, int]:
-        """Get pool statistics for monitoring."""
-        return {
-            'pool_size': self._pool_size,
-            'max_pool_size': self._max_pool_size,
-            'utilization': int((self._pool_size / self._max_pool_size) * 100) if self._max_pool_size > 0 else 0
-        }
-
-
-class GateioWebsocketPublic(BaseExchangeWebsocketInterface):
-    """Gate.io public websocket client for market data streaming"""
+class GateioWebsocketPublic(BaseExchangePublicWebsocketInterface):
+    """Gate.io public WebSocket client using dependency injection pattern."""
 
     def __init__(
-        self, 
+        self,
         config: ExchangeConfig,
-        orderbook_handler: Optional[Callable[[any, Symbol], Awaitable[None]]] = None,
-        trades_handler: Optional[Callable[[Symbol, List[Trade]], Awaitable[None]]] = None
+        orderbook_diff_handler: Optional[Callable[[any, Symbol], Awaitable[None]]] = None,
+        trades_handler: Optional[Callable[[Symbol, List[Trade]], Awaitable[None]]] = None,
+        state_change_handler: Optional[Callable[[ConnectionState], Awaitable[None]]] = None,
     ):
-        super().__init__(config)
-        self.logger = getLogger(f"{__name__}.{self.__class__.__name__}")
-        self.config = config
+        """
+        Initialize Gate.io public WebSocket with dependency injection.
         
+        Base class handles all strategy creation, WebSocket manager setup, and dependency injection.
+        Only Gate.io-specific initialization logic goes here.
+        """
+        # Validate Gate.io-specific requirements
         if not config.websocket:
             raise ValueError("Gate.io exchange configuration missing WebSocket settings")
-        self.orderbook_handler = orderbook_handler
-        self.trades_handler = trades_handler
         
-        # High-performance object pool for HFT optimization
-        self.entry_pool = OrderBookEntryPool(initial_size=200, max_size=500)
-        
-        # Channel subscription tracking
-        self._active_channels: Dict[str, Symbol] = {}
-        
-        # Performance metrics
-        self._performance_metrics = {
-            'messages_processed': 0,
-            'orderbook_updates': 0,
-            'trade_updates': 0,
-            'parse_errors': 0
-        }
-
-    async def initialize(self, symbols: List[Symbol]):
-        """Initialize the websocket connection using Gate.io specific approach."""
-        self.symbols = symbols
-        await self.ws_client.start()
-        
-        # Use Gate.io-specific subscription instead of generic
-        for symbol in symbols:
-            subscriptions = self._create_subscriptions(symbol, SubscriptionAction.SUBSCRIBE)
-            await self._subscribe_to_streams(subscriptions, SubscriptionAction.SUBSCRIBE)
-
-    def _create_subscriptions(self, symbol: Symbol, action: SubscriptionAction) -> List[str]:
-        """Create Gate.io WebSocket subscription streams in channel@payload format.
-        
-        Reference implementation uses format: "spot.order_book_update@BTC_USDT@1000ms@20"
-        """
-        pair = GateioUtils.to_pair(symbol)
-        
-        # Create subscription streams for different channels using @ format
-        subscriptions = []
-        
-        # Orderbook updates (spot.order_book_update@symbol@frequency) - Gate.io expects exactly 2 args
-        if self.orderbook_handler:
-            orderbook_stream = f"spot.order_book_update@{pair}@1000ms"
-            subscriptions.append(orderbook_stream)
-        
-        # Trade updates (spot.trades@symbol)  
-        if self.trades_handler:
-            trades_stream = f"spot.trades@{pair}"
-            subscriptions.append(trades_stream)
-        
-        # Track active channels for message routing
-        if action == SubscriptionAction.SUBSCRIBE:
-            self._active_channels[f"spot.order_book_update.{pair}"] = symbol
-            self._active_channels[f"spot.trades.{pair}"] = symbol
-        else:
-            self._active_channels.pop(f"spot.order_book_update.{pair}", None)
-            self._active_channels.pop(f"spot.trades.{pair}", None)
-        
-        return subscriptions
-
-    async def _request(self, channel: str, event: str, payload: List[str], auth_required: bool = False):
-        """Send Gate.io WebSocket request message like reference implementation."""
-        current_time = int(time.time())
-        data = {
-            "time": current_time,
-            "channel": channel,
-            "event": event,
-            "payload": payload,
-        }
-        
-        # Auth not required for public channels
-        if auth_required:
-            # Would add auth here for private channels
-            pass
-            
-        if self.ws_client.is_connected:
-            await self.ws_client.send_message(json.dumps(data))
-        else:
-            raise Exception("WebSocket not connected")
-
-    async def _subscribe_to_streams(self, streams: List[str], action: SubscriptionAction):
-        """Subscribe to streams using reference implementation approach."""
-        for stream in streams:
-            event = "subscribe" if action == SubscriptionAction.SUBSCRIBE else "unsubscribe"
-            payload = stream.split("@")
-            channel = payload.pop(0)  # Remove and get channel
-            await self._request(channel, event, payload)
-
-    async def start_symbol(self, symbol: Symbol):
-        """Start streaming data for a specific symbol using reference approach."""
-        if symbol not in self.symbols:
-            self.symbols.append(symbol)
-            subscriptions = self._create_subscriptions(symbol, SubscriptionAction.SUBSCRIBE)
-            
-            # Use reference implementation's subscription method
-            await self._subscribe_to_streams(subscriptions, SubscriptionAction.SUBSCRIBE)
-
-    async def stop_symbol(self, symbol: Symbol):
-        """Stop streaming data for a specific symbol using reference approach."""
-        if symbol in self.symbols:
-            self.symbols.remove(symbol)
-            subscriptions = self._create_subscriptions(symbol, SubscriptionAction.UNSUBSCRIBE)
-            
-            # Use reference implementation's unsubscription method
-            await self._subscribe_to_streams(subscriptions, SubscriptionAction.UNSUBSCRIBE)
-
-    async def _on_message(self, raw_message: str):
-        """Process incoming WebSocket messages from Gate.io.
-        
-        Gate.io message format:
-        {
-            "time": 1234567890,
-            "channel": "spot.order_book_update",
-            "event": "update",
-            "result": {
-                "t": 1234567890123,
-                "e": "depthUpdate", 
-                "E": 1234567890456,
-                "s": "BTC_USDT",
-                "U": 157,
-                "u": 160,
-                "b": [["50000", "0.001"]],
-                "a": [["50001", "0.002"]]
-            }
-        }
-        """
-        try:
-            # Parse JSON message
-            try:
-                message = json.loads(raw_message)
-            except json.JSONDecodeError as e:
-                self.logger.warning(f"Failed to parse JSON message: {e}")
-                self._performance_metrics['parse_errors'] += 1
-                return
-            
-            self._performance_metrics['messages_processed'] += 1
-            
-            # Extract message components
-            channel = message.get('channel', '')
-            event = message.get('event', '')
-            result = message.get('result', {})
-            
-            # Skip non-update events (confirmations, errors, etc.)
-            if event != 'update':
-                return
-            
-            # Route message based on channel
-            if channel == 'spot.order_book_update':
-                await self._handle_orderbook_update(message)  # Pass full message for diff parsing
-            elif channel == 'spot.trades':
-                await self._handle_trades_update(result)
-            else:
-                self.logger.debug(f"Unknown channel: {channel}")
-                
-        except Exception as e:
-            self.logger.error(f"Error processing WebSocket message: {e}")
-            self._performance_metrics['parse_errors'] += 1
-
-    async def _handle_orderbook_update(self, raw_message: Dict[str, Any]):
-        """Handle Gate.io orderbook update messages with HFT diff processing."""
-        try:
-            if not self.orderbook_handler:
-                return
-
-            # Extract symbol from message
-            result = raw_message.get('result', {})
-            pair = result.get('s', '')
-            
-            # Convert Gate.io pair to Symbol
-            try:
-                from cex.gateio.services.gateio_utils import GateioUtils
-                symbol = GateioUtils.pair_to_symbol(pair)
-            except ImportError:
-                # Fallback: create symbol from pair string
-                if '_' in pair:
-                    base, quote = pair.split('_', 1)
-                    from structs.exchange import Symbol, AssetName
-                    symbol = Symbol(base=AssetName(base), quote=AssetName(quote), is_futures=False)
-                else:
-                    self.logger.warning(f"Unable to parse symbol from pair: {pair}")
-                    return
-
-            # Parse orderbook diff message using HFT-optimized parser
-            from cex.gateio.ws.public.ws_message_parser import GateioPublicMessageParser
-            
-            # Create temporary parser instance (in practice, this should be cached)
-            parser = GateioPublicMessageParser(symbol_mapper=None)
-            diff_update = parser.parse_orderbook_diff_message(raw_message, symbol)
-            
-            if diff_update:
-                # Call handler with parsed diff update
-                await self.orderbook_handler(diff_update, symbol)
-                self._performance_metrics['orderbook_updates'] += 1
-            else:
-                self.logger.debug(f"Failed to parse orderbook diff for {symbol}")
-
-        except Exception as e:
-            self.logger.error(f"Error handling Gate.io orderbook update: {e}")
-
-    async def _handle_trades_update(self, data: Dict[str, Any]):
-        """Handle trades update messages.
-        
-        Gate.io trades update format:
-        {
-            "time": 1234567890,
-            "channel": "spot.trades",
-            "event": "update",
-            "result": [
-                {
-                    "id": 12345,
-                    "create_time": 1234567890,
-                    "side": "buy",
-                    "currency_pair": "BTC_USDT",
-                    "amount": "0.001",
-                    "price": "50000"
-                }
-            ]
-        }
-        """
-        try:
-            if not self.trades_handler:
-                return
-            
-            # Gate.io trades can be a single trade or list of trades
-            trades_data = data if isinstance(data, list) else [data]
-            
-            trades_by_symbol: Dict[Symbol, List[Trade]] = {}
-            
-            for trade_data in trades_data:
-                # Extract symbol
-                pair = trade_data.get('currency_pair', '')
-                symbol = GateioUtils.to_symbol(pair)
-                
-                # Parse trade data
-                side = GateioMappings.get_unified_side(trade_data.get('side', 'buy'))
-                
-                trade = Trade(
-                    price=float(trade_data.get('price', '0')),
-                    amount=float(trade_data.get('amount', '0')),
-                    side=side,
-                    timestamp=int(trade_data.get('create_time', '0')),
-                    is_maker=False  # Gate.io doesn't provide maker/taker info in public stream
-                )
-                
-                # Group trades by symbol
-                if symbol not in trades_by_symbol:
-                    trades_by_symbol[symbol] = []
-                trades_by_symbol[symbol].append(trade)
-            
-            # Call handler for each symbol
-            for symbol, trades in trades_by_symbol.items():
-                await self.trades_handler(symbol, trades)
-                self._performance_metrics['trade_updates'] += len(trades)
-                
-        except Exception as e:
-            self.logger.error(f"Error handling trades update: {e}")
-
-    async def on_error(self, error: Exception):
-        """Handle WebSocket errors."""
-        self.logger.error(f"WebSocket error: {error}")
-        # Could implement reconnection logic here if needed
-
-    def get_performance_metrics(self) -> Dict[str, int]:
-        """Get performance metrics for monitoring."""
-        pool_stats = self.entry_pool.get_pool_stats()
-        
-        return {
-            **self._performance_metrics,
-            'active_channels': len(self._active_channels),
-            'active_symbols': len(self.symbols),
-            **pool_stats
-        }
-
-    async def close(self):
-        """Close WebSocket connection and cleanup resources."""
-        try:
-            await self.ws_client.stop()
-            self._active_channels.clear()
-            self.logger.info("Closed Gate.io WebSocket client")
-        except Exception as e:
-            self.logger.error(f"Error closing WebSocket client: {e}")
-
-    def __repr__(self) -> str:
-        return (
-            f"GateioWebsocketPublic(symbols={len(self.symbols)}, "
-            f"active_channels={len(self._active_channels)})"
+        # Initialize via base class dependency injection (like REST pattern)
+        super().__init__(
+            config=config,
+            orderbook_diff_handler=orderbook_diff_handler,
+            trades_handler=trades_handler,
+            state_change_handler=state_change_handler
         )
+        
+        # State management for symbols (moved from WebSocket manager)
+        self._active_symbols: Set[Symbol] = set()
+
+        self.logger.info("Gate.io public WebSocket initialized with dependency injection")
+
+    # Gate.io-specific message handling can be added here if needed
+    # Base class handles all common WebSocket operations:
+    # - initialize(), close(), is_connected(), get_performance_metrics()
+    # - Message routing for ORDERBOOK, TRADE, HEARTBEAT, etc.
+    # - Default event handlers with dependency injection support
+    
+    # Enhanced symbol management using symbol-channel mapping
+    async def add_symbols(self, symbols: List[Symbol]) -> None:
+        """Add symbols for subscription using enhanced symbol-channel mapping."""
+        if not symbols:
+            return
+            
+
+        # Use unified subscription method with symbols parameter
+        await self._ws_manager.add_subscription(symbols=symbols)
+        
+        # Move from pending to active on successful subscription
+        self._active_symbols.update(symbols)
+
+        self.logger.info(f"Added {len(symbols)} symbols: {[str(s) for s in symbols]}")
+    
+    async def remove_symbols(self, symbols: List[Symbol]) -> None:
+        """Remove symbols from subscription using enhanced symbol-channel mapping."""
+        if not symbols:
+            return
+            
+        # Filter to only remove symbols we actually have
+        symbols_to_remove = [s for s in symbols if s in self._active_symbols]
+        if not symbols_to_remove:
+            return
+        
+        # Use unified subscription removal method with symbols parameter
+        await self._ws_manager.remove_subscription(symbols=symbols_to_remove)
+        
+        # Remove from active state
+        self._active_symbols.difference_update(symbols_to_remove)
+        
+        self.logger.info(f"Removed {len(symbols_to_remove)} symbols: {[str(s) for s in symbols_to_remove]}")
+    
+    async def restore_subscriptions(self) -> None:
+        """Restore all active subscriptions after reconnect using ws_manager restoration."""
+        if not self._active_symbols:
+            self.logger.info("No active symbols to restore")
+            return
+        
+        # ws_manager handles restoration automatically using stored channels
+        # No action needed here - channels are restored by ws_manager
+        self.logger.info(f"Symbol subscriptions will be restored by ws_manager ({len(self._active_symbols)} symbols)")
+    
+    def get_active_symbols(self) -> Set[Symbol]:
+        """Get currently active symbols."""
+        return self._active_symbols.copy()
+    
+    # Override default handlers if Gate.io needs specific behavior
+    async def on_orderbook_update(self, symbol: Symbol, orderbook: OrderBook):
+        """Gate.io-specific orderbook update handler."""
+        self.logger.info(f"Gate.io orderbook update for {symbol}: {len(orderbook.bids)} bids, {len(orderbook.asks)} asks")
+
+    async def on_trades_update(self, symbol: Symbol, trades: List[Trade]):
+        """Gate.io-specific trade update handler."""
+        self.logger.info(f"Gate.io trades update for {symbol}: {len(trades)} trades")

@@ -12,7 +12,7 @@ Registration happens automatically when this module is imported.
 """
 
 from .symbol_mapper import GateioSymbolMapperInterface
-from .gateio_unified_mappings import GateioUnifiedMappings
+from .mapper import GateioUnifiedMappings
 
 from cex import ExchangeEnum
 
