@@ -53,6 +53,7 @@ class MessageType(IntEnum):
     HEARTBEAT = 5
     ERROR = 6
     SUBSCRIPTION_CONFIRM = 7
+    BOOK_TICKER = 8
     UNKNOWN = 999
 
 

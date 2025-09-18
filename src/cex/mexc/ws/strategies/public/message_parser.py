@@ -9,7 +9,7 @@ from common.orderbook_diff_processor import ParsedOrderbookUpdate
 from core.cex.services.symbol_mapper import SymbolMapperInterface
 from core.cex.websocket import MessageParser, ParsedMessage, MessageType
 from cex.mexc.ws.protobuf_parser import MexcProtobufParser
-from structs.common import OrderBook, Trade, Side
+from structs.common import OrderBook, Trade, Side, BookTicker
 from cex.mexc.structs.exchange import MexcWSOrderbookMessage, MexcWSTradeMessage, MexcWSTradeEntry
 from cex.mexc.services.mapper import MexcMappings
 
@@ -79,6 +79,8 @@ class MexcPublicMessageParser(MessageParser):
                 return MessageType.ORDERBOOK
             elif 'deals' in channel:
                 return MessageType.TRADE
+            elif 'book_ticker' in channel:
+                return MessageType.BOOK_TICKER
         elif 'ping' in message:
             return MessageType.HEARTBEAT
         elif 'code' in message:
@@ -381,6 +383,19 @@ class MexcPublicMessageParser(MessageParser):
                     raw_data=msg
                 )
 
+            elif message_type == MessageType.BOOK_TICKER:
+                symbol_str = msg.get('s', '')
+                symbol = self.symbol_mapper.to_symbol(symbol_str) if symbol_str else None
+                book_ticker = await self._parse_book_ticker_from_json(msg)
+
+                return ParsedMessage(
+                    message_type=MessageType.BOOK_TICKER,
+                    symbol=symbol,
+                    channel=msg.get('c'),
+                    data=book_ticker,
+                    raw_data=msg
+                )
+
             return None
 
         except Exception as e:
@@ -417,6 +432,16 @@ class MexcPublicMessageParser(MessageParser):
                     message_type=MessageType.ORDERBOOK,
                     symbol=symbol,
                     data=orderbook
+                )
+
+            elif b'aggre.bookTicker' in data[:50]:
+                self.logger.debug(f"Processing book ticker protobuf for {symbol_str}")
+                book_ticker = await self._parse_book_ticker_from_protobuf(data, symbol_str)
+
+                return ParsedMessage(
+                    message_type=MessageType.BOOK_TICKER,
+                    symbol=symbol,
+                    data=book_ticker
                 )
 
             else:
@@ -538,4 +563,69 @@ class MexcPublicMessageParser(MessageParser):
 
         except Exception as e:
             self.logger.error(f"Error parsing trades from JSON: {e}")
+            return None
+
+    async def _parse_book_ticker_from_protobuf(
+            self,
+            data: bytes,
+            symbol_str: str
+    ) -> Optional[BookTicker]:
+        """Parse MEXC protobuf book ticker message."""
+        try:
+            # Use consolidated protobuf utilities
+            wrapper = MexcProtobufParser.parse_wrapper_message(data)
+
+            # Check if we have book ticker data
+            if wrapper.HasField('publicAggreBookTicker'):
+                book_ticker_data = wrapper.publicAggreBookTicker
+                
+                # Extract symbol 
+                symbol = self.symbol_mapper.to_symbol(symbol_str)
+                
+                # Parse protobuf book ticker data
+                book_ticker = BookTicker(
+                    symbol=symbol,
+                    bid_price=float(book_ticker_data.bidPrice),
+                    bid_quantity=float(book_ticker_data.bidQuantity),
+                    ask_price=float(book_ticker_data.askPrice),
+                    ask_quantity=float(book_ticker_data.askQuantity),
+                    timestamp=int(time.time() * 1000),  # MEXC doesn't provide timestamp
+                    update_id=None  # MEXC doesn't provide update_id
+                )
+                
+                return book_ticker
+
+            return None
+
+        except Exception as e:
+            self.logger.error(f"Failed to parse MEXC protobuf book ticker: {e}")
+            return None
+
+    async def _parse_book_ticker_from_json(self, msg: Dict[str, Any]) -> Optional[BookTicker]:
+        """Parse MEXC JSON book ticker message (fallback if JSON format exists)."""
+        try:
+            data = msg.get('d', {})
+            symbol_str = msg.get('s', '')
+            
+            if not data or not symbol_str:
+                return None
+            
+            # Extract symbol 
+            symbol = self.symbol_mapper.to_symbol(symbol_str)
+            
+            # Parse JSON book ticker data (hypothetical format)
+            book_ticker = BookTicker(
+                symbol=symbol,
+                bid_price=float(data.get('bidPrice', 0)),
+                bid_quantity=float(data.get('bidQuantity', 0)),
+                ask_price=float(data.get('askPrice', 0)),
+                ask_quantity=float(data.get('askQuantity', 0)),
+                timestamp=int(msg.get('t', time.time() * 1000)),
+                update_id=None  # MEXC doesn't provide update_id
+            )
+            
+            return book_ticker
+
+        except Exception as e:
+            self.logger.error(f"Failed to parse MEXC JSON book ticker: {e}")
             return None

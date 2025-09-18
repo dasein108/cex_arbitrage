@@ -27,8 +27,9 @@ class MexcPublicSubscriptionStrategy(SubscriptionStrategy):
         # MEXC WebSocket subscription format from documentation
         # Format: spot@public.aggre.depth.v3.api.pb@10ms@SYMBOL
         return [
-            f"spot@public.aggre.depth.v3.api.pb@10ms@{symbol_str}",  # Depth orderbook
-            f"spot@public.aggre.deals.v3.api.pb@10ms@{symbol_str}"  # Trade deals
+            f"spot@public.aggre.depth.v3.api.pb@10ms@{symbol_str}",      # Depth orderbook
+            f"spot@public.aggre.deals.v3.api.pb@10ms@{symbol_str}",     # Trade deals
+            f"spot@public.aggre.bookTicker.v3.api.pb@10ms@{symbol_str}" # Book ticker
         ]
 
     def create_subscription_messages(
@@ -75,6 +76,7 @@ class MexcPublicSubscriptionStrategy(SubscriptionStrategy):
         """Extract symbol from MEXC channel name."""
         try:
             # Channel format: spot@public.aggre.depth.v3.api.pb@100ms@BTCUSDT
+            # Channel format: spot@public.aggre.bookTicker.v3.api.pb@10ms@BTCUSDT
             parts = channel.split('@')
             if len(parts) >= 4:
                 symbol_str = parts[3]  # Symbol is now at index 3
@@ -131,12 +133,14 @@ class MexcPublicSubscriptionStrategy(SubscriptionStrategy):
         
         Args:
             channel: Channel name like "spot@public.aggre.depth.v3.api.pb@10ms@BTCUSDT"
+            channel: Channel name like "spot@public.aggre.bookTicker.v3.api.pb@10ms@BTCUSDT"
             
         Returns:
             Symbol extracted from channel, or None if not parseable
         """
         try:
             # Channel format: spot@public.aggre.depth.v3.api.pb@10ms@BTCUSDT
+            # Channel format: spot@public.aggre.bookTicker.v3.api.pb@10ms@BTCUSDT
             parts = channel.split('@')
             if len(parts) >= 4:
                 symbol_str = parts[3]  # Symbol is at index 3

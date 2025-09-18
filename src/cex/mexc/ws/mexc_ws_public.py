@@ -24,7 +24,7 @@ Architecture: Dependency injection with base class coordination
 
 from typing import List, Dict, Optional, Callable, Awaitable, Set
 
-from structs.common import Symbol, Trade, OrderBook
+from structs.common import Symbol, Trade, OrderBook, BookTicker
 from core.config.structs import ExchangeConfig
 from core.cex.websocket.spot.base_ws_public import BaseExchangePublicWebsocketInterface
 from core.transport.websocket.structs import ConnectionState, MessageType
@@ -43,6 +43,7 @@ class MexcWebsocketPublic(BaseExchangePublicWebsocketInterface):
         config: ExchangeConfig,
         orderbook_diff_handler: Optional[Callable[[any, Symbol], Awaitable[None]]] = None,
         trades_handler: Optional[Callable[[Symbol, List[Trade]], Awaitable[None]]] = None,
+        book_ticker_handler: Optional[Callable[[Symbol, BookTicker], Awaitable[None]]] = None,
         state_change_handler: Optional[Callable[[ConnectionState], Awaitable[None]]] = None,
     ):
         """
@@ -60,6 +61,7 @@ class MexcWebsocketPublic(BaseExchangePublicWebsocketInterface):
             config=config,
             orderbook_diff_handler=orderbook_diff_handler,
             trades_handler=trades_handler,
+            book_ticker_handler=book_ticker_handler,
             state_change_handler=state_change_handler
         )
         
