@@ -66,13 +66,7 @@ class PrivateWebSocketClient:
         await self.websocket.initialize([])
         logger.info(f"{self.exchange_name} private WebSocket initialized for account and order updates")
     
-    async def subscribe_to_private_channels(self) -> None:
-        """Subscribe to private channels manually (only after connection established)."""
-        if not self.is_connected():
-            raise ValueError("WebSocket not connected - use initialize() instead")
-        await self.websocket.subscribe_to_private_channels()
-        logger.info(f"Manually subscribed to {self.exchange_name} private channels")
-    
+
     async def close(self) -> None:
         """Close WebSocket connection and REST client."""
         await self.websocket.close()

@@ -1,129 +1,115 @@
+"""
+Gate.io Public WebSocket Subscription Strategy V3
+
+Direct message-based subscription strategy for Gate.io public WebSocket.
+Creates complete message objects in Gate.io-specific format.
+
+Message Format:
+{
+    "time": 1234567890,
+    "channel": "spot.orders_v2",
+    "event": "subscribe",
+    "payload": ["BTC_USDT"]
+}
+"""
+
+import time
 import logging
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, Set
 
-import msgspec
-
-from core.cex.services import SymbolMapperInterface
-from core.cex.websocket import SubscriptionStrategy, SubscriptionAction, SubscriptionContext
+from core.transport.websocket.strategies.subscription import SubscriptionStrategy
+from core.transport.websocket.structs import SubscriptionAction
 from structs.common import Symbol
+from core.cex.services import SymbolMapperInterface
 
 
 class GateioPublicSubscriptionStrategy(SubscriptionStrategy):
-    """Gate.io public WebSocket subscription strategy."""
-
-    def __init__(self, symbol_mapper: SymbolMapperInterface):
-        super().__init__()
-        self.logger = logging.getLogger(f"{__name__}.{self.__class__.__name__}")
-        self.symbol_mapper = symbol_mapper
-
-    def _get_channels_for_symbol(self, symbol: Symbol) -> List[str]:
-        """Generate channel list for a symbol (single source of truth).
-
-        Gate.io WebSocket subscription format:
-        - spot.order_book_update.{symbol}
-        - spot.trades.{symbol}
-        """
-        symbol_str = self.symbol_mapper.to_pair(symbol).upper()
-
-        return [
-            f"spot.order_book_update.{symbol_str}",  # Orderbook updates
-            f"spot.trades.{symbol_str}"  # Trade data
-        ]
-
-    def create_subscription_messages(
-            self,
-            action: SubscriptionAction,
-            **kwargs
-    ) -> List[str]:
-        """Create Gate.io subscription messages using correct format."""
-        messages = []
-        
-        # Extract symbols from kwargs for public exchange
-        symbols = kwargs.get('symbols', [])
-
-        for symbol in symbols:
-            channels = self._get_channels_for_symbol(symbol)
-
-            for channel in channels:
-                message = {
-                    "method": "SUBSCRIBE" if action == SubscriptionAction.SUBSCRIBE else "UNSUBSCRIBE",
-                    "params": [channel],
-                    "id": int(time.time())  # Gate.io uses id for request tracking
-                }
-                messages.append(msgspec.json.encode(message).decode())
-
-        return messages
-
-    def get_subscription_context(self, symbol: Symbol) -> SubscriptionContext:
-        """Get subscription context for a symbol."""
-        symbol_str = self.symbol_mapper.to_pair(symbol).upper()
-
-        return SubscriptionContext(
-            channels=self._get_channels_for_symbol(symbol),
-            parameters={"symbol": symbol_str}
-        )
-
-    def parse_channel_from_message(self, message: Dict[str, Any]) -> Optional[str]:
-        """Extract channel from Gate.io message."""
-        return message.get('channel')  # Gate.io uses 'channel' field
-
-    def should_resubscribe_on_reconnect(self) -> bool:
-        """Gate.io requires resubscription after reconnection."""
-        return True
-
-    def get_symbol_from_channel(self, channel: str) -> Optional[Symbol]:
-        """Extract symbol from Gate.io channel name."""
-        try:
-            # Channel format: spot.order_book_update.BTC_USDT or spot.trades.BTC_USDT
-            parts = channel.split('.')
-            if len(parts) >= 3:
-                symbol_str = parts[2]  # Symbol is at index 2
-                return self.symbol_mapper.to_symbol(symbol_str)
-        except Exception:
-            pass
-        return None
-
-    # UNIFIED CHANNEL GENERATION IMPLEMENTATION
+    """
+    Gate.io public WebSocket subscription strategy V3.
     
-    def generate_channels(self, **kwargs) -> List[str]:
-        """Generate channel names based on parameters (unified method)."""
-        symbols = kwargs.get('symbols', [])
+    Creates complete Gate.io-format subscription messages with time/channel/event/payload structure.
+    Format: {"time": X, "channel": Y, "event": Z, "payload": ["BTC_USDT"]}
+    """
+    
+    def __init__(self, symbol_mapper: SymbolMapperInterface):
+        self.symbol_mapper = symbol_mapper
+        self.logger = logging.getLogger(f"{__name__}.{self.__class__.__name__}")
+        
+        # Track active subscriptions for reconnection
+        self._active_symbols: Set[Symbol] = set()
+    
+    async def create_subscription_messages(
+        self,
+        action: SubscriptionAction,
+        symbols: List[Symbol]
+    ) -> List[Dict[str, Any]]:
+        """
+        Create Gate.io public subscription messages.
+        
+        Format: {"time": X, "channel": Y, "event": Z, "payload": ["BTC_USDT"]}
+        Creates separate message for each channel type.
+        
+        Args:
+            action: SUBSCRIBE or UNSUBSCRIBE
+            symbols: Symbols to subscribe/unsubscribe to/from
+        
+        Returns:
+            List of messages, one per channel type
+        """
         if not symbols:
             return []
         
-        channels = []
-        for symbol in symbols:
-            channels.extend(self._get_channels_for_symbol(symbol))
-        return channels
-    
-    def format_subscription_messages(self, subscription_data: Dict[str, Any]) -> List[str]:
-        """Format channel-based subscription messages."""
-        import time
-        
+        current_time = int(time.time())
+        event = "subscribe" if action == SubscriptionAction.SUBSCRIBE else "unsubscribe"
         messages = []
-        action = subscription_data.get('action', 'subscribe')
-        channels = subscription_data.get('channels', [])
         
-        method = "SUBSCRIBE" if action == 'subscribe' else "UNSUBSCRIBE"
+        # Convert symbols to Gate.io format
+        try:
+            symbol_pairs = []
+            for symbol in symbols:
+                exchange_symbol = self.symbol_mapper.to_pair(symbol)
+                symbol_pairs.append(exchange_symbol)
+                self.logger.debug(f"Converted {symbol} to {exchange_symbol}")
+                
+        except Exception as e:
+            self.logger.error(f"Failed to convert symbols: {e}")
+            return []
         
-        for channel in channels:
+        if not symbol_pairs:
+            self.logger.warning("No valid symbols to subscribe to")
+            return []
+        
+        # Create separate message for each channel type
+        channel_types = [
+            "spot.book_ticker",
+            "spot.trades"
+        ]
+
+        i = 0
+        for channel in channel_types:
             message = {
-                "method": method,
-                "params": [channel],
-                "id": int(time.time())
+                "time": current_time + i,  # Slightly different timestamps
+                "channel": channel,
+                "event": event,
+                "payload": symbol_pairs.copy()
             }
-            messages.append(msgspec.json.encode(message).decode())
+            messages.append(message)
+            i+=1
+            
+            self.logger.debug(f"Created {event} message for {channel} with {len(symbol_pairs)} symbols")
+
+        # Orderbook update is symbol specific
+        for pair in symbol_pairs:
+            message = {
+                "time": current_time + i,  # Slightly different timestamps
+                "channel": "spot.order_book_update",
+                "event": event,
+                "payload": [pair, "20ms"]
+            }
+            i += 1
+            messages.append(message)
+
+        self.logger.info(f"Created {len(messages)} {event} messages for {len(symbols)} symbols")
         
         return messages
-    
-    def extract_symbol_from_channel(self, channel: str) -> Optional[Symbol]:
-        """Extract symbol from channel name for message routing."""
-        try:
-            # Channel format: spot.order_book_update.BTC_USDT
-            parts = channel.split('.')
-            if len(parts) >= 3:
-                symbol_str = parts[2]  # Symbol is at index 2
-                return self.symbol_mapper.to_symbol(symbol_str)
-        except Exception as e:
-            self.logger.debug(f"Failed to extract symbol from channel {channel}: {e}")
-        return None
+

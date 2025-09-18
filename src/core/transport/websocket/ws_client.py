@@ -64,7 +64,7 @@ class WebsocketClient:
         self._time_cache = time.time()  # Cache time for batched updates
         
         # Extract name from URL for logging (fallback to class name)
-        self.url_name = self.config.url.split('/')[-1] if self.config.url else "websocket"
+        self.url_name = self.config.url.split('/')[2] if self.config.url else "websocket"
         self.logger = logging.getLogger(f"{__name__}.{self.url_name}")
     
     def _precompute_backoff_delays(self) -> List[float]:

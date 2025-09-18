@@ -1,109 +1,209 @@
+"""
+Base Public WebSocket Interface - Refactored
+
+Clean base class for public WebSocket implementations using the new
+strategy-driven architecture.
+
+HFT COMPLIANCE: Optimized for sub-millisecond message processing.
+"""
+
+import logging
+from typing import List, Dict, Optional, Callable, Awaitable
 from abc import ABC
-from typing import Callable, Optional, Awaitable, List
+
+from structs.common import Symbol, OrderBook, Trade, BookTicker
 from core.config.structs import ExchangeConfig
-from structs.common import Symbol, Trade, OrderBook, BookTicker
-from core.transport.websocket.structs import ConnectionState, MessageType
-from core.cex.websocket.ws_base import BaseExchangeWebsocketInterface
+from core.transport.websocket.ws_manager import WebSocketManager
+from core.transport.websocket.structs import ConnectionState, MessageType, ParsedMessage
 
 
-class BaseExchangePublicWebsocketInterface(BaseExchangeWebsocketInterface, ABC):
-    """Abstract interface for public exchange WebSocket operations (market data)"""
+class BaseExchangePublicWebsocketInterface(ABC):
+    """
+    Base class for exchange public WebSocket implementations.
     
-    def __init__(self, 
-                 config: ExchangeConfig,
-                 orderbook_diff_handler: Optional[Callable[[any, Symbol], Awaitable[None]]] = None,
-                 trades_handler: Optional[Callable[[Symbol, List[Trade]], Awaitable[None]]] = None,
-                 book_ticker_handler: Optional[Callable[[Symbol, BookTicker], Awaitable[None]]] = None,
-                 state_change_handler: Optional[Callable[[ConnectionState], Awaitable[None]]] = None):
-        """Initialize public WebSocket interface with dependency injection."""
+    Simplified architecture:
+    - Uses new WebSocketManager V2
+    - Delegates all subscription logic to strategies
+    - Focuses on message routing and event handling
+    """
+    
+    def __init__(
+        self,
+        config: ExchangeConfig,
+        orderbook_diff_handler: Optional[Callable[[OrderBook, Symbol], Awaitable[None]]] = None,
+        trades_handler: Optional[Callable[[Symbol, List[Trade]], Awaitable[None]]] = None,
+        book_ticker_handler: Optional[Callable[[Symbol, BookTicker], Awaitable[None]]] = None,
+        state_change_handler: Optional[Callable[[ConnectionState], Awaitable[None]]] = None,
+    ):
+        """
+        Initialize base public WebSocket.
         
-        # Store handlers for message routing
-        self.orderbook_diff_handler = orderbook_diff_handler
-        self.trades_handler = trades_handler
-        self.book_ticker_handler = book_ticker_handler
+        Args:
+            config: Exchange configuration
+            orderbook_diff_handler: Callback for orderbook updates
+            trades_handler: Callback for trade updates
+            book_ticker_handler: Callback for book ticker updates
+            state_change_handler: Callback for connection state changes
+        """
+        self.config = config
+        self.exchange_name = config.name.lower()
         
-        # Initialize base class with public API configuration
-        super().__init__(
-            config=config,
-            is_private=False,  # Public API operations
+        # Store event handlers
+        self._orderbook_handler = orderbook_diff_handler
+        self._trades_handler = trades_handler
+        self._book_ticker_handler = book_ticker_handler
+        self._state_change_handler = state_change_handler
+        
+        # Logger
+        self.logger = logging.getLogger(f"{__name__}.{self.exchange_name}_public")
+        
+        # Create WebSocket manager using dependency injection
+        from core.transport.websocket.utils import create_websocket_manager
+        
+        self._ws_manager = create_websocket_manager(
+            exchange_config=config,
+            is_private=False,
             message_handler=self._handle_parsed_message,
-            state_change_handler=state_change_handler
+            state_change_handler=self._handle_state_change
         )
-
-    async def _handle_parsed_message(self, parsed_message) -> None:
-        """Handle parsed messages from WebSocket manager with public-specific routing."""
+        
+        self.logger.info(f"Initialized {self.exchange_name} public WebSocket with strategy-driven architecture")
+    
+    async def initialize(self, symbols: List[Symbol]) -> None:
+        """
+        Initialize WebSocket connection and subscribe to symbols.
+        
+        Args:
+            symbols: List of symbols to subscribe to
+        """
         try:
-            message_type = parsed_message.message_type
+            # Initialize manager with symbols
+            await self._ws_manager.initialize(symbols=symbols)
+            self.logger.info(f"WebSocket initialized for {self.exchange_name} with {len(symbols)} symbols")
             
-            if message_type == MessageType.ORDERBOOK:
-                await self._handle_orderbook_message(parsed_message)
-                    
-            elif message_type == MessageType.TRADE:
-                await self._handle_trades_message(parsed_message)
-            
-            elif message_type == MessageType.BOOK_TICKER:
-                await self._handle_book_ticker_message(parsed_message)
-                    
-            elif message_type == MessageType.HEARTBEAT:
-                self.logger.debug("Received public heartbeat")
+        except Exception as e:
+            self.logger.error(f"Failed to initialize WebSocket: {e}")
+            raise
+    
+    async def add_symbols(self, symbols: List[Symbol]) -> None:
+        """
+        Add symbols to subscription.
+        
+        Args:
+            symbols: Symbols to add
+        """
+        if not symbols:
+            return
+        
+        try:
+            await self._ws_manager.subscribe(symbols=symbols)
+            self.logger.info(f"Added {len(symbols)} symbols to subscription")
+        except Exception as e:
+            self.logger.error(f"Failed to add symbols: {e}")
+            raise
+    
+    async def remove_symbols(self, symbols: List[Symbol]) -> None:
+        """
+        Remove symbols from subscription.
+        
+        Args:
+            symbols: Symbols to remove
+        """
+        if not symbols:
+            return
+        
+        try:
+            await self._ws_manager.unsubscribe(symbols=symbols)
+            self.logger.info(f"Removed {len(symbols)} symbols from subscription")
+        except Exception as e:
+            self.logger.error(f"Failed to remove symbols: {e}")
+    
+    async def _handle_parsed_message(self, message: ParsedMessage) -> None:
+        """
+        Route parsed messages to appropriate handlers.
+        
+        Args:
+            message: Parsed message from WebSocket
+        """
+        try:
+            # Route based on message type
+            if message.message_type == MessageType.ORDERBOOK:
+                if self._orderbook_handler and message.data:
+                    # Handle both dict format and direct object format
+                    if isinstance(message.data, dict):
+                        orderbook = message.data.get('orderbook')
+                        symbol = message.data.get('symbol')
+                        if orderbook and symbol:
+                            await self._orderbook_handler(orderbook, symbol)
+                    else:
+                        # Direct orderbook object with symbol attribute
+                        if hasattr(message.data, 'symbol'):
+                            await self._orderbook_handler(message.data, message.symbol)
+                        
+            elif message.message_type == MessageType.TRADE:
+                if self._trades_handler and message.data:
+                    # Handle both dict format and direct list format
+                    if isinstance(message.data, dict):
+                        trades = message.data.get('trades', [])
+                        symbol = message.data.get('symbol')
+                        if trades and symbol:
+                            await self._trades_handler(symbol, trades)
+                    elif isinstance(message.data, list):
+                        # Direct trades list - get symbol from first trade
+                        if message.data and hasattr(message.data[0], 'symbol'):
+                            await self._trades_handler(message.data[0].symbol, message.data)
+                        
+            elif message.message_type == MessageType.BOOK_TICKER:
+                if self._book_ticker_handler and message.data:
+                    # Handle both dict format and direct object format
+                    if isinstance(message.data, dict):
+                        book_ticker = message.data.get('book_ticker')
+                        symbol = message.data.get('symbol')
+                        if book_ticker and symbol:
+                            await self._book_ticker_handler(symbol, book_ticker)
+                    else:
+                        # Direct BookTicker object with symbol attribute
+                        if hasattr(message.data, 'symbol'):
+                            await self._book_ticker_handler(message.data.symbol, message.data)
+                        
+            elif message.message_type == MessageType.SUBSCRIPTION_CONFIRM:
+                self.logger.debug("Subscription confirmed")
                 
-            elif message_type == MessageType.SUBSCRIPTION_CONFIRM:
-                self.logger.info(f"Public subscription confirmed {parsed_message.raw_data}")
+            elif message.message_type == MessageType.ERROR:
+                self.logger.error(f"WebSocket error: {message.data}")
                 
-            elif message_type == MessageType.ERROR:
-                self.logger.error(f"Public WebSocket error: {parsed_message.raw_data}")
-            else:
-                self.logger.debug(f"Unhandled message type: {message_type}")
-
         except Exception as e:
-            self.logger.error(f"Error handling parsed public message: {e}")
-
-    async def _handle_orderbook_message(self, parsed_message) -> None:
-        """Handle orderbook update messages."""
+            self.logger.error(f"Error handling parsed message: {e}")
+            import traceback
+            self.logger.debug(f"Full traceback: {traceback.format_exc()}")
+    
+    async def _handle_state_change(self, state: ConnectionState) -> None:
+        """
+        Handle connection state changes.
+        
+        Args:
+            state: New connection state
+        """
+        self.logger.info(f"WebSocket state changed: {state.name}")
+        
+        if self._state_change_handler:
+            try:
+                await self._state_change_handler(state)
+            except Exception as e:
+                self.logger.error(f"Error in state change handler: {e}")
+    
+    async def close(self) -> None:
+        """Close WebSocket connection."""
         try:
-            if parsed_message.symbol and self.orderbook_diff_handler:
-                # Use injected handler if available
-                await self.orderbook_diff_handler(parsed_message.data, parsed_message.symbol)
-            elif parsed_message.symbol and parsed_message.data:
-                # Fallback to default handler
-                await self.on_orderbook_update(parsed_message.symbol, parsed_message.data)
+            await self._ws_manager.close()
+            self.logger.info(f"{self.exchange_name} public WebSocket closed")
         except Exception as e:
-            self.logger.error(f"Error handling orderbook message: {e}")
-
-    async def _handle_trades_message(self, parsed_message) -> None:
-        """Handle trade update messages."""
-        try:
-            if parsed_message.symbol and parsed_message.data and self.trades_handler:
-                # Use injected handler if available
-                await self.trades_handler(parsed_message.symbol, parsed_message.data)
-            elif parsed_message.symbol and parsed_message.data:
-                # Fallback to default handler
-                await self.on_trades_update(parsed_message.symbol, parsed_message.data)
-        except Exception as e:
-            self.logger.error(f"Error handling trades message: {e}")
-
-    # Default event handlers (can be overridden by subclasses)
-    async def on_orderbook_update(self, symbol: Symbol, orderbook: OrderBook):
-        """Default orderbook update handler."""
-        self.logger.info(f"Orderbook update for {symbol}: {len(orderbook.bids)} bids, {len(orderbook.asks)} asks")
-
-    async def on_trades_update(self, symbol: Symbol, trades: List[Trade]):
-        """Default trade update handler."""
-        self.logger.info(f"Trades update for {symbol}: {len(trades)} trades")
-
-    async def _handle_book_ticker_message(self, parsed_message) -> None:
-        """Handle book ticker update messages."""
-        try:
-            if parsed_message.symbol and parsed_message.data and self.book_ticker_handler:
-                # Use injected handler if available
-                await self.book_ticker_handler(parsed_message.symbol, parsed_message.data)
-            elif parsed_message.symbol and parsed_message.data:
-                # Fallback to default handler
-                await self.on_book_ticker_update(parsed_message.symbol, parsed_message.data)
-        except Exception as e:
-            self.logger.error(f"Error handling book ticker message: {e}")
-
-    async def on_book_ticker_update(self, symbol: Symbol, book_ticker: BookTicker):
-        """Default book ticker update handler."""
-        spread = book_ticker.ask_price - book_ticker.bid_price
-        self.logger.info(f"Book ticker for {symbol}: Bid: {book_ticker.bid_price}, Ask: {book_ticker.ask_price}, Spread: {spread:.8f}")
+            self.logger.error(f"Error closing WebSocket: {e}")
+    
+    def is_connected(self) -> bool:
+        """Check if WebSocket is connected."""
+        return self._ws_manager.is_connected()
+    
+    def get_performance_metrics(self) -> Dict[str, any]:
+        """Get performance metrics."""
+        return self._ws_manager.get_performance_metrics()

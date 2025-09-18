@@ -239,6 +239,16 @@ class Kline(Struct):
     quote_volume: float     # Quote asset volume
     trades_count: int = 0   # Number of trades (when available)
 
+class BookTicker(Struct):
+    """Best bid/ask price information (book ticker)."""
+    symbol: Symbol
+    bid_price: float
+    bid_quantity: float
+    ask_price: float
+    ask_quantity: float
+    timestamp: int
+    update_id: Optional[int] = None  # Gate.io provides this, MEXC doesn't
+
 # Configuration structures
 
 class ExchangeCredentials(Struct, frozen=True):

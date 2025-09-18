@@ -33,15 +33,15 @@ class GateioPublicConnectionStrategy(ConnectionStrategy):
         import msgspec
         
         ping_msg = {
-            "method": "PING",
-            "params": [],
-            "id": int(time.time())
+            "time": int(time.time()),
+            "channel": "spot.ping",
+            "event": "ping"
         }
         return msgspec.json.encode(ping_msg).decode()
 
     def is_pong_message(self, message: Dict[str, Any]) -> bool:
         """Check if message is a pong response."""
-        return message.get("method") == "PONG"
+        return message.get("event") == "pong"
 
     def should_reconnect_on_error(self, error: Exception) -> bool:
         """Determine if should reconnect on error."""

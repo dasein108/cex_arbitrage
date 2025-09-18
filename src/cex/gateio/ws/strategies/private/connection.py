@@ -23,11 +23,23 @@ class GateioPrivateConnectionStrategy(ConnectionStrategy):
 
     async def handle_connection_message(self, message: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         """Handle Gate.io connection-specific messages."""
-        # Handle authentication responses and other connection messages
-        if message.get("method") == "RESULT" and "id" in message:
-            # Authentication response or subscription response
-            if message.get("result", {}).get("status") == "success":
+        # Handle authentication responses and other connection messages using new event format
+        if message.get("channel") == "spot.login" and message.get("event") == "api":
+            # Authentication response
+            result = message.get("result", {})
+            if result.get("status") == "success":
                 self.logger.info("Gate.io WebSocket authentication successful")
+            elif "error" in message:
+                self.logger.error(f"Gate.io WebSocket authentication error: {message['error']}")
+            elif result.get("status") == "fail":
+                self.logger.error("Gate.io WebSocket authentication failed")
+        elif message.get("event") in ["ping", "pong"]:
+            # Handle ping/pong messages
+            self.logger.debug(f"Gate.io {message.get('event')} message received")
+        elif message.get("method") == "RESULT" and "id" in message:
+            # Fallback: Handle legacy format if still used
+            if message.get("result", {}).get("status") == "success":
+                self.logger.info("Gate.io WebSocket operation successful")
             elif "error" in message:
                 self.logger.error(f"Gate.io WebSocket error: {message['error']}")
         
@@ -39,28 +51,33 @@ class GateioPrivateConnectionStrategy(ConnectionStrategy):
 
     async def _generate_auth_message(self, **kwargs) -> Optional[str]:
         """Generate Gate.io WebSocket authentication message."""
-        timestamp = str(int(time.time()))
+        timestamp = int(time.time())
+        timestamp_ms = int(time.time() * 1000)
+        req_id = f"{timestamp_ms}-1"
         
-        # Gate.io WebSocket authentication format
-        # method=websocket&timestamp={timestamp}
-        string_to_sign = f"channel=spot.login&timestamp={timestamp}"
+        # Gate.io WebSocket authentication signature format (from official example)
+        # String to sign: "api\n{channel}\n{request_param_bytes}\n{timestamp}"
+        channel = "spot.login"
+        request_param_bytes = b""  # Empty for login request
+        
+        key = f"api\n{channel}\n{request_param_bytes.decode()}\n{timestamp}"
         
         # Create HMAC SHA512 signature
         signature = hmac.new(
             self.secret_key.encode('utf-8'),
-            string_to_sign.encode('utf-8'),
+            key.encode('utf-8'),
             hashlib.sha512
         ).hexdigest()
         
         auth_message = {
-            "method": "SUBSCRIBE",
-            "params": ["spot.login"],
-            "id": int(timestamp),
-            "auth": {
-                "method": "api_key",
-                "KEY": self.api_key,
-                "SIGN": signature,
-                "timestamp": timestamp
+            "time": timestamp,
+            "channel": channel,
+            "event": "api",
+            "payload": {
+                "api_key": self.api_key,
+                "signature": signature,
+                "timestamp": str(timestamp),
+                "req_id": req_id
             }
         }
         
@@ -72,15 +89,15 @@ class GateioPrivateConnectionStrategy(ConnectionStrategy):
         import msgspec
         
         ping_msg = {
-            "method": "PING",
-            "params": [],
-            "id": int(time.time())
+            "time": int(time.time()),
+            "channel": "spot.ping",
+            "event": "ping"
         }
         return msgspec.json.encode(ping_msg).decode()
 
     def is_pong_message(self, message: Dict[str, Any]) -> bool:
         """Check if message is a pong response."""
-        return message.get("method") == "PONG"
+        return message.get("event") == "pong"
 
     def should_reconnect_on_error(self, error: Exception) -> bool:
         """Determine if should reconnect on error."""
@@ -105,7 +122,10 @@ class GateioPrivateConnectionStrategy(ConnectionStrategy):
         try:
             auth_message = await self._generate_auth_message()
             if auth_message:
-                await websocket.send(auth_message)
+                # Parse JSON string back to dict for send_message
+                import msgspec
+                auth_dict = msgspec.json.decode(auth_message)
+                await websocket.send_message(auth_dict)
                 self.logger.debug("Sent authentication message to Gate.io")
                 return True
             return False
@@ -117,7 +137,10 @@ class GateioPrivateConnectionStrategy(ConnectionStrategy):
         """Handle keep-alive operations for Gate.io."""
         try:
             ping_message = self.get_ping_message()
-            await websocket.send(ping_message)
+            # Parse JSON string back to dict for send_message
+            import msgspec
+            ping_dict = msgspec.json.decode(ping_message)
+            await websocket.send_message(ping_dict)
             self.logger.debug("Sent ping message to Gate.io")
         except Exception as e:
             self.logger.warning(f"Failed to send ping: {e}")

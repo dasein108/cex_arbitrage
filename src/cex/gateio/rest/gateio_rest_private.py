@@ -127,7 +127,6 @@ class GateioPrivateSpotRest(PrivateExchangeSpotRestInterface):
             # Return zero balance if asset not found
             return AssetBalance(
                 asset=asset,
-                available=0.0,
                 free=0.0,
                 locked=0.0
             )

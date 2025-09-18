@@ -24,7 +24,7 @@ Architecture: Dependency injection with base class coordination
 
 from typing import List, Dict, Optional, Callable, Awaitable, Set
 
-from structs.common import Symbol, Trade, OrderBook
+from structs.common import Symbol, Trade, OrderBook, BookTicker
 from core.config.structs import ExchangeConfig
 from core.cex.websocket.spot.base_ws_public import BaseExchangePublicWebsocketInterface
 from core.transport.websocket.structs import ConnectionState, MessageType
@@ -38,6 +38,7 @@ class GateioWebsocketPublic(BaseExchangePublicWebsocketInterface):
         config: ExchangeConfig,
         orderbook_diff_handler: Optional[Callable[[any, Symbol], Awaitable[None]]] = None,
         trades_handler: Optional[Callable[[Symbol, List[Trade]], Awaitable[None]]] = None,
+        book_ticker_handler: Optional[Callable[[Symbol, BookTicker], Awaitable[None]]] = None,
         state_change_handler: Optional[Callable[[ConnectionState], Awaitable[None]]] = None,
     ):
         """
@@ -55,6 +56,7 @@ class GateioWebsocketPublic(BaseExchangePublicWebsocketInterface):
             config=config,
             orderbook_diff_handler=orderbook_diff_handler,
             trades_handler=trades_handler,
+            book_ticker_handler=book_ticker_handler,
             state_change_handler=state_change_handler
         )
         
@@ -102,16 +104,7 @@ class GateioWebsocketPublic(BaseExchangePublicWebsocketInterface):
         
         self.logger.info(f"Removed {len(symbols_to_remove)} symbols: {[str(s) for s in symbols_to_remove]}")
     
-    async def restore_subscriptions(self) -> None:
-        """Restore all active subscriptions after reconnect using ws_manager restoration."""
-        if not self._active_symbols:
-            self.logger.info("No active symbols to restore")
-            return
-        
-        # ws_manager handles restoration automatically using stored channels
-        # No action needed here - channels are restored by ws_manager
-        self.logger.info(f"Symbol subscriptions will be restored by ws_manager ({len(self._active_symbols)} symbols)")
-    
+
     def get_active_symbols(self) -> Set[Symbol]:
         """Get currently active symbols."""
         return self._active_symbols.copy()

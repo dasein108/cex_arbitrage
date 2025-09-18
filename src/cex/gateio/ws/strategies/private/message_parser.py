@@ -1,8 +1,9 @@
 import logging
 from typing import Dict, Any, Optional, List
 
-from core.cex.websocket import MessageParser
+from core.cex.websocket import MessageParser, ParsedMessage
 from core.cex.services import SymbolMapperInterface
+from core.transport.websocket.structs import MessageType
 from structs.common import Order, AssetBalance, AssetName, Trade, Symbol, Side, OrderStatus, OrderType
 
 
@@ -10,32 +11,54 @@ class GateioPrivateMessageParser(MessageParser):
     """Gate.io private WebSocket message parser."""
 
     def __init__(self, symbol_mapper: SymbolMapperInterface):
+        super().__init__(symbol_mapper)
         self.logger = logging.getLogger(f"{__name__}.{self.__class__.__name__}")
         self.symbol_mapper = symbol_mapper
 
-    async def parse_message(self, raw_message: str) -> Optional[Dict[str, Any]]:
+    async def parse_message(self, raw_message: str) -> Optional[ParsedMessage]:
         """Parse raw WebSocket message from Gate.io private channels."""
         try:
             import msgspec
             message = msgspec.json.decode(raw_message)
             
             if isinstance(message, dict):
-                method = message.get("method")
+                event = message.get("event")
                 
-                if method == "SUBSCRIBE":
-                    # Subscription confirmation
-                    return {"type": "subscription", "data": message}
-                elif method == "UPDATE":
+                if event == "subscribe":
+                    # Subscription confirmation/error
+                    return await self._parse_subscription_response(message)
+                elif event == "unsubscribe":
+                    # Unsubscription confirmation
+                    return ParsedMessage(
+                        message_type=MessageType.SUBSCRIPTION_CONFIRM,
+                        data={"action": "unsubscribe", "status": message.get("result", {}).get("status")},
+                        raw_data=message
+                    )
+                elif event == "update":
                     # Data update message
                     return await self._parse_update_message(message)
-                elif method in ["PING", "PONG"]:
+                elif event in ["ping", "pong"]:
                     # Ping/pong messages
-                    return {"type": "ping_pong", "data": message}
-                elif method == "RESULT":
-                    # Authentication result or other results
-                    return {"type": "result", "data": message}
+                    return ParsedMessage(
+                        message_type=MessageType.HEARTBEAT,
+                        raw_data=message
+                    )
                 else:
-                    return {"type": "other", "data": message}
+                    # Handle messages without event field or unknown events
+                    # Could be authentication responses or other formats
+                    method = message.get("method")
+                    if method == "RESULT":
+                        # Authentication result or other results
+                        return ParsedMessage(
+                            message_type=MessageType.SUBSCRIPTION_CONFIRM,
+                            raw_data=message
+                        )
+                    else:
+                        self.logger.debug(f"Unknown Gate.io private message format: {message}")
+                        return ParsedMessage(
+                            message_type=MessageType.UNKNOWN,
+                            raw_data=message
+                        )
             
             return None
             
@@ -43,28 +66,74 @@ class GateioPrivateMessageParser(MessageParser):
             self.logger.error(f"Failed to parse Gate.io private message: {e}")
             return None
 
-    async def _parse_update_message(self, message: Dict[str, Any]) -> Dict[str, Any]:
-        """Parse Gate.io private update message."""
-        params = message.get("params", [])
-        if len(params) < 2:
-            return {"type": "unknown", "data": message}
+    async def _parse_subscription_response(self, message: Dict[str, Any]) -> ParsedMessage:
+        """Parse Gate.io private subscription response."""
+        # Check for errors first
+        error = message.get("error")
+        if error:
+            error_code = error.get("code", "unknown")
+            error_msg = error.get("message", "unknown error")
+            self.logger.error(f"Gate.io private subscription error {error_code}: {error_msg}")
+            return ParsedMessage(
+                message_type=MessageType.ERROR,
+                data={"error_code": error_code, "error_message": error_msg},
+                raw_data=message
+            )
         
-        channel = params[0]
-        update_data = params[1]
+        # Check result status
+        result = message.get("result", {})
+        status = result.get("status")
+        
+        if status == "success":
+            self.logger.debug("Gate.io private subscription successful")
+            return ParsedMessage(
+                message_type=MessageType.SUBSCRIPTION_CONFIRM,
+                data={"action": "subscribe", "status": "success"},
+                raw_data=message
+            )
+        elif status == "fail":
+            self.logger.error("Gate.io private subscription failed")
+            return ParsedMessage(
+                message_type=MessageType.ERROR,
+                data={"action": "subscribe", "status": "fail"},
+                raw_data=message
+            )
+        else:
+            self.logger.warning(f"Unknown Gate.io private subscription status: {status}")
+            return ParsedMessage(
+                message_type=MessageType.UNKNOWN,
+                raw_data=message
+            )
+
+    async def _parse_update_message(self, message: Dict[str, Any]) -> Optional[ParsedMessage]:
+        """Parse Gate.io private update message."""
+        # Gate.io private update format: {"event": "update", "channel": "spot.balances", "result": [...]}
+        channel = message.get("channel", "")
+        result_data = message.get("result", [])
+        
+        if not channel:
+            return ParsedMessage(
+                message_type=MessageType.UNKNOWN,
+                raw_data=message
+            )
         
         if channel == "spot.balances":
-            return await self._parse_balance_update(update_data)
+            return await self._parse_balance_update(result_data)
         elif channel == "spot.orders":
-            return await self._parse_order_update(update_data)
+            return await self._parse_order_update(result_data)
         elif channel == "spot.user_trades":
-            return await self._parse_user_trade_update(update_data)
+            return await self._parse_user_trade_update(result_data)
         else:
-            return {"type": "unknown", "channel": channel, "data": update_data}
+            return ParsedMessage(
+                message_type=MessageType.UNKNOWN,
+                channel=channel,
+                raw_data={"channel": channel, "data": result_data}
+            )
 
-    async def _parse_balance_update(self, data: List[Dict[str, Any]]) -> Dict[str, Any]:
+    async def _parse_balance_update(self, data: List[Dict[str, Any]]) -> Optional[ParsedMessage]:
         """Parse Gate.io balance update."""
         try:
-            balances = []
+            balances = {}
             
             # Gate.io balance update format:
             # [
@@ -87,18 +156,22 @@ class GateioPrivateMessageParser(MessageParser):
                     free=available,
                     locked=locked
                 )
-                balances.append(balance)
+                balances[asset] = balance
             
-            return {
-                "type": "balance_update",
-                "balances": balances
-            }
+            return ParsedMessage(
+                message_type=MessageType.BALANCE,
+                data=balances,
+                raw_data=data
+            )
             
         except Exception as e:
             self.logger.error(f"Failed to parse balance update: {e}")
-            return {"type": "error", "error": str(e), "data": data}
+            return ParsedMessage(
+                message_type=MessageType.ERROR,
+                raw_data={"error": str(e), "data": data}
+            )
 
-    async def _parse_order_update(self, data: List[Dict[str, Any]]) -> Dict[str, Any]:
+    async def _parse_order_update(self, data: List[Dict[str, Any]]) -> Optional[ParsedMessage]:
         """Parse Gate.io order update."""
         try:
             orders = []
@@ -137,16 +210,20 @@ class GateioPrivateMessageParser(MessageParser):
                 )
                 orders.append(order)
             
-            return {
-                "type": "order_update",
-                "orders": orders
-            }
+            return ParsedMessage(
+                message_type=MessageType.ORDER,
+                data=orders,
+                raw_data=data
+            )
             
         except Exception as e:
             self.logger.error(f"Failed to parse order update: {e}")
-            return {"type": "error", "error": str(e), "data": data}
+            return ParsedMessage(
+                message_type=MessageType.ERROR,
+                raw_data={"error": str(e), "data": data}
+            )
 
-    async def _parse_user_trade_update(self, data: List[Dict[str, Any]]) -> Dict[str, Any]:
+    async def _parse_user_trade_update(self, data: List[Dict[str, Any]]) -> Optional[ParsedMessage]:
         """Parse Gate.io user trade update."""
         try:
             trades = []
@@ -173,14 +250,18 @@ class GateioPrivateMessageParser(MessageParser):
                 )
                 trades.append(trade)
             
-            return {
-                "type": "user_trade",
-                "trades": trades
-            }
+            return ParsedMessage(
+                message_type=MessageType.TRADE,
+                data=trades,
+                raw_data=data
+            )
             
         except Exception as e:
             self.logger.error(f"Failed to parse user trade update: {e}")
-            return {"type": "error", "error": str(e), "data": data}
+            return ParsedMessage(
+                message_type=MessageType.ERROR,
+                raw_data={"error": str(e), "data": data}
+            )
 
     def get_supported_message_types(self) -> List[str]:
         """Get list of supported message types."""

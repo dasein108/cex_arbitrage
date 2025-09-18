@@ -60,49 +60,7 @@ class GateioWebsocketPrivate(BaseExchangePrivateWebsocketInterface):
             **kwargs
         )
         
-        # State management for private subscriptions (for consistency)
-        self._is_subscribed = False
-        
         self.logger.info("Gate.io private WebSocket initialized with dependency injection")
-
-    # Enhanced private subscription management using channel mapping
-    async def subscribe_to_private_channels(self) -> None:
-        """Subscribe to private channels using enhanced channel mapping."""
-        if self._is_subscribed:
-            self.logger.info("Already subscribed to private channels")
-            return
-        
-        # Use unified subscription method (no parameters needed for private)
-        await self._ws_manager.add_subscription()
-        
-        self._is_subscribed = True
-        self.logger.info("Subscribed to private channels")
-    
-    async def unsubscribe_from_private_channels(self) -> None:
-        """Unsubscribe from private channels using enhanced channel mapping."""
-        if not self._is_subscribed:
-            self.logger.info("Not subscribed to private channels")
-            return
-        
-        # Use unified subscription removal method (no parameters needed for private)
-        await self._ws_manager.remove_subscription()
-        
-        self._is_subscribed = False
-        self.logger.info("Unsubscribed from private channels")
-    
-    async def restore_subscriptions(self) -> None:
-        """Restore private subscriptions after reconnect using ws_manager restoration."""
-        if not self._is_subscribed:
-            self.logger.info("No private subscriptions to restore")
-            return
-        
-        # ws_manager handles restoration automatically using stored channels
-        # No action needed here - channels are restored by ws_manager
-        self.logger.info("Private channel subscriptions will be restored by ws_manager")
-    
-    def is_subscribed(self) -> bool:
-        """Check if subscribed to private channels."""
-        return self._is_subscribed
 
     # Gate.io-specific message handling can be added here if needed
     # Base class handles all common WebSocket operations:
