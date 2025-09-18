@@ -8,7 +8,8 @@ from structs.common import (
     OrderBook,
     Trade,
     Kline,
-    KlineInterval
+    KlineInterval,
+    Ticker
 )
 
 from core.config.structs import ExchangeConfig
@@ -61,5 +62,41 @@ class PublicExchangeSpotRestInterface(BaseExchangeRestInterface):
     @abstractmethod
     async def ping(self) -> bool:
         """Test connectivity to the exchange"""
+        pass
+
+    @abstractmethod
+    async def get_historical_trades(self, symbol: Symbol, limit: int = 500,
+                                    timestamp_from: Optional[int] = None,
+                                    timestamp_to: Optional[int] = None) -> List[Trade]:
+        """Get historical trades for a symbol
+        
+        Args:
+            symbol: Symbol to get trades for
+            limit: Number of trades to retrieve (exchange-specific max)
+            timestamp_from: Start timestamp in milliseconds (optional)
+            timestamp_to: End timestamp in milliseconds (optional)
+            
+        Returns:
+            List of Trade objects sorted by timestamp
+            
+        Raises:
+            ExchangeAPIError: If unable to fetch trade data
+        """
+        pass
+    
+    @abstractmethod
+    async def get_ticker_info(self, symbol: Optional[Symbol] = None) -> Dict[Symbol, Ticker]:
+        """Get 24hr ticker price change statistics
+        
+        Args:
+            symbol: Specific symbol to get ticker for (optional)
+                   If None, returns tickers for all symbols
+            
+        Returns:
+            Dictionary mapping Symbol to Ticker with 24hr statistics
+            
+        Raises:
+            ExchangeAPIError: If unable to fetch ticker data
+        """
         pass
 

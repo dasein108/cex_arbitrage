@@ -9,6 +9,7 @@ HFT COMPLIANCE: Zero-overhead decorators for performance-critical testing.
 
 import functools
 import time
+import traceback
 from typing import Any, Callable, Optional, Dict
 import asyncio
 import logging
@@ -85,6 +86,7 @@ def test_method(description: Optional[str] = None, print_result: bool = True, ca
                 
                 if print_result:
                     print(f"Error: {e}")
+                    traceback.print_exc()
                     if execution_time is not None:
                         print(f"Execution time: {execution_time:.2f}ms")
                 
@@ -143,6 +145,7 @@ def test_method(description: Optional[str] = None, print_result: bool = True, ca
                 
                 if print_result:
                     print(f"Error: {e}")
+                    traceback.print_exc()
                     if execution_time is not None:
                         print(f"Execution time: {execution_time:.2f}ms")
                 

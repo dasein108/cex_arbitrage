@@ -28,7 +28,7 @@ from datetime import datetime
 
 from structs.common import (
     Symbol, SymbolInfo, OrderBook, OrderBookEntry, Trade, Kline,
-    ExchangeName, KlineInterval
+    ExchangeName, KlineInterval, Ticker
 )
 from core.cex.rest.spot.base_rest_spot_public import PublicExchangeSpotRestInterface
 from core.transport.rest.structs import HTTPMethod
@@ -308,6 +308,222 @@ class GateioPublicSpotRest(PublicExchangeSpotRestInterface):
         except Exception as e:
             self.logger.error(f"Failed to get recent trades for {symbol}: {e}")
             raise BaseExchangeError(500, f"Recent trades fetch failed: {str(e)}")
+    
+    async def get_historical_trades(self, symbol: Symbol, limit: int = 500,
+                                    timestamp_from: Optional[int] = None,
+                                    timestamp_to: Optional[int] = None) -> List[Trade]:
+        """
+        Get historical trades for a symbol with timestamp filtering.
+        
+        Gate.io supports timestamp-based filtering for historical trades.
+        
+        HFT COMPLIANT: Never caches trade data - always fresh API call.
+        
+        Args:
+            symbol: Symbol to get trades for
+            limit: Number of trades to retrieve (1-1000 for Gate.io)
+            timestamp_from: Start timestamp in milliseconds (optional)
+            timestamp_to: End timestamp in milliseconds (optional)
+            
+        Returns:
+            List of Trade objects sorted by timestamp
+            
+        Raises:
+            ExchangeAPIError: If unable to fetch trade data
+        """
+        try:
+            pair = self._mapper.to_pair(symbol)
+            
+            # Validate limit for Gate.io API (1-1000)
+            optimized_limit = max(1, min(1000, limit))
+            
+            params = {
+                'currency_pair': pair,
+                'limit': optimized_limit
+            }
+            
+            # Add timestamp filtering if provided (Gate.io expects seconds)
+            if timestamp_from:
+                params['from'] = timestamp_from // 1000  # Convert ms to seconds
+            if timestamp_to:
+                params['to'] = timestamp_to // 1000  # Convert ms to seconds
+            
+            response_data = await self.request(
+                HTTPMethod.GET,
+                '/spot/trades',
+                params=params
+            )
+            
+            # Gate.io trades response format:
+            # [
+            #   {
+            #     "id": "12345"
+            #     "create_time": "1234567890"
+            #     "side": "buy"
+            #     "amount": "0.001"
+            #     "price": "50000"
+            #   }, ...
+            # ]
+            
+            if not isinstance(response_data, list):
+                raise BaseExchangeError(500, "Invalid historical trades response format")
+            
+            trades = []
+            for trade_data in response_data:
+                side = self._mapper.get_unified_side(trade_data.get('side', 'buy'))
+                
+                # Gate.io returns timestamp in seconds, convert to milliseconds
+                timestamp_str = trade_data.get('create_time', '0')
+                timestamp = int(timestamp_str) * 1000 if len(timestamp_str) <= 10 else int(timestamp_str)
+                
+                trade = Trade(
+                    symbol=symbol,
+                    price=float(trade_data.get('price', '0')),
+                    quantity=float(trade_data.get('amount', '0')),
+                    side=side,
+                    timestamp=timestamp,
+                    is_maker=False,  # Gate.io doesn't provide maker/taker info in this endpoint
+                    trade_id=trade_data.get('id')
+                )
+                trades.append(trade)
+            
+            # Sort by timestamp (newest first for consistency with recent trades)
+            trades.sort(key=lambda t: t.timestamp, reverse=True)
+            
+            self.logger.debug(f"Retrieved {len(trades)} historical trades for {symbol}")
+            return trades
+            
+        except Exception as e:
+            self.logger.error(f"Failed to get historical trades for {symbol}: {e}")
+            raise BaseExchangeError(500, f"Historical trades fetch failed: {str(e)}")
+    
+    async def get_ticker_info(self, symbol: Optional[Symbol] = None) -> Dict[Symbol, Ticker]:
+        """
+        Get 24hr ticker price change statistics.
+        
+        Gate.io provides /spot/tickers endpoint for ticker data.
+        Supports both single symbol and all symbols retrieval.
+        
+        HFT COMPLIANT: Never caches ticker data - always fresh API call.
+        
+        Args:
+            symbol: Specific symbol to get ticker for (optional)
+                   If None, returns tickers for all symbols
+            
+        Returns:
+            Dictionary mapping Symbol to Ticker with 24hr statistics
+            
+        Raises:
+            ExchangeAPIError: If unable to fetch ticker data
+        """
+        try:
+            params = {}
+            if symbol:
+                # Get ticker for specific symbol
+                pair = self._mapper.to_pair(symbol)
+                params['currency_pair'] = pair
+            # If no currency_pair specified, API returns all tickers
+            
+            response_data = await self.request(
+                HTTPMethod.GET,
+                '/spot/tickers',
+                params=params
+            )
+            
+            # Response can be single ticker or list of tickers
+            tickers_data = response_data if isinstance(response_data, list) else [response_data]
+            
+            # Transform to unified format
+            tickers: Dict[Symbol, Ticker] = {}
+            
+            for ticker_data in tickers_data:
+                # Parse symbol from Gate.io format
+                pair_str = ticker_data.get('currency_pair', '')
+                if not pair_str:
+                    continue
+                
+                # Skip if not a supported symbol
+                if not self._mapper.is_supported_pair(pair_str):
+                    continue
+                
+                try:
+                    symbol_obj = self._mapper.to_symbol(pair_str)
+                except:
+                    # Skip symbols we can't parse
+                    continue
+                
+                # Gate.io ticker response format:
+                # {
+                #   "currency_pair": "BTC_USDT",
+                #   "last": "61221.00",
+                #   "lowest_ask": "61221.00",
+                #   "highest_bid": "61220.00",
+                #   "change_percentage": "0.72",
+                #   "change_utc0": "437.00",
+                #   "change_utc8": "500.00",
+                #   "base_volume": "5418.62664000",
+                #   "quote_volume": "331727991.90124860",
+                #   "high_24h": "62369.00",
+                #   "low_24h": "60508.00",
+                #   "etf_net_value": null,
+                #   "etf_pre_net_value": null,
+                #   "etf_pre_timestamp": null,
+                #   "etf_leverage": null
+                # }
+                
+                # Calculate values not directly provided by Gate.io
+                last_price = float(ticker_data.get('last', 0))
+                change_percentage = float(ticker_data.get('change_percentage', 0))
+                change_utc0 = float(ticker_data.get('change_utc0', 0))
+                
+                # Calculate open price from last price and change
+                open_price = last_price - change_utc0 if last_price and change_utc0 else last_price
+                
+                # Calculate previous close price (same as open for 24hr ticker)
+                prev_close_price = open_price
+                
+                # Calculate weighted average price (estimate)
+                volume = float(ticker_data.get('base_volume', 0))
+                quote_volume = float(ticker_data.get('quote_volume', 0))
+                weighted_avg_price = (quote_volume / volume) if volume > 0 else last_price
+                
+                # Get current timestamp for open/close times (24hr window)
+                current_time = int(time.time() * 1000)
+                open_time = current_time - (24 * 60 * 60 * 1000)  # 24 hours ago
+                close_time = current_time
+                
+                ticker = Ticker(
+                    symbol=symbol_obj,
+                    price_change=change_utc0,
+                    price_change_percent=change_percentage,
+                    weighted_avg_price=weighted_avg_price,
+                    prev_close_price=prev_close_price,
+                    last_price=last_price,
+                    last_qty=0.0,  # Gate.io doesn't provide last trade quantity in ticker
+                    open_price=open_price,
+                    high_price=float(ticker_data.get('high_24h', 0)),
+                    low_price=float(ticker_data.get('low_24h', 0)),
+                    volume=volume,
+                    quote_volume=quote_volume,
+                    open_time=open_time,
+                    close_time=close_time,
+                    count=0,  # Gate.io doesn't provide trade count in ticker
+                    bid_price=float(ticker_data.get('highest_bid', 0)) if ticker_data.get('highest_bid') else None,
+                    bid_qty=None,  # Gate.io doesn't provide bid quantity in ticker
+                    ask_price=float(ticker_data.get('lowest_ask', 0)) if ticker_data.get('lowest_ask') else None,
+                    ask_qty=None,  # Gate.io doesn't provide ask quantity in ticker
+                    first_id=None,  # Gate.io doesn't provide trade IDs in ticker
+                    last_id=None   # Gate.io doesn't provide trade IDs in ticker
+                )
+                
+                tickers[symbol_obj] = ticker
+            
+            self.logger.debug(f"Retrieved {len(tickers)} ticker(s) from Gate.io")
+            return tickers
+            
+        except Exception as e:
+            self.logger.error(f"Failed to get ticker info: {e}")
+            raise BaseExchangeError(500, f"Ticker info fetch failed: {str(e)}")
     
     async def get_server_time(self) -> int:
         """

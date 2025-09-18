@@ -2,15 +2,17 @@
 Generic Public REST API Integration Demo
 
 Demonstrates public API functionality across multiple exchanges.
-Tests core public methods: ping, server time, exchange info, orderbook, recent trades.
+Tests core public methods: ping, server time, exchange info, orderbook, recent trades, 
+historical trades, and ticker information.
 
 Usage:
-    python src/examples/rest_public_demo.py mexc
-    python src/examples/rest_public_demo.py gateio
+    python src/examples/demo/rest_public_demo.py mexc
+    python src/examples/demo/rest_public_demo.py gateio
 """
 
 import asyncio
 import sys
+import time
 from structs.common import Symbol, AssetName
 from core.config.config_manager import get_exchange_config
 
@@ -104,6 +106,100 @@ async def check_get_recent_trades(exchange, exchange_name: str):
     }
 
 
+@rest_api_test("historical_trades")
+async def check_get_historical_trades(exchange, exchange_name: str):
+    """Check get_historical_trades method."""
+    symbol = Symbol(base=AssetName('BTC'), quote=AssetName('USDT'), is_futures=False)
+    
+    # Test with 24 hour time range
+    now_ms = int(time.time() * 1000)
+    from_ms = now_ms - (24 * 60 * 60 * 1000)  # 24 hours ago
+    
+    result = await exchange.get_historical_trades(
+        symbol, 
+        limit=10, 
+        timestamp_from=from_ms, 
+        timestamp_to=now_ms
+    )
+    
+    # Structure the trade data
+    trades_data = []
+    for trade in result[:5]:  # Show first 5 trades
+        trades_data.append({
+            "price": trade.price,
+            "quantity": trade.quantity,
+            "side": trade.side.name,
+            "timestamp": trade.timestamp,
+            "trade_id": trade.trade_id,
+            "is_maker": trade.is_maker
+        })
+    
+    # Check if exchange supports timestamp filtering
+    supports_filtering = True
+    if exchange_name.upper() == "MEXC":
+        supports_filtering = False  # MEXC returns recent trades regardless of timestamp
+    
+    return {
+        "symbol": f"{symbol.base}/{symbol.quote}",
+        "trades_count": len(result),
+        "timestamp_from": from_ms,
+        "timestamp_to": now_ms,
+        "supports_timestamp_filtering": supports_filtering,
+        "sample_trades": trades_data
+    }
+
+
+@rest_api_test("ticker_info")
+async def check_get_ticker_info(exchange, exchange_name: str):
+    """Check get_ticker_info method."""
+    symbol = Symbol(base=AssetName('BTC'), quote=AssetName('USDT'), is_futures=False)
+    
+    # Test single symbol ticker
+    single_result = await exchange.get_ticker_info(symbol)
+    
+    # Test all symbols ticker (limit to first 5 for demo)
+    all_result = await exchange.get_ticker_info()
+    
+    # Extract single symbol data
+    ticker = single_result.get(symbol)
+    single_ticker_data = {}
+    if ticker:
+        single_ticker_data = {
+            "symbol": f"{ticker.symbol.base}/{ticker.symbol.quote}",
+            "last_price": ticker.last_price,
+            "price_change": ticker.price_change,
+            "price_change_percent": ticker.price_change_percent,
+            "high_price": ticker.high_price,
+            "low_price": ticker.low_price,
+            "volume": ticker.volume,
+            "quote_volume": ticker.quote_volume,
+            "bid_price": ticker.bid_price,
+            "ask_price": ticker.ask_price,
+            "open_time": ticker.open_time,
+            "close_time": ticker.close_time
+        }
+    
+    # Sample from all symbols
+    sample_tickers = []
+    for i, (sym, tick) in enumerate(all_result.items()):
+        if i >= 5:  # Show first 5 tickers
+            break
+        sample_tickers.append({
+            "symbol": f"{sym.base}/{sym.quote}",
+            "last_price": tick.last_price,
+            "price_change_percent": tick.price_change_percent,
+            "volume": tick.volume
+        })
+    
+    return {
+        "test_symbol": f"{symbol.base}/{symbol.quote}",
+        "single_ticker_found": symbol in single_result,
+        "single_ticker_data": single_ticker_data,
+        "all_symbols_count": len(all_result),
+        "sample_all_tickers": sample_tickers
+    }
+
+
 async def main(exchange_name: str):
     """Run all public API integration checks for the specified exchange."""
     print(f"{exchange_name.upper()} PUBLIC REST API INTEGRATION DEMO")
@@ -121,6 +217,8 @@ async def main(exchange_name: str):
         await check_get_exchange_info(exchange, exchange_name)
         await check_get_orderbook(exchange, exchange_name)
         await check_get_recent_trades(exchange, exchange_name)
+        await check_get_historical_trades(exchange, exchange_name)
+        await check_get_ticker_info(exchange, exchange_name)
         
         await exchange.close()
         
@@ -137,7 +235,7 @@ async def main(exchange_name: str):
 
 
 if __name__ == "__main__":
-    exchange_name = sys.argv[1] if len(sys.argv) > 1 else "gateio"
+    exchange_name = sys.argv[1] if len(sys.argv) > 1 else "mexc"
 
     try:
         asyncio.run(main(exchange_name))

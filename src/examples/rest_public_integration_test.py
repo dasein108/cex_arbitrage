@@ -250,6 +250,133 @@ class RestPublicIntegrationTest:
         except Exception as e:
             raise ValueError(f"Recent trades retrieval failed: {str(e)}")
     
+    async def test_get_historical_trades(self) -> Dict[str, Any]:
+        """Test historical trades retrieval."""
+        start_time = time.time()
+        symbol = Symbol(base=AssetName('BTC'), quote=AssetName('USDT'), is_futures=False)
+        
+        try:
+            # Test with timestamp filtering (24 hours ago to now)
+            now_ms = int(time.time() * 1000)
+            from_ms = now_ms - (24 * 60 * 60 * 1000)  # 24 hours ago
+            
+            result = await self.exchange.get_historical_trades(
+                symbol, 
+                limit=10, 
+                timestamp_from=from_ms, 
+                timestamp_to=now_ms
+            )
+            execution_time = (time.time() - start_time) * 1000
+            
+            # Validate trades structure
+            trades_count = len(result)
+            has_trades = trades_count > 0
+            
+            # Check trade data validity
+            trade_samples = []
+            timestamps_in_range = True
+            
+            for i, trade in enumerate(result[:3]):  # Check first 3 trades
+                in_range = from_ms <= trade.timestamp <= now_ms
+                timestamps_in_range = timestamps_in_range and in_range
+                
+                trade_samples.append({
+                    "price": trade.price,
+                    "quantity": trade.quantity,
+                    "side": trade.side.name,
+                    "timestamp": trade.timestamp,
+                    "trade_id": trade.trade_id,
+                    "timestamp_in_range": in_range,
+                    "has_required_fields": all([
+                        trade.price > 0,
+                        trade.quantity > 0,
+                        trade.timestamp > 0,
+                        hasattr(trade, 'side'),
+                        hasattr(trade, 'timestamp')
+                    ])
+                })
+            
+            return {
+                "symbol": f"{symbol.base}/{symbol.quote}",
+                "trades_count": trades_count,
+                "has_trades": has_trades,
+                "timestamp_from": from_ms,
+                "timestamp_to": now_ms,
+                "timestamps_in_range": timestamps_in_range,
+                "trade_samples": trade_samples,
+                "execution_time_ms": execution_time,
+                "network_requests": 1,
+                "data_points_received": trades_count,
+                "supports_timestamp_filtering": True  # Will be overridden for MEXC
+            }
+        except Exception as e:
+            raise ValueError(f"Historical trades retrieval failed: {str(e)}")
+    
+    async def test_get_ticker_info(self) -> Dict[str, Any]:
+        """Test ticker info retrieval."""
+        start_time = time.time()
+        symbol = Symbol(base=AssetName('BTC'), quote=AssetName('USDT'), is_futures=False)
+        
+        try:
+            # Test single symbol ticker
+            single_result = await self.exchange.get_ticker_info(symbol)
+            
+            # Test all symbols ticker (limited fetch for performance)
+            all_start = time.time()
+            all_result = await self.exchange.get_ticker_info()
+            all_execution_time = (time.time() - all_start) * 1000
+            
+            total_execution_time = (time.time() - start_time) * 1000
+            
+            # Validate ticker structure
+            single_ticker_exists = symbol in single_result
+            ticker = single_result.get(symbol)
+            
+            ticker_data = {}
+            if ticker:
+                ticker_data = {
+                    "symbol": f"{ticker.symbol.base}/{ticker.symbol.quote}",
+                    "last_price": ticker.last_price,
+                    "price_change": ticker.price_change,
+                    "price_change_percent": ticker.price_change_percent,
+                    "high_price": ticker.high_price,
+                    "low_price": ticker.low_price,
+                    "volume": ticker.volume,
+                    "quote_volume": ticker.quote_volume,
+                    "open_time": ticker.open_time,
+                    "close_time": ticker.close_time,
+                    "bid_price": ticker.bid_price,
+                    "ask_price": ticker.ask_price,
+                    "has_required_fields": all([
+                        ticker.last_price > 0,
+                        ticker.volume >= 0,
+                        ticker.quote_volume >= 0,
+                        hasattr(ticker, 'price_change_percent'),
+                        hasattr(ticker, 'high_price'),
+                        hasattr(ticker, 'low_price')
+                    ])
+                }
+            
+            # Validate all symbols response
+            all_symbols_count = len(all_result)
+            has_multiple_symbols = all_symbols_count > 1
+            
+            return {
+                "test_symbol": f"{symbol.base}/{symbol.quote}",
+                "single_ticker_exists": single_ticker_exists,
+                "ticker_data": ticker_data,
+                "all_symbols_count": all_symbols_count,
+                "has_multiple_symbols": has_multiple_symbols,
+                "single_request_time_ms": total_execution_time - all_execution_time,
+                "all_symbols_request_time_ms": all_execution_time,
+                "total_execution_time_ms": total_execution_time,
+                "network_requests": 2,
+                "data_points_received": 1 + all_symbols_count,
+                "performance_acceptable": all_execution_time < 10000  # 10 second max for all tickers
+            }
+        except Exception as e:
+            raise ValueError(f"Ticker info retrieval failed: {str(e)}")
+    
     async def run_all_tests(self, timeout_seconds: int = 30) -> None:
         """Run complete REST public API test suite."""
         try:
@@ -305,6 +432,24 @@ class RestPublicIntegrationTest:
                 TestCategory.REST_PUBLIC,
                 timeout_seconds=timeout_seconds,
                 expected_behavior="Recent trades retrieved with valid trade data structure"
+            )
+            
+            # Test historical trades
+            await self.test_runner.run_test_with_timeout(
+                self.test_get_historical_trades,
+                "historical_trades_test",
+                TestCategory.REST_PUBLIC,
+                timeout_seconds=timeout_seconds,
+                expected_behavior="Historical trades retrieved with timestamp filtering capability"
+            )
+            
+            # Test ticker info
+            await self.test_runner.run_test_with_timeout(
+                self.test_get_ticker_info,
+                "ticker_info_test",
+                TestCategory.REST_PUBLIC,
+                timeout_seconds=timeout_seconds,
+                expected_behavior="24hr ticker statistics retrieved for single symbol and all symbols"
             )
             
         finally:
