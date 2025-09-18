@@ -7,17 +7,15 @@ Inherits public market data capabilities and adds trading functionality.
 HFT COMPLIANCE: Sub-50ms order execution, real-time balance updates.
 """
 
-import logging
 import time
 from typing import List, Dict
 
-from core.cex.base import BasePrivateExchangeInterface
-from structs.exchange import (
+from interfaces.cex.base import BasePrivateExchangeInterface
+from structs.common import (
     Symbol, AssetBalance, AssetName, Order, OrderId, SymbolsInfo, Trade
 )
-from cex.mexc.ws.private.ws_private import MexcWebsocketPrivate
-from cex.mexc.rest.rest_private import MexcPrivateSpotRest
-from core.transport.websocket.ws_client import WebSocketConfig
+from cex.mexc.ws.mexc_ws_private import MexcWebsocketPrivate
+from cex.mexc.rest.mexc_rest_private import MexcPrivateSpotRest
 from core.exceptions.exchange import BaseExchangeError
 from core.config.structs import ExchangeConfig
 
@@ -323,7 +321,7 @@ class MexcPrivateExchange(BasePrivateExchangeInterface):
         HFT COMPLIANT: Sub-millisecond processing.
         """
         # Log trade execution for audit trail
-        self.logger.debug(f"Trade executed: {trade.side.name} {trade.amount} at {trade.price}")
+        self.logger.debug(f"Trade executed: {trade.side.name} {trade.quantity} at {trade.price}")
     
     def get_trading_statistics(self) -> Dict[str, any]:
         """Get trading performance statistics."""

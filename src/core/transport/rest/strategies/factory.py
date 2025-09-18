@@ -128,7 +128,7 @@ class RestStrategyFactory(BaseCompositeFactory[RestStrategySet]):
         
         # Auth strategy for private endpoints
         auth_strategy = None
-        is_private = 'private' in exchange_name.lower()
+        is_private = 'PRIVATE' in exchange_name.upper()
         if is_private and strategy_config.get('auth'):
             auth_strategy = cls._create_component_with_fallback(
                 strategy_config['auth'], exchange_name,
@@ -144,6 +144,20 @@ class RestStrategyFactory(BaseCompositeFactory[RestStrategySet]):
                 {'config': config, **resolved_kwargs},  # Primary: with all dependencies
                 {'config': config},  # Fallback: just config
             )
+        elif 'GATEIO' in exchange_name.upper():
+            # Fallback: Import Gate.io exception handler directly if registration failed
+            try:
+                from cex.gateio.rest.strategies.exception_handler import GateioExceptionHandlerStrategy
+                exception_handler_strategy = GateioExceptionHandlerStrategy()
+            except ImportError:
+                pass  # Ignore if import fails
+        elif 'MEXC' in exchange_name.upper():
+            # Fallback: Import MEXC exception handler directly if registration failed
+            try:
+                from cex.mexc.rest.strategies.exception_handler import MexcExceptionHandlerStrategy
+                exception_handler_strategy = MexcExceptionHandlerStrategy()
+            except ImportError:
+                pass  # Ignore if import fails
         
         return RestStrategySet(
             request_strategy=request_strategy,
@@ -216,8 +230,8 @@ class RestStrategyFactory(BaseCompositeFactory[RestStrategySet]):
         Raises:
             ValueError: If no strategies registered for the exchange
         """
-        exchange_name = str(exchange_config.name).lower()
-        exchange_key = f"{exchange_name}_{'private' if is_private else 'public'}"
+        exchange_name = str(exchange_config.name).upper()
+        exchange_key = f"{exchange_name}_{'PRIVATE' if is_private else 'PUBLIC'}"
         
         # Delegate to standardized inject() method
         return cls.inject(exchange_key, config=exchange_config)

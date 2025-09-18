@@ -25,7 +25,7 @@ from functools import lru_cache
 import logging
 
 # MANDATORY imports - unified cex compliance
-from structs.exchange import (
+from structs.common import (
     Symbol, SymbolInfo, OrderBook, OrderBookEntry, Trade, Kline,
     ExchangeName, AssetName, Side, KlineInterval
 )

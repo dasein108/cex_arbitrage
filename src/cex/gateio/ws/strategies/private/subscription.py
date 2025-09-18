@@ -4,7 +4,7 @@ from typing import List, Dict, Any, Optional
 import msgspec
 
 from core.cex.websocket import SubscriptionStrategy, SubscriptionAction, SubscriptionContext
-from structs.exchange import Symbol
+from structs.common import Symbol
 
 
 class GateioPrivateSubscriptionStrategy(SubscriptionStrategy):

@@ -41,8 +41,8 @@ from .structures import (
     ArbitrageConfig,
 )
 
-from structs.exchange import Symbol
-from structs.exchange import ExchangeName
+from structs.common import Symbol
+from structs.common import ExchangeName
 from core.exceptions.exchange import RiskManagementError
 
 

@@ -2,7 +2,7 @@ from abc import abstractmethod
 from datetime import datetime
 from typing import Dict, List, Optional, Callable
 from core.cex.rest.base_rest import BaseExchangeRestInterface
-from structs.exchange import (
+from structs.common import (
     Symbol,
     SymbolInfo,
     OrderBook,

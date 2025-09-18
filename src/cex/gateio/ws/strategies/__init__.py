@@ -16,6 +16,26 @@ from .private.connection import GateioPrivateConnectionStrategy
 from .private.subscription import GateioPrivateSubscriptionStrategy
 from .private.message_parser import GateioPrivateMessageParser
 
+# Import factory for registration
+from core.transport.websocket.strategies import WebSocketStrategyFactory
+from cex import ExchangeEnum
+
+# Register public strategies with factory
+WebSocketStrategyFactory.register_strategies(
+    ExchangeEnum.GATEIO.value, False,
+    GateioPublicConnectionStrategy,
+    GateioPublicSubscriptionStrategy,
+    GateioPublicMessageParser
+)
+
+# Register private strategies with factory
+WebSocketStrategyFactory.register_strategies(
+    ExchangeEnum.GATEIO.value, True,
+    GateioPrivateConnectionStrategy,
+    GateioPrivateSubscriptionStrategy,
+    GateioPrivateMessageParser
+)
+
 __all__ = [
     # Public strategies
     'GateioPublicConnectionStrategy',

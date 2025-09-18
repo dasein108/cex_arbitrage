@@ -13,7 +13,7 @@ from typing import Any
 
 from .structures import ArbitrageOpportunity, ArbitrageState
 from .types import ArbitrageConfig, EngineStatistics
-from structs.exchange import Symbol
+from structs.common import Symbol
 
 logger = logging.getLogger(__name__)
 

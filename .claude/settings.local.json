@@ -52,7 +52,8 @@
       "Bash(cat:*)",
       "WebFetch(domain:github.com)",
       "Bash(FACTORY_INIT_MODE=COMPREHENSIVE PYTHONPATH=src python src/examples/simple_auto_init_demo.py)",
-      "Bash(DISABLE_FACTORY_AUTO_INIT=true PYTHONPATH=src python src/examples/simple_auto_init_demo.py)"
+      "Bash(DISABLE_FACTORY_AUTO_INIT=true PYTHONPATH=src python src/examples/simple_auto_init_demo.py)",
+      "Bash(pip uninstall:*)"
     ],
     "deny": [],
     "ask": []

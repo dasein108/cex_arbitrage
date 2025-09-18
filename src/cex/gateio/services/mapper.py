@@ -11,7 +11,7 @@ HFT COMPLIANCE: Sub-microsecond mapping operations, zero-copy patterns.
 from datetime import datetime
 from typing import Any
 
-from structs.exchange import (
+from structs.common import (
     Order, OrderId, OrderStatus, OrderType, Side,
     TimeInForce, KlineInterval
 )
@@ -92,11 +92,10 @@ class GateioUnifiedMappings(BaseExchangeMappings):
     
     def transform_balance_to_unified(self, gate_balance: dict) -> 'AssetBalance':
         """Transform Gate.io balance response to unified AssetBalance."""
-        from structs.exchange import AssetBalance, AssetName
+        from structs.common import AssetBalance, AssetName
         
         return AssetBalance(
             asset=AssetName(gate_balance.get('currency', '')),
-            available=float(gate_balance.get('available', '0')),
             free=float(gate_balance.get('available', '0')),  # Gate.io uses 'available' for free
             locked=float(gate_balance.get('locked', '0'))
         )
@@ -132,12 +131,12 @@ class GateioUnifiedMappings(BaseExchangeMappings):
             symbol=symbol,
             side=side,
             order_type=order_type,
-            amount=total_amount,
+            quantity=total_amount,
             price=float(gate_order.get('price', '0')) if gate_order.get('price') else None,
-            amount_filled=filled_amount,
+            filled_quantity=filled_amount,
+            remaining_quantity=remaining_amount,
             status=status,
-            timestamp=int(float(gate_order.get('create_time', '0')) * 1000),  # Convert to milliseconds
-            # update_time=int(float(gate_order.get('update_time', '0')) * 1000) if gate_order.get('update_time') else None
+            timestamp=int(float(gate_order.get('create_time', '0')) * 1000)  # Convert to milliseconds
         )
     
     def _reverse_lookup_order_type(self, gate_type: str) -> OrderType:

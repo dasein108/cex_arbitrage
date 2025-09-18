@@ -40,11 +40,13 @@ from examples.integration_test_framework import (
 Tests public REST API functionality without authentication:
 
 ```bash
-# Basic usage
+# Basic usage (defaults to mexc)
+python src/examples/rest_public_integration_test.py
 python src/examples/rest_public_integration_test.py mexc
 python src/examples/rest_public_integration_test.py gateio
 
 # With JSON output
+python src/examples/rest_public_integration_test.py --output results.json
 python src/examples/rest_public_integration_test.py mexc --output results.json
 
 # Custom timeout
@@ -68,6 +70,8 @@ Tests private REST API functionality with authentication:
 export MEXC_API_KEY="your_api_key"
 export MEXC_SECRET_KEY="your_secret_key"
 
+# Basic usage (defaults to mexc)
+python src/examples/rest_private_integration_test.py
 python src/examples/rest_private_integration_test.py mexc
 python src/examples/rest_private_integration_test.py gateio --output private_results.json
 ```
@@ -88,11 +92,13 @@ python src/examples/rest_private_integration_test.py gateio --output private_res
 Tests public WebSocket real-time data streaming:
 
 ```bash
-# Basic usage
+# Basic usage (defaults to mexc)
+python src/examples/websocket_public_integration_test.py
 python src/examples/websocket_public_integration_test.py mexc
 python src/examples/websocket_public_integration_test.py gateio
 
 # Custom monitoring duration
+python src/examples/websocket_public_integration_test.py --monitor-time 30
 python src/examples/websocket_public_integration_test.py mexc --monitor-time 30
 
 # Full customization
@@ -112,11 +118,13 @@ Tests private WebSocket real-time account data streaming:
 
 ```bash
 # Requires API credentials
-export GATEIO_API_KEY="your_api_key"
-export GATEIO_SECRET_KEY="your_secret_key"
+export MEXC_API_KEY="your_api_key"
+export MEXC_SECRET_KEY="your_secret_key"
 
-python src/examples/websocket_private_integration_test.py gateio
+# Basic usage (defaults to mexc)
+python src/examples/websocket_private_integration_test.py
 python src/examples/websocket_private_integration_test.py mexc --monitor-time 30 --output private_ws_results.json
+python src/examples/websocket_private_integration_test.py gateio
 ```
 
 **Tests Performed:**
@@ -466,8 +474,89 @@ The original demo files are maintained for reference but deprecated for AI agent
 Use verbose output for troubleshooting:
 
 ```bash
+# Uses default exchange (mexc)
+python src/examples/rest_public_integration_test.py --verbose
+# Or specify exchange explicitly
 python src/examples/rest_public_integration_test.py mexc --verbose
 ```
+
+## Testing Decorators
+
+The framework includes powerful decorators to eliminate repetitive try-catch patterns and standardize testing:
+
+### Available Decorators
+
+#### `@rest_api_test(api_name)`
+For REST API testing with automatic error handling and timing:
+```python
+from examples.utils.decorators import rest_api_test
+
+@rest_api_test("ping")
+async def check_ping(exchange, exchange_name: str):
+    return await exchange.ping()
+```
+
+#### `@test_method(description, print_result=True, capture_timing=True)`
+General-purpose test method decorator:
+```python
+from examples.utils.decorators import test_method
+
+@test_method("Custom API Test")
+async def custom_test(exchange, exchange_name: str):
+    return {"result": "success"}
+```
+
+#### `@integration_test(test_name, expected_behavior, timeout_seconds=30)`
+For integration testing with timeout and structured reporting:
+```python
+from examples.utils.decorators import integration_test
+
+@integration_test("ping_test", "Server responds to ping", timeout_seconds=10)
+async def test_ping(self):
+    return await self.exchange.ping()
+```
+
+#### `@safe_execution(description, log_errors=True)`
+For safe execution with error logging:
+```python
+from examples.utils.decorators import safe_execution
+
+@safe_execution("Database connection")
+async def connect_db():
+    # Implementation that might fail
+    pass
+```
+
+### Benefits
+
+- **Eliminates repetitive try-catch blocks**
+- **Standardized output formatting** 
+- **Automatic timing capture**
+- **Consistent error handling**
+- **Structured result format**
+- **Reduced code duplication**
+
+### Before and After
+
+**Old way (repetitive):**
+```python
+async def check_ping(exchange, exchange_name: str):
+    print(f"=== {exchange_name.upper()} PING CHECK ===")
+    try:
+        result = await exchange.ping()
+        print(f"Result: {result}")
+    except Exception as e:
+        print(f"Error: {e}")
+```
+
+**New way (clean):**
+```python
+@rest_api_test("ping")
+async def check_ping(exchange, exchange_name: str):
+    return await exchange.ping()
+```
+
+See `examples/utils/decorators_example.py` for complete usage examples.
 
 ## Architecture Compliance
 
@@ -478,5 +567,6 @@ This testing framework adheres to the HFT system architecture:
 - **Performance First**: HFT-compliant timing and metrics
 - **Type Safety**: Comprehensive type annotations
 - **Error Propagation**: Unified exception handling
+- **DRY Principle**: Decorators eliminate code duplication
 
 The framework serves as both a testing tool and a reference implementation of the project's architectural standards.

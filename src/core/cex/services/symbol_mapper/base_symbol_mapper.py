@@ -18,7 +18,7 @@ Architecture:
 
 from abc import ABC, abstractmethod
 from typing import Tuple, Dict
-from structs.exchange import Symbol
+from structs.common import Symbol
 
 
 class SymbolMapperInterface(ABC):
@@ -139,6 +139,38 @@ class SymbolMapperInterface(ABC):
             True if symbol is supported, False otherwise
         """
         return str(symbol.quote) in self._quote_assets
+    
+    def is_supported_pair(self, pair: str) -> bool:
+        """
+        Validate if trading pair string is supported by this exchange.
+        
+        Performs validation of:
+        - Exchange-specific format compliance 
+        - Quote asset support
+        - Basic format structure
+        
+        Args:
+            pair: Exchange-specific trading pair string
+            
+        Returns:
+            True if pair is supported and valid, False otherwise
+            
+        Performance: O(1) validation, <0.1μs target for HFT compliance
+        """
+        try:
+            # Attempt to parse the pair using exchange-specific logic
+            symbol = self._string_to_symbol(pair)
+            
+            # Validate quote asset is supported
+            if str(symbol.quote) not in self._quote_assets:
+                return False
+                
+            # Additional validation can be added here by subclasses
+            return True
+            
+        except (ValueError, AttributeError, IndexError):
+            # Any parsing error means the pair is not supported
+            return False
     
     def get_cache_stats(self) -> Dict[str, int]:
         """

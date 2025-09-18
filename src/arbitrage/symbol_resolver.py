@@ -12,8 +12,8 @@ from typing import Dict, List, Optional, Tuple
 from decimal import Decimal
 from dataclasses import dataclass, field
 
-from core.cex.base import BasePublicExchangeInterface
-from structs.exchange import Symbol, SymbolInfo
+from interfaces.cex.base import BasePublicExchangeInterface
+from structs.common import Symbol, SymbolInfo
 from arbitrage.types import ExchangePairConfig, ArbitragePair, OpportunityType
 
 logger = logging.getLogger(__name__)

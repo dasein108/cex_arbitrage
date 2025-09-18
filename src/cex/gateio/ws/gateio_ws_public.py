@@ -24,7 +24,7 @@ Architecture: Dependency injection with base class coordination
 
 from typing import List, Dict, Optional, Callable, Awaitable, Set
 
-from structs.exchange import Symbol, Trade, OrderBook
+from structs.common import Symbol, Trade, OrderBook
 from core.config.structs import ExchangeConfig
 from core.cex.websocket.spot.base_ws_public import BaseExchangePublicWebsocketInterface
 from core.transport.websocket.structs import ConnectionState, MessageType

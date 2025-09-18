@@ -43,7 +43,7 @@ def create_websocket_manager(
 
     # Create strategy set using factory pattern
     exchange_name = str(exchange_config.name).upper()
-    strategy_key = f"{exchange_name}_{'PRIVATE' if is_private else 'PUBLIC'}"
+    strategy_key = f"{exchange_name}_{'private' if is_private else 'public'}"
     
     strategy_set = WebSocketStrategyFactory.inject(
         strategy_key,

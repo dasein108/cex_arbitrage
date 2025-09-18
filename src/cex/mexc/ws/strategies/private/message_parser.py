@@ -10,7 +10,7 @@ from cex.mexc.structs.exchange import (
     MexcWSPrivateOrderData, MexcWSPrivateBalanceData, MexcWSPrivateTradeData
 )
 from cex.mexc.services.mapper import MexcMappings
-from structs.exchange import OrderBook
+from structs.common import OrderBook
 
 
 class MexcPrivateMessageParser(MessageParser):
@@ -182,7 +182,3 @@ class MexcPrivateMessageParser(MessageParser):
     ) -> Optional[OrderBook]:
         """Private messages don't contain orderbook data."""
         return None
-
-    def supports_batch_parsing(self) -> bool:
-        """Private parser supports batch processing."""
-        return True

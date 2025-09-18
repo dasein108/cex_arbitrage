@@ -2,6 +2,8 @@ from abc import ABC
 from typing import Callable
 from core.cex.rest.base_rest import BaseExchangeRestInterface
 from core.config.structs import ExchangeConfig
+from structs import Symbol
+
 
 class PublicExchangeFuturesRestInterface(BaseExchangeRestInterface, ABC):
     """Abstract interface for public futures exchange operations (market data)"""
@@ -16,3 +18,7 @@ class PublicExchangeFuturesRestInterface(BaseExchangeRestInterface, ABC):
         )
     
     # TODO: add extended futures-specific methods later
+
+    async def get_funding_rate(self, symbol: Symbol):
+        """Get the current funding rate for a futures symbol."""
+        raise NotImplementedError("Funding rate retrieval not implemented yet")

@@ -11,14 +11,14 @@ import logging
 import time
 from typing import List, Dict, Optional
 
-from core.cex.base import BasePrivateExchangeInterface
-from structs.exchange import (
+from interfaces.cex.base import BasePrivateExchangeInterface
+from structs.common import (
     OrderBook, Symbol, SymbolInfo, SymbolsInfo, AssetBalance, AssetName, 
     Order, OrderId, OrderType, Side, TimeInForce, Position,
     ExchangeStatus
 )
 from cex.gateio.public_exchange import GateioPublicExchange
-from cex.gateio.rest.rest_private import GateioPrivateSpotRest
+from cex.gateio.rest.gateio_rest_private import GateioPrivateSpotRest
 from core.exceptions.exchange import BaseExchangeError
 from core.config.structs import ExchangeConfig
 
@@ -44,13 +44,10 @@ class GateioPrivateExchange(BasePrivateExchangeInterface):
     exchange_name = "GATEIO_private"
 
     def __init__(self, config: ExchangeConfig):
+        super().__init__(config)
         """Initialize Gate.io private exchange with full trading capabilities."""
         self.logger = logging.getLogger(f"{__name__}.{self.__class__.__name__}")
-        self.config = config
-        
-        if not config.has_credentials():
-            raise ValueError("Gate.io private exchange requires valid API credentials")
-        
+
         # Composition: Use public exchange for market data
         self.public_exchange = GateioPublicExchange(config)
         

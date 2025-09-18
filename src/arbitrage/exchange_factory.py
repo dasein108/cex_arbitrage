@@ -18,17 +18,18 @@ from core.config.config_manager import config
 from core.exceptions.exchange import BaseExchangeError
 from cex.mexc.private_exchange import MexcPrivateExchange as MexcExchange
 from cex.gateio.gateio_exchange import GateioExchange
-from structs.exchange import Symbol, AssetName, ExchangeStatus, ExchangeName
-from core.cex.base.base_private_exchange import BasePrivateExchangeInterface
+from structs.common import Symbol, AssetName, ExchangeStatus, ExchangeName
+from interfaces.cex.base.base_private_exchange import BasePrivateExchangeInterface
+from interfaces.factories.exchange_factory_interface import (
+    ExchangeFactoryInterface, 
+    InitializationStrategy as BaseInitializationStrategy
+)
 
 logger = logging.getLogger(__name__)
 
 
-class InitializationStrategy(Enum):
-    """Exchange initialization strategies."""
-    FAIL_FAST = "fail_fast"          # Fail immediately on any error
-    CONTINUE_ON_ERROR = "continue"   # Continue with available cex
-    RETRY_WITH_BACKOFF = "retry"     # Retry failed initializations
+# Use the base InitializationStrategy from the interface
+InitializationStrategy = BaseInitializationStrategy
 
 
 @dataclass
@@ -77,9 +78,11 @@ class ExchangeInitResult:
         return not self.success
 
 
-class ExchangeFactory:
+class ExchangeFactory(ExchangeFactoryInterface):
     """
     Factory for creating and managing exchange instances.
+    
+    Implements ExchangeFactoryInterface for dependency injection capability.
     
     Responsibilities:
     - Create exchange instances with proper credentials
@@ -586,3 +589,36 @@ class ExchangeFactory:
     def get_factory_statistics(self) -> Dict[str, Any]:
         """Get comprehensive factory statistics."""
         return self.get_initialization_summary()
+
+    # Interface implementation methods
+
+    async def create_exchange(
+        self,
+        exchange_name: ExchangeName,
+        symbols: Optional[List[Symbol]] = None
+    ) -> BasePrivateExchangeInterface:
+        """Create a single exchange instance."""
+        exchanges = await self.create_exchanges([exchange_name], symbols=symbols)
+        if str(exchange_name) not in exchanges:
+            raise BaseExchangeError(f"Failed to create exchange: {exchange_name}")
+        return exchanges[str(exchange_name)]
+
+    def get_supported_exchanges(self) -> List[ExchangeName]:
+        """Get list of supported exchange names."""
+        return [ExchangeName("mexc"), ExchangeName("gateio")]
+
+    def is_exchange_supported(self, exchange_name: ExchangeName) -> bool:
+        """Check if an exchange is supported by this factory."""
+        return str(exchange_name).lower() in ["mexc", "gateio"]
+
+    async def health_check(self, exchange_name: ExchangeName) -> bool:
+        """Perform health check on an exchange."""
+        exchange = self.get_exchange(str(exchange_name))
+        if not exchange:
+            return False
+        return exchange.status == ExchangeStatus.ACTIVE
+
+    @property
+    def managed_exchanges(self) -> Dict[str, BasePrivateExchangeInterface]:
+        """Get currently managed exchange instances."""
+        return self.exchanges.copy()

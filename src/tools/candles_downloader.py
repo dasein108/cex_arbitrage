@@ -32,9 +32,9 @@ from typing import Dict, List, Optional, Any
 import logging
 
 # Import the exchange implementations
-from cex.mexc.rest.rest_public import MexcPublicSpotRest
+from cex.mexc.rest.mexc_rest_public import MexcPublicSpotRest
 from cex.gateio.rest.gateio_public import GateioPublicExchangeSpotRest
-from structs.exchange import Symbol, AssetName, KlineInterval, Kline
+from structs.common import Symbol, AssetName, KlineInterval, Kline
 # NOTE: rate_limiter functionality replaced by strategy-based transport system
 # from common.rate_limiter import get_rate_limiter
 

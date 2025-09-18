@@ -9,7 +9,7 @@ HFT COMPLIANCE: Fast service instantiation, cached instances, factory coordinati
 
 from typing import Dict, Type
 
-from structs.exchange import ExchangeName
+from structs.common import ExchangeName
 from core.cex.services.unified_mapper.exchange_mappings import ExchangeMappingsInterface
 from core.cex.services.symbol_mapper.base_symbol_mapper import SymbolMapperInterface
 from core.factories.base_exchange_factory import BaseExchangeFactory

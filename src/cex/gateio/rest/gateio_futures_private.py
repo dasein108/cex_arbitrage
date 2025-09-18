@@ -32,7 +32,7 @@ from collections import deque
 from threading import Lock
 
 # MANDATORY imports - unified cex compliance
-from structs.exchange import (
+from structs.common import (
     Symbol, Order, OrderId, OrderType, Side, AssetBalance, AssetName,
     ExchangeName, TimeInForce, Position
 )

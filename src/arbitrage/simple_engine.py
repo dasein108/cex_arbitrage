@@ -16,8 +16,8 @@ from arbitrage.types import ArbitrageConfig, EngineStatistics, ArbitragePair
 from arbitrage.detector import OpportunityDetector
 from arbitrage.aggregator import MarketDataAggregator
 from arbitrage.structures import ArbitrageOpportunity
-from core.cex.base import BasePrivateExchangeInterface
-from structs.exchange import ExchangeStatus, Symbol, AssetName, ExchangeName
+from interfaces.cex.base import BasePrivateExchangeInterface
+from structs.common import ExchangeStatus, Symbol, AssetName, ExchangeName
 from core.exceptions.exchange import ArbitrageDetectionError
 
 logger = logging.getLogger(__name__)

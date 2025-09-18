@@ -15,7 +15,7 @@ Threading: All constants are thread-safe (immutable)
 Performance: Dict-based lookups optimized for O(1) access
 """
 
-from structs.exchange import OrderStatus, OrderType, Side, TimeInForce, KlineInterval
+from structs.common import OrderStatus, OrderType, Side, TimeInForce, KlineInterval
 from core.exceptions.exchange import (
     BaseExchangeError, RateLimitErrorBase, TradingDisabled,
     InsufficientPosition, OversoldException
@@ -100,7 +100,6 @@ class GateioMappings:
         TimeInForce.GTC: 'gtc',  # Good Till Cancelled
         TimeInForce.IOC: 'ioc',  # Immediate or Cancel
         TimeInForce.FOK: 'fok',  # Fill or Kill
-        TimeInForce.GTD: 'gtc',  # Gate.io doesn't support GTD, use GTC
     }
     
     # Reverse mapping for API responses (Gate.io -> Unified)

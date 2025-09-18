@@ -1,7 +1,7 @@
 from abc import abstractmethod
 from typing import Dict, List, Optional, Callable, Tuple, Any
 from core.cex.rest.base_rest import BaseExchangeRestInterface
-from structs.exchange import (
+from structs.common import (
     Symbol,
     Order,
     OrderId,
@@ -17,7 +17,8 @@ from core.config.structs import ExchangeConfig
 
 class PrivateExchangeSpotRestInterface(BaseExchangeRestInterface):
     """Abstract interface for private exchange operations (trading, account management)"""
-    
+    CAN_MODIFY_ORDERS = False  # Default capability flag for modifying orders
+
     def __init__(self, config: ExchangeConfig):
         """Initialize private interface with transport manager."""
         if not config.has_credentials():
@@ -38,19 +39,20 @@ class PrivateExchangeSpotRestInterface(BaseExchangeRestInterface):
         """Get balance for a specific asset"""
         pass
 
-    # @abstractmethod
-    # async def modify_order(
-    #     self,
-    #     symbol: Symbol,
-    #     order_id: OrderId,
-    #     amount: Optional[float] = None,
-    #     price: Optional[float] = None,
-    #     quote_quantity: Optional[float] = None,
-    #     time_in_force: Optional[TimeInForce] = None,
-    #     stop_price: Optional[float] = None
-    # ) -> Order:
-    #     """Modify an existing order (if supported)"""
-    #     pass
+    @abstractmethod
+    async def modify_order(
+        self,
+        symbol: Symbol,
+        order_id: OrderId,
+        amount: Optional[float] = None,
+        price: Optional[float] = None,
+        quote_quantity: Optional[float] = None,
+        time_in_force: Optional[TimeInForce] = None,
+        stop_price: Optional[float] = None
+    ) -> Order:
+
+        """Modify an existing order (if supported)"""
+        pass
     
     @abstractmethod
     async def place_order(

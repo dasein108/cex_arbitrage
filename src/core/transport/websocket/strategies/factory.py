@@ -111,8 +111,8 @@ class WebSocketStrategyFactory(BaseCompositeFactory[WebSocketStrategySet]):
         if not config:
             raise ValueError("Config required for WebSocket strategy assembly")
         
-        # Auto-resolve dependencies - strip _PUBLIC/_PRIVATE suffix for base exchange name
-        base_exchange_name = exchange_name.replace('_PUBLIC', '').replace('_PRIVATE', '')
+        # Auto-resolve dependencies - strip _public/_private suffix for base exchange name
+        base_exchange_name = exchange_name.replace('_public', '').replace('_private', '')
         resolved_kwargs = cls._resolve_dependencies(base_exchange_name, **{k: v for k, v in kwargs.items() if k != 'config'})
         
         # Create WebSocket strategy set with appropriate parameters for each strategy type

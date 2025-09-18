@@ -9,7 +9,7 @@ from common.orderbook_diff_processor import ParsedOrderbookUpdate
 from core.cex.services.symbol_mapper import SymbolMapperInterface
 from core.cex.websocket import MessageParser, ParsedMessage, MessageType
 from cex.mexc.ws.protobuf_parser import MexcProtobufParser
-from structs.exchange import OrderBook, Trade, Side
+from structs.common import OrderBook, Trade, Side
 from cex.mexc.structs.exchange import MexcWSOrderbookMessage, MexcWSTradeMessage, MexcWSTradeEntry
 from cex.mexc.services.mapper import MexcMappings
 
@@ -327,10 +327,6 @@ class MexcPublicMessageParser(MessageParser):
             self.logger.error(f"Error parsing MEXC protobuf: {e}")
 
         return None
-
-    def supports_batch_parsing(self) -> bool:
-        """MEXC parser supports batch processing."""
-        return True
 
     async def parse_batch_messages(
             self,

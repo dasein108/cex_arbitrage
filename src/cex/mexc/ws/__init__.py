@@ -1,9 +1,7 @@
-from .public import (MexcWebsocketPublic)
-
-from .strategies import MexcPublicConnectionStrategy, MexcPublicSubscriptionStrategy, MexcPublicMessageParser
-
-from .private import (MexcWebsocketPrivate, MexcPrivateMessageParser,
-                                 MexcPrivateConnectionStrategy, MexcPrivateSubscriptionStrategy)
+from .mexc_ws_public import MexcWebsocketPublic
+from .mexc_ws_private import MexcWebsocketPrivate
+from .strategies import (MexcPublicConnectionStrategy, MexcPublicSubscriptionStrategy, MexcPublicMessageParser,
+MexcPrivateMessageParser, MexcPrivateConnectionStrategy, MexcPrivateSubscriptionStrategy)
 
 
 

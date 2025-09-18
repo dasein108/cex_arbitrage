@@ -25,10 +25,10 @@ import argparse
 import time
 from typing import Dict, Any
 
-from structs.exchange import Symbol, AssetName
+from structs.common import Symbol, AssetName
 from core.config.config_manager import get_exchange_config
 from examples.utils.rest_api_factory import get_exchange_rest_class
-from integration_test_framework import (
+from examples.integration_test_framework import (
     IntegrationTestRunner, TestCategory, TestStatus, TestMetrics,
     EXIT_CODE_SUCCESS, EXIT_CODE_FAILED_TESTS, EXIT_CODE_ERROR, 
     EXIT_CODE_TIMEOUT, EXIT_CODE_CONFIG_ERROR
@@ -225,13 +225,13 @@ class RestPublicIntegrationTest:
             for i, trade in enumerate(result[:3]):  # Check first 3 trades
                 trade_samples.append({
                     "price": trade.price,
-                    "amount": trade.amount,
+                    "quantity": trade.quantity,
                     "side": trade.side.name,
                     "timestamp": trade.timestamp,
                     "is_maker": trade.is_maker,
                     "has_required_fields": all([
                         trade.price > 0,
-                        trade.amount > 0,
+                        trade.quantity > 0,
                         trade.timestamp > 0,
                         hasattr(trade, 'side'),
                         hasattr(trade, 'is_maker')
@@ -315,7 +315,7 @@ class RestPublicIntegrationTest:
 async def main():
     """Main entry point for AI agent integration testing."""
     parser = argparse.ArgumentParser(description="REST Public API Integration Test for AI Agents")
-    parser.add_argument("exchange", help="Exchange name (mexc, gateio)")
+    parser.add_argument("exchange", nargs="?", default="mexc", help="Exchange name (mexc, gateio) - defaults to mexc")
     parser.add_argument("--output", "-o", help="Output JSON file path")
     parser.add_argument("--timeout", "-t", type=int, default=30, help="Test timeout in seconds")
     parser.add_argument("--verbose", "-v", action="store_true", help="Enable verbose output")
@@ -366,6 +366,31 @@ async def main():
         print(f"Unexpected error: {str(e)}")
         sys.exit(EXIT_CODE_ERROR)
 
+
+# Pytest test functions
+import pytest
+
+@pytest.mark.asyncio
+async def test_mexc_rest_public_integration():
+    """Test MEXC REST public API integration."""
+    test_suite = RestPublicIntegrationTest("mexc")
+    try:
+        await test_suite.run_all_tests(timeout_seconds=30)
+        report = test_suite.test_runner.generate_report()
+        assert report.overall_status == TestStatus.PASSED, f"Tests failed: {report.summary}"
+    except Exception as e:
+        pytest.fail(f"MEXC public integration test failed: {str(e)}")
+
+@pytest.mark.asyncio
+async def test_gateio_rest_public_integration():
+    """Test Gate.io REST public API integration."""
+    test_suite = RestPublicIntegrationTest("gateio")
+    try:
+        await test_suite.run_all_tests(timeout_seconds=30)
+        report = test_suite.test_runner.generate_report()
+        assert report.overall_status == TestStatus.PASSED, f"Tests failed: {report.summary}"
+    except Exception as e:
+        pytest.fail(f"Gate.io public integration test failed: {str(e)}")
 
 if __name__ == "__main__":
     asyncio.run(main())

@@ -25,10 +25,10 @@ import argparse
 import time
 from typing import Dict, Any, List
 
-from structs.exchange import Symbol, AssetName, OrderBook, Trade
+from structs.common import Symbol, AssetName, OrderBook, Trade
 from core.config.config_manager import get_exchange_config
 from examples.utils.ws_api_factory import get_exchange_websocket_classes
-from integration_test_framework import (
+from examples.integration_test_framework import (
     IntegrationTestRunner, TestCategory, TestStatus, TestMetrics,
     EXIT_CODE_SUCCESS, EXIT_CODE_FAILED_TESTS, EXIT_CODE_ERROR, 
     EXIT_CODE_TIMEOUT, EXIT_CODE_CONFIG_ERROR
@@ -77,7 +77,7 @@ class WebSocketDataCollector:
         for trade in trades:
             self.trade_updates[symbol_key].append({
                 "price": trade.price,
-                "amount": trade.amount,
+                "quantity": trade.quantity,
                 "side": trade.side.name,
                 "timestamp": trade.timestamp,
                 "is_maker": trade.is_maker
@@ -450,7 +450,7 @@ class WebSocketPublicIntegrationTest:
 async def main():
     """Main entry point for AI agent integration testing."""
     parser = argparse.ArgumentParser(description="WebSocket Public API Integration Test for AI Agents")
-    parser.add_argument("exchange", help="Exchange name (mexc, gateio)")
+    parser.add_argument("exchange", nargs="?", default="mexc", help="Exchange name (mexc, gateio) - defaults to mexc")
     parser.add_argument("--output", "-o", help="Output JSON file path")
     parser.add_argument("--timeout", "-t", type=int, default=30, help="Test timeout in seconds")
     parser.add_argument("--monitor-time", "-m", type=int, default=15, help="Data monitoring duration in seconds")
@@ -505,6 +505,31 @@ async def main():
         print(f"Unexpected error: {str(e)}")
         sys.exit(EXIT_CODE_ERROR)
 
+
+# Pytest test functions
+import pytest
+
+@pytest.mark.asyncio
+async def test_mexc_websocket_public_integration():
+    """Test MEXC WebSocket public API integration."""
+    test_suite = WebSocketPublicIntegrationTest("mexc")
+    try:
+        await test_suite.run_all_tests(timeout_seconds=30, monitor_seconds=15)
+        report = test_suite.test_runner.generate_report()
+        assert report.overall_status == TestStatus.PASSED, f"Tests failed: {report.summary}"
+    except Exception as e:
+        pytest.fail(f"MEXC WebSocket public integration test failed: {str(e)}")
+
+@pytest.mark.asyncio
+async def test_gateio_websocket_public_integration():
+    """Test Gate.io WebSocket public API integration."""
+    test_suite = WebSocketPublicIntegrationTest("gateio")
+    try:
+        await test_suite.run_all_tests(timeout_seconds=30, monitor_seconds=15)
+        report = test_suite.test_runner.generate_report()
+        assert report.overall_status == TestStatus.PASSED, f"Tests failed: {report.summary}"
+    except Exception as e:
+        pytest.fail(f"Gate.io WebSocket public integration test failed: {str(e)}")
 
 if __name__ == "__main__":
     asyncio.run(main())

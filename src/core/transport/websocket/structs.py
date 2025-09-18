@@ -4,7 +4,7 @@ from enum import IntEnum, Enum
 from typing import Dict, Optional, Any, List
 
 import msgspec
-from structs.exchange import Symbol
+from structs.common import Symbol
 
 
 class ConnectionState(Enum):
@@ -69,10 +69,11 @@ class ConnectionContext:
     headers: Dict[str, str]
     auth_required: bool = False
     auth_params: Optional[Dict[str, Any]] = None
-    ping_interval: int = 30
-    ping_timeout: int = 10
+    ping_interval: float = 30
+    ping_timeout: float = 10
     max_reconnect_attempts: int = 10
     reconnect_delay: float = 1.0
+    ping_message: Optional[str] = None
 
 
 @dataclass(frozen=True)

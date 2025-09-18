@@ -25,7 +25,7 @@ Architecture: Dependency injection with base class coordination
 
 from typing import List, Dict, Optional, Callable, Awaitable
 
-from structs.exchange import Symbol, Order, AssetBalance, Trade, Side, AssetName
+from structs.common import Symbol, Order, AssetBalance, Trade, Side, AssetName
 from core.config.structs import ExchangeConfig
 from core.cex.websocket.spot.base_ws_private import BaseExchangePrivateWebsocketInterface
 
@@ -38,7 +38,8 @@ class GateioWebsocketPrivate(BaseExchangePrivateWebsocketInterface):
         config: ExchangeConfig,
         order_handler: Optional[Callable[[Order], Awaitable[None]]] = None,
         balance_handler: Optional[Callable[[Dict[AssetName, AssetBalance]], Awaitable[None]]] = None,
-        trade_handler: Optional[Callable[[Trade], Awaitable[None]]] = None
+        trade_handler: Optional[Callable[[Trade], Awaitable[None]]] = None,
+        **kwargs
     ):
         """
         Initialize Gate.io private WebSocket with dependency injection.
@@ -55,7 +56,8 @@ class GateioWebsocketPrivate(BaseExchangePrivateWebsocketInterface):
             config=config,
             order_handler=order_handler,
             balance_handler=balance_handler,
-            trade_handler=trade_handler
+            trade_handler=trade_handler,
+            **kwargs
         )
         
         # State management for private subscriptions (for consistency)
@@ -111,7 +113,7 @@ class GateioWebsocketPrivate(BaseExchangePrivateWebsocketInterface):
     # Override default handlers if Gate.io needs specific behavior
     async def on_order_update(self, order: Order):
         """Gate.io-specific order update handler."""
-        self.logger.info(f"Gate.io order update: {order.order_id} - {order.status} - {order.amount_filled}/{order.amount}")
+        self.logger.info(f"Gate.io order update: {order.order_id} - {order.status} - {order.filled_quantity}/{order.quantity}")
 
     async def on_balance_update(self, balances: Dict[AssetName, AssetBalance]):
         """Gate.io-specific balance update handler."""
@@ -120,4 +122,4 @@ class GateioWebsocketPrivate(BaseExchangePrivateWebsocketInterface):
 
     async def on_trade_update(self, trade: Trade):
         """Gate.io-specific trade update handler."""
-        self.logger.info(f"Gate.io trade executed: {trade.side.name} {trade.amount} at {trade.price} ({'maker' if trade.is_maker else 'taker'})")
+        self.logger.info(f"Gate.io trade executed: {trade.side.name} {trade.quantity} at {trade.price} ({'maker' if trade.is_maker else 'taker'})")

@@ -23,7 +23,7 @@ from pathlib import Path
 project_root = Path(__file__).parent.parent.parent
 sys.path.insert(0, str(project_root))
 
-from structs.exchange import Symbol, Side, OrderStatus, ExchangeName
+from structs.common import Symbol, Side, OrderStatus, ExchangeName
 
 
 class LogLevel(IntEnum):

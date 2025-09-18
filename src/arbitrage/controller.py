@@ -17,7 +17,7 @@ from arbitrage.exchange_factory import ExchangeFactory
 from arbitrage.performance_monitor import PerformanceMonitor
 from arbitrage.shutdown_manager import ShutdownManager, ShutdownReason
 from arbitrage.symbol_resolver import SymbolResolver
-from core.cex.base.base_private_exchange import BasePrivateExchangeInterface
+from interfaces.cex.base.base_private_exchange import BasePrivateExchangeInterface
 
 logger = logging.getLogger(__name__)
 

@@ -2,7 +2,7 @@ from abc import ABC, abstractmethod
 from typing import Optional, Dict, Any, List, AsyncIterator, TYPE_CHECKING
 
 from core.transport.websocket.structs import ParsedMessage, MessageType
-from structs.exchange import OrderBook
+from structs.common import OrderBook
 
 if TYPE_CHECKING:
     from core.cex.services.symbol_mapper import SymbolMapperInterface
@@ -29,44 +29,6 @@ class MessageParser(ABC):
         """
         pass
 
-    @abstractmethod
-    def get_message_type(self, message: Dict[str, Any]) -> MessageType:
-        """
-        Fast message type detection for routing.
-
-        Args:
-            message: Parsed message dictionary
-
-        Returns:
-            MessageType for routing decisions
-        """
-        pass
-
-    @abstractmethod
-    async def parse_orderbook_message(
-            self,
-            message: Dict[str, Any]
-    ) -> Optional[OrderBook]:
-        """
-        Parse orderbook-specific message.
-
-        Args:
-            message: Parsed message dictionary
-
-        Returns:
-            OrderBook instance if valid, None otherwise
-        """
-        pass
-
-    @abstractmethod
-    def supports_batch_parsing(self) -> bool:
-        """
-        Check if parser supports batch message processing.
-
-        Returns:
-            True if batch parsing supported
-        """
-        pass
 
     async def parse_batch_messages(
             self,

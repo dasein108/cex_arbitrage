@@ -105,7 +105,7 @@ High-performance REST client for MEXC public API endpoints.
 ##### Usage Example
 
 ```python
-from cex.mexc.rest.rest_public import MexcPublicSpotRest
+from cex.mexc.rest.mexc_rest_public import MexcPublicSpotRest
 
 public = MexcPublicSpotRest()
 

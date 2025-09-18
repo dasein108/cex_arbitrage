@@ -38,9 +38,9 @@ from dataclasses import dataclass
 
 from .structures import ArbitrageConfig
 
-from structs.exchange import AssetBalance
-from core.cex.base.base_private_exchange import BasePrivateExchangeInterface
-from structs.exchange import ExchangeName
+from structs.common import AssetBalance
+from interfaces.cex.base.base_private_exchange import BasePrivateExchangeInterface
+from structs.common import ExchangeName
 from core.exceptions.exchange import BalanceManagementError
 
 

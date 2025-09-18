@@ -4,7 +4,7 @@ import hashlib
 import hmac
 from typing import Dict, Any, Optional
 
-from core.cex.websocket import ConnectionStrategy
+from core.cex.websocket import ConnectionStrategy, ConnectionContext
 from core.config.structs import ExchangeConfig
 
 
@@ -20,16 +20,6 @@ class GateioPrivateConnectionStrategy(ConnectionStrategy):
         
         self.api_key = config.credentials.api_key
         self.secret_key = config.credentials.secret_key
-
-    async def get_connection_url(self) -> str:
-        """Get Gate.io private WebSocket URL."""
-        return "wss://api.gateio.ws/ws/v4/"
-
-    async def get_connection_headers(self) -> Dict[str, str]:
-        """Get connection headers for Gate.io private WebSocket."""
-        return {
-            "User-Agent": "HFTArbitrageEngine-Gateio/1.0"
-        }
 
     async def handle_connection_message(self, message: Dict[str, Any]) -> Optional[Dict[str, Any]]:
         """Handle Gate.io connection-specific messages."""
@@ -47,7 +37,7 @@ class GateioPrivateConnectionStrategy(ConnectionStrategy):
         """Private WebSocket requires authentication."""
         return True
 
-    async def authenticate(self, **kwargs) -> Optional[str]:
+    async def _generate_auth_message(self, **kwargs) -> Optional[str]:
         """Generate Gate.io WebSocket authentication message."""
         timestamp = str(int(time.time()))
         
@@ -77,10 +67,6 @@ class GateioPrivateConnectionStrategy(ConnectionStrategy):
         import msgspec
         return msgspec.json.encode(auth_message).decode()
 
-    def get_ping_interval(self) -> float:
-        """Get ping interval for Gate.io (30 seconds recommended)."""
-        return 30.0
-
     def get_ping_message(self) -> str:
         """Get ping message for Gate.io."""
         import msgspec
@@ -103,3 +89,39 @@ class GateioPrivateConnectionStrategy(ConnectionStrategy):
         if "auth" in error_str or "unauthorized" in error_str:
             return False
         return True
+
+    async def create_connection_context(self) -> ConnectionContext:
+        """Create connection configuration for Gate.io private WebSocket."""
+        return ConnectionContext(
+            url=self.config.websocket_url,
+            headers={"User-Agent": "HFTArbitrageEngine-Gateio/1.0"},
+            ping_interval=self.config.websocket.ping_interval,
+            ping_message=self.get_ping_message(),
+            auth_required=True
+        )
+
+    async def authenticate(self, websocket: Any) -> bool:
+        """Perform authentication for Gate.io private WebSocket."""
+        try:
+            auth_message = await self._generate_auth_message()
+            if auth_message:
+                await websocket.send(auth_message)
+                self.logger.debug("Sent authentication message to Gate.io")
+                return True
+            return False
+        except Exception as e:
+            self.logger.error(f"Authentication failed: {e}")
+            return False
+
+    async def handle_keep_alive(self, websocket: Any) -> None:
+        """Handle keep-alive operations for Gate.io."""
+        try:
+            ping_message = self.get_ping_message()
+            await websocket.send(ping_message)
+            self.logger.debug("Sent ping message to Gate.io")
+        except Exception as e:
+            self.logger.warning(f"Failed to send ping: {e}")
+
+    def should_reconnect(self, error: Exception) -> bool:
+        """Determine if should reconnect based on error type."""
+        return self.should_reconnect_on_error(error)

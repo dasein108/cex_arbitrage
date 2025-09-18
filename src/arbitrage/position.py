@@ -44,9 +44,9 @@ from .structures import (
     ArbitrageConfig,
 )
 
-from structs.exchange import Symbol, OrderSide
-from core.cex.base import BasePrivateExchangeInterface
-from structs.exchange import ExchangeName
+from structs.common import Symbol, OrderSide
+from interfaces.cex.base import BasePrivateExchangeInterface
+from structs.common import ExchangeName
 from core.exceptions.exchange import PositionManagementError
 
 

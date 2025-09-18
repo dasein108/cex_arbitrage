@@ -295,7 +295,7 @@ class ConfigurationManager:
         Returns:
             List of Symbol objects for exchange initialization
         """
-        from structs.exchange import Symbol, AssetName
+        from structs.common import Symbol, AssetName
         
         if not self._raw_pairs_config:
             logger.warning("No arbitrage pairs configured, using default symbols")

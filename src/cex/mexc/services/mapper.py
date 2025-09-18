@@ -7,10 +7,9 @@ Provides MEXC API format conversions and order transformations.
 HFT COMPLIANCE: Sub-microsecond mapping operations, zero-copy patterns.
 """
 
-from datetime import datetime
 from typing import Any
 
-from structs.exchange import (
+from structs.common import (
     Order, OrderId, OrderStatus, OrderType, Side,
     TimeInForce, KlineInterval, Trade, AssetBalance, AssetName
 )
@@ -107,11 +106,11 @@ class MexcMappings(BaseExchangeMappings):
             side=self.get_unified_side(mexc_order.side),
             order_type=self.get_unified_order_type(mexc_order.type),
             price=float(mexc_order.price),
-            amount=float(mexc_order.origQty),
-            amount_filled=float(mexc_order.executedQty),
+            quantity=float(mexc_order.origQty),
+            filled_quantity=float(mexc_order.executedQty),
             order_id=OrderId(str(mexc_order.orderId)),
             status=self.get_unified_order_status(mexc_order.status),
-            timestamp=datetime.fromtimestamp(mexc_order.transactTime / 1000) if mexc_order.transactTime else None,
+            timestamp=int(mexc_order.transactTime) if mexc_order.transactTime else None,
             fee=fee
         )
     
@@ -126,7 +125,7 @@ class MexcMappings(BaseExchangeMappings):
             Unified Order struct
         """
         # Import status and type mappings
-        from cex.mexc.ws.private.mapping import status_mapping, type_mapping
+        from cex.mexc.services.mapping import status_mapping, type_mapping
         
         # Convert MEXC symbol to unified Symbol
         symbol = self.pair_to_symbol(mexc_ws_order.symbol)
@@ -143,8 +142,8 @@ class MexcMappings(BaseExchangeMappings):
             side=side,
             order_type=order_type,
             price=float(mexc_ws_order.price),
-            amount=float(mexc_ws_order.quantity),
-            amount_filled=float(mexc_ws_order.filled_qty),
+            quantity=float(mexc_ws_order.quantity),
+            filled_quantity=float(mexc_ws_order.filled_qty),
             order_id=OrderId(mexc_ws_order.order_id),
             status=status,
             timestamp=mexc_ws_order.updateTime,
@@ -167,9 +166,11 @@ class MexcMappings(BaseExchangeMappings):
             return Trade(
                 symbol=self.pair_to_symbol(symbol_str),
                 price=float(mexc_ws_trade.p),
-                amount=float(mexc_ws_trade.q),
+                quantity=float(mexc_ws_trade.q),
+                quote_quantity=float(mexc_ws_trade.p) * float(mexc_ws_trade.q),
                 side=side,
                 timestamp=mexc_ws_trade.T,
+                trade_id="",
                 is_maker=False
             )
         else:  # Private trade data
@@ -177,9 +178,11 @@ class MexcMappings(BaseExchangeMappings):
             return Trade(
                 symbol=self.pair_to_symbol(symbol_str),
                 price=float(mexc_ws_trade.price),
-                amount=float(mexc_ws_trade.quantity),
+                quantity=float(mexc_ws_trade.quantity),
+                quote_quantity=float(mexc_ws_trade.price) * float(mexc_ws_trade.quantity),
                 side=side,
                 timestamp=mexc_ws_trade.timestamp,
+                trade_id="",
                 is_maker=mexc_ws_trade.is_maker
             )
     

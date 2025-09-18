@@ -4,7 +4,7 @@ from datetime import datetime
 
 from core.cex.websocket import MessageParser
 from core.cex.services import SymbolMapperInterface
-from structs.exchange import Trade, OrderBookEntry, Symbol, Side
+from structs.common import Trade, OrderBookEntry, Symbol, Side
 
 
 class GateioPublicMessageParser(MessageParser):
@@ -133,7 +133,8 @@ class GateioPublicMessageParser(MessageParser):
                 trade = Trade(
                     symbol=symbol,
                     price=float(trade_data.get("price", 0)),
-                    amount=float(trade_data.get("amount", 0)),
+                    quantity=float(trade_data.get("amount", 0)),
+                    quote_quantity=float(trade_data.get("price", 0)) * float(trade_data.get("amount", 0)),
                     side=side,
                     timestamp=int(trade_data.get("create_time", 0)),
                     trade_id=str(trade_data.get("id", "")),

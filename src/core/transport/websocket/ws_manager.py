@@ -12,7 +12,7 @@ import asyncio
 import time
 from typing import List, Dict, Optional, Set, Callable, Any, Awaitable
 
-from structs.exchange import Symbol
+from structs.common import Symbol
 from core.transport.websocket.strategies.strategy_set import WebSocketStrategySet
 from .structs import MessageType, SubscriptionAction, ParsedMessage, WebSocketManagerConfig, \
     PerformanceMetrics
@@ -196,8 +196,7 @@ class WebSocketManager:
         while True:
             try:
                 # Batch processing optimization
-                if (self.manager_config.batch_processing_enabled and 
-                    self.strategies.message_parser.supports_batch_parsing()):
+                if self.manager_config.batch_processing_enabled:
                     
                     await self._process_message_batch()
                 else:

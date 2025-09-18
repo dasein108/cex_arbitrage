@@ -1,7 +1,7 @@
 from abc import ABC
 from typing import Callable, Optional, Awaitable, List
 from core.config.structs import ExchangeConfig
-from structs.exchange import Symbol, Trade, OrderBook
+from structs.common import Symbol, Trade, OrderBook
 from core.transport.websocket.structs import ConnectionState, MessageType
 from core.cex.websocket.ws_base import BaseExchangeWebsocketInterface
 
@@ -43,7 +43,7 @@ class BaseExchangePublicWebsocketInterface(BaseExchangeWebsocketInterface, ABC):
                 self.logger.debug("Received public heartbeat")
                 
             elif message_type == MessageType.SUBSCRIPTION_CONFIRM:
-                self.logger.info("Public subscription confirmed")
+                self.logger.info(f"Public subscription confirmed {parsed_message.raw_data}")
                 
             elif message_type == MessageType.ERROR:
                 self.logger.error(f"Public WebSocket error: {parsed_message.raw_data}")

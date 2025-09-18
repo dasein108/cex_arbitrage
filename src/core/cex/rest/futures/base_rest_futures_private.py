@@ -1,5 +1,5 @@
 from typing import List, Optional
-from structs.exchange import (
+from structs.common import (
     Symbol,
     Position
 )

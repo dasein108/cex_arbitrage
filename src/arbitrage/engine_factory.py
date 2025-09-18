@@ -10,7 +10,7 @@ HFT COMPLIANT: Fast engine instantiation with minimal overhead.
 import logging
 from typing import Dict, Type, Union
 from arbitrage.types import ArbitrageConfig
-from core.cex.base.base_private_exchange import BasePrivateExchangeInterface
+from interfaces.cex.base.base_private_exchange import BasePrivateExchangeInterface
 
 logger = logging.getLogger(__name__)
 

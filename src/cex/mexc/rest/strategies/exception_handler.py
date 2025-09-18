@@ -4,7 +4,7 @@ from core.exceptions.exchange import (
 )
 import msgspec
 from cex.mexc.structs.exchange import MexcErrorResponse
-from core.transport.rest import ExceptionHandlerStrategy
+from core.transport.rest.strategies.exception_handler import ExceptionHandlerStrategy
 
 ERROR_CODE_MAPPING = {
     -2011: ExchangeOrderCancelledOrNotExist,  # Order cancelled

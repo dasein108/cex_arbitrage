@@ -1,37 +1,7 @@
 from typing import Optional, Dict, Any
 from msgspec import Struct
 import msgspec
-from structs.exchange import ExchangeName
-
-class ExchangeCredentials(Struct, frozen=True):
-    """
-    Type-safe exchange API credentials.
-
-    Attributes:
-        api_key: Exchange API key
-        secret_key: Exchange secret key
-    """
-    api_key: str
-    secret_key: str
-
-    def is_configured(self) -> bool:
-        """Check if both credentials are provided."""
-        return bool(self.api_key) and bool(self.secret_key)
-
-    def get_preview(self) -> str:
-        """Get safe preview of credentials for logging."""
-        if not self.api_key:
-            return "Not configured"
-        if len(self.api_key) > 8:
-            return f"{self.api_key[:4]}...{self.api_key[-4:]}"
-        return "***"
-    
-    def validate(self) -> None:
-        """Validate credentials configuration."""
-        if self.api_key and not isinstance(self.api_key, str):
-            raise ValueError("api_key must be a string")
-        if self.secret_key and not isinstance(self.secret_key, str):
-            raise ValueError("secret_key must be a string")
+from structs.common import ExchangeName, ExchangeCredentials
 
 
 class NetworkConfig(Struct, frozen=True):

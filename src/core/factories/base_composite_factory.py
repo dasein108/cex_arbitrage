@@ -202,33 +202,31 @@ class BaseCompositeFactory(Generic[T], ExchangeFactoryInterface, ABC):
         """
         resolved = {}
         # Strip API type suffixes for base exchange name
-        base_exchange_name = exchange_name.replace('_PUBLIC', '').replace('_PRIVATE', '')
+        base_exchange_name = exchange_name.replace('_PUBLIC', '').replace('_PRIVATE', '').replace('_public', '').replace('_private', '')
         exchange_key = cls._normalize_exchange_key(base_exchange_name)
         
         try:
             # Import factories lazily to avoid circular dependencies
-            from core.cex.services.symbol_mapper.factory import ExchangeSymbolMapperFactory
             from core.cex.services.unified_mapper.factory import ExchangeMappingsFactory
             
             # Auto-resolve symbol mapper if available
             if 'symbol_mapper' not in context:
+                from core.cex.services.symbol_mapper.factory import ExchangeSymbolMapperFactory
+
                 try:
                     symbol_mapper = ExchangeSymbolMapperFactory.inject(exchange_key)
                     resolved['symbol_mapper'] = symbol_mapper
-                    
-                    # Auto-resolve exchange mappings if symbol mapper available
-                    if 'exchange_mappings' not in context:
-                        try:
-                            exchange_mappings = ExchangeMappingsFactory.inject(exchange_key)
-                            resolved['exchange_mappings'] = exchange_mappings
-                        except Exception:
-                            # Graceful fallback - exchange mappings not available
-                            pass
-                            
                 except Exception:
                     # Graceful fallback - symbol mapper not available
                     pass
-            
+            # Auto-resolve exchange mappings if symbol mapper available
+            if 'exchange_mappings' not in context:
+                try:
+                    exchange_mappings = ExchangeMappingsFactory.inject(exchange_key)
+                    resolved['exchange_mappings'] = exchange_mappings
+                except Exception:
+                    # Graceful fallback - exchange mappings not available
+                    pass
         except ImportError:
             # Graceful fallback - factories not available
             pass

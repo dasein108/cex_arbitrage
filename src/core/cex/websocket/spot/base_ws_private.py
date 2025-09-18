@@ -3,7 +3,7 @@ from abc import ABC
 from typing import Callable, Optional, Awaitable, List, Dict
 
 from core.config.structs import ExchangeConfig
-from structs.exchange import Order, AssetBalance, Trade, AssetName
+from structs.common import Order, AssetBalance, Trade, AssetName
 from core.transport.websocket.structs import MessageType
 from core.cex.websocket.ws_base import BaseExchangeWebsocketInterface
 
@@ -15,7 +15,8 @@ class BaseExchangePrivateWebsocketInterface(BaseExchangeWebsocketInterface, ABC)
                  config: ExchangeConfig,
                  order_handler: Optional[Callable[[Order], Awaitable[None]]] = None,
                  balance_handler: Optional[Callable[[Dict[AssetName, AssetBalance]], Awaitable[None]]] = None,
-                 trade_handler: Optional[Callable[[Trade], Awaitable[None]]] = None):
+                 trade_handler: Optional[Callable[[Trade], Awaitable[None]]] = None,
+                 **kwargs):
         """Initialize private WebSocket interface with dependency injection."""
         
         # Store handlers for message routing
@@ -98,7 +99,7 @@ class BaseExchangePrivateWebsocketInterface(BaseExchangeWebsocketInterface, ABC)
     # Default event handlers (can be overridden by subclasses)
     async def on_order_update(self, order: Order):
         """Default order update handler."""
-        self.logger.info(f"Order update: {order.order_id} - {order.status} - {order.amount_filled}/{order.amount}")
+        self.logger.info(f"Order update: {order.order_id} - {order.status} - {order.filled_quantity}/{order.quantity}")
 
     async def on_balance_update(self, balances: Dict[AssetName, AssetBalance]):
         """Default balance update handler."""
@@ -107,4 +108,4 @@ class BaseExchangePrivateWebsocketInterface(BaseExchangeWebsocketInterface, ABC)
 
     async def on_trade_update(self, trade: Trade):
         """Default trade update handler."""
-        self.logger.info(f"Trade executed: {trade.side.name} {trade.amount} at {trade.price} ({'maker' if trade.is_maker else 'taker'})")
+        self.logger.info(f"Trade executed: {trade.side.name} {trade.quantity} at {trade.price} ({'maker' if trade.is_maker else 'taker'})")

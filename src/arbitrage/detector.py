@@ -41,8 +41,8 @@ from .structures import (
 )
 from .aggregator import MarketDataAggregator
 
-from structs.exchange import Symbol, OrderBook
-from structs.exchange import ExchangeName
+from structs.common import Symbol, OrderBook
+from structs.common import ExchangeName
 from core.exceptions.exchange import ArbitrageDetectionError
 
 logger = logging.getLogger(__name__)
@@ -780,7 +780,7 @@ class OpportunityDetector:
 
             # Check WebSocket connection status
             if hasattr(exchange_instance, 'status'):
-                from structs.exchange import ExchangeStatus
+                from structs.common import ExchangeStatus
                 return exchange_instance.status == ExchangeStatus.ACTIVE
 
             return True  # Assume healthy if no status available

@@ -7,20 +7,17 @@ No authentication required - focuses on real-time market data streaming.
 HFT COMPLIANCE: Sub-10ms market data processing, zero-copy patterns.
 """
 
-import logging
 import time
-from typing import List, Dict, Optional, Set
+from typing import List, Dict, Optional
 
-from core.cex.base import BasePublicExchangeInterface
-from structs.exchange import (
-    OrderBook, Symbol, SymbolInfo, SymbolsInfo, 
+from interfaces.cex.base import BasePublicExchangeInterface
+from structs.common import (
+    OrderBook, Symbol, SymbolsInfo,
     ExchangeStatus, OrderbookUpdateType
 )
-from cex.mexc.ws.public.ws_public import MexcWebsocketPublic
-from cex.mexc.rest.rest_public import MexcPublicSpotRest
-from core.transport.websocket.ws_client import WebSocketConfig
+from cex.mexc.ws.mexc_ws_public import MexcWebsocketPublic
+from cex.mexc.rest.mexc_rest_public import MexcPublicSpotRest
 from core.cex.websocket import ConnectionState
-from core.exceptions.exchange import BaseExchangeError
 from core.config.structs import ExchangeConfig
 
 

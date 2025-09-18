@@ -1,33 +1,53 @@
 """
-MEXC Exchange Implementation - Updated with Refactored Futures
+MEXC Exchange Implementation
 
-High-performance MEXC cryptocurrency exchange client optimized for arbitrage trading.
-Implements the PublicExchangeInterface with ultra-low latency optimizations.
+High-performance MEXC cryptocurrency exchange client optimized for HFT arbitrage trading.
+Implements unified PublicExchangeInterface and PrivateExchangeInterface with ultra-low 
+latency optimizations and comprehensive trading capabilities.
 
-Features:
+Architecture:
+- Public Exchange: Market data operations (no authentication required)
+- Private Exchange: Trading operations (authentication required)  
+- REST Client: Ultra-simple REST client with connection pooling
+- WebSocket: Real-time data streaming with strategy pattern
+- Services: Auto-registered symbol mappers and utility services
+- Strategies: Exchange-specific REST and WebSocket strategies
+
+Key Features:
 - Sub-10ms response times for market data
-- Connection pooling and session reuse with UltraSimpleRestClient
-- Efficient data transformation with msgspec
+- Connection pooling and session reuse optimization
+- Efficient data transformation with msgspec structures
 - MEXC-specific rate limiting (1200 req/min)
-- Comprehensive unified exception handling
-- Refactored futures trading support with zero code duplication
+- Unified exception handling and error recovery
+- Futures trading support with zero code duplication
+- Auto-registration of services and strategies
 
-Modules:
-- mexc_public: Spot trading market data
-- mexc_futures_public: Refactored futures trading with UltraSimpleRestClient
-- websocket: Real-time WebSocket data streaming
+Performance Optimizations:
+- Zero-copy JSON parsing with msgspec
+- Object pooling for reduced allocation overhead
+- Persistent HTTP sessions with intelligent reuse
+- Pre-compiled symbol mappings for O(1) lookups
+- HFT-compliant caching policies (no real-time data caching)
 
-Refactoring Achievements:
-- ~230 lines removed from mexc_futures_public
-- Zero code duplication with unified REST client
-- Complete PublicExchangeInterface compliance
-- Enhanced performance with LRU caching
+Trading Capabilities:
+- Spot trading (public and private)
+- Futures trading (public market data)
+- Real-time orderbook and trade streaming
+- Order management and position tracking
+- Balance monitoring and updates
+
+The module follows SOLID principles with clear separation of concerns,
+dependency injection, and interface-driven design for maximum maintainability
+and extensibility.
 """
 
-from cex.mexc.rest.rest_public import MexcPublicSpotRest
-from cex.mexc.ws.public.ws_public import MexcWebsocketPublic
+# Core exchange implementations
 from .private_exchange import MexcPrivateExchange
 from .public_exchange import MexcPublicExchange
+
+# REST and WebSocket clients for direct access
+from cex.mexc.rest.mexc_rest_public import MexcPublicSpotRest
+from cex.mexc.ws.mexc_ws_public import MexcWebsocketPublic
 
 # Auto-register MEXC services (symbol mapper, mappings) 
 from . import services
@@ -35,9 +55,15 @@ from . import services
 # Auto-register MEXC REST strategies
 from .rest import strategies
 
+# Auto-register MEXC WebSocket strategies (triggers registration)
+from .ws import strategies as ws_strategies
+
 __all__ = [
+    # Main exchange interfaces
+    'MexcPrivateExchange',
+    'MexcPublicExchange',
+    
+    # Direct client access
     'MexcPublicSpotRest',
     'MexcWebsocketPublic',
-    "MexcPrivateExchange",
-    "MexcPublicExchange"
 ]

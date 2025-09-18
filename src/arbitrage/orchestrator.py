@@ -43,14 +43,14 @@ from .structures import (
     ArbitrageConfig,
 )
 
-from structs.exchange import (
+from structs.common import (
     Symbol,
     OrderSide,
     OrderType,
     Order,
 )
-from core.cex.base import BasePrivateExchangeInterface
-from structs.exchange import ExchangeName
+from interfaces.cex.base import BasePrivateExchangeInterface
+from structs.common import ExchangeName
 from core.exceptions.exchange import OrderExecutionError
 
 logger = logging.getLogger(__name__)

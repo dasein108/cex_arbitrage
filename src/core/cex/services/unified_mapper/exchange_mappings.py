@@ -11,7 +11,7 @@ HFT COMPLIANCE: Sub-microsecond mapping operations, zero-copy patterns.
 from abc import ABC, abstractmethod
 from typing import Dict, Any
 
-from structs.exchange import (
+from structs.common import (
     Symbol, Order, OrderStatus, OrderType, Side,
     TimeInForce, KlineInterval
 )
@@ -39,6 +39,14 @@ class ExchangeMappingsInterface(ABC):
     def to_pair(self, symbol: Symbol) -> str:
         """Convert unified Symbol to exchange pair string."""
         return self._symbol_mapper.to_pair(symbol)
+    
+    def is_supported_pair(self, pair: str) -> bool:
+        """Check if trading pair string is supported by this exchange."""
+        return self._symbol_mapper.is_supported_pair(pair)
+    
+    def validate_symbol(self, symbol: Symbol) -> bool:
+        """Check if symbol is supported by this exchange."""
+        return self._symbol_mapper.validate_symbol(symbol)
 
     # Order Status Mapping
     @abstractmethod

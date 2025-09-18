@@ -11,13 +11,13 @@ import logging
 import time
 from typing import List, Dict, Optional, Set
 
-from core.cex.base import BasePublicExchangeInterface
-from structs.exchange import (
+from interfaces.cex.base import BasePublicExchangeInterface
+from structs.common import (
     OrderBook, Symbol, SymbolInfo, SymbolsInfo, 
     ExchangeStatus, OrderbookUpdateType
 )
 from cex.gateio.ws.gateio_ws_public import GateioWebsocketPublic
-from cex.gateio.rest.rest_public import GateioPublicSpotRest
+from cex.gateio.rest.gateio_rest_public import GateioPublicSpotRest
 from core.transport.websocket.structs import ConnectionState
 from core.exceptions.exchange import BaseExchangeError
 from core.config.structs import ExchangeConfig
@@ -79,7 +79,7 @@ class GateioPublicExchange(BasePublicExchangeInterface):
         try:
             # TODO: Implement when REST client is updated
             # For now, create a placeholder orderbook
-            from structs.exchange import OrderBookEntry
+            from structs.common import OrderBookEntry
             
             placeholder_orderbook = OrderBook(
                 bids=[OrderBookEntry(price=0.0, size=0.0)],

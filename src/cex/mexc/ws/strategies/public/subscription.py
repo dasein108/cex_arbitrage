@@ -5,7 +5,7 @@ import msgspec
 
 from core.cex.services import SymbolMapperInterface
 from core.cex.websocket import SubscriptionStrategy, SubscriptionAction, SubscriptionContext
-from structs.exchange import Symbol
+from structs.common import Symbol
 
 
 class MexcPublicSubscriptionStrategy(SubscriptionStrategy):

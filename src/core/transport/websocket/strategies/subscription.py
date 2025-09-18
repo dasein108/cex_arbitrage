@@ -2,7 +2,7 @@ from abc import ABC, abstractmethod
 from typing import List, Dict, Any, Optional, Set
 
 from core.transport.websocket.structs import SubscriptionAction, SubscriptionContext
-from structs.exchange import Symbol
+from structs.common import Symbol
 
 
 class SubscriptionStrategy(ABC):
@@ -93,7 +93,7 @@ class SubscriptionStrategy(ABC):
         
         Args:
             **kwargs: Channel generation parameters:
-                - For public: symbols=[Symbol, ...] 
+                - For public: symbols=[Symbol, ...]
                 - For private: (no parameters needed)
         
         Returns:

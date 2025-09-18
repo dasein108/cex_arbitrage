@@ -1,4 +1,4 @@
-from structs.exchange import KlineInterval
+from structs.common import KlineInterval
 
 
 def get_interval_seconds(self, interval: KlineInterval) -> int:

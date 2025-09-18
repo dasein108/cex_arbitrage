@@ -37,15 +37,15 @@ from weakref import WeakSet
 
 from .structures import ArbitrageConfig
 
-from structs.exchange import (
+from structs.common import (
     Symbol,
     OrderBook,
     Ticker,
     Trade,
     SymbolInfo,
 )
-from core.cex.base import BasePublicExchangeInterface
-from structs.exchange import ExchangeName
+from interfaces.cex.base import BasePublicExchangeInterface
+from structs.common import ExchangeName
 from core.exceptions.exchange import BaseExchangeError as MarketDataError
 
 

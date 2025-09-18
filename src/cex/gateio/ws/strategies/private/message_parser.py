@@ -3,7 +3,7 @@ from typing import Dict, Any, Optional, List
 
 from core.cex.websocket import MessageParser
 from core.cex.services import SymbolMapperInterface
-from structs.exchange import Order, AssetBalance, AssetName, Trade, Symbol, Side, OrderStatus, OrderType
+from structs.common import Order, AssetBalance, AssetName, Trade, Symbol, Side, OrderStatus, OrderType
 
 
 class GateioPrivateMessageParser(MessageParser):
@@ -84,7 +84,6 @@ class GateioPrivateMessageParser(MessageParser):
                 
                 balance = AssetBalance(
                     asset=asset,
-                    available=available,
                     free=available,
                     locked=locked
                 )
@@ -130,9 +129,9 @@ class GateioPrivateMessageParser(MessageParser):
                     symbol=symbol,
                     side=side,
                     order_type=order_type,
-                    amount=float(order_data.get("amount", "0")),
+                    quantity=float(order_data.get("amount", "0")),
                     price=float(order_data.get("price", "0")) if order_data.get("price") else None,
-                    amount_filled=float(order_data.get("filled_amount", "0")),
+                    filled_quantity=float(order_data.get("filled_amount", "0")),
                     status=status,
                     timestamp=int(float(order_data.get("create_time", "0")) * 1000)
                 )
@@ -164,7 +163,8 @@ class GateioPrivateMessageParser(MessageParser):
                 trade = Trade(
                     symbol=symbol,
                     price=float(trade_data.get("price", "0")),
-                    amount=float(trade_data.get("amount", "0")),
+                    quantity=float(trade_data.get("amount", "0")),
+                    quote_quantity=float(trade_data.get("price", "0")) * float(trade_data.get("amount", "0")),
                     side=side,
                     timestamp=int(float(trade_data.get("create_time", "0")) * 1000),
                     trade_id=str(trade_data.get("id", "")),

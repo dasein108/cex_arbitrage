@@ -1,5 +1,5 @@
 from core.cex.services.symbol_mapper.base_symbol_mapper import SymbolMapperInterface
-from structs.exchange import Symbol, AssetName
+from structs.common import Symbol, AssetName
 
 
 class MexcSymbolMapper(SymbolMapperInterface):

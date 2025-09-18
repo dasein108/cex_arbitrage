@@ -32,8 +32,8 @@ project_root = Path(__file__).parent.parent  # Now points to src/
 sys.path.insert(0, str(project_root))
 
 # Direct imports from src directory
-from structs.exchange import Symbol, SymbolInfo, AssetName, ExchangeName
-from cex.mexc.rest.rest_public import MexcPublicSpotRest
+from structs.common import Symbol, SymbolInfo, AssetName, ExchangeName
+from cex.mexc.rest.mexc_rest_public import MexcPublicSpotRest
 from cex.gateio.rest.gateio_public import GateioPublicExchangeSpotRest
 from cex.gateio.rest.gateio_futures_public import GateioPublicFuturesExchangeSpotRest
 from core.exceptions.exchange import BaseExchangeError
