@@ -380,6 +380,7 @@ class MexcPublicMessageParser(MessageParser):
             elif message_type == MessageType.SUBSCRIPTION_CONFIRM:
                 return ParsedMessage(
                     message_type=MessageType.SUBSCRIPTION_CONFIRM,
+                    channel=msg.get('c'),  # Include channel if available
                     raw_data=msg
                 )
 
@@ -421,6 +422,7 @@ class MexcPublicMessageParser(MessageParser):
                 return ParsedMessage(
                     message_type=MessageType.TRADE,
                     symbol=symbol,
+                    channel=msg_type,  # Include protobuf message type as channel
                     data=trades
                 )
 
@@ -431,6 +433,7 @@ class MexcPublicMessageParser(MessageParser):
                 return ParsedMessage(
                     message_type=MessageType.ORDERBOOK,
                     symbol=symbol,
+                    channel=msg_type,  # Include protobuf message type as channel
                     data=orderbook
                 )
 
@@ -441,6 +444,7 @@ class MexcPublicMessageParser(MessageParser):
                 return ParsedMessage(
                     message_type=MessageType.BOOK_TICKER,
                     symbol=symbol,
+                    channel=msg_type,  # Include protobuf message type as channel
                     data=book_ticker
                 )
 

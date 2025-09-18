@@ -167,10 +167,18 @@ class BaseExchangePublicWebsocketInterface(ABC):
                             await self._book_ticker_handler(message.data.symbol, message.data)
                         
             elif message.message_type == MessageType.SUBSCRIPTION_CONFIRM:
-                self.logger.debug("Subscription confirmed")
+                # Use channel from ParsedMessage
+                if message.channel:
+                    self.logger.debug(f"Subscription confirmed for channel: {message.channel}")
+                else:
+                    self.logger.debug("Subscription confirmed")
                 
             elif message.message_type == MessageType.ERROR:
-                self.logger.error(f"WebSocket error: {message.data}")
+                # Use channel from ParsedMessage for better error context
+                if message.channel:
+                    self.logger.error(f"WebSocket error on channel '{message.channel}': {message.data}")
+                else:
+                    self.logger.error(f"WebSocket error: {message.data}")
                 
         except Exception as e:
             self.logger.error(f"Error handling parsed message: {e}")

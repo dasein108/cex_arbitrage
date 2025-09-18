@@ -49,10 +49,18 @@ class BaseExchangePrivateWebsocketInterface(BaseExchangeWebsocketInterface, ABC)
                 self.logger.debug("Received private heartbeat")
                 
             elif message_type == MessageType.SUBSCRIPTION_CONFIRM:
-                self.logger.info("Private subscription confirmed")
+                # Use channel from ParsedMessage
+                if parsed_message.channel:
+                    self.logger.info(f"Private subscription confirmed for channel: {parsed_message.channel}")
+                else:
+                    self.logger.info("Private subscription confirmed")
                 
             elif message_type == MessageType.ERROR:
-                self.logger.error(f"Private WebSocket error: {parsed_message.raw_data}")
+                # Use channel from ParsedMessage for better error context
+                if parsed_message.channel:
+                    self.logger.error(f"Private WebSocket error on channel '{parsed_message.channel}': {parsed_message.raw_data}")
+                else:
+                    self.logger.error(f"Private WebSocket error: {parsed_message.raw_data}")
             else:
                 self.logger.debug(f"Unhandled message type: {message_type}")
 

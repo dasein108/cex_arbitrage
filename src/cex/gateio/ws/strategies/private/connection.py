@@ -2,6 +2,7 @@ import logging
 import time
 import hashlib
 import hmac
+import asyncio
 from typing import Dict, Any, Optional
 
 from core.cex.websocket import ConnectionStrategy, ConnectionContext
@@ -126,6 +127,7 @@ class GateioPrivateConnectionStrategy(ConnectionStrategy):
                 import msgspec
                 auth_dict = msgspec.json.decode(auth_message)
                 await websocket.send_message(auth_dict)
+                await asyncio.sleep(1)  # Wait a moment for auth to process *MANDATORY*
                 self.logger.debug("Sent authentication message to Gate.io")
                 return True
             return False

@@ -60,6 +60,9 @@ class GateioPublicMessageParser(MessageParser):
 
     async def _parse_subscription_response(self, message: Dict[str, Any]) -> ParsedMessage:
         """Parse Gate.io subscription response."""
+        # Get channel name from message
+        channel = message.get("channel", "")
+        
         # Check for errors first
         error = message.get("error")
         if error:
@@ -68,6 +71,7 @@ class GateioPublicMessageParser(MessageParser):
             self.logger.error(f"Gate.io subscription error {error_code}: {error_msg}")
             return ParsedMessage(
                 message_type=MessageType.ERROR,
+                channel=channel,
                 data={"error_code": error_code, "error_message": error_msg},
                 raw_data=message
             )
@@ -77,16 +81,18 @@ class GateioPublicMessageParser(MessageParser):
         status = result.get("status")
         
         if status == "success":
-            self.logger.debug("Gate.io subscription successful")
+            self.logger.debug(f"Gate.io subscription successful for channel: {channel}")
             return ParsedMessage(
                 message_type=MessageType.SUBSCRIPTION_CONFIRM,
+                channel=channel,
                 data={"action": "subscribe", "status": "success"},
                 raw_data=message
             )
         elif status == "fail":
-            self.logger.error("Gate.io subscription failed")
+            self.logger.error(f"Gate.io subscription failed for channel: {channel}")
             return ParsedMessage(
                 message_type=MessageType.ERROR,
+                channel=channel,
                 data={"action": "subscribe", "status": "fail"},
                 raw_data=message
             )
@@ -94,6 +100,7 @@ class GateioPublicMessageParser(MessageParser):
             self.logger.warning(f"Unknown Gate.io subscription status: {status}")
             return ParsedMessage(
                 message_type=MessageType.UNKNOWN,
+                channel=channel,
                 raw_data=message
             )
 
