@@ -7,6 +7,33 @@ environment:
   debug: true
   log_level: DEBUG  # CRITICAL, ERROR, WARNING, INFO, DEBUG
 
+# Database configuration
+database:
+  host: "${POSTGRES_HOST}"          # Set via environment variable POSTGRES_HOST (default: localhost)
+  port: "${POSTGRES_PORT}"          # Set via environment variable POSTGRES_PORT (default: 5432)
+  database: "${POSTGRES_DB}"        # Set via environment variable POSTGRES_DB (default: cex_arbitrage)
+  username: "${POSTGRES_USER}"      # Set via environment variable POSTGRES_USER
+  password: "${POSTGRES_PASSWORD}"  # Set via environment variable POSTGRES_PASSWORD
+  
+  # Connection Pool Settings (HFT-optimized)
+  pool:
+    min_size: 5                     # Minimum connections in pool
+    max_size: 20                    # Maximum connections in pool  
+    max_queries: 50000              # Max queries per connection before refresh
+    max_inactive_connection_lifetime: 300.0  # 5 minutes
+    command_timeout: 10.0           # Command timeout in seconds
+    
+  # Performance Settings
+  performance:
+    statement_cache_size: 1024      # Prepared statement cache
+    enable_asyncpg_record: true     # Use asyncpg.Record for better performance
+    enable_connection_logging: false # Disable for production HFT
+    
+  # Migration Settings  
+  migrations:
+    enabled: true                   # Enable automatic migrations on startup
+    directory: "db/migrations"      # Migration files directory
+
 # Exchange API settings - Enhanced with RestTransportConfig
 exchanges:
   mexc:
