@@ -109,9 +109,17 @@ rate_limiting:
 # WebSocket settings
 websocket:
   connect_timeout: 10.0      # seconds
-  heartbeat_interval: 30.0   # seconds
+  ping_interval: 20.0        # WebSocket ping interval (built-in mechanism)
+  ping_timeout: 10.0         # WebSocket ping timeout
+  heartbeat_interval: 30.0   # Custom heartbeat interval for exchange-specific ping
   max_reconnect_attempts: 10
-  reconnect_delay: 5.0       # seconds
+  reconnect_delay: 1.0       # Faster reconnection for 1005 errors
+  reconnect_backoff: 2.0     # Exponential backoff multiplier
+  max_reconnect_delay: 30.0  # Maximum delay between reconnects
+  close_timeout: 5.0         # Connection close timeout
+  max_message_size: 1048576  # 1MB max message size
+  max_queue_size: 1000       # Max message queue size
+  enable_compression: true   # Enable compression for performance
 
 # HFT Arbitrage Engine Configuration
 arbitrage:
@@ -270,7 +278,7 @@ data_collector:
   enabled: true
   snapshot_interval: 1  # seconds
   analytics_interval: 10  # seconds for summary logging
-  exchanges: ["mexc", "gateio"]
+  exchanges: ["mexc"] # , "gateio"
   
   # Analytics configuration
   analytics:

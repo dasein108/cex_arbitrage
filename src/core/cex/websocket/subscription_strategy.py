@@ -101,21 +101,7 @@ class SubscriptionStrategy(ABC):
         elif action == SubscriptionAction.UNSUBSCRIBE:
             # Track what we unsubscribed from
             pass
-    
-    async def restore_subscriptions(self, manager: Any) -> None:
-        """
-        Restore subscriptions after reconnection.
-        
-        Called by manager after reconnection to restore previous state.
-        
-        Args:
-            manager: WebSocket manager instance for sending messages
-        """
-        # Default implementation - subclasses should override
-        # Example:
-        # if self._active_subscriptions:
-        #     await manager.subscribe(...)
-        pass
+
     
     def should_resubscribe_on_reconnect(self) -> bool:
         """

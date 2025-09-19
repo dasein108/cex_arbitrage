@@ -80,6 +80,9 @@ class WebSocketManager:
             maxsize=self.manager_config.max_pending_messages
         )
         self._processing_task: Optional[asyncio.Task] = None
+        self._heartbeat_task: Optional[asyncio.Task] = None
+        self._reconnect_task: Optional[asyncio.Task] = None
+        self._is_reconnecting = False
         
 
         self.logger.info("WebSocket manager initialized with clean architecture")
@@ -115,6 +118,11 @@ class WebSocketManager:
             
             # Start message processing
             self._processing_task = asyncio.create_task(self._process_messages())
+            
+            # Start custom heartbeat if needed (in addition to built-in ping/pong)
+            if hasattr(self.config, 'heartbeat_interval') and self.config.heartbeat_interval > 0:
+                self._heartbeat_task = asyncio.create_task(self._heartbeat_loop())
+                self.logger.info(f"Started custom heartbeat with {self.config.heartbeat_interval}s interval")
             
             self.logger.info("WebSocket manager initialized successfully")
             
@@ -319,12 +327,101 @@ class WebSocketManager:
     async def _on_error(self, error: Exception) -> None:
         """Handle WebSocket errors."""
         self.metrics.error_count += 1
-        self.logger.error(f"WebSocket error: {error}")
+        
+        # Check for WebSocket 1005 error (abnormal closure)
+        error_str = str(error)
+        if "1005" in error_str or "no status received" in error_str:
+            self.logger.warning(f"WebSocket 1005 error (abnormal closure): {error}")
+        else:
+            self.logger.error(f"WebSocket error: {error}")
         
         # Let strategy decide on reconnection
         if self.strategies.connection_strategy.should_reconnect(error):
             self.metrics.reconnection_count += 1
-            self.logger.info("Will attempt reconnection")
+            
+            # For 1005 errors, log as info since they're often network-related
+            if "1005" in error_str or "no status received" in error_str:
+                self.logger.info("Will attempt reconnection after 1005 error (abnormal closure)")
+            else:
+                self.logger.info("Will attempt reconnection")
+            
+            # Trigger reconnection if not already reconnecting
+            if not self._is_reconnecting and self.connection_state != ConnectionState.CONNECTING:
+                self._reconnect_task = asyncio.create_task(self._trigger_reconnect())
+    
+    async def _heartbeat_loop(self) -> None:
+        """
+        Custom heartbeat loop for exchanges that need custom ping messages.
+        
+        This works alongside the built-in WebSocket ping/pong mechanism.
+        Managed at the manager level for better control and strategy integration.
+        """
+        try:
+            while self.is_connected() and self.ws_client:
+                await asyncio.sleep(self.config.heartbeat_interval)
+                
+                if not self.is_connected() or not self.ws_client:
+                    break
+                
+                # Use connection strategy to handle keep-alive if available
+                if hasattr(self.strategies.connection_strategy, 'handle_keep_alive'):
+                    try:
+                        # Pass the WebSocket connection to strategy for custom ping
+                        await self.strategies.connection_strategy.handle_keep_alive(self.ws_client._ws)
+                        self.logger.debug("Custom heartbeat sent via strategy")
+                    except Exception as e:
+                        self.logger.warning(f"Custom heartbeat failed: {e}")
+                        # Continue - built-in ping/pong will handle connection health
+                else:
+                    # If no custom keep-alive, send a generic ping if supported
+                    try:
+                        if self.ws_client and self.ws_client._ws:
+                            # Some exchanges expect custom ping messages
+                            ping_message = {"method": "ping"}  # Generic ping format
+                            await self.ws_client.send_message(ping_message)
+                            self.logger.debug("Generic heartbeat ping sent")
+                    except Exception as e:
+                        self.logger.debug(f"Generic heartbeat not supported or failed: {e}")
+                        # This is OK - built-in WebSocket ping/pong is still active
+                        
+        except asyncio.CancelledError:
+            self.logger.debug("Custom heartbeat loop cancelled")
+        except Exception as e:
+            self.logger.error(f"Custom heartbeat loop error: {e}")
+    
+    async def _trigger_reconnect(self) -> None:
+        """Trigger WebSocket reconnection."""
+        if self._is_reconnecting:
+            self.logger.debug("Already reconnecting, skipping trigger")
+            return
+            
+        try:
+            self._is_reconnecting = True
+            self.logger.info("Triggering WebSocket reconnection...")
+            
+            # Cancel heartbeat task if running
+            if self._heartbeat_task and not self._heartbeat_task.done():
+                self._heartbeat_task.cancel()
+                try:
+                    await self._heartbeat_task
+                except asyncio.CancelledError:
+                    pass
+            
+            # Restart the WebSocket client
+            if self.ws_client:
+                await self.ws_client.restart()
+                
+                # Restart heartbeat if needed after reconnection
+                if hasattr(self.config, 'heartbeat_interval') and self.config.heartbeat_interval > 0:
+                    self._heartbeat_task = asyncio.create_task(self._heartbeat_loop())
+                    self.logger.debug("Restarted heartbeat after reconnection")
+                    
+            self.logger.info("WebSocket reconnection triggered successfully")
+            
+        except Exception as e:
+            self.logger.error(f"Failed to trigger reconnection: {e}")
+        finally:
+            self._is_reconnecting = False
     
     def is_connected(self) -> bool:
         """Check if WebSocket is connected."""
@@ -361,6 +458,22 @@ class WebSocketManager:
                 self._processing_task.cancel()
                 try:
                     await self._processing_task
+                except asyncio.CancelledError:
+                    pass
+            
+            # Cancel heartbeat task
+            if self._heartbeat_task and not self._heartbeat_task.done():
+                self._heartbeat_task.cancel()
+                try:
+                    await self._heartbeat_task
+                except asyncio.CancelledError:
+                    pass
+            
+            # Cancel reconnect task if running
+            if self._reconnect_task and not self._reconnect_task.done():
+                self._reconnect_task.cancel()
+                try:
+                    await self._reconnect_task
                 except asyncio.CancelledError:
                     pass
             

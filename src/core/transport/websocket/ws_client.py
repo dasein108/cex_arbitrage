@@ -268,6 +268,13 @@ class WebsocketClient:
                         self.logger.warning("No message handler configured - message dropped")
                     
                 except Exception as e:
+                    # Check for WebSocket 1005 error (abnormal closure)
+                    error_str = str(e)
+                    if "1005" in error_str or "no status received" in error_str:
+                        self.logger.warning("WebSocket 1005 error detected - abnormal closure: %s", e)
+                        # Break out of read loop to trigger reconnection
+                        break
+                    
                     # Avoid string formatting in hot path - use lazy logging
                     if self.logger.isEnabledFor(logging.ERROR):
                         self.logger.error("Error processing message: %s", e)
@@ -288,6 +295,13 @@ class WebsocketClient:
         """Handle connection errors with pre-computed exponential backoff"""
         await self._update_state(ConnectionState.ERROR)
 
+        # Special handling for WebSocket 1005 errors (abnormal closure)
+        error_str = str(error)
+        if "1005" in error_str or "no status received" in error_str:
+            self.logger.info("WebSocket 1005 error - connection closed abnormally, will reconnect immediately")
+            # Reset reconnect attempts for 1005 errors as they're often network-related
+            self._reconnect_attempts = 0
+
         if self._reconnect_attempts >= self.config.max_reconnect_attempts:
             if self.logger.isEnabledFor(logging.ERROR):
                 self.logger.error("Max reconnection attempts reached for %s", self.url_name)
@@ -296,6 +310,10 @@ class WebsocketClient:
         
         # Use pre-computed backoff delay - no power calculation needed
         delay = self._cached_backoff_delays[self._reconnect_attempts]
+        
+        # For 1005 errors, use shorter delay
+        if "1005" in error_str or "no status received" in error_str:
+            delay = min(delay, 2.0)  # Max 2 seconds for 1005 errors
         
         self._reconnect_attempts += 1
 

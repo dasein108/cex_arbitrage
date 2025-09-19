@@ -32,11 +32,18 @@ class MexcPublicConnectionStrategy(ConnectionStrategy):
 
     async def handle_keep_alive(self, websocket: Any) -> None:
         """Handle MEXC keep-alive (ping/pong)."""
-        # MEXC handles keep-alive automatically
+        # MEXC uses WebSocket built-in ping/pong mechanism
+        # The websocket library handles this automatically with ping_interval/ping_timeout
+        # No custom ping messages needed
         pass
 
     def should_reconnect(self, error: Exception) -> bool:
         """Determine if reconnection should be attempted."""
+        # Always reconnect for WebSocket 1005 errors (abnormal closure)
+        error_str = str(error)
+        if "1005" in error_str or "no status received" in error_str:
+            return True
+        
         # Reconnect on most errors except authentication failures
         return not isinstance(error, (PermissionError, ValueError))
 

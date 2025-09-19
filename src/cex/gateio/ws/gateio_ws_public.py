@@ -79,7 +79,7 @@ class GateioWebsocketPublic(BaseExchangePublicWebsocketInterface):
             
 
         # Use unified subscription method with symbols parameter
-        await self._ws_manager.add_subscription(symbols=symbols)
+        await self._ws_manager.subscribe(symbols=symbols)
         
         # Move from pending to active on successful subscription
         self._active_symbols.update(symbols)
@@ -97,7 +97,7 @@ class GateioWebsocketPublic(BaseExchangePublicWebsocketInterface):
             return
         
         # Use unified subscription removal method with symbols parameter
-        await self._ws_manager.remove_subscription(symbols=symbols_to_remove)
+        await self._ws_manager.unsubscribe(symbols=symbols_to_remove)
         
         # Remove from active state
         self._active_symbols.difference_update(symbols_to_remove)

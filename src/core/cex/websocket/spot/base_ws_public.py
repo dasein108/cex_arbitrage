@@ -8,7 +8,7 @@ HFT COMPLIANCE: Optimized for sub-millisecond message processing.
 """
 
 import logging
-from typing import List, Dict, Optional, Callable, Awaitable
+from typing import List, Dict, Optional, Callable, Awaitable, Set
 from abc import ABC
 
 from structs.common import Symbol, OrderBook, Trade, BookTicker
@@ -66,7 +66,10 @@ class BaseExchangePublicWebsocketInterface(ABC):
             message_handler=self._handle_parsed_message,
             state_change_handler=self._handle_state_change
         )
-        
+
+        # State management for symbols (moved from WebSocket manager)
+        self._active_symbols: Set[Symbol] = set()
+
         self.logger.info(f"Initialized {self.exchange_name} public WebSocket with strategy-driven architecture")
     
     async def initialize(self, symbols: List[Symbol]) -> None:
@@ -97,27 +100,38 @@ class BaseExchangePublicWebsocketInterface(ABC):
         
         try:
             await self._ws_manager.subscribe(symbols=symbols)
-            self.logger.info(f"Added {len(symbols)} symbols to subscription")
+
+            # Move from pending to active on successful subscription
+            self._active_symbols.update(symbols)
+
+            self.logger.info(f"Added {len(symbols)} symbols: {[str(s) for s in symbols]}")
+
         except Exception as e:
             self.logger.error(f"Failed to add symbols: {e}")
             raise
-    
+
     async def remove_symbols(self, symbols: List[Symbol]) -> None:
-        """
-        Remove symbols from subscription.
-        
-        Args:
-            symbols: Symbols to remove
-        """
+        """Remove symbols from subscription using enhanced symbol-channel mapping."""
         if not symbols:
             return
-        
-        try:
-            await self._ws_manager.unsubscribe(symbols=symbols)
-            self.logger.info(f"Removed {len(symbols)} symbols from subscription")
-        except Exception as e:
-            self.logger.error(f"Failed to remove symbols: {e}")
-    
+
+        # Filter to only remove symbols we actually have
+        symbols_to_remove = [s for s in symbols if s in self._active_symbols]
+        if not symbols_to_remove:
+            return
+
+        # Use unified subscription removal method with symbols parameter
+        await self._ws_manager.unsubscribe(symbols=symbols_to_remove)
+
+        # Remove from active state
+        self._active_symbols.difference_update(symbols_to_remove)
+
+        self.logger.info(f"Removed {len(symbols_to_remove)} symbols: {[str(s) for s in symbols_to_remove]}")
+
+    def get_active_symbols(self) -> Set[Symbol]:
+        """Get currently active symbols."""
+        return self._active_symbols.copy()
+
     async def _handle_parsed_message(self, message: ParsedMessage) -> None:
         """
         Route parsed messages to appropriate handlers.
@@ -171,7 +185,7 @@ class BaseExchangePublicWebsocketInterface(ABC):
                 if message.channel:
                     self.logger.debug(f"Subscription confirmed for channel: {message.channel}")
                 else:
-                    self.logger.debug("Subscription confirmed")
+                    self.logger.debug(f"Subscription incorrect {message.raw_data}")
                 
             elif message.message_type == MessageType.ERROR:
                 # Use channel from ParsedMessage for better error context

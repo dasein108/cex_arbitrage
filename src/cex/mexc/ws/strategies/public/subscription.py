@@ -62,30 +62,27 @@ class MexcPublicSubscriptionStrategy(SubscriptionStrategy):
         
         # Build params with symbol-specific channels
         params = []
+        messages = []
         for symbol in symbols:
             try:
                 exchange_symbol = self.symbol_mapper.to_pair(symbol)
-                params.extend([
+                params= [
                     f"spot@public.aggre.depth.v3.api.pb@10ms@{exchange_symbol}",
                     f"spot@public.aggre.deals.v3.api.pb@10ms@{exchange_symbol}",
                     f"spot@public.aggre.bookTicker.v3.api.pb@100ms@{exchange_symbol}"
-                ])
+                ]
                 
                 self.logger.debug(f"Added channels for {symbol}: {exchange_symbol}")
-                
+                message = {
+                    "method": method,
+                    "params": params
+                }
+                messages.append(message)
             except Exception as e:
                 self.logger.error(f"Failed to convert symbol {symbol}: {e}")
                 continue
         
-        if not params:
-            self.logger.warning("No valid params created for subscription")
-            return []
+
+        self.logger.info(f"Created {method} {len(messages)}  messages")
         
-        message = {
-            "method": method,
-            "params": params
-        }
-        
-        self.logger.info(f"Created {method} message with {len(params)} channels for {len(symbols)} symbols")
-        
-        return [message]
+        return messages
