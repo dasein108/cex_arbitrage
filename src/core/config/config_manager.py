@@ -85,8 +85,9 @@ def guess_file_paths(file_name: str) -> list[Path]:
     Returns a list of possible .env file locations to search.
     """
     return [
+        Path(__file__).parent.parent.parent.parent / file_name,  # Project root
         Path(__file__).parent.parent.parent / file_name,  # Project root
-        Path(__file__).parent.parent / file_name,         # src directory
+        # Path(__file__).parent.parent / file_name,         # src directory
         Path.cwd() / file_name,                           # Current working directory
         Path.home() / file_name,                          # User home directory (fallback)
     ]

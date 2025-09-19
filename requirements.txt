@@ -41,3 +41,4 @@ memory-profiler==0.61.0  # Memory usage monitoring
 pandas
 pyyaml
 zmq
+asyncpg

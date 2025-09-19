@@ -41,10 +41,9 @@ CREATE INDEX IF NOT EXISTS idx_book_ticker_created_at
 CREATE INDEX IF NOT EXISTS idx_book_ticker_latest 
     ON book_ticker_snapshots(exchange, symbol_base, symbol_quote, timestamp DESC);
 
--- Partial index for recent data (last 24 hours)
-CREATE INDEX IF NOT EXISTS idx_book_ticker_recent 
-    ON book_ticker_snapshots(exchange, symbol_base, symbol_quote, timestamp DESC)
-    WHERE timestamp > NOW() - INTERVAL '24 hours';
+-- Note: Partial indexes with NOW() are not supported as NOW() is not immutable
+-- Instead, we rely on the idx_book_ticker_latest index for recent data queries
+-- Applications should use explicit timestamp filters in WHERE clauses
 
 -- Add table comment for documentation
 COMMENT ON TABLE book_ticker_snapshots IS 

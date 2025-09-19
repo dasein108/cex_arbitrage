@@ -264,3 +264,16 @@ arbitrage:
       max_exposure_usd: 7000
       is_enabled: true
       priority: 12
+
+# Data Collector Configuration
+data_collector:
+  enabled: true
+  snapshot_interval: 1  # seconds
+  analytics_interval: 10  # seconds for summary logging
+  exchanges: ["mexc", "gateio"]
+  
+  # Analytics configuration
+  analytics:
+    arbitrage_threshold: 0.05  # 5% minimum arbitrage opportunity to log
+    volume_threshold: 1000  # USD minimum volume threshold
+    spread_alert_threshold: 0.1  # 10% spread alert threshold

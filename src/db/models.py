@@ -21,8 +21,7 @@ class BookTickerSnapshot(msgspec.Struct):
     Optimized for high-frequency storage and retrieval.
     """
     # Database fields
-    id: Optional[int] = None
-    
+
     # Exchange and symbol
     exchange: str
     symbol_base: str
@@ -37,7 +36,8 @@ class BookTickerSnapshot(msgspec.Struct):
     # Timing
     timestamp: datetime
     created_at: Optional[datetime] = None
-    
+    id: Optional[int] = None
+
     @classmethod
     def from_symbol_and_data(
         cls,
