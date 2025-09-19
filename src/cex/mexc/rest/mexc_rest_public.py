@@ -196,7 +196,7 @@ class MexcPublicSpotRest(PublicExchangeSpotRestInterface):
         return OrderBook(
             bids=bids,
             asks=asks,
-            timestamp=time.time()
+            timestamp=int(time.time())
         )
     
     async def get_recent_trades(self, symbol: Symbol, limit: int = 500) -> List[Trade]:

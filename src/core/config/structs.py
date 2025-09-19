@@ -92,11 +92,16 @@ class WebSocketConfig(Struct, frozen=True):
     # Performance settings
     max_message_size: int = 1048576  # 1MB
     max_queue_size: int = 1000
-    heartbeat_interval: float = 30.0
+    heartbeat_interval: Optional[float] = 30.0
     
     # Optimization settings
     enable_compression: bool = True
     text_encoding: str = "utf-8"
+
+    @property
+    def has_heartbeat(self) -> bool:
+        """Check if heartbeat is enabled."""
+        return self.heartbeat_interval is not None and self.heartbeat_interval > 0
 
     def with_url(self, new_url: str) -> "WebSocketConfig":
         """Create a new config instance with updated URL in case of dynamic url."""

@@ -268,13 +268,6 @@ class WebsocketClient:
                         self.logger.warning("No message handler configured - message dropped")
                     
                 except Exception as e:
-                    # Check for WebSocket 1005 error (abnormal closure)
-                    error_str = str(e)
-                    if "1005" in error_str or "no status received" in error_str:
-                        self.logger.warning("WebSocket 1005 error detected - abnormal closure: %s", e)
-                        # Break out of read loop to trigger reconnection
-                        break
-                    
                     # Avoid string formatting in hot path - use lazy logging
                     if self.logger.isEnabledFor(logging.ERROR):
                         self.logger.error("Error processing message: %s", e)

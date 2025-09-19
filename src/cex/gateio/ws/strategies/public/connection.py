@@ -1,31 +1,80 @@
 import logging
+import time
+import msgspec
 from typing import Dict, Any, Optional
+from websockets import connect
+from websockets.client import WebSocketClientProtocol
 
 from core.cex.websocket import ConnectionStrategy, ConnectionContext
+from core.transport.websocket.strategies.connection import ReconnectionPolicy
 from core.config.structs import ExchangeConfig
+from core.exceptions.exchange import BaseExchangeError
 from structs.common import Symbol
 
 
 class GateioPublicConnectionStrategy(ConnectionStrategy):
-    """Gate.io public WebSocket connection strategy."""
+    """Gate.io public WebSocket connection strategy with direct connection handling."""
 
     def __init__(self, config: ExchangeConfig):
+        super().__init__()  # Initialize parent with _websocket = None
         self.config = config
         self.logger = logging.getLogger(f"{__name__}.{self.__class__.__name__}")
+        
+        # Gate.io-specific connection settings
+        self.websocket_url = config.websocket_url
+        self.ping_interval = 20  # Gate.io uses 20s ping interval
+        self.ping_timeout = 10
+        self.max_queue_size = 512
+        self.max_message_size = 1024 * 1024  # 1MB
 
-    async def handle_connection_message(self, message: Dict[str, Any]) -> Optional[Dict[str, Any]]:
-        """Handle Gate.io connection-specific messages."""
-        # Gate.io doesn't require special connection handling for public channels
-        # Just pass through all messages for processing
-        return message
-
-    def requires_authentication(self) -> bool:
-        """Public WebSocket doesn't require authentication."""
-        return False
-
-    async def authenticate(self, **kwargs) -> Optional[str]:
-        """Public WebSocket doesn't need authentication."""
-        return None
+    async def connect(self) -> WebSocketClientProtocol:
+        """
+        Establish Gate.io public WebSocket connection with Gate.io-specific optimizations.
+        
+        Gate.io requires custom ping messages and has different connection characteristics
+        compared to MEXC.
+        
+        Returns:
+            Raw WebSocket ClientProtocol
+            
+        Raises:
+            BaseExchangeError: If connection fails
+        """
+        try:
+            self.logger.info(f"Connecting to Gate.io WebSocket: {self.websocket_url}")
+            
+            # Gate.io-specific connection with custom headers
+            self._websocket = await connect(
+                self.websocket_url,
+                # Gate.io-specific optimizations
+                # extra_headers={
+                #     "User-Agent": "HFTArbitrageEngine-Gateio/1.0"
+                # },
+                ping_interval=self.ping_interval,
+                ping_timeout=self.ping_timeout,
+                max_queue=self.max_queue_size,
+                # Gate.io works well with compression
+                compression="deflate",
+                max_size=self.max_message_size,
+                write_limit=2 ** 20,  # 1MB write buffer
+            )
+            
+            self.logger.info("Gate.io WebSocket connected successfully")
+            return self._websocket
+            
+        except Exception as e:
+            self.logger.error(f"Failed to connect to Gate.io WebSocket: {e}")
+            raise BaseExchangeError(500, f"Gate.io WebSocket connection failed: {str(e)}")
+    
+    def get_reconnection_policy(self) -> ReconnectionPolicy:
+        """Get Gate.io-specific reconnection policy."""
+        return ReconnectionPolicy(
+            max_attempts=15,  # Gate.io is more stable, allow more attempts
+            initial_delay=2.0,  # Longer initial delay
+            backoff_factor=1.5,  # Gentler backoff
+            max_delay=30.0,  # Lower max delay
+            reset_on_1005=False  # Gate.io 1005 errors are less common, don't reset
+        )
 
     def get_ping_message(self) -> str:
         """Get ping message for Gate.io."""
@@ -49,33 +98,63 @@ class GateioPublicConnectionStrategy(ConnectionStrategy):
         return True
 
     async def create_connection_context(self) -> ConnectionContext:
-        """Create connection configuration for Gate.io public WebSocket."""
+        """Create Gate.io public WebSocket connection context (legacy support)."""
         return ConnectionContext(
-            url=self.config.websocket_url,
+            url=self.websocket_url,
             headers={"User-Agent": "HFTArbitrageEngine-Gateio/1.0"},
-            ping_interval=self.config.websocket.ping_interval,
-            ping_message=self.get_ping_message(),
+            auth_required=False,
+            ping_interval=self.ping_interval,
+            ping_timeout=self.ping_timeout,
+            max_reconnect_attempts=15,
+            reconnect_delay=2.0
         )
+    
+    async def authenticate(self) -> bool:
+        """Public WebSocket requires no authentication."""
+        return True
 
-    async def handle_keep_alive(self, websocket: Any) -> None:
-        """Handle keep-alive operations for Gate.io."""
+    async def handle_heartbeat(self) -> None:
+        """Handle Gate.io heartbeat (ping/pong with custom messages) using internal WebSocket."""
+        if not self.is_connected:
+            raise RuntimeError("No WebSocket connection available for heartbeat")
+            
         # Gate.io uses both built-in WebSocket ping/pong AND custom ping messages
         # The built-in mechanism is handled by websockets library
-        # Custom ping is sent through regular message channel if needed
+        # Custom ping is sent through regular message channel
         try:
             # Send custom ping message through regular WebSocket message channel
             ping_message = self.get_ping_message()
-            await websocket.send(ping_message)
+            await self._websocket.send(ping_message)
             self.logger.debug("Sent custom ping message to Gate.io")
         except Exception as e:
-            self.logger.warning(f"Failed to send custom ping: {e}")
-            # Don't re-raise - built-in ping/pong will still work
+            self.logger.warning(f"Gate.io custom ping failed: {e}")
+            # Continue - built-in ping/pong will handle connection health
 
     def should_reconnect(self, error: Exception) -> bool:
-        """Determine if should reconnect based on error type."""
-        # Always reconnect for WebSocket 1005 errors (abnormal closure)
-        error_str = str(error)
-        if "1005" in error_str or "no status received" in error_str:
+        """Determine if reconnection should be attempted for Gate.io errors."""
+        # Classify error first
+        error_type = self.classify_error(error)
+        
+        # Gate.io 1005 errors are less common but still reconnectable
+        if error_type == "abnormal_closure":
+            self.logger.info("Gate.io 1005 error detected - will reconnect (less common than MEXC)")
             return True
         
-        return self.should_reconnect_on_error(error)
+        # Reconnect on network and timeout errors
+        if error_type in ["connection_refused", "timeout"]:
+            self.logger.warning(f"Gate.io {error_type} error - will reconnect")
+            return True
+        
+        # Don't reconnect on authentication failures (shouldn't happen for public)
+        if error_type == "authentication_failure":
+            self.logger.error("Gate.io authentication failure - won't reconnect")
+            return False
+        
+        # For unknown errors, try reconnecting (Gate.io is generally stable)
+        self.logger.warning(f"Gate.io unknown error ({error}) - will attempt reconnect")
+        return True
+    
+    async def cleanup(self) -> None:
+        """Clean up Gate.io public WebSocket resources."""
+        self.logger.debug("Gate.io public WebSocket cleanup - no specific resources to clean")
+        pass

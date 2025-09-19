@@ -19,6 +19,7 @@ class MexcPrivateMessageParser(MessageParser):
     def __init__(self, symbol_mapper):
         super().__init__(symbol_mapper)
         self.logger = logging.getLogger(f"{__name__}.{self.__class__.__name__}")
+        self.mexc_mapper = MexcMappings(symbol_mapper)
 
     async def parse_message(self, raw_message: str) -> Optional[ParsedMessage]:
         """Parse MEXC private WebSocket message.
