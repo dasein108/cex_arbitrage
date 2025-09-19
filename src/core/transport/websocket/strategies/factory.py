@@ -94,7 +94,7 @@ class WebSocketStrategyFactory:
             else:
                 connection_strategy = connection_cls()
             
-            subscription_strategy = subscription_cls(symbol_mapper)
+            subscription_strategy = subscription_cls(mapper=symbol_mapper)
             message_parser = parser_cls(symbol_mapper)
             
             return WebSocketStrategySet(
@@ -162,7 +162,7 @@ def _create_mexc_strategies(symbol_mapper, is_private: bool) -> WebSocketStrateg
         
         return WebSocketStrategySet(
             connection_strategy=MexcPrivateConnectionStrategy(),
-            subscription_strategy=MexcPrivateSubscriptionStrategy(symbol_mapper),
+            subscription_strategy=MexcPrivateSubscriptionStrategy(mapper=symbol_mapper),
             message_parser=MexcPrivateMessageParser(symbol_mapper)
         )
     else:
@@ -173,7 +173,7 @@ def _create_mexc_strategies(symbol_mapper, is_private: bool) -> WebSocketStrateg
         
         return WebSocketStrategySet(
             connection_strategy=MexcPublicConnectionStrategy(),
-            subscription_strategy=MexcPublicSubscriptionStrategy(symbol_mapper),
+            subscription_strategy=MexcPublicSubscriptionStrategy(mapper=symbol_mapper),
             message_parser=MexcPublicMessageParser(symbol_mapper)
         )
 
@@ -189,7 +189,7 @@ def _create_gateio_strategies(symbol_mapper, is_private: bool) -> WebSocketStrat
         
         return WebSocketStrategySet(
             connection_strategy=GateioPrivateConnectionStrategy(),
-            subscription_strategy=GateioPrivateSubscriptionStrategy(symbol_mapper),
+            subscription_strategy=GateioPrivateSubscriptionStrategy(mapper=symbol_mapper),
             message_parser=GateioPrivateMessageParser(symbol_mapper)
         )
     else:
@@ -200,6 +200,6 @@ def _create_gateio_strategies(symbol_mapper, is_private: bool) -> WebSocketStrat
         
         return WebSocketStrategySet(
             connection_strategy=GateioPublicConnectionStrategy(),
-            subscription_strategy=GateioPublicSubscriptionStrategy(symbol_mapper),
+            subscription_strategy=GateioPublicSubscriptionStrategy(mapper=symbol_mapper),
             message_parser=GateioPublicMessageParser(symbol_mapper)
         )

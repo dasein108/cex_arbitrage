@@ -31,8 +31,8 @@ class GateioPrivateSubscriptionStrategy(SubscriptionStrategy):
     Format: {"time": X, "channel": Y, "event": Z, "payload": ["!all"]}
     """
 
-    def __init__(self, symbol_mapper: SymbolMapperInterface):
-        self.symbol_mapper = symbol_mapper
+    def __init__(self, mapper: Optional[SymbolMapperInterface] = None):
+        super().__init__(mapper)  # Initialize parent with injected mapper
         self.logger = logging.getLogger(f"{__name__}.{self.__class__.__name__}")
 
     async def create_subscription_messages(

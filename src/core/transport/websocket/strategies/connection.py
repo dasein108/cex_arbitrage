@@ -2,7 +2,7 @@ from abc import ABC, abstractmethod
 from typing import Any, Optional
 from dataclasses import dataclass
 from websockets.client import WebSocketClientProtocol
-from websockets import State as WsState
+from websockets.protocol import State as WsState
 
 from core.transport.websocket.structs import ConnectionContext
 
@@ -40,7 +40,7 @@ class ConnectionStrategy(ABC):
         if self._websocket is None:
             return False
         try:
-            return not self._websocket.state == WsState.CLOSED
+            return self._websocket.state == WsState.OPEN
         except AttributeError:
             # Handle case where websocket object doesn't have 'closed' attribute
             import logging
@@ -157,7 +157,7 @@ class ConnectionStrategy(ABC):
         """
         if self._websocket:
             try:
-                if not self._websocket.state == self._websocket.CLOSED:
+                if self._websocket.state != WsState.CLOSED:
                     await self._websocket.close()
             except AttributeError:
                 # Handle case where websocket doesn't have 'closed' attribute

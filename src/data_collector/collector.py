@@ -399,7 +399,7 @@ class SnapshotScheduler:
             
             # Log snapshot statistics
             cache_stats = self.ws_manager.get_cache_statistics()
-            self.logger.info(
+            self.logger.debug(
                 f"Snapshot #{self._snapshot_count:03d}: "
                 f"Captured {len(snapshots)} tickers from "
                 f"{cache_stats['connected_exchanges']}/{cache_stats['total_exchanges']} exchanges"

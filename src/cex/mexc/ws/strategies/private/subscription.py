@@ -14,7 +14,7 @@ Message Format:
 """
 
 import logging
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 
 from core.transport.websocket.strategies.subscription import SubscriptionStrategy
 from core.transport.websocket.structs import SubscriptionAction
@@ -30,8 +30,8 @@ class MexcPrivateSubscriptionStrategy(SubscriptionStrategy):
     Format: "spot@private.account.v3.api.pb"
     """
     
-    def __init__(self, symbol_mapper: SymbolMapperInterface):
-        self.symbol_mapper = symbol_mapper
+    def __init__(self, mapper: Optional[SymbolMapperInterface] = None):
+        super().__init__(mapper)  # Initialize parent with injected mapper
         self.logger = logging.getLogger(f"{__name__}.{self.__class__.__name__}")
         
     async def create_subscription_messages(

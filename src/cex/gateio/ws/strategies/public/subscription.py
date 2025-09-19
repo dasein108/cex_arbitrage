@@ -31,8 +31,8 @@ class GateioPublicSubscriptionStrategy(SubscriptionStrategy):
     Format: {"time": X, "channel": Y, "event": Z, "payload": ["BTC_USDT"]}
     """
     
-    def __init__(self, symbol_mapper: SymbolMapperInterface):
-        self.symbol_mapper = symbol_mapper
+    def __init__(self, mapper: Optional[SymbolMapperInterface] = None):
+        super().__init__(mapper)  # Initialize parent with injected mapper
         self.logger = logging.getLogger(f"{__name__}.{self.__class__.__name__}")
         
         # Track active subscriptions for reconnection
@@ -64,10 +64,14 @@ class GateioPublicSubscriptionStrategy(SubscriptionStrategy):
         messages = []
         
         # Convert symbols to Gate.io format
+        if not self.mapper:
+            self.logger.error("No symbol mapper available for Gate.io subscription")
+            return []
+            
         try:
             symbol_pairs = []
             for symbol in symbols:
-                exchange_symbol = self.symbol_mapper.to_pair(symbol)
+                exchange_symbol = self.mapper.to_pair(symbol)
                 symbol_pairs.append(exchange_symbol)
                 self.logger.debug(f"Converted {symbol} to {exchange_symbol}")
                 

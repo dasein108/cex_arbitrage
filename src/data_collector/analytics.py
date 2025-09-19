@@ -306,7 +306,7 @@ class RealTimeAnalytics:
             avg_spread = sum(spreads) / len(spreads) if spreads else 0.0
             
             # Log summary
-            self.logger.info(
+            self.logger.debug(
                 f"[ANALYTICS] Market Health: {active_pairs}/{total_pairs} pairs active, "
                 f"avg spread: {avg_spread:.3f}%, opportunities: {recent_opportunities}, "
                 f"updates: {self._update_count}"
@@ -316,7 +316,7 @@ class RealTimeAnalytics:
             for exchange, count in exchange_counts.items():
                 updates_per_min = count  # Approximate since last summary
                 status_icon = "✓" if updates_per_min > 0 else "✗"
-                self.logger.info(
+                self.logger.debug(
                     f"[ANALYTICS] Connection Status: {exchange.upper()}: {status_icon} "
                     f"({updates_per_min} updates)"
                 )

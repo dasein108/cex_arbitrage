@@ -11,7 +11,8 @@ import logging
 import asyncio
 import time
 from typing import List, Dict, Optional, Callable, Any, Awaitable, Set
-from websockets.client import WebSocketClientProtocol, State as WsState
+from websockets.client import WebSocketClientProtocol
+from websockets.protocol import State as WsState
 
 from structs.common import Symbol
 from core.transport.websocket.structs import SubscriptionAction

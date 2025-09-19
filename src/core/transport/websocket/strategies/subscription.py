@@ -4,7 +4,7 @@ from dataclasses import dataclass
 
 from core.transport.websocket.structs import SubscriptionAction
 from structs.common import Symbol
-
+from core.cex.services import SymbolMapperInterface
 
 class SubscriptionStrategy(ABC):
     """
@@ -15,6 +15,11 @@ class SubscriptionStrategy(ABC):
     
     HFT COMPLIANT: <1μs message formatting.
     """
+
+    def __init__(self, mapper: Optional[SymbolMapperInterface] = None):
+        """Initialize with optional symbol mapper."""
+        self.mapper = mapper
+        pass
 
     @abstractmethod
     async def create_subscription_messages(

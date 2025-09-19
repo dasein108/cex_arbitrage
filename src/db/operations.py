@@ -111,7 +111,7 @@ async def insert_book_ticker_snapshots_batch(snapshots: List[BookTickerSnapshot]
             columns=columns
         )
         
-        logger.info(f"Batch inserted {count} book ticker snapshots")
+        logger.debug(f"Batch inserted {count} book ticker snapshots")
         return count
         
     except Exception as e:

@@ -31,8 +31,8 @@ class MexcPublicSubscriptionStrategy(SubscriptionStrategy):
     Format: "spot@public.aggre.bookTicker.v3.api.pb@100ms@BTCUSDT"
     """
     
-    def __init__(self, symbol_mapper: SymbolMapperInterface):
-        self.symbol_mapper = symbol_mapper
+    def __init__(self, mapper: Optional[SymbolMapperInterface] = None):
+        super().__init__(mapper)  # Initialize parent with injected mapper
         self.logger = logging.getLogger(f"{__name__}.{self.__class__.__name__}")
         
         # Track active subscriptions for reconnection
@@ -61,11 +61,15 @@ class MexcPublicSubscriptionStrategy(SubscriptionStrategy):
         method = "SUBSCRIPTION" if action == SubscriptionAction.SUBSCRIBE else "UNSUBSCRIPTION"
         
         # Build params with symbol-specific channels
+        if not self.mapper:
+            self.logger.error("No symbol mapper available for MEXC subscription")
+            return []
+            
         params = []
         messages = []
         for symbol in symbols:
             try:
-                exchange_symbol = self.symbol_mapper.to_pair(symbol)
+                exchange_symbol = self.mapper.to_pair(symbol)
                 params= [
                     f"spot@public.aggre.depth.v3.api.pb@10ms@{exchange_symbol}",
                     f"spot@public.aggre.deals.v3.api.pb@10ms@{exchange_symbol}",
