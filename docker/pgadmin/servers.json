@@ -1,0 +1,20 @@
+{
+    "Servers": {
+        "1": {
+            "Name": "Arbitrage Database",
+            "Group": "CEX Arbitrage",
+            "Host": "database",
+            "Port": 5432,
+            "MaintenanceDB": "arbitrage_data",
+            "Username": "arbitrage_user",
+            "UseSSHTunnel": 0,
+            "TunnelPort": "22",
+            "TunnelAuthentication": 0,
+            "KerberosAuthentication": false,
+            "ConnectionParameters": {
+                "sslmode": "prefer",
+                "connect_timeout": 10
+            }
+        }
+    }
+}

@@ -1,0 +1,127 @@
+version: '3.8'
+
+services:
+  # PostgreSQL database with TimescaleDB extension
+  database:
+    image: timescale/timescaledb:latest-pg15
+    container_name: arbitrage_db
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-arbitrage_data}
+      POSTGRES_USER: ${POSTGRES_USER:-arbitrage_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-dev_password_2024}
+      TIMESCALEDB_TELEMETRY: off
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./init-db.sql:/docker-entrypoint-initdb.d/init-db.sql:ro
+    ports:
+      - "5432:5432"
+    restart: unless-stopped
+    networks:
+      - arbitrage_network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U arbitrage_user -d arbitrage_data"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Data collector service
+  data_collector:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    container_name: arbitrage_collector
+    environment:
+      # Database connection (using POSTGRES_* that the app expects)
+      POSTGRES_HOST: database  # Internal Docker hostname
+      POSTGRES_PORT: 5432
+      POSTGRES_DB: arbitrage_data
+      POSTGRES_USER: arbitrage_user
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-dev_password_2024}
+      
+      # Also provide DB_* for backward compatibility
+      DB_HOST: database
+      DB_PORT: 5432
+      DB_NAME: arbitrage_data
+      DB_USER: arbitrage_user
+      DB_PASSWORD: ${DB_PASSWORD:-dev_password_2024}
+      
+      # Application settings
+      ENVIRONMENT: production
+      LOG_LEVEL: INFO
+      
+      # Exchange API credentials (if needed for private data)
+      MEXC_API_KEY: ${MEXC_API_KEY:-}
+      MEXC_SECRET_KEY: ${MEXC_SECRET_KEY:-}
+      GATEIO_API_KEY: ${GATEIO_API_KEY:-}
+      GATEIO_SECRET_KEY: ${GATEIO_SECRET_KEY:-}
+    volumes:
+      - ./logs:/app/logs
+      - ../config.yaml:/app/config.yaml:ro
+      - ../src:/app/src:ro
+    depends_on:
+      database:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - arbitrage_network
+    healthcheck:
+      test: ["CMD", "python", "-c", "import sys; sys.exit(0)"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+        reservations:
+          memory: 256M
+
+  # Optional: Database administration interface
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    container_name: arbitrage_pgadmin
+    environment:
+      PGADMIN_DEFAULT_EMAIL: ${PGADMIN_EMAIL:-admin@example.com}
+      PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_PASSWORD:-dev_admin}
+      PGADMIN_CONFIG_SERVER_MODE: 'False'
+    volumes:
+      - pgadmin_data:/var/lib/pgadmin
+    ports:
+      - "8080:80"
+    depends_on:
+      - database
+    restart: unless-stopped
+    networks:
+      - arbitrage_network
+    profiles:
+      - admin
+
+  # Optional: Monitoring with Grafana
+  grafana:
+    image: grafana/grafana:latest
+    container_name: arbitrage_grafana
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_PASSWORD:-dev_grafana}
+      GF_INSTALL_PLUGINS: grafana-clock-panel,grafana-simple-json-datasource
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+    ports:
+      - "3000:3000"
+    restart: unless-stopped
+    networks:
+      - arbitrage_network
+    profiles:
+      - monitoring
+
+volumes:
+  postgres_data:
+    driver: local
+  pgadmin_data:
+    driver: local
+  grafana_data:
+    driver: local
+
+networks:
+  arbitrage_network:
+    driver: bridge

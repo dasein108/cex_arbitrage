@@ -1,0 +1,77 @@
+version: '3.8'
+
+# Development override configuration
+# This file extends docker-compose.yml for development with hot-reload
+
+services:
+  # Data collector with development settings
+  data_collector:
+    # Mount source code for hot reload (no rebuild needed)
+    volumes:
+      - ./logs:/app/logs
+      - ../config.yaml:/app/config.yaml:ro
+      - ../src:/app/src:ro  # Read-only mount for safety
+      # For development with write access (if needed):
+      # - ../src:/app/src
+    
+    # Development environment variables
+    environment:
+      ENVIRONMENT: development
+      LOG_LEVEL: DEBUG
+      PYTHONUNBUFFERED: 1  # Force unbuffered output for better logging
+      # Database credentials from .env
+      POSTGRES_HOST: database
+      POSTGRES_PORT: 5432
+      POSTGRES_DB: ${POSTGRES_DB:-arbitrage_data}
+      POSTGRES_USER: ${POSTGRES_USER:-arbitrage_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-dev_password_2024}
+      
+    # Enable auto-restart on code changes
+    command: >
+      sh -c "
+      echo 'Starting in development mode with mounted source...' &&
+      while true; do
+        python src/data_collector/run.py;
+        echo 'Restarting after exit...';
+        sleep 2;
+      done
+      "
+    
+    # More relaxed health check for development
+    healthcheck:
+      interval: 60s
+      timeout: 30s
+      retries: 5
+
+  # Database with exposed ports for development tools
+  database:
+    ports:
+      - "5432:5432"  # Expose for local development tools
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-arbitrage_data}
+      POSTGRES_USER: ${POSTGRES_USER:-arbitrage_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-dev_password_2024}
+
+  # Always include PgAdmin in development
+  pgadmin:
+    profiles: []  # Remove profile restriction
+    ports:
+      - "8080:80"
+    environment:
+      PGADMIN_DEFAULT_EMAIL: ${PGADMIN_EMAIL:-admin@example.com}
+      PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_PASSWORD:-dev_admin}
+      PGADMIN_CONFIG_SERVER_MODE: 'False'
+    volumes:
+      - pgadmin_data:/var/lib/pgadmin
+      - ./pgadmin/servers.json:/pgadmin4/servers.json:ro
+      - ./pgadmin/pgpass:/var/lib/pgadmin/storage/admin_example.com/.pgpass:ro
+
+  # Always include Grafana in development
+  grafana:
+    profiles: []  # Remove profile restriction
+    ports:
+      - "3000:3000"
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_PASSWORD:-dev_grafana}
+      GF_AUTH_ANONYMOUS_ENABLED: "true"  # Easier access in dev
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Admin

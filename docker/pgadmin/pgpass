@@ -1,0 +1,2 @@
+database:5432:arbitrage_data:arbitrage_user:dev_password_2024
+database:5432:*:arbitrage_user:dev_password_2024
