@@ -1,0 +1,16 @@
+{
+  "Servers": {
+    "1": {
+      "Name": "Remote CEX Arbitrage Database",
+      "Group": "Production Servers",
+      "Host": "31.192.233.13",
+      "Port": 5432,
+      "MaintenanceDB": "arbitrage_data",
+      "Username": "arbitrage_user",
+      "Password": "",
+      "SSLMode": "prefer",
+      "Comment": "Production CEX Arbitrage database on 31.192.233.13",
+      "DBRestriction": "arbitrage_data"
+    }
+  }
+}

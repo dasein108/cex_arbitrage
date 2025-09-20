@@ -278,7 +278,8 @@ Manually add server with:
 
 ```
 docker/
-├── deploy.sh                 # Production deployment script
+├── deploy.sh                 # Main deployment script (KISS-compliant)
+├── legacy/                   # Deprecated scripts (DO NOT USE)
 ├── docker-compose.yml        # Base configuration
 ├── docker-compose.dev.yml    # Development overrides
 ├── docker-compose.prod.yml   # Production configuration
@@ -343,3 +344,9 @@ For issues:
 4. Review troubleshooting section above
 
 **Remember**: Keep your production passwords secure!
+
+
+## Remote grafana
+```
+docker-compose --env-file .env.local-monitoring -f docker-compose.local-monitoring.yml up
+```
