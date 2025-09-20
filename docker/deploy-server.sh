@@ -8,10 +8,9 @@
 set -e
 
 # Configuration
-COMPOSE_FILES="-f docker-compose.yml -f docker-compose.prod-external.yml"
+COMPOSE_FILES="-f docker-compose.yml -f docker-compose.prod.yml"
 ENV_FILE=".env.prod"
 DATA_DIR="/opt/arbitrage/data"
-SERVER_IP="139.180.134.54"
 
 # Colors for output
 RED='\033[0;31m'
@@ -253,7 +252,7 @@ print_access_info() {
     set +a
     
     # Get actual server IP
-    ACTUAL_IP=$(curl -s ifconfig.me 2>/dev/null || curl -s icanhazip.com 2>/dev/null || echo "${SERVER_IP}")
+    ACTUAL_IP=$(curl -s ifconfig.me 2>/dev/null || curl -s icanhazip.com 2>/dev/null || echo "YOUR_SERVER_IP")
     
     echo ""
     echo_success "🎉 Server deployment completed successfully!"
@@ -380,6 +379,35 @@ case "${1:-deploy}" in
         
         graceful_update_collector
         ;;
+    "sync-from-dev")
+        echo_info "Syncing code from development machine..."
+        
+        # Check if sync script exists
+        if [ -f "sync-code.sh" ]; then
+            ./sync-code.sh quick
+        else
+            echo_warning "sync-code.sh not found - using manual rsync method"
+            
+            # Manual rsync if script not available
+            if [ -n "$DEV_HOST" ] && [ -n "$DEV_KEY" ]; then
+                echo_info "Using DEV_HOST: $DEV_HOST"
+                rsync -avz --progress --exclude-from=.rsync-exclude \
+                    -e "ssh -i $DEV_KEY" \
+                    "$DEV_HOST:/Users/dasein/dev/cex_arbitrage/" \
+                    "/opt/arbitrage/"
+                    
+                if [ $? -eq 0 ]; then
+                    echo_success "Code sync completed"
+                    graceful_update_collector
+                else
+                    echo_error "Code sync failed"
+                fi
+            else
+                echo_error "DEV_HOST and DEV_KEY environment variables required for sync"
+                echo_info "Set them like: DEV_HOST=user@dev-machine DEV_KEY=~/.ssh/key"
+            fi
+        fi
+        ;;
     "check-data")
         echo_info "Checking database data..."
         
@@ -465,7 +493,7 @@ case "${1:-deploy}" in
         ;;
     *)
         echo "CEX Arbitrage Server Management"
-        echo "Usage: $0 {deploy|stop|restart|logs|status|update|update-schema|update-collector|check-data|backup|restore|shell}"
+        echo "Usage: $0 {deploy|stop|restart|logs|status|update|update-schema|update-collector|sync-from-dev|check-data|backup|restore|shell}"
         echo ""
         echo "🚀 Deployment Commands:"
         echo "  deploy           - Full server deployment with database initialization"
@@ -481,6 +509,7 @@ case "${1:-deploy}" in
         echo "  update           - Update all services gracefully"
         echo "  update-schema    - Update database schema only (safe operations)"
         echo "  update-collector - Update data collector only (graceful restart)"
+        echo "  sync-from-dev    - Sync code from development machine (rsync)"
         echo ""
         echo "💾 Database Commands:"
         echo "  backup           - Create database backup"
@@ -488,10 +517,11 @@ case "${1:-deploy}" in
         echo "  shell            - Open database shell (psql)"
         echo ""
         echo "Examples:"
-        echo "  ./deploy-server.sh deploy          # Initial deployment"
-        echo "  ./deploy-server.sh update          # Safe update all"
-        echo "  ./deploy-server.sh logs collector  # View collector logs"
-        echo "  ./deploy-server.sh check-data      # Check data collection"
+        echo "  ./deploy-server.sh deploy              # Initial deployment"
+        echo "  ./deploy-server.sh update              # Safe update all"
+        echo "  ./deploy-server.sh sync-from-dev       # Sync code from dev machine"
+        echo "  ./deploy-server.sh logs data_collector # View collector logs"
+        echo "  ./deploy-server.sh check-data          # Check data collection"
         exit 1
         ;;
 esac
