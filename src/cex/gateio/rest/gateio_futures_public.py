@@ -1,676 +1,560 @@
-"""
-Gate.io Futures Public Exchange Implementation
-
-Ultra-high-performance Gate.io futures API client with complete architectural compliance.
-Inherits from PublicExchangeInterface to provide futures-specific public market data.
-
-Architectural Design:
-- Direct PublicExchangeInterface inheritance (not GateioExchange facade)
-- RestClient integration for optimized HTTP performance
-- All parameters use Symbol objects, returns use unified structs
-- Unified exception handling without try/catch blocks
-- Gate.io-specific caching system with proven patterns
-- Sub-10ms response time optimization for critical paths
-
-Code Structure: Follows PublicExchangeInterface patterns with futures-specific extensions
-Performance: <10ms response times for critical endpoints, >95% connection reuse rate
-Compliance: Full PublicExchangeInterface implementation
-Memory: O(1) per request with efficient pooling
-"""
-
+import asyncio
 import time
-from datetime import datetime
 from typing import Dict, List, Optional, Any
-from functools import lru_cache
-import logging
+from datetime import datetime
 
-# MANDATORY imports - unified cex compliance
 from structs.common import (
     Symbol, SymbolInfo, OrderBook, OrderBookEntry, Trade, Kline,
-    ExchangeName, AssetName, Side, KlineInterval
+    ExchangeName, KlineInterval, Ticker, Side
 )
-from core.transport.rest.rest_client_legacy import RestClient
-from core.cex.rest import PublicExchangeSpotRestInterface
-from cex.gateio.services.gateio_config import GateioConfig
-from cex.gateio.services.gateio_mappings import GateioMappings
+from core.cex.rest.spot.base_rest_spot_public import PublicExchangeSpotRestInterface
+from core.transport.rest.structs import HTTPMethod
+from core.config.structs import ExchangeConfig
+from core.exceptions.exchange import BaseExchangeError
 
 
-# Note: Using centralized GateioMappings for all interval conversions
-
-
-class GateioPublicFuturesExchangeSpotRest(PublicExchangeSpotRestInterface):
+class GateioPublicFuturesRest(PublicExchangeSpotRestInterface):
     """
-    Ultra-high-performance Gate.io Futures public exchange implementation.
-    
-    Complete PublicExchangeInterface compliance with futures-specific functionality:
-    - Direct PublicExchangeInterface inheritance (not GateioExchange facade)
-    - RestClient integration for optimized HTTP performance
-    - All Symbol parameters and unified struct returns
-    - Sub-10ms response time optimization for critical arbitrage paths
-    - Zero code duplication with unified exception handling
-    
-    Architecture Note: This is a public cex implementation that can be used
-    directly or base into the GateioExchange facade for unified access.
+    Gate.io public REST client for futures (USDT-settled) — rewritten in the same
+    architecture/style as GateioPublicSpotRest.
+
+    Notes:
+    - Uses shared self._mapper for symbol <-> contract conversion (no separate mapper).
+    - Endpoints under '/futures/usdt/*'.
+    - Robust parsing: supports both array and dict payload shapes.
     """
-    
-    def __init__(self, api_key: Optional[str] = None, secret_key: Optional[str] = None):
+
+    def __init__(self, config: ExchangeConfig):
+        super().__init__(config)
+
+        # caching for contract info (only config data)
+        self._exchange_info: Optional[Dict[Symbol, SymbolInfo]] = None
+        self._cache_timestamp: float = 0.0
+        self._cache_ttl: float = 300.0  # 5 minutes
+
+    def _extract_contract_precision(self, contract_data: Dict[str, Any]) -> tuple[int, int, float, float]:
         """
-        Initialize Gate.io Futures public client with unified architecture.
-        
-        Args:
-            api_key: Optional API key (not needed for public endpoints, but can help with rate limits)
-            secret_key: Optional secret key (not needed for public endpoints)
+        Extract common precision/limits from a futures contract entry.
+        Fields differ across endpoints; provide safe defaults.
+        Returns: base_precision, quote_precision, min_quote_amount, min_base_amount
         """
-        # Initialize PublicExchangeInterface parent
-        super().__init__(
-            exchange=ExchangeName("GATEIO_FUTURES"),
-            base_url="https://api.gateio.ws/api/v4/futures/usdt"
-        )
-        
-        self.logger = logging.getLogger(f"{__name__}.{self.__class__.__name__}")
-        
-        # Create optimized unified REST client using Gate.io config
-        rest_config = GateioConfig.rest_config['market_data']
-        rest_config.headers = rest_config.headers or {}
-        rest_config.headers.update({
-            'Accept': 'application/json',
-            'User-Agent': 'GateioFuturesTrader/1.0'
-        })
-        
-        self._rest_client = RestClient(
-            base_url=self.base_url,
-            config=rest_config
-        )
-        
-        # Performance tracking
-        self._request_count = 0
-        self._total_response_time = 0.0
-        
-        # Endpoint-optimized configurations for sub-10ms targets
-        self._endpoint_configs = {
-            'depth': GateioConfig.rest_config['market_data'],     # Critical arbitrage path
-            'ticker': GateioConfig.rest_config['market_data'],    # Market data
-            'trades': GateioConfig.rest_config['market_data'],    # Recent trades
-            'contracts': GateioConfig.rest_config['order'],      # Contract info
-            'klines': GateioConfig.rest_config['market_data'],   # Kline data
-            'funding_rate': GateioConfig.rest_config['market_data']  # Funding rates
-        }
-        
-        # Ultra-fast customization for critical arbitrage paths
-        self._endpoint_configs['depth'].timeout = 2.0  # Fast orderbook
-        self._endpoint_configs['ticker'].timeout = 3.0  # Market data
-        
-        self.logger.info(f"Initialized {self.exchange_tag} futures public cex with RestClient")
-    
-    @staticmethod
-    @lru_cache(maxsize=2000)
-    def symbol_to_futures_contract(symbol: Symbol) -> str:
-        """
-        Convert Symbol to Gate.io futures contract format with sub-millisecond performance.
-        
-        Gate.io Futures uses underscore format: BTC_USDT, ETH_USDT, etc.
-        Optimized with LRU cache for maximum arbitrage speed.
-        
-        Args:
-            symbol: Symbol struct with cex and quote assets
-            
-        Returns:
-            Gate.io futures contract string (e.g., "BTC_USDT")
-        """
-        return f"{symbol.base}_{symbol.quote}"
-    
-    @staticmethod
-    @lru_cache(maxsize=2000) 
-    def contract_to_symbol(contract: str) -> Symbol:
-        """
-        Convert Gate.io futures contract to Symbol with optimized parsing.
-        
-        Args:
-            contract: Gate.io futures contract string (e.g., "BTC_USDT")
-            
-        Returns:
-            Symbol struct with cex and quote assets marked as futures
-        
-        Raises:
-            ValueError: Invalid contract format (bubbles up via unified exception handling)
-        """
-        if '_' not in contract:
-            raise ValueError(f"Invalid futures contract format: {contract}. Expected format: BTC_USDT")
-        
-        parts = contract.upper().split('_')
-        if len(parts) != 2:
-            raise ValueError(f"Invalid futures contract format: {contract}. Expected format: BTC_USDT")
-        
-        base, quote = parts
-        return Symbol(
-            base=AssetName(base),
-            quote=AssetName(quote),
-            is_futures=True
-        )
-    
-    # High-performance data mappers with zero-copy parsing optimization
-    def _map_to_symbol_info(self, contract_data: dict) -> SymbolInfo:
-        """Map Gate.io futures contract response to unified SymbolInfo struct."""
-        try:
-            symbol = self.contract_to_symbol(contract_data.get('name', ''))
-            
-            return SymbolInfo(
-                exchange=self.exchange_tag,
-                symbol=symbol,
-                base_precision=contract_data.get('order_price_round', 2),  # Default for Gate.io futures
-                quote_precision=contract_data.get('mark_price_round', 2),
-                min_base_amount=float(contract_data.get('order_size_min', 1)),
-                # max_base_amount=float(contract_data.get('order_size_max', 1000000)),
-                min_quote_amount=0.0,
-                is_futures=True,
-                inactive=contract_data.get('status', "") != 'trading'
-            )
-        except Exception as e:
-            self.logger.debug(f"Failed to map contract data {contract_data}: {e}")
-            raise
-    
-    def _map_to_orderbook(self, raw_data: dict) -> OrderBook:
-        """Map Gate.io futures depth response with optimized list comprehensions."""
-        # Zero-copy optimized bid/ask processing with flexible field handling
-        bids_data = raw_data.get('bids', [])
-        asks_data = raw_data.get('asks', [])
-        
-        bids = [OrderBookEntry(price=float(bid['p']), size=abs(float(bid['s']))) for bid in bids_data]
-        asks = [OrderBookEntry(price=float(ask['p']), size=abs(float(ask['s']))) for ask in asks_data]
-        
-        return OrderBook(
-            bids=bids,
-            asks=asks,
-            timestamp=float(raw_data.get('current', time.time() * 1000) / 1000)
-        )
-    
-    def _map_to_trade(self, raw_data: dict) -> Trade:
-        """Map Gate.io futures trade response with optimized side detection."""
-        # Gate.io futures uses size sign for side: positive=buy, negative=sell
-        size = float(raw_data.get('size', 0))
-        side = Side.BUY if size > 0 else Side.SELL
-        
-        return Trade(
-            price=float(raw_data.get('price', 0)),
-            amount=abs(size),  # Use absolute value for amount
-            side=side,
-            timestamp=raw_data.get('create_time_ms', raw_data.get('create_time', int(time.time() * 1000))),
-            is_maker=False  # Gate.io futures doesn't specify maker/taker in trade data
-        )
-    
-    # PublicExchangeInterface implementation with futures-specific endpoints
-    
+        def precision_to_decimals(value) -> int:
+            """Convert precision value to decimal places count."""
+            if isinstance(value, (int, float)):
+                if value == 0:
+                    return 8
+                # Count decimal places from scientific notation
+                precision_str = f"{float(value):.10f}".rstrip('0')
+                if '.' in precision_str:
+                    return len(precision_str.split('.')[1])
+                return 0
+            elif isinstance(value, str):
+                try:
+                    return precision_to_decimals(float(value))
+                except (ValueError, TypeError):
+                    return 8
+            return 8
+
+        base_prec = precision_to_decimals(contract_data.get('order_price_round', contract_data.get('price_precision', 8)))
+        quote_prec = precision_to_decimals(contract_data.get('mark_price_round', contract_data.get('size_precision', 8)))
+
+        min_base = float(contract_data.get('order_size_min', contract_data.get('min_size', 0)))
+        min_quote = float(contract_data.get('min_quote_amount', 0))
+
+        return base_prec, quote_prec, min_quote, min_base
+
     async def get_exchange_info(self) -> Dict[Symbol, SymbolInfo]:
         """
-        Get futures contract information and trading rules.
-        
-        Returns:
-            Dictionary mapping Symbol objects to SymbolInfo structs
-            
-        Raises:
-            ExchangeAPIError: If unable to fetch contract info (bubbles up)
-            RateLimitError: If rate limit is exceeded (bubbles up)
+        Get futures contract information and map to SymbolInfo.
+        Cached for _cache_ttl seconds.
         """
-        endpoint = '/contracts'
-        config = self._endpoint_configs['contracts']
-        
-        start_time = time.time()
-        
-        # Let exceptions bubble up via unified exception handling
-        response_data = await self._rest_client.get(endpoint, config=config)
-        
-        # Track performance metrics
-        response_time = (time.time() - start_time) * 1000
-        self._request_count += 1
-        self._total_response_time += response_time
-        
-        self.logger.debug(f"Futures contracts retrieved in {response_time:.2f}ms")
-        
-        # Optimized parsing with flexible structure handling
-        result = {}
-        if isinstance(response_data, list):
-            for contract_data in response_data:
-                try:
-                    symbol_info = self._map_to_symbol_info(contract_data)
-                    result[symbol_info.symbol] = symbol_info
-                except Exception as e:
-                    # Log parsing errors but continue with other contracts
-                    self.logger.debug(f"Failed to parse contract {contract_data}: {e}")
+        current_time = time.time()
+        if self._exchange_info is not None and (current_time - self._cache_timestamp) < self._cache_ttl:
+            return self._exchange_info
+
+        try:
+            response_data = await self.request(
+                HTTPMethod.GET,
+                '/futures/usdt/contracts'  # futures contracts list
+            )
+
+            if not isinstance(response_data, list):
+                raise BaseExchangeError(500, "Invalid contracts response format")
+
+            symbol_info_map: Dict[Symbol, SymbolInfo] = {}
+            filtered_count = 0
+
+            for c in response_data:
+                # The contract identifier might be in different fields ('name' or 'contract' or 'id')
+                contract_name = c.get('name') or c.get('contract') or c.get('id') or ''
+                if not contract_name:
+                    filtered_count += 1
                     continue
-        
-        return result
-    
+
+                # Use shared mapper - it must support futures contract format
+                if not self._mapper.is_supported_pair(contract_name):
+                    filtered_count += 1
+                    continue
+
+                try:
+                    symbol = self._mapper.to_symbol(contract_name)
+                except Exception:
+                    filtered_count += 1
+                    continue
+
+                base_prec, quote_prec, min_quote, min_base = self._extract_contract_precision(c)
+
+                is_inactive = c.get('status', '') != 'trading' and c.get('trade_status', '') != 'tradable'
+
+                # Build SymbolInfo (futures)
+                symbol_info = SymbolInfo(
+                    symbol=symbol,
+                    base_precision=base_prec,
+                    quote_precision=quote_prec,
+                    min_base_amount=min_base,
+                    min_quote_amount=min_quote,
+                    is_futures=True,
+                    maker_commission=float(c.get('maker_fee', 0)) if c.get('maker_fee') else 0.0,
+                    taker_commission=float(c.get('taker_fee', 0)) if c.get('taker_fee') else 0.0,
+                    inactive=is_inactive
+                )
+                symbol_info_map[symbol] = symbol_info
+
+            self._exchange_info = symbol_info_map
+            self._cache_timestamp = current_time
+
+            self.logger.info(f"Retrieved futures contract info for {len(symbol_info_map)} contracts, filtered {filtered_count}")
+            return symbol_info_map
+
+        except Exception as e:
+            self.logger.error(f"Failed to get futures exchange info: {e}")
+            raise BaseExchangeError(500, f"Futures exchange info fetch failed: {str(e)}")
+
     async def get_orderbook(self, symbol: Symbol, limit: int = 100) -> OrderBook:
         """
-        Get order book depth for a futures symbol with sub-10ms optimization.
-        
-        Args:
-            symbol: Symbol struct with cex and quote assets
-            limit: Order book depth limit (5, 10, 20, 50, 100)
-            
-        Returns:
-            OrderBook struct containing bids, asks, and timestamp
-            
-        Raises:
-            ExchangeAPIError: If unable to fetch depth data (bubbles up)
-            RateLimitError: If rate limit is exceeded (bubbles up)
+        Get futures order book. Endpoint: /futures/usdt/order_book
         """
-        # Convert symbol with cached conversion
-        contract = self.symbol_to_futures_contract(symbol)
-        
-        # Optimize limit selection for performance
-        valid_limits = [5, 10, 20, 50, 100]
-        optimized_limit = min(valid_limits, key=lambda x: abs(x - limit))
-        
-        # Build optimized endpoint
-        endpoint = f'/order_book'
-        params = {
-            'contract': contract,
-            'limit': optimized_limit
-        }
-        config = self._endpoint_configs['depth']
-        
-        # Execute request with performance tracking
-        start_time = time.time()
-        
-        # Let exceptions bubble up via unified exception handling
-        response_data = await self._rest_client.get(endpoint, params=params, config=config)
-        
-        # Track performance for optimization
-        response_time = (time.time() - start_time) * 1000
-        self._request_count += 1
-        self._total_response_time += response_time
-        
-        self.logger.debug(f"Depth for {contract} retrieved in {response_time:.2f}ms")
-        
-        # Parse response with flexible structure handling
-        return self._map_to_orderbook(response_data)
-    
+        try:
+            contract = self._mapper.to_pair(symbol)  # mapper should output e.g. "BTC_USDT" or "BTC_USDT_20241225"
+
+            optimized_limit = max(1, min(100, limit))
+            params = {
+                'contract': contract,
+                'limit': optimized_limit,
+                'with_id': 'false'
+            }
+
+            response_data = await self.request(
+                HTTPMethod.GET,
+                '/futures/usdt/order_book',
+                params=params
+            )
+
+            # Support both formats: list of pairs or dict entries with keys 'p'/'s' or arrays
+            def parse_side(entries) -> List[OrderBookEntry]:
+                result = []
+                for e in entries:
+                    try:
+                        if isinstance(e, (list, tuple)) and len(e) >= 2:
+                            price = float(e[0])
+                            size = float(e[1])
+                        elif isinstance(e, dict):
+                            # some endpoints use {'p': price, 's': size} or {'price':..., 'size':...}
+                            price = float(e.get('p') or e.get('price') or 0)
+                            size = float(e.get('s') or e.get('size') or 0)
+                        else:
+                            continue
+                        result.append(OrderBookEntry(price=price, size=abs(size)))
+                    except Exception:
+                        continue
+                return result
+
+            bids = parse_side(response_data.get('bids', []))
+            asks = parse_side(response_data.get('asks', []))
+
+            timestamp_val = response_data.get('current') or response_data.get('timestamp') or response_data.get('time')
+            timestamp = float(timestamp_val) / 1000.0 if timestamp_val else time.time()
+
+            orderbook = OrderBook(bids=bids, asks=asks, timestamp=timestamp)
+            self.logger.debug(f"Retrieved futures orderbook for {symbol}: {len(bids)} bids, {len(asks)} asks")
+            return orderbook
+
+        except Exception as e:
+            self.logger.error(f"Failed to get futures orderbook for {symbol}: {e}")
+            raise BaseExchangeError(500, f"Futures orderbook fetch failed: {str(e)}")
+
     async def get_recent_trades(self, symbol: Symbol, limit: int = 500) -> List[Trade]:
         """
-        Get recent trades for a futures symbol with optimized parsing.
-        
-        Args:
-            symbol: Symbol struct with cex and quote assets
-            limit: Number of recent trades to return (max 1000)
-            
-        Returns:
-            List of Trade structs containing recent trade data
-            
-        Raises:
-            ExchangeAPIError: If unable to fetch trade data (bubbles up)
-            RateLimitError: If rate limit is exceeded (bubbles up)
+        Get recent trades for futures symbol. Endpoint: /futures/usdt/trades
+        Gate.io futures may use signed 'size' (positive buy, negative sell).
         """
-        # Convert symbol with cached conversion
-        contract = self.symbol_to_futures_contract(symbol)
-        
-        # Build optimized endpoint
-        endpoint = f'/trades'
-        params = {
-            'contract': contract,
-            'limit': min(limit, 1000)  # Gate.io max limit
-        }
-        config = self._endpoint_configs['trades']
-        
-        start_time = time.time()
-        
-        # Let exceptions bubble up via unified exception handling
-        response_data = await self._rest_client.get(endpoint, params=params, config=config)
-        
-        # Track performance metrics
-        response_time = (time.time() - start_time) * 1000
-        self._request_count += 1
-        self._total_response_time += response_time
-        
-        self.logger.debug(f"Trades for {contract} retrieved in {response_time:.2f}ms")
-        
-        # Optimized parsing with list comprehensions
-        trades = []
-        if isinstance(response_data, list):
-            # Flexible parsing with error handling
-            for trade_data in response_data:
+        try:
+            contract = self._mapper.to_pair(symbol)
+            optimized_limit = max(1, min(1000, limit))
+            params = {'contract': contract, 'limit': optimized_limit}
+
+            response_data = await self.request(
+                HTTPMethod.GET,
+                '/futures/usdt/trades',
+                params=params
+            )
+
+            if not isinstance(response_data, list):
+                raise BaseExchangeError(500, "Invalid futures trades response format")
+
+            trades: List[Trade] = []
+            for td in response_data:
                 try:
-                    trades.append(self._map_to_trade(trade_data))
-                except Exception as e:
-                    self.logger.debug(f"Failed to parse trade {trade_data}: {e}")
+                    # Support multiple field names
+                    size_val = td.get('size') or td.get('amount') or td.get('qty') or 0
+                    size = float(size_val)
+                    side = Side.BUY if size > 0 else Side.SELL if size < 0 else self._mapper.get_unified_side(td.get('side', 'buy'))
+
+                    price = float(td.get('price', td.get('p', 0)))
+                    ts = td.get('create_time_ms') or td.get('create_time') or td.get('t') or int(time.time() * 1000)
+                    ts = int(ts) if isinstance(ts, (int, float)) else int(float(ts))
+
+                    trade = Trade(
+                        symbol=symbol,
+                        price=price,
+                        quantity=abs(size),
+                        side=side,
+                        timestamp=ts,
+                        is_maker=False,
+                        trade_id=td.get('id')
+                    )
+                    trades.append(trade)
+                except Exception:
+                    self.logger.debug(f"Failed to parse futures trade item: {td}")
                     continue
-        
-        return trades
-    
+
+            self.logger.debug(f"Retrieved {len(trades)} futures recent trades for {symbol}")
+            return trades
+
+        except Exception as e:
+            self.logger.error(f"Failed to get futures recent trades for {symbol}: {e}")
+            raise BaseExchangeError(500, f"Futures recent trades fetch failed: {str(e)}")
+
+    async def get_historical_trades(self, symbol: Symbol, limit: int = 500,
+                                    timestamp_from: Optional[int] = None,
+                                    timestamp_to: Optional[int] = None) -> List[Trade]:
+        """
+        Get historical trades for futures with optional timestamp filtering.
+        Gate.io expects seconds for 'from'/'to'.
+        """
+        try:
+            contract = self._mapper.to_pair(symbol)
+            optimized_limit = max(1, min(1000, limit))
+            params = {'contract': contract, 'limit': optimized_limit}
+            if timestamp_from:
+                params['from'] = timestamp_from // 1000
+            if timestamp_to:
+                params['to'] = timestamp_to // 1000
+
+            response_data = await self.request(
+                HTTPMethod.GET,
+                '/futures/usdt/trades',
+                params=params
+            )
+
+            if not isinstance(response_data, list):
+                raise BaseExchangeError(500, "Invalid futures historical trades format")
+
+            trades: List[Trade] = []
+            for td in response_data:
+                try:
+                    size = float(td.get('size', td.get('amount', 0)))
+                    side = Side.BUY if size > 0 else Side.SELL if size < 0 else self._mapper.get_unified_side(td.get('side', 'buy'))
+                    ts = td.get('create_time_ms') or td.get('create_time') or int(time.time() * 1000)
+                    ts = int(ts) if isinstance(ts, (int, float)) else int(float(ts))
+
+                    trade = Trade(
+                        symbol=symbol,
+                        price=float(td.get('price', td.get('p', 0))),
+                        quantity=abs(size),
+                        side=side,
+                        timestamp=ts,
+                        is_maker=False,
+                        trade_id=td.get('id')
+                    )
+                    trades.append(trade)
+                except Exception:
+                    self.logger.debug(f"Failed to parse historical trade: {td}")
+                    continue
+
+            # sort newest first like spot implementation
+            trades.sort(key=lambda t: t.timestamp, reverse=True)
+            self.logger.debug(f"Retrieved {len(trades)} futures historical trades for {symbol}")
+            return trades
+
+        except Exception as e:
+            self.logger.error(f"Failed to get futures historical trades for {symbol}: {e}")
+            raise BaseExchangeError(500, f"Futures historical trades fetch failed: {str(e)}")
+
+    async def get_ticker_info(self, symbol: Optional[Symbol] = None) -> Dict[Symbol, Ticker]:
+        """
+        Get futures tickers. Endpoint: /futures/usdt/tickers
+        Can request single symbol via 'contract' param or get all tickers.
+        Returns mapping Symbol -> Ticker (similar to spot signature).
+        """
+        try:
+            params = {}
+            if symbol:
+                params['contract'] = self._mapper.to_pair(symbol)
+
+            response_data = await self.request(
+                HTTPMethod.GET,
+                '/futures/usdt/tickers',
+                params=params
+            )
+
+            tickers_data = response_data if isinstance(response_data, list) else [response_data]
+            tickers: Dict[Symbol, Ticker] = {}
+
+            for td in tickers_data:
+                pair_str = td.get('contract') or td.get('name') or td.get('currency_pair') or ''
+                if not pair_str:
+                    continue
+                if not self._mapper.is_supported_pair(pair_str):
+                    continue
+                try:
+                    symbol_obj = self._mapper.to_symbol(pair_str)
+                except Exception:
+                    continue
+
+                last_price = float(td.get('last', td.get('last_price', 0)))
+                change_24h = float(td.get('change', td.get('change_utc0', 0)))
+                base_volume = float(td.get('base_volume', 0))
+                quote_volume = float(td.get('quote_volume', 0))
+                current_time = int(time.time() * 1000)
+                open_time = current_time - (24 * 60 * 60 * 1000)
+                close_time = current_time
+
+                ticker = Ticker(
+                    symbol=symbol_obj,
+                    price_change=change_24h,
+                    price_change_percent=float(td.get('change_percentage', 0)),
+                    weighted_avg_price=(quote_volume / base_volume) if base_volume > 0 else last_price,
+                    prev_close_price=last_price - change_24h if last_price and change_24h else last_price,
+                    last_price=last_price,
+                    last_qty=0.0,
+                    open_price=last_price - change_24h if last_price and change_24h else last_price,
+                    high_price=float(td.get('high', td.get('high_24h', 0))),
+                    low_price=float(td.get('low', td.get('low_24h', 0))),
+                    volume=base_volume,
+                    quote_volume=quote_volume,
+                    open_time=open_time,
+                    close_time=close_time,
+                    count=0,
+                    bid_price=float(td.get('highest_bid', td.get('bid', 0))) if td.get('highest_bid') or td.get('bid') else None,
+                    bid_qty=None,
+                    ask_price=float(td.get('lowest_ask', td.get('ask', 0))) if td.get('lowest_ask') or td.get('ask') else None,
+                    ask_qty=None,
+                    first_id=None,
+                    last_id=None
+                )
+
+                tickers[symbol_obj] = ticker
+
+            self.logger.debug(f"Retrieved {len(tickers)} futures ticker(s)")
+            return tickers
+
+        except Exception as e:
+            self.logger.error(f"Failed to get futures ticker info: {e}")
+            raise BaseExchangeError(500, f"Futures ticker info fetch failed: {str(e)}")
+
+    async def get_funding_rate(self, symbol: Symbol) -> Dict[str, Any]:
+        """
+        Get funding rate for a contract. Endpoint: /futures/usdt/funding_rate
+        Returns raw dict (public-only).
+        """
+        try:
+            contract = self._mapper.to_pair(symbol)
+            params = {'contract': contract}
+            response_data = await self.request(
+                HTTPMethod.GET,
+                '/futures/usdt/funding_rate',
+                params=params
+            )
+            # Accept list or single object
+            if isinstance(response_data, list) and response_data:
+                return response_data[0]
+            return response_data
+
+        except Exception as e:
+            self.logger.error(f"Failed to get funding rate for {symbol}: {e}")
+            raise BaseExchangeError(500, f"Futures funding rate fetch failed: {str(e)}")
+
     async def get_klines(self, symbol: Symbol, timeframe: KlineInterval,
                          date_from: Optional[datetime], date_to: Optional[datetime]) -> List[Kline]:
         """
-        Get kline/candlestick data for futures symbol.
-        
-        Args:
-            symbol: Symbol struct with cex and quote assets
-            timeframe: Kline interval (standard KlineInterval enum)
-            date_from: Start datetime (optional)
-            date_to: End datetime (optional)
-            
-        Returns:
-            List of Kline structs containing candlestick data
-        """
-        contract = self.symbol_to_futures_contract(symbol)
-        gateio_interval = GateioMappings.get_kline_interval_from_enum(timeframe)
-        
-        endpoint = f'/candlesticks'
-        params = {
-            'contract': contract,
-            'interval': gateio_interval,
-            'limit': 500  # Default limit for cex compliance
-        }
-        
-        # Convert datetime to timestamp if provided
-        if date_from:
-            params['from'] = int(date_from.timestamp())
-        if date_to:
-            params['to'] = int(date_to.timestamp())
-        
-        config = self._endpoint_configs['klines']
-        
-        start_time_req = time.time()
-        response_data = await self._rest_client.get(endpoint, params=params, config=config)
-        
-        response_time = (time.time() - start_time_req) * 1000
-        self._request_count += 1
-        self._total_response_time += response_time
-        
-        self.logger.debug(f"Klines for {contract} retrieved in {response_time:.2f}ms")
-        
-        # Parse klines data with flexible structure handling
-        klines = []
-        if isinstance(response_data, list):
-            for kline_data in response_data:
-                try:
-                    if isinstance(kline_data, list) and len(kline_data) >= 6:
-                        # Array format: [timestamp, volume, close, high, low, open]
-                        klines.append(Kline(
-                            symbol=symbol,
-                            interval=interval,
-                            open_time=int(float(kline_data[0])),
-                            close_time=int(float(kline_data[0])) + (60 * 1000),  # Estimate close time
-                            open_price=float(kline_data[5]),
-                            high_price=float(kline_data[3]),
-                            low_price=float(kline_data[4]),
-                            close_price=float(kline_data[2]),
-                            volume=float(kline_data[1]),
-                            quote_volume=0.0,  # Not provided by Gate.io futures
-                            trades_count=0      # Not provided by Gate.io futures
-                        ))
-                    elif isinstance(kline_data, dict):
-                        # Object format - handle dict structure
-                        klines.append(Kline(
-                            symbol=symbol,
-                            interval=interval,
-                            open_time=int(kline_data.get('t', 0)),
-                            close_time=int(kline_data.get('t', 0)) + (60 * 1000),
-                            open_price=float(kline_data.get('o', 0)),
-                            high_price=float(kline_data.get('h', 0)),
-                            low_price=float(kline_data.get('l', 0)),
-                            close_price=float(kline_data.get('c', 0)),
-                            volume=float(kline_data.get('v', 0)),
-                            quote_volume=0.0,
-                            trades_count=0
-                        ))
-                except Exception as e:
-                    self.logger.debug(f"Failed to parse kline {kline_data}: {e}")
-                    continue
-        
-        return klines
-    
-    async def get_klines_batch(self, symbol: Symbol, timeframe: KlineInterval,
-                         date_from: Optional[datetime], date_to: Optional[datetime]) -> List[Kline]:
-        """
-        Get kline data for a single symbol (batch cex compliance).
-        
-        Args:
-            symbol: Symbol struct with cex and quote assets
-            timeframe: Kline interval (standard KlineInterval enum)
-            date_from: Start datetime (optional)
-            date_to: End datetime (optional)
-            
-        Returns:
-            List of Kline structs containing candlestick data
-        """
-        # Interface compliance: delegate to get_klines with same parameters
-        return await self.get_klines(symbol, timeframe, date_from, date_to)
-    
-    async def get_server_time(self) -> int:
-        """
-        Get server timestamp.
-        
-        Returns:
-            Server timestamp in milliseconds
-        """
-        # Return current time (Gate.io futures doesn't have dedicated server time endpoint)
-        return int(time.time() * 1000)
-    
-    async def ping(self) -> bool:
-        """
-        Test connectivity to Gate.io futures exchange with unified error handling.
-        
-        Returns:
-            True if connection successful, False otherwise
+        Get futures candlesticks. Endpoint: /futures/usdt/candlesticks
+        Accepts either array-format klines or dict-format.
         """
         try:
-            # Test with a simple contract list call
-            await self._rest_client.get('/contracts', 
-                                     params={'limit': 1}, 
-                                     config=self._endpoint_configs['contracts'])
+            contract = self._mapper.to_pair(symbol)
+            interval = self._mapper.get_exchange_interval(timeframe)
+
+            params = {'contract': contract, 'interval': interval}
+            if date_from:
+                params['from'] = int(date_from.timestamp())
+            if date_to:
+                params['to'] = int(date_to.timestamp())
+            else:
+                params['limit'] = 500
+
+            response_data = await self.request(
+                HTTPMethod.GET,
+                '/futures/usdt/candlesticks',
+                params=params
+            )
+
+            if not isinstance(response_data, list):
+                raise BaseExchangeError(500, "Invalid futures candlesticks response format")
+
+            klines: List[Kline] = []
+            for k in response_data:
+                try:
+                    # array format: [time, volume, close, high, low, open] or [time, volume, close, high, low, open, prev_close]
+                    if isinstance(k, (list, tuple)) and len(k) >= 6:
+                        ts = int(float(k[0])) * 1000
+                        volume = float(k[1])
+                        close_price = float(k[2])
+                        high_price = float(k[3])
+                        low_price = float(k[4])
+                        open_price = float(k[5])
+                    elif isinstance(k, dict):
+                        ts = int(k.get('t', k.get('time', 0))) * 1000
+                        open_price = float(k.get('o', k.get('open', 0)))
+                        high_price = float(k.get('h', k.get('high', 0)))
+                        low_price = float(k.get('l', k.get('low', 0)))
+                        close_price = float(k.get('c', k.get('close', 0)))
+                        volume = float(k.get('v', k.get('volume', 0)))
+                    else:
+                        continue
+
+                    kline = Kline(
+                        symbol=symbol,
+                        interval=timeframe,
+                        open_time=ts,
+                        close_time=ts + self._get_interval_milliseconds(timeframe),
+                        open_price=open_price,
+                        high_price=high_price,
+                        low_price=low_price,
+                        close_price=close_price,
+                        volume=volume,
+                        quote_volume=volume * ((open_price + close_price) / 2) if volume and (open_price or close_price) else 0.0,
+                        trades_count=0
+                    )
+                    klines.append(kline)
+
+                except Exception:
+                    self.logger.debug(f"Failed to parse futures kline: {k}")
+                    continue
+
+            # Gate.io typically returns oldest first
+            self.logger.debug(f"Retrieved {len(klines)} futures klines for {contract}")
+            return klines
+
+        except Exception as e:
+            self.logger.error(f"Failed to get futures klines for {symbol}: {e}")
+            raise BaseExchangeError(500, f"Futures klines fetch failed: {str(e)}")
+
+    async def get_klines_batch(self, symbol: Symbol, timeframe: KlineInterval,
+                               date_from: Optional[datetime], date_to: Optional[datetime]) -> List[Kline]:
+        """
+        Batch klines retrieval. Delegates to get_klines for single-range requests.
+        """
+        if not date_from or not date_to:
+            return await self.get_klines(symbol, timeframe, date_from, date_to)
+
+        # Reuse spot-like batching logic (conservative limits)
+        interval_seconds = self._get_interval_seconds(timeframe)
+        if interval_seconds == 0:
+            return await self.get_klines(symbol, timeframe, date_from, date_to)
+
+        # Conservative safety window similar to spot implementation
+        MAX_SAFE_DAYS = 2
+        MAX_SAFE_DURATION_SECONDS = MAX_SAFE_DAYS * 24 * 3600
+        total_duration_seconds = int((date_to - date_from).total_seconds())
+
+        if total_duration_seconds > MAX_SAFE_DURATION_SECONDS:
+            adjusted_date_from = datetime.fromtimestamp(date_to.timestamp() - MAX_SAFE_DURATION_SECONDS)
+            self.logger.warning(
+                f"Adjusted futures start date from {date_from} to {adjusted_date_from} due to API historical limits"
+            )
+            date_from = adjusted_date_from
+            total_duration_seconds = MAX_SAFE_DURATION_SECONDS
+
+        # Compute batch size similar to spot conservative defaults
+        batch_size = self._calculate_optimal_batch_size(timeframe, total_duration_seconds)
+        chunk_duration_seconds = batch_size * interval_seconds
+
+        all_klines: List[Kline] = []
+        current_start = date_from
+
+        while current_start < date_to:
+            chunk_end = datetime.fromtimestamp(min(current_start.timestamp() + chunk_duration_seconds, date_to.timestamp()))
+            chunk = await self.get_klines(symbol, timeframe, current_start, chunk_end)
+            all_klines.extend(chunk)
+            current_start = datetime.fromtimestamp(chunk_end.timestamp() + interval_seconds)
+            if not chunk or current_start >= date_to:
+                break
+            await asyncio.sleep(0.3)  # rate limit guard
+
+        # Remove duplicates and sort oldest first
+        unique = {k.open_time: k for k in all_klines}
+        sorted_klines = sorted(unique.values(), key=lambda k: k.open_time)
+        self.logger.info(f"Retrieved {len(sorted_klines)} futures klines in batch for {symbol}")
+        return sorted_klines
+
+    async def get_server_time(self) -> int:
+        """
+        Return server time in milliseconds. Use spot time endpoint (shared) if available, otherwise local time.
+        """
+        try:
+            response_data = await self.request(HTTPMethod.GET, '/spot/time')
+            server_time = response_data.get('server_time', int(time.time()))
+            if server_time < 1e10:
+                server_time *= 1000
+            return int(server_time)
+        except Exception:
+            # Fallback to local system time
+            return int(time.time() * 1000)
+
+    async def ping(self) -> bool:
+        """
+        Ping futures API by requesting a light-weight endpoint.
+        """
+        try:
+            # small call to contracts with limit=1
+            await self.request(HTTPMethod.GET, '/futures/usdt/contracts', params={'limit': 1})
             return True
         except Exception as e:
-            self.logger.warning(f"Futures ping failed: {e}")
+            self.logger.debug(f"Futures ping failed: {e}")
             return False
-    
-    # Futures-specific additional methods
-    async def get_futures_ticker(self, symbol: Symbol) -> Dict[str, Any]:
-        """
-        Get futures ticker data for a symbol.
-        
-        Args:
-            symbol: Symbol struct with cex and quote assets
-            
-        Returns:
-            Dictionary containing ticker information
-            
-        Raises:
-            ExchangeAPIError: If unable to fetch ticker data (bubbles up)
-            RateLimitError: If rate limit is exceeded (bubbles up)
-        """
-        # Convert symbol with cached conversion
-        contract = self.symbol_to_futures_contract(symbol)
-        
-        endpoint = f'/tickers'
-        params = {'contract': contract}
-        config = self._endpoint_configs['ticker']
-        
-        start_time = time.time()
-        
-        # Let exceptions bubble up via unified exception handling
-        response_data = await self._rest_client.get(endpoint, params=params, config=config)
-        
-        # Track performance metrics
-        response_time = (time.time() - start_time) * 1000
-        self._request_count += 1
-        self._total_response_time += response_time
-        
-        self.logger.debug(f"Ticker for {contract} retrieved in {response_time:.2f}ms")
-        
-        # Return first ticker if response is a list
-        if isinstance(response_data, list) and response_data:
-            return response_data[0]
-        
-        return response_data
-    
-    async def get_funding_rate(self, symbol: Symbol) -> Dict[str, Any]:
-        """
-        Get current funding rate for a futures symbol.
-        
-        Args:
-            symbol: Symbol struct with cex and quote assets
-            
-        Returns:
-            Dictionary containing funding rate information
-            
-        Raises:
-            ExchangeAPIError: If unable to fetch funding rate (bubbles up)
-            RateLimitError: If rate limit is exceeded (bubbles up)
-        """
-        # Convert symbol with cached conversion
-        contract = self.symbol_to_futures_contract(symbol)
-        
-        endpoint = f'/funding_rate'
-        params = {'contract': contract}
-        config = self._endpoint_configs['funding_rate']
-        
-        start_time = time.time()
-        
-        # Let exceptions bubble up via unified exception handling
-        response_data = await self._rest_client.get(endpoint, params=params, config=config)
-        
-        # Track performance metrics
-        response_time = (time.time() - start_time) * 1000
-        self._request_count += 1
-        self._total_response_time += response_time
-        
-        self.logger.debug(f"Funding rate for {contract} retrieved in {response_time:.2f}ms")
-        
-        # Handle both single object and list responses
-        if isinstance(response_data, list) and response_data:
-            return response_data[0]  # Return first item if it's a list
-        
-        return response_data
-    
-    # BaseExchangeInterface implementation
+
+    # Lifecycle & helpers (initialize / start / stop similar to spot)
     async def init(self, symbols: List[Symbol]) -> None:
-        """
-        Initialize exchange with symbols and validate conversions.
-        
-        Args:
-            symbols: List of Symbol objects to initialize
-        """
-        self.logger.info(f"Initializing Gate.io Futures with {len(symbols)} symbols")
-        
-        # Validate symbols with unified exception handling
-        for symbol in symbols:
-            # Pre-cache symbol conversions for performance
-            self.symbol_to_futures_contract(symbol)
-        
+        self.logger.info(f"Initializing Gate.io Futures client with {len(symbols)} symbols")
+        for s in symbols:
+            # prime mapper conversions / validation
+            try:
+                self._mapper.to_pair(s)
+            except Exception as e:
+                self.logger.debug(f"Failed to pre-cache symbol {s}: {e}")
         self.logger.info("Gate.io Futures initialization complete")
-    
+
     async def start_symbol(self, symbol: Symbol) -> None:
-        """
-        Start symbol data streaming (no-op for public-only implementation).
-        
-        Args:
-            symbol: Symbol to start streaming for
-        """
-        contract = self.symbol_to_futures_contract(symbol)
-        self.logger.debug(f"Start symbol streaming requested for {contract} (no-op)")
-    
+        contract = self._mapper.to_pair(symbol)
+        self.logger.debug(f"Start symbol requested for {contract} (public-only no-op)")
+
     async def stop_symbol(self, symbol: Symbol) -> None:
-        """
-        Stop symbol data streaming (no-op for public-only implementation).
-        
-        Args:
-            symbol: Symbol to stop streaming for
-        """
-        contract = self.symbol_to_futures_contract(symbol)
-        self.logger.debug(f"Stop symbol streaming requested for {contract} (no-op)")
-    
-    def get_websocket_health(self) -> Dict[str, Any]:
-        """
-        Get WebSocket health status for monitoring.
-        
-        Returns:
-            Dictionary containing health status information
-        """
-        return {
-            'connected': False,
-            'implementation': 'public-only-futures',
-            'websocket_supported': False,
-            'rest_client_healthy': hasattr(self, '_rest_client'),
-            'message': 'Public-only futures implementation with RestClient'
-        }
-    
-    def get_performance_metrics(self) -> Dict[str, Any]:
-        """
-        Get comprehensive performance metrics for optimization monitoring.
-        
-        Returns:
-            Dictionary containing detailed performance statistics
-        """
-        avg_response_time = (
-            self._total_response_time / self._request_count 
-            if self._request_count > 0 else 0.0
-        )
-        
-        return {
-            'exchange': str(self.exchange_tag),
-            'base_url': self.base_url,
-            'http_client': 'RestClient',
-            'architecture': 'public-cex-inheritance',
-            'total_requests': self._request_count,
-            'average_response_time_ms': round(avg_response_time, 2),
-            'performance_target_met': avg_response_time < 10.0,  # Sub-10ms target
-            'connection_pool_optimization': True,
-            'unified_exception_handling': True,
-            'interface_type': 'PublicExchangeInterface',
-            'lru_cache_info': {
-                'symbol_to_futures_contract': self.symbol_to_futures_contract.cache_info()._asdict(),
-                'contract_to_symbol': self.contract_to_symbol.cache_info()._asdict()
-            }
-        }
-    
+        contract = self._mapper.to_pair(symbol)
+        self.logger.debug(f"Stop symbol requested for {contract} (public-only no-op)")
+
     async def close(self):
-        """Clean up resources and close connections."""
-        if hasattr(self, '_rest_client'):
-            await self._rest_client.close()
-        
-        self.logger.info(f"Closed {self.exchange_tag} futures public cex")
-    
-    async def __aenter__(self):
-        """Async context manager entry."""
-        return self
-    
-    async def __aexit__(self, exc_type, exc_val, exc_tb):
-        """Async context manager exit."""
-        await self.close()
+        self.logger.info("Closed Gate.io futures public client")
 
-
-# Factory function for optimized client creation
-async def create_gateio_futures_client(**kwargs) -> GateioPublicFuturesExchangeSpotRest:
-    """
-    Create a Gate.io futures public client with optimized configuration.
-    
-    Returns:
-        Configured GateioPublicFuturesExchange instance
-    """
-    return GateioPublicFuturesExchangeSpotRest(**kwargs)
-
-
-# Performance monitoring utility with enhanced metrics
-class GateioFuturesPerformanceMonitor:
-    """Enhanced performance monitor for Gate.io futures implementation."""
-    
-    def __init__(self, client: GateioPublicFuturesExchangeSpotRest):
-        self.client = client
-        self.start_time = time.time()
-    
-    def get_summary(self) -> Dict[str, Any]:
-        """Get comprehensive performance summary with futures-specific metrics."""
-        metrics = self.client.get_performance_metrics()
-        uptime = time.time() - self.start_time
-        
-        return {
-            **metrics,
-            'uptime_seconds': round(uptime, 2),
-            'requests_per_second': round(metrics['total_requests'] / uptime, 2) if uptime > 0 else 0.0,
-            'meets_arbitrage_targets': metrics['average_response_time_ms'] < 10.0,
-            'interface_compliant': True,
-            'inheritance_status': 'PublicExchangeInterface',
-            'facade_integration_ready': True,
-            'futures_specific_endpoints': True,
-            'unified_rest_client': True
-        }
+    def __repr__(self) -> str:
+        return f"GateioPublicFuturesRest(base_url={self.base_url})"

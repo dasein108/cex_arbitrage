@@ -12,6 +12,7 @@ Registration happens automatically when this module is imported.
 """
 
 from .symbol_mapper import GateioSymbolMapperInterface
+from .futures_symbol_mapper import GateioFuturesSymbolMapperInterface
 from .mapper import GateioUnifiedMappings
 
 from cex.consts import ExchangeEnum
@@ -21,9 +22,12 @@ from core.cex.services.symbol_mapper.factory import ExchangeSymbolMapperFactory
 from core.cex.services.unified_mapper.factory import ExchangeMappingsFactory
 
 ExchangeSymbolMapperFactory.register(ExchangeEnum.GATEIO.value, GateioSymbolMapperInterface)
+ExchangeSymbolMapperFactory.register(ExchangeEnum.GATEIO.value, GateioFuturesSymbolMapperInterface)
 ExchangeMappingsFactory.register(ExchangeEnum.GATEIO.value, GateioUnifiedMappings)
+
 
 __all__ = [
     'GateioSymbolMapperInterface',
-    'GateioUnifiedMappings'
+    'GateioUnifiedMappings',
+    'GateioFuturesSymbolMapperInterface'
 ]
