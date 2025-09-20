@@ -14,7 +14,7 @@ from core.transport.websocket.strategies import (
     WebSocketStrategyFactory
 )
 
-from cex import ExchangeEnum
+from cex.consts import ExchangeEnum
 
 # Register strategies with factory
 WebSocketStrategyFactory.register_strategies(

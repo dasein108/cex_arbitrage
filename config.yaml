@@ -111,7 +111,7 @@ websocket:
   connect_timeout: 10.0      # seconds
   ping_interval: 20.0        # WebSocket ping interval (built-in mechanism)
   ping_timeout: 10.0         # WebSocket ping timeout
-  heartbeat_interval: 30.0   # Custom heartbeat interval for exchange-specific ping
+  heartbeat_interval: 25.0   # Custom heartbeat interval for exchange-specific ping (reduced to avoid conflicts)
   max_reconnect_attempts: 10
   reconnect_delay: 1.0       # Faster reconnection for 1005 errors
   reconnect_backoff: 2.0     # Exponential backoff multiplier
@@ -276,7 +276,7 @@ arbitrage:
 # Data Collector Configuration
 data_collector:
   enabled: true
-  snapshot_interval: 1  # seconds
+  snapshot_interval: 0.5  # seconds
   analytics_interval: 10  # seconds for summary logging
   exchanges: ["mexc", "gateio"]
   

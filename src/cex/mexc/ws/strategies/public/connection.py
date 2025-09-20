@@ -20,8 +20,8 @@ class MexcPublicConnectionStrategy(ConnectionStrategy):
         
         # MEXC-specific connection settings
         self.websocket_url = config.websocket_url
-        self.ping_interval = 30
-        self.ping_timeout = 10
+        self.ping_interval = 30  # MEXC uses 30s ping interval (built-in only)
+        self.ping_timeout = 15   # Increased timeout for better stability
         self.max_queue_size = 512
         self.max_message_size = 1024 * 1024  # 1MB
 
@@ -95,10 +95,11 @@ class MexcPublicConnectionStrategy(ConnectionStrategy):
         if not self.is_connected:
             raise RuntimeError("No WebSocket connection available for heartbeat")
             
-        # MEXC uses WebSocket built-in ping/pong mechanism
+        # MEXC uses WebSocket built-in ping/pong mechanism ONLY
         # The websockets library handles this automatically with ping_interval/ping_timeout
         # No custom ping messages needed for MEXC public WebSocket
-        self.logger.debug("MEXC heartbeat handled by built-in ping/pong mechanism")
+        # This method is called by WebSocket manager but we don't send additional pings
+        self.logger.debug("MEXC heartbeat: relying on built-in ping/pong mechanism (no custom ping)")
         pass
 
     def should_reconnect(self, error: Exception) -> bool:

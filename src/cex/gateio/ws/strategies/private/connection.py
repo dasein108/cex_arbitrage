@@ -51,14 +51,16 @@ class GateioPrivateConnectionStrategy(ConnectionStrategy):
             self.logger.info(f"Connecting to Gate.io private WebSocket: {self.websocket_url}")
             
             # Gate.io private connection (similar to public but for private endpoint)
+            # IMPORTANT: Disable built-in ping since we use custom ping messages
+            # This prevents conflict between built-in ping/pong and custom ping
             self._websocket = await connect(
                 self.websocket_url,
                 # # Gate.io-specific optimizations
                 # extra_headers={
                 #     "User-Agent": "HFTArbitrageEngine-Gateio/1.0"
                 # },
-                ping_interval=self.ping_interval,
-                ping_timeout=self.ping_timeout,
+                ping_interval=None,  # DISABLE built-in ping - we use custom ping messages
+                ping_timeout=None,   # DISABLE built-in ping timeout
                 max_queue=self.max_queue_size,
                 # Gate.io works well with compression
                 compression="deflate",

@@ -38,8 +38,8 @@ class AnalyticsConfig:
 class DataCollectorConfig:
     """Main configuration for the data collector."""
     enabled: bool
-    snapshot_interval: int  # seconds
-    analytics_interval: int  # seconds
+    snapshot_interval: float  # seconds
+    analytics_interval: float  # seconds
     database: DatabaseConfig
     exchanges: List[str]
     analytics: AnalyticsConfig
@@ -109,7 +109,7 @@ class ConfigManager:
         
         return DataCollectorConfig(
             enabled=dc_config.get("enabled", True),
-            snapshot_interval=dc_config.get("snapshot_interval", 1),
+            snapshot_interval=dc_config.get("snapshot_interval", 0.5),
             analytics_interval=dc_config.get("analytics_interval", 10),
             database=db_config,
             exchanges=dc_config.get("exchanges", ["mexc", "gateio"]),
@@ -128,7 +128,6 @@ class ConfigManager:
             DatabaseConfig instance
         """
         db_data = raw_config.get("database", {})
-        
         return DatabaseConfig(
             host=db_data.get("host", "localhost"),
             port=int(db_data.get("port", 5432)),

@@ -1,0 +1,15 @@
+{
+  "Servers": {
+    "1": {
+      "Name": "External TimescaleDB",
+      "Group": "Servers",
+      "Host": "env:EXTERNAL_DB_HOST",
+      "Port": "env:EXTERNAL_DB_PORT",
+      "MaintenanceDB": "env:EXTERNAL_DB_NAME",
+      "Username": "env:EXTERNAL_DB_USER",
+      "Password": "env:EXTERNAL_DB_PASSWORD",
+      "SSLMode": "require",
+      "Comment": "External TimescaleDB instance for arbitrage data"
+    }
+  }
+}

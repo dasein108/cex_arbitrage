@@ -13,14 +13,14 @@ Message Format:
 }
 """
 
-import time
 import logging
 from typing import List, Dict, Any, Optional, Set
 
-from core.transport.websocket.strategies.subscription import SubscriptionStrategy
+from core.transport.websocket.strategies.subscription import SubscriptionStrategy, WebsocketChannelType
 from core.transport.websocket.structs import SubscriptionAction
 from structs.common import Symbol
 from core.cex.services import SymbolMapperInterface
+from cex.consts import DEFAULT_PUBLIC_WEBSOCKET_CHANNELS
 
 
 class MexcPublicSubscriptionStrategy(SubscriptionStrategy):
@@ -38,11 +38,9 @@ class MexcPublicSubscriptionStrategy(SubscriptionStrategy):
         # Track active subscriptions for reconnection
         self._active_symbols: Set[Symbol] = set()
 
-    async def create_subscription_messages(
-        self,
-        action: SubscriptionAction,
-        symbols: List[Symbol]
-    ) -> List[Dict[str, Any]]:
+    async def create_subscription_messages(self, action: SubscriptionAction,
+                                           symbols: List[Symbol],
+                                           channels: List[WebsocketChannelType] = DEFAULT_PUBLIC_WEBSOCKET_CHANNELS) -> List[Dict[str, Any]]:
         """
         Create MEXC public subscription messages.
         
@@ -51,6 +49,7 @@ class MexcPublicSubscriptionStrategy(SubscriptionStrategy):
         Args:
             action: SUBSCRIBE or UNSUBSCRIBE
             symbols: Symbols to subscribe/unsubscribe to/from
+            channels: Channel types to subscribe/unsubscribe to/from
         
         Returns:
             Single message with all symbol-specific channels
@@ -70,13 +69,21 @@ class MexcPublicSubscriptionStrategy(SubscriptionStrategy):
         for symbol in symbols:
             try:
                 exchange_symbol = self.mapper.to_pair(symbol)
-                params= [
-                    f"spot@public.aggre.depth.v3.api.pb@10ms@{exchange_symbol}",
-                    f"spot@public.aggre.deals.v3.api.pb@10ms@{exchange_symbol}",
-                    f"spot@public.aggre.bookTicker.v3.api.pb@100ms@{exchange_symbol}"
-                ]
-                
+                if WebsocketChannelType.BOOK_TICKER in channels:
+                    params.append(f"spot@public.aggre.bookTicker.v3.api.pb@100ms@{exchange_symbol}")
+
+                if WebsocketChannelType.ORDERBOOK in channels:
+                    params.append(f"spot@public.aggre.depth.v3.api.pb@10ms@{exchange_symbol}")
+
+                if WebsocketChannelType.TRADES in channels:
+                    params.append( f"spot@public.aggre.deals.v3.api.pb@10ms@{exchange_symbol}")
+
+                if not len(params):
+                    self.logger.warning(f"No valid channels to subscribe for symbol {symbol}")
+                    continue
+
                 self.logger.debug(f"Added channels for {symbol}: {exchange_symbol}")
+
                 message = {
                     "method": method,
                     "params": params

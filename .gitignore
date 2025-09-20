@@ -126,3 +126,5 @@ src/tools/data/*.*
 src/tools/output/*.*
 *.csv
 .env
+.env.*
+update_server.sh

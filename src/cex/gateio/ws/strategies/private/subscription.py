@@ -35,11 +35,7 @@ class GateioPrivateSubscriptionStrategy(SubscriptionStrategy):
         super().__init__(mapper)  # Initialize parent with injected mapper
         self.logger = logging.getLogger(f"{__name__}.{self.__class__.__name__}")
 
-    async def create_subscription_messages(
-            self,
-            action: SubscriptionAction,
-            symbols: List[Symbol]  # Ignored for private channels
-    ) -> List[Dict[str, Any]]:
+    async def create_subscription_messages(self, action: SubscriptionAction, **kwargs) -> List[Dict[str, Any]]:
         """
         Create Gate.io private subscription messages.
         
@@ -48,8 +44,7 @@ class GateioPrivateSubscriptionStrategy(SubscriptionStrategy):
         
         Args:
             action: SUBSCRIBE or UNSUBSCRIBE
-            symbols: Ignored for private channels
-        
+
         Returns:
             List of messages, one per private channel type
         """

@@ -14,6 +14,7 @@ from typing import Any
 from .structures import ArbitrageOpportunity, ArbitrageState
 from .types import ArbitrageConfig, EngineStatistics
 from structs.common import Symbol
+from common.telegram_utils import send_trade_alert
 
 logger = logging.getLogger(__name__)
 
@@ -69,6 +70,25 @@ class OpportunityProcessor:
             f"| Estimated Profit: ${opportunity.total_profit_estimate:.2f}"
         )
         
+        # Send Telegram alert for arbitrage opportunity
+        try:
+            profit_percentage = opportunity.profit_margin_bps / 100.0  # Convert bps to percentage
+            telegram_message = (
+                f"<b>{opportunity.symbol.base}/{opportunity.symbol.quote}</b> "
+                f"{opportunity.buy_exchange} → {opportunity.sell_exchange} "
+                f"<b>+{profit_percentage:.2f}%</b> "
+                f"(${opportunity.total_profit_estimate:.2f} profit, "
+                f"{opportunity.max_quantity:.6f} qty)"
+            )
+            
+            # Fire and forget - don't block on Telegram API
+            import asyncio
+            asyncio.create_task(send_trade_alert(telegram_message))
+            
+        except Exception as e:
+            # Don't let Telegram errors affect trading logic
+            logger.debug(f"Telegram notification failed: {e}")
+        
         # Update last opportunity time for statistics  
         import time
         self.statistics.last_opportunity_time = time.perf_counter()
@@ -89,6 +109,19 @@ class OpportunityProcessor:
                             f"✅ LIVE EXECUTION COMPLETED: {opportunity.opportunity_id} "
                             f"- Profit: ${execution_result.realized_profit:.2f}"
                         )
+                        
+                        # Send Telegram alert for successful live execution
+                        try:
+                            profit_message = (
+                                f"<b>LIVE TRADE EXECUTED</b> ✅\n"
+                                f"<b>{opportunity.symbol.base}/{opportunity.symbol.quote}</b> "
+                                f"{opportunity.buy_exchange} → {opportunity.sell_exchange}\n"
+                                f"<b>Profit: ${execution_result.realized_profit:.2f}</b>"
+                            )
+                            import asyncio
+                            asyncio.create_task(send_trade_alert(profit_message))
+                        except Exception:
+                            pass  # Silent fail for Telegram alerts
                     else:
                         logger.warning(
                             f"❌ LIVE EXECUTION FAILED: {opportunity.opportunity_id} "
@@ -126,6 +159,20 @@ class OpportunityProcessor:
                 f"✅ SIMULATED EXECUTION: {opportunity.opportunity_id} "
                 f"(DRY RUN) - Profit: ${profit:.2f}"
             )
+            
+            # Send Telegram alert for simulated execution (optional - only for high-profit trades)
+            if profit > 10.0:  # Only notify for significant simulated profits
+                try:
+                    sim_message = (
+                        f"<b>SIMULATED TRADE</b> 🎯 (DRY RUN)\n"
+                        f"<b>{opportunity.symbol.base}/{opportunity.symbol.quote}</b> "
+                        f"{opportunity.buy_exchange} → {opportunity.sell_exchange}\n"
+                        f"<b>Profit: ${profit:.2f}</b> (simulated)"
+                    )
+                    import asyncio
+                    asyncio.create_task(send_trade_alert(sim_message))
+                except Exception:
+                    pass  # Silent fail for Telegram alerts
         else:
             reason = "insufficient profit margin" if not should_execute else "risk management filter"
             logger.info(

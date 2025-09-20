@@ -28,37 +28,25 @@ All exchange implementations follow the same architectural patterns:
 - Auto-registration: Services and strategies register automatically on import
 """
 
-from enum import Enum
-from structs.common import ExchangeName
-
-# Exchange enumeration for type-safe exchange selection
-class ExchangeEnum(Enum):
-    """
-    Enumeration of supported centralized exchanges.
-    
-    Used throughout the system for type-safe exchange identification
-    and consistent naming across all components.
-    """
-    MEXC = ExchangeName("MEXC")
-    GATEIO = ExchangeName("GATEIO")
-    GATEIO_FUTURES = ExchangeName("GATEIO_FUTURES")
-
 # Import interfaces for external access
 from .interfaces import PublicExchangeInterface, PrivateExchangeInterface, ExchangeInterface
 
 # Import centralized factory
 from .factories import ExchangeFactory
-
 # Auto-import exchange modules to trigger service registration
 from . import mexc
 from . import gateio
+from .consts import ExchangeEnum, DEFAULT_PUBLIC_WEBSOCKET_CHANNELS
+
+
 
 __all__ = [
-    'ExchangeEnum',
     'PublicExchangeInterface',
     'PrivateExchangeInterface',
     'ExchangeInterface',
     'ExchangeFactory',
     'mexc',
-    'gateio'
+    'gateio',
+    'ExchangeEnum',
+    'DEFAULT_PUBLIC_WEBSOCKET_CHANNELS'
 ]

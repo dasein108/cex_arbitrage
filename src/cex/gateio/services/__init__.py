@@ -14,7 +14,7 @@ Registration happens automatically when this module is imported.
 from .symbol_mapper import GateioSymbolMapperInterface
 from .mapper import GateioUnifiedMappings
 
-from cex import ExchangeEnum
+from cex.consts import ExchangeEnum
 
 # Import factories to verify registration
 from core.cex.services.symbol_mapper.factory import ExchangeSymbolMapperFactory

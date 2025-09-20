@@ -18,9 +18,10 @@ import logging
 from typing import List, Dict, Any, Optional, Set
 
 from core.transport.websocket.strategies.subscription import SubscriptionStrategy
-from core.transport.websocket.structs import SubscriptionAction
+from core.transport.websocket.structs import SubscriptionAction, WebsocketChannelType
 from structs.common import Symbol
 from core.cex.services import SymbolMapperInterface
+from cex.consts import DEFAULT_PUBLIC_WEBSOCKET_CHANNELS
 
 
 class GateioPublicSubscriptionStrategy(SubscriptionStrategy):
@@ -38,11 +39,9 @@ class GateioPublicSubscriptionStrategy(SubscriptionStrategy):
         # Track active subscriptions for reconnection
         self._active_symbols: Set[Symbol] = set()
     
-    async def create_subscription_messages(
-        self,
-        action: SubscriptionAction,
-        symbols: List[Symbol]
-    ) -> List[Dict[str, Any]]:
+    async def create_subscription_messages(self, action: SubscriptionAction,
+                                           symbols: List[Symbol],
+                                           channels: List[WebsocketChannelType] = DEFAULT_PUBLIC_WEBSOCKET_CHANNELS) -> List[Dict[str, Any]]:
         """
         Create Gate.io public subscription messages.
         
@@ -52,6 +51,7 @@ class GateioPublicSubscriptionStrategy(SubscriptionStrategy):
         Args:
             action: SUBSCRIBE or UNSUBSCRIBE
             symbols: Symbols to subscribe/unsubscribe to/from
+            channels: Channel types to subscribe/unsubscribe to/from
         
         Returns:
             List of messages, one per channel type
@@ -84,13 +84,16 @@ class GateioPublicSubscriptionStrategy(SubscriptionStrategy):
             return []
         
         # Create separate message for each channel type
-        channel_types = [
-            "spot.book_ticker",
-            "spot.trades"
-        ]
+        channel_types = {
+            "spot.book_ticker": WebsocketChannelType.BOOK_TICKER,
+            "spot.trades": WebsocketChannelType.TRADES,
+        }
 
         i = 0
-        for channel in channel_types:
+        for channel in channel_types.keys():
+            if channel_types[channel] not in channels:
+                continue
+
             message = {
                 "time": current_time + i,  # Slightly different timestamps
                 "channel": channel,
@@ -102,16 +105,17 @@ class GateioPublicSubscriptionStrategy(SubscriptionStrategy):
             
             self.logger.debug(f"Created {event} message for {channel} with {len(symbol_pairs)} symbols")
 
-        # Orderbook update is symbol specific
-        for pair in symbol_pairs:
-            message = {
-                "time": current_time + i,  # Slightly different timestamps
-                "channel": "spot.order_book_update",
-                "event": event,
-                "payload": [pair, "20ms"]
-            }
-            i += 1
-            messages.append(message)
+        if WebsocketChannelType.ORDERBOOK in channels:
+            # Orderbook update is symbol specific
+            for pair in symbol_pairs:
+                message = {
+                    "time": current_time + i,  # Slightly different timestamps
+                    "channel": "spot.order_book_update",
+                    "event": event,
+                    "payload": [pair, "20ms"]
+                }
+                i += 1
+                messages.append(message)
 
         self.logger.info(f"Created {len(messages)} {event} messages for {len(symbols)} symbols")
         

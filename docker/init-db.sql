@@ -1,5 +1,8 @@
--- Database initialization script for arbitrage data collection
--- Creates tables optimized for time-series data with TimescaleDB
+-- =============================================================================
+-- CEX Arbitrage Database Schema Initialization
+-- =============================================================================
+-- This script initializes the database schema for the CEX arbitrage system
+-- Optimized for time-series data collection with TimescaleDB
 
 -- Enable TimescaleDB extension
 CREATE EXTENSION IF NOT EXISTS timescaledb CASCADE;

@@ -33,8 +33,8 @@ class MexcPrivateConnectionStrategy(ConnectionStrategy):
         
         # MEXC private WebSocket settings
         self.base_url = "wss://wbs-api.mexc.com/ws"
-        self.ping_interval = 30
-        self.ping_timeout = 10
+        self.ping_interval = 30  # MEXC uses 30s ping interval (built-in only)
+        self.ping_timeout = 15   # Increased timeout for better stability
         self.max_queue_size = 512
         self.max_message_size = 1024 * 1024  # 1MB
 

@@ -11,10 +11,10 @@ import logging
 from typing import List, Dict, Optional, Callable, Awaitable, Set
 from abc import ABC
 
+from cex.consts import DEFAULT_PUBLIC_WEBSOCKET_CHANNELS
 from structs.common import Symbol, OrderBook, Trade, BookTicker
 from core.config.structs import ExchangeConfig
-from core.transport.websocket.ws_manager import WebSocketManager
-from core.transport.websocket.structs import ConnectionState, MessageType, ParsedMessage
+from core.transport.websocket.structs import ConnectionState, MessageType, ParsedMessage, WebsocketChannelType
 
 
 class BaseExchangePublicWebsocketInterface(ABC):
@@ -72,16 +72,19 @@ class BaseExchangePublicWebsocketInterface(ABC):
 
         self.logger.info(f"Initialized {self.exchange_name} public WebSocket with strategy-driven architecture")
     
-    async def initialize(self, symbols: List[Symbol]) -> None:
+    async def initialize(self, symbols: List[Symbol],
+                         channels: List[WebsocketChannelType]=DEFAULT_PUBLIC_WEBSOCKET_CHANNELS) -> None:
         """
         Initialize WebSocket connection and subscribe to symbols.
         
         Args:
             symbols: List of symbols to subscribe to
+            :param symbols:  Symbols to subscribe to
+            :param channels:  Channels to subscribe to
         """
         try:
             # Initialize manager with symbols
-            await self._ws_manager.initialize(symbols=symbols)
+            await self._ws_manager.initialize(symbols=symbols, channels=channels)
             self.logger.info(f"WebSocket initialized for {self.exchange_name} with {len(symbols)} symbols")
             
         except Exception as e:

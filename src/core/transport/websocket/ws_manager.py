@@ -15,7 +15,7 @@ from websockets.client import WebSocketClientProtocol
 from websockets.protocol import State as WsState
 
 from structs.common import Symbol
-from core.transport.websocket.structs import SubscriptionAction
+from core.transport.websocket.structs import SubscriptionAction, WebsocketChannelType
 from core.transport.websocket.strategies.strategy_set import WebSocketStrategySet
 from .structs import ParsedMessage, WebSocketManagerConfig, PerformanceMetrics
 from core.config.structs import WebSocketConfig
@@ -68,6 +68,7 @@ class WebSocketManager:
         # Control flags
         self._should_reconnect = True
         self._active_symbols: Set[Symbol] = set()
+        self._ws_channels: List[WebsocketChannelType] = []
         
         # Performance tracking
         self.metrics = PerformanceMetrics()
@@ -80,7 +81,8 @@ class WebSocketManager:
         
         self.logger.info("WebSocket manager V2 initialized with strategy-driven architecture")
     
-    async def initialize(self, symbols: Optional[List[Symbol]] = None) -> None:
+    async def initialize(self, symbols: Optional[List[Symbol]] = None,
+                         channels: Optional[List[WebsocketChannelType]] = None) -> None:
         """
         Initialize WebSocket connection using strategy.connect() directly.
         
@@ -90,7 +92,10 @@ class WebSocketManager:
         self.start_time = time.perf_counter()
         if symbols:
             self._active_symbols.update(symbols)
-            
+
+        if channels:
+            self._ws_channels = channels
+
         try:
             self.logger.info("Initializing WebSocket manager with direct strategy connection")
             
@@ -102,9 +107,10 @@ class WebSocketManager:
             self._processing_task = asyncio.create_task(self._process_messages())
             
             # Start strategy-managed heartbeat if needed
-            if self.config.heartbeat_interval > 0:
+            # Note: This heartbeat supplements built-in ping/pong for exchanges requiring custom ping
+            if self.config.heartbeat_interval and self.config.heartbeat_interval > 0:
                 self._heartbeat_task = asyncio.create_task(self._heartbeat_loop())
-                self.logger.info(f"Started strategy heartbeat with {self.config.heartbeat_interval}s interval")
+                self.logger.info(f"Started custom heartbeat with {self.config.heartbeat_interval}s interval (supplements built-in ping/pong)")
             
             self.logger.info("WebSocket manager V2 initialized successfully")
             
@@ -120,9 +126,7 @@ class WebSocketManager:
 
         try:
             messages = await self.strategies.subscription_strategy.create_subscription_messages(
-                action=SubscriptionAction.SUBSCRIBE,
-                symbols=symbols
-            )
+                action=SubscriptionAction.SUBSCRIBE, symbols=symbols, channels=self._ws_channels)
             
             if not messages:
                 self.logger.warning("No subscription messages created")
@@ -146,9 +150,7 @@ class WebSocketManager:
         
         try:
             messages = await self.strategies.subscription_strategy.create_subscription_messages(
-                action=SubscriptionAction.UNSUBSCRIBE,
-                symbols=symbols
-            )
+                action=SubscriptionAction.UNSUBSCRIBE, symbols=symbols, channels=self._ws_channels)
             
             if not messages:
                 return
@@ -356,17 +358,27 @@ class WebSocketManager:
     
     async def _heartbeat_loop(self) -> None:
         """Strategy-managed heartbeat loop."""
+        consecutive_failures = 0
+        max_failures = 3
+        
         try:
             while self.is_connected():
                 await asyncio.sleep(self.config.heartbeat_interval)
                 
-                # Use strategy for heartbeat
+                # Use strategy for heartbeat (custom ping messages for exchanges that need them)
                 if self.config.has_heartbeat:
                     try:
                         await self.strategies.connection_strategy.handle_heartbeat()
-                        self.logger.debug("Strategy heartbeat sent")
+                        consecutive_failures = 0  # Reset on success
+                        self.logger.debug("Strategy heartbeat sent successfully")
                     except Exception as e:
-                        self.logger.warning(f"Strategy heartbeat failed: {e}")
+                        consecutive_failures += 1
+                        self.logger.warning(f"Strategy heartbeat failed ({consecutive_failures}/{max_failures}): {e}")
+                        
+                        # If too many consecutive failures, stop heartbeat (built-in ping/pong will handle)
+                        if consecutive_failures >= max_failures:
+                            self.logger.error(f"Too many consecutive heartbeat failures ({max_failures}), stopping custom heartbeat")
+                            break
                         
         except asyncio.CancelledError:
             self.logger.debug("Strategy heartbeat loop cancelled")

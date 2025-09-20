@@ -53,7 +53,17 @@
       "WebFetch(domain:github.com)",
       "Bash(FACTORY_INIT_MODE=COMPREHENSIVE PYTHONPATH=src python src/examples/simple_auto_init_demo.py)",
       "Bash(DISABLE_FACTORY_AUTO_INIT=true PYTHONPATH=src python src/examples/simple_auto_init_demo.py)",
-      "Bash(pip uninstall:*)"
+      "Bash(pip uninstall:*)",
+      "Bash(docker logs:*)",
+      "Bash(docker exec:*)",
+      "Bash(docker restart:*)",
+      "Bash(docker-compose:*)",
+      "Bash(./deploy.sh:*)",
+      "Bash(docker rm:*)",
+      "Bash(docker ps:*)",
+      "Bash(curl:*)",
+      "Bash(COMPOSE_PROFILES=admin,monitoring docker-compose -f docker-compose.yml -f docker-compose.dev.yml up -d)",
+      "Bash(docker:*)"
     ],
     "deny": [],
     "ask": []

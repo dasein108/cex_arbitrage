@@ -12,12 +12,13 @@ from typing import Dict, List, Optional, Set, Callable, Awaitable
 from dataclasses import dataclass
 
 from core.config import get_exchange_config
-from structs.common import Symbol, BookTicker, ExchangeName
-from core.config.structs import ExchangeConfig
+from structs.common import Symbol, BookTicker
+from core.transport.websocket.structs import WebsocketChannelType
 from cex.mexc.ws.mexc_ws_public import MexcWebsocketPublic
 from cex.gateio.ws.gateio_ws_public import GateioWebsocketPublic
 from db.models import BookTickerSnapshot
-from cex import ExchangeEnum
+from cex.consts import ExchangeEnum
+from .analytics import RealTimeAnalytics
 
 @dataclass
 class BookTickerCache:
@@ -26,6 +27,7 @@ class BookTickerCache:
     last_updated: datetime
     exchange: str
 
+WEBSOCKET_CHANNELS=[WebsocketChannelType.BOOK_TICKER]
 
 class UnifiedWebSocketManager:
     """
@@ -123,7 +125,7 @@ class UnifiedWebSocketManager:
             self._connected[exchange] = False
             
             # Initialize connection and subscribe to symbols
-            await client.initialize(symbols)
+            await client.initialize(symbols, WEBSOCKET_CHANNELS)
             self._active_symbols[exchange].update(symbols)
             self._connected[exchange] = True
             
@@ -338,7 +340,7 @@ class SnapshotScheduler:
     def __init__(
         self,
         ws_manager: UnifiedWebSocketManager,
-        interval_seconds: int = 1,
+        interval_seconds: float = 1,
         snapshot_handler: Optional[Callable[[List[BookTickerSnapshot]], Awaitable[None]]] = None
     ):
         """
@@ -441,7 +443,7 @@ class DataCollector:
         
         # Components
         self.ws_manager: Optional[UnifiedWebSocketManager] = None
-        self.analytics: Optional['RealTimeAnalytics'] = None
+        self.analytics: Optional[RealTimeAnalytics] = None
         self.scheduler: Optional[SnapshotScheduler] = None
         
         # State

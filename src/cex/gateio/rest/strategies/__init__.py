@@ -10,7 +10,7 @@ from .rate_limit import GateioRateLimitStrategy
 from .retry import GateioRetryStrategy
 from .auth import GateioAuthStrategy
 from .exception_handler import GateioExceptionHandlerStrategy
-from cex import ExchangeEnum
+from cex.consts import ExchangeEnum
 from core.transport.rest.strategies import RestStrategyFactory
 
 # Register public API strategies

@@ -8,7 +8,8 @@ from .strategies import (
 
 # Register Gate.io strategies with the factory
 from core.transport.rest.strategies import RestStrategyFactory
-from cex import ExchangeEnum
+from cex.consts import ExchangeEnum
+
 # Register exchange strategies
 RestStrategyFactory.register_strategies(
     exchange=ExchangeEnum.GATEIO.value,

@@ -18,7 +18,6 @@ from typing import List, Dict, Any, Optional
 
 from core.transport.websocket.strategies.subscription import SubscriptionStrategy
 from core.transport.websocket.structs import SubscriptionAction
-from structs.common import Symbol
 from core.cex.services import SymbolMapperInterface
 
 
@@ -34,11 +33,7 @@ class MexcPrivateSubscriptionStrategy(SubscriptionStrategy):
         super().__init__(mapper)  # Initialize parent with injected mapper
         self.logger = logging.getLogger(f"{__name__}.{self.__class__.__name__}")
         
-    async def create_subscription_messages(
-        self,
-        action: SubscriptionAction,
-        symbols: List[Symbol]  # Ignored for private channels
-    ) -> List[Dict[str, Any]]:
+    async def create_subscription_messages(self, action: SubscriptionAction, **kwargs) -> List[Dict[str, Any]]:
         """
         Create MEXC private subscription messages.
         
@@ -47,8 +42,7 @@ class MexcPrivateSubscriptionStrategy(SubscriptionStrategy):
         
         Args:
             action: SUBSCRIBE or UNSUBSCRIBE
-            symbols: Ignored for private channels
-        
+
         Returns:
             Single message with fixed private channel params
         """

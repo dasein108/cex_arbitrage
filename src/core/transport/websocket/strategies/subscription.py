@@ -1,8 +1,7 @@
 from abc import ABC, abstractmethod
 from typing import List, Dict, Any, Optional
-from dataclasses import dataclass
 
-from core.transport.websocket.structs import SubscriptionAction
+from core.transport.websocket.structs import SubscriptionAction, WebsocketChannelType
 from structs.common import Symbol
 from core.cex.services import SymbolMapperInterface
 
@@ -25,7 +24,8 @@ class SubscriptionStrategy(ABC):
     async def create_subscription_messages(
         self,
         action: SubscriptionAction,
-        symbols: List[Symbol]
+        symbols: List[Symbol],
+        channels: Optional[List[WebsocketChannelType]]
     ) -> List[Dict[str, Any]]:
         """
         Create complete WebSocket subscription/unsubscription messages.
@@ -33,6 +33,7 @@ class SubscriptionStrategy(ABC):
         Args:
             action: SUBSCRIBE or UNSUBSCRIBE
             symbols: Symbols to subscribe/unsubscribe to/from
+            channels: Channel types to subscribe/unsubscribe to/from
         
         Returns:
             List of complete message dictionaries ready for WebSocket sending
