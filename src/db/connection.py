@@ -10,7 +10,7 @@ import logging
 from typing import Optional, Dict, Any
 import asyncpg
 
-from .models import DatabaseConfig
+from .structs import DatabaseConfig
 
 
 class DatabaseManager:

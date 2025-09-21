@@ -10,20 +10,10 @@ from dataclasses import dataclass
 
 from structs.common import Symbol, AssetName
 from core.config.config_manager import HftConfig
+from db import DatabaseConfig
 
 
-@dataclass
-class DatabaseConfig:
-    """Database configuration for the data collector."""
-    host: str
-    port: int
-    database: str
-    username: str
-    password: str
-    
-    def get_dsn(self) -> str:
-        """Get PostgreSQL connection DSN."""
-        return f"postgresql://{self.username}:{self.password}@{self.host}:{self.port}/{self.database}"
+# DatabaseConfig is now imported from db.structs
 
 
 @dataclass
