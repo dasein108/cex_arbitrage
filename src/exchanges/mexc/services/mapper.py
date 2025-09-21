@@ -14,6 +14,7 @@ from structs.common import (
     TimeInForce, KlineInterval, Trade, AssetBalance, AssetName
 )
 from core.exchanges.services.unified_mapper.exchange_mappings import BaseExchangeMappings, MappingConfiguration
+from core.transport.websocket.structs import PublicWebsocketChannelType, PrivateWebsocketChannelType
 
 
 class MexcMappings(BaseExchangeMappings):
@@ -201,3 +202,66 @@ class MexcMappings(BaseExchangeMappings):
             free=float(mexc_ws_balance.free),
             locked=float(mexc_ws_balance.locked)
         )
+    
+    # Channel Name Methods for WebSocket subscriptions
+    def get_spot_channel_name(self, channel_type: PublicWebsocketChannelType) -> str:
+        """Get MEXC spot channel name for WebSocket channel type.
+        
+        MEXC uses protobuf messages, but channel types are:
+        - spot@public.deals.v3.api@{symbol}
+        - spot@public.increase.depth.v3.api@{symbol} 
+        """
+        if channel_type == PublicWebsocketChannelType.ORDERBOOK:
+            return "spot@public.increase.depth.v3.api"
+        elif channel_type == PublicWebsocketChannelType.TRADES:
+            return "spot@public.deals.v3.api"
+        else:
+            raise ValueError(f"Unsupported channel type: {channel_type}")
+    
+    def get_futures_channel_name(self, channel_type: PublicWebsocketChannelType) -> str:
+        """Get MEXC futures channel name for WebSocket channel type.
+        
+        MEXC futures uses similar structure to spot.
+        """
+        if channel_type == PublicWebsocketChannelType.ORDERBOOK:
+            return "futures@public.increase.depth.v3.api"
+        elif channel_type == PublicWebsocketChannelType.TRADES:
+            return "futures@public.deals.v3.api"
+        else:
+            raise ValueError(f"Unsupported channel type: {channel_type}")
+    
+    def get_futures_private_channel_name(self, channel_type: PrivateWebsocketChannelType) -> str:
+        """Get MEXC futures private channel name for WebSocket channel type.
+        
+        MEXC private channels:
+        - futures@private.orders.v3.api
+        - futures@private.deals.v3.api
+        - futures@private.account.v3.api
+        """
+        if channel_type == PrivateWebsocketChannelType.ORDER:
+            return "futures@private.orders.v3.api"
+        elif channel_type == PrivateWebsocketChannelType.TRADE:
+            return "futures@private.deals.v3.api"
+        elif channel_type == PrivateWebsocketChannelType.BALANCE:
+            return "futures@private.account.v3.api"
+        else:
+            # Default to orders channel
+            return "futures@private.orders.v3.api"
+    
+    def get_spot_private_channel_name(self, channel_type: PrivateWebsocketChannelType) -> str:
+        """Get MEXC spot private channel name for WebSocket channel type.
+        
+        MEXC private channels:
+        - spot@private.orders.v3.api
+        - spot@private.deals.v3.api
+        - spot@private.account.v3.api
+        """
+        if channel_type == PrivateWebsocketChannelType.ORDER:
+            return "spot@private.orders.v3.api"
+        elif channel_type == PrivateWebsocketChannelType.TRADE:
+            return "spot@private.deals.v3.api"
+        elif channel_type == PrivateWebsocketChannelType.BALANCE:
+            return "spot@private.account.v3.api"
+        else:
+            # Default to orders channel
+            return "spot@private.orders.v3.api"

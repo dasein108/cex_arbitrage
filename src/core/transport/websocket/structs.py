@@ -44,25 +44,30 @@ class WebsocketConfig(msgspec.Struct):
     text_encoding: str = "utf-8"
 
 
-class WebsocketChannelType(IntEnum):
+class PublicWebsocketChannelType(IntEnum):
     """Channel type classification."""
     ORDERBOOK = 1
     TRADES = 2
     BOOK_TICKER = 3
     TICKER = 4
 
+class PrivateWebsocketChannelType(IntEnum):
+    """Channel type classification."""
+    TRADE = 5
+    BALANCE = 6  # Fixed duplicate value
+    ORDER = 7
 
 class MessageType(IntEnum):
     """Message type classification for fast routing."""
     # Copy channel values
-    ORDERBOOK = WebsocketChannelType.ORDERBOOK.value
-    TRADES = WebsocketChannelType.TRADES.value
-    BOOK_TICKER = WebsocketChannelType.BOOK_TICKER.value
-    TICKER = WebsocketChannelType.TICKER.value
+    ORDERBOOK = PublicWebsocketChannelType.ORDERBOOK.value
+    TRADES = PublicWebsocketChannelType.TRADES.value
+    BOOK_TICKER = PublicWebsocketChannelType.BOOK_TICKER.value
+    TICKER = PublicWebsocketChannelType.TICKER.value
     # Additional message types
-    TRADE = 5
-    BALANCE = 6  # Fixed duplicate value
-    ORDER = 7
+    TRADE = PrivateWebsocketChannelType.TRADE.value
+    BALANCE = PrivateWebsocketChannelType.BALANCE.value
+    ORDER = PrivateWebsocketChannelType.ORDER.value
     SUBSCRIPTION_CONFIRM = 0
     HEARTBEAT = 999
     ERROR = -1

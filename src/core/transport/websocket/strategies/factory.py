@@ -12,7 +12,7 @@ from core.transport.websocket.strategies.strategy_set import WebSocketStrategySe
 from core.transport.websocket.strategies.connection import ConnectionStrategy
 from core.transport.websocket.strategies.subscription import SubscriptionStrategy
 from core.transport.websocket.strategies.message_parser import MessageParser
-from core.exchanges.services import ExchangeSymbolMapperFactory
+from core.exchanges.services.unified_mapper.factory import ExchangeMappingsFactory
 from core.exceptions.exchange import ConfigurationError
 
 
@@ -74,12 +74,12 @@ class WebSocketStrategyFactory:
         # Extract exchange name from strategy key
         exchange_name = strategy_key.split('_')[0]
         
-        # Get symbol mapper
+        # Get exchange mappings (includes symbol mapper)
         try:
-            symbol_mapper = ExchangeSymbolMapperFactory.inject(exchange_name)
+            mapper = ExchangeMappingsFactory.inject(exchange_name)
         except Exception as e:
-            cls._logger.error(f"Failed to get symbol mapper for {exchange_name}: {e}")
-            raise ConfigurationError(f"Symbol mapper not available for {exchange_name}")
+            cls._logger.error(f"Failed to get mapper for {exchange_name}: {e}")
+            raise ConfigurationError(f"Mapper not available for {exchange_name}")
         
         # Create strategy instances
         try:
@@ -94,8 +94,8 @@ class WebSocketStrategyFactory:
             else:
                 connection_strategy = connection_cls()
             
-            subscription_strategy = subscription_cls(mapper=symbol_mapper)
-            message_parser = parser_cls(symbol_mapper)
+            subscription_strategy = subscription_cls(mapper=mapper)
+            message_parser = parser_cls(mapper)
             
             return WebSocketStrategySet(
                 connection_strategy=connection_strategy,
@@ -138,20 +138,20 @@ def create_websocket_strategies(
     logger = logging.getLogger(__name__)
     exchange_name = exchange_name.lower()
     
-    # Get symbol mapper for the exchange
-    symbol_mapper = ExchangeSymbolMapperFactory.inject(exchange_name.upper())
+    # Get mapper for the exchange (includes symbol mapper)
+    mapper = ExchangeMappingsFactory.inject(exchange_name.upper())
     
     if exchange_name == "mexc":
-        return _create_mexc_strategies(symbol_mapper, is_private)
+        return _create_mexc_strategies(mapper, is_private)
     elif exchange_name == "gateio":
-        return _create_gateio_strategies(symbol_mapper, is_private)
+        return _create_gateio_strategies(mapper, is_private)
     else:
         raise ConfigurationError(
             f"Unsupported exchange: {exchange_name}. Supported: mexc, gateio"
         )
 
 
-def _create_mexc_strategies(symbol_mapper, is_private: bool) -> WebSocketStrategySet:
+def _create_mexc_strategies(mapper, is_private: bool) -> WebSocketStrategySet:
     """Create MEXC WebSocket strategies."""
     
     if is_private:
@@ -162,8 +162,8 @@ def _create_mexc_strategies(symbol_mapper, is_private: bool) -> WebSocketStrateg
         
         return WebSocketStrategySet(
             connection_strategy=MexcPrivateConnectionStrategy(),
-            subscription_strategy=MexcPrivateSubscriptionStrategy(mapper=symbol_mapper),
-            message_parser=MexcPrivateMessageParser(symbol_mapper)
+            subscription_strategy=MexcPrivateSubscriptionStrategy(mapper=mapper),
+            message_parser=MexcPrivateMessageParser(mapper)
         )
     else:
         # Import MEXC public strategies
@@ -173,12 +173,12 @@ def _create_mexc_strategies(symbol_mapper, is_private: bool) -> WebSocketStrateg
         
         return WebSocketStrategySet(
             connection_strategy=MexcPublicConnectionStrategy(),
-            subscription_strategy=MexcPublicSubscriptionStrategy(mapper=symbol_mapper),
-            message_parser=MexcPublicMessageParser(symbol_mapper)
+            subscription_strategy=MexcPublicSubscriptionStrategy(mapper=mapper),
+            message_parser=MexcPublicMessageParser(mapper)
         )
 
 
-def _create_gateio_strategies(symbol_mapper, is_private: bool) -> WebSocketStrategySet:
+def _create_gateio_strategies(mapper, is_private: bool) -> WebSocketStrategySet:
     """Create Gate.io WebSocket strategies."""
     
     if is_private:
@@ -189,8 +189,8 @@ def _create_gateio_strategies(symbol_mapper, is_private: bool) -> WebSocketStrat
         
         return WebSocketStrategySet(
             connection_strategy=GateioPrivateConnectionStrategy(),
-            subscription_strategy=GateioPrivateSubscriptionStrategy(mapper=symbol_mapper),
-            message_parser=GateioPrivateMessageParser(symbol_mapper)
+            subscription_strategy=GateioPrivateSubscriptionStrategy(mapper=mapper),
+            message_parser=GateioPrivateMessageParser(mapper)
         )
     else:
         # Import Gate.io public strategies
@@ -200,6 +200,6 @@ def _create_gateio_strategies(symbol_mapper, is_private: bool) -> WebSocketStrat
         
         return WebSocketStrategySet(
             connection_strategy=GateioPublicConnectionStrategy(),
-            subscription_strategy=GateioPublicSubscriptionStrategy(mapper=symbol_mapper),
-            message_parser=GateioPublicMessageParser(symbol_mapper)
+            subscription_strategy=GateioPublicSubscriptionStrategy(mapper=mapper),
+            message_parser=GateioPublicMessageParser(mapper)
         )

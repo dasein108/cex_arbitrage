@@ -18,9 +18,9 @@ import logging
 from typing import List, Dict, Any, Optional, Set
 
 from core.transport.websocket.strategies.subscription import SubscriptionStrategy
-from core.transport.websocket.structs import SubscriptionAction, WebsocketChannelType
+from core.transport.websocket.structs import SubscriptionAction, PublicWebsocketChannelType
 from structs.common import Symbol
-from core.exchanges.services import SymbolMapperInterface
+from core.exchanges.services import BaseExchangeMappings
 from exchanges.consts import DEFAULT_PUBLIC_WEBSOCKET_CHANNELS
 
 
@@ -32,7 +32,7 @@ class GateioFuturesSubscriptionStrategy(SubscriptionStrategy):
     Format: {"time": X, "channel": Y, "event": Z, "payload": ["BTC_USDT"]}
     """
     
-    def __init__(self, mapper: Optional[SymbolMapperInterface] = None):
+    def __init__(self, mapper: Optional[BaseExchangeMappings] = None):
         super().__init__(mapper)  # Initialize parent with injected mapper
         self.logger = logging.getLogger(f"{__name__}.{self.__class__.__name__}")
         
@@ -41,7 +41,7 @@ class GateioFuturesSubscriptionStrategy(SubscriptionStrategy):
     
     async def create_subscription_messages(self, action: SubscriptionAction,
                                            symbols: List[Symbol],
-                                           channels: List[WebsocketChannelType] = DEFAULT_PUBLIC_WEBSOCKET_CHANNELS) -> List[Dict[str, Any]]:
+                                           channels: List[PublicWebsocketChannelType] = DEFAULT_PUBLIC_WEBSOCKET_CHANNELS) -> List[Dict[str, Any]]:
         """
         Create Gate.io futures subscription messages.
         
@@ -86,9 +86,9 @@ class GateioFuturesSubscriptionStrategy(SubscriptionStrategy):
         
         # Create separate message for each futures channel type
         channel_types = {
-            "futures.tickers": WebsocketChannelType.TICKER,  # Futures book ticker
-            "futures.book_ticker": WebsocketChannelType.BOOK_TICKER,  # Futures book ticker
-            "futures.trades": WebsocketChannelType.TRADES,        # Futures trades
+            "futures.tickers": PublicWebsocketChannelType.TICKER,  # Futures book ticker
+            "futures.book_ticker": PublicWebsocketChannelType.BOOK_TICKER,  # Futures book ticker
+            "futures.trades": PublicWebsocketChannelType.TRADES,        # Futures trades
             # "futures.order_book_update": WebsocketChannelType.ORDERBOOK, # Futures orderbook
         }
 
@@ -184,18 +184,18 @@ class GateioFuturesSubscriptionStrategy(SubscriptionStrategy):
         """
         return {symbol: symbol in self._active_symbols for symbol in symbols}
     
-    def get_supported_channels(self) -> List[WebsocketChannelType]:
+    def get_supported_channels(self) -> List[PublicWebsocketChannelType]:
         """Get list of supported futures channel types."""
         return [
-            WebsocketChannelType.BOOK_TICKER,
-            WebsocketChannelType.TRADES,
-            WebsocketChannelType.ORDERBOOK
+            PublicWebsocketChannelType.BOOK_TICKER,
+            PublicWebsocketChannelType.TRADES,
+            PublicWebsocketChannelType.ORDERBOOK
         ]
     
     
     async def create_single_symbol_subscription(self, action: SubscriptionAction,
                                                 symbol: Symbol,
-                                                channel_type: WebsocketChannelType) -> Optional[Dict[str, Any]]:
+                                                channel_type: PublicWebsocketChannelType) -> Optional[Dict[str, Any]]:
         """
         Create subscription message for single futures symbol and channel.
         
@@ -207,7 +207,7 @@ class GateioFuturesSubscriptionStrategy(SubscriptionStrategy):
         Returns:
             Subscription message or None if not supported
         """
-        channel_name = GateioWebSocketMappings.get_futures_channel_name(channel_type)
+        channel_name = self.mapper.get_futures_channel_name(channel_type)
         if not channel_name or not self.mapper:
             return None
         

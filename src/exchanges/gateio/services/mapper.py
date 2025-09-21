@@ -16,7 +16,7 @@ from structs.common import (
     TimeInForce, KlineInterval
 )
 from core.exchanges.services.unified_mapper.exchange_mappings import BaseExchangeMappings, MappingConfiguration
-from core.transport.websocket.structs import WebsocketChannelType
+from core.transport.websocket.structs import PublicWebsocketChannelType, PrivateWebsocketChannelType
 from .gateio_mappings import GateioMappings
 
 
@@ -170,6 +170,35 @@ class GateioUnifiedMappings(BaseExchangeMappings):
             params['time_in_force'] = 'poc'  # Post-only
         
         return params
+    
+    # Channel Name Methods for WebSocket subscriptions
+    def get_spot_channel_name(self, channel_type: PublicWebsocketChannelType) -> str:
+        """Get Gate.io spot channel name for WebSocket channel type."""
+        return GateioWebSocketMappings.SPOT_CHANNEL_MAPPING.get(
+            channel_type,
+            "spot.order_book_update"  # default
+        )
+    
+    def get_futures_channel_name(self, channel_type: PublicWebsocketChannelType) -> str:
+        """Get Gate.io futures channel name for WebSocket channel type."""
+        return GateioWebSocketMappings.FUTURES_CHANNEL_MAPPING.get(
+            channel_type,
+            "futures.order_book"  # default
+        )
+    
+    def get_futures_private_channel_name(self, channel_type: PrivateWebsocketChannelType) -> str:
+        """Get Gate.io futures private channel name for WebSocket channel type."""
+        return GateioWebSocketMappings.FUTURES_PRIVATE_CHANNEL_MAPPING.get(
+            channel_type,
+            "futures.orders"  # default
+        )
+    
+    def get_spot_private_channel_name(self, channel_type: PrivateWebsocketChannelType) -> str:
+        """Get Gate.io spot private channel name for WebSocket channel type."""
+        return GateioWebSocketMappings.PRIVATE_CHANNEL_MAPPING.get(
+            channel_type,
+            "spot.orders"  # default
+        )
 
 
 class GateioWebSocketMappings:
@@ -181,26 +210,33 @@ class GateioWebSocketMappings:
     """
     
     # Spot WebSocket channel mappings
-    SPOT_CHANNEL_MAPPING: Dict[WebsocketChannelType, str] = {
-        WebsocketChannelType.BOOK_TICKER: "spot.book_ticker",
-        WebsocketChannelType.TRADES: "spot.trades",
-        WebsocketChannelType.ORDERBOOK: "spot.order_book_update",
-        WebsocketChannelType.TICKER: "spot.tickers"
+    SPOT_CHANNEL_MAPPING: Dict[PublicWebsocketChannelType, str] = {
+        PublicWebsocketChannelType.BOOK_TICKER: "spot.book_ticker",
+        PublicWebsocketChannelType.TRADES: "spot.trades",
+        PublicWebsocketChannelType.ORDERBOOK: "spot.order_book_update",
+        PublicWebsocketChannelType.TICKER: "spot.tickers"
     }
     
     # Futures WebSocket channel mappings
-    FUTURES_CHANNEL_MAPPING: Dict[WebsocketChannelType, str] = {
-        WebsocketChannelType.BOOK_TICKER: "futures.tickers",
-        WebsocketChannelType.TRADES: "futures.trades",
-        WebsocketChannelType.ORDERBOOK: "futures.order_book",
-        WebsocketChannelType.TICKER: "futures.tickers"
+    FUTURES_CHANNEL_MAPPING: Dict[PublicWebsocketChannelType, str] = {
+        PublicWebsocketChannelType.BOOK_TICKER: "futures.tickers",
+        PublicWebsocketChannelType.TRADES: "futures.trades",
+        PublicWebsocketChannelType.ORDERBOOK: "futures.order_book",
+        PublicWebsocketChannelType.TICKER: "futures.tickers"
     }
     
     # Private WebSocket channel mappings
-    PRIVATE_CHANNEL_MAPPING: Dict[str, str] = {
-        "orders": "spot.orders_v2",
-        "user_trades": "spot.usertrades_v2", 
-        "balances": "spot.balances"
+    PRIVATE_CHANNEL_MAPPING: Dict[PrivateWebsocketChannelType, str] = {
+        PrivateWebsocketChannelType.ORDER: "spot.orders_v2",
+        PrivateWebsocketChannelType.TRADE: "spot.usertrades_v2", 
+        PrivateWebsocketChannelType.BALANCE: "spot.balances"
+    }
+    
+    # Futures Private WebSocket channel mappings
+    FUTURES_PRIVATE_CHANNEL_MAPPING: Dict[PrivateWebsocketChannelType, str] = {
+        PrivateWebsocketChannelType.ORDER: "futures.orders",
+        PrivateWebsocketChannelType.TRADE: "futures.usertrades", 
+        PrivateWebsocketChannelType.BALANCE: "futures.balance"
     }
     
     # WebSocket message event types
@@ -218,12 +254,12 @@ class GateioWebSocketMappings:
     }
     
     @classmethod
-    def get_spot_channel_name(cls, channel_type: WebsocketChannelType) -> str:
+    def get_spot_channel_name(cls, channel_type: PublicWebsocketChannelType) -> str:
         """Get Gate.io spot channel name for WebSocket channel type."""
         return cls.SPOT_CHANNEL_MAPPING.get(channel_type, "")
     
     @classmethod
-    def get_futures_channel_name(cls, channel_type: WebsocketChannelType) -> str:
+    def get_futures_channel_name(cls, channel_type: PublicWebsocketChannelType) -> str:
         """Get Gate.io futures channel name for WebSocket channel type."""
         return cls.FUTURES_CHANNEL_MAPPING.get(channel_type, "")
     

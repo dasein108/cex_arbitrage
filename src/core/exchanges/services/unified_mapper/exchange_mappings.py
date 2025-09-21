@@ -17,6 +17,7 @@ from structs.common import (
 )
 
 from core.exchanges.services.symbol_mapper.base_symbol_mapper import SymbolMapperInterface
+from core.transport.websocket.structs import PublicWebsocketChannelType, PrivateWebsocketChannelType
 
 
 class ExchangeMappingsInterface(ABC):
@@ -224,4 +225,25 @@ class BaseExchangeMappings(ExchangeMappingsInterface):
     @abstractmethod
     def transform_exchange_order_to_unified(self, exchange_order: Any) -> Order:
         """Transform exchange order response to unified Order."""
+        pass
+
+    # Channel Name Methods for WebSocket subscriptions
+    @abstractmethod
+    def get_spot_channel_name(self, channel_type: PublicWebsocketChannelType) -> str:
+        """Get exchange-specific spot channel name for WebSocket channel type."""
+        pass
+
+    @abstractmethod
+    def get_futures_channel_name(self, channel_type: PublicWebsocketChannelType) -> str:
+        """Get exchange-specific futures channel name for WebSocket channel type."""
+        pass
+
+    @abstractmethod
+    def get_futures_private_channel_name(self, channel_type: PrivateWebsocketChannelType) -> str:
+        """Get exchange-specific futures private channel name for WebSocket channel type."""
+        pass
+
+    @abstractmethod
+    def get_spot_private_channel_name(self, channel_type: PrivateWebsocketChannelType) -> str:
+        """Get exchange-specific spot private channel name for WebSocket channel type."""
         pass

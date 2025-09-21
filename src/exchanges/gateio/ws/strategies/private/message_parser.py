@@ -2,7 +2,7 @@ import logging
 from typing import Dict, Any, Optional, List
 
 from core.exchanges.websocket import MessageParser, ParsedMessage
-from core.exchanges.services import SymbolMapperInterface
+from core.exchanges.services.unified_mapper.exchange_mappings import ExchangeMappingsInterface
 from core.transport.websocket.structs import MessageType
 from structs.common import Order, AssetBalance, AssetName, Trade, Symbol, Side, OrderStatus, OrderType
 
@@ -10,10 +10,12 @@ from structs.common import Order, AssetBalance, AssetName, Trade, Symbol, Side, 
 class GateioPrivateMessageParser(MessageParser):
     """Gate.io private WebSocket message parser."""
 
-    def __init__(self, symbol_mapper: SymbolMapperInterface):
-        super().__init__(symbol_mapper)
+    def __init__(self, mapper: ExchangeMappingsInterface):
+        super().__init__(mapper)
         self.logger = logging.getLogger(f"{__name__}.{self.__class__.__name__}")
-        self.symbol_mapper = symbol_mapper
+        self.mapper = mapper
+        # Maintain backward compatibility
+        self.symbol_mapper = mapper._symbol_mapper if mapper else None
 
     async def parse_message(self, raw_message: str) -> Optional[ParsedMessage]:
         """Parse raw WebSocket message from Gate.io private channels."""

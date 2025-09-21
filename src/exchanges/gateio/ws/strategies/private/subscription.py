@@ -20,7 +20,7 @@ from typing import List, Dict, Any, Optional, Set
 from core.transport.websocket.strategies.subscription import SubscriptionStrategy
 from core.transport.websocket.structs import SubscriptionAction
 from structs.common import Symbol
-from core.exchanges.services.symbol_mapper.base_symbol_mapper import SymbolMapperInterface
+from core.exchanges.services.unified_mapper.exchange_mappings import ExchangeMappingsInterface
 from exchanges.gateio.services.mapper import GateioWebSocketMappings
 
 
@@ -32,7 +32,7 @@ class GateioPrivateSubscriptionStrategy(SubscriptionStrategy):
     Format: {"time": X, "channel": Y, "event": Z, "payload": ["!all"]}
     """
 
-    def __init__(self, mapper: Optional[SymbolMapperInterface] = None):
+    def __init__(self, mapper: Optional[ExchangeMappingsInterface] = None):
         super().__init__(mapper)  # Initialize parent with injected mapper
         self.logger = logging.getLogger(f"{__name__}.{self.__class__.__name__}")
 

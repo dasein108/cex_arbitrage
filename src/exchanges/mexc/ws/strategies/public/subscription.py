@@ -16,10 +16,10 @@ Message Format:
 import logging
 from typing import List, Dict, Any, Optional, Set
 
-from core.transport.websocket.strategies.subscription import SubscriptionStrategy, WebsocketChannelType
+from core.transport.websocket.strategies.subscription import SubscriptionStrategy, PublicWebsocketChannelType
 from core.transport.websocket.structs import SubscriptionAction
 from structs.common import Symbol
-from core.exchanges.services import SymbolMapperInterface
+from core.exchanges.services.unified_mapper.exchange_mappings import ExchangeMappingsInterface
 from exchanges.consts import DEFAULT_PUBLIC_WEBSOCKET_CHANNELS
 
 
@@ -31,7 +31,7 @@ class MexcPublicSubscriptionStrategy(SubscriptionStrategy):
     Format: "spot@public.aggre.bookTicker.v3.api.pb@100ms@BTCUSDT"
     """
     
-    def __init__(self, mapper: Optional[SymbolMapperInterface] = None):
+    def __init__(self, mapper: Optional[ExchangeMappingsInterface] = None):
         super().__init__(mapper)  # Initialize parent with injected mapper
         self.logger = logging.getLogger(f"{__name__}.{self.__class__.__name__}")
         
@@ -40,7 +40,7 @@ class MexcPublicSubscriptionStrategy(SubscriptionStrategy):
 
     async def create_subscription_messages(self, action: SubscriptionAction,
                                            symbols: List[Symbol],
-                                           channels: List[WebsocketChannelType] = DEFAULT_PUBLIC_WEBSOCKET_CHANNELS) -> List[Dict[str, Any]]:
+                                           channels: List[PublicWebsocketChannelType] = DEFAULT_PUBLIC_WEBSOCKET_CHANNELS) -> List[Dict[str, Any]]:
         """
         Create MEXC public subscription messages.
         
@@ -69,13 +69,13 @@ class MexcPublicSubscriptionStrategy(SubscriptionStrategy):
         for symbol in symbols:
             try:
                 exchange_symbol = self.mapper.to_pair(symbol)
-                if WebsocketChannelType.BOOK_TICKER in channels:
+                if PublicWebsocketChannelType.BOOK_TICKER in channels:
                     params.append(f"spot@public.aggre.bookTicker.v3.api.pb@100ms@{exchange_symbol}")
 
-                if WebsocketChannelType.ORDERBOOK in channels:
+                if PublicWebsocketChannelType.ORDERBOOK in channels:
                     params.append(f"spot@public.aggre.depth.v3.api.pb@10ms@{exchange_symbol}")
 
-                if WebsocketChannelType.TRADES in channels:
+                if PublicWebsocketChannelType.TRADES in channels:
                     params.append( f"spot@public.aggre.deals.v3.api.pb@10ms@{exchange_symbol}")
 
                 if not len(params):

@@ -13,7 +13,7 @@ from dataclasses import dataclass
 
 from core.config import get_exchange_config
 from structs.common import Symbol, BookTicker
-from core.transport.websocket.structs import WebsocketChannelType
+from core.transport.websocket.structs import PublicWebsocketChannelType
 from exchanges.mexc.ws.mexc_ws_public import MexcWebsocketPublic
 from exchanges.gateio.ws.gateio_ws_public import GateioWebsocketPublic
 from db import BookTickerSnapshot
@@ -27,7 +27,7 @@ class BookTickerCache:
     last_updated: datetime
     exchange: str
 
-WEBSOCKET_CHANNELS=[WebsocketChannelType.BOOK_TICKER]
+WEBSOCKET_CHANNELS=[PublicWebsocketChannelType.BOOK_TICKER]
 
 class UnifiedWebSocketManager:
     """

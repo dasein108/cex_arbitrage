@@ -15,7 +15,7 @@ from websockets.client import WebSocketClientProtocol
 from websockets.protocol import State as WsState
 
 from structs.common import Symbol
-from core.transport.websocket.structs import SubscriptionAction, WebsocketChannelType
+from core.transport.websocket.structs import SubscriptionAction, PublicWebsocketChannelType
 from core.transport.websocket.strategies.strategy_set import WebSocketStrategySet
 from .structs import ParsedMessage, WebSocketManagerConfig, PerformanceMetrics
 from core.config.structs import WebSocketConfig
@@ -68,7 +68,7 @@ class WebSocketManager:
         # Control flags
         self._should_reconnect = True
         self._active_symbols: Set[Symbol] = set()
-        self._ws_channels: List[WebsocketChannelType] = []
+        self._ws_channels: List[PublicWebsocketChannelType] = []
         
         # Performance tracking
         self.metrics = PerformanceMetrics()
@@ -82,7 +82,7 @@ class WebSocketManager:
         self.logger.info("WebSocket manager V2 initialized with strategy-driven architecture")
     
     async def initialize(self, symbols: Optional[List[Symbol]] = None,
-                         channels: Optional[List[WebsocketChannelType]] = None) -> None:
+                         channels: Optional[List[PublicWebsocketChannelType]] = None) -> None:
         """
         Initialize WebSocket connection using strategy.connect() directly.
         

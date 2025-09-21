@@ -6,7 +6,7 @@ import msgspec
 
 from common.orderbook_entry_pool import OrderBookEntryPool
 from common.orderbook_diff_processor import ParsedOrderbookUpdate
-from core.exchanges.services.symbol_mapper import SymbolMapperInterface
+from core.exchanges.services.unified_mapper.exchange_mappings import ExchangeMappingsInterface
 from core.exchanges.websocket import MessageParser, ParsedMessage, MessageType
 from exchanges.mexc.ws.protobuf_parser import MexcProtobufParser
 from structs.common import OrderBook, Trade, Side, BookTicker
@@ -25,11 +25,11 @@ class MexcPublicMessageParser(MessageParser):
         0x1a: 'symbol',  # '\\x1a' - Symbol field tag
     }
 
-    def __init__(self, symbol_mapper: SymbolMapperInterface):
-        super().__init__(symbol_mapper)
+    def __init__(self, mapper: ExchangeMappingsInterface):
+        super().__init__(mapper)
         self.logger = logging.getLogger(f"{__name__}.{self.__class__.__name__}")
         self.entry_pool = OrderBookEntryPool(initial_size=200, max_size=500)
-        self.mexc_mapper = MexcMappings(symbol_mapper)
+        self.mexc_mapper = mapper  # Use the injected mapper directly
 
     async def parse_message(self, raw_message: str) -> Optional[ParsedMessage]:
         """Parse MEXC WebSocket message with fast type detection."""

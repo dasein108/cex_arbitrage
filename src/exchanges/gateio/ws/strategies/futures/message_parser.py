@@ -258,8 +258,7 @@ class GateioFuturesMessageParser(MessageParser):
                 timestamp = int(create_time_ms)
                 price = float(trade_data.get('price', 0))
                 quantity = float(trade_data.get('size', 0))
-                side_str = trade_data.get('side', 'buy')
-                side = Side.BUY if side_str.lower() == 'buy' else Side.SELL
+                side = Side.BUY if quantity > 0 else Side.SELL
                 
                 trade = Trade(
                     symbol=symbol,

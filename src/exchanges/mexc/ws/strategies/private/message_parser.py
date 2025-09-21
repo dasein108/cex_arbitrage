@@ -4,6 +4,7 @@ from typing import Optional, Dict, Any
 import msgspec
 
 from core.exchanges.websocket import MessageParser, ParsedMessage, MessageType
+from core.exchanges.services.unified_mapper.exchange_mappings import ExchangeMappingsInterface
 from exchanges.mexc.ws.protobuf_parser import MexcProtobufParser
 from exchanges.mexc.structs.exchange import (
     MexcWSPrivateOrderMessage, MexcWSPrivateBalanceMessage, MexcWSPrivateTradeMessage,
@@ -16,10 +17,10 @@ from structs.common import OrderBook
 class MexcPrivateMessageParser(MessageParser):
     """MEXC private WebSocket message parser."""
 
-    def __init__(self, symbol_mapper):
-        super().__init__(symbol_mapper)
+    def __init__(self, mapper: ExchangeMappingsInterface):
+        super().__init__(mapper)
         self.logger = logging.getLogger(f"{__name__}.{self.__class__.__name__}")
-        self.mexc_mapper = MexcMappings(symbol_mapper)
+        self.mexc_mapper = mapper  # Use the injected mapper directly
 
     async def parse_message(self, raw_message: str) -> Optional[ParsedMessage]:
         """Parse MEXC private WebSocket message.

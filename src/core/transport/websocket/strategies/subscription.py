@@ -1,9 +1,11 @@
 from abc import ABC, abstractmethod
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, TYPE_CHECKING
 
-from core.transport.websocket.structs import SubscriptionAction, WebsocketChannelType
+from core.transport.websocket.structs import SubscriptionAction, PublicWebsocketChannelType
 from structs.common import Symbol
-from core.exchanges.services import SymbolMapperInterface
+
+if TYPE_CHECKING:
+    from core.exchanges.services.unified_mapper.exchange_mappings import ExchangeMappingsInterface
 
 class SubscriptionStrategy(ABC):
     """
@@ -15,17 +17,22 @@ class SubscriptionStrategy(ABC):
     HFT COMPLIANT: <1μs message formatting.
     """
 
-    def __init__(self, mapper: Optional[SymbolMapperInterface] = None):
-        """Initialize with optional symbol mapper."""
+    def __init__(self, mapper: Optional["ExchangeMappingsInterface"] = None):
+        """Initialize with optional mapper injection.
+        
+        Args:
+            mapper: Exchange mappings interface containing symbol_mapper and channel name methods
+        """
         self.mapper = mapper
-        pass
+        # Maintain backward compatibility with symbol_mapper property
+        self.symbol_mapper = mapper._symbol_mapper if mapper else None
 
     @abstractmethod
     async def create_subscription_messages(
         self,
         action: SubscriptionAction,
         symbols: List[Symbol],
-        channels: Optional[List[WebsocketChannelType]]
+        channels: Optional[List[PublicWebsocketChannelType]]
     ) -> List[Dict[str, Any]]:
         """
         Create complete WebSocket subscription/unsubscription messages.

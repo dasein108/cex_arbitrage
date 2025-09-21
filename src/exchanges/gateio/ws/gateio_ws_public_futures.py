@@ -57,17 +57,8 @@ class GateioWebsocketPublicFutures(BaseExchangePublicWebsocketInterface):
         if not config.websocket:
             raise ValueError("Gate.io futures exchange configuration missing WebSocket settings")
         
-        # Use dedicated futures WebSocket URL from configuration
-        # Primary: USDT perpetual futures (most common)
-        # Secondary: Delivery futures (if specified via config)
-        futures_websocket_url = config.websocket_url  # Should be futures endpoint from config
-        if not futures_websocket_url or 'fx-ws.gateio.ws' not in futures_websocket_url:
-            # Fallback to default USDT futures endpoint
-            futures_websocket_url = "wss://fx-ws.gateio.ws/v4/ws/usdt/"
-            self.logger.warning(f"Using fallback futures WebSocket URL: {futures_websocket_url}")
-        
         # Store the actual futures URL (config is immutable)
-        self._futures_websocket_url = futures_websocket_url
+        self._futures_websocket_url = config.websocket_url
         
         # Initialize via base class dependency injection (like REST pattern)
         super().__init__(

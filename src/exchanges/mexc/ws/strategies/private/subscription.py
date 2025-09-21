@@ -18,7 +18,7 @@ from typing import List, Dict, Any, Optional
 
 from core.transport.websocket.strategies.subscription import SubscriptionStrategy
 from core.transport.websocket.structs import SubscriptionAction
-from core.exchanges.services import SymbolMapperInterface
+from core.exchanges.services.unified_mapper.exchange_mappings import ExchangeMappingsInterface
 
 
 class MexcPrivateSubscriptionStrategy(SubscriptionStrategy):
@@ -29,7 +29,7 @@ class MexcPrivateSubscriptionStrategy(SubscriptionStrategy):
     Format: "spot@private.account.v3.api.pb"
     """
     
-    def __init__(self, mapper: Optional[SymbolMapperInterface] = None):
+    def __init__(self, mapper: Optional[ExchangeMappingsInterface] = None):
         super().__init__(mapper)  # Initialize parent with injected mapper
         self.logger = logging.getLogger(f"{__name__}.{self.__class__.__name__}")
         

@@ -14,7 +14,7 @@ from abc import ABC
 from exchanges.consts import DEFAULT_PUBLIC_WEBSOCKET_CHANNELS
 from structs.common import Symbol, OrderBook, Trade, BookTicker
 from core.config.structs import ExchangeConfig
-from core.transport.websocket.structs import ConnectionState, MessageType, ParsedMessage, WebsocketChannelType
+from core.transport.websocket.structs import ConnectionState, MessageType, ParsedMessage, PublicWebsocketChannelType
 import traceback
 
 class BaseExchangePublicWebsocketInterface(ABC):
@@ -73,7 +73,7 @@ class BaseExchangePublicWebsocketInterface(ABC):
         self.logger.info(f"Initialized {self.exchange_name} public WebSocket with strategy-driven architecture")
     
     async def initialize(self, symbols: List[Symbol],
-                         channels: List[WebsocketChannelType]=DEFAULT_PUBLIC_WEBSOCKET_CHANNELS) -> None:
+                         channels: List[PublicWebsocketChannelType]=DEFAULT_PUBLIC_WEBSOCKET_CHANNELS) -> None:
         """
         Initialize WebSocket connection and subscribe to symbols.
         

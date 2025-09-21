@@ -5,7 +5,7 @@ from core.transport.websocket.structs import ParsedMessage, MessageType
 from structs.common import OrderBook
 
 if TYPE_CHECKING:
-    from core.exchanges.services.symbol_mapper import SymbolMapperInterface
+    from core.exchanges.services.unified_mapper.exchange_mappings import ExchangeMappingsInterface
 
 
 class MessageParser(ABC):
@@ -49,5 +49,12 @@ class MessageParser(ABC):
             if parsed:
                 yield parsed
 
-    def __init__(self, symbol_mapper: Optional["SymbolMapperInterface"] = None):
-        self.symbol_mapper = symbol_mapper
+    def __init__(self, mapper: Optional["ExchangeMappingsInterface"] = None):
+        """Initialize with optional mapper injection.
+        
+        Args:
+            mapper: Exchange mappings interface containing symbol_mapper functionality
+        """
+        self.mapper = mapper
+        # Maintain backward compatibility with symbol_mapper property
+        self.symbol_mapper = mapper._symbol_mapper if mapper else None

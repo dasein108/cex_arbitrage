@@ -4,7 +4,7 @@ from datetime import datetime
 
 from core.transport.websocket.strategies.message_parser import MessageParser
 from core.transport.websocket.structs import ParsedMessage, MessageType
-from core.exchanges.services.symbol_mapper.base_symbol_mapper import SymbolMapperInterface
+from core.exchanges.services.unified_mapper.exchange_mappings import ExchangeMappingsInterface
 from structs.common import Trade, OrderBookEntry, Symbol, Side, BookTicker, OrderBook
 from exchanges.gateio.services.mapper import GateioWebSocketMappings
 
@@ -12,9 +12,12 @@ from exchanges.gateio.services.mapper import GateioWebSocketMappings
 class GateioPublicMessageParser(MessageParser):
     """Gate.io public WebSocket message parser."""
 
-    def __init__(self, symbol_mapper: SymbolMapperInterface):
+    def __init__(self, mapper: ExchangeMappingsInterface):
+        super().__init__(mapper)
         self.logger = logging.getLogger(f"{__name__}.{self.__class__.__name__}")
-        self.symbol_mapper = symbol_mapper
+        self.mapper = mapper
+        # Maintain backward compatibility
+        self.symbol_mapper = mapper._symbol_mapper if mapper else None
 
     async def parse_message(self, raw_message: str) -> Optional[ParsedMessage]:
         """Parse raw WebSocket message from Gate.io."""

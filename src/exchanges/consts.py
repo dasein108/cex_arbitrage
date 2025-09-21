@@ -1,6 +1,6 @@
 from enum import Enum
 
-from core.transport.websocket.structs import WebsocketChannelType
+from core.transport.websocket.structs import PublicWebsocketChannelType
 from structs import ExchangeName
 
 # Exchange enumeration for type-safe exchange selection
@@ -16,5 +16,5 @@ class ExchangeEnum(Enum):
     GATEIO_FUTURES = ExchangeName("GATEIO_FUTURES")
 
 
-DEFAULT_PUBLIC_WEBSOCKET_CHANNELS = [WebsocketChannelType.BOOK_TICKER,
-                                     WebsocketChannelType.ORDERBOOK, WebsocketChannelType.TRADES]
+DEFAULT_PUBLIC_WEBSOCKET_CHANNELS = [PublicWebsocketChannelType.BOOK_TICKER,
+                                     PublicWebsocketChannelType.ORDERBOOK, PublicWebsocketChannelType.TRADES]

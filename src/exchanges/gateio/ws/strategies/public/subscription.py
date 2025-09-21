@@ -18,9 +18,9 @@ import logging
 from typing import List, Dict, Any, Optional, Set
 
 from core.transport.websocket.strategies.subscription import SubscriptionStrategy
-from core.transport.websocket.structs import SubscriptionAction, WebsocketChannelType
+from core.transport.websocket.structs import SubscriptionAction, PublicWebsocketChannelType
 from structs.common import Symbol
-from core.exchanges.services.symbol_mapper.base_symbol_mapper import SymbolMapperInterface
+from core.exchanges.services.unified_mapper.exchange_mappings import ExchangeMappingsInterface
 from exchanges.consts import DEFAULT_PUBLIC_WEBSOCKET_CHANNELS
 from exchanges.gateio.services.mapper import GateioWebSocketMappings
 
@@ -33,7 +33,7 @@ class GateioPublicSubscriptionStrategy(SubscriptionStrategy):
     Format: {"time": X, "channel": Y, "event": Z, "payload": ["BTC_USDT"]}
     """
     
-    def __init__(self, mapper: Optional[SymbolMapperInterface] = None):
+    def __init__(self, mapper: Optional[ExchangeMappingsInterface] = None):
         super().__init__(mapper)  # Initialize parent with injected mapper
         self.logger = logging.getLogger(f"{__name__}.{self.__class__.__name__}")
         
@@ -45,7 +45,7 @@ class GateioPublicSubscriptionStrategy(SubscriptionStrategy):
     
     async def create_subscription_messages(self, action: SubscriptionAction,
                                            symbols: List[Symbol],
-                                           channels: List[WebsocketChannelType] = DEFAULT_PUBLIC_WEBSOCKET_CHANNELS) -> List[Dict[str, Any]]:
+                                           channels: List[PublicWebsocketChannelType] = DEFAULT_PUBLIC_WEBSOCKET_CHANNELS) -> List[Dict[str, Any]]:
         """
         Create Gate.io public subscription messages.
         
@@ -90,9 +90,9 @@ class GateioPublicSubscriptionStrategy(SubscriptionStrategy):
             
             self.logger.debug(f"Created Gate.io {event} message for {channel_name}: {symbol_pairs}")
 
-        if WebsocketChannelType.ORDERBOOK in channels:
+        if PublicWebsocketChannelType.ORDERBOOK in channels:
             # Orderbook update is symbol specific
-            orderbook_channel = GateioWebSocketMappings.get_spot_channel_name(WebsocketChannelType.ORDERBOOK)
+            orderbook_channel = GateioWebSocketMappings.get_spot_channel_name(PublicWebsocketChannelType.ORDERBOOK)
             for pair in symbol_pairs:
                 message = {
                     "time": current_time + i,  # Slightly different timestamps
@@ -183,17 +183,17 @@ class GateioPublicSubscriptionStrategy(SubscriptionStrategy):
         """
         return {symbol: symbol in self._active_symbols for symbol in symbols}
     
-    def get_supported_channels(self) -> List[WebsocketChannelType]:
+    def get_supported_channels(self) -> List[PublicWebsocketChannelType]:
         """Get list of supported channel types."""
         return [
-            WebsocketChannelType.BOOK_TICKER,
-            WebsocketChannelType.TRADES,
-            WebsocketChannelType.ORDERBOOK
+            PublicWebsocketChannelType.BOOK_TICKER,
+            PublicWebsocketChannelType.TRADES,
+            PublicWebsocketChannelType.ORDERBOOK
         ]
 
     async def create_single_symbol_subscription(self, action: SubscriptionAction,
                                                 symbol: Symbol,
-                                                channel_type: WebsocketChannelType) -> Optional[Dict[str, Any]]:
+                                                channel_type: PublicWebsocketChannelType) -> Optional[Dict[str, Any]]:
         """
         Create subscription message for single symbol and channel.
         
