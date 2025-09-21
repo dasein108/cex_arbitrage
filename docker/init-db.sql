@@ -34,9 +34,9 @@ CREATE TABLE IF NOT EXISTS book_ticker_snapshots (
     PRIMARY KEY (timestamp, exchange, symbol_base, symbol_quote)
 );
 
--- Convert to TimescaleDB hypertable (time-series optimization)
+-- Convert to TimescaleDB hypertable (optimized for smaller server)
 SELECT create_hypertable('book_ticker_snapshots', 'timestamp', 
-    chunk_time_interval => INTERVAL '1 hour',
+    chunk_time_interval => INTERVAL '30 minutes',  -- Smaller chunks for better performance
     if_not_exists => TRUE);
 
 -- Orderbook depth table (L2+ data)
@@ -58,9 +58,9 @@ CREATE TABLE IF NOT EXISTS orderbook_depth (
     PRIMARY KEY (timestamp, exchange, symbol, level)
 );
 
--- Convert to hypertable
+-- Convert to hypertable (optimized)
 SELECT create_hypertable('orderbook_depth', 'timestamp',
-    chunk_time_interval => INTERVAL '1 hour',
+    chunk_time_interval => INTERVAL '30 minutes',
     if_not_exists => TRUE);
 
 -- Trade data table
@@ -80,9 +80,9 @@ CREATE TABLE IF NOT EXISTS trades (
     PRIMARY KEY (timestamp, exchange, symbol, trade_id)
 );
 
--- Convert to hypertable
+-- Convert to hypertable (optimized)  
 SELECT create_hypertable('trades', 'timestamp',
-    chunk_time_interval => INTERVAL '1 hour',
+    chunk_time_interval => INTERVAL '30 minutes',
     if_not_exists => TRUE);
 
 -- Analytics tables for computed metrics
@@ -215,9 +215,10 @@ SELECT add_continuous_aggregate_policy('book_ticker_1min',
     if_not_exists => TRUE);
 
 -- Data retention policies (keep 30 days of raw data, 1 year of aggregates)
-SELECT add_retention_policy('book_ticker_snapshots', INTERVAL '30 days', if_not_exists => TRUE);
-SELECT add_retention_policy('orderbook_depth', INTERVAL '30 days', if_not_exists => TRUE);
-SELECT add_retention_policy('trades', INTERVAL '30 days', if_not_exists => TRUE);
+-- Optimized retention policies for 4GB server (7 days instead of 30)
+SELECT add_retention_policy('book_ticker_snapshots', INTERVAL '7 days', if_not_exists => TRUE);
+SELECT add_retention_policy('orderbook_depth', INTERVAL '7 days', if_not_exists => TRUE);
+SELECT add_retention_policy('trades', INTERVAL '7 days', if_not_exists => TRUE);
 
 -- Create database user with appropriate permissions
 DO $$

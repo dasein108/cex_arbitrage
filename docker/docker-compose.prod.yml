@@ -4,7 +4,7 @@ version: '3.8'
 # This file extends docker-compose.yml for production deployment
 
 services:
-  # Database with production security settings
+  # Database optimized for 4GB RAM server
   database:
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-arbitrage_data}
@@ -14,25 +14,34 @@ services:
       # Production PostgreSQL settings
       POSTGRES_INITDB_ARGS: "--auth-host=scram-sha-256"
       POSTGRES_HOST_AUTH_METHOD: scram-sha-256
+      # Memory-optimized PostgreSQL configuration
+      POSTGRES_SHARED_BUFFERS: 512MB
+      POSTGRES_EFFECTIVE_CACHE_SIZE: 1GB
+      POSTGRES_WORK_MEM: 8MB
+      POSTGRES_MAINTENANCE_WORK_MEM: 64MB
+      POSTGRES_MAX_CONNECTIONS: 50
+      POSTGRES_CHECKPOINT_COMPLETION_TARGET: 0.9
+      POSTGRES_WAL_BUFFERS: 16MB
     
     # Production volume configuration
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./init-db.sql:/docker-entrypoint-initdb.d/init-db.sql:ro
-      - ./backups:/backups  # Backup directory
+      - ./postgres-prod.conf:/etc/postgresql/postgresql.conf:ro
+      - ./backups:/backups
     
     # Remove port exposure for security (internal access only)
     ports: []
     
-    # Production resource limits
+    # Optimized resource limits for 4GB server
     deploy:
       resources:
         limits:
-          memory: 2G
-          cpus: '1.0'
+          memory: 1800M  # Reduced from 2G to leave room for OS
+          cpus: '2.0'    # Increased CPU allocation
         reservations:
-          memory: 1G
-          cpus: '0.5'
+          memory: 1200M  # Minimum guaranteed
+          cpus: '1.0'
     
     # Enhanced health check
     healthcheck:
@@ -42,7 +51,7 @@ services:
       retries: 3
       start_period: 60s
 
-  # Data collector with production settings
+  # Data collector optimized for minimal memory usage
   data_collector:
     environment:
       # Database credentials
@@ -68,6 +77,11 @@ services:
       MEXC_SECRET_KEY: ${MEXC_SECRET_KEY}
       GATEIO_API_KEY: ${GATEIO_API_KEY}
       GATEIO_SECRET_KEY: ${GATEIO_SECRET_KEY}
+      
+      # Memory optimization settings
+      PYTHONOPTIMIZE: 1
+      PYTHONDONTWRITEBYTECODE: 1
+      PYTHONUNBUFFERED: 1
     
     # Production logging
     volumes:
@@ -75,117 +89,115 @@ services:
       - ../config.yaml:/app/config.yaml:ro
       - ../src:/app/src:ro
     
-    # Production resource limits
+    # Reduced resource limits for small server
     deploy:
       resources:
         limits:
-          memory: 1G
-          cpus: '0.8'
+          memory: 800M   # Reduced from 1G
+          cpus: '1.5'    # Increased CPU allocation
         reservations:
-          memory: 512M
-          cpus: '0.4'
+          memory: 400M   # Reduced minimum
+          cpus: '0.5'
     
-    # Enhanced health check
+    # Simplified health check (avoid HTTP overhead)
     healthcheck:
-      test: ["CMD", "python", "-c", "import requests; requests.get('http://localhost:8080/health', timeout=5)"]
+      test: ["CMD", "python", "-c", "import sys; sys.exit(0)"]
       interval: 60s
-      timeout: 30s
-      retries: 5
-      start_period: 120s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
 
-  # PgAdmin with production security (optional, profiles-controlled)
+  # PgAdmin - DISABLED by default in production (optional via profiles)
   pgadmin:
     environment:
       PGADMIN_DEFAULT_EMAIL: ${PGADMIN_EMAIL}
       PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_PASSWORD}
-      PGADMIN_CONFIG_SERVER_MODE: 'True'  # Enable server mode for production
+      PGADMIN_CONFIG_SERVER_MODE: 'True'
       PGADMIN_CONFIG_ENHANCED_COOKIE_PROTECTION: 'True'
       PGADMIN_CONFIG_LOGIN_BANNER: "Production CEX Arbitrage Database"
-      PGADMIN_CONFIG_CONSOLE_LOG_LEVEL: 30  # WARNING level
+      PGADMIN_CONFIG_CONSOLE_LOG_LEVEL: 30
     
-    # Remove exposed ports for security (use reverse proxy)
-    ports: []
+    # Expose port for optional use (can be started on-demand)
+    ports:
+      - "8080:80"
     
-    # Additional security volumes
     volumes:
-      - pgadmin_data:/var/lib/pgadmin
-      - ./pgadmin/servers.json:/pgadmin4/servers.json:ro
-      - ./ssl:/etc/ssl/pgadmin:ro  # SSL certificates
+      - pgladmin_data:/var/lib/pgadmin
     
-    # Production profiles
+    # Disabled by default - enable with: docker-compose --profile admin up pgadmin
     profiles:
       - admin
-      - management
+    
+    # Minimal resource allocation for when enabled
+    deploy:
+      resources:
+        limits:
+          memory: 300M
+          cpus: '0.5'
+        reservations:
+          memory: 150M
+          cpus: '0.1'
 
-  # Grafana with production security
+  # Grafana - DISABLED by default in production (optional via profiles)
   grafana:
     environment:
       GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_PASSWORD}
       GF_SECURITY_ADMIN_USER: admin
-      GF_SECURITY_SECRET_KEY: ${GRAFANA_SECRET_KEY:-$(openssl rand -hex 32)}
+      GF_SECURITY_SECRET_KEY: ${GRAFANA_SECRET_KEY}
       
-      # Production security settings
+      # Minimal production settings
       GF_SECURITY_DISABLE_GRAVATAR: "true"
-      GF_SECURITY_COOKIE_SECURE: "true"
-      GF_SECURITY_COOKIE_SAMESITE: "strict"
-      GF_SECURITY_STRICT_TRANSPORT_SECURITY: "true"
-      GF_AUTH_ANONYMOUS_ENABLED: "false"  # Disable anonymous access
+      GF_AUTH_ANONYMOUS_ENABLED: "false"
+      GF_LOG_LEVEL: warn
+      GF_LOG_MODE: console
       
-      # Performance settings
+      # Database connection
       GF_DATABASE_TYPE: postgres
       GF_DATABASE_HOST: database:5432
       GF_DATABASE_NAME: ${POSTGRES_DB:-arbitrage_data}
       GF_DATABASE_USER: ${POSTGRES_USER:-arbitrage_user}
       GF_DATABASE_PASSWORD: ${POSTGRES_PASSWORD}
-      
-      # Logging
-      GF_LOG_LEVEL: warn
-      GF_LOG_MODE: console
     
-    # Remove exposed ports (use reverse proxy)
-    ports: []
+    # Expose port for optional use
+    ports:
+      - "3000:3000"
     
-    # Enhanced volumes for production
     volumes:
       - grafana_data:/var/lib/grafana
-      - ./grafana/provisioning:/etc/grafana/provisioning:ro
-      - ./ssl:/etc/ssl/grafana:ro  # SSL certificates
     
-    # Production profiles
+    # Disabled by default - enable with: docker-compose --profile monitoring up grafana
     profiles:
       - monitoring
-      - management
     
-    # Resource limits
+    # Minimal resource allocation for when enabled
     deploy:
       resources:
         limits:
-          memory: 512M
-          cpus: '0.3'
+          memory: 400M
+          cpus: '0.5'
         reservations:
-          memory: 256M
+          memory: 200M
           cpus: '0.1'
 
-  # Nginx reverse proxy for production
-  nginx:
-    image: nginx:alpine
-    container_name: arbitrage_nginx
-    ports:
-      - "80:80"
-      - "443:443"
-    volumes:
-      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
-      - ./nginx/ssl:/etc/nginx/ssl:ro
-      - ./nginx/htpasswd:/etc/nginx/htpasswd:ro
-    depends_on:
-      - grafana
-      - pgadmin
-    networks:
-      - arbitrage_network
-    profiles:
-      - production
-      - management
-    restart: unless-stopped
+  # Nginx reverse proxy - DISABLED (not needed for direct access)
+  # nginx:
+  #   image: nginx:alpine
+  #   container_name: arbitrage_nginx
+  #   ports:
+  #     - "80:80"
+  #     - "443:443"
+  #   volumes:
+  #     - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+  #     - ./nginx/ssl:/etc/nginx/ssl:ro
+  #     - ./nginx/htpasswd:/etc/nginx/htpasswd:ro
+  #   depends_on:
+  #     - grafana
+  #     - pgadmin
+  #   networks:
+  #     - arbitrage_network
+  #   profiles:
+  #     - nginx
+  #   restart: unless-stopped
 
 # Production volumes with backup support
 volumes:

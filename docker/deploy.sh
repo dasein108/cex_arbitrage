@@ -60,6 +60,14 @@ if ! command -v docker-compose &> /dev/null; then
     fi
 fi
 
+# Setup swap for 4GB server optimization
+if [ ! -f "/swapfile" ]; then
+    echo "Setting up swap space for memory optimization..."
+    ./setup-swap.sh
+else
+    echo "Swap already configured"
+fi
+
 # Verify Docker Compose is working
 if ! docker-compose --version &> /dev/null; then
     echo "❌ Docker Compose installation failed"
@@ -72,42 +80,92 @@ if [ ! -f ".env.prod" ]; then
     echo "⚠️  EDIT .env.prod WITH YOUR API CREDENTIALS!"
 fi
 
-# Deploy services
+# Create required data directories
+echo "Creating data directories..."
+sudo mkdir -p /opt/arbitrage/data/{postgres,pgadmin,grafana}
+sudo mkdir -p /opt/arbitrage/backups
+sudo mkdir -p /opt/arbitrage/logs
+
+# Set proper ownership and permissions
+sudo chown -R root:root /opt/arbitrage/data /opt/arbitrage/backups /opt/arbitrage/logs
+sudo chmod 755 /opt/arbitrage/data /opt/arbitrage/backups /opt/arbitrage/logs
+sudo chmod 700 /opt/arbitrage/data/postgres
+
+# Deploy services with explicit env file
 echo "Stopping existing services..."
-docker-compose -f docker-compose.yml -f docker-compose.prod.yml down --remove-orphans || true
+docker-compose --env-file .env.prod -f docker-compose.yml -f docker-compose.prod.yml down --remove-orphans || true
 
 echo "Pulling latest images..."
-docker-compose -f docker-compose.yml -f docker-compose.prod.yml pull
+docker-compose --env-file .env.prod -f docker-compose.yml -f docker-compose.prod.yml pull
 
 echo "Starting database..."
-docker-compose -f docker-compose.yml -f docker-compose.prod.yml up -d database
+docker-compose --env-file .env.prod -f docker-compose.yml -f docker-compose.prod.yml up -d database
 
 # Wait for DB and initialize
 echo "Waiting for database to be ready..."
 sleep 15
 
 # Get database container name
-DB_CONTAINER=$(docker-compose -f docker-compose.yml -f docker-compose.prod.yml ps -q database)
+DB_CONTAINER=$(docker-compose --env-file .env.prod -f docker-compose.yml -f docker-compose.prod.yml ps -q database)
 if [ -z "$DB_CONTAINER" ]; then
     echo "❌ Database container not found"
+    docker-compose --env-file .env.prod -f docker-compose.yml -f docker-compose.prod.yml ps
     exit 1
 fi
 
 # Wait for database to be ready
+echo "Waiting for PostgreSQL to be ready..."
 timeout 120 sh -c "until docker exec $DB_CONTAINER pg_isready -U arbitrage_user; do sleep 2; done"
 
 # Initialize database schema
 echo "Initializing database schema..."
+
+# First, diagnose current constraint state
+echo "Diagnosing database constraints..."
+docker exec -i "$DB_CONTAINER" psql -U arbitrage_user -d arbitrage_data < diagnose-constraints.sql || true
+
+# Fix constraints if needed
+echo "Fixing constraints if needed..."
+docker exec -i "$DB_CONTAINER" psql -U arbitrage_user -d arbitrage_data < fix-constraints.sql
+
+# Apply the full schema (this will be idempotent due to IF NOT EXISTS clauses)
+echo "Applying full schema..."
 docker exec -i "$DB_CONTAINER" psql -U arbitrage_user -d arbitrage_data < init-db.sql
+
+# Verify constraints are correct
+echo "Verifying constraints..."
+docker exec -i "$DB_CONTAINER" psql -U arbitrage_user -d arbitrage_data -c "
+SELECT 
+    tc.constraint_name,
+    tc.constraint_type,
+    STRING_AGG(kcu.column_name, ', ' ORDER BY kcu.ordinal_position) AS columns
+FROM information_schema.table_constraints tc
+JOIN information_schema.key_column_usage kcu ON tc.constraint_name = kcu.constraint_name
+WHERE tc.table_name = 'book_ticker_snapshots'
+AND tc.constraint_type = 'PRIMARY KEY'
+GROUP BY tc.constraint_name, tc.constraint_type;
+"
 
 # Start all services
 echo "Starting all services..."
-docker-compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+docker-compose --env-file .env.prod -f docker-compose.yml -f docker-compose.prod.yml up -d
 
 echo "✅ Deployment complete!"
-echo "📊 Grafana: http://31.192.233.13:3000"
-echo "🔧 PgAdmin: http://31.192.233.13:8080"
-echo "🔑 Check passwords in .env.prod"
+echo ""
+echo "🎯 Production Services (Core Only):"
+echo "   📊 Database: Internal (PostgreSQL + TimescaleDB)"
+echo "   🔄 Data Collector: Running"
+echo ""
+echo "📊 Optional Monitoring (enable as needed):"
+echo "   docker-compose --env-file .env.prod -f docker-compose.yml -f docker-compose.prod.yml --profile monitoring up -d grafana"
+echo "   docker-compose --env-file .env.prod -f docker-compose.yml -f docker-compose.prod.yml --profile admin up -d pgadmin"
+echo ""
+echo "🏠 Local Monitoring Setup:"
+echo "   Edit .env.local-monitoring with your DB password"
+echo "   docker-compose --env-file .env.local-monitoring -f docker-compose.local-monitoring.yml up -d"
+echo ""
+echo "🔑 Passwords: Check .env.prod on server"
+echo "💾 Memory: Optimized for 4GB server with 7-day retention"
 EOF
 
     echo_success "Server deployed"
@@ -127,7 +185,7 @@ if ! command -v docker-compose &> /dev/null; then
 fi
 
 echo "Updating data collector..."
-docker-compose -f docker-compose.yml -f docker-compose.prod.yml up -d --no-deps data_collector
+docker-compose --env-file .env.prod -f docker-compose.yml -f docker-compose.prod.yml up -d --no-deps data_collector
 echo "✅ Collector updated"
 EOF
 

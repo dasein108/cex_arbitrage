@@ -17,4 +17,4 @@ datasources:
       postgresVersion: 1500  # PostgreSQL 15
       timescaledb: true
     editable: true
-    isDefault: true
+    isDefault: false

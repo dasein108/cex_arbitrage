@@ -1,0 +1,17 @@
+apiVersion: 1
+
+datasources:
+  - name: CEX Arbitrage Database
+    type: postgres
+    url: 31.192.233.13:5432
+    database: arbitrage_data
+    user: arbitrage_user
+    secureJsonData:
+      password: qCcmLMmWTL9f3su9rK4dbc4I
+    jsonData:
+      sslmode: disable
+      maxOpenConns: 5
+      maxIdleConns: 2
+      connMaxLifetime: 14400
+    isDefault: true
+    editable: true
