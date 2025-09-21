@@ -86,9 +86,10 @@ class GateioFuturesSubscriptionStrategy(SubscriptionStrategy):
         
         # Create separate message for each futures channel type
         channel_types = {
-            "futures.tickers": WebsocketChannelType.BOOK_TICKER,  # Futures book ticker
+            "futures.tickers": WebsocketChannelType.TICKER,  # Futures book ticker
+            "futures.book_ticker": WebsocketChannelType.BOOK_TICKER,  # Futures book ticker
             "futures.trades": WebsocketChannelType.TRADES,        # Futures trades
-            "futures.order_book": WebsocketChannelType.ORDERBOOK, # Futures orderbook
+            # "futures.order_book_update": WebsocketChannelType.ORDERBOOK, # Futures orderbook
         }
 
         i = 0

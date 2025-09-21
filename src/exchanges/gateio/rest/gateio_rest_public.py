@@ -34,6 +34,7 @@ from core.exchanges.rest.spot.base_rest_spot_public import PublicExchangeSpotRes
 from core.transport.rest.structs import HTTPMethod
 from core.config.structs import ExchangeConfig
 from core.exceptions.exchange import BaseExchangeError
+from common.iterators import time_range_iterator, get_interval_seconds
 
 
 class GateioPublicSpotRest(PublicExchangeSpotRestInterface):
@@ -645,7 +646,7 @@ class GateioPublicSpotRest(PublicExchangeSpotRestInterface):
                         symbol=symbol,
                         interval=timeframe,
                         open_time=timestamp * 1000,  # Convert to milliseconds
-                        close_time=timestamp * 1000 + self._get_interval_milliseconds(timeframe),
+                        close_time=timestamp * 1000 + (get_interval_seconds(timeframe) * 1000),
                         open_price=open_price,
                         high_price=high_price,
                         low_price=low_price,
@@ -663,44 +664,6 @@ class GateioPublicSpotRest(PublicExchangeSpotRestInterface):
         except Exception as e:
             self.logger.error(f"Failed to get klines for {symbol}: {e}")
             raise BaseExchangeError(500, f"Klines fetch failed: {str(e)}")
-    
-    def _calculate_optimal_batch_size(self, timeframe: KlineInterval, total_duration_seconds: int) -> int:
-        """
-        Calculate optimal batch size respecting Gate.io's 10,000 point historical limit.
-        
-        Args:
-            timeframe: Kline interval
-            total_duration_seconds: Total duration of requested time range
-            
-        Returns:
-            Optimal batch size for this timeframe
-        """
-        MAX_HISTORICAL_POINTS = 10000
-        interval_seconds = self._get_interval_seconds(timeframe)
-        
-        # Calculate total points needed
-        total_points = int(total_duration_seconds / interval_seconds)
-        
-        # Gate.io allows max 1000 points per request, but we should be conservative
-        # for longer time ranges due to historical access limits
-        if total_points <= MAX_HISTORICAL_POINTS:
-            # Conservative batch sizing - Gate.io has strict historical limits
-            batch_sizes = {
-                KlineInterval.MINUTE_1: 720,    # 12 hours per request (safe zone)
-                KlineInterval.MINUTE_5: 1000,   # 3.5 days per request  
-                KlineInterval.MINUTE_15: 1000,  # 10.4 days per request
-                KlineInterval.MINUTE_30: 1000,  # 20.8 days per request
-                KlineInterval.HOUR_1: 1000,     # 41.7 days per request
-                KlineInterval.HOUR_4: 1000,     # 166 days per request
-                KlineInterval.HOUR_12: 1000,    # 500 days per request
-                KlineInterval.DAY_1: 1000,      # 2.7 years per request
-                KlineInterval.WEEK_1: 1000,     # 19.2 years per request
-                KlineInterval.MONTH_1: 1000,    # 83 years per request
-            }
-            return batch_sizes.get(timeframe, 720)  # Default to 720 (12 hours for 1m)
-        else:
-            # For very large ranges, use smaller chunks
-            return min(720, MAX_HISTORICAL_POINTS // 10)  # Use 1/10 of limit per batch
 
     async def get_klines_batch(self, symbol: Symbol, timeframe: KlineInterval,
                               date_from: Optional[datetime], date_to: Optional[datetime]) -> List[Kline]:
@@ -730,61 +693,23 @@ class GateioPublicSpotRest(PublicExchangeSpotRestInterface):
         if not date_from or not date_to:
             return await self.get_klines(symbol, timeframe, date_from, date_to)
         
-        # Calculate interval duration in seconds
-        interval_seconds = self._get_interval_seconds(timeframe)
-        if interval_seconds == 0:
-            # Fallback to single request for unknown intervals
-            return await self.get_klines(symbol, timeframe, date_from, date_to)
-        
-        # Gate.io has very restrictive historical access - much more conservative approach needed
-        # Based on testing: 2 days works, 3+ days often fail with "too long ago"
-        MAX_SAFE_DAYS = 2  # Conservative limit based on actual API testing
-        MAX_SAFE_DURATION_SECONDS = MAX_SAFE_DAYS * 24 * 3600
-        
-        total_duration_seconds = int((date_to - date_from).total_seconds())
-        total_points = int(total_duration_seconds / interval_seconds)
-        
-        if total_duration_seconds > MAX_SAFE_DURATION_SECONDS:
-            # Adjust date_from to stay within safe historical limit
-            adjusted_date_from = datetime.fromtimestamp(date_to.timestamp() - MAX_SAFE_DURATION_SECONDS)
-            
-            self.logger.warning(
-                f"Gate.io historical limit: {total_duration_seconds/3600:.1f} hours requested, "
-                f"max {MAX_SAFE_DURATION_SECONDS/3600:.1f} hours safe limit. "
-                f"Adjusted start date from {date_from.strftime('%Y-%m-%d %H:%M')} "
-                f"to {adjusted_date_from.strftime('%Y-%m-%d %H:%M')}"
-            )
-            
-            date_from = adjusted_date_from
-            total_duration_seconds = MAX_SAFE_DURATION_SECONDS
-        
         # Calculate optimal batch size for this timeframe
-        batch_size = self._calculate_optimal_batch_size(timeframe, total_duration_seconds)
-        chunk_duration_seconds = batch_size * interval_seconds
+        batch_size = 500
         
         all_klines = []
-        current_start = date_from
         
-        while current_start < date_to:
-            # Calculate chunk end time
-            chunk_end = datetime.fromtimestamp(
-                min(current_start.timestamp() + chunk_duration_seconds, date_to.timestamp())
-            )
-            
+        # Use common time range iterator with optimal batch size
+        for chunk_start, chunk_end in time_range_iterator(date_from, date_to, batch_size, timeframe):
             # Fetch chunk
-            chunk_klines = await self.get_klines(symbol, timeframe, current_start, chunk_end)
+            chunk_klines = await self.get_klines(symbol, timeframe, chunk_start, chunk_end)
             all_klines.extend(chunk_klines)
             
-            # Move to next chunk
-            current_start = datetime.fromtimestamp(chunk_end.timestamp() + interval_seconds)
-            
-            # Break if no more data or we've reached the end
-            if not chunk_klines or current_start >= date_to:
+            # Break if no more data
+            if not chunk_klines:
                 break
             
             # Rate limiting: Add 0.3 second delay between requests to avoid 429 errors
             # Gate.io has strict rate limits: 200 requests/10 seconds (20 req/sec)
-            # Only delay if we have more requests to make
             await asyncio.sleep(0.3)
         
         # Remove duplicates and sort
@@ -797,26 +722,6 @@ class GateioPublicSpotRest(PublicExchangeSpotRestInterface):
         self.logger.info(f"Retrieved {len(sorted_klines)} klines in batch for {symbol.base}/{symbol.quote}")
         return sorted_klines
     
-    def _get_interval_seconds(self, interval: KlineInterval) -> int:
-        """Get interval duration in seconds for batch processing."""
-        interval_map = {
-            KlineInterval.MINUTE_1: 60,
-            KlineInterval.MINUTE_5: 300,
-            KlineInterval.MINUTE_15: 900,
-            KlineInterval.MINUTE_30: 1800,
-            KlineInterval.HOUR_1: 3600,
-            KlineInterval.HOUR_4: 14400,
-            KlineInterval.HOUR_12: 43200,
-            KlineInterval.DAY_1: 86400,
-            KlineInterval.WEEK_1: 604800,
-            KlineInterval.MONTH_1: 2592000  # 30 days approximation
-        }
-        return interval_map.get(interval, 0)
-    
-    def _get_interval_milliseconds(self, interval: KlineInterval) -> int:
-        """Get interval duration in milliseconds for close time calculation."""
-        return self._get_interval_seconds(interval) * 1000
-    
     async def close(self) -> None:
         """Close the REST client and clean up resources."""
         try:
@@ -824,6 +729,3 @@ class GateioPublicSpotRest(PublicExchangeSpotRestInterface):
             self.logger.info("Closed Gate.io public REST client")
         except Exception as e:
             self.logger.error(f"Error closing public REST client: {e}")
-    
-    def __repr__(self) -> str:
-        return f"GateioPublicExchange(base_url={self.base_url})"

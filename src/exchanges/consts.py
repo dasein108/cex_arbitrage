@@ -13,7 +13,7 @@ class ExchangeEnum(Enum):
     """
     MEXC = ExchangeName("MEXC")
     GATEIO = ExchangeName("GATEIO")
-    GATEIO_FUTURES = ExchangeName("GATEIO")
+    GATEIO_FUTURES = ExchangeName("GATEIO_FUTURES")
 
 
 DEFAULT_PUBLIC_WEBSOCKET_CHANNELS = [WebsocketChannelType.BOOK_TICKER,

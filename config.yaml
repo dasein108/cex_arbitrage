@@ -69,8 +69,6 @@ exchanges:
     secret_key: "${GATEIO_SECRET_KEY}"  # Set via environment variable GATEIO_SECRET_KEY (empty for public-only access)
     base_url: "https://api.gateio.ws/api/v4"  # Production URL
     websocket_url: "wss://api.gateio.ws/ws/v4/"  # Production WebSocket URL
-    testnet_base_url: "https://api-testnet.gateapi.io/api/v4"  # Testnet URL
-    testnet_websocket_url: "wss://ws-testnet.gate.com/v4/ws/spot" # Testnet WebSocket URL
     enabled: true
     
     # REST Transport Configuration (HFT-optimized for Gate.io)
@@ -93,6 +91,35 @@ exchanges:
       enable_connection_pooling: true
       enable_compression: true
       user_agent: "HFTArbitrageEngine-GATEIO/1.0"
+
+  gateio_futures:
+    api_key: "${GATEIO_API_KEY}"  # Same credentials as spot but separate configuration
+    secret_key: "${GATEIO_SECRET_KEY}"  # Same credentials as spot but separate configuration
+    base_url: "https://api.gateio.ws/api/v4"  # Same REST API endpoint for futures
+    websocket_url: "wss://fx-ws.gateio.ws/v4/ws/usdt/"  # Dedicated futures WebSocket (USDT perpetual)
+    websocket_delivery_url: "wss://fx-ws.gateio.ws/v4/ws/delivery/"  # Delivery futures WebSocket
+    enabled: true
+    
+    # REST Transport Configuration (HFT-optimized for Gate.io Futures)
+    transport:
+      # Performance Targets (slightly higher latency for futures)
+      max_latency_ms: 80.0              # Futures typically have higher latency
+      target_throughput_rps: 60.0       # More conservative for futures
+      max_retry_attempts: 3              # Standard retry attempts
+      
+      # Connection Settings (balanced for Gate.io futures)
+      connection_timeout_ms: 3000.0      # Longer for futures
+      read_timeout_ms: 7000.0            # Longer read timeout for futures
+      max_concurrent_requests: 6         # Lower concurrency for futures
+      
+      # Rate Limiting (same limits as spot but more conservative)
+      requests_per_second: 12.0          # More conservative for futures
+      burst_capacity: 36                 # 3x burst capacity
+      
+      # Advanced Settings
+      enable_connection_pooling: true
+      enable_compression: true
+      user_agent: "HFTArbitrageEngine-GATEIO-FUTURES/1.0"
 
 # Network configuration
 network:
@@ -131,6 +158,7 @@ arbitrage:
   enabled_exchanges:
     - "MEXC"
     - "GATEIO"
+    - "GATEIO_FUTURES"
 
   # Performance settings (HFT targets)
   target_execution_time_ms: 30      # Target <50ms for HFT compliance

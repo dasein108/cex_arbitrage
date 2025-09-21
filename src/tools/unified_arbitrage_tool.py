@@ -127,12 +127,16 @@ class SymbolDiscoveryService:
             exchange_enum = config["exchange_enum"]
             market_type = config["market_type"]
             
-            # For futures, we need special handling - currently not supported
+            # Handle futures as separate exchange (GATEIO_FUTURES)
             if market_type == "futures":
-                raise ValueError(f"Futures support not yet implemented for {exchange_enum.value}")
+                if exchange_enum != ExchangeEnum.GATEIO_FUTURES:
+                    raise ValueError(f"Futures support only available for GATEIO_FUTURES, got {exchange_enum.value}")
+                # Use gateio_futures configuration section for separate exchange
+                exchange_config = self.config_manager.get_exchange_config("gateio_futures")
+            else:
+                # Use standard exchange configuration
+                exchange_config = self.config_manager.get_exchange_config(exchange_enum.value.lower())
             
-            # Get exchange config and create REST client for symbol discovery
-            exchange_config = self.config_manager.get_exchange_config(exchange_enum.value.lower())
             rest_client = PublicRestExchangeFactory.inject(exchange_enum.value, config=exchange_config)
             
             # Get exchange info using REST client

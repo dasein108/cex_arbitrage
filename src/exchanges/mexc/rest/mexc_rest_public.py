@@ -37,8 +37,8 @@ from structs.common import (
 )
 from core.exchanges.rest.spot.base_rest_spot_public import PublicExchangeSpotRestInterface
 from core.config.structs import ExchangeConfig
-from core.exchanges.utils import get_interval_seconds
 from core.transport.rest.structs import HTTPMethod
+from common.iterators import time_range_iterator
 
 
 class MexcPublicSpotRest(PublicExchangeSpotRestInterface):
@@ -526,158 +526,6 @@ class MexcPublicSpotRest(PublicExchangeSpotRestInterface):
         # Already sorted by timestamp from MEXC API
         self.logger.debug(f"Retrieved {len(klines)} klines for {pair} {interval}")
         return klines
-    
-    def _time_range_iterator_v1(self, date_from: datetime, date_to: datetime, 
-                               limit: int, timeframe: Optional[KlineInterval] = None) -> List[tuple[datetime, datetime]]:
-        """
-        Version 1: Simple forward iteration with fixed chunk size.
-        
-        Creates time ranges by moving forward from start to end with fixed-size chunks.
-        Most straightforward implementation similar to range().
-        
-        Args:
-            date_from: Start datetime
-            date_to: End datetime  
-            limit: Number of klines per chunk (e.g., 500)
-            timeframe: Optional kline interval for calculating chunk duration
-            
-        Returns:
-            List of (chunk_start, chunk_end) tuples
-        """
-        if not timeframe:
-            # Fallback: Split time range into equal parts
-            total_seconds = int((date_to - date_from).total_seconds())
-            chunk_seconds = total_seconds // max(1, limit)
-        else:
-            interval_seconds = get_interval_seconds(timeframe)
-            chunk_seconds = limit * interval_seconds
-        
-        ranges = []
-        current_start = date_from
-        
-        while current_start < date_to:
-            chunk_end = datetime.fromtimestamp(
-                min(current_start.timestamp() + chunk_seconds, date_to.timestamp())
-            )
-            ranges.append((current_start, chunk_end))
-            current_start = datetime.fromtimestamp(chunk_end.timestamp() + 1)  # +1 second to avoid overlap
-            
-        return ranges
-
-    def _time_range_iterator_v2(self, date_from: datetime, date_to: datetime,
-                               limit: int, timeframe: Optional[KlineInterval] = None) -> List[tuple[datetime, datetime]]:
-        """
-        Version 2: Adaptive iteration that adjusts based on last candle received.
-        
-        Each iteration can be adjusted based on actual data received from previous call.
-        Supports dynamic adjustment when data is sparse or missing.
-        
-        Args:
-            date_from: Start datetime
-            date_to: End datetime
-            limit: Maximum number of klines per chunk
-            timeframe: Optional kline interval for calculating chunk duration
-            
-        Returns:
-            List of (chunk_start, chunk_end) tuples with adaptive sizing
-        """
-        if not timeframe:
-            # Fallback: Use larger chunks for unknown intervals
-            total_seconds = int((date_to - date_from).total_seconds())
-            chunk_seconds = total_seconds // max(1, limit // 2)  # Larger chunks
-        else:
-            interval_seconds = get_interval_seconds(timeframe)
-            chunk_seconds = limit * interval_seconds
-        
-        ranges = []
-        current_start = date_from
-        
-        while current_start < date_to:
-            # Adaptive chunk size: smaller chunks near the end
-            remaining_seconds = int((date_to - current_start).total_seconds())
-            if remaining_seconds < chunk_seconds:
-                chunk_end = date_to
-            else:
-                chunk_end = datetime.fromtimestamp(current_start.timestamp() + chunk_seconds)
-                
-            ranges.append((current_start, chunk_end))
-            
-            # Move to next chunk with small overlap prevention
-            if timeframe:
-                interval_seconds = get_interval_seconds(timeframe)
-                current_start = datetime.fromtimestamp(chunk_end.timestamp() + interval_seconds)
-            else:
-                current_start = datetime.fromtimestamp(chunk_end.timestamp() + 60)  # +1 minute fallback
-                
-        return ranges
-        
-    def _time_range_iterator_v3(self, date_from: datetime, date_to: datetime,
-                               limit: int, timeframe: Optional[KlineInterval] = None,
-                               reverse: bool = False) -> List[tuple[datetime, datetime]]:
-        """
-        Version 3: Flexible iterator with reverse support and precise interval handling.
-        
-        Most advanced implementation that can iterate forward or backward,
-        handles edge cases, and provides precise interval calculations.
-        
-        Args:
-            date_from: Start datetime
-            date_to: End datetime
-            limit: Number of klines per chunk
-            timeframe: Kline interval for precise duration calculation
-            reverse: If True, iterate from date_to backwards to date_from
-            
-        Returns:
-            List of (chunk_start, chunk_end) tuples (always start < end regardless of direction)
-        """
-        if not timeframe:
-            # Estimate based on time range - assume 1-minute intervals
-            total_seconds = int((date_to - date_from).total_seconds())
-            interval_seconds = 60  # Default to 1-minute
-            chunk_duration = limit * interval_seconds
-        else:
-            interval_seconds = get_interval_seconds(timeframe)
-            if interval_seconds == 0:
-                interval_seconds = 60  # Fallback
-            chunk_duration = limit * interval_seconds
-        
-        ranges = []
-        
-        if reverse:
-            # Start from end and work backwards
-            current_end = date_to
-            
-            while current_end > date_from:
-                chunk_start = datetime.fromtimestamp(
-                    max(current_end.timestamp() - chunk_duration, date_from.timestamp())
-                )
-                
-                ranges.append((chunk_start, current_end))
-                
-                # Move backwards, ensuring no overlap
-                current_end = datetime.fromtimestamp(chunk_start.timestamp() - interval_seconds)
-                
-            # Reverse the list so it's still chronological
-            ranges.reverse()
-        else:
-            # Forward iteration (same as V1 but with better edge case handling)
-            current_start = date_from
-            
-            while current_start < date_to:
-                chunk_end = datetime.fromtimestamp(
-                    min(current_start.timestamp() + chunk_duration, date_to.timestamp())
-                )
-                
-                ranges.append((current_start, chunk_end))
-                
-                # Move forward, ensuring no overlap  
-                current_start = datetime.fromtimestamp(chunk_end.timestamp() + interval_seconds)
-                
-                # Break if the next chunk would be too small
-                if (date_to.timestamp() - current_start.timestamp()) < interval_seconds:
-                    break
-        
-        return ranges
 
     async def get_klines_batch(self, symbol: Symbol, timeframe: KlineInterval,
                               date_from: Optional[datetime], date_to: Optional[datetime]) -> List[Kline]:
@@ -685,7 +533,7 @@ class MexcPublicSpotRest(PublicExchangeSpotRestInterface):
         Get batch kline data by making multiple get_klines requests for large time ranges.
         
         This method splits large time ranges into chunks to handle MEXC's 1000 kline limit per request.
-        Uses multiple calls to get_klines internally.
+        Uses multiple calls to get_klines internally with common time_range_iterator.
         
         Args:
             symbol: Symbol to get klines for
@@ -703,39 +551,10 @@ class MexcPublicSpotRest(PublicExchangeSpotRestInterface):
         if not date_from or not date_to:
             return await self.get_klines(symbol, timeframe, date_from, date_to)
         
-        # Calculate interval duration in seconds
-        interval_seconds = get_interval_seconds(timeframe)
-        if interval_seconds == 0:
-            # Fallback to single request for unknown intervals
-            return await self.get_klines(symbol, timeframe, date_from, date_to)
-        
-        # MEXC has variable historical data availability per symbol
-        # Some symbols only have ~30 days, others may have more
-        # Conservative approach: limit to 30 days to avoid empty results
-        MAX_SAFE_DAYS = 30  # Conservative limit based on testing
-        MAX_SAFE_DURATION_SECONDS = MAX_SAFE_DAYS * 24 * 3600
-        
-        total_duration_seconds = int((date_to - date_from).total_seconds())
-        
-        if total_duration_seconds > MAX_SAFE_DURATION_SECONDS:
-            # Adjust date_from to stay within safe historical limit
-            adjusted_date_from = datetime.fromtimestamp(date_to.timestamp() - MAX_SAFE_DURATION_SECONDS)
-            
-            self.logger.warning(
-                f"MEXC historical limit: {total_duration_seconds/3600/24:.1f} days requested, "
-                f"max {MAX_SAFE_DAYS} days safe limit. "
-                f"Adjusted start date from {date_from.strftime('%Y-%m-%d %H:%M')} "
-                f"to {adjusted_date_from.strftime('%Y-%m-%d %H:%M')}"
-            )
-            
-            date_from = adjusted_date_from
-        
-        # Use time range iterator to generate chunks (500 klines per request)
-        time_ranges = self._time_range_iterator_v2(date_from, date_to, limit=500, timeframe=timeframe)
-        
+        # Use common time range iterator (500 klines per request)
         all_klines = []
         
-        for chunk_start, chunk_end in time_ranges:
+        for chunk_start, chunk_end in time_range_iterator(date_from, date_to, 500, timeframe):
             # Fetch chunk
             chunk_klines = await self.get_klines(symbol, timeframe, chunk_start, chunk_end)
             

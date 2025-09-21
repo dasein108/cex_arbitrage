@@ -49,6 +49,7 @@ class WebsocketChannelType(IntEnum):
     ORDERBOOK = 1
     TRADES = 2
     BOOK_TICKER = 3
+    TICKER = 4
 
 
 class MessageType(IntEnum):
@@ -57,11 +58,11 @@ class MessageType(IntEnum):
     ORDERBOOK = WebsocketChannelType.ORDERBOOK.value
     TRADES = WebsocketChannelType.TRADES.value
     BOOK_TICKER = WebsocketChannelType.BOOK_TICKER.value
-
+    TICKER = WebsocketChannelType.TICKER.value
     # Additional message types
-    TRADE = 4
-    BALANCE = 5  # Fixed duplicate value
-    ORDER = 6
+    TRADE = 5
+    BALANCE = 6  # Fixed duplicate value
+    ORDER = 7
     SUBSCRIPTION_CONFIRM = 0
     HEARTBEAT = 999
     ERROR = -1

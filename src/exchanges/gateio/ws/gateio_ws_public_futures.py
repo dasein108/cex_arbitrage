@@ -1,7 +1,10 @@
 """
 Gate.io Public Futures WebSocket Implementation
 
-Clean implementation using dependency injection similar to spot WebSocket pattern.
+Separate exchange implementation treating Gate.io futures as completely independent
+from Gate.io spot. Uses dedicated configuration section 'gateio_futures' with its own
+ExchangeEnum.GATEIO_FUTURES and separate WebSocket endpoints.
+
 Handles public futures WebSocket streams for market data including:
 - Futures orderbook depth updates  
 - Futures trade stream data
@@ -9,19 +12,20 @@ Handles public futures WebSocket streams for market data including:
 - Funding rates and mark prices
 
 Features:
-- Dependency injection via base class (like REST and spot WebSocket pattern)
-- HFT-optimized message processing
+- Completely separate from Gate.io spot configuration
+- Dedicated ExchangeEnum.GATEIO_FUTURES with 'gateio_futures' config section
+- HFT-optimized message processing for futures markets
 - Event-driven architecture with injected handlers
-- Clean separation of concerns
+- Clean separation from spot exchange operations
 - Gate.io futures-specific JSON message parsing
 
 Gate.io Public Futures WebSocket Specifications:
-- Endpoint: wss://fx-ws.gateio.ws/v4/ws/usdt/ (USDT futures)
-- Endpoint: wss://fx-ws.gateio.ws/v4/ws/delivery/ (delivery futures)  
+- Primary Endpoint: wss://fx-ws.gateio.ws/v4/ws/usdt/ (USDT perpetual futures)
+- Secondary Endpoint: wss://fx-ws.gateio.ws/v4/ws/delivery/ (delivery futures)  
 - Protocol: JSON-based message format
-- Performance: <50ms latency with optimized processing
+- Performance: <80ms latency target for futures operations
 
-Architecture: Dependency injection with base class coordination
+Architecture: Independent exchange with separate configuration and factory support
 """
 
 from typing import List, Dict, Optional, Callable, Awaitable, Set
@@ -44,19 +48,26 @@ class GateioWebsocketPublicFutures(BaseExchangePublicWebsocketInterface):
         state_change_handler: Optional[Callable[[ConnectionState], Awaitable[None]]] = None,
     ):
         """
-        Initialize Gate.io public futures WebSocket with dependency injection.
+        Initialize Gate.io public futures WebSocket as separate exchange.
         
-        Base class handles all strategy creation, WebSocket manager setup, and dependency injection.
-        Only Gate.io futures-specific initialization logic goes here.
+        Uses dedicated 'gateio_futures' configuration section with separate endpoints
+        and performance targets. Completely independent from Gate.io spot operations.
         """
         # Validate Gate.io futures-specific requirements
         if not config.websocket:
             raise ValueError("Gate.io futures exchange configuration missing WebSocket settings")
         
-        # Ensure futures WebSocket URL is configured
-        if not hasattr(config, 'futures_websocket_url') or not config.futures_websocket_url:
-            # Set default USDT futures endpoint if not configured
-            config.futures_websocket_url = "wss://fx-ws.gateio.ws/v4/ws/usdt/"
+        # Use dedicated futures WebSocket URL from configuration
+        # Primary: USDT perpetual futures (most common)
+        # Secondary: Delivery futures (if specified via config)
+        futures_websocket_url = config.websocket_url  # Should be futures endpoint from config
+        if not futures_websocket_url or 'fx-ws.gateio.ws' not in futures_websocket_url:
+            # Fallback to default USDT futures endpoint
+            futures_websocket_url = "wss://fx-ws.gateio.ws/v4/ws/usdt/"
+            self.logger.warning(f"Using fallback futures WebSocket URL: {futures_websocket_url}")
+        
+        # Store the actual futures URL (config is immutable)
+        self._futures_websocket_url = futures_websocket_url
         
         # Initialize via base class dependency injection (like REST pattern)
         super().__init__(
@@ -64,14 +75,20 @@ class GateioWebsocketPublicFutures(BaseExchangePublicWebsocketInterface):
             orderbook_diff_handler=orderbook_diff_handler,
             trades_handler=trades_handler,
             book_ticker_handler=book_ticker_handler,
-            state_change_handler=state_change_handler,
-            is_futures=True  # Flag to indicate futures WebSocket
+            state_change_handler=state_change_handler
         )
         
-        # State management for futures symbols (moved from WebSocket manager)
+        # State management for futures symbols (separate from spot)
         self._active_symbols: Set[Symbol] = set()
+        
+        # Store contract type endpoint mapping
+        self._contract_endpoints = {
+            'perpetual': self._futures_websocket_url,
+            'delivery': getattr(config, 'websocket_delivery_url', 
+                              "wss://fx-ws.gateio.ws/v4/ws/delivery/")
+        }
 
-        self.logger.info("Gate.io public futures WebSocket initialized with dependency injection")
+        self.logger.info(f"Gate.io futures WebSocket initialized as separate exchange with endpoint: {self._futures_websocket_url}")
 
     # Gate.io futures-specific message handling can be added here if needed
     # Base class handles all common WebSocket operations:
@@ -158,6 +175,18 @@ class GateioWebsocketPublicFutures(BaseExchangePublicWebsocketInterface):
             return "delivery"
         else:
             return "unknown"
+    
+    def get_endpoint_for_contract_type(self, contract_type: str) -> str:
+        """Get WebSocket endpoint for specific contract type."""
+        return self._contract_endpoints.get(contract_type, self._contract_endpoints['perpetual'])
+    
+    def is_separate_exchange(self) -> bool:
+        """Confirm this is a separate exchange from Gate.io spot."""
+        return True
+    
+    def get_exchange_name(self) -> str:
+        """Get the exchange name for this futures implementation."""
+        return "GATEIO_FUTURES"
 
     async def get_futures_info(self, symbols: List[Symbol]) -> Dict[Symbol, Dict]:
         """Get futures contract information for symbols."""

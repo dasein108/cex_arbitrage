@@ -15,7 +15,7 @@ from exchanges.consts import DEFAULT_PUBLIC_WEBSOCKET_CHANNELS
 from structs.common import Symbol, OrderBook, Trade, BookTicker
 from core.config.structs import ExchangeConfig
 from core.transport.websocket.structs import ConnectionState, MessageType, ParsedMessage, WebsocketChannelType
-
+import traceback
 
 class BaseExchangePublicWebsocketInterface(ABC):
     """
@@ -194,12 +194,12 @@ class BaseExchangePublicWebsocketInterface(ABC):
                 # Use channel from ParsedMessage for better error context
                 if message.channel:
                     self.logger.error(f"WebSocket error on channel '{message.channel}': {message.data}")
+                    traceback.print_exc()
                 else:
                     self.logger.error(f"WebSocket error: {message.data}")
                 
         except Exception as e:
             self.logger.error(f"Error handling parsed message: {e}")
-            import traceback
             self.logger.debug(f"Full traceback: {traceback.format_exc()}")
     
     async def _handle_state_change(self, state: ConnectionState) -> None:

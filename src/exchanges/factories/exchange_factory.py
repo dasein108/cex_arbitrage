@@ -66,6 +66,10 @@ class ExchangeFactory:
                 from ..gateio import GateioPublicExchange
                 return GateioPublicExchange(symbols=symbols or [])
                 
+            elif exchange == ExchangeEnum.GATEIO_FUTURES:
+                from ..gateio import GateioPublicFuturesExchange
+                return GateioPublicFuturesExchange(symbols=symbols or [])
+                
             else:
                 raise ValueError(f"Unsupported exchange: {exchange}")
                 
@@ -106,6 +110,10 @@ class ExchangeFactory:
             elif exchange == ExchangeEnum.GATEIO:
                 from ..gateio import GateioPrivateExchange
                 return GateioPrivateExchange(config=config, symbols=symbols or [])
+                
+            elif exchange == ExchangeEnum.GATEIO_FUTURES:
+                from ..gateio import GateioPrivateFuturesExchange
+                return GateioPrivateFuturesExchange(config=config, symbols=symbols or [])
                 
             else:
                 raise ValueError(f"Unsupported exchange: {exchange}")
@@ -155,6 +163,10 @@ class ExchangeFactory:
                 
             elif exchange == ExchangeEnum.GATEIO:
                 from ..gateio import GateioPublicExchange, GateioPrivateExchange
+                return True
+                
+            elif exchange == ExchangeEnum.GATEIO_FUTURES:
+                from ..gateio import GateioPublicFuturesExchange, GateioPrivateFuturesExchange
                 return True
                 
             else:

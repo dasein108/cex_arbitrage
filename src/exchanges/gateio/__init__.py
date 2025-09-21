@@ -51,6 +51,10 @@ from .private_exchange import GateioPrivateExchange
 from .public_exchange import GateioPublicExchange
 from .gateio_exchange import GateioExchange
 
+# Futures exchange implementations (separate from spot)
+from .public_futures_exchange import GateioPublicFuturesExchange
+from .private_futures_exchange import GateioPrivateFuturesExchange
+
 # Auto-register Gate.io services (symbol mapper, mappings) 
 from . import services
 
@@ -64,5 +68,8 @@ __all__ = [
     # Main exchange interfaces
     'GateioPrivateExchange',
     'GateioPublicExchange',
-    'GateioExchange'
+    'GateioExchange',
+    # Futures exchange interfaces (separate exchange)
+    'GateioPublicFuturesExchange',
+    'GateioPrivateFuturesExchange'
 ]
