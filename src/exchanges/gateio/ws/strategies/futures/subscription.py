@@ -140,7 +140,7 @@ class GateioFuturesSubscriptionStrategy(SubscriptionStrategy):
     
     def is_subscription_message(self, message: Dict[str, Any]) -> bool:
         """Check if message is a subscription-related message."""
-        return message.get("event") in ["subscribe", "unsubscribe"]
+        return message.get("event") in [GateioWebSocketMappings.EventType.SUBSCRIBE, GateioWebSocketMappings.EventType.UNSUBSCRIBE]
     
     def extract_channel_from_message(self, message: Dict[str, Any]) -> Optional[str]:
         """Extract channel name from Gate.io futures message."""
@@ -192,14 +192,6 @@ class GateioFuturesSubscriptionStrategy(SubscriptionStrategy):
             WebsocketChannelType.ORDERBOOK
         ]
     
-    def get_channel_name_for_type(self, channel_type: WebsocketChannelType) -> Optional[str]:
-        """Get Gate.io futures channel name for channel type."""
-        channel_mapping = {
-            WebsocketChannelType.BOOK_TICKER: "futures.tickers",
-            WebsocketChannelType.TRADES: "futures.trades",
-            WebsocketChannelType.ORDERBOOK: "futures.order_book"
-        }
-        return channel_mapping.get(channel_type)
     
     async def create_single_symbol_subscription(self, action: SubscriptionAction,
                                                 symbol: Symbol,
@@ -215,17 +207,13 @@ class GateioFuturesSubscriptionStrategy(SubscriptionStrategy):
         Returns:
             Subscription message or None if not supported
         """
-        channel_name = self.get_channel_name_for_type(channel_type)
-        if not channel_name:
-            return None
-        
-        if not self.mapper:
-            self.logger.error("No symbol mapper available for single futures subscription")
+        channel_name = GateioWebSocketMappings.get_futures_channel_name(channel_type)
+        if not channel_name or not self.mapper:
             return None
         
         try:
             exchange_symbol = self.mapper.to_pair(symbol)
-            event = "subscribe" if action == SubscriptionAction.SUBSCRIBE else "unsubscribe"
+            event = GateioWebSocketMappings.get_event_type(action)
             
             message = {
                 "time": int(time.time()),
@@ -242,6 +230,17 @@ class GateioFuturesSubscriptionStrategy(SubscriptionStrategy):
             
             return message
             
-        except Exception as e:
-            self.logger.error(f"Failed to create single futures subscription for {symbol}: {e}")
+        except Exception:
             return None
+    
+    def _convert_symbols_to_exchange_format(self, symbols: List[Symbol]) -> List[str]:
+        """Convert symbols to Gate.io futures exchange format."""
+        if not self.mapper:
+            self.logger.error("No symbol mapper available for Gate.io futures subscription")
+            return []
+            
+        try:
+            return [self.mapper.to_pair(symbol) for symbol in symbols]
+        except Exception as e:
+            self.logger.error(f"Failed to convert futures symbols: {e}")
+            return []

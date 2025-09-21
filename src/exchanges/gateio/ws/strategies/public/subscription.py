@@ -20,8 +20,9 @@ from typing import List, Dict, Any, Optional, Set
 from core.transport.websocket.strategies.subscription import SubscriptionStrategy
 from core.transport.websocket.structs import SubscriptionAction, WebsocketChannelType
 from structs.common import Symbol
-from core.exchanges.services import SymbolMapperInterface
+from core.exchanges.services.symbol_mapper.base_symbol_mapper import SymbolMapperInterface
 from exchanges.consts import DEFAULT_PUBLIC_WEBSOCKET_CHANNELS
+from exchanges.gateio.services.mapper import GateioWebSocketMappings
 
 
 class GateioPublicSubscriptionStrategy(SubscriptionStrategy):
@@ -35,6 +36,9 @@ class GateioPublicSubscriptionStrategy(SubscriptionStrategy):
     def __init__(self, mapper: Optional[SymbolMapperInterface] = None):
         super().__init__(mapper)  # Initialize parent with injected mapper
         self.logger = logging.getLogger(f"{__name__}.{self.__class__.__name__}")
+        
+        # Track active subscriptions for reconnection
+        self._active_symbols: Set[Symbol] = set()
         
         # Track active subscriptions for reconnection
         self._active_symbols: Set[Symbol] = set()
@@ -60,64 +64,182 @@ class GateioPublicSubscriptionStrategy(SubscriptionStrategy):
             return []
         
         current_time = int(time.time())
-        event = "subscribe" if action == SubscriptionAction.SUBSCRIBE else "unsubscribe"
+        event = GateioWebSocketMappings.get_event_type(action)
         messages = []
         
         # Convert symbols to Gate.io format
-        if not self.mapper:
-            self.logger.error("No symbol mapper available for Gate.io subscription")
-            return []
-            
-        try:
-            symbol_pairs = []
-            for symbol in symbols:
-                exchange_symbol = self.mapper.to_pair(symbol)
-                symbol_pairs.append(exchange_symbol)
-                self.logger.debug(f"Converted {symbol} to {exchange_symbol}")
-                
-        except Exception as e:
-            self.logger.error(f"Failed to convert symbols: {e}")
-            return []
-        
+        symbol_pairs = self._convert_symbols_to_exchange_format(symbols)
         if not symbol_pairs:
-            self.logger.warning("No valid symbols to subscribe to")
             return []
         
-        # Create separate message for each channel type
-        channel_types = {
-            "spot.book_ticker": WebsocketChannelType.BOOK_TICKER,
-            "spot.trades": WebsocketChannelType.TRADES,
-        }
-
+        # Create separate message for each channel type using centralized mappings
         i = 0
-        for channel in channel_types.keys():
-            if channel_types[channel] not in channels:
+        for channel_type in channels:
+            channel_name = GateioWebSocketMappings.get_spot_channel_name(channel_type)
+            if not channel_name:
                 continue
 
             message = {
                 "time": current_time + i,  # Slightly different timestamps
-                "channel": channel,
+                "channel": channel_name,
                 "event": event,
                 "payload": symbol_pairs.copy()
             }
             messages.append(message)
-            i+=1
+            i += 1
             
-            self.logger.debug(f"Created {event} message for {channel} with {len(symbol_pairs)} symbols")
+            self.logger.debug(f"Created Gate.io {event} message for {channel_name}: {symbol_pairs}")
 
         if WebsocketChannelType.ORDERBOOK in channels:
             # Orderbook update is symbol specific
+            orderbook_channel = GateioWebSocketMappings.get_spot_channel_name(WebsocketChannelType.ORDERBOOK)
             for pair in symbol_pairs:
                 message = {
                     "time": current_time + i,  # Slightly different timestamps
-                    "channel": "spot.order_book_update",
+                    "channel": orderbook_channel,
                     "event": event,
                     "payload": [pair, "20ms"]
                 }
                 i += 1
                 messages.append(message)
-
+        
+        # Update active symbols tracking
+        if action == SubscriptionAction.SUBSCRIBE:
+            self._active_symbols.update(symbols)
+        else:
+            self._active_symbols.difference_update(symbols)
+        
         self.logger.info(f"Created {len(messages)} {event} messages for {len(symbols)} symbols")
         
         return messages
+    
+    async def create_resubscription_messages(self) -> List[Dict[str, Any]]:
+        """
+        Create resubscription messages for Gate.io public after reconnection.
+        
+        Returns:
+            List of subscription messages for all currently active symbols
+        """
+        if not self._active_symbols:
+            self.logger.info("No active symbols to resubscribe to")
+            return []
+        
+        self.logger.info(f"Creating resubscription messages for {len(self._active_symbols)} symbols")
+        return await self.create_subscription_messages(
+            action=SubscriptionAction.SUBSCRIBE,
+            symbols=list(self._active_symbols),
+            channels=DEFAULT_PUBLIC_WEBSOCKET_CHANNELS
+        )
+    
+    def get_active_symbols(self) -> Set[Symbol]:
+        """Get currently active symbols."""
+        return self._active_symbols.copy()
+    
+    def is_subscription_message(self, message: Dict[str, Any]) -> bool:
+        """Check if message is a subscription-related message."""
+        return message.get("event") in [GateioWebSocketMappings.EventType.SUBSCRIBE, GateioWebSocketMappings.EventType.UNSUBSCRIBE]
+    
+    def extract_channel_from_message(self, message: Dict[str, Any]) -> Optional[str]:
+        """Extract channel name from Gate.io message."""
+        return message.get("channel")
+    
+    def extract_symbol_from_message(self, message: Dict[str, Any]) -> Optional[Symbol]:
+        """Extract symbol from Gate.io message."""
+        if not self.mapper:
+            return None
+        
+        # Try to get symbol from result data first
+        result = message.get("result", {})
+        if isinstance(result, dict):
+            symbol_str = result.get("s")
+            if symbol_str:
+                try:
+                    return self.mapper.to_symbol(symbol_str)
+                except Exception:
+                    pass
+        
+        # Fallback: try to extract from channel
+        channel = message.get("channel", "")
+        if "." in channel:
+            parts = channel.split(".")
+            if len(parts) > 2:
+                symbol_str = parts[-1]
+                try:
+                    return self.mapper.to_symbol(symbol_str)
+                except Exception:
+                    pass
+        
+        return None
+    
+    async def get_subscription_status_for_symbols(self, symbols: List[Symbol]) -> Dict[Symbol, bool]:
+        """
+        Get subscription status for symbols.
+        
+        Args:
+            symbols: List of symbols to check
+            
+        Returns:
+            Dict mapping Symbol to subscription status (True if subscribed)
+        """
+        return {symbol: symbol in self._active_symbols for symbol in symbols}
+    
+    def get_supported_channels(self) -> List[WebsocketChannelType]:
+        """Get list of supported channel types."""
+        return [
+            WebsocketChannelType.BOOK_TICKER,
+            WebsocketChannelType.TRADES,
+            WebsocketChannelType.ORDERBOOK
+        ]
+
+    async def create_single_symbol_subscription(self, action: SubscriptionAction,
+                                                symbol: Symbol,
+                                                channel_type: WebsocketChannelType) -> Optional[Dict[str, Any]]:
+        """
+        Create subscription message for single symbol and channel.
+        
+        Args:
+            action: SUBSCRIBE or UNSUBSCRIBE
+            symbol: Symbol to subscribe/unsubscribe
+            channel_type: Channel type
+            
+        Returns:
+            Subscription message or None if not supported
+        """
+        channel_name = GateioWebSocketMappings.get_spot_channel_name(channel_type)
+        if not channel_name or not self.mapper:
+            return None
+        
+        try:
+            exchange_symbol = self.mapper.to_pair(symbol)
+            event = GateioWebSocketMappings.get_event_type(action)
+            
+            message = {
+                "time": int(time.time()),
+                "channel": channel_name,
+                "event": event,
+                "payload": [exchange_symbol]
+            }
+            
+            # Update tracking
+            if action == SubscriptionAction.SUBSCRIBE:
+                self._active_symbols.add(symbol)
+            else:
+                self._active_symbols.discard(symbol)
+            
+            return message
+            
+        except Exception:
+            return None
+    
+    def _convert_symbols_to_exchange_format(self, symbols: List[Symbol]) -> List[str]:
+        """Convert symbols to Gate.io exchange format."""
+        if not self.mapper:
+            self.logger.error("No symbol mapper available for Gate.io subscription")
+            return []
+            
+        try:
+            return [self.mapper.to_pair(symbol) for symbol in symbols]
+        except Exception as e:
+            self.logger.error(f"Failed to convert symbols: {e}")
+            return []
 

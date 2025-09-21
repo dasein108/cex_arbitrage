@@ -9,13 +9,14 @@ HFT COMPLIANCE: Sub-microsecond mapping operations, zero-copy patterns.
 """
 
 from datetime import datetime
-from typing import Any
+from typing import Any, Dict
 
 from structs.common import (
     Order, OrderId, OrderStatus, OrderType, Side,
     TimeInForce, KlineInterval
 )
 from core.exchanges.services.unified_mapper.exchange_mappings import BaseExchangeMappings, MappingConfiguration
+from core.transport.websocket.structs import WebsocketChannelType
 from .gateio_mappings import GateioMappings
 
 
@@ -169,3 +170,75 @@ class GateioUnifiedMappings(BaseExchangeMappings):
             params['time_in_force'] = 'poc'  # Post-only
         
         return params
+
+
+class GateioWebSocketMappings:
+    """
+    Gate.io WebSocket channel mappings and constants.
+    
+    Centralized WebSocket-specific mappings following SOLID principles.
+    All Gate.io WebSocket constants moved here from strategy files.
+    """
+    
+    # Spot WebSocket channel mappings
+    SPOT_CHANNEL_MAPPING: Dict[WebsocketChannelType, str] = {
+        WebsocketChannelType.BOOK_TICKER: "spot.book_ticker",
+        WebsocketChannelType.TRADES: "spot.trades",
+        WebsocketChannelType.ORDERBOOK: "spot.order_book_update",
+        WebsocketChannelType.TICKER: "spot.tickers"
+    }
+    
+    # Futures WebSocket channel mappings
+    FUTURES_CHANNEL_MAPPING: Dict[WebsocketChannelType, str] = {
+        WebsocketChannelType.BOOK_TICKER: "futures.tickers",
+        WebsocketChannelType.TRADES: "futures.trades",
+        WebsocketChannelType.ORDERBOOK: "futures.order_book",
+        WebsocketChannelType.TICKER: "futures.tickers"
+    }
+    
+    # Private WebSocket channel mappings
+    PRIVATE_CHANNEL_MAPPING: Dict[str, str] = {
+        "orders": "spot.orders_v2",
+        "user_trades": "spot.usertrades_v2", 
+        "balances": "spot.balances"
+    }
+    
+    # WebSocket message event types
+    class EventType:
+        SUBSCRIBE = "subscribe"
+        UNSUBSCRIBE = "unsubscribe"
+        UPDATE = "update"
+        PING = "ping"
+        PONG = "pong"
+    
+    # Status mappings for subscription responses
+    SUBSCRIPTION_STATUS_MAPPING = {
+        "success": True,
+        "fail": False
+    }
+    
+    @classmethod
+    def get_spot_channel_name(cls, channel_type: WebsocketChannelType) -> str:
+        """Get Gate.io spot channel name for WebSocket channel type."""
+        return cls.SPOT_CHANNEL_MAPPING.get(channel_type, "")
+    
+    @classmethod
+    def get_futures_channel_name(cls, channel_type: WebsocketChannelType) -> str:
+        """Get Gate.io futures channel name for WebSocket channel type."""
+        return cls.FUTURES_CHANNEL_MAPPING.get(channel_type, "")
+    
+    @classmethod
+    def get_private_channel_name(cls, channel_key: str) -> str:
+        """Get Gate.io private channel name for channel key."""
+        return cls.PRIVATE_CHANNEL_MAPPING.get(channel_key, "")
+    
+    @classmethod
+    def is_subscription_successful(cls, status: str) -> bool:
+        """Check if subscription status indicates success."""
+        return cls.SUBSCRIPTION_STATUS_MAPPING.get(status, False)
+    
+    @classmethod
+    def get_event_type(cls, action) -> str:
+        """Get Gate.io event type for subscription action."""
+        from core.transport.websocket.structs import SubscriptionAction
+        return cls.EventType.SUBSCRIBE if action == SubscriptionAction.SUBSCRIBE else cls.EventType.UNSUBSCRIBE

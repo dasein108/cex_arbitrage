@@ -20,7 +20,8 @@ from typing import List, Dict, Any, Optional, Set
 from core.transport.websocket.strategies.subscription import SubscriptionStrategy
 from core.transport.websocket.structs import SubscriptionAction
 from structs.common import Symbol
-from core.exchanges.services import SymbolMapperInterface
+from core.exchanges.services.symbol_mapper.base_symbol_mapper import SymbolMapperInterface
+from exchanges.gateio.services.mapper import GateioWebSocketMappings
 
 
 class GateioPrivateSubscriptionStrategy(SubscriptionStrategy):
@@ -48,21 +49,21 @@ class GateioPrivateSubscriptionStrategy(SubscriptionStrategy):
         Returns:
             List of messages, one per private channel type
         """
-        event = "subscribe" if action == SubscriptionAction.SUBSCRIBE else "unsubscribe"
+        event = GateioWebSocketMappings.get_event_type(action)
         messages = []
 
-        # Private channel definitions
+        # Private channel definitions using centralized mappings
         private_channels = [
             {
-                "channel": "spot.orders_v2",
+                "channel": GateioWebSocketMappings.get_private_channel_name("orders"),
                 "payload": ["!all"]  # Subscribe to all order updates
             },
             {
-                "channel": "spot.usertrades_v2",
+                "channel": GateioWebSocketMappings.get_private_channel_name("user_trades"),
                 "payload": ["!all"]  # Subscribe to all trade updates
             },
             {
-                "channel": "spot.balances",
+                "channel": GateioWebSocketMappings.get_private_channel_name("balances"),
             }
         ]
 
@@ -83,3 +84,15 @@ class GateioPrivateSubscriptionStrategy(SubscriptionStrategy):
         self.logger.info(f"Created {len(messages)} private {event} messages")
 
         return messages
+    
+    def _convert_symbols_to_exchange_format(self, symbols: List[Symbol]) -> List[str]:
+        """Convert symbols to Gate.io private exchange format."""
+        if not self.mapper:
+            self.logger.error("No symbol mapper available for Gate.io private subscription")
+            return []
+        
+        try:
+            return [self.mapper.to_pair(symbol) for symbol in symbols]
+        except Exception as e:
+            self.logger.error(f"Failed to convert private symbols: {e}")
+            return []

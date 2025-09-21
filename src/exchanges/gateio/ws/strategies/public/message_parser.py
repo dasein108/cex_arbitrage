@@ -2,10 +2,11 @@ import logging
 from typing import Dict, Any, Optional, List
 from datetime import datetime
 
-from core.exchanges.websocket import MessageParser, ParsedMessage
-from core.exchanges.services import SymbolMapperInterface
-from core.transport.websocket.structs import MessageType
-from structs.common import Trade, OrderBookEntry, Symbol, Side, BookTicker
+from core.transport.websocket.strategies.message_parser import MessageParser
+from core.transport.websocket.structs import ParsedMessage, MessageType
+from core.exchanges.services.symbol_mapper.base_symbol_mapper import SymbolMapperInterface
+from structs.common import Trade, OrderBookEntry, Symbol, Side, BookTicker, OrderBook
+from exchanges.gateio.services.mapper import GateioWebSocketMappings
 
 
 class GateioPublicMessageParser(MessageParser):
@@ -25,25 +26,14 @@ class GateioPublicMessageParser(MessageParser):
             if isinstance(message, dict):
                 event = message.get("event")
                 
-                if event == "subscribe":
-                    # Subscription confirmation/error
+                if event == GateioWebSocketMappings.EventType.SUBSCRIBE:
                     return await self._parse_subscription_response(message)
-                elif event == "unsubscribe":
-                    # Unsubscription confirmation
-                    return ParsedMessage(
-                        message_type=MessageType.SUBSCRIPTION_CONFIRM,
-                        data={"action": "unsubscribe", "status": message.get("result", {}).get("status")},
-                        raw_data=message
-                    )
-                elif event == "update":
-                    # Data update message
+                elif event == GateioWebSocketMappings.EventType.UNSUBSCRIBE:
+                    return self._create_unsubscribe_response(message)
+                elif event == GateioWebSocketMappings.EventType.UPDATE:
                     return await self._parse_update_message(message)
-                elif event in ["ping", "pong"]:
-                    # Ping/pong messages
-                    return ParsedMessage(
-                        message_type=MessageType.HEARTBEAT,
-                        raw_data=message
-                    )
+                elif event in [GateioWebSocketMappings.EventType.PING, GateioWebSocketMappings.EventType.PONG]:
+                    return self._create_heartbeat_response(message)
                 else:
                     # Other message types or messages without event field
                     self.logger.debug(f"Unknown Gate.io message format: {message}")
@@ -79,8 +69,9 @@ class GateioPublicMessageParser(MessageParser):
         # Check result status
         result = message.get("result", {})
         status = result.get("status")
+        is_success = GateioWebSocketMappings.is_subscription_successful(status)
         
-        if status == "success":
+        if is_success:
             self.logger.debug(f"Gate.io subscription successful for channel: {channel}")
             return ParsedMessage(
                 message_type=MessageType.SUBSCRIPTION_CONFIRM,
@@ -176,8 +167,6 @@ class GateioPublicMessageParser(MessageParser):
                     size = float(ask_data[1])
                     asks.append(OrderBookEntry(price=price, size=size))
             
-            # Create OrderBook object
-            from structs.common import OrderBook
             orderbook = OrderBook(
                 bids=bids,
                 asks=asks,
@@ -339,3 +328,29 @@ class GateioPublicMessageParser(MessageParser):
     def get_supported_message_types(self) -> List[str]:
         """Get list of supported message types."""
         return ["orderbook", "trades", "book_ticker", "subscription", "ping_pong", "other", "error"]
+    
+    # Helper methods for cleaner code organization
+    
+    def _create_unsubscribe_response(self, message: Dict[str, Any]) -> ParsedMessage:
+        """Create unsubscribe response message."""
+        return ParsedMessage(
+            message_type=MessageType.SUBSCRIPTION_CONFIRM,
+            data={"action": "unsubscribe", "status": message.get("result", {}).get("status")},
+            raw_data=message
+        )
+    
+    def _create_heartbeat_response(self, message: Dict[str, Any]) -> ParsedMessage:
+        """Create heartbeat response message."""
+        return ParsedMessage(message_type=MessageType.HEARTBEAT, raw_data=message)
+    
+    def _create_error_response(self, channel: str, error: Dict[str, Any], raw_data: Any) -> ParsedMessage:
+        """Create error response message."""
+        error_code = error.get("code", "unknown")
+        error_msg = error.get("message", "unknown error")
+        self.logger.error(f"Gate.io error {error_code}: {error_msg}")
+        return ParsedMessage(
+            message_type=MessageType.ERROR,
+            channel=channel,
+            data={"error_code": error_code, "error_message": error_msg},
+            raw_data=raw_data
+        )

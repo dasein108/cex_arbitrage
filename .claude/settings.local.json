@@ -66,7 +66,8 @@
       "Bash(docker:*)",
       "Bash(./quick-fix-constraints.sh:*)",
       "Bash(echo:*)",
-      "Bash(pip show:*)"
+      "Bash(pip show:*)",
+      "Bash(git restore:*)"
     ],
     "deny": [],
     "ask": [],
