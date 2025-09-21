@@ -24,7 +24,7 @@ Memory: O(1) per request, optimized for high-frequency access
 import asyncio
 import time
 from typing import Dict, List, Optional, Any
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from structs.common import (
     Symbol, SymbolInfo, OrderBook, OrderBookEntry, Trade, Kline,

@@ -14,11 +14,12 @@ import asyncio
 import sys
 import time
 from typing import Optional
+from datetime import datetime, timedelta
 
-from structs.common import Symbol, AssetName, Side, OrderType, TimeInForce
+from structs.common import Symbol, AssetName, Side, OrderType, TimeInForce, KlineInterval
 from core.config.config_manager import get_exchange_config
 from examples.utils.decorators import rest_api_test
-
+from datetime import datetime
 
 def get_gateio_futures_rest_classes():
     """Get Gate.io futures REST client classes."""
@@ -175,6 +176,43 @@ async def check_futures_ticker_info(exchange, exchange_name: str):
     }
 
 
+@rest_api_test("futures_klines")
+async def check_futures_klines(exchange, exchange_name: str):
+    symbol = Symbol(base=AssetName('BTC'), quote=AssetName('USDT'), is_futures=True)
+
+    date_to = datetime.now()
+    date_from = date_to - timedelta(hours=10)
+
+    # Передаем реальный часовой интервал
+    result = await exchange.get_klines(
+        symbol,
+        timeframe=KlineInterval.HOUR_1,
+        date_from=date_from,
+        date_to=date_to
+    )
+
+    klines_data = [
+        {
+            "open_time": k.open_time,
+            "close_time": k.close_time,
+            "open_price": k.open_price,
+            "high_price": k.high_price,
+            "low_price": k.low_price,
+            "close_price": k.close_price,
+            "volume": k.volume,
+            "quote_volume": k.quote_volume,
+            "trades_count": k.trades_count
+        }
+        for k in result
+    ]
+
+    return {
+        "contract": f"{symbol.base}_{symbol.quote}",
+        "is_futures": symbol.is_futures,
+        "interval": "1h",
+        "klines_count": len(result),
+        "klines": klines_data
+    }
 # Private API Tests
 async def check_futures_account_balance(exchange, exchange_name: str):
     """Check get_account_balance method for futures."""
@@ -286,6 +324,7 @@ async def run_public_tests(exchange_class):
         await check_futures_orderbook(exchange, 'gateio_futures')
         await check_futures_recent_trades(exchange, 'gateio_futures')
         await check_futures_ticker_info(exchange, 'gateio_futures')
+        await check_futures_klines(exchange, 'gateio_futures')
 
         await exchange.close()
 

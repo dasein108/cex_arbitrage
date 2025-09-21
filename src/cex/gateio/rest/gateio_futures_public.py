@@ -27,6 +27,10 @@ class GateioPublicFuturesRest(PublicExchangeSpotRestInterface):
     def __init__(self, config: ExchangeConfig):
         super().__init__(config)
 
+        # Override mapper to use futures-specific mapper instead of spot mapper
+        from core.cex.services import ExchangeMappingsFactory
+        self._mapper = ExchangeMappingsFactory.inject('GATEIO_FUTURES')
+
         # caching for contract info (only config data)
         self._exchange_info: Optional[Dict[Symbol, SymbolInfo]] = None
         self._cache_timestamp: float = 0.0
@@ -385,11 +389,11 @@ class GateioPublicFuturesRest(PublicExchangeSpotRestInterface):
             self.logger.error(f"Failed to get funding rate for {symbol}: {e}")
             raise BaseExchangeError(500, f"Futures funding rate fetch failed: {str(e)}")
 
-    async def get_klines(self, symbol: Symbol, timeframe: KlineInterval,
-                         date_from: Optional[datetime], date_to: Optional[datetime]) -> List[Kline]:
+    async def get_klines(self, symbol: Symbol, timeframe: KlineInterval, date_from: Optional[datetime],
+        date_to: Optional[datetime] ) -> List[Kline]:
         """
         Get futures candlesticks. Endpoint: /futures/usdt/candlesticks
-        Accepts either array-format klines or dict-format.
+        Gate.io returns array of dicts: {'o', 'h', 'l', 'c', 'v', 't', 'sum'}
         """
         try:
             contract = self._mapper.to_pair(symbol)
@@ -415,23 +419,14 @@ class GateioPublicFuturesRest(PublicExchangeSpotRestInterface):
             klines: List[Kline] = []
             for k in response_data:
                 try:
-                    # array format: [time, volume, close, high, low, open] or [time, volume, close, high, low, open, prev_close]
-                    if isinstance(k, (list, tuple)) and len(k) >= 6:
-                        ts = int(float(k[0])) * 1000
-                        volume = float(k[1])
-                        close_price = float(k[2])
-                        high_price = float(k[3])
-                        low_price = float(k[4])
-                        open_price = float(k[5])
-                    elif isinstance(k, dict):
-                        ts = int(k.get('t', k.get('time', 0))) * 1000
-                        open_price = float(k.get('o', k.get('open', 0)))
-                        high_price = float(k.get('h', k.get('high', 0)))
-                        low_price = float(k.get('l', k.get('low', 0)))
-                        close_price = float(k.get('c', k.get('close', 0)))
-                        volume = float(k.get('v', k.get('volume', 0)))
-                    else:
-                        continue
+                    # Поддержка формата dict
+                    ts = int(k.get("t", 0)) * 1000
+                    open_price = float(k.get("o", 0))
+                    high_price = float(k.get("h", 0))
+                    low_price = float(k.get("l", 0))
+                    close_price = float(k.get("c", 0))
+                    volume = float(k.get("v", 0))
+                    quote_volume = float(k.get("sum", 0))
 
                     kline = Kline(
                         symbol=symbol,
@@ -443,16 +438,14 @@ class GateioPublicFuturesRest(PublicExchangeSpotRestInterface):
                         low_price=low_price,
                         close_price=close_price,
                         volume=volume,
-                        quote_volume=volume * ((open_price + close_price) / 2) if volume and (open_price or close_price) else 0.0,
+                        quote_volume=quote_volume,
                         trades_count=0
                     )
                     klines.append(kline)
-
                 except Exception:
                     self.logger.debug(f"Failed to parse futures kline: {k}")
                     continue
 
-            # Gate.io typically returns oldest first
             self.logger.debug(f"Retrieved {len(klines)} futures klines for {contract}")
             return klines
 
@@ -552,6 +545,26 @@ class GateioPublicFuturesRest(PublicExchangeSpotRestInterface):
     async def stop_symbol(self, symbol: Symbol) -> None:
         contract = self._mapper.to_pair(symbol)
         self.logger.debug(f"Stop symbol requested for {contract} (public-only no-op)")
+
+    def _get_interval_seconds(self, interval: KlineInterval) -> int:
+        """Get interval duration in seconds for batch processing."""
+        interval_map = {
+            KlineInterval.MINUTE_1: 60,
+            KlineInterval.MINUTE_5: 300,
+            KlineInterval.MINUTE_15: 900,
+            KlineInterval.MINUTE_30: 1800,
+            KlineInterval.HOUR_1: 3600,
+            KlineInterval.HOUR_4: 14400,
+            KlineInterval.HOUR_12: 43200,
+            KlineInterval.DAY_1: 86400,
+            KlineInterval.WEEK_1: 604800,
+            KlineInterval.MONTH_1: 2592000  # 30 days approximation
+        }
+        return interval_map.get(interval, 0)
+
+    def _get_interval_milliseconds(self, interval: KlineInterval) -> int:
+        """Get interval duration in milliseconds for close time calculation."""
+        return self._get_interval_seconds(interval) * 1000
 
     async def close(self):
         self.logger.info("Closed Gate.io futures public client")

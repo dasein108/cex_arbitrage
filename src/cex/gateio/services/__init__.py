@@ -22,8 +22,10 @@ from core.cex.services.symbol_mapper.factory import ExchangeSymbolMapperFactory
 from core.cex.services.unified_mapper.factory import ExchangeMappingsFactory
 
 ExchangeSymbolMapperFactory.register(ExchangeEnum.GATEIO.value, GateioSymbolMapperInterface)
-ExchangeSymbolMapperFactory.register(ExchangeEnum.GATEIO.value, GateioFuturesSymbolMapperInterface)
 ExchangeMappingsFactory.register(ExchangeEnum.GATEIO.value, GateioUnifiedMappings)
+
+ExchangeSymbolMapperFactory.register(ExchangeEnum.GATEIO_FUTURES.value, GateioFuturesSymbolMapperInterface)
+ExchangeMappingsFactory.register(ExchangeEnum.GATEIO_FUTURES.value, GateioUnifiedMappings)
 
 
 __all__ = [
