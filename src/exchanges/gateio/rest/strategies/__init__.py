@@ -35,6 +35,28 @@ RestStrategyFactory.register_strategies(
     exception_handler_strategy_cls=GateioExceptionHandlerStrategy
 )
 
+# Register GATEIO_FUTURES public API strategies (uses same strategies as spot)
+RestStrategyFactory.register_strategies(
+    exchange=ExchangeEnum.GATEIO_FUTURES.value,
+    is_private=False,
+    request_strategy_cls=GateioRequestStrategy,
+    rate_limit_strategy_cls=GateioRateLimitStrategy,
+    retry_strategy_cls=GateioRetryStrategy,
+    auth_strategy_cls=None,
+    exception_handler_strategy_cls=GateioExceptionHandlerStrategy
+)
+
+# Register GATEIO_FUTURES private API strategies (uses same strategies as spot)
+RestStrategyFactory.register_strategies(
+    exchange=ExchangeEnum.GATEIO_FUTURES.value,
+    is_private=True,
+    request_strategy_cls=GateioRequestStrategy,
+    rate_limit_strategy_cls=GateioRateLimitStrategy,
+    retry_strategy_cls=GateioRetryStrategy,
+    auth_strategy_cls=GateioAuthStrategy,
+    exception_handler_strategy_cls=GateioExceptionHandlerStrategy
+)
+
 
 __all__ = [
     'GateioRequestStrategy',
