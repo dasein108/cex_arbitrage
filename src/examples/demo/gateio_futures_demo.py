@@ -24,10 +24,10 @@ from datetime import datetime
 def get_gateio_futures_rest_classes():
     """Get Gate.io futures REST client classes."""
     # Import Gate.io futures classes and register strategies/services
-    import cex.gateio.rest.strategies  # Triggers strategy registration
-    import cex.gateio.services  # Register symbol mapper
-    from cex.gateio.rest.gateio_futures_public import GateioPublicFuturesRest
-    from cex.gateio.rest.gateio_futures_private import GateioPrivateFuturesRest
+    import exchanges.gateio.rest.strategies  # Triggers strategy registration
+    import exchanges.gateio.services  # Register symbol mapper
+    from exchanges.gateio.rest.gateio_futures_public import GateioPublicFuturesRest
+    from exchanges.gateio.rest.gateio_futures_private import GateioPrivateFuturesRest
 
     return GateioPublicFuturesRest, GateioPrivateFuturesRest
 

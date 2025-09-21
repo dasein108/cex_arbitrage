@@ -9,7 +9,7 @@ from structs.common import (
 )
 from core.transport.rest.structs import HTTPMethod
 from core.exceptions.exchange import BaseExchangeError
-from core.cex.rest.spot.base_rest_spot_private import PrivateExchangeSpotRestInterface
+from core.exchanges.rest.spot.base_rest_spot_private import PrivateExchangeSpotRestInterface
 from core.config.structs import ExchangeConfig
 
 

@@ -7,7 +7,7 @@ from structs.common import (
     Symbol, SymbolInfo, OrderBook, OrderBookEntry, Trade, Kline,
     ExchangeName, KlineInterval, Ticker, Side
 )
-from core.cex.rest.spot.base_rest_spot_public import PublicExchangeSpotRestInterface
+from core.exchanges.rest.spot.base_rest_spot_public import PublicExchangeSpotRestInterface
 from core.transport.rest.structs import HTTPMethod
 from core.config.structs import ExchangeConfig
 from core.exceptions.exchange import BaseExchangeError
@@ -28,7 +28,7 @@ class GateioPublicFuturesRest(PublicExchangeSpotRestInterface):
         super().__init__(config)
 
         # Override mapper to use futures-specific mapper instead of spot mapper
-        from core.cex.services import ExchangeMappingsFactory
+        from core.exchanges.services import ExchangeMappingsFactory
         self._mapper = ExchangeMappingsFactory.inject('GATEIO_FUTURES')
 
         # caching for contract info (only config data)
