@@ -564,7 +564,7 @@ class RecoveryManager:
         Logic Requirements:
         - Identify unhedged positions requiring immediate hedge
         - Calculate appropriate hedge ratios and quantities
-        - Place hedge orders on appropriate cex
+        - Place hedge orders on appropriate exchanges
         - Monitor hedge execution and confirm fills
         - Ensure risk exposure is minimized
         

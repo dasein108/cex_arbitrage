@@ -18,7 +18,7 @@ from typing import List, Tuple, Optional, Iterator, Generator
 from enum import Enum
 
 from structs.common import KlineInterval
-from core.cex.utils import get_interval_seconds
+from core.exchanges.utils import get_interval_seconds
 
 
 class IteratorStrategy(Enum):

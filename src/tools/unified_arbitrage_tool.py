@@ -31,8 +31,9 @@ src_path = Path(__file__).parent.parent
 sys.path.insert(0, str(src_path))
 
 # CLAUDE.md compliant imports - use proper interfaces
-from interfaces.cex.base.base_public_exchange import BasePublicExchangeInterface
+from exchanges.interfaces import PublicExchangeInterface
 from core.factories.rest.public_rest_factory import PublicRestExchangeFactory
+from exchanges.consts import ExchangeEnum
 from core.config.config_manager import HftConfig
 from structs.common import Symbol, SymbolInfo, ExchangeName
 from core.exceptions.exchange import BaseExchangeError
@@ -79,12 +80,11 @@ class SymbolDiscoveryService:
             Discovery results dictionary
         """
         with PerformanceTimer("Symbol Discovery", self.logger):
-            # Get supported exchanges using factory
+            # Get supported exchanges using ExchangeEnum (CLAUDE.md compliant)
             exchange_configs = [
-                {"name": "mexc", "market_type": "spot"},
-                {"name": "mexc", "market_type": "futures"}, 
-                {"name": "gateio", "market_type": "spot"},
-                {"name": "gateio", "market_type": "futures"}
+                {"exchange_enum": ExchangeEnum.MEXC, "market_type": "spot"},
+                {"exchange_enum": ExchangeEnum.GATEIO, "market_type": "spot"},
+                {"exchange_enum": ExchangeEnum.GATEIO_FUTURES, "market_type": "futures"}
             ]
             
             # Create exchange instances using factory pattern (CLAUDE.md compliant)
@@ -100,7 +100,7 @@ class SymbolDiscoveryService:
             symbol_data = {}
             for i, result in enumerate(results):
                 config = exchange_configs[i]
-                exchange_key = f"{config['name']}_{config['market_type']}"
+                exchange_key = f"{config['exchange_enum'].value.lower()}_{config['market_type']}"
                 
                 if isinstance(result, Exception):
                     self.logger.error(f"Failed to fetch from {exchange_key}: {result}")
@@ -117,25 +117,29 @@ class SymbolDiscoveryService:
         Fetch symbols from a specific exchange using proper interface.
         
         Args:
-            config: Exchange configuration
+            config: Exchange configuration with ExchangeEnum
             
         Returns:
             Dictionary of symbols and their info
         """
         try:
-            # Use REST factory to create exchange instance (CLAUDE.md compliant)
-            exchange_name = config["name"]
+            # Use REST factory for symbol discovery (CLAUDE.md compliant)
+            exchange_enum = config["exchange_enum"]
+            market_type = config["market_type"]
             
-            # Get exchange config and create public exchange instance through REST factory
-            exchange_config = self.config_manager.get_exchange_config(exchange_name)
-            exchange = PublicRestExchangeFactory.inject(exchange_name, config=exchange_config)
+            # For futures, we need special handling - currently not supported
+            if market_type == "futures":
+                raise ValueError(f"Futures support not yet implemented for {exchange_enum.value}")
             
-            # Initialize and get exchange info using interface
-            await exchange.initialize()
-            symbols_info = await exchange.get_exchange_info()
+            # Get exchange config and create REST client for symbol discovery
+            exchange_config = self.config_manager.get_exchange_config(exchange_enum.value.lower())
+            rest_client = PublicRestExchangeFactory.inject(exchange_enum.value, config=exchange_config)
+            
+            # Get exchange info using REST client
+            symbols_info = await rest_client.get_exchange_info()
             
             # Clean up
-            await exchange.close()
+            await rest_client.close()
             
             return symbols_info
             
@@ -188,7 +192,6 @@ class SymbolDiscoveryService:
         for symbol_key in all_symbols:
             availability = {
                 "mexc_spot": symbol_key in [f"{s.base}/{s.quote}" for s in symbol_data.get("mexc_spot", {})],
-                "mexc_futures": symbol_key in [f"{s.base}/{s.quote}" for s in symbol_data.get("mexc_futures", {})],
                 "gateio_spot": symbol_key in [f"{s.base}/{s.quote}" for s in symbol_data.get("gateio_spot", {})],
                 "gateio_futures": symbol_key in [f"{s.base}/{s.quote}" for s in symbol_data.get("gateio_futures", {})]
             }
@@ -447,9 +450,9 @@ class ArbitrageToolController:
         # Initialize configuration manager (CLAUDE.md compliant)
         self.config_manager = HftConfig()
         
-        # Import exchange modules to trigger auto-registration
-        import cex.mexc.rest  # Registers MEXC with PublicRestExchangeFactory
-        import cex.gateio.rest  # Registers Gate.io with PublicRestExchangeFactory
+        # Import exchange modules to trigger auto-registration with ExchangeFactory
+        import exchanges.mexc  # Registers MEXC with ExchangeFactory
+        import exchanges.gateio  # Registers Gate.io with ExchangeFactory
         
         # Initialize services with dependency injection
         self.discovery_service = SymbolDiscoveryService(self.config_manager, self.logger)

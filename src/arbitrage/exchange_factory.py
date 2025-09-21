@@ -16,8 +16,8 @@ from enum import Enum
 
 from core.config.config_manager import config
 from core.exceptions.exchange import BaseExchangeError
-from cex.mexc.private_exchange import MexcPrivateExchange as MexcExchange
-from cex.gateio.gateio_exchange import GateioExchange
+from exchanges.mexc.private_exchange import MexcPrivateExchange as MexcExchange
+from exchanges.gateio.gateio_exchange import GateioExchange
 from structs.common import Symbol, AssetName, ExchangeStatus, ExchangeName
 from interfaces.cex.base.base_private_exchange import BasePrivateExchangeInterface
 from interfaces.factories.exchange_factory_interface import (
@@ -341,7 +341,7 @@ class ExchangeFactory(ExchangeFactoryInterface):
         symbols: Optional[List[Symbol]] = None
     ) -> Dict[str, BasePrivateExchangeInterface]:
         """
-        Create multiple cex with intelligent error handling.
+        Create multiple exchanges with intelligent error handling.
         
         Args:
             exchange_names: List of exchange names to create
@@ -349,12 +349,12 @@ class ExchangeFactory(ExchangeFactoryInterface):
             symbols: Symbols to initialize (uses defaults if None)
             
         Returns:
-            Dictionary of successfully initialized cex
+            Dictionary of successfully initialized exchanges
         """
         if not exchange_names:
             raise ValueError("No exchange names provided")
         
-        logger.info(f"Creating {len(exchange_names)} cex with {strategy.value} strategy...")
+        logger.info(f"Creating {len(exchange_names)} exchanges with {strategy.value} strategy...")
         
         # Clear previous results
         self._initialization_results = []
@@ -373,7 +373,7 @@ class ExchangeFactory(ExchangeFactoryInterface):
         exchange_names: List[str],
         symbols: Optional[List[Symbol]]
     ) -> Dict[str, BasePrivateExchangeInterface]:
-        """Create cex with fail-fast strategy."""
+        """Create exchanges with fail-fast strategy."""
         for name in exchange_names:
             exchange = await self.create_exchange(name, symbols, max_attempts=1)
             self.exchanges[name] = exchange
@@ -386,12 +386,12 @@ class ExchangeFactory(ExchangeFactoryInterface):
         exchange_names: List[str],
         symbols: Optional[List[Symbol]]
     ) -> Dict[str, BasePrivateExchangeInterface]:
-        """Create cex with continue-on-error strategy."""
+        """Create exchanges with continue-on-error strategy."""
         tasks = []
         for name in exchange_names:
             tasks.append(self._create_exchange_safe(name, symbols))
         
-        # Create cex concurrently
+        # Create exchanges concurrently
         results = await asyncio.gather(*tasks, return_exceptions=True)
         
         # Process results
@@ -402,7 +402,7 @@ class ExchangeFactory(ExchangeFactoryInterface):
                 self.exchanges[name] = result
         
         if not self.exchanges:
-            raise BaseExchangeError(500, "No cex could be initialized")
+            raise BaseExchangeError(500, "No exchanges could be initialized")
         
         self._log_exchange_summary()
         return self.exchanges
@@ -412,7 +412,7 @@ class ExchangeFactory(ExchangeFactoryInterface):
         exchange_names: List[str],
         symbols: Optional[List[Symbol]]
     ) -> Dict[str, BasePrivateExchangeInterface]:
-        """Create cex with retry strategy."""
+        """Create exchanges with retry strategy."""
         failed_exchanges = []
         
         # First attempt - concurrent
@@ -423,9 +423,9 @@ class ExchangeFactory(ExchangeFactoryInterface):
             if name not in self.exchanges:
                 failed_exchanges.append(name)
         
-        # Retry failed cex with backoff
+        # Retry failed exchanges with backoff
         if failed_exchanges:
-            logger.info(f"Retrying {len(failed_exchanges)} failed cex...")
+            logger.info(f"Retrying {len(failed_exchanges)} failed exchanges...")
             
             for attempt in range(2, self._retry_attempts + 1):
                 if not failed_exchanges:
@@ -455,7 +455,7 @@ class ExchangeFactory(ExchangeFactoryInterface):
                 failed_exchanges = new_failed
         
         if not self.exchanges:
-            raise BaseExchangeError(500, "No cex could be initialized after retries")
+            raise BaseExchangeError(500, "No exchanges could be initialized after retries")
         
         self._log_exchange_summary()
         return self.exchanges
@@ -489,9 +489,9 @@ class ExchangeFactory(ExchangeFactoryInterface):
         
         logger.info("Exchange Initialization Summary:")
         logger.info(f"  Requested: {total_requested}, Successful: {successful}, Failed: {failed}")
-        logger.info(f"  Active cex: {list(self.exchanges.keys())}")
+        logger.info(f"  Active exchanges: {list(self.exchanges.keys())}")
         
-        # Log successful cex
+        # Log successful exchanges
         for name, exchange in self.exchanges.items():
             if exchange:
                 status = exchange.status.name
@@ -505,7 +505,7 @@ class ExchangeFactory(ExchangeFactoryInterface):
                 
                 logger.info(f"  ✅ {name}: {status} ({symbols} symbols, {private}){time_info}{attempts_info}")
         
-        # Log failed cex
+        # Log failed exchanges
         for result in self._initialization_results:
             if result.failed:
                 logger.error(f"  ❌ {result.exchange_name}: Failed after {result.attempts} attempts - {result.error}")
@@ -564,7 +564,7 @@ class ExchangeFactory(ExchangeFactoryInterface):
         await asyncio.gather(*tasks, return_exceptions=True)
         
         self.exchanges.clear()
-        logger.info("All cex closed")
+        logger.info("All exchanges closed")
     
     async def _close_exchange(self, name: str, exchange: BasePrivateExchangeInterface):
         """Close single exchange connection."""

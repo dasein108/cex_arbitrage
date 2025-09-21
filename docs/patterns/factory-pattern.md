@@ -40,11 +40,11 @@ class ExchangeFactory:
     - Error resilience and recovery
     """
     
-    # EXCHANGE CLASS REGISTRY - Add new cex here only
+    # EXCHANGE CLASS REGISTRY - Add new exchanges here only
     EXCHANGE_CLASSES: Dict[str, Type[BaseExchangeInterface]] = {
         'MEXC': MexcExchange,
         'GATEIO': GateioExchange,
-        # Future cex added here with zero other code changes
+        # Future exchanges added here with zero other code changes
     }
     
     def __init__(self):
@@ -149,7 +149,7 @@ async def _create_exchange_instance(
 class InitializationStrategy(Enum):
     """Exchange initialization strategies"""
     FAIL_FAST = "fail_fast"          # Fail immediately on any error
-    CONTINUE_ON_ERROR = "continue"   # Continue with available cex
+    CONTINUE_ON_ERROR = "continue"   # Continue with available exchanges
     RETRY_WITH_BACKOFF = "retry"     # Retry failed initializations
 
 async def create_exchanges(
@@ -158,9 +158,9 @@ async def create_exchanges(
     strategy: InitializationStrategy = InitializationStrategy.CONTINUE_ON_ERROR,
     symbols: Optional[List[Symbol]] = None
 ) -> Dict[str, BaseExchangeInterface]:
-    """Create multiple cex with intelligent error handling"""
+    """Create multiple exchanges with intelligent error handling"""
     
-    logger.info(f"Creating {len(exchange_names)} cex with {strategy.value} strategy")
+    logger.info(f"Creating {len(exchange_names)} exchanges with {strategy.value} strategy")
     
     if strategy == InitializationStrategy.FAIL_FAST:
         return await self._create_exchanges_fail_fast(exchange_names, symbols)
@@ -179,7 +179,7 @@ async def _create_exchanges_continue(
     exchange_names: List[str],
     symbols: Optional[List[Symbol]]
 ) -> Dict[str, BaseExchangeInterface]:
-    """Create cex concurrently with error resilience"""
+    """Create exchanges concurrently with error resilience"""
     
     # Create initialization tasks
     tasks = []
@@ -194,13 +194,13 @@ async def _create_exchanges_continue(
     for name, result in zip(exchange_names, results):
         if isinstance(result, Exception):
             logger.error(f"Failed to create {name}: {result}")
-            # Continue with other cex
+            # Continue with other exchanges
         elif result:
             successful_exchanges[name] = result
             logger.info(f"✅ {name} created successfully")
     
     if not successful_exchanges:
-        raise ExchangeAPIError(500, "No cex could be initialized")
+        raise ExchangeAPIError(500, "No exchanges could be initialized")
     
     return successful_exchanges
 ```
@@ -212,7 +212,7 @@ async def _create_exchanges_with_retry(
     exchange_names: List[str],
     symbols: Optional[List[Symbol]]
 ) -> Dict[str, BaseExchangeInterface]:
-    """Create cex with intelligent retry logic"""
+    """Create exchanges with intelligent retry logic"""
     
     # First attempt - concurrent
     successful = await self._create_exchanges_continue(exchange_names, symbols)
@@ -220,17 +220,17 @@ async def _create_exchanges_with_retry(
     # Identify failures
     failed_exchanges = [name for name in exchange_names if name not in successful]
     
-    # Retry failed cex with exponential backoff
+    # Retry failed exchanges with exponential backoff
     for attempt in range(2, self._retry_attempts + 1):
         if not failed_exchanges:
             break
             
         # Wait with exponential backoff
         wait_time = self._retry_delay * (2 ** (attempt - 2))
-        logger.info(f"Retrying {len(failed_exchanges)} failed cex in {wait_time:.1f}s...")
+        logger.info(f"Retrying {len(failed_exchanges)} failed exchanges in {wait_time:.1f}s...")
         await asyncio.sleep(wait_time)
         
-        # Retry failed cex
+        # Retry failed exchanges
         retry_tasks = []
         for name in failed_exchanges:
             retry_tasks.append(self._create_exchange_safe(name, symbols))
@@ -269,12 +269,12 @@ EXCHANGE_CLASSES: Dict[str, Type[BaseExchangeInterface]] = {
 **Step 2: Configure in config.yaml**:
 ```yaml
 exchanges:
-  # Existing cex...
+  # Existing exchanges...
   mexc:
     api_key: "${MEXC_API_KEY}"
     secret_key: "${MEXC_SECRET_KEY}"
   
-  # New cex automatically supported
+  # New exchanges automatically supported
   binance:
     api_key: "${BINANCE_API_KEY}"
     secret_key: "${BINANCE_SECRET_KEY}"
@@ -369,7 +369,7 @@ def _log_exchange_summary(self):
     logger.info(f"  Success Rate: {summary['success_rate']:.1f}%")
     logger.info(f"  Average Init Time: {summary['average_init_time']:.2f}s")
     
-    # Log successful cex with details
+    # Log successful exchanges with details
     for name, exchange in self.exchanges.items():
         status = exchange.status.name
         symbols = len(getattr(exchange, 'active_symbols', []))
@@ -381,7 +381,7 @@ def _log_exchange_summary(self):
         
         logger.info(f"  ✅ {name}: {status} ({symbols} symbols, {private}){time_info}{attempts_info}")
     
-    # Log failed cex
+    # Log failed exchanges
     for exchange_name in summary['failed_exchanges']:
         result = next((r for r in self._initialization_results if r.exchange_name == exchange_name), None)
         error_info = f" - {result.error}" if result and result.error else ""
@@ -477,7 +477,7 @@ class PluginExchangeFactory:
                     logger.warning(f"Failed to load plugin {plugin_file}: {e}")
     
     def list_available_exchanges(self) -> List[str]:
-        """List all available cex (builtin + plugins)"""
+        """List all available exchanges (builtin + plugins)"""
         return list(self.exchange_plugins.keys())
     
     def is_plugin_exchange(self, exchange_name: str) -> bool:
@@ -493,7 +493,7 @@ class PluginExchangeFactory:
 **Connection Pool Pre-warming**:
 ```python
 async def pre_warm_connections(self) -> None:
-    """Pre-warm connection pools for all cex"""
+    """Pre-warm connection pools for all exchanges"""
     
     tasks = []
     for exchange_name, exchange in self.exchanges.items():
@@ -502,7 +502,7 @@ async def pre_warm_connections(self) -> None:
     
     if tasks:
         await asyncio.gather(*tasks, return_exceptions=True)
-        logger.info(f"Pre-warmed connections for {len(tasks)} cex")
+        logger.info(f"Pre-warmed connections for {len(tasks)} exchanges")
 ```
 
 **Batch Operations**:
@@ -511,7 +511,7 @@ async def batch_initialize_symbols(
     self, 
     symbols: List[Symbol]
 ) -> Dict[str, List[SymbolInfo]]:
-    """Batch initialize symbols across all cex"""
+    """Batch initialize symbols across all exchanges"""
     
     tasks = {}
     for exchange_name, exchange in self.exchanges.items():
@@ -526,7 +526,7 @@ async def batch_initialize_symbols(
 **Memory Management**:
 ```python
 async def cleanup_unused_exchanges(self, active_exchanges: Set[str]) -> None:
-    """Clean up cex not in active set"""
+    """Clean up exchanges not in active set"""
     
     to_cleanup = set(self.exchanges.keys()) - active_exchanges
     
@@ -537,7 +537,7 @@ async def cleanup_unused_exchanges(self, active_exchanges: Set[str]) -> None:
     
     if cleanup_tasks:
         await asyncio.gather(*cleanup_tasks, return_exceptions=True)
-        logger.info(f"Cleaned up {len(cleanup_tasks)} unused cex")
+        logger.info(f"Cleaned up {len(cleanup_tasks)} unused exchanges")
 ```
 
 ## Factory Testing Strategies

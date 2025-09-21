@@ -55,7 +55,7 @@ class RiskMetrics:
     Comprehensive risk metrics for arbitrage operations.
     
     Real-time risk calculations and exposure measurements
-    across all positions and cex.
+    across all positions and exchanges.
     """
     total_exposure_usd: float           # HFT optimized: float vs Decimal
     max_single_position_usd: float      # HFT optimized: float vs Decimal
@@ -639,7 +639,7 @@ class RiskManager:
         
         Logic Requirements:
         - Stop all opportunity detection and execution
-        - Cancel all pending orders across cex
+        - Cancel all pending orders across exchanges
         - Initiate position unwinding procedures
         - Generate emergency alerts and notifications
         - Set system to manual intervention mode

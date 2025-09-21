@@ -8,7 +8,7 @@ based on exchange requirements or testing needs.
 
 from abc import ABC, abstractmethod
 from structs.common import ExchangeName
-from core.cex.services.symbol_mapper.base_symbol_mapper import SymbolMapperInterface
+from core.exchanges.services.symbol_mapper.base_symbol_mapper import SymbolMapperInterface
 
 
 class SymbolMapperFactoryInterface(ABC):

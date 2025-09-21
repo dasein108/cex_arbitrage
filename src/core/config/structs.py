@@ -205,7 +205,7 @@ class ExchangeConfig(Struct, frozen=True):
     Attributes:
         name: Exchange name (e.g., 'mexc', 'gateio')
         credentials: API credentials
-        base_url: REST API cex URL
+        base_url: REST API exchanges URL
         websocket_url: WebSocket URL
         network: Network configuration (legacy - use transport for new code)
         rate_limit: Rate limiting configuration (legacy - use transport for new code)

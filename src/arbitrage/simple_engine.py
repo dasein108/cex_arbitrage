@@ -122,7 +122,7 @@ class SimpleArbitrageEngine:
             except Exception as e:
                 logger.error(f"Error stopping market data aggregator: {e}")
         
-        # Close cex
+        # Close exchanges
         for name, exchange in self.exchanges.items():
             try:
                 if exchange:
@@ -138,7 +138,7 @@ class SimpleArbitrageEngine:
         logger.info("Initializing market data aggregator...")
         
         try:
-            # Create market data aggregator with cex
+            # Create market data aggregator with exchanges
             self.market_data_aggregator = MarketDataAggregator(
                 self.config,
                 self.exchanges
@@ -286,7 +286,7 @@ class SimpleArbitrageEngine:
         if self._start_time:
             self.statistics.uptime_seconds = time.perf_counter() - self._start_time
         
-        # Get cex statistics
+        # Get exchanges statistics
         stats = self.statistics.to_dict()
         
         # HFT IMPROVEMENT: Add OpportunityProcessor statistics
@@ -320,10 +320,10 @@ class SimpleArbitrageEngine:
         
         active_pairs = self.config.pair_map.get_active_pairs()
         
-        # Filter pairs based on enabled cex
+        # Filter pairs based on enabled exchanges
         filtered_pairs = []
         for pair in active_pairs:
-            # Check if all required cex are available
+            # Check if all required exchanges are available
             exchanges_available = all(
                 exchange_name in self.exchanges 
                 for exchange_name in pair.exchanges.keys()
@@ -347,7 +347,7 @@ class SimpleArbitrageEngine:
         symbols = set()
         
         for pair in self._active_pairs:
-            # Create Symbol from pair cex/quote assets
+            # Create Symbol from pair exchanges/quote assets
             try:
                 symbol = Symbol(
                     base=AssetName(pair.base_asset),

@@ -337,8 +337,9 @@ class ErrorHandler:
         
         # Import here to avoid circular imports
         import traceback
-        if logger.isEnabledFor(logging.DEBUG):
-            traceback.print_exc()
+        # Always show traceback for debugging
+        logger.error("Full traceback:")
+        logger.error(traceback.format_exc())
         
         print(f"\n💥 {operation} failed!")
         print("🔍 Check logs above for error details.")

@@ -11,7 +11,7 @@ import logging
 from typing import Type, Optional
 
 from core.factories.base_exchange_factory import BaseExchangeFactory
-from core.cex.rest.spot.base_rest_spot_public import PublicExchangeSpotRestInterface
+from core.exchanges.rest.spot.base_rest_spot_public import PublicExchangeSpotRestInterface
 from core.config.structs import ExchangeConfig
 
 logger = logging.getLogger(__name__)

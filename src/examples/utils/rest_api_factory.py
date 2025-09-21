@@ -10,8 +10,8 @@ from core.factories.rest.private_rest_factory import PrivateRestExchangeFactory
 from core.config.config_manager import HftConfig
 
 # Import exchange modules to trigger auto-registration
-import cex.mexc.rest
-import cex.gateio.rest
+import exchanges.mexc.rest
+import exchanges.gateio.rest
 
 
 def get_exchange_rest_instance(exchange_name: str, is_private: bool = False, config: Optional[any] = None):

@@ -64,9 +64,14 @@
       "Bash(curl:*)",
       "Bash(COMPOSE_PROFILES=admin,monitoring docker-compose -f docker-compose.yml -f docker-compose.dev.yml up -d)",
       "Bash(docker:*)",
-      "Bash(./quick-fix-constraints.sh:*)"
+      "Bash(./quick-fix-constraints.sh:*)",
+      "Bash(echo:*)",
+      "Bash(pip show:*)"
     ],
     "deny": [],
-    "ask": []
+    "ask": [],
+    "additionalDirectories": [
+      "/private/tmp"
+    ]
   }
 }

@@ -33,9 +33,9 @@ sys.path.insert(0, str(project_root))
 
 # Direct imports from src directory
 from structs.common import Symbol, SymbolInfo, AssetName, ExchangeName
-from cex.mexc.rest.mexc_rest_public import MexcPublicSpotRest
-from cex.gateio.rest.gateio_public import GateioPublicExchangeSpotRest
-from cex.gateio.rest.gateio_futures_public import GateioPublicFuturesExchangeSpotRest
+from exchanges.mexc.rest.mexc_rest_public import MexcPublicSpotRest
+from exchanges.gateio.rest.gateio_public import GateioPublicExchangeSpotRest
+from exchanges.gateio.rest.gateio_futures_public import GateioPublicFuturesExchangeSpotRest
 from core.exceptions.exchange import BaseExchangeError
 
 
@@ -147,7 +147,7 @@ class ExchangeMarket(Struct, frozen=True):
 
 
 class SymbolAvailability(Struct):
-    """Symbol availability across cex"""
+    """Symbol availability across exchanges"""
     symbol: Symbol
     mexc_spot: bool = False
     mexc_futures: bool = False
@@ -156,12 +156,12 @@ class SymbolAvailability(Struct):
     
     @property
     def exchange_count(self) -> int:
-        """Number of cex where symbol is available"""
+        """Number of exchanges where symbol is available"""
         return sum([self.mexc_spot, self.mexc_futures, self.gateio_spot, self.gateio_futures])
     
     @property
     def is_arbitrage_candidate(self) -> bool:
-        """Check if symbol is available on multiple cex"""
+        """Check if symbol is available on multiple exchanges"""
         return self.exchange_count >= 2
 
 
@@ -169,7 +169,7 @@ class SymbolMetadata(Struct):
     """Detailed symbol metadata for analysis"""
     symbol: Symbol
     exchanges: Dict[str, Dict[str, Any]]  # exchange_market -> info dict
-    min_quote_amount: float  # Minimum across all cex
+    min_quote_amount: float  # Minimum across all exchanges
     max_precision: int  # Maximum precision requirement
     fee_range: Tuple[float, float]  # Min and max fees
 
@@ -267,7 +267,7 @@ class SymbolDiscoveryEngine:
     
     async def discover_symbols(self, filter_major_coins: bool = True) -> DiscoveryResult:
         """
-        Perform comprehensive symbol discovery across all cex.
+        Perform comprehensive symbol discovery across all exchanges.
         
         Args:
             filter_major_coins: Exclude BTC, ETH, etc. for focused 3-tier analysis
@@ -285,7 +285,7 @@ class SymbolDiscoveryEngine:
             ExchangeMarket(exchange="gateio", market=MarketType.FUTURES)
         ]
         
-        # Parallel fetch from all cex (event-driven architecture)
+        # Parallel fetch from all exchanges (event-driven architecture)
         tasks = [self._fetch_exchange_info(target) for target in targets]
         results = await asyncio.gather(*tasks, return_exceptions=True)
         
@@ -332,7 +332,7 @@ class SymbolDiscoveryEngine:
                 'min_quote_amount': meta.min_quote_amount,
                 'max_precision': meta.max_precision,
                 'fee_range': meta.fee_range,
-                'cex': meta.exchanges
+                'exchanges': meta.exchanges
             }
         
         return DiscoveryResult(
@@ -353,7 +353,7 @@ class SymbolDiscoveryEngine:
         return quote
     
     def _find_stablecoin_matches(self, base_asset: str, exchange_data: Dict[ExchangeMarket, Dict[Symbol, SymbolInfo]]) -> Dict[str, bool]:
-        """Find all stablecoin matches for a cex asset across cex"""
+        """Find all stablecoin matches for a exchanges asset across exchanges"""
         matches = {
             'mexc_spot': False,
             'mexc_futures': False, 
@@ -382,8 +382,8 @@ class SymbolDiscoveryEngine:
     def _build_availability_matrix(self, 
                                   exchange_data: Dict[ExchangeMarket, Dict[Symbol, SymbolInfo]]
                                   ) -> Dict[str, SymbolAvailability]:
-        """Build symbol availability matrix across all cex with stablecoin equivalence"""
-        # Collect all unique cex assets that trade against stablecoins
+        """Build symbol availability matrix across all exchanges with stablecoin equivalence"""
+        # Collect all unique exchanges assets that trade against stablecoins
         base_assets_with_stables: Set[str] = set()
         regular_symbols: Set[Symbol] = set()
         
@@ -553,7 +553,7 @@ class SymbolDiscoveryEngine:
         three_way = sum(1 for a in availability.values() if a.exchange_count >= 3)
         four_way = sum(1 for a in availability.values() if a.exchange_count == 4)
         
-        # Best opportunities (available on all cex)
+        # Best opportunities (available on all exchanges)
         best_opportunities = [
             symbol_key for symbol_key, avail in availability.items()
             if avail.exchange_count == 4
@@ -785,7 +785,7 @@ class OutputManager:
         # Filter for arbitrage candidates only
         filtered_availability = {}
         for symbol_key, availability in result.availability_matrix.items():
-            # Check if available on multiple cex
+            # Check if available on multiple exchanges
             count = sum([availability['mexc_spot'], availability['mexc_futures'], 
                         availability['gateio_spot'], availability['gateio_futures']])
             if count >= 2:
@@ -805,9 +805,9 @@ class OutputManager:
 
 class DiscoveryCLI:
     """
-    Command-line cex for symbol discovery tool.
+    Command-line exchanges for symbol discovery tool.
     
-    Provides user-friendly cex with progress indicators.
+    Provides user-friendly exchanges with progress indicators.
     """
     
     def __init__(self):
@@ -893,7 +893,7 @@ class DiscoveryCLI:
         print(f"  Total Candidates: {stats['arbitrage_candidates']} symbols")
         
         if stats.get('best_opportunities'):
-            print("\nTOP OPPORTUNITIES (Available on all cex):")
+            print("\nTOP OPPORTUNITIES (Available on all exchanges):")
             for symbol in stats['best_opportunities'][:10]:
                 print(f"    • {symbol}")
         print("="*60 + "\n")

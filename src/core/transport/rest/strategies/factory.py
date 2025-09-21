@@ -147,14 +147,14 @@ class RestStrategyFactory(BaseCompositeFactory[RestStrategySet]):
         elif 'GATEIO' in exchange_name.upper():
             # Fallback: Import Gate.io exception handler directly if registration failed
             try:
-                from cex.gateio.rest.strategies.exception_handler import GateioExceptionHandlerStrategy
+                from exchanges.gateio.rest.strategies.exception_handler import GateioExceptionHandlerStrategy
                 exception_handler_strategy = GateioExceptionHandlerStrategy()
             except ImportError:
                 pass  # Ignore if import fails
         elif 'MEXC' in exchange_name.upper():
             # Fallback: Import MEXC exception handler directly if registration failed
             try:
-                from cex.mexc.rest.strategies.exception_handler import MexcExceptionHandlerStrategy
+                from exchanges.mexc.rest.strategies.exception_handler import MexcExceptionHandlerStrategy
                 exception_handler_strategy = MexcExceptionHandlerStrategy()
             except ImportError:
                 pass  # Ignore if import fails

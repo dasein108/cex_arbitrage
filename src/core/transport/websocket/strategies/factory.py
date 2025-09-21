@@ -12,7 +12,7 @@ from core.transport.websocket.strategies.strategy_set import WebSocketStrategySe
 from core.transport.websocket.strategies.connection import ConnectionStrategy
 from core.transport.websocket.strategies.subscription import SubscriptionStrategy
 from core.transport.websocket.strategies.message_parser import MessageParser
-from core.cex.services import ExchangeSymbolMapperFactory
+from core.exchanges.services import ExchangeSymbolMapperFactory
 from core.exceptions.exchange import ConfigurationError
 
 
@@ -156,9 +156,9 @@ def _create_mexc_strategies(symbol_mapper, is_private: bool) -> WebSocketStrateg
     
     if is_private:
         # Import MEXC private strategies
-        from cex.mexc.ws.strategies.private.connection import MexcPrivateConnectionStrategy
-        from cex.mexc.ws.strategies.private.subscription import MexcPrivateSubscriptionStrategy
-        from cex.mexc.ws.strategies.private.message_parser import MexcPrivateMessageParser
+        from exchanges.mexc.ws.strategies.private.connection import MexcPrivateConnectionStrategy
+        from exchanges.mexc.ws.strategies.private.subscription import MexcPrivateSubscriptionStrategy
+        from exchanges.mexc.ws.strategies.private.message_parser import MexcPrivateMessageParser
         
         return WebSocketStrategySet(
             connection_strategy=MexcPrivateConnectionStrategy(),
@@ -167,9 +167,9 @@ def _create_mexc_strategies(symbol_mapper, is_private: bool) -> WebSocketStrateg
         )
     else:
         # Import MEXC public strategies
-        from cex.mexc.ws.strategies.public.connection import MexcPublicConnectionStrategy
-        from cex.mexc.ws.strategies.public.subscription import MexcPublicSubscriptionStrategy
-        from cex.mexc.ws.strategies.public.message_parser import MexcPublicMessageParser
+        from exchanges.mexc.ws.strategies.public.connection import MexcPublicConnectionStrategy
+        from exchanges.mexc.ws.strategies.public.subscription import MexcPublicSubscriptionStrategy
+        from exchanges.mexc.ws.strategies.public.message_parser import MexcPublicMessageParser
         
         return WebSocketStrategySet(
             connection_strategy=MexcPublicConnectionStrategy(),
@@ -183,9 +183,9 @@ def _create_gateio_strategies(symbol_mapper, is_private: bool) -> WebSocketStrat
     
     if is_private:
         # Import Gate.io private strategies
-        from cex.gateio.ws.strategies.private.connection import GateioPrivateConnectionStrategy
-        from cex.gateio.ws.strategies.private.subscription import GateioPrivateSubscriptionStrategy
-        from cex.gateio.ws.strategies.private.message_parser import GateioPrivateMessageParser
+        from exchanges.gateio.ws.strategies.private.connection import GateioPrivateConnectionStrategy
+        from exchanges.gateio.ws.strategies.private.subscription import GateioPrivateSubscriptionStrategy
+        from exchanges.gateio.ws.strategies.private.message_parser import GateioPrivateMessageParser
         
         return WebSocketStrategySet(
             connection_strategy=GateioPrivateConnectionStrategy(),
@@ -194,9 +194,9 @@ def _create_gateio_strategies(symbol_mapper, is_private: bool) -> WebSocketStrat
         )
     else:
         # Import Gate.io public strategies
-        from cex.gateio.ws.strategies.public.connection import GateioPublicConnectionStrategy
-        from cex.gateio.ws.strategies.public.subscription import GateioPublicSubscriptionStrategy
-        from cex.gateio.ws.strategies.public.message_parser import GateioPublicMessageParser
+        from exchanges.gateio.ws.strategies.public.connection import GateioPublicConnectionStrategy
+        from exchanges.gateio.ws.strategies.public.subscription import GateioPublicSubscriptionStrategy
+        from exchanges.gateio.ws.strategies.public.message_parser import GateioPublicMessageParser
         
         return WebSocketStrategySet(
             connection_strategy=GateioPublicConnectionStrategy(),

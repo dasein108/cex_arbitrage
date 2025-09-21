@@ -70,15 +70,17 @@ class ArbitrageToolController:  # Only orchestration
 ### Interface Usage
 
 **Before**: Direct REST client imports
+
 ```python
-from cex.mexc.rest.mexc_rest_public import MexcPublicSpotRest
-from cex.gateio.rest.gateio_public import GateioPublicExchangeSpotRest
+from exchanges.mexc.rest.mexc_rest_public import MexcPublicSpotRest
+from exchanges.gateio.rest.gateio_public import GateioPublicExchangeSpotRest
 ```
 
 **After**: Proper interface usage (CLAUDE.md compliant)
+
 ```python
 from interfaces.cex.base.base_public_exchange import BasePublicExchangeInterface
-from cex.factories.exchange_factory import ExchangeFactory
+from exchanges.factories.exchange_factory import ExchangeFactory
 ```
 
 ### DRY Elimination

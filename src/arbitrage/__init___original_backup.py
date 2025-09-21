@@ -2,7 +2,7 @@
 HFT Arbitrage Framework
 
 Ultra-high-performance arbitrage engine designed for sub-millisecond cryptocurrency
-trading across multiple cex with atomic spot + futures hedge operations.
+trading across multiple exchanges with atomic spot + futures hedge operations.
 
 Core Components:
 - ArbitrageEngine: Main orchestrator with sub-50ms execution targets

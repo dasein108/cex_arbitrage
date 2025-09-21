@@ -173,7 +173,7 @@ class ComponentShutdownMixin:
     """
     Mixin for components that need graceful shutdown.
     
-    Provides standard shutdown cex for engine components.
+    Provides standard shutdown exchanges for engine components.
     """
     
     def __init__(self):

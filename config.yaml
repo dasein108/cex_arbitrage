@@ -181,7 +181,7 @@ arbitrage:
       priority: 2  # Exchange priority for execution
 
   # Arbitrage pairs configuration (simplified)
-  # Symbol details are auto-discovered from cex using get_exchange_info()
+  # Symbol details are auto-discovered from exchanges using get_exchange_info()
   arbitrage_pairs:
     - id: "wai_usdt_spot_arb"
       base_asset: "WAI"

@@ -91,7 +91,7 @@ This document provides a comprehensive task breakdown for implementing the HFT-c
   ```python
   async def _compare_cross_exchange_prices(self, symbol: Symbol) -> List[PriceComparison]:
       """
-      Compare prices across all enabled cex for given symbol.
+      Compare prices across all enabled exchanges for given symbol.
       
       Performance Target: <5ms per symbol comparison
       HFT Compliance: Fresh data only, no caching
@@ -99,7 +99,7 @@ This document provides a comprehensive task breakdown for implementing the HFT-c
       comparisons = []
       exchanges = self.websocket_config.enabled_exchanges
       
-      # Get fresh orderbook data from all cex (concurrent)
+      # Get fresh orderbook data from all exchanges (concurrent)
       orderbook_tasks = [
           self.market_data_aggregator.get_current_orderbook(exchange, symbol)
           for exchange in exchanges
@@ -137,7 +137,7 @@ This document provides a comprehensive task breakdown for implementing the HFT-c
           sell_orderbook.bids[0].size
       )
       
-      # Get trading fees for both cex
+      # Get trading fees for both exchanges
       buy_fees = await self.get_trading_fees(symbol, buy_exchange)
       sell_fees = await self.get_trading_fees(symbol, sell_exchange)
       
@@ -340,13 +340,13 @@ This document provides a comprehensive task breakdown for implementing the HFT-c
       Performance Target: <5ms per balance check
       """
       try:
-          # Get current balances from both cex (concurrent)
+          # Get current balances from both exchanges (concurrent)
           buy_exchange_instance = self.market_data_aggregator.get_exchange(opportunity.buy_exchange)
           sell_exchange_instance = self.market_data_aggregator.get_exchange(opportunity.sell_exchange)
           
           balance_tasks = [
               self._get_exchange_balance(buy_exchange_instance, opportunity.symbol.quote),  # Need quote for buying
-              self._get_exchange_balance(sell_exchange_instance, opportunity.symbol.base)   # Need cex for selling
+              self._get_exchange_balance(sell_exchange_instance, opportunity.symbol.base)   # Need exchanges for selling
           ]
           
           buy_balance, sell_balance = await asyncio.gather(*balance_tasks)

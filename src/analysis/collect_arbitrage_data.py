@@ -296,7 +296,7 @@ class ArbitrageDataPipeline:
         return validation_results
 
 
-# CLI cex for manual execution
+# CLI exchanges for manual execution
 async def main():
     """CLI entry point for data collection"""
     import argparse

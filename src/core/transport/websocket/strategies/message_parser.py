@@ -5,7 +5,7 @@ from core.transport.websocket.structs import ParsedMessage, MessageType
 from structs.common import OrderBook
 
 if TYPE_CHECKING:
-    from core.cex.services.symbol_mapper import SymbolMapperInterface
+    from core.exchanges.services.symbol_mapper import SymbolMapperInterface
 
 
 class MessageParser(ABC):

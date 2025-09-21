@@ -12,7 +12,7 @@ Usage:
 import asyncio
 import sys
 from structs.common import Symbol, AssetName, Side, OrderType, TimeInForce
-from core.cex.rest import PrivateExchangeSpotRestInterface
+from core.exchanges.rest import PrivateExchangeSpotRestInterface
 from core.config.config_manager import get_exchange_config
 
 from examples.utils.rest_api_factory import get_exchange_rest_instance
