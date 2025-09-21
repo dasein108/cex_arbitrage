@@ -734,7 +734,7 @@ class HftConfig:
     
     def get_all_exchange_configs(self) -> Dict[str, ExchangeConfig]:
         """
-        Get all configured cex as structured objects.
+        Get all configured exchanges as structured objects.
         
         Returns:
             Dictionary mapping exchange names to ExchangeConfig structs

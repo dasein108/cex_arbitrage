@@ -37,7 +37,7 @@ class DataLoader:
     
     Features:
     - Streaming CSV processing to minimize memory usage
-    - Timestamp synchronization between cex
+    - Timestamp synchronization between exchanges
     - Data validation and integrity checks
     - Support for chunked processing
     """
@@ -52,7 +52,7 @@ class DataLoader:
     
     def find_symbol_files(self, symbol: str) -> Dict[str, Optional[Path]]:
         """
-        Find CSV files for a symbol across cex.
+        Find CSV files for a symbol across exchanges.
         
         Args:
             symbol: Trading symbol (e.g., "BTC_USDT")
@@ -154,7 +154,7 @@ class DataLoader:
         common_timestamps = set(mexc_dict.keys()) & set(gateio_dict.keys())
         
         if not common_timestamps:
-            self.logger.warning("No common timestamps found between cex")
+            self.logger.warning("No common timestamps found between exchanges")
             return []
         
         # Create synchronized pairs

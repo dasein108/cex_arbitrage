@@ -27,7 +27,7 @@ from typing import Dict, Any
 
 from structs.common import Symbol, AssetName
 from core.config.config_manager import get_exchange_config
-from examples.utils.rest_api_factory import get_exchange_rest_class
+from core.factories.rest.public_rest_factory import PublicRestExchangeFactory
 from examples.integration_test_framework import (
     IntegrationTestRunner, TestCategory, TestStatus, TestMetrics,
     EXIT_CODE_SUCCESS, EXIT_CODE_FAILED_TESTS, EXIT_CODE_ERROR, 
@@ -50,12 +50,11 @@ class RestPublicIntegrationTest:
         """Setup exchange connection for testing."""
         try:
             config = get_exchange_config(self.exchange_name)
-            exchange_class = get_exchange_rest_class(self.exchange_name.lower(), is_private=False)
-            self.exchange = exchange_class(config)
+            self.exchange = PublicRestExchangeFactory.inject(self.exchange_name, config=config)
             
             return {
                 "setup_successful": True,
-                "exchange_class": exchange_class.__name__,
+                "exchange_class": type(self.exchange).__name__,
                 "config_loaded": True
             }
         except Exception as e:

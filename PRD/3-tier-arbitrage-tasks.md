@@ -434,7 +434,7 @@ class SizedOpportunity(msgspec.Struct):
     sell_exchange: str
     buy_price: float
     sell_price: float
-    order_amount: float  # In cex currency
+    order_amount: float  # In exchanges currency
     quote_amount: float  # In quote currency (USDT)
     gross_profit: float
     net_profit: float    # After fees
@@ -1147,7 +1147,7 @@ class RealTimeAnalyzer:
 
 ```python
 class AlignedMarketData(Struct):
-    """Time-aligned market data across cex"""
+    """Time-aligned market data across exchanges"""
     timestamps: List[int]  # Aligned timestamps
     exchange_data: Dict[ExchangeName, Dict[Symbol, List[Kline]]]
     alignment_quality: float  # 0.0-1.0, data completeness score

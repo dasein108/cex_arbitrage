@@ -2,7 +2,7 @@
 HFT Arbitrage Market Data Aggregator
 
 Real-time market data synchronization and aggregation across multiple
-cex with sub-millisecond data processing and HFT compliance.
+exchanges with sub-millisecond data processing and HFT compliance.
 
 Architecture:
 - Real-time cross-exchange data synchronization
@@ -64,7 +64,7 @@ class MarketDataSnapshot:
     exchange_data: Dict[ExchangeName, 'ExchangeDataSnapshot']
     aggregated_timestamp: int  # Microseconds since epoch
     data_age_ms: float  # Age of oldest data in snapshot
-    is_synchronized: bool  # True if all cex have fresh data
+    is_synchronized: bool  # True if all exchanges have fresh data
 
 
 @dataclass
@@ -89,7 +89,7 @@ class MarketDataAggregator:
     """
     Real-time market data aggregation system for arbitrage operations.
     
-    Aggregates and synchronizes market data across multiple cex
+    Aggregates and synchronizes market data across multiple exchanges
     with HFT-compliant data processing and distribution.
     
     HFT Design:
@@ -112,7 +112,7 @@ class MarketDataAggregator:
         TODO: Complete initialization with data aggregation setup.
         
         Logic Requirements:
-        - Set up data subscriptions for all cex
+        - Set up data subscriptions for all exchanges
         - Initialize cross-exchange data synchronization
         - Configure WebSocket connections with REST fallback
         - Set up data quality monitoring and validation
@@ -120,7 +120,7 @@ class MarketDataAggregator:
         
         Questions:
         - Should we maintain separate data streams per symbol?
-        - How to handle cex with different update frequencies?
+        - How to handle exchanges with different update frequencies?
         - Should we implement data compression for high-frequency updates?
         
         Performance: Initialization should complete in <2 seconds
@@ -156,7 +156,7 @@ class MarketDataAggregator:
         self._data_synchronization_failures = 0
         self._exchange_connectivity_issues = {}
         
-        logger.info(f"Market data aggregator initialized for {len(exchanges)} cex")
+        logger.info(f"Market data aggregator initialized for {len(exchanges)} exchanges")
     
     async def start_aggregation(self, symbols: Set[Symbol]) -> None:
         """
@@ -165,7 +165,7 @@ class MarketDataAggregator:
         TODO: Initialize data aggregation with WebSocket connections.
         
         Logic Requirements:
-        - Establish WebSocket connections to all cex
+        - Establish WebSocket connections to all exchanges
         - Subscribe to orderbook, ticker, and trade data
         - Set up REST fallback connections
         - Initialize cross-exchange data synchronization
@@ -213,7 +213,7 @@ class MarketDataAggregator:
             sync_task = asyncio.create_task(self._data_synchronization_loop())
             self._websocket_tasks["sync"] = sync_task
             
-            logger.info(f"Market data aggregation started for {len(self.public_exchanges)} cex")
+            logger.info(f"Market data aggregation started for {len(self.public_exchanges)} exchanges")
             
         except Exception as e:
             self._aggregation_active = False
@@ -268,7 +268,7 @@ class MarketDataAggregator:
             logger.error(f"Error during aggregation shutdown: {e}")
             raise MarketDataError(f"Aggregation stop failed: {e}")
     
-    # HFT IMPROVEMENT: Add cex methods for SimpleArbitrageEngine compatibility
+    # HFT IMPROVEMENT: Add exchanges methods for SimpleArbitrageEngine compatibility
     
     async def initialize(self, symbols: Set[Symbol]) -> None:
         """
@@ -417,14 +417,14 @@ class MarketDataAggregator:
         TODO: Implement cross-exchange data synchronization.
         
         Logic Requirements:
-        - Synchronize data timestamps across cex
+        - Synchronize data timestamps across exchanges
         - Create aggregated market data snapshots
         - Detect arbitrage-relevant price differences
         - Validate data quality and consistency
         - Distribute updates to subscribers
         
         Synchronization Process:
-        1. Collect latest data from all cex
+        1. Collect latest data from all exchanges
         2. Validate data freshness and quality
         3. Create synchronized snapshots by symbol
         4. Calculate cross-exchange metrics
@@ -440,7 +440,7 @@ class MarketDataAggregator:
             sync_start_time = asyncio.get_event_loop().time()
             
             try:
-                # TODO: Synchronize data across cex
+                # TODO: Synchronize data across exchanges
                 for symbol in self._subscribed_symbols:
                     await self._create_synchronized_snapshot(symbol)
                 
@@ -512,12 +512,12 @@ class MarketDataAggregator:
     
     async def _create_synchronized_snapshot(self, symbol: Symbol) -> None:
         """
-        Create synchronized market data snapshot across all cex.
+        Create synchronized market data snapshot across all exchanges.
         
         TODO: Implement cross-exchange data synchronization.
         
         Logic Requirements:
-        - Collect data from all cex for symbol
+        - Collect data from all exchanges for symbol
         - Validate data freshness and synchronization
         - Create aggregated snapshot with timing information
         - Calculate cross-exchange metrics and differences
@@ -526,7 +526,7 @@ class MarketDataAggregator:
         Synchronization Validation:
         - Check data timestamps for synchronization
         - Validate data quality and completeness
-        - Handle missing or stale data from cex
+        - Handle missing or stale data from exchanges
         - Calculate data age and synchronization metrics
         
         Performance Target: <5ms snapshot creation
@@ -537,7 +537,7 @@ class MarketDataAggregator:
             oldest_data_age_ms = 0.0
             is_synchronized = True
             
-            # Collect data from all cex
+            # Collect data from all exchanges
             for exchange_name in self.public_exchanges:
                 if (exchange_name in self._exchange_snapshots and 
                     symbol in self._exchange_snapshots[exchange_name]):

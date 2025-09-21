@@ -5,8 +5,8 @@ Ultra-high-performance order execution layer for atomic arbitrage operations
 with precise decimal matching, cross-exchange coordination, and sub-50ms targets.
 
 Architecture:
-- Atomic order placement across multiple cex
-- Precision decimal matching between cex
+- Atomic order placement across multiple exchanges
+- Precision decimal matching between exchanges
 - Smart order routing with latency optimization
 - Partial fill handling and recovery
 - Real-time execution monitoring
@@ -144,7 +144,7 @@ class OrderOrchestrator:
     """
     High-performance order execution orchestrator for arbitrage operations.
     
-    Coordinates atomic order execution across multiple cex with
+    Coordinates atomic order execution across multiple exchanges with
     precise timing, decimal matching, and comprehensive error handling.
     
     HFT Design:
@@ -203,7 +203,7 @@ class OrderOrchestrator:
         self._exchange_min_quantities: Dict[ExchangeName, Dict[Symbol, Decimal]] = {}
         self._exchange_tick_sizes: Dict[ExchangeName, Dict[Symbol, Decimal]] = {}
         
-        logger.info(f"Order orchestrator initialized for {len(private_exchanges)} cex")
+        logger.info(f"Order orchestrator initialized for {len(private_exchanges)} exchanges")
     
     async def execute_opportunity(
         self,
@@ -368,8 +368,8 @@ class OrderOrchestrator:
         TODO: Implement comprehensive plan validation.
         
         Logic Requirements:
-        - Validate sufficient balances on all cex
-        - Check connectivity to required cex
+        - Validate sufficient balances on all exchanges
+        - Check connectivity to required exchanges
         - Verify order parameters against exchange rules
         - Validate precision and quantity requirements
         - Check risk limits and exposure constraints
@@ -712,7 +712,7 @@ class OrderOrchestrator:
         
         Logic Requirements:
         - Identify all active orders for cancellation
-        - Send cancellation requests to cex
+        - Send cancellation requests to exchanges
         - Monitor cancellation confirmations
         - Handle cancellation failures appropriately
         - Return count of successfully cancelled orders

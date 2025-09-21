@@ -1,0 +1,98 @@
+"""
+Gate.io Private WebSocket Subscription Strategy V3
+
+Direct message-based subscription strategy for Gate.io private WebSocket.
+Creates complete message objects in Gate.io-specific format.
+
+Message Format:
+{
+    "time": 1234567890,
+    "channel": "spot.usertrades_v2",
+    "event": "subscribe",
+    "payload": ["!all"]
+}
+"""
+
+import time
+import logging
+from typing import List, Dict, Any, Optional, Set
+
+from core.transport.websocket.strategies.subscription import SubscriptionStrategy
+from core.transport.websocket.structs import SubscriptionAction
+from structs.common import Symbol
+from core.exchanges.services.symbol_mapper.base_symbol_mapper import SymbolMapperInterface
+from exchanges.gateio.services.mapper import GateioWebSocketMappings
+
+
+class GateioPrivateSubscriptionStrategy(SubscriptionStrategy):
+    """
+    Gate.io private WebSocket subscription strategy V3.
+    
+    Creates complete Gate.io-format subscription messages with time/channel/event/payload structure.
+    Format: {"time": X, "channel": Y, "event": Z, "payload": ["!all"]}
+    """
+
+    def __init__(self, mapper: Optional[SymbolMapperInterface] = None):
+        super().__init__(mapper)  # Initialize parent with injected mapper
+        self.logger = logging.getLogger(f"{__name__}.{self.__class__.__name__}")
+
+    async def create_subscription_messages(self, action: SubscriptionAction, **kwargs) -> List[Dict[str, Any]]:
+        """
+        Create Gate.io private subscription messages.
+        
+        Format: {"time": X, "channel": Y, "event": Z, "payload": ["!all"]}
+        Symbols parameter is ignored for private channels - uses "!all" pattern.
+        
+        Args:
+            action: SUBSCRIBE or UNSUBSCRIBE
+
+        Returns:
+            List of messages, one per private channel type
+        """
+        event = GateioWebSocketMappings.get_event_type(action)
+        messages = []
+
+        # Private channel definitions using centralized mappings
+        private_channels = [
+            {
+                "channel": GateioWebSocketMappings.get_private_channel_name("orders"),
+                "payload": ["!all"]  # Subscribe to all order updates
+            },
+            {
+                "channel": GateioWebSocketMappings.get_private_channel_name("user_trades"),
+                "payload": ["!all"]  # Subscribe to all trade updates
+            },
+            {
+                "channel": GateioWebSocketMappings.get_private_channel_name("balances"),
+            }
+        ]
+
+        for channel_config in private_channels:
+            message = {
+                "time": int(time.time()),  # Slightly different timestamps
+                "channel": channel_config["channel"],
+                "event": event,
+            }
+
+            if "payload" in channel_config:
+                message["payload"] = channel_config["payload"]
+
+            messages.append(message)
+
+            self.logger.debug(f"Created {event} message for {channel_config['channel']}")
+
+        self.logger.info(f"Created {len(messages)} private {event} messages")
+
+        return messages
+    
+    def _convert_symbols_to_exchange_format(self, symbols: List[Symbol]) -> List[str]:
+        """Convert symbols to Gate.io private exchange format."""
+        if not self.mapper:
+            self.logger.error("No symbol mapper available for Gate.io private subscription")
+            return []
+        
+        try:
+            return [self.mapper.to_pair(symbol) for symbol in symbols]
+        except Exception as e:
+            self.logger.error(f"Failed to convert private symbols: {e}")
+            return []

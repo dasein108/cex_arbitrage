@@ -312,7 +312,7 @@ class HFTLogger:
     """
     Main HFT Logger coordinating all logging subsystems.
     
-    Provides unified cex while maintaining ultra-high performance.
+    Provides unified exchanges while maintaining ultra-high performance.
     """
     
     def __init__(self, 

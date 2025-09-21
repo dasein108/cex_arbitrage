@@ -2,7 +2,7 @@
 HFT Arbitrage Engine - Main Orchestrator
 
 Ultra-high-performance arbitrage engine designed for sub-50ms execution cycles
-across multiple cryptocurrency cex with atomic spot + futures operations.
+across multiple cryptocurrency exchanges with atomic spot + futures operations.
 
 Architecture:
 - Event-driven async/await design for maximum concurrency
@@ -55,7 +55,7 @@ class ArbitrageEngine:
     Main arbitrage engine orchestrating all HFT arbitrage operations.
     
     Coordinates opportunity detection, risk management, order execution,
-    and position recovery across multiple cex with sub-50ms targets.
+    and position recovery across multiple exchanges with sub-50ms targets.
     
     HFT Design Principles:
     - Single-threaded async for zero locking overhead
@@ -78,7 +78,7 @@ class ArbitrageEngine:
         TODO: Comprehensive initialization with validation.
         
         Logic Requirements:
-        - Validate configuration against available cex
+        - Validate configuration against available exchanges
         - Initialize all component subsystems
         - Establish exchange connections and health checks
         - Set up event loops and monitoring tasks
@@ -177,7 +177,7 @@ class ArbitrageEngine:
             # - Configure emergency shutdown triggers
             
             # TODO: Initialize PositionManager
-            # - Set up position tracking across all cex
+            # - Set up position tracking across all exchanges
             # - Configure atomic operation coordination
             # - Initialize hedge ratio calculations
             # - Set up position aging and cleanup
@@ -245,7 +245,7 @@ class ArbitrageEngine:
             self._state = ArbitrageState.DETECTING
             
             # TODO: Start market data aggregation
-            # - Begin WebSocket connections to all cex
+            # - Begin WebSocket connections to all exchanges
             # - Start orderbook synchronization tasks
             # - Initialize price feed aggregation
             # - Set up connection health monitoring
@@ -298,7 +298,7 @@ class ArbitrageEngine:
         - Stop accepting new arbitrage opportunities
         - Complete any in-progress executions
         - Close all open positions safely
-        - Disconnect from all cex gracefully
+        - Disconnect from all exchanges gracefully
         - Persist final state and performance metrics
         
         Safety Requirements:
@@ -331,7 +331,7 @@ class ArbitrageEngine:
             # - Handle timeouts and partial executions
             
             # TODO: Close all open positions
-            # - Identify all open positions across cex
+            # - Identify all open positions across exchanges
             # - Execute position closing orders
             # - Verify all positions are properly closed
             # - Handle any closing errors or partial fills
@@ -392,7 +392,7 @@ class ArbitrageEngine:
             # TODO: Pre-execution validation
             # - Verify opportunity is still valid (not stale)
             # - Check real-time prices match opportunity parameters
-            # - Validate sufficient balances on both cex
+            # - Validate sufficient balances on both exchanges
             # - Perform risk management checks
             # - Verify market depth is still adequate
             
@@ -556,7 +556,7 @@ class ArbitrageEngine:
     
     def get_active_positions(self) -> List[PositionEntry]:
         """
-        TODO: Get all currently active positions across cex.
+        TODO: Get all currently active positions across exchanges.
         
         Logic Requirements:
         - Query position manager for all open positions
@@ -577,7 +577,7 @@ class ArbitrageEngine:
         Logic Requirements:
         - Get current market prices for all position symbols
         - Calculate unrealized P&L for each position
-        - Sum total P&L across all cex
+        - Sum total P&L across all exchanges
         - Include fees and slippage in calculations
         
         HFT Critical: Real-time market data required, no caching

@@ -1,11 +1,11 @@
 """
 HFT Arbitrage Balance Monitor
 
-Real-time balance tracking and management across multiple cex
+Real-time balance tracking and management across multiple exchanges
 with HFT-compliant refresh cycles and comprehensive balance validation.
 
 Architecture:
-- Real-time balance tracking across all cex
+- Real-time balance tracking across all exchanges
 - HFT-compliant balance refresh (no caching of real-time data)
 - Cross-exchange balance synchronization
 - Insufficient balance detection and alerting
@@ -84,7 +84,7 @@ class BalanceMonitor:
     """
     Real-time balance monitoring and management system.
     
-    Provides HFT-compliant balance tracking across multiple cex
+    Provides HFT-compliant balance tracking across multiple exchanges
     with comprehensive validation, reservation management, and alerting.
     
     HFT Design:
@@ -107,7 +107,7 @@ class BalanceMonitor:
         TODO: Complete initialization with balance tracking setup.
         
         Logic Requirements:
-        - Set up balance tracking for all cex
+        - Set up balance tracking for all exchanges
         - Initialize balance refresh scheduling
         - Configure minimum balance thresholds
         - Set up balance reservation management
@@ -145,11 +145,11 @@ class BalanceMonitor:
         self._minimum_balances: Dict[ExchangeName, Dict[str, Decimal]] = {}
         self._balance_staleness_threshold_ms = config.market_data_staleness_ms
         
-        logger.info(f"Balance monitor initialized for {len(private_exchanges)} cex")
+        logger.info(f"Balance monitor initialized for {len(private_exchanges)} exchanges")
     
     async def start_monitoring(self) -> None:
         """
-        Start real-time balance monitoring across all cex.
+        Start real-time balance monitoring across all exchanges.
         
         TODO: Initialize balance monitoring with optimized refresh cycles.
         
@@ -186,7 +186,7 @@ class BalanceMonitor:
             # Perform initial balance refresh
             await self._initial_balance_refresh()
             
-            logger.info(f"Balance monitoring started for {len(self.private_exchanges)} cex")
+            logger.info(f"Balance monitoring started for {len(self.private_exchanges)} exchanges")
             
         except Exception as e:
             self._monitoring_active = False
@@ -421,7 +421,7 @@ class BalanceMonitor:
         pass
     
     async def _initial_balance_refresh(self) -> None:
-        """Perform initial balance refresh for all cex."""
+        """Perform initial balance refresh for all exchanges."""
         logger.info("Performing initial balance refresh...")
         
         refresh_tasks = []
@@ -436,7 +436,7 @@ class BalanceMonitor:
         
         # Log results
         success_count = sum(1 for result in results if not isinstance(result, Exception))
-        logger.info(f"Initial balance refresh completed: {success_count}/{len(results)} cex")
+        logger.info(f"Initial balance refresh completed: {success_count}/{len(results)} exchanges")
     
     async def _reservation_cleanup_loop(self) -> None:
         """

@@ -19,7 +19,7 @@ from typing import List, Dict
 from structs.common import Symbol, AssetName, OrderBook, Trade, BookTicker
 from core.config.config_manager import get_exchange_config
 
-from examples.utils.ws_api_factory import get_exchange_websocket_classes
+from examples.utils.ws_api_factory import get_exchange_websocket_instance
 
 # Set up logging
 logging.basicConfig(level=logging.INFO)
@@ -39,11 +39,10 @@ class PublicWebSocketClient:
         # Get exchange config
         config = get_exchange_config(self.exchange_name)
         
-        # Get the appropriate WebSocket class for the exchange
-        websocket_class, _ = get_exchange_websocket_classes(self.exchange_name)
-        
-        # Create exchange WebSocket instance with dependency injection
-        self.websocket = websocket_class(
+        # Create exchange WebSocket instance using the factory pattern
+        self.websocket = get_exchange_websocket_instance(
+            exchange_name=self.exchange_name,
+            is_private=False,
             config=config,
             orderbook_diff_handler=self._handle_orderbook_update,
             trades_handler=self._handle_trades_update,
@@ -51,7 +50,7 @@ class PublicWebSocketClient:
             state_change_handler=self._handle_state_change
         )
         
-        logger.info(f"{self.exchange_name} public WebSocket client initialized with {websocket_class.__name__}")
+        logger.info(f"{self.exchange_name} public WebSocket client initialized with {type(self.websocket).__name__}")
     
     async def initialize(self, symbols: List[Symbol]) -> None:
         """Initialize WebSocket connection and subscriptions."""
@@ -292,7 +291,7 @@ async def main(exchange_name: str):
 
 
 if __name__ == "__main__":
-    exchange_name = sys.argv[1] if len(sys.argv) > 1 else "gateio"
+    exchange_name = sys.argv[1] if len(sys.argv) > 1 else "mexc"
     
     try:
         asyncio.run(main(exchange_name))

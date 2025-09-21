@@ -270,8 +270,8 @@ src/core/cex/services/
 ### Factory Pattern Components
 
 **Core Factory Implementation**:
-- **[Exchange Factory](src/cex/factories/exchange_factory.py)** - Type-safe exchange creation with dependency injection
-- **[Exchange Enum](src/cex/__init__.py)** - Supported exchange enumeration for type safety
+- **[Exchange Factory](src/exchanges/factories/exchange_factory.py)** - Type-safe exchange creation with dependency injection
+- **[Exchange Enum](src/exchanges/__init__.py)** - Supported exchange enumeration for type safety
 
 ### Interface Layer Components
 
@@ -283,18 +283,18 @@ src/core/cex/services/
 ### Core Base Classes
 
 **REST Client Foundation** (`src/core/cex/rest/`):
-- **[Base REST Spot Public](src/core/cex/rest/spot/base_rest_spot_public.py)** - Public REST operations
-- **[Base REST Spot Private](src/core/cex/rest/spot/base_rest_spot_private.py)** - Private REST operations
+- **[Base REST Spot Public](src/core/exchanges/rest/spot/base_rest_spot_public.py)** - Public REST operations
+- **[Base REST Spot Private](src/core/exchanges/rest/spot/base_rest_spot_private.py)** - Private REST operations
 
 **WebSocket Client Foundation** (`src/core/cex/websocket/`):
-- **[Base WebSocket Public](src/core/cex/websocket/spot/base_ws_public.py)** - Public streaming
-- **[Base WebSocket Private](src/core/cex/websocket/spot/base_ws_private.py)** - Private streaming
+- **[Base WebSocket Public](src/core/exchanges/websocket/spot/base_ws_public.py)** - Public streaming
+- **[Base WebSocket Private](src/core/exchanges/websocket/spot/base_ws_private.py)** - Private streaming
 
 ### Exchange Implementations
 
 **Exchange-Specific Implementations**:
-- **[MEXC Implementation](src/cex/mexc/README.md)** - MEXC-specific implementation (reference implementation)
-- **[Gate.io Implementation](src/cex/gateio/README.md)** - Gate.io-specific implementation
+- **[MEXC Implementation](src/exchanges/mexc/README.md)** - MEXC-specific implementation (reference implementation)
+- **[Gate.io Implementation](src/exchanges/gateio/README.md)** - Gate.io-specific implementation
 
 ### Data Structures and Common Components
 

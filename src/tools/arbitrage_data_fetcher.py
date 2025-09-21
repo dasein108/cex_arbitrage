@@ -3,7 +3,7 @@
 Arbitrage Data Fetcher
 
 Standalone script for fetching historical candles data for arbitrage analysis.
-Uses symbol discovery results to download candles from multiple cex.
+Uses symbol discovery results to download candles from multiple exchanges.
 
 Key Features:
 - Integrates with cross_exchange_symbol_discovery.py output

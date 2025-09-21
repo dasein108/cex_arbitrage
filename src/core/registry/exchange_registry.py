@@ -57,7 +57,7 @@ class ExchangeRegistry:
         # MEXC Exchange
         self.register_exchange(ExchangeRegistration(
             name=ExchangeName("mexc"),
-            module_path="cex.mexc.private_exchange",
+            module_path="exchanges.mexc.private_exchange",
             class_name="MexcPrivateExchange",
             public_class_name="MexcPublicExchange",
             supports_futures=False,
@@ -76,7 +76,7 @@ class ExchangeRegistry:
         # Gate.io Exchange
         self.register_exchange(ExchangeRegistration(
             name=ExchangeName("gateio"),
-            module_path="cex.gateio.private_exchange", 
+            module_path="exchanges.gateio.private_exchange",
             class_name="GateioPrivateExchange",
             public_class_name="GateioPublicExchange",
             supports_futures=False,

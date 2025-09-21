@@ -14,10 +14,10 @@ from dataclasses import dataclass
 from core.config import get_exchange_config
 from structs.common import Symbol, BookTicker
 from core.transport.websocket.structs import WebsocketChannelType
-from cex.mexc.ws.mexc_ws_public import MexcWebsocketPublic
-from cex.gateio.ws.gateio_ws_public import GateioWebsocketPublic
+from exchanges.mexc.ws.mexc_ws_public import MexcWebsocketPublic
+from exchanges.gateio.ws.gateio_ws_public import GateioWebsocketPublic
 from db.models import BookTickerSnapshot
-from cex.consts import ExchangeEnum
+from exchanges.consts import ExchangeEnum
 from .analytics import RealTimeAnalytics
 
 @dataclass

@@ -83,7 +83,7 @@ This document defines the architecture for a specialized arbitrage system target
 **Design Pattern**: Interface Extension (following Interface Segregation Principle)
 
 ```python
-# Extension cex - does not modify existing implementations
+# Extension exchanges - does not modify existing implementations
 class ArbitrageExchangeInterface(ABC):
     """Arbitrage-specific extensions to existing exchange interfaces"""
     
@@ -129,7 +129,7 @@ class TierThreeSymbolRepository:
         self._cache_ttl = 3600  # 1 hour TTL for configuration
         
     async def discover_symbols(self) -> List[Symbol]:
-        """Discover 3-tier USDT pairs available on both cex"""
+        """Discover 3-tier USDT pairs available on both exchanges"""
         # Fresh API calls to get current symbol lists
         mexc_symbols = await self.mexc_exchange.get_exchange_info()
         gateio_symbols = await self.gateio_exchange.get_exchange_info()
@@ -216,7 +216,7 @@ class OpportunityDetector:
             symbol: Symbol,
             orderbooks: Dict[Tuple[Symbol, str], OrderBook]
     ) -> Optional[ArbitrageOpportunity]:
-        """Analyze opportunity for single symbol across cex"""
+        """Analyze opportunity for single symbol across exchanges"""
 
         exchange_books = {}
         for exchange in self.exchanges:
@@ -442,7 +442,7 @@ class MinimalOrderExecutor:
                 reason=f"Insufficient {opportunity.symbol.quote} balance on {opportunity.buy_exchange}"
             )
         
-        # Need cex currency on sell exchange
+        # Need exchanges currency on sell exchange
         sell_balance = await sell_exchange.get_asset_balance(opportunity.symbol.base)
         if not sell_balance or sell_balance.free < opportunity.order_amount:
             return ValidationResult(

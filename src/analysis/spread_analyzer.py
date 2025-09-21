@@ -53,7 +53,7 @@ class SpreadAnalyzer:
     """
     High-performance arbitrage analysis engine.
     
-    Processes historical candlestick data to calculate spreads between cex
+    Processes historical candlestick data to calculate spreads between exchanges
     and generate comprehensive performance metrics for trading opportunities.
     
     Features:
@@ -117,7 +117,7 @@ class SpreadAnalyzer:
                     symbol_files[symbol] = set()
                 symbol_files[symbol].add(exchange)
         
-        # Find symbols with both cex
+        # Find symbols with both exchanges
         complete_symbols = [
             symbol for symbol, exchanges in symbol_files.items()
             if 'mexc' in exchanges and 'gateio' in exchanges
@@ -473,7 +473,7 @@ class SpreadAnalyzer:
         }
 
 
-# CLI cex for manual execution
+# CLI exchanges for manual execution
 async def main():
     """CLI entry point for spread analysis"""
     import argparse

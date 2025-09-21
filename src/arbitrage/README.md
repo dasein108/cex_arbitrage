@@ -278,7 +278,7 @@ async def main():
     controller = ArbitrageController()
     
     try:
-        # Initialize all components (configuration, cex, monitors)
+        # Initialize all components (configuration, exchanges, monitors)
         await controller.initialize(dry_run=True)  # Safe mode for testing
         
         # Run the arbitrage session
@@ -307,7 +307,7 @@ async def custom_arbitrage_setup():
     config_manager = ConfigurationManager()
     config = await config_manager.load_configuration(dry_run=True)
     
-    # Create cex using Factory pattern
+    # Create exchanges using Factory pattern
     exchange_factory = ExchangeFactory()
     exchanges = await exchange_factory.create_exchanges(
         exchange_names=config.enabled_exchanges,
@@ -324,7 +324,7 @@ async def custom_arbitrage_setup():
     
     try:
         # Your custom arbitrage logic here
-        print(f"Initialized {len(exchanges)} cex")
+        print(f"Initialized {len(exchanges)} exchanges")
         print(f"Configuration: {config.engine_name}")
         
         # Example: Monitor performance
@@ -461,12 +461,12 @@ The arbitrage framework integrates seamlessly with the existing exchange infrast
 
 ```python
 # Use existing exchange interfaces
-from core.cex import PublicExchangeInterface
-from core.cex import PrivateExchangeInterface
+from core.exchanges import PublicExchangeInterface
+from core.exchanges import PrivateExchangeInterface
 
 # Existing MEXC and Gate.io implementations work directly
-from cex.mexc import MexcPublicSpotRest, MexcPrivateExchange
-from cex.gateio import GateioPublicExchange, GateioPrivateExchange
+from exchanges.mexc import MexcPublicSpotRest, MexcPrivateExchange
+from exchanges.gateio import GateioPublicExchange, GateioPrivateExchange
 
 # No modifications needed - plug and play integration
 ```
@@ -620,7 +620,7 @@ async def test_risk_validation():
 ```python
 @pytest.mark.integration
 async def test_full_arbitrage_cycle():
-    """Test complete arbitrage cycle with real cex"""
+    """Test complete arbitrage cycle with real exchanges"""
     async with create_test_engine().session() as engine:
         # Monitor for opportunities
         opportunities_detected = 0

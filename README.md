@@ -166,14 +166,14 @@ The engine follows a **high-performance event-driven architecture** with these f
 
 #### 📋 **Compliance Verification**:
 ```bash
-# Run cex compliance check
+# Run exchanges compliance check
 scripts/verify_interface_compliance.py your_exchange
 
 # Performance benchmarks  
 pytest tests/performance/test_your_exchange.py --benchmark
 
 # Integration tests
-pytest tests/cex/your_exchange/ --integration
+pytest tests/exchanges/your_exchange/ --integration
 ```
 
 See **`INTERFACE_STANDARDS.md`** for complete implementation guidelines.
@@ -315,45 +315,45 @@ async def example_usage():
 ### **Compliant Exchange Implementation Example**
 
 ```python
-# ✅ CORRECT: Using unified cex standards
-from core.cex.rest import PublicExchangeSpotRestInterface
-from core.cex.rest.spot.base_rest_spot_private import PrivateExchangeSpotRestInterface
+# ✅ CORRECT: Using unified exchanges standards
+from core.exchanges.rest import PublicExchangeSpotRestInterface
+from core.exchanges.rest.spot.base_rest_spot_private import PrivateExchangeSpotRestInterface
 from structs import Symbol, OrderBook, Order, ExchangeName
 from core.transport.rest.rest_client_legacy import HighPerformanceRestClient, RequestConfig
 from core.exceptions.exchange import BaseExchangeError, RateLimitErrorBase
 
 
 class BinancePublic(PublicExchangeSpotRestInterface):
-    """COMPLIANT implementation using unified standards"""
+   """COMPLIANT implementation using unified standards"""
 
-    def __init__(self):
-        super().__init__(ExchangeName("binance"), "https://api.binance.com")
+   def __init__(self):
+      super().__init__(ExchangeName("binance"), "https://api.binance.com")
 
-        # MANDATORY: Use standardized REST client
-        self.client = HighPerformanceRestClient(
-            base_url=self.base_url,
-            max_concurrent_requests=40,
-            enable_metrics=True
-        )
+      # MANDATORY: Use standardized REST client
+      self.client = HighPerformanceRestClient(
+         base_url=self.base_url,
+         max_concurrent_requests=40,
+         enable_metrics=True
+      )
 
-    @property
-    def exchange_name(self) -> ExchangeName:
-        return ExchangeName("binance")
+   @property
+   def exchange_name(self) -> ExchangeName:
+      return ExchangeName("binance")
 
-    async def get_orderbook(self, symbol: Symbol, limit: int = 100) -> OrderBook:
-        """Implementation using unified data structures and REST client"""
-        try:
-            config = RequestConfig(timeout=5.0, max_retries=2)
-            response = await self.client.get(f"/api/v3/depth",
-                                             params={"symbol": self.symbol_to_pair(symbol)},
-                                             config=config)
+   async def get_orderbook(self, symbol: Symbol, limit: int = 100) -> OrderBook:
+      """Implementation using unified data structures and REST client"""
+      try:
+         config = RequestConfig(timeout=5.0, max_retries=2)
+         response = await self.client.get(f"/api/v3/depth",
+                                          params={"symbol": self.symbol_to_pair(symbol)},
+                                          config=config)
 
-            # Transform to unified OrderBook structure
-            return self._transform_orderbook_response(response)
+         # Transform to unified OrderBook structure
+         return self._transform_orderbook_response(response)
 
-        except Exception as e:
-            # MANDATORY: Use unified exception mapping
-            raise self._map_exchange_error(e)
+      except Exception as e:
+         # MANDATORY: Use unified exception mapping
+         raise self._map_exchange_error(e)
 ```
 
 **Reference Implementation**: See `/Users/dasein/dev/cex_arbitrage/src/exchanges/mexc/public.py` for complete compliant implementation.
@@ -454,7 +454,7 @@ The `raw/` directory contains legacy code that is **incompatible with unified in
    from raw.common.exceptions import ExchangeAPIError
    
    # ✅ REPLACE with unified imports:
-   from core.cex.rest import PublicExchangeSpotRestInterface
+   from core.exchanges.rest import PublicExchangeSpotRestInterface
    from structs import Order, SymbolInfo, AssetBalance
    from core.exceptions.exchange import BaseExchangeError
    ```

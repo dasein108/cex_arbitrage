@@ -14,9 +14,9 @@ from core.config.structs import WebSocketConfig
 
 class WebsocketClient:
     """
-    Abstract cex class for high-performance WebSocket connections.
+    Abstract exchanges class for high-performance WebSocket connections.
     
-    This cex is completely data format agnostic and provides:
+    This exchanges is completely data format agnostic and provides:
     - High-performance async WebSocket management
     - Automatic reconnection with exponential backoff
     - Subscription management

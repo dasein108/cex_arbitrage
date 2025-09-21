@@ -1,0 +1,155 @@
+from abc import abstractmethod
+from typing import Dict, List, Optional, Callable, Tuple, Any
+from core.exchanges.rest.base_rest import BaseExchangeRestInterface
+from structs.common import (
+    Symbol,
+    Order,
+    OrderId,
+    OrderType,
+    Side,
+    AssetBalance,
+    AssetName,
+    TimeInForce
+)
+
+from core.config.structs import ExchangeConfig
+
+
+class PrivateExchangeSpotRestInterface(BaseExchangeRestInterface):
+    """Abstract interface for private exchange operations (trading, account management)"""
+    CAN_MODIFY_ORDERS = False  # Default capability flag for modifying orders
+
+    def __init__(self, config: ExchangeConfig):
+        """Initialize private interface with transport manager."""
+        if not config.has_credentials():
+            raise ValueError(f"{config.name} API credentials must be provided")
+            
+        super().__init__(
+            config=config,
+            is_private=True  # Private API operations with authentication
+        )
+
+    @abstractmethod
+    async def get_account_balance(self) -> List[AssetBalance]:
+        """Get account balance for all assets"""
+        pass
+    
+    @abstractmethod
+    async def get_asset_balance(self, asset: AssetName) -> Optional[AssetBalance]:
+        """Get balance for a specific asset"""
+        pass
+
+    @abstractmethod
+    async def modify_order(
+        self,
+        symbol: Symbol,
+        order_id: OrderId,
+        amount: Optional[float] = None,
+        price: Optional[float] = None,
+        quote_quantity: Optional[float] = None,
+        time_in_force: Optional[TimeInForce] = None,
+        stop_price: Optional[float] = None
+    ) -> Order:
+
+        """Modify an existing order (if supported)"""
+        pass
+    
+    @abstractmethod
+    async def place_order(
+        self,
+        symbol: Symbol,
+        side: Side,
+        order_type: OrderType,
+        amount: Optional[float] = None,
+        price: Optional[float] = None,
+        quote_quantity: Optional[float] = None,
+        time_in_force: Optional[TimeInForce] = None,
+        stop_price: Optional[float] = None,
+        iceberg_qty: Optional[float] = None,
+        new_order_resp_type: Optional[str] = None
+    ) -> Order:
+        """Place a new order with comprehensive parameters"""
+        pass
+    
+    @abstractmethod
+    async def cancel_order(self, symbol: Symbol, order_id: OrderId) -> Order:
+        """Cancel an active order"""
+        pass
+    
+    @abstractmethod
+    async def cancel_all_orders(self, symbol: Symbol) -> List[Order]:
+        """Cancel all open orders for a symbol"""
+        pass
+    
+    @abstractmethod
+    async def get_order(self, symbol: Symbol, order_id: OrderId) -> Order:
+        """Query order status"""
+        pass
+    
+    @abstractmethod
+    async def get_open_orders(self, symbol: Optional[Symbol] = None) -> List[Order]:
+        """Get all open orders for account or symbol"""
+        pass
+    
+    @abstractmethod
+    async def create_listen_key(self) -> str:
+        """
+        Create a new listen key for user data stream.
+        
+        Returns:
+            Listen key string for WebSocket user data stream
+        """
+        pass
+    
+    @abstractmethod
+    async def get_all_listen_keys(self) -> Dict:
+        """
+        Get all active listen keys.
+        
+        Returns:
+            Dictionary containing active listen keys and their metadata
+        """
+        pass
+    
+    @abstractmethod
+    async def keep_alive_listen_key(self, listen_key: str) -> None:
+        """
+        Keep a listen key alive to prevent expiration.
+        
+        Args:
+            listen_key: The listen key to keep alive
+        """
+        pass
+    
+    @abstractmethod
+    async def delete_listen_key(self, listen_key: str) -> None:
+        """
+        Delete/close a listen key.
+        
+        Args:
+            listen_key: The listen key to delete
+        """
+        pass
+    
+    # @abstractmethod
+    # async def get_order_history(
+    #     self,
+    #     symbol: Symbol,
+    #     limit: int = 500,
+    #     start_time: Optional[int] = None,
+    #     end_time: Optional[int] = None
+    # ) -> List[Order]:
+    #     """Get order history"""
+    #     pass
+    #
+    # @abstractmethod
+    # async def get_trade_history(
+    #     self,
+    #     symbol: Symbol,
+    #     limit: int = 500,
+    #     start_time: Optional[int] = None,
+    #     end_time: Optional[int] = None
+    # ) -> List[Trade]:
+    #     """Get account trade history"""
+    #     pass
+    

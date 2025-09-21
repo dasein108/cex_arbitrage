@@ -19,7 +19,7 @@ from typing import List, Dict
 
 from structs.common import Symbol, AssetName, Order, AssetBalance, Trade
 from core.config.config_manager import get_exchange_config
-from examples.utils.ws_api_factory import get_exchange_websocket_classes
+from examples.utils.ws_api_factory import get_exchange_websocket_instance
 
 # Set up logging
 logging.basicConfig(level=logging.INFO)
@@ -44,21 +44,17 @@ class PrivateWebSocketClient:
         
         logger.info(f"Using {self.exchange_name} credentials - API Key: {config.credentials.api_key[:8]}...")
         
-        # Get the appropriate WebSocket and REST classes for the exchange
-        websocket_class, private_rest = get_exchange_websocket_classes(self.exchange_name, is_private=True)
-        
-        # Create REST client needed for WebSocket initialization
-
-        # Create exchange WebSocket instance with dependency injection
-        self.websocket = websocket_class(
-            private_rest_client=private_rest(config) if private_rest else None,
+        # Create exchange WebSocket instance using the factory pattern
+        self.websocket = get_exchange_websocket_instance(
+            exchange_name=self.exchange_name,
+            is_private=True,
             config=config,
-            order_handler=self._handle_order_update,
-            balance_handler=self._handle_balance_update,
-            trade_handler=self._handle_trade_update
+            order_update_handler=self._handle_order_update,
+            balance_update_handler=self._handle_balance_update,
+            trades_handler=self._handle_trade_update
         )
         
-        logger.info(f"{self.exchange_name} private WebSocket client initialized with {websocket_class.__name__}")
+        logger.info(f"{self.exchange_name} private WebSocket client initialized with {type(self.websocket).__name__}")
     
     async def initialize(self, symbols: List[Symbol] = None) -> None:
         """Initialize WebSocket connection and subscriptions."""

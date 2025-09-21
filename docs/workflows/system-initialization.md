@@ -95,7 +95,7 @@ def _load_yaml_config(self) -> None:
             break
     
     # 3. Extract and validate configuration sections
-    self.exchanges = config_data.get('cex', {})
+    self.exchanges = config_data.get('exchanges', {})
     # ... extract other configuration sections
     
     # 4. Comprehensive validation
@@ -127,8 +127,8 @@ def setup_logging(log_level: str = "INFO") -> None:
     )
     
     # Configure exchange-specific loggers
-    logging.getLogger('cex.mexc').setLevel(logging.INFO)
-    logging.getLogger('cex.gateio').setLevel(logging.INFO)
+    logging.getLogger('exchanges.mexc').setLevel(logging.INFO)
+    logging.getLogger('exchanges.gateio').setLevel(logging.INFO)
     
     # Performance monitoring logger
     logging.getLogger('performance').setLevel(logging.DEBUG)
@@ -184,9 +184,9 @@ async def create_exchanges(
     exchange_names: List[str],
     strategy: InitializationStrategy = InitializationStrategy.CONTINUE_ON_ERROR
 ) -> Dict[str, BaseExchangeInterface]:
-    """Create multiple cex with intelligent error handling"""
+    """Create multiple exchanges with intelligent error handling"""
     
-    logger.info(f"Creating {len(exchange_names)} cex concurrently...")
+    logger.info(f"Creating {len(exchange_names)} exchanges concurrently...")
     
     # Create initialization tasks
     tasks = []
@@ -250,7 +250,7 @@ async def initialize(self, exchanges: Dict[str, BaseExchangeInterface]) -> None:
     
     start_time = time.time()
     
-    # 1. Collect symbols from all cex
+    # 1. Collect symbols from all exchanges
     all_symbols = {}
     for exchange_name, exchange in exchanges.items():
         if hasattr(exchange, 'active_symbols'):
@@ -301,7 +301,7 @@ async def resolve_arbitrage_pairs(self, symbol_resolver: SymbolResolver) -> None
                 self._config.arbitrage_pairs.append(pair)
                 logger.info(
                     f"✅ Resolved: {pair.id} ({pair.base_asset}/{pair.quote_asset}) "
-                    f"on {len(pair.exchanges)} cex"
+                    f"on {len(pair.exchanges)} exchanges"
                 )
         except Exception as e:
             logger.error(f"Failed to resolve pair {pair_dict.get('id')}: {e}")
@@ -363,7 +363,7 @@ async def initialize(self, dry_run: bool = True) -> None:
     # 2. Extract symbols for exchange initialization  
     symbols = self.configuration_manager.extract_symbols_from_arbitrage_pairs()
 
-    # 3. Initialize cex concurrently
+    # 3. Initialize exchanges concurrently
     exchanges = await self.exchange_factory.create_exchanges(
         config.enabled_exchanges,
         strategy=InitializationStrategy.CONTINUE_ON_ERROR,
@@ -401,7 +401,7 @@ async def _initialize_trading_engine(self) -> None:
         raise ConfigurationError("No arbitrage pairs configured")
 
     if not self.exchange_factory.exchanges:
-        raise ConfigurationError("No cex available")
+        raise ConfigurationError("No exchanges available")
 
     # Initialize trading engine components
     self.trading_engine = SimpleArbitrageEngine()
@@ -412,7 +412,7 @@ async def _initialize_trading_engine(self) -> None:
     )
 
     logger.info(f"Trading engine initialized:")
-    logger.info(f"  - Active cex: {len(self.exchange_factory.exchanges)}")
+    logger.info(f"  - Active exchanges: {len(self.exchange_factory.exchanges)}")
     logger.info(f"  - Arbitrage pairs: {len(config.arbitrage_pairs)}")
     logger.info(f"  - Dry run mode: {config.enable_dry_run}")
     logger.info(f"  - Target execution time: {config.target_execution_time_ms}ms")

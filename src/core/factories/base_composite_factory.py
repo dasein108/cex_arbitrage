@@ -207,11 +207,11 @@ class BaseCompositeFactory(Generic[T], ExchangeFactoryInterface, ABC):
         
         try:
             # Import factories lazily to avoid circular dependencies
-            from core.cex.services.unified_mapper.factory import ExchangeMappingsFactory
+            from core.exchanges.services.unified_mapper.factory import ExchangeMappingsFactory
             
             # Auto-resolve symbol mapper if available
             if 'symbol_mapper' not in context:
-                from core.cex.services.symbol_mapper.factory import ExchangeSymbolMapperFactory
+                from core.exchanges.services.symbol_mapper.factory import ExchangeSymbolMapperFactory
 
                 try:
                     symbol_mapper = ExchangeSymbolMapperFactory.inject(exchange_key)

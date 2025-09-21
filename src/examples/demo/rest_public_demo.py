@@ -16,7 +16,7 @@ import time
 from structs.common import Symbol, AssetName
 from core.config.config_manager import get_exchange_config
 
-from examples.utils.rest_api_factory import get_exchange_rest_class
+from examples.utils.rest_api_factory import get_exchange_rest_instance
 from examples.utils.decorators import rest_api_test
 
 
@@ -206,10 +206,9 @@ async def main(exchange_name: str):
     print("=" * 50)
 
     try:
-        # Load exchange configuration
+        # Load exchange configuration and create instance
         config = get_exchange_config(exchange_name.upper())
-        exchange_class = get_exchange_rest_class(exchange_name, is_private=False)
-        exchange = exchange_class(config)
+        exchange = get_exchange_rest_instance(exchange_name, is_private=False, config=config)
         
         # Execute all public API checks
         await check_ping(exchange, exchange_name)

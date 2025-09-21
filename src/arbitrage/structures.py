@@ -74,7 +74,7 @@ class ArbitrageOpportunity(Struct, frozen=True):
     HFT Design:
     - Frozen struct for thread safety and caching efficiency
     - Pre-calculated execution parameters to minimize computation
-    - Decimal precision for exact price matching between cex
+    - Decimal precision for exact price matching between exchanges
     - Comprehensive validation data for risk management
     """
     opportunity_id: str                    # Unique identifier for tracking
@@ -122,7 +122,7 @@ class ArbitrageOpportunity(Struct, frozen=True):
         
         Questions:
         - Should threshold be dynamic based on market volatility?
-        - How to handle different fee structures across cex?
+        - How to handle different fee structures across exchanges?
         - Should we factor in inventory carrying costs?
         
         Performance: O(1) comparison, <1ms execution target
@@ -185,7 +185,7 @@ class PositionEntry(Struct, frozen=True):
         - Calculate P&L based on current market price
         - Account for position side (BUY vs SELL)
         - Include fees in P&L calculation
-        - Handle different quote currencies between cex
+        - Handle different quote currencies between exchanges
         
         Performance: O(1) calculation, sub-millisecond target (optimized with float)
         """
@@ -409,7 +409,7 @@ class ArbitrageConfig(Struct, frozen=True):
         TODO: Validate complete configuration for consistency and safety.
         
         Logic Requirements:
-        - Verify enabled cex have required configurations
+        - Verify enabled exchanges have required configurations
         - Check performance parameters against HFT requirements
         - Validate risk limits for mathematical consistency
         - Ensure opportunity types match exchange capabilities

@@ -3,7 +3,7 @@ from typing import List, Dict, Any, Optional
 
 from core.transport.websocket.structs import SubscriptionAction, WebsocketChannelType
 from structs.common import Symbol
-from core.cex.services import SymbolMapperInterface
+from core.exchanges.services import SymbolMapperInterface
 
 class SubscriptionStrategy(ABC):
     """

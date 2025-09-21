@@ -136,7 +136,7 @@ class WebSocketManager:
             
             for message in messages:
                 await self.send_message(message)
-            
+                self.logger.info(f'Subscribed with message: {message}')
             self._active_symbols.update(symbols)
             
         except Exception as e:
@@ -298,7 +298,6 @@ class WebSocketManager:
     async def _on_raw_message(self, raw_message: Any) -> None:
         """Queue raw message for processing."""
         start_time = time.perf_counter()
-        
         try:
             if self._message_queue.full():
                 self.logger.warning("Message queue full, dropping oldest")

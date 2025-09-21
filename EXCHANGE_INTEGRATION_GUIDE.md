@@ -105,7 +105,7 @@ Trade, Ticker, Kline, SymbolInfo, etc.
 ### Interface Hierarchy
 
 ```python
-# src/interfaces/cex/base/base_exchange.py
+# src/interfaces/exchanges/base/base_exchange.py
 class BaseExchangeInterface(ABC):
     """Foundation interface with connection and state management."""
     async def initialize(self, **kwargs) -> None
@@ -117,7 +117,7 @@ class BaseExchangeInterface(ABC):
 ```
 
 ```python
-# src/interfaces/cex/base/base_public_exchange.py
+# src/interfaces/exchanges/base/base_public_exchange.py
 class BasePublicExchangeInterface(BaseExchangeInterface):
     """Public market data operations (no authentication)."""
     @property
@@ -135,7 +135,7 @@ class BasePublicExchangeInterface(BaseExchangeInterface):
 ```
 
 ```python
-# src/interfaces/cex/base/base_private_exchange.py
+# src/interfaces/exchanges/base/base_private_exchange.py
 class BasePrivateExchangeInterface(BasePublicExchangeInterface):
     """Trading operations + market data (requires authentication)."""
     @property
@@ -165,7 +165,7 @@ class BasePrivateExchangeInterface(BasePublicExchangeInterface):
 
 **Exchange Implementation Pattern:**
 ```python
-# src/cex/{exchange}/{exchange}_exchange.py
+# src/exchanges/{exchange}/{exchange}_exchange.py
 class ExchangePrivateExchange(BasePrivateExchangeInterface):
     def __init__(self, config: ExchangeConfig):
         super().__init__(config)
@@ -180,7 +180,7 @@ class ExchangePrivateExchange(BasePrivateExchangeInterface):
 ### Exchange Factory Architecture
 
 ```python
-# src/cex/factories/exchange_factory.py
+# src/exchanges/factories/exchange_factory.py
 class ExchangeFactory:
     """Factory for creating CEX exchange instances with proper configuration."""
     
@@ -253,7 +253,7 @@ exchange = ExchangeFactory.create_private_exchange(
 
 **2. Exchange Enum Registration**
 ```python
-# src/cex/__init__.py
+# src/exchanges/__init__.py
 class ExchangeEnum(Enum):
     MEXC = "mexc"
     GATEIO = "gateio"
@@ -284,9 +284,11 @@ src/cex/new_exchange/
 ```
 
 **2. Implement Base REST Clients**
+
 ```python
-# src/cex/new_exchange/rest/new_exchange_rest_public.py
-from core.cex.rest.spot.base_rest_spot_public import BaseRestSpotPublic
+# src/exchanges/new_exchange/rest/new_exchange_rest_public.py
+from core.exchanges.rest.spot.base_rest_spot_public import BaseRestSpotPublic
+
 
 class NewExchangeRestPublic(BaseRestSpotPublic):
     def __init__(self):
@@ -295,11 +297,11 @@ class NewExchangeRestPublic(BaseRestSpotPublic):
             rate_limits={...},
             timeouts={...}
         )
-    
+
     async def get_exchange_info(self) -> Dict:
         """Get exchange trading rules and symbol information."""
         return await self._request("GET", "/api/v1/exchangeInfo")
-    
+
     async def get_orderbook(self, symbol: str, limit: int = 100) -> Dict:
         """Get orderbook snapshot."""
         return await self._request("GET", "/api/v1/depth", {
@@ -312,7 +314,7 @@ class NewExchangeRestPublic(BaseRestSpotPublic):
 
 **1. Main Exchange Class**
 ```python
-# src/cex/new_exchange/new_exchange_exchange.py
+# src/exchanges/new_exchange/new_exchange_exchange.py
 from interfaces.cex.base.base_private_exchange import BasePrivateExchangeInterface
 from structs.common import *
 
@@ -353,7 +355,7 @@ class NewExchangePrivateExchange(BasePrivateExchangeInterface):
 
 **1. Update Factory Methods**
 ```python
-# src/cex/factories/exchange_factory.py
+# src/exchanges/factories/exchange_factory.py
 @classmethod
 def create_private_exchange(cls, exchange: ExchangeEnum, config: ExchangeConfig, 
                           symbols: Optional[List[Union[str, Symbol]]] = None) -> PrivateExchangeInterface:
@@ -381,10 +383,12 @@ def validate_exchange_availability(cls, exchange: ExchangeEnum) -> bool:
 ### REST Client Standards
 
 **Base Class Usage**
+
 ```python
 # ALL REST clients MUST inherit from core base classes
-from core.cex.rest.spot.base_rest_spot_public import BaseRestSpotPublic
-from core.cex.rest.spot.base_rest_spot_private import BaseRestSpotPrivate
+from core.exchanges.rest.spot.base_rest_spot_public import BaseRestSpotPublic
+from core.exchanges.rest.spot.base_rest_spot_private import BaseRestSpotPrivate
+
 
 class ExchangeRestPublic(BaseRestSpotPublic):
     def __init__(self):
@@ -404,8 +408,10 @@ class ExchangeRestPublic(BaseRestSpotPublic):
 ### WebSocket Client Standards
 
 **Base Class Usage**
+
 ```python
-from core.cex.websocket.spot.base_ws_public import BaseWebSocketPublic
+from core.exchanges.websocket.spot.base_ws_public import BaseWebSocketPublic
+
 
 class ExchangeWebSocketPublic(BaseWebSocketPublic):
     def __init__(self):
@@ -414,7 +420,7 @@ class ExchangeWebSocketPublic(BaseWebSocketPublic):
             ping_interval=20,
             ping_timeout=10
         )
-    
+
     async def _on_message(self, message):
         # msgspec-exclusive JSON processing
         data = msgspec.json.decode(message)
@@ -486,11 +492,13 @@ class ExchangeSymbolMapper:
 5. **Performance Testing**: Latency and throughput validation
 
 **Test Implementation Pattern**
+
 ```python
 # src/examples/integration_tests/test_new_exchange.py
 import pytest
-from cex.factories.exchange_factory import ExchangeFactory
+from exchanges.factories.exchange_factory import ExchangeFactory
 from structs.common import Symbol, ExchangeEnum
+
 
 class TestNewExchangeIntegration:
     @pytest.mark.asyncio
@@ -500,19 +508,19 @@ class TestNewExchangeIntegration:
             ExchangeEnum.NEW_EXCHANGE,
             symbols=[Symbol("BTC", "USDT")]
         )
-        
+
         await exchange.initialize()
-        
+
         # Wait for initial orderbook
         await asyncio.sleep(2)
-        
+
         orderbooks = exchange.orderbooks
         assert Symbol("BTC", "USDT") in orderbooks
-        
+
         orderbook = orderbooks[Symbol("BTC", "USDT")]
         assert len(orderbook.bids) > 0
         assert len(orderbook.asks) > 0
-        
+
         await exchange.close()
 ```
 
@@ -611,7 +619,7 @@ class MexcWebSocketPrivate(BaseWebSocketPrivate):
 ### Exchange Implementation Template
 
 ```python
-# Template: src/cex/{exchange}/{exchange}_exchange.py
+# Template: src/exchanges/{exchange}/{exchange}_exchange.py
 from interfaces.cex.base.base_private_exchange import BasePrivateExchangeInterface
 from core.config.structs import ExchangeConfig
 from structs.common import *
@@ -757,10 +765,11 @@ class {Exchange}PrivateExchange(BasePrivateExchangeInterface):
 ### REST Client Template
 
 ```python
-# Template: src/cex/{exchange}/rest/{exchange}_rest_private.py
-from core.cex.rest.spot.base_rest_spot_private import BaseRestSpotPrivate
+# Template: src/exchanges/{exchange}/rest/{exchange}_rest_private.py
+from core.exchanges.rest.spot.base_rest_spot_private import BaseRestSpotPrivate
 from core.config.structs import ExchangeConfig
 from typing import Dict, List, Optional
+
 
 class {Exchange}RestPrivate(BaseRestSpotPrivate):
     """
@@ -769,7 +778,7 @@ class {Exchange}RestPrivate(BaseRestSpotPrivate):
     Handles authenticated operations including order management,
     account data, and trading operations.
     """
-    
+
     def __init__(self, config: ExchangeConfig):
         super().__init__(
             base_url="https://api.{exchange}.com",
@@ -785,21 +794,21 @@ class {Exchange}RestPrivate(BaseRestSpotPrivate):
                 "write": 5.0
             }
         )
-    
+
     # Account Operations
     async def get_account(self) -> Dict:
         """Get account information including balances."""
         return await self._request_signed("GET", "/api/v3/account")
-    
+
     async def get_trading_fees(self, symbol: Optional[str] = None) -> Dict:
         """Get trading fees for account."""
         params = {"symbol": symbol} if symbol else {}
         return await self._request_signed("GET", "/api/v3/tradeFee", params)
-    
+
     # Order Management
     async def place_order(self, symbol: str, side: str, type: str,
-                         quantity: float, price: Optional[float] = None,
-                         **kwargs) -> Dict:
+                          quantity: float, price: Optional[float] = None,
+                          **kwargs) -> Dict:
         """Place a new order."""
         params = {
             "symbol": symbol,
@@ -808,12 +817,12 @@ class {Exchange}RestPrivate(BaseRestSpotPrivate):
             "quantity": str(quantity),
             **kwargs
         }
-        
+
         if price is not None:
             params["price"] = str(price)
-        
+
         return await self._request_signed("POST", "/api/v3/order", params)
-    
+
     async def cancel_order(self, symbol: str, order_id: str) -> Dict:
         """Cancel an existing order."""
         params = {
@@ -821,12 +830,12 @@ class {Exchange}RestPrivate(BaseRestSpotPrivate):
             "orderId": order_id
         }
         return await self._request_signed("DELETE", "/api/v3/order", params)
-    
+
     async def get_open_orders(self, symbol: Optional[str] = None) -> List[Dict]:
         """Get all open orders."""
         params = {"symbol": symbol} if symbol else {}
         return await self._request_signed("GET", "/api/v3/openOrders", params)
-    
+
     async def get_order_history(self, symbol: str, limit: int = 500) -> List[Dict]:
         """Get order history for a symbol."""
         params = {

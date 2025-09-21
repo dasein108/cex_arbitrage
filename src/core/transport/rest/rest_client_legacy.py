@@ -154,7 +154,7 @@ class RestClient:
         async with self._semaphore:  # Limit concurrent requests
             for attempt in range(config.max_retries + 1):
                 try:
-                    # Prepare headers - start with cex headers
+                    # Prepare headers - start with exchanges headers
                     request_headers = {}
 
                     # Add config headers if provided
@@ -184,7 +184,7 @@ class RestClient:
                         request_kwargs['json'] = json_data
                     elif request_params and method != HTTPMethod.GET:
                         # For POST/PUT/DELETE with parameters, use query parameters by default
-                        # Individual cex can override this behavior via headers/json_data
+                        # Individual exchanges can override this behavior via headers/json_data
                         request_kwargs['params'] = request_params
 
                     # Execute request

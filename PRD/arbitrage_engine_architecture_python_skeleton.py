@@ -72,7 +72,7 @@ asyncio.set_event_loop_policy(uvloop.EventLoopPolicy())
 # -----------------------------
 
 class RawDepthUpdate(Struct):
-    # Example schema — different cex need different schemas
+    # Example schema — different exchanges need different schemas
     # Use exchange-specific handlers to decode into this normalized shape.
     asks: List[list[str]]  # list of [price_str, size_str]
     bids: List[list[str]]
@@ -219,7 +219,7 @@ class ExchangeConnection:
         await self._handle_raw_payload(data.encode())
 
     async def _on_binary(self, data: bytes):
-        # Some cex compress or use binary payloads
+        # Some exchanges compress or use binary payloads
         await self._handle_raw_payload(data)
 
     async def _handle_raw_payload(self, payload: bytes):
@@ -268,7 +268,7 @@ class ArbitrageDetector:
         self.fee_model = fee_model or (lambda ex, side, price: 0.0005)  # simple fee
 
     def scan_once(self) -> Optional[ArbOpportunity]:
-        # Naive O(N^2) scan: check best asks vs best bids across cex
+        # Naive O(N^2) scan: check best asks vs best bids across exchanges
         best_ask = None
         best_ask_ex = None
         best_bid = None

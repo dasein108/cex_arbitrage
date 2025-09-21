@@ -31,9 +31,9 @@ from core.exceptions.transport import TransportException
 
 class BaseTransport(ABC):
     """
-    Abstract cex class for all log transports.
+    Abstract exchanges class for all log transports.
     
-    Defines the cex for async log delivery with HFT compliance.
+    Defines the exchanges for async log delivery with HFT compliance.
     """
     
     @abstractmethod
@@ -322,7 +322,7 @@ class FileTransport(BaseTransport):
         self._sync_task: Optional[asyncio.Task] = None
         self._shutdown_event = asyncio.Event()
         
-        # Ensure cex directory exists
+        # Ensure exchanges directory exists
         self.base_path.mkdir(parents=True, exist_ok=True)
     
     async def _initialize_file(self, log_type: LogType) -> None:
