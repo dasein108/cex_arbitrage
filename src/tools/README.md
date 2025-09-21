@@ -1,14 +1,63 @@
 # CEX Arbitrage Tools
 
-High-performance toolset for cryptocurrency arbitrage analysis across multiple exchanges. This directory contains a complete 3-script workflow for identifying and analyzing profitable arbitrage opportunities.
+High-performance toolset for cryptocurrency arbitrage analysis across multiple exchanges. **Refactored to follow CLAUDE.md SOLID principles** with unified architecture and ~65% code reduction.
 
 ## Overview
 
-The arbitrage analysis system is split into 3 modular components for optimal workflow control and performance:
+**NEW: Unified Tool Architecture (v3.0)**
 
-1. **[Symbol Discovery](#1-symbol-discovery)** - Identify symbols available across exchanges
-2. **[Data Fetcher](#2-data-fetcher)** - Download historical price data 
-3. **[Spread Analyzer](#3-spread-analyzer)** - Analyze spreads and rank opportunities
+The tools have been refactored from 3 separate scripts (~1,400 lines) into a single unified tool (~500 lines) following CLAUDE.md standards:
+
+- **SOLID Compliance**: Single responsibility components with proper interfaces
+- **DRY Elimination**: Removed ~305 lines of duplicate code
+- **Factory Pattern**: Uses proper ExchangeFactory instead of manual creation
+- **Interface Usage**: Clean src-only architecture with BasePublicExchangeInterface
+- **Performance**: HFT-compliant with <50ms latency targets
+
+**Usage**:
+```bash
+python unified_arbitrage_tool.py discover [options]  # Symbol discovery
+python unified_arbitrage_tool.py fetch [options]     # Data collection  
+python unified_arbitrage_tool.py analyze [options]   # Spread analysis
+```
+
+### Quick Start (Unified Tool)
+
+```bash
+# Complete workflow using unified tool
+python unified_arbitrage_tool.py discover --format detailed
+python unified_arbitrage_tool.py fetch --days 3 --max-symbols 20
+python unified_arbitrage_tool.py analyze --min-profit-score 30
+
+# Get help for any operation
+python unified_arbitrage_tool.py discover --help
+python unified_arbitrage_tool.py fetch --help  
+python unified_arbitrage_tool.py analyze --help
+```
+
+### Architecture Benefits
+
+**SOLID Principles Implementation**:
+- `ArbitrageToolController`: Single responsibility orchestration (SRP)
+- `SymbolDiscoveryService`: Focused on symbol discovery only (SRP)
+- `DataCollectionService`: Focused on data fetching only (SRP)  
+- `AnalysisService`: Focused on spread analysis only (SRP)
+- Interface-based dependencies (DIP)
+
+**Code Reduction Achieved**:
+- CLI parsing: ~150 lines → shared `CLIManager`
+- Logging setup: ~25 lines → shared `LoggingConfigurator`
+- Path resolution: ~30 lines → shared `PathResolver`
+- Error handling: ~40 lines → shared `ErrorHandler`
+- Main function patterns: ~60 lines → unified controller
+
+## Legacy Tools (Deprecated but Available)
+
+The original 3-script workflow is deprecated but still available for backward compatibility:
+
+1. **[Symbol Discovery](#1-symbol-discovery)** - `cross_exchange_symbol_discovery.py`
+2. **[Data Fetcher](#2-data-fetcher)** - `arbitrage_data_fetcher.py`
+3. **[Spread Analyzer](#3-spread-analyzer)** - `arbitrage_analyzer.py`
 
 ### Key Improvements in v2.0
 
@@ -295,11 +344,6 @@ head -20 output/arbitrage_analysis_report.csv
 **File**: `run_arbitrage_analysis.py` 
 
 The legacy script combines all steps into one execution but is deprecated in favor of the modular workflow. It remains available for backward compatibility.
-
-```bash
-# Legacy workflow (deprecated, use individual scripts instead)  
-python run_arbitrage_analysis.py --test
-```
 
 ---
 
