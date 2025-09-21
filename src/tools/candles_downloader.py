@@ -68,7 +68,7 @@ class CandlesDownloader:
     ]
     
     # Supported exchanges (factory will handle implementation)
-    SUPPORTED_EXCHANGES = ['mexc', 'gateio']
+    SUPPORTED_EXCHANGES = ['mexc', 'gateio', 'gateio_futures']
     
     # Timeframe mapping to KlineInterval enum
     TIMEFRAME_MAP = {
@@ -428,6 +428,9 @@ Examples:
   # Download specific date range from Gate.io
   python candles_downloader.py --exchange gateio --symbol BTC_USDT --timeframe 1d --start 2024-01-01 --end 2024-02-01
   
+  # Download futures data from Gate.io
+  python candles_downloader.py --exchange gateio_futures --symbol BTC_USDT --timeframe 1h --days 7
+  
   # Download with custom output directory
   python candles_downloader.py --exchange mexc --symbol ETH_USDT --timeframe 5m --days 7 --output ./my_data
         """
@@ -436,7 +439,7 @@ Examples:
     parser.add_argument(
         '--exchange', '-e',
         required=True,
-        choices=['mexc', 'gateio'],
+        choices=['mexc', 'gateio', 'gateio_futures'],
         help='Exchange to download from'
     )
     

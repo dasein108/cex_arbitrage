@@ -866,6 +866,18 @@ class HftConfig:
         
         return "\n".join(summary_lines)
 
+    def get_database_config(self) -> Dict[str, Any]:
+        """
+        Get database configuration section.
+
+        Returns:
+            Dictionary with database configuration settings
+        """
+        if self._config_data.get('database') is None:
+            raise BaseException("No database configuration found in config.yaml")
+
+        return self._config_data.get('database', {})
+
 
 # Create singleton instance
 config = HftConfig()

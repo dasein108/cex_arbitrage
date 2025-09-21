@@ -480,7 +480,7 @@ class GateioPublicFuturesRest(PublicExchangeSpotRestInterface):
             total_duration_seconds = MAX_SAFE_DURATION_SECONDS
 
         # Compute batch size similar to spot conservative defaults
-        batch_size = self._calculate_optimal_batch_size(timeframe, total_duration_seconds)
+        batch_size = 500  # Fixed batch size for simplicity, same as spot implementation
         chunk_duration_seconds = batch_size * interval_seconds
 
         all_klines: List[Kline] = []

@@ -273,8 +273,23 @@ class DataCollectionService:
         """
         try:
             with PerformanceTimer("Data Collection", self.logger):
+                # Auto-find discovery file if using default name
+                discovery_file = config.discovery_file
+                if discovery_file == "output/symbol_discovery_detailed.json":
+                    try:
+                        # Try to find the latest timestamped discovery file
+                        discovery_file = PathResolver.find_latest_discovery_file(
+                            output_dir=config.output_dir,
+                            format_type="detailed"
+                        )
+                        self.logger.info(f"Using latest discovery file: {discovery_file}")
+                    except FileNotFoundError as e:
+                        self.logger.warning(f"Could not find timestamped discovery file: {e}")
+                        # Fall back to the original path
+                        discovery_file = config.discovery_file
+                
                 # Resolve paths
-                discovery_file = PathResolver.resolve_path(config.discovery_file)
+                discovery_file = PathResolver.resolve_path(discovery_file)
                 data_dir = PathResolver.resolve_path(config.data_dir)
                 
                 # Validate discovery file exists
@@ -526,14 +541,23 @@ class ArbitrageToolController:
         
         # Generate timestamped filename
         timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-        filename = f"symbol_discovery_{config.output_format}_{timestamp}.json"
-        filepath = output_dir / filename
+        timestamped_filename = f"symbol_discovery_{config.output_format}_{timestamp}.json"
+        timestamped_filepath = output_dir / timestamped_filename
         
-        # Save results
-        with open(filepath, 'w', encoding='utf-8') as f:
+        # Also save without timestamp for easy reference
+        standard_filename = f"symbol_discovery_{config.output_format}.json"
+        standard_filepath = output_dir / standard_filename
+        
+        # Save timestamped version
+        with open(timestamped_filepath, 'w', encoding='utf-8') as f:
             json.dump(results, f, indent=2, ensure_ascii=False)
         
-        self.logger.info(f"Results saved to: {filepath}")
+        # Save standard version (overwrite previous)
+        with open(standard_filepath, 'w', encoding='utf-8') as f:
+            json.dump(results, f, indent=2, ensure_ascii=False)
+        
+        self.logger.info(f"Results saved to: {timestamped_filepath}")
+        self.logger.info(f"Standard reference saved to: {standard_filepath}")
     
     def _display_discovery_summary(self, results: Dict):
         """Display discovery results summary"""

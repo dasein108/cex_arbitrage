@@ -1,0 +1,6099 @@
+{
+  "timestamp": "2025-09-21T22:32:33.718012",
+  "total_symbols": 1217,
+  "arbitrage_candidates": 1217,
+  "availability_matrix": {
+    "PACK/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "HYPE/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "SYND/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "PUFFER/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "AVAIL/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "GPS/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "OAS/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "MAT/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "LUMIA/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "AUCTION/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "VELVET/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "VTHO/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "DSYNC/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "LYP/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "SHELL/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "GTAI/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "MOCA/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "SMART/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "XVS/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "ETN/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "RFC/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "GLMR/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "FIS/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "PIN/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "GMEE/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "RITE/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "REKTCOIN/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "LKY/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "AMB/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "SYLO/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "SUNDOG/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "FLY/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "KP3R/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "NIL/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "SUT/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "GIZA/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "GMX/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "NIM/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "ACNON/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "KNINE/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "ZENT/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "TPT/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "FIR/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "POKT/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "MOBILE/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "CHESS/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "GALA/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "SIX/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "STO/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "ETHFI/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "SPYON/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "WLTH/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "XION/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "GARI/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "OG/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "SWTCH/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "CPOOL/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "MDAO/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "ML/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "MYRO/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "POL/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "CWEB/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "HTR/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "LTC/USDC": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "TOWNS/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "XDB/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "HIVE/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "ENS/USDC": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "GLQ/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "F/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "SHIB/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "SD/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "ZEREBRO/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "IDEX/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "MYX/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "CREO/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "GME/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "CHAT/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "PEPON/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "MILK/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "NEAR/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "BABYDOGE/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "CLOUD/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "ZND/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "EWT/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "GEMS/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "QQQON/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "COINX/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "RLC/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "MENGO/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "JAM/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "TCOM/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "LINK/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "BLAST/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "PUBLIC/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "HOOK/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "D/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "IVPAY/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "NFP/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "SUI/USDC": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "WXT/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "GUN/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "FUN/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "CRO/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "COPI/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "COOK/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "SWELL/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "PIXEL/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "REAL/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "MARSH/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "BOOP/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "DCK/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "LUNA/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "LUNAI/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "CHR/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "SBETON/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "MAXSOL/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "METAON/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "ULTI/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "U/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "NEXO/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "DMC/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "BONE/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "Q/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "KAITO/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "MINA/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "AO/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "ORNJ/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "BDX/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "OVL/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "AAVE/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "DEP/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "DOOD/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "BAC/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "CFX/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "SYN/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "A2Z/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "BOBA/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "CITY/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "FORM/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "MYRIA/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "OVPP/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "SAI/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "CSIX/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "THL/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "HEART/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "XEN/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "FLUID/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "CTC/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "SLP/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "VIA/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "CRCLON/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "FARM/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "DIAM/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "BLZ/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "TOSHI/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "XYO/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "ZK/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "BILLY/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "SOPH/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "PSTAKE/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "SLERF/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "MODE/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "AAPLON/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "AUTOS/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "MUBARAK/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "NAI/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "VADER/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "HOODON/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "NATIX/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "MRLN/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "POLIS/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "PEPE/USDC": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "PMX/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "DELABS/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "SWFTC/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "AVNT/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "DCR/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "CFG/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "MUBI/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "XAUT/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "XPIN/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "SCF/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "DBR/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "SONIC/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "POLYDOGE/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "TUSD/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "JELLYJELLY/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "ARC/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "PBX/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "MOTHER/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "CBK/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "RICE/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "SWAP/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "RBC/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "ALPH/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "SUN/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "CSPR/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "C98/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "BCH/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "XTER/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "GORK/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "TICO/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "ENJ/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "ROOT/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "XCH/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "SFI/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "RIF/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "AR/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "WSDM/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "POND/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "JASMY/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "AAPLX/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "CELR/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "PENGU/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "PPT/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "ZRC/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "FLOW/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "AIX/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "LPT/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "ALGO/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "PRCL/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "NS/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "BANANAS31/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "ICNT/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "FB/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "PEAQ/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "WAXP/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "SDEX/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "EUL/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "CHEQ/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "ORDER/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "SOMI/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "GATA/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "OSMO/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "ORAI/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "MCDX/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "ELP/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "VANRY/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "BADGER/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "YGG/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "INJ/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "ARRR/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "MORE/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "MAGIC/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "STX/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "XL1/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "CHZ/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "FOX/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "TARA/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "ONE/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "FIDA/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "1DOLLAR/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "CERE/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "OOE/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "LAVA/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "WOJAK/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "ACA/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "HTX/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "MAON/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "NCN/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "JST/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "BIO/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "LMWR/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "SKY/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "ZRO/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "FOREST/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "UPC/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "INSP/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "ZIL/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "AIC/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "WHITE/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "PAAL/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "SYRUP/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "EIGEN/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "ROSE/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "SNEK/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "ATR/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "ALEPH/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "RSR/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "DOG/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "BTR/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "WUSD/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "KARRAT/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "UDAO/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "LVVA/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "ATOM/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "HOME/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "ALPHA/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "BRISE/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "OMI/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "PRO/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "NUM/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "ENA/USDC": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "MAJOR/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "BAT/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "BXN/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "CHO/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "AURASOL/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "ARB/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "TRUF/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "FARTCOIN/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "NIBI/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "YZY/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "GOHOME/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "FRED/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "MELANIA/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "ANI/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "IOTX/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "IMX/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "NFT/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "SGB/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "FLR/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "BEAMX/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "AMZNON/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "KNC/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "MICHI/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "JOC/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "MAN/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "ART/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "ARPA/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "EL/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "A/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "FIL/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "SPX/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "XELS/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "BLUE/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "KERNEL/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "INTER/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "GNS/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "ME/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "DEGEN/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "PHB/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "TROLL/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "PROVE/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "WOO/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "ENS/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "MNDE/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "UNHON/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "XLM/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "EYWA/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "BB/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "PTB/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "ALI/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "JOYSTREAM/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "PUMPBTC/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "BAL/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "UNIT0/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "WILD/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "ROAM/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "SWCH/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "BLUR/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "SOLV/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "STARL/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "ZKC/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "DOLO/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "ARKM/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "BARD/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "LVLY/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "BANANA/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "NEO/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "BLOCX/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "GRIFFAIN/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "TRU/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "RARI/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "REDO/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "TAP/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "TRADE/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "TOMI/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "VGX/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "LUCE/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "ZF/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "NC/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "ZEUS/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "MBOX/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "ACE/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "LYX/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "AITECH/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "IDOL/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "APU/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "POP/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "KASTA/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "TAKER/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "WING/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "SQT/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "MYTH/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "AA/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "NOS/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "TFUEL/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "SCRT/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "AIOT/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "ERG/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "RJV/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "TRUMP/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "NETX/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "ETHW/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "TOWN/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "VRA/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "AMP/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "SHPING/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "APE/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "SENSO/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "ELF/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "BELLS/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "B3/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "WLFI/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "VOXEL/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "PORTAL/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "MEMEFI/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "ASI/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "LN/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "SCR/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "GHST/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "C/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "SC/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "CROSS/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "WCT/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "RWAINC/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "BABY/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "CATCOIN/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "XAVA/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "AKITA/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "DL/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "CTA/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "GET/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "ULTIMA/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "MATH/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "PIPPIN/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "VSN/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "BSX/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "NRN/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "ATLAS/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "4EVER/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "ZETA/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "BOSON/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "VENOM/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "GOMINING/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "ARG/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "MAPO/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "PSG/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "RWA/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "KIMA/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "BSW/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "MASA/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "GRAIL/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "MLN/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "TRX/USDC": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "ARB/USDC": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "ILV/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "POLYX/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "GUI/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "TREE/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "PUMP/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "GOOGLX/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "BMT/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "PLTRON/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "FIO/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "APEPE/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "MEW/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "SLIM/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "PIXFI/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "OPTIMUS/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "SCA/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "ELDE/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "QUAI/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "GOAT/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "MITO/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "BTS/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "LAZIO/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "LAI/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "BOT/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "MOONPIG/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "GNO/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "COMP/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "AXS/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "SPEC/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "MNT/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "CHILLGUY/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "DUKO/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "FITFI/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "ONG/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "SAMO/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "REEF/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "ALKIMI/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "XCX/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "POPCAT/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "VET/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "ABTON/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "ASTRA/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "LAUNCHCOIN/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "SAUCE/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "STORM/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "OVER/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "TKO/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "NERO/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "BLUM/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "IRON/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "SPARKLET/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "H/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "SYS/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "ANLOG/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "UBXS/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "CLANKER/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "SMURFCAT/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "COQ/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "HINT/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "CTP/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "SQD/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "RACA/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "BAS/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "FTT/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "KAS/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "CATCH/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "ARTY/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "CAKE/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "WOD/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "BERT/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "COREUM/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "DTEC/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "W/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "ZERO/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "HAEDAL/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "XPR/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "VERT/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "BLOCK/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "JUP/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "QTUM/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "SVL/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "TRX/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "SAVM/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "NXPC/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "GFI/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "AVA/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "XFI/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "OOBIT/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "XLAB/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "ANDYETH/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "IN/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "DEGO/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "UMA/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "LIME/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "KZEN/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "PENG/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "MAV/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "SOULS/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "ATH/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "DUEL/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "X/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "SMX/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "AIO/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "CGPT/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "ATS/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "FST/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "CAMP/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "GEAR/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "ACT/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "ALU/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "OP/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "VLR/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "BNT/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "SOGNI/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "CHEX/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "HUMA/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "UB/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "LOGX/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "HOPR/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "MOODENG/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "SUKU/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "USDP/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "BLOK/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "CXT/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "DCB/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "PORTO/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "XNY/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "AFC/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "BOOM/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "SWEAT/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "FUSE/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "TRVL/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "BST/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "BID/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "LTC/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "SNIFT/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "LOOM/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "NAORIS/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "WAI/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "HAM/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "AWE/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "NPC/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "UDS/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "SHARDS/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "RATS/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "RBNT/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "BOBO/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "FLOCK/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "0G/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "BDP/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "AMZNX/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "PONKE/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "TAI/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "ARTFI/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "SRM/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "MG8/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "TOKEN/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "RTF/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "MOG/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "NEIROCTO/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "USD1/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "MCDON/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "BABYSHARK/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "POLS/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "FWOG/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "VVV/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "SAND/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "PEPE2/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "MEME/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "XCV/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "MICRO/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "LKI/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "AI16Z/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "WNXM/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "RHEA/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "GST/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "LAT/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "SAFE/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "SUI/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "BZZ/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "OM/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "VARA/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "QKC/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "COS/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "ICP/USDC": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "MISSION/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "KSM/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "USELESS/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "LRC/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "PROPC/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "LGCT/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "GAI/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "LIVE/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "ACH/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "PEPECOIN/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "PAI/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "HIGH/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "WBTC/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "PORT3/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "TUT/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "BITBOARD/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "SWARMS/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "QORPO/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "CAT/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "SAHARA/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "RUNWAGO/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "HIFI/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "PEPE/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "NOBODY/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "OGN/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "SOLO/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "FORTH/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "SNPT/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "OXT/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "VOLT/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "ZBCN/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "WAVES/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "EDGEN/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "ITHACA/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "LOBO/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "NAKA/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "CEL/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "USDD/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "BCUT/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "FAI/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "CRU/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "DEFI/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "LOFI/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "MRSOON/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "SIDUS/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "BTT/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "KAR/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "RUNE/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "UXLINK/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "PLENA/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "HOUSE/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "VANA/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "AB/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "TRCL/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "SLAY/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "VON/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "1INCH/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "GOCHU/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "HGPT/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "MBL/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "REX/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "FHE/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "BOTIFY/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "AERGO/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "MAVIA/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "SKI/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "DEAI/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "BERA/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "SAGA/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "QNT/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "LIKE/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "TBC/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "DUSK/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "CELB/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "CRV/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "ACM/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "VINU/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "BRIC/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "CUDIS/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "CHEEMS/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "OKB/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "WOLF/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "CULT/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "LOOKS/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "SHIB/USDC": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "NYM/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "ADX/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "AGI/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "GAME2/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "5IRE/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "NEIROETH/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "MIGGLES/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "ELON/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "LEVER/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "VIRTUAL/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "KILO/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "PROPS/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "IKA/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "OPUL/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "DUCK/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "AVGOON/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "HYPER/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "GROK/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "FUEL/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "DF/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "RVN/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "BOME/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "DYDX/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "SEND/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "GAMEVIRTUAL/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "LINEA/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "XYRO/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "COINON/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "PORK/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "MAY/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "XCAD/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "BSV/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "VELO/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "DAO/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "W3GG/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "SUSHI/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "AIBOT/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "ARW/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "ANKR/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "SPON/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "LDO/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "MCH/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "HIPPO/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "AIFUN/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "TWT/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "FIL/USDC": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "AIDOGE/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "SKL/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "UTK/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "NOT/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "FRAG/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "BGSC/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "YALA/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "BABAON/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "QUBIC/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "EMYC/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "ASP/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "RIZ/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "PIG/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "WMTX/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "LRDS/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "FET/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "ZCX/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "DAG/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "AIMONICA/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "TRIBE/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "VIC/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "KDA/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "WEMIX/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "METIS/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "CYBRO/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "A47/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "MLC/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "DRIFT/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "HAI/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "TGT/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "XEC/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "SHX/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "XDC/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "FLOKI/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "XSWAP/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "TRAC/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "NEAR/USDC": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "BOND/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "XR/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "B/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "CRCLX/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "AGLD/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "RDNT/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "MSFTON/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "NODE/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "OBOL/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "CETUS/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "MANA/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "PLUME/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "SCARCITY/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "NCT/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "QBX/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "DEXE/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "RION/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "CLORE/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "CATI/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "CLEAR/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "FDUSD/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "CELO/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "DFYN/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "PARTI/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "TET/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "XCN/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "LIQUIDIUM/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "AEVO/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "ZKJ/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "REZ/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "HBAR/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "GEOD/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "TIA/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "APT/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "XYM/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "MAGATRUMP/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "DKA/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "SATS/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "NODL/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "MANEKI/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "AZUR/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "SHIRO/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "HOPPY/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "RFRM/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "BCH/USDC": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "FURY/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "MNEMO/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "PYTH/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "BSU/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "SXT/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "ZORA/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "NVDAON/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "DOGS/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "USUAL/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "FLM/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "SOSO/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "IOST/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "MCRT/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "API3/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "PENDLE/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "XNA/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "ETC/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "SPELL/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "WIN/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "PUSH/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "ISP/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "BICITY/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "OBT/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "LNDX/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "BROCCOLI/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "RED/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "SYNT/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "HOT/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "JTO/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "LLYON/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "STRM/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "VIVI/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "COW/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "SNX/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "POR/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "TSLAX/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "SSV/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "CARV/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "RON/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "BAN/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "TURBO/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "BCCOIN/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "B2/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "OCTA/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "KRL/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "FET/USDC": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "SPA/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "IO/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "SERSH/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "DMAIL/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "MORPHO/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "VINE/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "OORT/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "SOON/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "SPK/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "WAXL/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "GTC/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "NKN/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "MOODENGETH/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "LINK/USDC": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "YFII/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "PROM/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "MLK/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "UFO/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "TNSR/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "ONT/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "OL/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "AERO/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "REN/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "PNG/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "AVAX/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "OP/USDC": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "GHX/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "ZRX/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "LYNX/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "INIT/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "JOE/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "ASTR/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "GIGA/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "OSHI/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "FTN/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "SOVRN/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "PAXG/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "WNCG/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "SXP/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "AVAAI/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "VSC/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "HFT/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "WAL/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "MVRK/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "ROUTE/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "REI/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "ERA/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "RSS3/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "USDE/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "GRT/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "HOODX/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "AVL/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "WKC/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "ANIME/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "UNITE/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "RUNECOIN/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "LA/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "BUBB/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "ID/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "ACX/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "CRV/USDC": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "HNT/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "PELL/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "PEOPLE/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "LQTY/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "LL/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "TALENT/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "DEEP/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "FORT/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "TREAT/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "SFUND/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "HVLO/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "HOLO/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "OMG/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "WLD/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "OPEN/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "FAKEAI/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "BEAM/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "CLV/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "ZKWASM/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "SEI/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "LINGO/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "KOMA/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "STORJ/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "USTC/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "DEEPSEEK/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "IOTA/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "DYM/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "U2U/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "ARK/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "BENQI/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "PUNDIAI/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "HP/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "DODO/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "F3/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "SIN/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "CCD/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "SAPIEN/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "ALGO/USDC": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "PIT/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "VC/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "BRN/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "SKATE/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "GOOGLON/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "CTK/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "ORT/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "TRWA/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "ECHO/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "NFE/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "LADYS/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "CSCOON/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "CESS/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "STRK/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "SATX/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "TRC/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "EDGE/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "URANUS/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "DOGINME/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "IP/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "M/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "QUICK/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "CAW/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "MGO/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "GHIBLI/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "AIXBT/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "TLOS/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "PURR/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "OVR/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "SAROS/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "SUPRA/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "MANTA/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "PRAI/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "MAD/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "SNT/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "KMNO/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "FAR/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "RPL/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "G/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "RAI/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "WEN/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "RESOLV/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "VPR/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "LUNC/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "PI/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "HAPPY/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "NTRN/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "ANON/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "ORDI/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "STETH/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "VAI/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "A8/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "THE/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "CELL/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "RENDER/USDC": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "ZKL/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "VR/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "CVX/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "BONK/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "ORCA/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "3ULL/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "IMT/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "RCADE/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "YFI/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "ORFY/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "OCT/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "LAYER/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "NVDAX/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "STG/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "AURORA/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "MBG/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "UNIBOT/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "SHM/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "SOPHIA/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "MSTRON/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "CKB/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "HONEY/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "TIA/USDC": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "TST/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "ALEO/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "BIGTIME/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "TON/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "S/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "MOVR/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "ZIG/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "MAIGA/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "HOLDSTATION/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "NAVX/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "KEKIUS/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "NEWT/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "IQ/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "HELLO/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "SKX/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "ALICE/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "ICP/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "HSK/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "T/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "PAW/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "FLT/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "GMMT/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "ARIA/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "VVAIFU/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "TSLAON/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "COOKIE/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "TAO/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "BAD/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "MIRROR/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "UNFI/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "DAI/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "ENA/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "BEL/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "AGRI/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "DOGEGOV/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "TAIKO/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "GRASS/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "DIONE/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "SKYA/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "RENDER/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "FLUX/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "WIF/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "BAKE/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "AI/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "BNC/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "PYR/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "MERL/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "XRD/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "EGLD/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "SOIL/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "L3/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "VISTA/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "COTI/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "ALCH/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "THINK/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "OGPU/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "UNI/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "NMR/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "MOVE/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "UNI/USDC": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "TLM/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "APT/USDC": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "INV/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "BDXN/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "PERP/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "BICO/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "ASTER/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "SIGN/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "BBT/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "TANSSI/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "RARE/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "TA/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "AIAGENT/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "TEVA/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "KLV/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "ESE/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "RAD/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "SPYX/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "HEI/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "DADDY/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "INJ/USDC": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "REACT/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "STOS/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "DNX/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "ARCH/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "FEG/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "METAL/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "SANTOS/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "PRX/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "NFLXON/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "NAM/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "SEAM/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "USDC/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "MLT/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "DMTR/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "PNUT/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "SFP/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "HMSTR/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "GEL/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "ONDO/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "CHIRP/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "ATOM/USDC": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "VELODROME/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "PROMPT/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "DEVVE/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "MTRG/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "CYBER/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "BANK/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "SDN/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "CORE/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "XAI/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "PHA/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "STEEM/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "PAIN/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "NEIRO/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "ALEX/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "CEEK/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "OMNI/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "EPIC/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "SLF/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "STBU/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "EDU/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "WUF/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "KAIA/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "LABUBU/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "ZBU/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "ALPINE/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "KAVA/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "RAY/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "HEMI/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "LISTA/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "ESPORTS/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "KITEAI/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "AVAX/USDC": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "EPT/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "WAGMIGAMES/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "MONG/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "ES/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "PEIPEI/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "NEON/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "MASK/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "SWGT/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "AIN/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "METAX/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "XTZ/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "SLC/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "WIF/USDC": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "STREAM/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    },
+    "PROS/USDT": {
+      "mexc_spot": true,
+      "gateio_spot": true,
+      "gateio_futures": false
+    }
+  },
+  "statistics": {
+    "arbitrage_candidates": 1217,
+    "two_way_opportunities": 1217,
+    "three_way_opportunities": 0,
+    "four_way_opportunities": 0,
+    "best_opportunities": []
+  }
+}

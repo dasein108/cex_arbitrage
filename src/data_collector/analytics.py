@@ -10,7 +10,7 @@ from datetime import datetime, timedelta
 from typing import Dict, List, Set
 from dataclasses import dataclass
 
-from structs.common import Symbol, BookTicker
+from structs.common import Symbol, BookTicker, Trade
 from data_collector.config import AnalyticsConfig
 
 
@@ -62,6 +62,19 @@ class VolumeAlert:
 
 
 @dataclass
+class TradeAnalysis:
+    """Trade analysis for volume and momentum tracking."""
+    symbol: Symbol
+    exchange: str
+    total_volume: float
+    trade_count: int
+    avg_price: float
+    price_momentum: float  # Price change rate
+    volume_usd: float
+    timestamp: datetime
+
+
+@dataclass
 class MarketHealthSummary:
     """Overall market health summary."""
     total_pairs: int
@@ -80,6 +93,7 @@ class RealTimeAnalytics:
     - Detects arbitrage opportunities between exchanges
     - Calculates and alerts on spread conditions
     - Monitors volume and liquidity
+    - Processes trade data for momentum analysis
     - Provides market health summaries
     - Logs meaningful analytics information
     """
@@ -96,6 +110,13 @@ class RealTimeAnalytics:
         
         # Latest book ticker data: {exchange_symbol: BookTicker}
         self._latest_tickers: Dict[str, BookTicker] = {}
+        
+        # Recent trade data: {exchange_symbol: List[Trade]} (keep recent trades)
+        self._recent_trades: Dict[str, List[Trade]] = {}
+        
+        # Trade analytics tracking
+        self._trade_count = 0
+        self._last_trade_cleanup = datetime.now()
         
         # Detected opportunities cache
         self._recent_opportunities: List[ArbitrageOpportunity] = []
@@ -139,6 +160,45 @@ class RealTimeAnalytics:
             
         except Exception as e:
             self.logger.error(f"Error processing book ticker update for {exchange}:{symbol}: {e}")
+    
+    async def on_trade_update(self, exchange: str, symbol: Symbol, trade: Trade) -> None:
+        """
+        Process a trade update and perform real-time trade analysis.
+        
+        Args:
+            exchange: Exchange name
+            symbol: Updated symbol
+            trade: Trade data
+        """
+        try:
+            self._trade_count += 1
+            
+            # Store recent trade
+            cache_key = f"{exchange.lower()}_{symbol}"
+            if cache_key not in self._recent_trades:
+                self._recent_trades[cache_key] = []
+            
+            self._recent_trades[cache_key].append(trade)
+            self._active_symbols.add(symbol)
+            
+            # Keep only recent trades (last 5 minutes)
+            cutoff_time = datetime.now() - timedelta(minutes=5)
+            cutoff_timestamp = int(cutoff_time.timestamp() * 1000)
+            self._recent_trades[cache_key] = [
+                t for t in self._recent_trades[cache_key] 
+                if t.timestamp and t.timestamp > cutoff_timestamp
+            ]
+            
+            # Perform trade analysis
+            await self._analyze_trade_volume(exchange, symbol)
+            await self._analyze_price_momentum(exchange, symbol)
+            
+            # Periodic cleanup
+            if datetime.now() - self._last_trade_cleanup > timedelta(minutes=1):
+                await self._cleanup_old_trades()
+            
+        except Exception as e:
+            self.logger.error(f"Error processing trade update for {exchange}:{symbol}: {e}")
     
     async def _analyze_spread(self, exchange: str, symbol: Symbol, book_ticker: BookTicker) -> None:
         """
@@ -268,6 +328,122 @@ class RealTimeAnalytics:
         except Exception as e:
             self.logger.error(f"Error analyzing arbitrage opportunities for {symbol}: {e}")
     
+    async def _analyze_trade_volume(self, exchange: str, symbol: Symbol) -> None:
+        """
+        Analyze trade volume patterns for a symbol.
+        
+        Args:
+            exchange: Exchange name
+            symbol: Symbol
+        """
+        try:
+            cache_key = f"{exchange.lower()}_{symbol}"
+            recent_trades = self._recent_trades.get(cache_key, [])
+            
+            if not recent_trades:
+                return
+            
+            # Calculate volume metrics for last minute
+            one_minute_ago = datetime.now() - timedelta(minutes=1)
+            one_minute_timestamp = int(one_minute_ago.timestamp() * 1000)
+            
+            recent_minute_trades = [
+                trade for trade in recent_trades 
+                if trade.timestamp and trade.timestamp > one_minute_timestamp
+            ]
+            
+            if not recent_minute_trades:
+                return
+            
+            # Calculate metrics
+            total_volume = sum(trade.quantity for trade in recent_minute_trades)
+            total_value_usd = sum(trade.price * trade.quantity for trade in recent_minute_trades)
+            trade_count = len(recent_minute_trades)
+            avg_price = sum(trade.price for trade in recent_minute_trades) / trade_count
+            
+            # Check for high volume alerts
+            if total_value_usd > self.config.volume_threshold * 10:  # 10x normal threshold
+                self.logger.info(
+                    f"[ANALYTICS] High Volume Alert: {symbol.base}/{symbol.quote} on {exchange.upper()} - "
+                    f"Volume: {total_volume:.2f}, Value: ${total_value_usd:.0f}, "
+                    f"Trades: {trade_count}, Avg Price: ${avg_price:.6f}"
+                )
+        
+        except Exception as e:
+            self.logger.error(f"Error analyzing trade volume for {exchange}:{symbol}: {e}")
+    
+    async def _analyze_price_momentum(self, exchange: str, symbol: Symbol) -> None:
+        """
+        Analyze price momentum from recent trades.
+        
+        Args:
+            exchange: Exchange name
+            symbol: Symbol
+        """
+        try:
+            cache_key = f"{exchange.lower()}_{symbol}"
+            recent_trades = self._recent_trades.get(cache_key, [])
+            
+            if len(recent_trades) < 10:  # Need sufficient data
+                return
+            
+            # Get trades from last 2 minutes for momentum calculation
+            two_minutes_ago = datetime.now() - timedelta(minutes=2)
+            two_minutes_timestamp = int(two_minutes_ago.timestamp() * 1000)
+            
+            momentum_trades = [
+                trade for trade in recent_trades 
+                if trade.timestamp and trade.timestamp > two_minutes_timestamp
+            ]
+            
+            if len(momentum_trades) < 5:
+                return
+            
+            # Sort by timestamp
+            momentum_trades.sort(key=lambda t: t.timestamp or 0)
+            
+            # Calculate price change rate
+            early_trades = momentum_trades[:len(momentum_trades)//2]
+            late_trades = momentum_trades[len(momentum_trades)//2:]
+            
+            early_avg_price = sum(t.price for t in early_trades) / len(early_trades)
+            late_avg_price = sum(t.price for t in late_trades) / len(late_trades)
+            
+            price_change_pct = ((late_avg_price - early_avg_price) / early_avg_price) * 100
+            
+            # Alert on significant momentum (>1% price change)
+            if abs(price_change_pct) > 1.0:
+                direction = "UP" if price_change_pct > 0 else "DOWN"
+                self.logger.info(
+                    f"[ANALYTICS] Price Momentum Alert: {symbol.base}/{symbol.quote} on {exchange.upper()} - "
+                    f"Direction: {direction}, Change: {price_change_pct:.2f}%, "
+                    f"From: ${early_avg_price:.6f} To: ${late_avg_price:.6f}"
+                )
+        
+        except Exception as e:
+            self.logger.error(f"Error analyzing price momentum for {exchange}:{symbol}: {e}")
+    
+    async def _cleanup_old_trades(self) -> None:
+        """Remove trades older than 5 minutes."""
+        try:
+            cutoff_time = datetime.now() - timedelta(minutes=5)
+            cutoff_timestamp = int(cutoff_time.timestamp() * 1000)
+            
+            for cache_key in list(self._recent_trades.keys()):
+                self._recent_trades[cache_key] = [
+                    trade for trade in self._recent_trades[cache_key] 
+                    if trade.timestamp and trade.timestamp > cutoff_timestamp
+                ]
+                
+                # Remove empty lists
+                if not self._recent_trades[cache_key]:
+                    del self._recent_trades[cache_key]
+            
+            self._last_trade_cleanup = datetime.now()
+        
+        except Exception as e:
+            self.logger.error(f"Error cleaning up old trades: {e}")
+    
     async def _cleanup_old_opportunities(self) -> None:
         """Remove opportunities older than 1 minute."""
         if datetime.now() - self._last_opportunity_cleanup > timedelta(minutes=1):
@@ -340,12 +516,19 @@ class RealTimeAnalytics:
             if opp.timestamp > datetime.now() - timedelta(minutes=5)
         ]
         
+        # Calculate trade statistics
+        total_trades = sum(len(trades) for trades in self._recent_trades.values())
+        active_trade_symbols = len([k for k, v in self._recent_trades.items() if v])
+        
         return {
             "total_symbols": len(self._active_symbols),
             "cached_tickers": len(self._latest_tickers),
             "total_opportunities": self._opportunity_count,
             "recent_opportunities": len(recent_opportunities),
             "update_count": self._update_count,
+            "trade_count": self._trade_count,
+            "recent_trades": total_trades,
+            "active_trade_symbols": active_trade_symbols,
             "config": {
                 "arbitrage_threshold": self.config.arbitrage_threshold,
                 "volume_threshold": self.config.volume_threshold,
@@ -368,3 +551,98 @@ class RealTimeAnalytics:
             opp for opp in self._recent_opportunities 
             if opp.timestamp > cutoff_time
         ]
+    
+    def get_recent_trades(self, exchange: str = None, symbol: Symbol = None, minutes: int = 5) -> List[Trade]:
+        """
+        Get recent trades with optional filtering.
+        
+        Args:
+            exchange: Optional exchange filter
+            symbol: Optional symbol filter
+            minutes: Number of minutes to look back
+            
+        Returns:
+            List of recent trades
+        """
+        cutoff_time = datetime.now() - timedelta(minutes=minutes)
+        cutoff_timestamp = int(cutoff_time.timestamp() * 1000)
+        
+        all_trades = []
+        for cache_key, trades in self._recent_trades.items():
+            key_exchange, key_symbol_str = cache_key.split("_", 1)
+            
+            # Apply filters
+            if exchange and key_exchange.lower() != exchange.lower():
+                continue
+            if symbol and key_symbol_str != str(symbol):
+                continue
+            
+            # Filter by time
+            recent_trades = [
+                trade for trade in trades 
+                if trade.timestamp and trade.timestamp > cutoff_timestamp
+            ]
+            all_trades.extend(recent_trades)
+        
+        return sorted(all_trades, key=lambda t: t.timestamp or 0, reverse=True)
+    
+    def get_trade_analysis(self, exchange: str, symbol: Symbol, minutes: int = 1) -> TradeAnalysis:
+        """
+        Get trade analysis for a specific exchange and symbol.
+        
+        Args:
+            exchange: Exchange name
+            symbol: Symbol
+            minutes: Time window in minutes
+            
+        Returns:
+            TradeAnalysis object
+        """
+        cache_key = f"{exchange.lower()}_{symbol}"
+        recent_trades = self._recent_trades.get(cache_key, [])
+        
+        # Filter by time window
+        cutoff_time = datetime.now() - timedelta(minutes=minutes)
+        cutoff_timestamp = int(cutoff_time.timestamp() * 1000)
+        
+        window_trades = [
+            trade for trade in recent_trades 
+            if trade.timestamp and trade.timestamp > cutoff_timestamp
+        ]
+        
+        if not window_trades:
+            return TradeAnalysis(
+                symbol=symbol,
+                exchange=exchange.upper(),
+                total_volume=0.0,
+                trade_count=0,
+                avg_price=0.0,
+                price_momentum=0.0,
+                volume_usd=0.0,
+                timestamp=datetime.now()
+            )
+        
+        # Calculate metrics
+        total_volume = sum(trade.quantity for trade in window_trades)
+        trade_count = len(window_trades)
+        avg_price = sum(trade.price for trade in window_trades) / trade_count
+        volume_usd = sum(trade.price * trade.quantity for trade in window_trades)
+        
+        # Calculate momentum (price change rate)
+        price_momentum = 0.0
+        if len(window_trades) >= 2:
+            sorted_trades = sorted(window_trades, key=lambda t: t.timestamp or 0)
+            early_price = sorted_trades[0].price
+            late_price = sorted_trades[-1].price
+            price_momentum = ((late_price - early_price) / early_price) * 100
+        
+        return TradeAnalysis(
+            symbol=symbol,
+            exchange=exchange.upper(),
+            total_volume=total_volume,
+            trade_count=trade_count,
+            avg_price=avg_price,
+            price_momentum=price_momentum,
+            volume_usd=volume_usd,
+            timestamp=datetime.now()
+        )

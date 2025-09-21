@@ -13,7 +13,7 @@ from collections import defaultdict
 import time
 
 from .connection import get_db_manager
-from .models import BookTickerSnapshot
+from .models import BookTickerSnapshot, TradeSnapshot
 from structs.common import Symbol
 
 
@@ -676,4 +676,331 @@ async def get_database_stats() -> Dict[str, Any]:
         
     except Exception as e:
         logger.error(f"Failed to retrieve database stats: {e}")
+        return {}
+
+
+# Trade Operations
+# Similar pattern to BookTicker operations but for trade data
+
+# Global deduplication cache for trade timestamps
+_trade_timestamp_cache: Dict[tuple, Set] = defaultdict(set)
+
+
+def _is_duplicate_trade_timestamp(exchange: str, symbol_base: str, symbol_quote: str, timestamp: datetime, trade_id: str) -> bool:
+    """
+    Check if this trade timestamp/ID has been seen recently for this exchange/symbol.
+    
+    Returns:
+        True if this is a duplicate trade that should be skipped
+    """
+    key = (exchange, symbol_base, symbol_quote)
+    trade_key = (timestamp, trade_id) if trade_id else timestamp
+    
+    # Check if we've seen this exact trade recently
+    if trade_key in _trade_timestamp_cache[key]:
+        return True
+    
+    # Add to cache for future checks
+    _trade_timestamp_cache[key].add(trade_key)
+    return False
+
+
+def _cleanup_trade_timestamp_cache():
+    """
+    Clean up old entries from the trade timestamp cache.
+    """
+    cutoff_time = datetime.utcnow() - timedelta(minutes=10)
+    total_removed = 0
+    
+    for key in list(_trade_timestamp_cache.keys()):
+        trade_set = _trade_timestamp_cache[key]
+        old_size = len(trade_set)
+        
+        # Remove old trade entries
+        new_set = set()
+        for item in trade_set:
+            if isinstance(item, tuple) and len(item) == 2:
+                timestamp, trade_id = item
+                if timestamp > cutoff_time:
+                    new_set.add(item)
+            elif isinstance(item, datetime) and item > cutoff_time:
+                new_set.add(item)
+        
+        _trade_timestamp_cache[key] = new_set
+        
+        # Remove empty entries
+        if not new_set:
+            del _trade_timestamp_cache[key]
+        
+        total_removed += old_size - len(new_set)
+    
+    if total_removed > 0:
+        logger.debug(f"Cleaned {total_removed} old trade timestamps from cache")
+
+
+async def insert_trade_snapshot(snapshot: TradeSnapshot) -> int:
+    """
+    Insert a single Trade snapshot.
+    
+    Args:
+        snapshot: TradeSnapshot to insert
+        
+    Returns:
+        Database ID of inserted record
+        
+    Raises:
+        DatabaseError: If insert fails
+    """
+    db = get_db_manager()
+    
+    query = """
+        INSERT INTO trades (
+            exchange, symbol_base, symbol_quote, price, quantity, side,
+            trade_id, timestamp, quote_quantity, is_buyer, is_maker
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+        RETURNING id
+    """
+    
+    try:
+        record_id = await db.fetchval(
+            query,
+            snapshot.exchange,
+            snapshot.symbol_base,
+            snapshot.symbol_quote,
+            snapshot.price,
+            snapshot.quantity,
+            snapshot.side,
+            snapshot.trade_id,
+            snapshot.timestamp,
+            snapshot.quote_quantity,
+            snapshot.is_buyer,
+            snapshot.is_maker
+        )
+        
+        logger.debug(f"Inserted trade snapshot {record_id} for {snapshot.exchange} {snapshot.symbol_base}_{snapshot.symbol_quote}")
+        return record_id
+        
+    except Exception as e:
+        logger.error(f"Failed to insert trade snapshot: {e}")
+        raise
+
+
+async def insert_trade_snapshots_batch(snapshots: List[TradeSnapshot]) -> int:
+    """
+    Insert multiple Trade snapshots efficiently with deduplication.
+    
+    Args:
+        snapshots: List of TradeSnapshot objects
+        
+    Returns:
+        Number of records inserted
+        
+    Raises:
+        DatabaseError: If batch insert fails
+    """
+    if not snapshots:
+        return 0
+    
+    # Clean up cache periodically
+    _cleanup_trade_timestamp_cache()
+    
+    # Filter out known duplicate trades using cache
+    filtered_snapshots = []
+    cache_hits = 0
+    
+    for snapshot in snapshots:
+        if not _is_duplicate_trade_timestamp(
+            snapshot.exchange, snapshot.symbol_base, 
+            snapshot.symbol_quote, snapshot.timestamp, snapshot.trade_id or ""
+        ):
+            filtered_snapshots.append(snapshot)
+        else:
+            cache_hits += 1
+    
+    if cache_hits > 0:
+        logger.debug(f"Cache filtered {cache_hits} duplicate trades")
+    
+    if not filtered_snapshots:
+        return 0
+    
+    # Deduplicate remaining snapshots in memory
+    unique_snapshots = {}
+    for snapshot in filtered_snapshots:
+        # Use both timestamp and trade_id for deduplication
+        key = (snapshot.exchange, snapshot.symbol_base, snapshot.symbol_quote, 
+               snapshot.timestamp, snapshot.trade_id)
+        unique_snapshots[key] = snapshot
+    
+    deduplicated_snapshots = list(unique_snapshots.values())
+    
+    if not deduplicated_snapshots:
+        return 0
+    
+    if len(snapshots) != len(deduplicated_snapshots):
+        logger.debug(
+            f"Trade deduplication: {len(snapshots)} -> {len(deduplicated_snapshots)} trades "
+            f"(cache: {cache_hits}, memory: {len(filtered_snapshots) - len(deduplicated_snapshots)})"
+        )
+    
+    # Use fallback method for reliability
+    return await insert_trade_snapshots_batch_fallback(deduplicated_snapshots)
+
+
+async def insert_trade_snapshots_batch_fallback(snapshots: List[TradeSnapshot]) -> int:
+    """
+    Fallback method for trade batch insert using individual upserts.
+    
+    Args:
+        snapshots: List of TradeSnapshot objects
+        
+    Returns:
+        Number of records inserted
+    """
+    if not snapshots:
+        return 0
+        
+    db = get_db_manager()
+    count = 0
+    
+    query = """
+        INSERT INTO trades (
+            exchange, symbol_base, symbol_quote, price, quantity, side,
+            trade_id, timestamp, quote_quantity, is_buyer, is_maker
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+        ON CONFLICT (timestamp, exchange, symbol_base, symbol_quote, id)
+        DO UPDATE SET
+            price = EXCLUDED.price,
+            quantity = EXCLUDED.quantity,
+            side = EXCLUDED.side,
+            quote_quantity = EXCLUDED.quote_quantity,
+            is_buyer = EXCLUDED.is_buyer,
+            is_maker = EXCLUDED.is_maker,
+            created_at = NOW()
+    """
+    
+    try:
+        async with db.pool.acquire() as conn:
+            async with conn.transaction():
+                for snapshot in snapshots:
+                    await conn.execute(
+                        query,
+                        snapshot.exchange,
+                        snapshot.symbol_base,
+                        snapshot.symbol_quote,
+                        snapshot.price,
+                        snapshot.quantity,
+                        snapshot.side,
+                        snapshot.trade_id,
+                        snapshot.timestamp,
+                        snapshot.quote_quantity,
+                        snapshot.is_buyer,
+                        snapshot.is_maker
+                    )
+                    count += 1
+        
+        logger.debug(f"Batch inserted {count} trade snapshots")
+        return count
+        
+    except Exception as e:
+        logger.error(f"Failed in trade batch insert: {e}")
+        raise
+
+
+async def get_recent_trades(
+    exchange: str,
+    symbol: Symbol,
+    minutes_back: int = 60
+) -> List[TradeSnapshot]:
+    """
+    Get recent trades for a specific exchange/symbol.
+    
+    Args:
+        exchange: Exchange identifier
+        symbol: Symbol object
+        minutes_back: How many minutes of recent trades to retrieve
+        
+    Returns:
+        List of TradeSnapshot objects ordered by timestamp DESC
+    """
+    db = get_db_manager()
+    timestamp_from = datetime.utcnow() - timedelta(minutes=minutes_back)
+    
+    query = """
+        SELECT id, exchange, symbol_base, symbol_quote, price, quantity, side,
+               trade_id, timestamp, created_at, quote_quantity, is_buyer, is_maker
+        FROM trades
+        WHERE exchange = $1 AND symbol_base = $2 AND symbol_quote = $3 AND timestamp >= $4
+        ORDER BY timestamp DESC, id DESC
+        LIMIT 10000
+    """
+    
+    try:
+        rows = await db.fetch(query, exchange.upper(), str(symbol.base), str(symbol.quote), timestamp_from)
+        
+        snapshots = []
+        for row in rows:
+            snapshot = TradeSnapshot(
+                id=row['id'],
+                exchange=row['exchange'],
+                symbol_base=row['symbol_base'],
+                symbol_quote=row['symbol_quote'],
+                price=float(row['price']),
+                quantity=float(row['quantity']),
+                side=row['side'],
+                trade_id=row['trade_id'],
+                timestamp=row['timestamp'],
+                created_at=row['created_at'],
+                quote_quantity=float(row['quote_quantity']) if row['quote_quantity'] else None,
+                is_buyer=row['is_buyer'],
+                is_maker=row['is_maker']
+            )
+            snapshots.append(snapshot)
+        
+        logger.debug(f"Retrieved {len(snapshots)} recent trade snapshots")
+        return snapshots
+        
+    except Exception as e:
+        logger.error(f"Failed to retrieve recent trades: {e}")
+        raise
+
+
+async def get_trade_database_stats() -> Dict[str, Any]:
+    """
+    Get trade database statistics for monitoring.
+    
+    Returns:
+        Dictionary with trade database statistics
+    """
+    db = get_db_manager()
+    
+    queries = {
+        'total_trades': "SELECT COUNT(*) FROM trades",
+        'exchanges': "SELECT COUNT(DISTINCT exchange) FROM trades",
+        'symbols': "SELECT COUNT(DISTINCT CONCAT(symbol_base, '_', symbol_quote)) FROM trades",
+        'latest_timestamp': "SELECT MAX(timestamp) FROM trades",
+        'oldest_timestamp': "SELECT MIN(timestamp) FROM trades",
+        'table_size': """
+            SELECT pg_size_pretty(pg_total_relation_size('trades')) as size
+        """,
+        'avg_trades_per_minute': """
+            SELECT AVG(trade_count) FROM (
+                SELECT COUNT(*) as trade_count
+                FROM trades 
+                WHERE timestamp > NOW() - INTERVAL '1 hour'
+                GROUP BY DATE_TRUNC('minute', timestamp)
+            ) minute_counts
+        """
+    }
+    
+    stats = {}
+    
+    try:
+        for key, query in queries.items():
+            result = await db.fetchval(query)
+            stats[key] = result
+        
+        return stats
+        
+    except Exception as e:
+        logger.error(f"Failed to retrieve trade database stats: {e}")
         return {}

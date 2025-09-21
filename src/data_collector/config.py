@@ -34,6 +34,8 @@ class DataCollectorConfig:
     exchanges: List[str]
     analytics: AnalyticsConfig
     symbols: List[Symbol]
+    collect_trades: bool = True  # Enable/disable trade collection
+    trade_snapshot_interval: float = 1.0  # Trade snapshot interval in seconds
 
 
 class ConfigManager:
@@ -104,7 +106,9 @@ class ConfigManager:
             database=db_config,
             exchanges=dc_config.get("exchanges", ["mexc", "gateio"]),
             analytics=analytics_config,
-            symbols=symbols
+            symbols=symbols,
+            collect_trades=dc_config.get("collect_trades", True),
+            trade_snapshot_interval=dc_config.get("trade_snapshot_interval", 1.0)
         )
     
     def _parse_database_config(self, raw_config: Dict[str, Any]) -> DatabaseConfig:
@@ -183,6 +187,8 @@ class ConfigManager:
             "snapshot_interval": 1,  # seconds
             "analytics_interval": 10,  # seconds
             "exchanges": ["mexc", "gateio"],
+            "collect_trades": True,  # Enable trade collection by default
+            "trade_snapshot_interval": 1.0,  # Trade snapshot interval
             "analytics": {
                 "arbitrage_threshold": 0.05,  # 5%
                 "volume_threshold": 1000,  # USD
@@ -217,6 +223,10 @@ class ConfigManager:
         # Validate snapshot interval
         if config.snapshot_interval <= 0:
             raise ValueError("snapshot_interval must be positive")
+        
+        # Validate trade snapshot interval
+        if config.trade_snapshot_interval <= 0:
+            raise ValueError("trade_snapshot_interval must be positive")
         
         # Validate analytics interval
         if config.analytics_interval <= 0:

@@ -127,6 +127,48 @@ class PathResolver:
         if not Path(path).exists():
             raise FileNotFoundError(f"{file_type} not found: {path}")
         return True
+    
+    @staticmethod
+    def find_latest_discovery_file(output_dir: str = "output", format_type: str = "detailed") -> str:
+        """
+        Find the latest symbol discovery file with timestamp.
+        
+        Args:
+            output_dir: Directory to search for discovery files
+            format_type: Format type to search for (detailed, summary, etc.)
+            
+        Returns:
+            Path to the latest discovery file
+            
+        Raises:
+            FileNotFoundError: If no discovery files found
+        """
+        import glob
+        
+        output_path = Path(output_dir)
+        
+        # Search for discovery files with timestamps
+        pattern = f"symbol_discovery_{format_type}_*.json"
+        search_pattern = str(output_path / pattern)
+        
+        discovery_files = glob.glob(search_pattern)
+        
+        if not discovery_files:
+            # Fallback to non-timestamped filename
+            fallback_file = str(output_path / f"symbol_discovery_{format_type}.json")
+            if Path(fallback_file).exists():
+                return fallback_file
+            
+            raise FileNotFoundError(
+                f"No discovery files found matching pattern: {search_pattern}. "
+                f"Run 'discover' command first to generate symbol discovery data."
+            )
+        
+        # Sort by modification time to get the latest
+        discovery_files.sort(key=lambda x: Path(x).stat().st_mtime, reverse=True)
+        latest_file = discovery_files[0]
+        
+        return latest_file
 
 
 class CLIManager:

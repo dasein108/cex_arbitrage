@@ -13,4 +13,7 @@ from .gateio_ws_public_futures import GateioWebsocketPublicFutures
 #
 # )
 
+# Import registration to trigger auto-registration with factories
+from . import registration
+
 __all__ = ['GateioWebsocketPublic', 'GateioWebsocketPrivate', 'GateioWebsocketPublicFutures']

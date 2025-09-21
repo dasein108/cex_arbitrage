@@ -695,6 +695,57 @@ Legacy tools remain available but are deprecated:
 
 ---
 
+## Additional Specialized Tools
+
+### Multi-Exchange Candles Downloader
+
+**File**: `candles_downloader.py`  
+**Purpose**: Download historical candlestick data from multiple exchanges with unified CSV output format.
+
+#### Supported Exchanges
+
+- **MEXC**: Spot trading pairs
+- **Gate.io**: Spot trading pairs (`gateio`)
+- **Gate.io Futures**: Futures contracts (`gateio_futures`)
+
+#### Basic Usage
+
+```bash
+# Download spot data from MEXC
+python candles_downloader.py --exchange mexc --symbol BTC_USDT --timeframe 1h --days 30
+
+# Download spot data from Gate.io
+python candles_downloader.py --exchange gateio --symbol BTC_USDT --timeframe 1d --start 2024-01-01 --end 2024-02-01
+
+# Download futures data from Gate.io
+python candles_downloader.py --exchange gateio_futures --symbol BTC_USDT --timeframe 1h --days 7
+
+# Download with custom output directory
+python candles_downloader.py --exchange mexc --symbol ETH_USDT --timeframe 5m --days 7 --output ./my_data
+```
+
+#### Features
+
+- **Multi-Exchange Support**: Unified interface for MEXC, Gate.io spot, and Gate.io futures
+- **Factory Pattern Integration**: Uses the established exchange factory system
+- **Unified CSV Format**: Consistent output format across all exchanges
+- **Batch Processing**: Automatic chunking for large time ranges
+- **Rate Limiting**: Built-in rate limiting to respect API limits
+- **Error Recovery**: Comprehensive error handling with detailed logging
+
+#### Unified CSV Output
+
+All exchanges output data in the same format:
+- **timestamp**: Unix timestamp (milliseconds)
+- **datetime**: Human-readable datetime (UTC)
+- **exchange**: Exchange identifier (MEXC, GATEIO, GATEIO_FUTURES)
+- **symbol**: Symbol in BASE_QUOTE format
+- **timeframe**: Timeframe (1m, 5m, 1h, 1d, etc.)
+- **open, high, low, close**: OHLC prices
+- **volume**: Base asset volume
+- **quote_volume**: Quote asset volume
+- **trades_count**: Number of trades (0 if not available)
+
 ## Integration with Trading System
 
 ### Data Pipeline Integration

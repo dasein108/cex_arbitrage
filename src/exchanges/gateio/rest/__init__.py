@@ -2,6 +2,8 @@
 
 from .gateio_rest_public import GateioPublicSpotRest
 from .gateio_rest_private import GateioPrivateSpotRest
+from .gateio_futures_public import GateioPublicFuturesRest
+from .gateio_futures_private import GateioPrivateFuturesRest
 from .strategies import (
     GateioRequestStrategy, GateioRateLimitStrategy, GateioRetryStrategy, GateioAuthStrategy
 )
@@ -33,12 +35,35 @@ RestStrategyFactory.register_strategies(
     auth_strategy_cls=GateioAuthStrategy
 )
 
+# Register Gate.io Futures strategies  
+RestStrategyFactory.register_strategies(
+    exchange="GATEIO_FUTURES",
+    is_private=False,
+    request_strategy_cls=GateioRequestStrategy,
+    rate_limit_strategy_cls=GateioRateLimitStrategy,
+    retry_strategy_cls=GateioRetryStrategy,
+    auth_strategy_cls=None
+)
+
+RestStrategyFactory.register_strategies(
+    exchange="GATEIO_FUTURES",
+    is_private=True,
+    request_strategy_cls=GateioRequestStrategy,
+    rate_limit_strategy_cls=GateioRateLimitStrategy,
+    retry_strategy_cls=GateioRetryStrategy,
+    auth_strategy_cls=GateioAuthStrategy
+)
+
 PublicRestExchangeFactory.register(ExchangeEnum.GATEIO.value, GateioPublicSpotRest)
 PrivateRestExchangeFactory.register(ExchangeEnum.GATEIO.value, GateioPrivateSpotRest)
+PublicRestExchangeFactory.register("GATEIO_FUTURES", GateioPublicFuturesRest)
+PrivateRestExchangeFactory.register("GATEIO_FUTURES", GateioPrivateFuturesRest)
 
 __all__ = [
     'GateioPublicSpotRest', 
     'GateioPrivateSpotRest',
+    'GateioPublicFuturesRest',
+    'GateioPrivateFuturesRest',
     'GateioRequestStrategy', 
     'GateioRateLimitStrategy', 
     'GateioRetryStrategy', 

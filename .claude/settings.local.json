@@ -67,7 +67,8 @@
       "Bash(./quick-fix-constraints.sh:*)",
       "Bash(echo:*)",
       "Bash(pip show:*)",
-      "Bash(git restore:*)"
+      "Bash(git restore:*)",
+      "Bash(./migrations/migrate.sh:*)"
     ],
     "deny": [],
     "ask": [],
