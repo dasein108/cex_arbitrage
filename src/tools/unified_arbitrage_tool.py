@@ -32,8 +32,8 @@ sys.path.insert(0, str(src_path))
 
 # CLAUDE.md compliant imports - use proper interfaces
 from interfaces.cex.base.base_public_exchange import BasePublicExchangeInterface
-from cex.factories.exchange_factory import ExchangeFactory
-from core.config.config_manager import ConfigurationManager
+from core.factories.rest.public_rest_factory import PublicRestExchangeFactory
+from core.config.config_manager import HftConfig
 from structs.common import Symbol, SymbolInfo, ExchangeName
 from core.exceptions.exchange import BaseExchangeError
 
@@ -42,7 +42,7 @@ from analysis.collect_arbitrage_data import ArbitrageDataPipeline
 from analysis.spread_analyzer import SpreadAnalyzer
 
 # Import shared utilities (DRY compliance)
-from shared_utils import (
+from tools.shared_utils import (
     ToolConfig, CLIManager, LoggingConfigurator, PathResolver, 
     ErrorHandler, PerformanceTimer
 )
@@ -56,15 +56,15 @@ class SymbolDiscoveryService:
     Uses BasePublicExchangeInterface instead of direct REST clients.
     """
     
-    def __init__(self, exchange_factory: ExchangeFactory, logger):
+    def __init__(self, config_manager: HftConfig, logger):
         """
         Initialize symbol discovery service.
         
         Args:
-            exchange_factory: Factory for creating exchange instances
+            config_manager: Configuration manager for exchange configs
             logger: Logger instance
         """
-        self.factory = exchange_factory
+        self.config_manager = config_manager
         self.logger = logger
         self._exchanges: Dict[str, BasePublicExchangeInterface] = {}
     
@@ -123,11 +123,12 @@ class SymbolDiscoveryService:
             Dictionary of symbols and their info
         """
         try:
-            # Use factory to create exchange instance (CLAUDE.md compliant)
+            # Use REST factory to create exchange instance (CLAUDE.md compliant)
             exchange_name = config["name"]
             
-            # Create public exchange instance through factory
-            exchange = self.factory.create_public_exchange(exchange_name)
+            # Get exchange config and create public exchange instance through REST factory
+            exchange_config = self.config_manager.get_exchange_config(exchange_name)
+            exchange = PublicRestExchangeFactory.inject(exchange_name, config=exchange_config)
             
             # Initialize and get exchange info using interface
             await exchange.initialize()
@@ -427,7 +428,6 @@ class ArbitrageToolController:
         """Initialize controller with dependencies"""
         self.logger = None
         self.config_manager = None
-        self.exchange_factory = None
         
         # Services (dependency injection)
         self.discovery_service = None
@@ -445,13 +445,14 @@ class ArbitrageToolController:
         self.logger = LoggingConfigurator.setup_logging(config.verbose, "ArbitrageTool")
         
         # Initialize configuration manager (CLAUDE.md compliant)
-        self.config_manager = ConfigurationManager()
+        self.config_manager = HftConfig()
         
-        # Initialize exchange factory (CLAUDE.md compliant)
-        self.exchange_factory = ExchangeFactory(self.config_manager)
+        # Import exchange modules to trigger auto-registration
+        import cex.mexc.rest  # Registers MEXC with PublicRestExchangeFactory
+        import cex.gateio.rest  # Registers Gate.io with PublicRestExchangeFactory
         
         # Initialize services with dependency injection
-        self.discovery_service = SymbolDiscoveryService(self.exchange_factory, self.logger)
+        self.discovery_service = SymbolDiscoveryService(self.config_manager, self.logger)
         self.collection_service = DataCollectionService(self.logger)
         self.analysis_service = AnalysisService(self.logger)
     

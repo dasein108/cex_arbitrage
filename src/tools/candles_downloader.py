@@ -31,12 +31,16 @@ from pathlib import Path
 from typing import Dict, List, Optional, Any
 import logging
 
-# Import the exchange implementations
-from cex.mexc.rest.mexc_rest_public import MexcPublicSpotRest
-from cex.gateio.rest.gateio_public import GateioPublicExchangeSpotRest
+# Import the unified factory for exchange instances
+from core.factories.rest.public_rest_factory import PublicRestExchangeFactory
+from core.config.config_manager import HftConfig
 from structs.common import Symbol, AssetName, KlineInterval, Kline
 # NOTE: rate_limiter functionality replaced by strategy-based transport system
 # from common.rate_limiter import get_rate_limiter
+
+# Import exchange modules to trigger auto-registration
+import cex.mexc.rest
+import cex.gateio.rest
 
 
 class CandlesDownloader:
@@ -63,11 +67,8 @@ class CandlesDownloader:
         'trades_count'        # Number of trades (0 if not available)
     ]
     
-    # Exchange implementations mapping
-    EXCHANGES = {
-        'mexc': MexcPublicSpotRest,
-        'gateio': GateioPublicExchangeSpotRest
-    }
+    # Supported exchanges (factory will handle implementation)
+    SUPPORTED_EXCHANGES = ['mexc', 'gateio']
     
     # Timeframe mapping to KlineInterval enum
     TIMEFRAME_MAP = {
@@ -92,6 +93,9 @@ class CandlesDownloader:
         """
         self.output_dir = Path(output_dir)
         self.output_dir.mkdir(parents=True, exist_ok=True)
+        
+        # Initialize configuration manager
+        self.config = HftConfig()
         
         # Setup logging
         self.logger = logging.getLogger(__name__)
@@ -236,8 +240,8 @@ class CandlesDownloader:
             Exception: If download fails
         """
         # Validate exchange
-        if exchange.lower() not in self.EXCHANGES:
-            available = ', '.join(self.EXCHANGES.keys())
+        if exchange.lower() not in self.SUPPORTED_EXCHANGES:
+            available = ', '.join(self.SUPPORTED_EXCHANGES)
             raise ValueError(f"Unsupported exchange: {exchange}. Available: {available}")
         
         # Parse parameters
@@ -262,9 +266,9 @@ class CandlesDownloader:
         
         self.logger.info(f"Downloading {exchange.upper()} {symbol} {timeframe} candles from {start_date} to {end_date}")
         
-        # Initialize exchange client
-        exchange_class = self.EXCHANGES[exchange.lower()]
-        client = exchange_class()
+        # Create exchange client using factory
+        exchange_config = self.config.get_exchange_config(exchange.upper())
+        client = PublicRestExchangeFactory.inject(exchange.upper(), config=exchange_config)
         
         try:
             # Download data using batch method for large ranges
@@ -390,8 +394,8 @@ class CandlesDownloader:
         return successful_files
     
     def list_available_exchanges(self) -> List[str]:
-        """Get list of supported cex."""
-        return list(self.EXCHANGES.keys())
+        """Get list of supported exchanges."""
+        return list(self.SUPPORTED_EXCHANGES)
     
     def list_available_timeframes(self) -> List[str]:
         """Get list of supported timeframes."""

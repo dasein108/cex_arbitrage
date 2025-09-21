@@ -15,7 +15,7 @@ from structs.common import Symbol, AssetName, Side, OrderType, TimeInForce
 from core.cex.rest import PrivateExchangeSpotRestInterface
 from core.config.config_manager import get_exchange_config
 
-from examples.utils.rest_api_factory import get_exchange_rest_class
+from examples.utils.rest_api_factory import get_exchange_rest_instance
 
 
 
@@ -178,8 +178,8 @@ async def main(exchange_name: str):
     try:
         # Load exchange configuration and API credentials
         config = get_exchange_config(exchange_name.upper())
-        exchange_class = get_exchange_rest_class(exchange_name, is_private=True)
-        exchange = exchange_class(config)
+        # Use unified factory function for private REST clients
+        exchange = get_exchange_rest_instance(exchange_name, is_private=True, config=config)
         
         # Execute all private API checks
         await check_get_account_balance(exchange, exchange_name)

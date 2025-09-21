@@ -29,7 +29,7 @@ from typing import Dict, Any
 
 from structs.common import Symbol, AssetName, Side, OrderType, TimeInForce
 from core.config.config_manager import get_exchange_config
-from examples.utils.rest_api_factory import get_exchange_rest_class
+from examples.utils.rest_api_factory import get_exchange_rest_instance
 from examples.integration_test_framework import (
     IntegrationTestRunner, TestCategory, TestStatus, TestMetrics,
     EXIT_CODE_SUCCESS, EXIT_CODE_FAILED_TESTS, EXIT_CODE_ERROR, 
@@ -57,12 +57,11 @@ class RestPrivateIntegrationTest:
             if not config.credentials.api_key or not config.credentials.secret_key:
                 raise ValueError(f"{self.exchange_name} API credentials are required for private API testing")
             
-            exchange_class = get_exchange_rest_class(self.exchange_name.lower(), is_private=True)
-            self.exchange = exchange_class(config)
+            self.exchange = get_exchange_rest_instance(self.exchange_name, is_private=True, config=config)
             
             return {
                 "setup_successful": True,
-                "exchange_class": exchange_class.__name__,
+                "exchange_class": type(self.exchange).__name__,
                 "config_loaded": True,
                 "credentials_configured": True,
                 "api_key_preview": config.credentials.api_key[:8] + "..." if config.credentials.api_key else None
