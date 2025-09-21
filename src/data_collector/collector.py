@@ -16,7 +16,7 @@ from structs.common import Symbol, BookTicker
 from core.transport.websocket.structs import WebsocketChannelType
 from exchanges.mexc.ws.mexc_ws_public import MexcWebsocketPublic
 from exchanges.gateio.ws.gateio_ws_public import GateioWebsocketPublic
-from db.models import BookTickerSnapshot
+from db import BookTickerSnapshot
 from exchanges.consts import ExchangeEnum
 from .analytics import RealTimeAnalytics
 
@@ -462,20 +462,11 @@ class DataCollector:
             self.logger.info("Initializing data collector components")
             
             # Initialize database manager
-            from db.connection import DatabaseManager
-            from db.models import DatabaseConfig as DbDatabaseConfig
+            from db import DatabaseManager
             
-            # Convert data collector database config to db models format
-            db_config = DbDatabaseConfig(
-                host=self.config.database.host,
-                port=self.config.database.port,
-                database=self.config.database.database,
-                username=self.config.database.username,
-                password=self.config.database.password
-            )
-            
+            # Use the centralized database config directly
             db_manager = DatabaseManager()
-            await db_manager.initialize(db_config)
+            await db_manager.initialize(self.config.database)
             self.logger.info("Database connection pool initialized")
             
             # Initialize analytics engine
