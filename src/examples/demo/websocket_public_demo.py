@@ -297,5 +297,5 @@ if __name__ == "__main__":
         asyncio.run(main(exchange_name))
         print(f"\n✅ {exchange_name.upper()} public WebSocket demo completed successfully!")
     except Exception as e:
-        print(f"\n❌ {exchmeange_name.upper()} public WebSocket demo failed: {e}")
+        print(f"\n❌ {exchange_name.upper()} public WebSocket demo failed: {e}")
         sys.exit(1)

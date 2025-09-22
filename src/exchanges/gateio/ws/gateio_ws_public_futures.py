@@ -30,13 +30,14 @@ Architecture: Independent exchange with separate configuration and factory suppo
 
 from typing import List, Dict, Optional, Callable, Awaitable, Set
 
+from exchanges.consts import DEFAULT_PUBLIC_WEBSOCKET_CHANNELS
 from structs.common import Symbol, Trade, OrderBook, BookTicker
 from core.config.structs import ExchangeConfig
-from core.exchanges.websocket.spot.base_ws_public import BaseExchangePublicWebsocketInterface
-from core.transport.websocket.structs import ConnectionState, MessageType
+from core.exchanges.websocket import BaseWebsocketPublicFutures
+from core.transport.websocket.structs import ConnectionState, MessageType, PublicWebsocketChannelType
 
 
-class GateioWebsocketPublicFutures(BaseExchangePublicWebsocketInterface):
+class GateioWebsocketPublicFutures(BaseWebsocketPublicFutures):
     """Gate.io public futures WebSocket client using dependency injection pattern."""
 
     def __init__(
@@ -86,14 +87,17 @@ class GateioWebsocketPublicFutures(BaseExchangePublicWebsocketInterface):
     # - initialize(), close(), is_connected(), get_performance_metrics()
     # - Message routing for ORDERBOOK, TRADE, HEARTBEAT, etc.
     # - Default event handlers with dependency injection support
-    
+
+    async def initialize(self, symbols: List[Symbol],
+                         channels: List[PublicWebsocketChannelType]=DEFAULT_PUBLIC_WEBSOCKET_CHANNELS) -> None:
+        await super().initialize(symbols, channels)
+
     # Enhanced symbol management using symbol-channel mapping
     async def add_symbols(self, symbols: List[Symbol]) -> None:
         """Add futures symbols for subscription using enhanced symbol-channel mapping."""
         if not symbols:
             return
             
-
         # Use unified subscription method with symbols parameter
         await self._ws_manager.subscribe(symbols=symbols)
         

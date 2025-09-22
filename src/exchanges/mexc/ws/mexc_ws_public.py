@@ -26,7 +26,7 @@ from typing import List, Dict, Optional, Callable, Awaitable, Set
 
 from structs.common import Symbol, Trade, OrderBook, BookTicker
 from core.config.structs import ExchangeConfig
-from core.exchanges.websocket.spot.base_ws_public import BaseExchangePublicWebsocketInterface
+from core.exchanges.websocket import BaseWebsocketPublicFutures
 from core.transport.websocket.structs import ConnectionState, MessageType
 
 # MEXC-specific protobuf imports for message parsing
@@ -35,7 +35,7 @@ from exchanges.mexc.structs.protobuf.PublicLimitDepthsV3Api_pb2 import PublicLim
 from exchanges.mexc.structs.protobuf.PublicAggreDealsV3Api_pb2 import PublicAggreDealsV3Api
 
 
-class MexcWebsocketPublic(BaseExchangePublicWebsocketInterface):
+class MexcWebsocketPublic(BaseWebsocketPublicFutures):
     """MEXC public WebSocket client using dependency injection pattern."""
 
     def __init__(

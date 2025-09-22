@@ -130,7 +130,7 @@ class MexcUnifiedMappings(BaseExchangeMapper):
             Unified Trade struct
         """
         # Handle both public and private trade structures
-        # TODO: private vs public trade
+        # TODO: private vs public trade - bug
         if hasattr(mexc_ws_trade, 'p'):  # Public trade entry
             side = Side.BUY if mexc_ws_trade.tradeType == 1 else Side.SELL
             return Trade(
@@ -153,9 +153,9 @@ class MexcUnifiedMappings(BaseExchangeMapper):
                 quantity=float(mexc_ws_trade.quantity),
                 quote_quantity=float(mexc_ws_trade.price) * float(mexc_ws_trade.quantity),
                 side=side,
-                timestamp=mexc_ws_trade.timestamp,
+                timestamp=mexc_ws_trade.time,
                 trade_id="",
-                is_maker=mexc_ws_trade.is_maker
+                is_maker=False#mexc_ws_trade.is_maker
             )
     
     def ws_to_balance(self, mexc_ws_balance) -> AssetBalance:

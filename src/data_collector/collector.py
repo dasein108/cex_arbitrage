@@ -151,7 +151,7 @@ class UnifiedWebSocketManager:
             book_ticker: Updated book ticker data
         """
         try:
-            # Update cache
+            # Update cache - use symbol directly without prefixes
             cache_key = f"{exchange.value}_{symbol}"
             self._book_ticker_cache[cache_key] = BookTickerCache(
                 ticker=book_ticker,
@@ -309,19 +309,17 @@ class UnifiedWebSocketManager:
                     # Create a fallback symbol by parsing the symbol string
                     self.logger.debug(f"Symbol not found in active symbols: {symbol_str} for exchange {exchange}, creating fallback")
                     
-                    # Remove exchange-specific prefixes like SPOT_, FUTURES_
-                    clean_symbol_str = symbol_str
-                    if clean_symbol_str.startswith(('SPOT_', 'FUTURES_')):
-                        clean_symbol_str = clean_symbol_str.split('_', 1)[1]
-                    
+                    # Parse symbol string directly without prefixes
                     # Try to parse symbol string manually as fallback
-                    if len(clean_symbol_str) >= 6 and clean_symbol_str.endswith('USDT'):
-                        from structs.common import Symbol, AssetName
-                        base = clean_symbol_str[:-4]  # Remove USDT
+                    if len(symbol_str) >= 6 and symbol_str.endswith('USDT'):
+                        from structs.common import Symbol, AssetName, ExchangeEnum
+                        base = symbol_str[:-4]  # Remove USDT
                         quote = 'USDT'
-                        is_futures = symbol_str.startswith('FUTURES_')
+                        # Determine if futures based on exchange type
+                        exchange_enum = ExchangeEnum(exchange)
+                        is_futures = exchange_enum in [ExchangeEnum.GATEIO_FUTURES]
                         symbol = Symbol(base=AssetName(base), quote=AssetName(quote), is_futures=is_futures)
-                        self.logger.debug(f"Created fallback symbol: {symbol} (futures: {is_futures})")
+                        self.logger.debug(f"Created fallback symbol: {symbol}")
                     else:
                         # Skip this entry if we can't parse it
                         self.logger.warning(f"Cannot parse symbol: {symbol_str}")

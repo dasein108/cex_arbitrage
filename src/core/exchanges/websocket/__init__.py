@@ -21,7 +21,7 @@ from core.transport.websocket.structs import (
 from .ws_base import BaseExchangeWebsocketInterface
 from core.exchanges.websocket.spot.base_ws_private import BaseExchangePrivateWebsocketInterface
 from core.exchanges.websocket.spot.base_ws_public import BaseExchangePublicWebsocketInterface
-
+from .base_ws_public_futures import BaseWebsocketPublicFutures
 __all__ = [
     'WebSocketManager',
     'WebSocketStrategyFactory',
@@ -39,4 +39,5 @@ __all__ = [
     'ConnectionState',
     'BaseExchangePrivateWebsocketInterface',
     'BaseExchangePublicWebsocketInterface',
+    'BaseWebsocketPublicFutures'
 ]

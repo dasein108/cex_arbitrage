@@ -219,157 +219,157 @@ arbitrage:
       max_exposure_usd: 25000  # Maximum $25k exposure for this pair
       is_enabled: true
       priority: 1  # Highest priority
-    - id: "hifi_usdt_spot_arb"
-      base_asset: "HIFI"
-      quote_asset: "USDT"
-      opportunity_type: "SPOT_SPOT"
-      min_profit_bps: 25  # Minimum 0.25% profit
-      max_exposure_usd: 20000  # Maximum $20k exposure
-      is_enabled: true
-      priority: 2
-#    - id: "giga_usdt_spot_arb"
-#      base_asset: "GIGA"
+#    - id: "hifi_usdt_spot_arb"
+#      base_asset: "HIFI"
 #      quote_asset: "USDT"
 #      opportunity_type: "SPOT_SPOT"
-#      min_profit_bps: 35  # Higher threshold for less liquid pair
-#      max_exposure_usd: 15000
+#      min_profit_bps: 25  # Minimum 0.25% profit
+#      max_exposure_usd: 20000  # Maximum $20k exposure
 #      is_enabled: true
-#      priority: 3
-    - id: "aiot_usdt_spot_arb"
-      base_asset: "AIOT"
-      quote_asset: "USDT"
-      opportunity_type: "SPOT_SPOT"
-      min_profit_bps: 40  # Higher for volatile asset
-      max_exposure_usd: 10000
-      is_enabled: false  # Disabled by default
-      priority: 4
-    # Additional pairs can be added - symbol info auto-discovered
-    - id: "neiroeth_usdt_spot_arb"
-      base_asset: "NEIROETH"
-      quote_asset: "USDT"
-      opportunity_type: "SPOT_SPOT"
-      min_profit_bps: 45
-      max_exposure_usd: 8000
-      is_enabled: true
-      priority: 5
-    - id: "hippo_usdt_spot_arb"
-      base_asset: "HIPPO"
-      quote_asset: "USDT"
-      opportunity_type: "SPOT_SPOT"
-      min_profit_bps: 50
-      max_exposure_usd: 7000
-      is_enabled: true
-      priority: 7
-#    - id: "myria_usdt_spot_arb"
-#      base_asset: "MYRIA"
+#      priority: 2
+##    - id: "giga_usdt_spot_arb"
+##      base_asset: "GIGA"
+##      quote_asset: "USDT"
+##      opportunity_type: "SPOT_SPOT"
+##      min_profit_bps: 35  # Higher threshold for less liquid pair
+##      max_exposure_usd: 15000
+##      is_enabled: true
+##      priority: 3
+#    - id: "aiot_usdt_spot_arb"
+#      base_asset: "AIOT"
+#      quote_asset: "USDT"
+#      opportunity_type: "SPOT_SPOT"
+#      min_profit_bps: 40  # Higher for volatile asset
+#      max_exposure_usd: 10000
+#      is_enabled: false  # Disabled by default
+#      priority: 4
+#    # Additional pairs can be added - symbol info auto-discovered
+#    - id: "neiroeth_usdt_spot_arb"
+#      base_asset: "NEIROETH"
+#      quote_asset: "USDT"
+#      opportunity_type: "SPOT_SPOT"
+#      min_profit_bps: 45
+#      max_exposure_usd: 8000
+#      is_enabled: true
+#      priority: 5
+#    - id: "hippo_usdt_spot_arb"
+#      base_asset: "HIPPO"
 #      quote_asset: "USDT"
 #      opportunity_type: "SPOT_SPOT"
 #      min_profit_bps: 50
 #      max_exposure_usd: 7000
 #      is_enabled: true
-#      priority: 8
-    - id: "myx_usdt_spot_arb"
-      base_asset: "MYX"
-      quote_asset: "USDT"
-      opportunity_type: "SPOT_SPOT"
-      min_profit_bps: 50
-      max_exposure_usd: 7000
-      is_enabled: true
-      priority: 9
-    - id: "tai_usdt_spot_arb"
-      base_asset: "TAI"
-      quote_asset: "USDT"
-      opportunity_type: "SPOT_SPOT"
-      min_profit_bps: 50
-      max_exposure_usd: 7000
-      is_enabled: true
-      priority: 10
-    - id: "ai16z_usdt_spot_arb"
-      base_asset: "AI16Z"
-      quote_asset: "USDT"
-      opportunity_type: "SPOT_SPOT"
-      min_profit_bps: 50
-      max_exposure_usd: 7000
-      is_enabled: true
-      priority: 11
-#    - id: "badger_usdt_spot_arb"
-#      base_asset: "BADGER"
+#      priority: 7
+##    - id: "myria_usdt_spot_arb"
+##      base_asset: "MYRIA"
+##      quote_asset: "USDT"
+##      opportunity_type: "SPOT_SPOT"
+##      min_profit_bps: 50
+##      max_exposure_usd: 7000
+##      is_enabled: true
+##      priority: 8
+#    - id: "myx_usdt_spot_arb"
+#      base_asset: "MYX"
 #      quote_asset: "USDT"
 #      opportunity_type: "SPOT_SPOT"
 #      min_profit_bps: 50
 #      max_exposure_usd: 7000
 #      is_enabled: true
-#      priority: 12
-    - id: "lunc_usdt_spot_arb"
-      base_asset: "LUNC"
-      quote_asset: "USDT"
-      opportunity_type: "SPOT_SPOT"
-      min_profit_bps: 50
-      max_exposure_usd: 7000
-      is_enabled: true
-      priority: 12
-    - id: "velvet_usdt_spot_arb"
-      base_asset: "VELVET"
-      quote_asset: "USDT"
-      opportunity_type: "SPOT_SPOT"
-      min_profit_bps: 50
-      max_exposure_usd: 7000
-      is_enabled: true
-      priority: 12
-    - id: "f_usdt_spot_arb"
-      base_asset: "F"
-      quote_asset: "USDT"
-      opportunity_type: "SPOT_SPOT"
-      min_profit_bps: 50
-      max_exposure_usd: 7000
-      is_enabled: true
-      priority: 12
-    - id: "aria_usdt_spot_arb"
-      base_asset: "ARIA"
-      quote_asset: "USDT"
-      opportunity_type: "SPOT_SPOT"
-      min_profit_bps: 50
-      max_exposure_usd: 7000
-      is_enabled: true
-      priority: 12
-    - id: "lever_usdt_spot_arb"
-      base_asset: "LEVER"
-      quote_asset: "USDT"
-      opportunity_type: "SPOT_SPOT"
-      min_profit_bps: 50
-      max_exposure_usd: 7000
-      is_enabled: true
-      priority: 12
-    - id: "prcl_usdt_spot_arb"
-      base_asset: "PRCL"
-      quote_asset: "USDT"
-      opportunity_type: "SPOT_SPOT"
-      min_profit_bps: 50
-      max_exposure_usd: 7000
-      is_enabled: true
-      priority: 12
-#    - id: "dood_usdt_spot_arb"
-#      base_asset: "DOOD"
+#      priority: 9
+#    - id: "tai_usdt_spot_arb"
+#      base_asset: "TAI"
+#      quote_asset: "USDT"
+#      opportunity_type: "SPOT_SPOT"
+#      min_profit_bps: 50
+#      max_exposure_usd: 7000
+#      is_enabled: true
+#      priority: 10
+#    - id: "ai16z_usdt_spot_arb"
+#      base_asset: "AI16Z"
+#      quote_asset: "USDT"
+#      opportunity_type: "SPOT_SPOT"
+#      min_profit_bps: 50
+#      max_exposure_usd: 7000
+#      is_enabled: true
+#      priority: 11
+##    - id: "badger_usdt_spot_arb"
+##      base_asset: "BADGER"
+##      quote_asset: "USDT"
+##      opportunity_type: "SPOT_SPOT"
+##      min_profit_bps: 50
+##      max_exposure_usd: 7000
+##      is_enabled: true
+##      priority: 12
+#    - id: "lunc_usdt_spot_arb"
+#      base_asset: "LUNC"
 #      quote_asset: "USDT"
 #      opportunity_type: "SPOT_SPOT"
 #      min_profit_bps: 50
 #      max_exposure_usd: 7000
 #      is_enabled: true
 #      priority: 12
-    - id: "XPIN_usdt_spot_arb"
-      base_asset: "XPIN"
-      quote_asset: "USDT"
-      opportunity_type: "SPOT_SPOT"
-      min_profit_bps: 50
-      max_exposure_usd: 7000
-      is_enabled: true
-      priority: 12
+#    - id: "velvet_usdt_spot_arb"
+#      base_asset: "VELVET"
+#      quote_asset: "USDT"
+#      opportunity_type: "SPOT_SPOT"
+#      min_profit_bps: 50
+#      max_exposure_usd: 7000
+#      is_enabled: true
+#      priority: 12
+#    - id: "f_usdt_spot_arb"
+#      base_asset: "F"
+#      quote_asset: "USDT"
+#      opportunity_type: "SPOT_SPOT"
+#      min_profit_bps: 50
+#      max_exposure_usd: 7000
+#      is_enabled: true
+#      priority: 12
+#    - id: "aria_usdt_spot_arb"
+#      base_asset: "ARIA"
+#      quote_asset: "USDT"
+#      opportunity_type: "SPOT_SPOT"
+#      min_profit_bps: 50
+#      max_exposure_usd: 7000
+#      is_enabled: true
+#      priority: 12
+#    - id: "lever_usdt_spot_arb"
+#      base_asset: "LEVER"
+#      quote_asset: "USDT"
+#      opportunity_type: "SPOT_SPOT"
+#      min_profit_bps: 50
+#      max_exposure_usd: 7000
+#      is_enabled: true
+#      priority: 12
+#    - id: "prcl_usdt_spot_arb"
+#      base_asset: "PRCL"
+#      quote_asset: "USDT"
+#      opportunity_type: "SPOT_SPOT"
+#      min_profit_bps: 50
+#      max_exposure_usd: 7000
+#      is_enabled: true
+#      priority: 12
+##    - id: "dood_usdt_spot_arb"
+##      base_asset: "DOOD"
+##      quote_asset: "USDT"
+##      opportunity_type: "SPOT_SPOT"
+##      min_profit_bps: 50
+##      max_exposure_usd: 7000
+##      is_enabled: true
+##      priority: 12
+#    - id: "XPIN_usdt_spot_arb"
+#      base_asset: "XPIN"
+#      quote_asset: "USDT"
+#      opportunity_type: "SPOT_SPOT"
+#      min_profit_bps: 50
+#      max_exposure_usd: 7000
+#      is_enabled: true
+#      priority: 12
 # Data Collector Configuration
 data_collector:
   enabled: true
   snapshot_interval: 0.5  # seconds
   analytics_interval: 10  # seconds for summary logging
-  exchanges: ["mexc_spot", "gateio_spot", "gateio_futures"]
+  exchanges: ["gateio_futures"]
   
   # Analytics configuration
   analytics:
