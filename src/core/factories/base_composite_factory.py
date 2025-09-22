@@ -179,9 +179,7 @@ class BaseCompositeFactory(Generic[T], ExchangeFactoryInterface, ABC):
             'component_counts_per_exchange': component_counts,
         }
     
-    # REMOVED: _normalize_exchange_key method
-    # Use normalize_exchange_input() and exchange_to_key() from exchange_utils instead
-    
+
     @classmethod
     def _resolve_dependencies(cls, exchange: ExchangeEnum, **context) -> Dict[str, Any]:
         """

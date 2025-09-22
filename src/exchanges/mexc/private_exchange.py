@@ -12,7 +12,7 @@ from typing import List, Dict
 
 from interfaces.cex.base import BasePrivateExchangeInterface
 from structs.common import (
-    Symbol, AssetBalance, AssetName, Order, OrderId, SymbolsInfo, Trade
+    Symbol, AssetBalance, AssetName, Order, OrderId, SymbolsInfo, Trade, Side
 )
 from exchanges.mexc.ws.mexc_ws_private import MexcWebsocketPrivate
 from exchanges.mexc.rest.mexc_rest_private import MexcPrivateSpotRest
@@ -145,7 +145,7 @@ class MexcPrivateExchange(BasePrivateExchangeInterface):
     def place_limit_order(
         self, 
         symbol: Symbol, 
-        side: str, 
+        side: Side,
         quantity: float, 
         price: float,
         **kwargs
@@ -170,10 +170,10 @@ class MexcPrivateExchange(BasePrivateExchangeInterface):
         
         try:
             # Place order via REST API
-            order = self._private_rest.place_limit_order(
+            order = self._private_rest.place_order(
                 symbol=symbol,
                 side=side,
-                quantity=quantity,
+                amount=quantity,
                 price=price,
                 **kwargs
             )
@@ -189,10 +189,10 @@ class MexcPrivateExchange(BasePrivateExchangeInterface):
             self.logger.error(f"Failed to place limit order in {execution_time:.2f}ms: {e}")
             raise BaseExchangeError(f"Failed to place limit order: {e}")
     
-    def place_market_order(
+    async def place_market_order(
         self, 
         symbol: Symbol, 
-        side: str, 
+        side: Side,
         quantity: float,
         **kwargs
     ) -> Order:
@@ -215,13 +215,13 @@ class MexcPrivateExchange(BasePrivateExchangeInterface):
 
         try:
             # Place order via REST API
-            order = self._private_rest.place_market_order(
+            order = await self._private_rest.place_order(
                 symbol=symbol,
                 side=side,
-                quantity=quantity,
+                amount=quantity,
                 **kwargs
             )
-            
+            order = await self._private_rest.get_order(symbol, order.order_id)
             # Track performance
             execution_time = (time.perf_counter() - start_time) * 1000
             self.logger.debug(f"Market order placed in {execution_time:.2f}ms")

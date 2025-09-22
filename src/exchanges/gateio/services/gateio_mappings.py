@@ -24,7 +24,7 @@ from core.transport.websocket.structs import PublicWebsocketChannelType, Private
 from .mapping_configuration import create_gateio_mapping_configuration
 
 
-class GateioUnifiedMappings(BaseExchangeMapper):
+class GateioMappings(BaseExchangeMapper):
     """
     Gate.io-specific unified mapping implementation.
     

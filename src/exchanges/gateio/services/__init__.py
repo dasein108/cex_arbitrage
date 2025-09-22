@@ -13,22 +13,23 @@ Registration happens automatically when this module is imported.
 
 from .symbol_mapper import GateioSymbolMapperInterface
 from .futures_symbol_mapper import GateioFuturesSymbolMapperInterface
-from .gateio_mappings import GateioUnifiedMappings
-
+from .gateio_mappings import GateioMappings
+from .gateio_funtures_mappings import GateioFuturesMappings
 from structs.common import ExchangeEnum
 
 # Import factories to verify registration
 from core.exchanges.services import ExchangeSymbolMapperFactory, ExchangeMapperFactory
 
 ExchangeSymbolMapperFactory.register(ExchangeEnum.GATEIO, GateioSymbolMapperInterface)
-ExchangeMapperFactory.register(ExchangeEnum.GATEIO, GateioUnifiedMappings)
+ExchangeMapperFactory.register(ExchangeEnum.GATEIO, GateioMappings)
 
 ExchangeSymbolMapperFactory.register(ExchangeEnum.GATEIO_FUTURES, GateioFuturesSymbolMapperInterface)
-ExchangeMapperFactory.register(ExchangeEnum.GATEIO_FUTURES, GateioUnifiedMappings)
+ExchangeMapperFactory.register(ExchangeEnum.GATEIO_FUTURES, GateioFuturesMappings)
 
 
 __all__ = [
     'GateioSymbolMapperInterface',
-    'GateioUnifiedMappings',
-    'GateioFuturesSymbolMapperInterface'
+    'GateioMappings',
+    'GateioFuturesSymbolMapperInterface',
+    'GateioFuturesMappings'
 ]

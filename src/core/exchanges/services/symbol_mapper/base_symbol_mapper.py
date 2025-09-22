@@ -92,7 +92,9 @@ class SymbolMapperInterface(ABC):
         
         # Cache miss - compute and store
         pair = self._symbol_to_string(symbol)
-        self._cache_mapping(symbol, pair)
+        self._symbol_to_pair_cache[symbol] = pair.upper()
+
+        # self._cache_mapping(symbol, pair)
         
         return pair
     
@@ -113,8 +115,8 @@ class SymbolMapperInterface(ABC):
         
         # Cache miss - parse and store
         symbol = self._string_to_symbol(pair)
-        self._cache_mapping(symbol, pair)
-        
+        # self._cache_mapping(symbol, pair)
+        self._pair_to_symbol_cache[pair.upper()] = symbol
         return symbol
     
     def _cache_mapping(self, symbol: Symbol, pair: str) -> None:

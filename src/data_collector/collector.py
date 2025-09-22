@@ -158,13 +158,20 @@ class UnifiedWebSocketManager:
                 last_updated=datetime.now(),
                 exchange=exchange.value
             )
-
+            
+            # Log successful cache update for debugging
+            self.logger.debug(
+                f"Cached ticker update: {exchange.value} {symbol} - "
+                f"bid={book_ticker.bid_price} ask={book_ticker.ask_price}"
+            )
             
             # Call registered handler if available
             if self.book_ticker_handler:
                 await self.book_ticker_handler(exchange, symbol, book_ticker)
         except Exception as e:
             self.logger.error(f"Error handling book ticker update for {symbol}: {e}")
+            import traceback
+            self.logger.error(traceback.format_exc())
     
     async def _handle_trades_update(self, exchange: ExchangeEnum, symbol: Symbol, trades: List[Trade]) -> None:
         """
@@ -279,20 +286,47 @@ class UnifiedWebSocketManager:
         snapshots = []
         
         for cache_key, cache_entry in self._book_ticker_cache.items():
-            # Parse exchange and symbol from cache key
-            exchange, symbol_str = cache_key.split("_", 1)
-            
-            # Find the original Symbol object
-            symbol = None
-            for active_symbols in self._active_symbols.values():
-                for sym in active_symbols:
-                    if str(sym) == symbol_str:
-                        symbol = sym
+            try:
+                # Parse exchange and symbol from cache key
+                parts = cache_key.split("_", 1)
+                if len(parts) != 2:
+                    self.logger.warning(f"Invalid cache key format: {cache_key}")
+                    continue
+                    
+                exchange, symbol_str = parts
+                
+                # Find the original Symbol object more efficiently
+                symbol = None
+                for active_symbols in self._active_symbols.values():
+                    for sym in active_symbols:
+                        if str(sym) == symbol_str:
+                            symbol = sym
+                            break
+                    if symbol:
                         break
-                if symbol:
-                    break
-            
-            if symbol:
+                
+                if symbol is None:
+                    # Create a fallback symbol by parsing the symbol string
+                    self.logger.debug(f"Symbol not found in active symbols: {symbol_str} for exchange {exchange}, creating fallback")
+                    
+                    # Remove exchange-specific prefixes like SPOT_, FUTURES_
+                    clean_symbol_str = symbol_str
+                    if clean_symbol_str.startswith(('SPOT_', 'FUTURES_')):
+                        clean_symbol_str = clean_symbol_str.split('_', 1)[1]
+                    
+                    # Try to parse symbol string manually as fallback
+                    if len(clean_symbol_str) >= 6 and clean_symbol_str.endswith('USDT'):
+                        from structs.common import Symbol, AssetName
+                        base = clean_symbol_str[:-4]  # Remove USDT
+                        quote = 'USDT'
+                        is_futures = symbol_str.startswith('FUTURES_')
+                        symbol = Symbol(base=AssetName(base), quote=AssetName(quote), is_futures=is_futures)
+                        self.logger.debug(f"Created fallback symbol: {symbol} (futures: {is_futures})")
+                    else:
+                        # Skip this entry if we can't parse it
+                        self.logger.warning(f"Cannot parse symbol: {symbol_str}")
+                        continue
+                
                 snapshot = BookTickerSnapshot.from_symbol_and_data(
                     exchange=exchange.upper(),
                     symbol=symbol,
@@ -303,6 +337,10 @@ class UnifiedWebSocketManager:
                     timestamp=cache_entry.last_updated
                 )
                 snapshots.append(snapshot)
+                
+            except Exception as e:
+                self.logger.error(f"Error processing cached ticker {cache_key}: {e}")
+                continue
         
         return snapshots
     
@@ -362,17 +400,26 @@ class UnifiedWebSocketManager:
         # Count by exchange
         by_exchange = {}
         for cache_key in self._book_ticker_cache.keys():
-            exchange = cache_key.split("_", 1)[0]
-            by_exchange[exchange] = by_exchange.get(exchange, 0) + 1
+            try:
+                exchange = cache_key.split("_", 1)[0]
+                by_exchange[exchange] = by_exchange.get(exchange, 0) + 1
+            except Exception as e:
+                self.logger.warning(f"Error parsing cache key {cache_key}: {e}")
         
         # Count cached trades by exchange
         trades_by_exchange = {}
         total_cached_trades = 0
         for cache_key, trade_list in self._trade_cache.items():
-            exchange = cache_key.split("_", 1)[0]
-            trade_count = len(trade_list)
-            trades_by_exchange[exchange] = trades_by_exchange.get(exchange, 0) + trade_count
-            total_cached_trades += trade_count
+            try:
+                exchange = cache_key.split("_", 1)[0]
+                trade_count = len(trade_list)
+                trades_by_exchange[exchange] = trades_by_exchange.get(exchange, 0) + trade_count
+                total_cached_trades += trade_count
+            except Exception as e:
+                self.logger.warning(f"Error parsing trade cache key {cache_key}: {e}")
+        
+        # Add detailed cache keys for debugging
+        cache_keys = list(self._book_ticker_cache.keys())
         
         return {
             "total_cached_tickers": total_cached,
@@ -380,7 +427,9 @@ class UnifiedWebSocketManager:
             "total_cached_trades": total_cached_trades,
             "trades_by_exchange": trades_by_exchange,
             "connected_exchanges": sum(1 for connected in self._connected.values() if connected),
-            "total_exchanges": len(self._connected)
+            "total_exchanges": len(self._connected),
+            "sample_cache_keys": cache_keys[:5],  # Show first 5 cache keys for debugging
+            "connection_status": dict(self._connected)  # Show individual connection status
         }
     
     async def close(self) -> None:
@@ -471,29 +520,52 @@ class SnapshotScheduler:
             # Get all cached trades
             trade_snapshots = self.ws_manager.get_all_cached_trades()
             
+            # Enhanced debugging
+            cache_stats = self.ws_manager.get_cache_statistics()
+            self.logger.debug(
+                f"Snapshot #{self._snapshot_count + 1:03d}: Cache stats - "
+                f"Connected: {cache_stats['connected_exchanges']}/{cache_stats['total_exchanges']}, "
+                f"Cached tickers: {cache_stats['total_cached_tickers']}, "
+                f"Retrieved tickers: {len(ticker_snapshots)}, "
+                f"Retrieved trades: {len(trade_snapshots)}"
+            )
+            
             if not ticker_snapshots and not trade_snapshots:
-                self.logger.debug("No cached data available for snapshot")
+                # Log more details about why no data
+                if cache_stats['total_cached_tickers'] > 0:
+                    self.logger.warning(
+                        f"Cache has {cache_stats['total_cached_tickers']} tickers but get_all_cached_tickers returned none!"
+                    )
+                else:
+                    self.logger.debug("No cached data available for snapshot")
                 return
             
             self._snapshot_count += 1
             
             # Call snapshot handlers if available
             if self.snapshot_handler and ticker_snapshots:
+                self.logger.debug(f"Calling snapshot_handler with {len(ticker_snapshots)} tickers")
                 await self.snapshot_handler(ticker_snapshots)
+                self.logger.debug("Snapshot_handler completed successfully")
+            elif ticker_snapshots:
+                self.logger.warning(f"Have {len(ticker_snapshots)} tickers but no snapshot_handler configured!")
             
             if self.trade_handler and trade_snapshots:
+                self.logger.debug(f"Calling trade_handler with {len(trade_snapshots)} trades")
                 await self.trade_handler(trade_snapshots)
+                self.logger.debug("Trade_handler completed successfully")
             
             # Log snapshot statistics
-            cache_stats = self.ws_manager.get_cache_statistics()
-            self.logger.debug(
+            self.logger.info(
                 f"Snapshot #{self._snapshot_count:03d}: "
-                f"Captured {len(ticker_snapshots)} tickers, {len(trade_snapshots)} trades from "
+                f"Processed {len(ticker_snapshots)} tickers, {len(trade_snapshots)} trades from "
                 f"{cache_stats['connected_exchanges']}/{cache_stats['total_exchanges']} exchanges"
             )
             
         except Exception as e:
             self.logger.error(f"Error taking snapshot: {e}")
+            import traceback
+            self.logger.error(traceback.format_exc())
     
     def get_statistics(self) -> Dict[str, any]:
         """Get scheduler statistics."""
@@ -548,6 +620,12 @@ class DataCollector:
             
             self.logger.info("Initializing data collector components")
             
+            # Ensure exchange modules are imported to trigger registrations
+            self.logger.debug("Importing exchange modules for factory registration...")
+            import exchanges.mexc
+            import exchanges.gateio
+            self.logger.debug("Exchange modules imported successfully")
+            
             # Initialize database manager
             from db import DatabaseManager
             
@@ -559,6 +637,7 @@ class DataCollector:
             # Initialize analytics engine
             from data_collector.analytics import RealTimeAnalytics
             self.analytics = RealTimeAnalytics(self.config.analytics)
+            self.logger.info("Analytics engine initialized")
             
             # Initialize WebSocket manager with analytics handler
             self.ws_manager = UnifiedWebSocketManager(
@@ -566,9 +645,16 @@ class DataCollector:
                 book_ticker_handler=self._handle_book_ticker_update,
                 trade_handler=self._handle_trades_update
             )
+            self.logger.info(f"WebSocket manager created for {len(self.config.exchanges)} exchanges")
             
             # Initialize WebSocket connections
+            self.logger.info(f"Initializing WebSocket connections for {len(self.config.symbols)} symbols...")
             await self.ws_manager.initialize(self.config.symbols)
+            self.logger.info("WebSocket connections initialized")
+            
+            # Verify connections
+            connection_status = self.ws_manager.get_connection_status()
+            self.logger.info(f"Connection status: {connection_status}")
             
             # Initialize snapshot scheduler with database handler
             self.scheduler = SnapshotScheduler(
@@ -577,11 +663,14 @@ class DataCollector:
                 snapshot_handler=self._handle_snapshot_storage,
                 trade_handler=self._handle_trade_storage
             )
+            self.logger.info(f"Snapshot scheduler initialized with {self.config.snapshot_interval}s interval")
             
             self.logger.info("All data collector components initialized successfully")
             
         except Exception as e:
             self.logger.error(f"Failed to initialize data collector: {e}")
+            import traceback
+            self.logger.error(traceback.format_exc())
             raise
     
     async def start(self) -> None:
@@ -673,7 +762,10 @@ class DataCollector:
         """
         try:
             if not snapshots:
+                self.logger.debug("No snapshots to store")
                 return
+            
+            self.logger.info(f"Storing {len(snapshots)} snapshots to database...")
             
             # Store snapshots in database using batch insert
             from db.operations import insert_book_ticker_snapshots_batch
@@ -682,12 +774,22 @@ class DataCollector:
             count = await insert_book_ticker_snapshots_batch(snapshots)
             storage_duration = (datetime.now() - start_time).total_seconds() * 1000
             
-            self.logger.debug(
-                f"Stored {count} snapshots in {storage_duration:.1f}ms"
+            self.logger.info(
+                f"Successfully stored {count} snapshots in {storage_duration:.1f}ms"
             )
+            
+            # Log sample of what was stored for verification
+            if snapshots:
+                sample = snapshots[0]
+                self.logger.debug(
+                    f"Sample stored: {sample.exchange} {sample.symbol_base}/{sample.symbol_quote} "
+                    f"@ {sample.timestamp} - bid={sample.bid_price} ask={sample.ask_price}"
+                )
             
         except Exception as e:
             self.logger.error(f"Error storing snapshots: {e}")
+            import traceback
+            self.logger.error(traceback.format_exc())
     
     async def _handle_trade_storage(self, trade_snapshots: List[TradeSnapshot]) -> None:
         """

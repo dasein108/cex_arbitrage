@@ -38,6 +38,7 @@ class DataCollectorCLI:
     def setup_logging(self, log_level: str = "INFO") -> None:
         """Setup logging configuration."""
         log_format = "[%(asctime)s] %(levelname)s [%(name)s:%(lineno)d] %(message)s"
+        logging.getLogger("websockets.client").setLevel(logging.WARNING)
         logging.basicConfig(
             level=getattr(logging, log_level.upper()),
             format=log_format,

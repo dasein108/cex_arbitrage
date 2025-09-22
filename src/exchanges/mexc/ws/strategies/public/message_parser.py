@@ -1,5 +1,6 @@
 import logging
 import time
+import traceback
 from typing import Optional, Dict, Any, List, AsyncIterator
 
 import msgspec
@@ -524,21 +525,11 @@ class MexcPublicMessageParser(EnhancedBaseMessageParser):
 
                 # Convert to MEXC trade entries list
                 mexc_trades = []
+                unified_trades = []
 
                 for deal_item in deals_data.deals:
                     # Create MEXC-specific struct for performance
-                    mexc_trade = MexcWSTradeEntry(
-                        p=str(deal_item.price),  # Price as string
-                        q=str(deal_item.quantity),  # Quantity as string  
-                        t=deal_item.tradeType,  # Trade type (1=buy, 2=sell)
-                        T=int(deal_item.time)  # Timestamp
-                    )
-                    mexc_trades.append(mexc_trade)
-
-                # Use mapper service to convert MEXC structs to unified Trade structs
-                unified_trades = []
-                for mexc_trade in mexc_trades:
-                    unified_trade = self.mexc_mapper.ws_to_trade(mexc_trade, symbol_str)
+                    unified_trade = self.mexc_mapper.ws_to_trade(deal_item, symbol_str)
                     unified_trades.append(unified_trade)
 
                 return unified_trades
@@ -547,6 +538,7 @@ class MexcPublicMessageParser(EnhancedBaseMessageParser):
 
         except Exception as e:
             self.logger.error(f"Error parsing trades from protobuf: {e}")
+            traceback.print_exc()
             return None
 
     async def _parse_trades_from_json(self, msg: Dict[str, Any]) -> Optional[List[Trade]]:

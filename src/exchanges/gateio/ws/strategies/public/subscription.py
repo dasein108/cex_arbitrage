@@ -22,7 +22,7 @@ from core.transport.websocket.structs import SubscriptionAction, PublicWebsocket
 from structs.common import Symbol
 from core.exchanges.services import BaseExchangeMapper
 from exchanges.consts import DEFAULT_PUBLIC_WEBSOCKET_CHANNELS
-from exchanges.gateio.services.gateio_mappings import GateioUnifiedMappings
+from exchanges.gateio.services.gateio_mappings import GateioMappings
 
 
 class GateioPublicSubscriptionStrategy(SubscriptionStrategy):
@@ -134,7 +134,7 @@ class GateioPublicSubscriptionStrategy(SubscriptionStrategy):
     
     def is_subscription_message(self, message: Dict[str, Any]) -> bool:
         """Check if message is a subscription-related message."""
-        return message.get("event") in [GateioUnifiedMappings.EventType.SUBSCRIBE.value, GateioUnifiedMappings.EventType.UNSUBSCRIBE.value]
+        return message.get("event") in [GateioMappings.EventType.SUBSCRIBE.value, GateioMappings.EventType.UNSUBSCRIBE.value]
     
     def extract_channel_from_message(self, message: Dict[str, Any]) -> Optional[str]:
         """Extract channel name from Gate.io message."""

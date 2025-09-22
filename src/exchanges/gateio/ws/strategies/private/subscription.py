@@ -21,7 +21,7 @@ from core.transport.websocket.strategies.subscription import SubscriptionStrateg
 from core.transport.websocket.structs import SubscriptionAction
 from structs.common import Symbol
 from core.exchanges.services import BaseExchangeMapper
-from exchanges.gateio.services.gateio_mappings import GateioUnifiedMappings
+from exchanges.gateio.services.gateio_mappings import GateioMappings
 
 
 class GateioPrivateSubscriptionStrategy(SubscriptionStrategy):

@@ -12,7 +12,7 @@ from typing import TypeVar, Generic, Dict, Type, Any, Optional, List, Union, TYP
 from abc import ABC, abstractmethod
 
 from .factory_interface import ExchangeFactoryInterface
-from core.utils.exchange_utils import exchange_name_to_enum, exchange_to_key
+from core.utils.exchange_utils import exchange_name_to_enum
 
 if TYPE_CHECKING:
     from structs.common import ExchangeEnum
@@ -159,9 +159,7 @@ class BaseExchangeFactory(Generic[T], ExchangeFactoryInterface, ABC):
             'cached_instances': list(cls._instances.keys()),
         }
     
-    # REMOVED: _normalize_exchange_key method
-    # Use normalize_exchange_input() and exchange_to_key() from exchange_utils instead
-    
+
     @classmethod
     def _resolve_dependencies(cls, exchange: ExchangeEnum, **context) -> Dict[str, Any]:
         """

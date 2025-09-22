@@ -130,20 +130,23 @@ class MexcUnifiedMappings(BaseExchangeMapper):
             Unified Trade struct
         """
         # Handle both public and private trade structures
+        # TODO: private vs public trade
         if hasattr(mexc_ws_trade, 'p'):  # Public trade entry
-            side = Side.BUY if mexc_ws_trade.t == 1 else Side.SELL
+            side = Side.BUY if mexc_ws_trade.tradeType == 1 else Side.SELL
             return Trade(
                 symbol=self.pair_to_symbol(symbol_str),
-                price=float(mexc_ws_trade.p),
-                quantity=float(mexc_ws_trade.q),
-                quote_quantity=float(mexc_ws_trade.p) * float(mexc_ws_trade.q),
+                price=float(mexc_ws_trade.price),
+                quantity=float(mexc_ws_trade.quantity),
+                quote_quantity=float(mexc_ws_trade.price) * float(mexc_ws_trade.quantity),
                 side=side,
-                timestamp=mexc_ws_trade.T,
+                timestamp=mexc_ws_trade.time,
                 trade_id="",
                 is_maker=False
             )
         else:  # Private trade data
-            side = self.to_side(mexc_ws_trade.side)
+            # side = self.to_side(mexc_ws_trade.side)
+            side = Side.BUY if mexc_ws_trade.tradeType == 1 else Side.SELL
+
             return Trade(
                 symbol=self.pair_to_symbol(symbol_str),
                 price=float(mexc_ws_trade.price),
