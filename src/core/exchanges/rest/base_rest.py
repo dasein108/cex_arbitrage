@@ -5,7 +5,7 @@ import logging
 from core.transport.rest.utils import create_rest_transport_manager
 from core.transport.rest.structs import HTTPMethod
 from core.config.structs import ExchangeConfig
-from core.exchanges.services import ExchangeMappingsFactory
+from core.exchanges.services import BaseExchangeMapper
 
 class BaseExchangeRestInterface(ABC):
     """
@@ -16,7 +16,7 @@ class BaseExchangeRestInterface(ABC):
     """
 
 
-    def __init__(self, config: ExchangeConfig, is_private: bool = False):
+    def __init__(self, config: ExchangeConfig, mapper: BaseExchangeMapper, is_private: bool = False):
         self.exchange_name = config.name
         tag = '_private' if is_private else '_public'
 
@@ -30,14 +30,10 @@ class BaseExchangeRestInterface(ABC):
 
         self.logger = logging.getLogger(f"{__name__}.{self.exchange_tag}")
 
-        # Symbol mapper injection
+        # Inject mapper via dependency injection
+        self._mapper = mapper
 
-        # Create exchange-agnostic mappings service using factory
-        from core.utils.exchange_utils import exchange_name_to_enum
-        exchange_enum = exchange_name_to_enum(config.name)
-        self._mapper = ExchangeMappingsFactory.inject(exchange_enum)
-
-        self.logger.info(f"Initialized REST transport manager for {config.name}")
+        self.logger.info(f"Initialized REST transport manager for {config.name} with injected mapper")
 
     async def close(self):
         """Clean up resources and close connections."""

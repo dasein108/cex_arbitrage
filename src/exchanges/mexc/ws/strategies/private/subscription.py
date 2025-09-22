@@ -18,7 +18,8 @@ from typing import List, Dict, Any, Optional
 
 from core.transport.websocket.strategies.subscription import SubscriptionStrategy
 from core.transport.websocket.structs import SubscriptionAction
-from core.exchanges.services.unified_mapper.exchange_mappings import ExchangeMappingsInterface
+from core.exchanges.services import BaseExchangeMapper
+from exchanges.mexc.services.mexc_mappings import MexcUnifiedMappings
 
 
 class MexcPrivateSubscriptionStrategy(SubscriptionStrategy):
@@ -29,8 +30,8 @@ class MexcPrivateSubscriptionStrategy(SubscriptionStrategy):
     Format: "spot@private.account.v3.api.pb"
     """
     
-    def __init__(self, mapper: Optional[ExchangeMappingsInterface] = None):
-        super().__init__(mapper)  # Initialize parent with injected mapper
+    def __init__(self, mapper: BaseExchangeMapper):
+        super().__init__(mapper)  # Initialize parent with mandatory mapper
         self.logger = logging.getLogger(f"{__name__}.{self.__class__.__name__}")
         
     async def create_subscription_messages(self, action: SubscriptionAction, **kwargs) -> List[Dict[str, Any]]:
@@ -46,13 +47,16 @@ class MexcPrivateSubscriptionStrategy(SubscriptionStrategy):
         Returns:
             Single message with fixed private channel params
         """
-        method = "SUBSCRIPTION" if action == SubscriptionAction.SUBSCRIBE else "UNSUBSCRIPTION"
-        
+        method = self.mapper.from_subscription_action(action)
+
         # Fixed params for private channels (no symbols)
+        # Use mapper to get proper channel names and add .pb suffix for subscription
+        from core.transport.websocket.structs import PrivateWebsocketChannelType
+        
         params = [
-            "spot@private.account.v3.api.pb",
-            "spot@private.deals.v3.api.pb",
-            "spot@private.orders.v3.api.pb"
+            self.mapper.get_spot_private_channel_name(PrivateWebsocketChannelType.BALANCE) + ".pb",
+            self.mapper.get_spot_private_channel_name(PrivateWebsocketChannelType.TRADE) + ".pb",
+            self.mapper.get_spot_private_channel_name(PrivateWebsocketChannelType.ORDER) + ".pb"
         ]
         
         message = {

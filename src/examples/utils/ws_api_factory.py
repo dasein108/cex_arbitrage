@@ -53,11 +53,9 @@ def get_exchange_websocket_instance(exchange_name: str, is_private: bool = False
     if is_private:
         return PrivateWebSocketExchangeFactory.inject(
             exchange_upper, config=config,
-            orderbook_diff_handler=orderbook_diff_handler,
             trades_handler=trades_handler,
-            book_ticker_handler=book_ticker_handler,
-            order_update_handler=order_update_handler,
-            balance_update_handler=balance_update_handler,
+            order_handler=order_update_handler,
+            balance_handler=balance_update_handler,
             state_change_handler=state_change_handler
         )
     else:

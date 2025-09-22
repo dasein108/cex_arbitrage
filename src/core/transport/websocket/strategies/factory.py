@@ -12,7 +12,7 @@ from core.transport.websocket.strategies.strategy_set import WebSocketStrategySe
 from core.transport.websocket.strategies.connection import ConnectionStrategy
 from core.transport.websocket.strategies.subscription import SubscriptionStrategy
 from core.transport.websocket.strategies.message_parser import MessageParser
-from core.exchanges.services.unified_mapper.factory import ExchangeMappingsFactory
+from core.exchanges.services.exchange_mapper.factory import ExchangeMapperFactory
 from core.exceptions.exchange import ConfigurationError
 
 if TYPE_CHECKING:
@@ -84,7 +84,7 @@ class WebSocketStrategyFactory:
         # Get exchange mappings (includes symbol mapper)
         try:
             # Pass exchange enum directly
-            mapper = ExchangeMappingsFactory.inject(exchange)
+            mapper = ExchangeMapperFactory.inject(exchange)
         except Exception as e:
             cls._logger.error(f"Failed to get mapper for {exchange.value}: {e}")
             raise ConfigurationError(f"Mapper not available for {exchange.value}")

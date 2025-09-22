@@ -167,9 +167,9 @@ class BaseExchangeFactory(Generic[T], ExchangeFactoryInterface, ABC):
         """
         Generic dependency resolution infrastructure.
         
-        Automatically resolves common dependencies used across factories:
-        - symbol_mapper via ExchangeSymbolMapperFactory
-        - exchange_mappings via ExchangeMappingsFactory
+        Automatically resolves mandatory dependencies used across factories:
+        - symbol_mapper via ExchangeSymbolMapperFactory (required)
+        - mapper via ExchangeMapperFactory (required)
         
         Args:
             exchange: Exchange identifier for dependency resolution (ExchangeEnum only)
@@ -178,42 +178,23 @@ class BaseExchangeFactory(Generic[T], ExchangeFactoryInterface, ABC):
         Returns:
             Dictionary with resolved dependencies for injection
             
+        Raises:
+            Exception: If required dependencies (symbol_mapper, mapper) cannot be resolved
+            
         Performance: Sub-millisecond resolution via factory caching
         """
         resolved = {}
-        exchange_key = exchange.value
         
-        try:
-            # Import factories lazily to avoid circular dependencies
-            from core.exchanges.services.symbol_mapper.factory import ExchangeSymbolMapperFactory
-            from core.exchanges.services.unified_mapper.factory import ExchangeMappingsFactory
-            
-            # Auto-resolve symbol mapper if available
-            if 'symbol_mapper' not in context:
-                try:
-                    symbol_mapper = ExchangeSymbolMapperFactory.inject(exchange_key)
-                    resolved['symbol_mapper'] = symbol_mapper
-                    
-                    # Auto-resolve exchange mappings if symbol mapper available
-                    if 'exchange_mappings' not in context:
-                        try:
-                            exchange_mappings = ExchangeMappingsFactory.inject(exchange_key)
-                            resolved['exchange_mappings'] = exchange_mappings
-                        except Exception:
-                            # Graceful fallback - exchange mappings not available
-                            pass
-                            
-                except Exception:
-                    # Graceful fallback - symbol mapper not available
-                    pass
-            
-        except ImportError:
-            # Graceful fallback - factories not available
-            # This allows the system to work even if some factories aren't implemented yet
-            pass
-        except Exception as e:
-            # Log unexpected errors but don't fail
-            logger.debug(f"Dependency resolution failed for {exchange}: {e}")
+        # Import symbol mapper factory only (exchange mapper is handled by specific factories)
+        from core.exchanges.services.symbol_mapper.factory import ExchangeSymbolMapperFactory
+        
+        # Auto-resolve symbol mapper (mandatory for most factories)
+        if 'symbol_mapper' not in context:
+            symbol_mapper = ExchangeSymbolMapperFactory.inject(exchange)
+            resolved['symbol_mapper'] = symbol_mapper
+        
+        # Note: Exchange mapper injection removed to prevent circular dependency
+        # Factories that need exchange mapper should inject it explicitly
         
         return resolved
     
@@ -243,13 +224,8 @@ class BaseExchangeFactory(Generic[T], ExchangeFactoryInterface, ABC):
         # Merge with provided kwargs (provided kwargs take precedence)
         merged_kwargs = {**auto_deps, **kwargs}
         
-        try:
-            # Try to create instance with all dependencies
-            return implementation_class(**merged_kwargs)
-        except TypeError as e:
-            # Fallback: try without auto-injected dependencies
-            logger.debug(f"Auto-injection failed for {implementation_class.__name__}: {e}")
-            return implementation_class(**kwargs)
+        # Create instance with all dependencies (no fallback)
+        return implementation_class(**merged_kwargs)
     
     @classmethod
     def _validate_implementation_class(cls, implementation_class: Type[T], expected_base: Type) -> None:

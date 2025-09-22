@@ -16,11 +16,10 @@ from core.utils.exchange_utils import exchange_name_to_enum
 from structs.common import ExchangeEnum
 from typing import TYPE_CHECKING
 
-if TYPE_CHECKING:
-    from core.exchanges.websocket.spot.base_ws_private import BaseExchangePrivateWebsocketInterface
 from core.config.structs import ExchangeConfig
-from structs.common import Symbol, OrderBook, Trade, BookTicker, Order, AssetBalance
-from core.transport.websocket.structs import ConnectionState
+from structs.common import Order, AssetBalance, AssetName, Trade
+from typing import Dict
+from core.factories.rest.private_rest_factory import PrivateRestExchangeFactory
 
 logger = logging.getLogger(__name__)
 
@@ -71,13 +70,11 @@ class PrivateWebSocketExchangeFactory(BaseExchangeFactory):
         logger.debug(f"Registered private WebSocket implementation for {exchange_enum.value}: {implementation_class.__name__}")
 
     @classmethod
-    def inject(cls, exchange: Union[str, ExchangeEnum], config: Optional[ExchangeConfig] = None, 
-               orderbook_diff_handler: Optional[Callable[[OrderBook, Symbol], Awaitable[None]]] = None,
-               trades_handler: Optional[Callable[[Symbol, List[Trade]], Awaitable[None]]] = None,
-               book_ticker_handler: Optional[Callable[[Symbol, BookTicker], Awaitable[None]]] = None,
-               order_update_handler: Optional[Callable[[Symbol, Order], Awaitable[None]]] = None,
-               balance_update_handler: Optional[Callable[[AssetBalance], Awaitable[None]]] = None,
-               state_change_handler: Optional[Callable[[ConnectionState], Awaitable[None]]] = None,
+    def inject(cls, exchange: Union[str, ExchangeEnum], config: Optional[ExchangeConfig] = None,
+               order_handler: Optional[Callable[[Order], Awaitable[None]]] = None,
+               balance_handler: Optional[Callable[[Dict[AssetName, AssetBalance]], Awaitable[None]]] = None,
+               trade_handler: Optional[Callable[[Trade], Awaitable[None]]] = None,
+               state_change_handler: Optional[Callable] = None,
                **kwargs):
         """
         Create or retrieve private WebSocket exchange instance.
@@ -91,11 +88,9 @@ class PrivateWebSocketExchangeFactory(BaseExchangeFactory):
         Args:
             exchange: Exchange identifier (string or ExchangeEnum - converted to ExchangeEnum immediately)
             config: ExchangeConfig for the exchange (required for creation)
-            orderbook_diff_handler: Callback for orderbook updates
-            trades_handler: Callback for trade updates
-            book_ticker_handler: Callback for book ticker updates
-            order_update_handler: Callback for order updates
-            balance_update_handler: Callback for balance updates
+            order_handler: Callback for individual order updates
+            balance_handler: Callback for balance updates (dict of all balances)
+            trade_handler: Callback for individual trade updates
             state_change_handler: Callback for connection state changes
             **kwargs: Additional creation parameters
             
@@ -129,14 +124,16 @@ class PrivateWebSocketExchangeFactory(BaseExchangeFactory):
         implementation_class = cls._implementations[exchange_enum]
         
         try:
-            # Create instance with WebSocket-specific parameters
+            # Create private REST client dependency using factory
+            private_rest_client = PrivateRestExchangeFactory.inject(exchange_enum, config=config)
+            
+            # Create instance with WebSocket-specific parameters and injected REST client
             instance = implementation_class(
+                private_rest_client=private_rest_client,
                 config=config,
-                orderbook_diff_handler=orderbook_diff_handler,
-                trades_handler=trades_handler,
-                book_ticker_handler=book_ticker_handler,
-                order_update_handler=order_update_handler,
-                balance_update_handler=balance_update_handler,
+                order_handler=order_handler,
+                balance_handler=balance_handler,
+                trade_handler=trade_handler,
                 state_change_handler=state_change_handler,
                 **kwargs
             )
@@ -152,12 +149,10 @@ class PrivateWebSocketExchangeFactory(BaseExchangeFactory):
             traceback.print_exc()
     @classmethod
     def create_for_config(cls, config: ExchangeConfig,
-                         orderbook_diff_handler: Optional[Callable[[OrderBook, Symbol], Awaitable[None]]] = None,
-                         trades_handler: Optional[Callable[[Symbol, List[Trade]], Awaitable[None]]] = None,
-                         book_ticker_handler: Optional[Callable[[Symbol, BookTicker], Awaitable[None]]] = None,
-                         order_update_handler: Optional[Callable[[Symbol, Order], Awaitable[None]]] = None,
-                         balance_update_handler: Optional[Callable[[AssetBalance], Awaitable[None]]] = None,
-                         state_change_handler: Optional[Callable[[ConnectionState], Awaitable[None]]] = None):
+                         order_handler: Optional[Callable[[Order], Awaitable[None]]] = None,
+                         balance_handler: Optional[Callable[[Dict[AssetName, AssetBalance]], Awaitable[None]]] = None,
+                         trade_handler: Optional[Callable[[Trade], Awaitable[None]]] = None,
+                         state_change_handler: Optional[Callable] = None):
         """
         Convenience method to create WebSocket exchange from ExchangeConfig.
         
@@ -166,11 +161,9 @@ class PrivateWebSocketExchangeFactory(BaseExchangeFactory):
         
         Args:
             config: ExchangeConfig with exchange name and settings
-            orderbook_diff_handler: Callback for orderbook updates
-            trades_handler: Callback for trade updates
-            book_ticker_handler: Callback for book ticker updates
-            order_update_handler: Callback for order updates
-            balance_update_handler: Callback for balance updates
+            order_handler: Callback for individual order updates
+            balance_handler: Callback for balance updates (dict of all balances)
+            trade_handler: Callback for individual trade updates
             state_change_handler: Callback for connection state changes
             
         Returns:
@@ -184,11 +177,9 @@ class PrivateWebSocketExchangeFactory(BaseExchangeFactory):
         
         # Pass config.name directly to inject() - it will handle string-to-enum conversion
         return cls.inject(config.name, config=config,
-                         orderbook_diff_handler=orderbook_diff_handler,
-                         trades_handler=trades_handler,
-                         book_ticker_handler=book_ticker_handler,
-                         order_update_handler=order_update_handler,
-                         balance_update_handler=balance_update_handler,
+                         order_handler=order_handler,
+                         balance_handler=balance_handler,
+                         trade_handler=trade_handler,
                          state_change_handler=state_change_handler)
 
     @classmethod

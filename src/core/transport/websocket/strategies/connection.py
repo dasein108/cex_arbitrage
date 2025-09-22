@@ -3,6 +3,7 @@ from typing import Any, Optional
 from dataclasses import dataclass
 from websockets.client import WebSocketClientProtocol
 from websockets.protocol import State as WsState
+from core.config.structs import ExchangeConfig
 
 from core.transport.websocket.structs import ConnectionContext
 
@@ -26,8 +27,9 @@ class ConnectionStrategy(ABC):
     HFT COMPLIANT: <100ms connection establishment.
     """
     
-    def __init__(self):
+    def __init__(self, config: ExchangeConfig):
         self._websocket: Optional[WebSocketClientProtocol] = None
+        self.config = config
 
     @property
     def websocket(self) -> Optional[WebSocketClientProtocol]:

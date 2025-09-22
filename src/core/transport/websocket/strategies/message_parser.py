@@ -3,9 +3,7 @@ from typing import Optional, Dict, Any, List, AsyncIterator, TYPE_CHECKING
 
 from core.transport.websocket.structs import ParsedMessage, MessageType
 from structs.common import OrderBook
-
-if TYPE_CHECKING:
-    from core.exchanges.services.unified_mapper.exchange_mappings import ExchangeMappingsInterface
+from core.exchanges.services import BaseExchangeMapper
 
 
 class MessageParser(ABC):
@@ -49,7 +47,7 @@ class MessageParser(ABC):
             if parsed:
                 yield parsed
 
-    def __init__(self, mapper: Optional["ExchangeMappingsInterface"] = None):
+    def __init__(self, mapper: Optional[BaseExchangeMapper] = None):
         """Initialize with optional mapper injection.
         
         Args:

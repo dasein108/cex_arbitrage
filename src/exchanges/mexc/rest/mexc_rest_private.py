@@ -162,8 +162,8 @@ class MexcPrivateSpotRest(PrivateExchangeSpotRestInterface):
         # Prepare exchanges order parameters
         params = {
             'symbol': pair,
-            'side': self._mapper.get_exchange_side(side),
-            'type': self._mapper.get_exchange_order_type(order_type)
+            'side': self._mapper.from_side(side),
+            'type': self._mapper.from_order_type(order_type)
         }
 
         # Add quantity parameters
@@ -183,9 +183,9 @@ class MexcPrivateSpotRest(PrivateExchangeSpotRestInterface):
         # Add time in force (default to GTC if not specified for applicable order types)
         if order_type in [OrderType.LIMIT, OrderType.LIMIT_MAKER, OrderType.STOP_LIMIT]:
             tif = time_in_force or TimeInForce.GTC
-            params['timeInForce'] = self._mapper.get_exchange_time_in_force(tif)
+            params['timeInForce'] = self._mapper.from_time_in_force(tif)
         elif time_in_force is not None:
-            params['timeInForce'] = self._mapper.get_exchange_time_in_force(time_in_force)
+            params['timeInForce'] = self._mapper.from_time_in_force(time_in_force)
 
         # Add optional parameters
         if iceberg_qty is not None:
@@ -203,7 +203,7 @@ class MexcPrivateSpotRest(PrivateExchangeSpotRestInterface):
         order_response = msgspec.convert(response_data, MexcOrderResponse)
 
         # Transform to unified format
-        unified_order = self._mapper.transform_exchange_order_to_unified(order_response)
+        unified_order = self._mapper.rest_to_order(order_response)
 
         # Log order placement with relevant details
         amount_str = f"{amount} {symbol.base}" if amount else f"{quote_quantity} {symbol.quote}"
@@ -241,7 +241,7 @@ class MexcPrivateSpotRest(PrivateExchangeSpotRestInterface):
         order_response = msgspec.convert(response_data, MexcOrderResponse)
 
         # Transform to unified format
-        unified_order = self._mapper.transform_exchange_order_to_unified(order_response)
+        unified_order = self._mapper.rest_to_order(order_response)
 
         self.logger.info(f"Cancelled order {order_id} for {symbol.base}/{symbol.quote}")
         return unified_order
@@ -274,7 +274,7 @@ class MexcPrivateSpotRest(PrivateExchangeSpotRestInterface):
         # Transform to unified format
         cancelled_orders = []
         for order_response in order_responses:
-            unified_order = self._mapper.transform_exchange_order_to_unified(order_response)
+            unified_order = self._mapper.rest_to_order(order_response)
             cancelled_orders.append(unified_order)
 
         self.logger.info(f"Cancelled {len(cancelled_orders)} orders for {symbol.base}/{symbol.quote}")
@@ -310,7 +310,7 @@ class MexcPrivateSpotRest(PrivateExchangeSpotRestInterface):
         order_response = msgspec.convert(response_data, MexcOrderResponse)
 
         # Transform to unified format
-        unified_order = self._mapper.transform_exchange_order_to_unified(order_response)
+        unified_order = self._mapper.rest_to_order(order_response)
 
         self.logger.debug(f"Retrieved order {order_id} status: {unified_order.status}")
         return unified_order
@@ -343,7 +343,7 @@ class MexcPrivateSpotRest(PrivateExchangeSpotRestInterface):
         # Transform to unified format
         open_orders = []
         for order_response in order_responses:
-            unified_order = self._mapper.transform_exchange_order_to_unified(order_response)
+            unified_order = self._mapper.rest_to_order(order_response)
             open_orders.append(unified_order)
 
         symbol_str = f" for {symbol.base}/{symbol.quote}" if symbol else ""

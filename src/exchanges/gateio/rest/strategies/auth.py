@@ -74,23 +74,6 @@ class GateioAuthStrategy(AuthStrategy):
             hashlib.sha512
         ).hexdigest()
         
-        # Debug logging for signature verification
-        import logging
-        logger = logging.getLogger(__name__)
-        if logger.isEnabledFor(logging.DEBUG):
-            logger.debug(f"Gate.io Auth Debug:")
-            logger.debug(f"  Method: {method.value}")
-            logger.debug(f"  Endpoint: {endpoint}")
-            logger.debug(f"  URL Path: {url_path}")
-            logger.debug(f"  Query string: '{query_string}'")
-            logger.debug(f"  Request body: '{request_body}'")
-            logger.debug(f"  Body hash: {hash_of_request_body}")
-            logger.debug(f"  Timestamp: {timestamp_str}")
-            logger.debug(f"  String to sign: {repr(string_to_sign)}")
-            logger.debug(f"  Signature: {signature}")
-            logger.debug(f"  API Key: {self.api_key}")
-            logger.debug(f"  Secret Key: {'*' * len(self.api_key) if self.api_key else 'None'}")
-
         # Prepare authentication headers
         auth_headers = {
             'KEY': self.api_key,

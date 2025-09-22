@@ -16,8 +16,7 @@ class GateioFuturesConnectionStrategy(ConnectionStrategy):
     """Gate.io futures WebSocket connection strategy with futures-specific endpoints."""
 
     def __init__(self, config: ExchangeConfig):
-        super().__init__()  # Initialize parent with _websocket = None
-        self.config = config
+        super().__init__(config)  # Initialize parent with _websocket = None
         self.logger = logging.getLogger(f"{__name__}.{self.__class__.__name__}")
         
         # Gate.io futures-specific connection settings

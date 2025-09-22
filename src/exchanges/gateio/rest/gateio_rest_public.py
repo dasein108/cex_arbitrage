@@ -31,6 +31,7 @@ from structs.common import (
     ExchangeName, KlineInterval, Ticker
 )
 from core.exchanges.rest.spot.base_rest_spot_public import PublicExchangeSpotRestInterface
+from core.exchanges.services import BaseExchangeMapper
 from core.transport.rest.structs import HTTPMethod
 from core.config.structs import ExchangeConfig
 from core.exceptions.exchange import BaseExchangeError
@@ -45,14 +46,15 @@ class GateioPublicSpotRest(PublicExchangeSpotRestInterface):
     Optimized for high-frequency market data retrieval with minimal overhead.
     """
     
-    def __init__(self, config: ExchangeConfig):
+    def __init__(self, config: ExchangeConfig, mapper: BaseExchangeMapper):
         """
         Initialize Gate.io public REST client.
         
         Args:
             config: ExchangeConfig with Gate.io configuration
+            mapper: BaseExchangeMapper for data transformations
         """
-        super().__init__(config)
+        super().__init__(config, mapper)
         
         # Simple caching for exchange info to reduce API calls (HFT compliant - config data only)
         self._exchange_info: Optional[Dict[Symbol, SymbolInfo]] = None
@@ -291,7 +293,7 @@ class GateioPublicSpotRest(PublicExchangeSpotRestInterface):
             
             trades = []
             for trade_data in response_data:
-                side = self._mapper.get_unified_side(trade_data.get('side', 'buy'))
+                side = self._mapper.to_side(trade_data.get('side', 'buy'))
                 
                 trade = Trade(
                     symbol=symbol,
@@ -371,7 +373,7 @@ class GateioPublicSpotRest(PublicExchangeSpotRestInterface):
             
             trades = []
             for trade_data in response_data:
-                side = self._mapper.get_unified_side(trade_data.get('side', 'buy'))
+                side = self._mapper.to_side(trade_data.get('side', 'buy'))
                 
                 # Gate.io returns timestamp in seconds, convert to milliseconds
                 timestamp_str = trade_data.get('create_time', '0')

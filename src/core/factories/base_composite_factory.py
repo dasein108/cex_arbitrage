@@ -203,7 +203,7 @@ class BaseCompositeFactory(Generic[T], ExchangeFactoryInterface, ABC):
         
         try:
             # Import factories lazily to avoid circular dependencies
-            from core.exchanges.services.unified_mapper.factory import ExchangeMappingsFactory
+            from core.exchanges.services.exchange_mapper.factory import ExchangeMapperFactory
             
             # Auto-resolve symbol mapper if available
             if 'symbol_mapper' not in context:
@@ -218,7 +218,7 @@ class BaseCompositeFactory(Generic[T], ExchangeFactoryInterface, ABC):
             # Auto-resolve exchange mappings if symbol mapper available
             if 'exchange_mappings' not in context:
                 try:
-                    exchange_mappings = ExchangeMappingsFactory.inject(exchange)
+                    exchange_mappings = ExchangeMapperFactory.inject(exchange)
                     resolved['exchange_mappings'] = exchange_mappings
                 except Exception:
                     # Graceful fallback - exchange mappings not available

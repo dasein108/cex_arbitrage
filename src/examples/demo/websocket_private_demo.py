@@ -56,10 +56,10 @@ class PrivateWebSocketClient:
         
         logger.info(f"{self.exchange_name} private WebSocket client initialized with {type(self.websocket).__name__}")
     
-    async def initialize(self, symbols: List[Symbol] = None) -> None:
+    async def initialize(self) -> None:
         """Initialize WebSocket connection and subscriptions."""
         # For private WebSocket, pass empty list to initialize() - private channels will be subscribed automatically
-        await self.websocket.initialize([])
+        await self.websocket.initialize()
         logger.info(f"{self.exchange_name} private WebSocket initialized for account and order updates")
     
 
@@ -75,7 +75,7 @@ class PrivateWebSocketClient:
         """Get HFT performance metrics."""
         return self.websocket.get_performance_metrics()
     
-    async def _handle_order_update(self, order: Order) -> None:
+    async def _handle_order_update(self, symbol: Symbol, order: Order) -> None:
         """Handle order updates from WebSocket."""
         logger.info(f"📋 {self.exchange_name} ORDER update")
         if self.order_handler:
@@ -94,7 +94,7 @@ class PrivateWebSocketClient:
                 # Single balance update
                 await self.account_handler(balances)
     
-    async def _handle_trade_update(self, trade: Trade) -> None:
+    async def _handle_trade_update(self, symbol: Symbol, trade: List[Trade]) -> None:
         """Handle trade updates from WebSocket."""
         logger.info(f"💹 {self.exchange_name} TRADE update")
         if self.trade_handler:
@@ -235,9 +235,7 @@ async def main(exchange_name: str):
         
         logger.info(f"🔌 Testing {exchange_upper} private WebSocket factory architecture...")
         
-        # Create a dummy symbol to trigger subscription process (some exchanges may need this)
-        dummy_symbol = Symbol(base=AssetName("BTC"), quote=AssetName("USDT"), is_futures=False)
-        await ws.initialize([dummy_symbol])
+        await ws.initialize()
         
         # Wait for private data updates
         logger.info(f"⏳ Monitoring {exchange_upper} private WebSocket connection (30 seconds)...")
@@ -318,7 +316,7 @@ async def main(exchange_name: str):
 
 
 if __name__ == "__main__":
-    exchange_name = sys.argv[1] if len(sys.argv) > 1 else "gateio_spot"
+    exchange_name = sys.argv[1] if len(sys.argv) > 1 else "mexc_spot"
 
     try:
         asyncio.run(main(exchange_name))

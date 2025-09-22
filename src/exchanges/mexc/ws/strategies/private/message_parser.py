@@ -4,20 +4,20 @@ from typing import Optional, Dict, Any
 import msgspec
 
 from core.exchanges.websocket import MessageParser, ParsedMessage, MessageType
-from core.exchanges.services.unified_mapper.exchange_mappings import ExchangeMappingsInterface
+from core.exchanges.services import BaseExchangeMapper
 from exchanges.mexc.ws.protobuf_parser import MexcProtobufParser
 from exchanges.mexc.structs.exchange import (
     MexcWSPrivateOrderMessage, MexcWSPrivateBalanceMessage, MexcWSPrivateTradeMessage,
     MexcWSPrivateOrderData, MexcWSPrivateBalanceData, MexcWSPrivateTradeData
 )
-from exchanges.mexc.services.mapper import MexcMappings
+from exchanges.mexc.services.mexc_mappings import MexcUnifiedMappings
 from structs.common import OrderBook
 
 
 class MexcPrivateMessageParser(MessageParser):
     """MEXC private WebSocket message parser."""
 
-    def __init__(self, mapper: ExchangeMappingsInterface):
+    def __init__(self, mapper: BaseExchangeMapper):
         super().__init__(mapper)
         self.logger = logging.getLogger(f"{__name__}.{self.__class__.__name__}")
         self.mexc_mapper = mapper  # Use the injected mapper directly
@@ -86,8 +86,8 @@ class MexcPrivateMessageParser(MessageParser):
                         total=str(account_data.balanceAmount) if hasattr(account_data, 'balanceAmount') else "0.0"
                     )
                     
-                    # Convert MEXC struct to unified AssetBalance
-                    unified_balance = self.mexc_mapper.transform_ws_balance_to_unified(mexc_balance)
+                    # Use mapper to convert MEXC struct to unified AssetBalance
+                    unified_balance = self.mexc_mapper.ws_to_balance(mexc_balance)
                     
                     return ParsedMessage(
                         message_type=MessageType.BALANCE,
@@ -113,8 +113,8 @@ class MexcPrivateMessageParser(MessageParser):
                         updateTime=int(getattr(order_data, 'time', 0))
                     )
                     
-                    # Convert MEXC struct to unified Order
-                    unified_order = self.mexc_mapper.transform_ws_order_to_unified(mexc_order)
+                    # Use mapper to convert MEXC struct to unified Order
+                    unified_order = self.mexc_mapper.ws_to_order(mexc_order)
                     
                     return ParsedMessage(
                         message_type=MessageType.ORDER,
@@ -137,8 +137,8 @@ class MexcPrivateMessageParser(MessageParser):
                         is_maker=getattr(deal_data, 'isMaker', False)
                     )
                     
-                    # Convert MEXC struct to unified Trade
-                    unified_trade = self.mexc_mapper.transform_ws_trade_to_unified(mexc_trade)
+                    # Use mapper to convert MEXC struct to unified Trade
+                    unified_trade = self.mexc_mapper.ws_to_trade(mexc_trade, symbol)
                     
                     return ParsedMessage(
                         message_type=MessageType.TRADE,

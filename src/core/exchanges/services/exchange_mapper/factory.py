@@ -10,12 +10,12 @@ HFT COMPLIANCE: Fast service instantiation, cached instances, factory coordinati
 from typing import Dict, Type, Union
 
 from structs.common import ExchangeName, ExchangeEnum
-from core.exchanges.services.unified_mapper.exchange_mappings import ExchangeMappingsInterface
+from core.exchanges.services.exchange_mapper.base_exchange_mapper import BaseExchangeMapper
 from core.exchanges.services.symbol_mapper.base_symbol_mapper import SymbolMapperInterface
 from core.factories.base_exchange_factory import BaseExchangeFactory
 
 
-class ExchangeMappingsFactory(BaseExchangeFactory[ExchangeMappingsInterface]):
+class ExchangeMapperFactory(BaseExchangeFactory[BaseExchangeMapper]):
     """
     Factory for creating exchange-specific mapping services.
     
@@ -30,7 +30,7 @@ class ExchangeMappingsFactory(BaseExchangeFactory[ExchangeMappingsInterface]):
     def register(
         cls, 
         exchange: ExchangeEnum, 
-        implementation_class: Type[ExchangeMappingsInterface],
+        implementation_class: Type[BaseExchangeMapper],
         **kwargs
     ) -> None:
         """
@@ -47,7 +47,7 @@ class ExchangeMappingsFactory(BaseExchangeFactory[ExchangeMappingsInterface]):
         """
         
         # Use base class validation
-        cls._validate_implementation_class(implementation_class, ExchangeMappingsInterface)
+        cls._validate_implementation_class(implementation_class, BaseExchangeMapper)
         
         # Register with base class registry using ExchangeEnum as key
         cls._implementations[exchange] = implementation_class
@@ -75,17 +75,17 @@ class ExchangeMappingsFactory(BaseExchangeFactory[ExchangeMappingsInterface]):
             pass
     
     @classmethod
-    def inject(cls, exchange: ExchangeEnum, **kwargs) -> ExchangeMappingsInterface:
+    def inject(cls, exchange: ExchangeEnum, **kwargs) -> BaseExchangeMapper:
         """
-        Get or create exchange mappings instance with auto-injection.
+        Get or create exchange mappings instance with direct symbol_mapper injection.
         
-        Standardized factory method following BaseExchangeFactory patterns.
+        Handles symbol_mapper dependency directly to avoid circular dependency with BaseExchangeFactory.
         
         Args:
             exchange: Exchange identifier (ExchangeEnum only)
             
         Returns:
-            ExchangeMappingsInterface implementation for the exchange
+            BaseExchangeMapper implementation for the exchange
             
         Raises:
             ValueError: If exchange implementation not registered
@@ -96,7 +96,7 @@ class ExchangeMappingsFactory(BaseExchangeFactory[ExchangeMappingsInterface]):
         if cache_key in cls._instances:
             return cls._instances[cache_key]
         
-        # Create new instance with auto-injection
+        # Create new instance with direct symbol_mapper injection
         if exchange not in cls._implementations:
             available = cls.get_registered_exchanges()
             raise ValueError(
@@ -106,8 +106,12 @@ class ExchangeMappingsFactory(BaseExchangeFactory[ExchangeMappingsInterface]):
         
         implementation_class = cls._implementations[exchange]
         
-        # Use base class auto-injection helper
-        instance = cls._create_instance_with_auto_injection(exchange, implementation_class)
+        # Inject symbol_mapper dependency directly
+        from core.exchanges.services.symbol_mapper.factory import ExchangeSymbolMapperFactory
+        symbol_mapper = ExchangeSymbolMapperFactory.inject(exchange)
+        
+        # Create instance with injected symbol_mapper
+        instance = implementation_class(symbol_mapper)
         
         # Cache for singleton pattern
         cls._instances[cache_key] = instance
@@ -120,7 +124,7 @@ class ExchangeMappingsFactory(BaseExchangeFactory[ExchangeMappingsInterface]):
         exchange_name: Union[str, ExchangeName],
         symbol_mapper: SymbolMapperInterface = None,
         use_singleton: bool = True
-    ) -> ExchangeMappingsInterface:
+    ) -> BaseExchangeMapper:
         """
         Create mapping service for an exchange.
         
@@ -133,7 +137,7 @@ class ExchangeMappingsFactory(BaseExchangeFactory[ExchangeMappingsInterface]):
             use_singleton: Whether to reuse existing instance
 
         Returns:
-            ExchangeMappingsInterface implementation for the exchange
+            BaseExchangeMapper implementation for the exchange
 
         Raises:
             ValueError: If exchange implementation not registered

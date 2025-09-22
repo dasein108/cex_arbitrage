@@ -30,7 +30,7 @@ from structs.common import Order, AssetBalance, Trade, Side, AssetName
 from exchanges.mexc.rest.mexc_rest_private import MexcPrivateSpotRest
 from core.config.structs import ExchangeConfig
 from core.exchanges.websocket.spot.base_ws_private import BaseExchangePrivateWebsocketInterface
-from exchanges.mexc.services.mapping import status_mapping, type_mapping
+# Mappings now consolidated in MexcUnifiedMappings
 
 # MEXC-specific protobuf imports for message parsing
 from exchanges.mexc.structs.protobuf.PrivateAccountV3Api_pb2 import PrivateAccountV3Api
@@ -47,7 +47,8 @@ class MexcWebsocketPrivate(BaseExchangePrivateWebsocketInterface):
         config: ExchangeConfig,
         order_handler: Optional[Callable[[Order], Awaitable[None]]] = None,
         balance_handler: Optional[Callable[[Dict[AssetName, AssetBalance]], Awaitable[None]]] = None,
-        trade_handler: Optional[Callable[[Trade], Awaitable[None]]] = None
+        trade_handler: Optional[Callable[[Trade], Awaitable[None]]] = None,
+        **kwargs
     ):
         """
         Initialize MEXC private WebSocket with dependency injection.
@@ -74,10 +75,9 @@ class MexcWebsocketPrivate(BaseExchangePrivateWebsocketInterface):
         """MEXC-specific order update handler."""
         self.logger.info(f"MEXC order update: {order.order_id} - {order.status} - {order.filled_quantity}/{order.quantity}")
 
-    async def on_balance_update(self, balances: Dict[AssetName, AssetBalance]):
+    async def on_balance_update(self, balance: AssetBalance):
         """MEXC-specific balance update handler."""
-        non_zero_balances = [b for b in balances.values() if b.free > 0 or b.locked > 0]
-        self.logger.info(f"MEXC balance update: {len(non_zero_balances)} assets with non-zero balances")
+        self.logger.info(f"MEXC balance update: {balance}")
 
     async def on_trade_update(self, trade: Trade):
         """MEXC-specific trade update handler."""

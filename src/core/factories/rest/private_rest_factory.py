@@ -111,13 +111,12 @@ class PrivateRestExchangeFactory(BaseExchangeFactory[PrivateExchangeSpotRestInte
         implementation_class = cls._implementations[exchange_enum]
         
         try:
-            # Use base class auto-injection for consistent dependency resolution
-            instance = cls._create_instance_with_auto_injection(
-                exchange=exchange_enum,
-                implementation_class=implementation_class,
-                config=config,
-                **kwargs
-            )
+            # Explicitly inject exchange mapper (not handled by base factory due to circular dependency)
+            from core.exchanges.services.exchange_mapper.factory import ExchangeMapperFactory
+            mapper = ExchangeMapperFactory.inject(exchange_enum)
+            
+            # Create instance directly with only required parameters (config, mapper)
+            instance = implementation_class(config=config, mapper=mapper)
             
             # Cache the instance for future requests
             cls._instances[cache_key] = instance

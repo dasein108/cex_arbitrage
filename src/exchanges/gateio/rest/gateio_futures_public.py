@@ -8,6 +8,7 @@ from structs.common import (
     ExchangeName, KlineInterval, Ticker, Side
 )
 from core.exchanges.rest.spot.base_rest_spot_public import PublicExchangeSpotRestInterface
+from core.exchanges.services import BaseExchangeMapper
 from core.transport.rest.structs import HTTPMethod
 from core.config.structs import ExchangeConfig
 from core.exceptions.exchange import BaseExchangeError
@@ -19,18 +20,13 @@ class GateioPublicFuturesRest(PublicExchangeSpotRestInterface):
     architecture/style as GateioPublicSpotRest.
 
     Notes:
-    - Uses shared self._mapper for symbol <-> contract conversion (no separate mapper).
+    - Uses injected mapper for symbol <-> contract conversion.
     - Endpoints under '/futures/usdt/*'.
     - Robust parsing: supports both array and dict payload shapes.
     """
 
-    def __init__(self, config: ExchangeConfig):
-        super().__init__(config)
-
-        # Override mapper to use futures-specific mapper instead of spot mapper
-        from core.exchanges.services import ExchangeMappingsFactory
-        from structs.common import ExchangeEnum
-        self._mapper = ExchangeMappingsFactory.inject(ExchangeEnum.GATEIO_FUTURES)
+    def __init__(self, config: ExchangeConfig, mapper: BaseExchangeMapper):
+        super().__init__(config, mapper)
 
         # caching for contract info (only config data)
         self._exchange_info: Optional[Dict[Symbol, SymbolInfo]] = None
@@ -213,7 +209,7 @@ class GateioPublicFuturesRest(PublicExchangeSpotRestInterface):
                     # Support multiple field names
                     size_val = td.get('size') or td.get('amount') or td.get('qty') or 0
                     size = float(size_val)
-                    side = Side.BUY if size > 0 else Side.SELL if size < 0 else self._mapper.get_unified_side(td.get('side', 'buy'))
+                    side = Side.BUY if size > 0 else Side.SELL if size < 0 else self._mapper.to_side(td.get('side', 'buy'))
 
                     price = float(td.get('price', td.get('p', 0)))
                     ts = td.get('create_time_ms') or td.get('create_time') or td.get('t') or int(time.time() * 1000)
@@ -269,7 +265,7 @@ class GateioPublicFuturesRest(PublicExchangeSpotRestInterface):
             for td in response_data:
                 try:
                     size = float(td.get('size', td.get('amount', 0)))
-                    side = Side.BUY if size > 0 else Side.SELL if size < 0 else self._mapper.get_unified_side(td.get('side', 'buy'))
+                    side = Side.BUY if size > 0 else Side.SELL if size < 0 else self._mapper.to_side(td.get('side', 'buy'))
                     ts = td.get('create_time_ms') or td.get('create_time') or int(time.time() * 1000)
                     ts = int(ts) if isinstance(ts, (int, float)) else int(float(ts))
 

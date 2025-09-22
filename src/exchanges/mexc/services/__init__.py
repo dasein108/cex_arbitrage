@@ -6,24 +6,24 @@ Follows the same pattern as the WebSocket strategy registration in @src/exchange
 
 Services auto-registered:
 - MexcSymbolMapperInterface with ExchangeSymbolMapperFactory
-- MexcMappings with ExchangeMappingsFactory
+- MexcUnifiedMappings with ExchangeMappingsFactory
 
 Registration happens automatically when this module is imported.
 """
 
 from .symbol_mapper import MexcSymbolMapper
-from .mapper import MexcMappings
+from .mexc_mappings import MexcUnifiedMappings
 
 from structs.common import ExchangeEnum
 
 # Import factories to verify registration
 from core.exchanges.services.symbol_mapper.factory import ExchangeSymbolMapperFactory
-from core.exchanges.services.unified_mapper.factory import ExchangeMappingsFactory
+from core.exchanges.services.exchange_mapper.factory import ExchangeMapperFactory
 
 ExchangeSymbolMapperFactory.register(ExchangeEnum.MEXC, MexcSymbolMapper)
-ExchangeMappingsFactory.register(ExchangeEnum.MEXC, MexcMappings)
+ExchangeMapperFactory.register(ExchangeEnum.MEXC, MexcUnifiedMappings)
 
 __all__ = [
     'MexcSymbolMapper',
-    'MexcMappings'
+    'MexcUnifiedMappings'
 ]

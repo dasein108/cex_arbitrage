@@ -10,17 +10,19 @@ from structs.common import (
 from core.transport.rest.structs import HTTPMethod
 from core.exceptions.exchange import BaseExchangeError
 from core.exchanges.rest.spot.base_rest_spot_private import PrivateExchangeSpotRestInterface
+from core.exchanges.services import BaseExchangeMapper
 from core.config.structs import ExchangeConfig
 
 
 class GateioPrivateFuturesRest(PrivateExchangeSpotRestInterface):
 
-    def __init__(self, config: ExchangeConfig):
+    def __init__(self, config: ExchangeConfig, mapper: BaseExchangeMapper):
         """
         Args:
             config: ExchangeConfig containing credentials & transport config.
+            mapper: BaseExchangeMapper for data transformations
         """
-        super().__init__(config)
+        super().__init__(config, mapper)
         # reuse same cache pattern if needed in future
         self._logger = logging.getLogger(f"{__name__}.{self.__class__.__name__}")
 
@@ -103,12 +105,12 @@ class GateioPrivateFuturesRest(PrivateExchangeSpotRestInterface):
         """
         try:
             contract = self._mapper.to_pair(symbol)
-            payload: Dict[str, Any] = {"contract": contract, "side": self._mapper.get_exchange_side(side)}
+            payload: Dict[str, Any] = {"contract": contract, "side": self._mapper.from_side(side)}
 
             # Map order type/time-in-force to exchange values
-            payload["type"] = self._mapper.get_exchange_order_type(order_type)
+            payload["type"] = self._mapper.from_order_type(order_type)
             if time_in_force is not None:
-                payload["time_in_force"] = self._mapper.get_exchange_time_in_force(time_in_force)
+                payload["time_in_force"] = self._mapper.from_time_in_force(time_in_force)
 
             # Amount handling: futures commonly use 'size' field for base quantity
             if order_type == OrderType.MARKET:
@@ -140,7 +142,7 @@ class GateioPrivateFuturesRest(PrivateExchangeSpotRestInterface):
 
             # Try to transform using shared mapper; if mapper can't, fall back to manual minimal construct
             try:
-                order = self._mapper.transform_exchange_order_to_unified(response)
+                order = self._mapper.rest_to_order(response)
                 self.logger.info(f"Placed futures order {order.order_id}")
                 return order
             except Exception:
@@ -155,7 +157,7 @@ class GateioPrivateFuturesRest(PrivateExchangeSpotRestInterface):
                     price=float(response.get("price")) if response.get("price") else None,
                     filled_quantity=float(response.get("filled_size", response.get("filled", 0))),
                     remaining_quantity=float(response.get("left", 0)),
-                    status=self._mapper.get_unified_order_status(response.get("status", "open")),
+                    status=self._mapper.to_order_status(response.get("status", "open")),
                     timestamp=int(float(response.get("create_time_ms", int(time.time() * 1000))))
                 )
 
@@ -174,18 +176,18 @@ class GateioPrivateFuturesRest(PrivateExchangeSpotRestInterface):
             response = await self.request(HTTPMethod.DELETE, endpoint, params=params)
 
             try:
-                return self._mapper.transform_exchange_order_to_unified(response)
+                return self._mapper.rest_to_order(response)
             except Exception:
                 # Best-effort mapping
                 return Order(
                     order_id=order_id,
                     symbol=symbol,
-                    side=self._mapper.get_unified_side(response.get("side", "buy")),
+                    side=self._mapper.to_side(response.get("side", "buy")),
                     order_type=self._mapper._reverse_lookup_order_type(response.get("type", "limit")),
                     quantity=float(response.get("size", 0)),
                     filled_quantity=float(response.get("filled_size", 0)),
                     remaining_quantity=float(response.get("left", 0)),
-                    status=self._mapper.get_unified_order_status(response.get("status", "cancelled")),
+                    status=self._mapper.to_order_status(response.get("status", "cancelled")),
                     timestamp=int(float(response.get("create_time_ms", int(time.time() * 1000))))
                 )
 
@@ -208,34 +210,34 @@ class GateioPrivateFuturesRest(PrivateExchangeSpotRestInterface):
             if isinstance(response, list):
                 for item in response:
                     try:
-                        cancelled.append(self._mapper.transform_exchange_order_to_unified(item))
+                        cancelled.append(self._mapper.rest_to_order(item))
                     except Exception:
                         # best-effort minimal mapping
                         cancelled.append(Order(
                             order_id=OrderId(str(item.get("id", ""))),
                             symbol=symbol,
-                            side=self._mapper.get_unified_side(item.get("side", "buy")),
+                            side=self._mapper.to_side(item.get("side", "buy")),
                             order_type=self._mapper._reverse_lookup_order_type(item.get("type", "limit")),
                             quantity=float(item.get("size", 0)),
                             filled_quantity=float(item.get("filled_size", 0)),
                             remaining_quantity=float(item.get("left", 0)),
-                            status=self._mapper.get_unified_order_status(item.get("status", "cancelled")),
+                            status=self._mapper.to_order_status(item.get("status", "cancelled")),
                             timestamp=int(float(item.get("create_time_ms", int(time.time() * 1000))))
                         ))
             else:
                 # single-object response
                 try:
-                    cancelled.append(self._mapper.transform_exchange_order_to_unified(response))
+                    cancelled.append(self._mapper.rest_to_order(response))
                 except Exception:
                     cancelled.append(Order(
                         order_id=OrderId(str(response.get("id", ""))),
                         symbol=symbol,
-                        side=self._mapper.get_unified_side(response.get("side", "buy")),
+                        side=self._mapper.to_side(response.get("side", "buy")),
                         order_type=self._mapper._reverse_lookup_order_type(response.get("type", "limit")),
                         quantity=float(response.get("size", 0)),
                         filled_quantity=float(response.get("filled_size", 0)),
                         remaining_quantity=float(response.get("left", 0)),
-                        status=self._mapper.get_unified_order_status(response.get("status", "cancelled")),
+                        status=self._mapper.to_order_status(response.get("status", "cancelled")),
                         timestamp=int(float(response.get("create_time_ms", int(time.time() * 1000))))
                     ))
 
@@ -257,17 +259,17 @@ class GateioPrivateFuturesRest(PrivateExchangeSpotRestInterface):
             response = await self.request(HTTPMethod.GET, endpoint, params=params)
 
             try:
-                return self._mapper.transform_exchange_order_to_unified(response)
+                return self._mapper.rest_to_order(response)
             except Exception:
                 return Order(
                     order_id=order_id,
                     symbol=symbol,
-                    side=self._mapper.get_unified_side(response.get("side", "buy")),
+                    side=self._mapper.to_side(response.get("side", "buy")),
                     order_type=self._mapper._reverse_lookup_order_type(response.get("type", "limit")),
                     quantity=float(response.get("size", 0)),
                     filled_quantity=float(response.get("filled_size", 0)),
                     remaining_quantity=float(response.get("left", 0)),
-                    status=self._mapper.get_unified_order_status(response.get("status", "unknown")),
+                    status=self._mapper.to_order_status(response.get("status", "unknown")),
                     timestamp=int(float(response.get("create_time_ms", int(time.time() * 1000))))
                 )
 
@@ -296,17 +298,17 @@ class GateioPrivateFuturesRest(PrivateExchangeSpotRestInterface):
             open_orders: List[Order] = []
             for item in response:
                 try:
-                    open_orders.append(self._mapper.transform_exchange_order_to_unified(item))
+                    open_orders.append(self._mapper.rest_to_order(item))
                 except Exception:
                     open_orders.append(Order(
                         order_id=OrderId(str(item.get("id", ""))),
                         symbol=symbol,
-                        side=self._mapper.get_unified_side(item.get("side", "buy")),
+                        side=self._mapper.to_side(item.get("side", "buy")),
                         order_type=self._mapper._reverse_lookup_order_type(item.get("type", "limit")),
                         quantity=float(item.get("size", 0)),
                         filled_quantity=float(item.get("filled_size", 0)),
                         remaining_quantity=float(item.get("left", 0)),
-                        status=self._mapper.get_unified_order_status(item.get("status", "open")),
+                        status=self._mapper.to_order_status(item.get("status", "open")),
                         timestamp=int(float(item.get("create_time_ms", int(time.time() * 1000))))
                     ))
 

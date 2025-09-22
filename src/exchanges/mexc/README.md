@@ -322,13 +322,13 @@ def transform_mexc_order_to_unified(mexc_order: MexcOrderResponse) -> Order:
 
     return Order(
         symbol=symbol,
-        side=MexcMappings.get_unified_side(mexc_order.side),
-        order_type=MexcMappings.get_unified_order_type(mexc_order.type),
+        side=MexcMappings.to_side(mexc_order.side),
+        order_type=MexcMappings.to_order_type(mexc_order.type),
         price=float(mexc_order.price),
         amount=float(mexc_order.origQty),
         amount_filled=float(mexc_order.executedQty),
         order_id=OrderId(str(mexc_order.orderId)),
-        status=MexcMappings.get_unified_order_status(mexc_order.status),
+        status=MexcMappings.to_order_status(mexc_order.status),
         # ... other fields
     )
 ```

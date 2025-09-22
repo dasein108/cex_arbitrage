@@ -53,8 +53,8 @@ class MexcWebsocketPublic(BaseExchangePublicWebsocketInterface):
         Only MEXC-specific initialization logic goes here.
         """
         # Validate MEXC-specific requirements
-        if not config.websocket:
-            raise ValueError("MEXC exchange configuration missing WebSocket settings")
+        if not config.websocket_url:
+            raise ValueError("MEXC exchange configuration missing WebSocket URL")
         
         # Initialize via base class dependency injection (like REST pattern)
         super().__init__(

@@ -1,6 +1,7 @@
 from abc import abstractmethod
 from typing import Dict, List, Optional, Callable, Tuple, Any
 from core.exchanges.rest.base_rest import BaseExchangeRestInterface
+from core.exchanges.services import BaseExchangeMapper
 from structs.common import (
     Symbol,
     Order,
@@ -19,13 +20,14 @@ class PrivateExchangeSpotRestInterface(BaseExchangeRestInterface):
     """Abstract interface for private exchange operations (trading, account management)"""
     CAN_MODIFY_ORDERS = False  # Default capability flag for modifying orders
 
-    def __init__(self, config: ExchangeConfig):
-        """Initialize private interface with transport manager."""
+    def __init__(self, config: ExchangeConfig, mapper: BaseExchangeMapper):
+        """Initialize private interface with transport manager and mapper."""
         if not config.has_credentials():
             raise ValueError(f"{config.name} API credentials must be provided")
             
         super().__init__(
             config=config,
+            mapper=mapper,
             is_private=True  # Private API operations with authentication
         )
 

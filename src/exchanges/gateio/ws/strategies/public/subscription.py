@@ -20,9 +20,9 @@ from typing import List, Dict, Any, Optional, Set
 from core.transport.websocket.strategies.subscription import SubscriptionStrategy
 from core.transport.websocket.structs import SubscriptionAction, PublicWebsocketChannelType
 from structs.common import Symbol
-from core.exchanges.services.unified_mapper.exchange_mappings import ExchangeMappingsInterface
+from core.exchanges.services import BaseExchangeMapper
 from exchanges.consts import DEFAULT_PUBLIC_WEBSOCKET_CHANNELS
-from exchanges.gateio.services.mapper import GateioWebSocketMappings
+from exchanges.gateio.services.gateio_mappings import GateioUnifiedMappings
 
 
 class GateioPublicSubscriptionStrategy(SubscriptionStrategy):
@@ -33,12 +33,9 @@ class GateioPublicSubscriptionStrategy(SubscriptionStrategy):
     Format: {"time": X, "channel": Y, "event": Z, "payload": ["BTC_USDT"]}
     """
     
-    def __init__(self, mapper: Optional[ExchangeMappingsInterface] = None):
-        super().__init__(mapper)  # Initialize parent with injected mapper
+    def __init__(self, mapper: BaseExchangeMapper):
+        super().__init__(mapper)  # Initialize parent with mandatory mapper
         self.logger = logging.getLogger(f"{__name__}.{self.__class__.__name__}")
-        
-        # Track active subscriptions for reconnection
-        self._active_symbols: Set[Symbol] = set()
         
         # Track active subscriptions for reconnection
         self._active_symbols: Set[Symbol] = set()
@@ -64,7 +61,7 @@ class GateioPublicSubscriptionStrategy(SubscriptionStrategy):
             return []
         
         current_time = int(time.time())
-        event = GateioWebSocketMappings.get_event_type(action)
+        event = self.mapper.from_subscription_action(action)
         messages = []
         
         # Convert symbols to Gate.io format
@@ -72,10 +69,10 @@ class GateioPublicSubscriptionStrategy(SubscriptionStrategy):
         if not symbol_pairs:
             return []
         
-        # Create separate message for each channel type using centralized mappings
+        # Create separate message for each channel type using mapper
         i = 0
         for channel_type in channels:
-            channel_name = GateioWebSocketMappings.get_spot_channel_name(channel_type)
+            channel_name = self.mapper.get_spot_channel_name(channel_type)
             if not channel_name:
                 continue
 
@@ -92,7 +89,7 @@ class GateioPublicSubscriptionStrategy(SubscriptionStrategy):
 
         if PublicWebsocketChannelType.ORDERBOOK in channels:
             # Orderbook update is symbol specific
-            orderbook_channel = GateioWebSocketMappings.get_spot_channel_name(PublicWebsocketChannelType.ORDERBOOK)
+            orderbook_channel = self.mapper.get_spot_channel_name(PublicWebsocketChannelType.ORDERBOOK)
             for pair in symbol_pairs:
                 message = {
                     "time": current_time + i,  # Slightly different timestamps
@@ -137,7 +134,7 @@ class GateioPublicSubscriptionStrategy(SubscriptionStrategy):
     
     def is_subscription_message(self, message: Dict[str, Any]) -> bool:
         """Check if message is a subscription-related message."""
-        return message.get("event") in [GateioWebSocketMappings.EventType.SUBSCRIBE, GateioWebSocketMappings.EventType.UNSUBSCRIBE]
+        return message.get("event") in [GateioUnifiedMappings.EventType.SUBSCRIBE.value, GateioUnifiedMappings.EventType.UNSUBSCRIBE.value]
     
     def extract_channel_from_message(self, message: Dict[str, Any]) -> Optional[str]:
         """Extract channel name from Gate.io message."""
@@ -205,13 +202,13 @@ class GateioPublicSubscriptionStrategy(SubscriptionStrategy):
         Returns:
             Subscription message or None if not supported
         """
-        channel_name = GateioWebSocketMappings.get_spot_channel_name(channel_type)
+        channel_name = self.mapper.get_spot_channel_name(channel_type)
         if not channel_name or not self.mapper:
             return None
         
         try:
             exchange_symbol = self.mapper.to_pair(symbol)
-            event = GateioWebSocketMappings.get_event_type(action)
+            event = self.mapper.from_subscription_action(action)
             
             message = {
                 "time": int(time.time()),

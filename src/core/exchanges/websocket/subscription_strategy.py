@@ -35,10 +35,11 @@ class SubscriptionStrategy(ABC):
     - Connection management (handled by manager)
     """
     
-    def __init__(self):
+    def __init__(self, mapper=None):
         """Initialize subscription strategy."""
         # Subclasses can maintain their own subscription state if needed
         self._active_subscriptions: Set[str] = set()
+        self.mapper = mapper
     
     @abstractmethod
     async def create_subscription_messages(

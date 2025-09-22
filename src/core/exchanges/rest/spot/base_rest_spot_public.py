@@ -2,6 +2,7 @@ from abc import abstractmethod
 from datetime import datetime
 from typing import Dict, List, Optional, Callable
 from core.exchanges.rest.base_rest import BaseExchangeRestInterface
+from core.exchanges.services import BaseExchangeMapper
 from structs.common import (
     Symbol,
     SymbolInfo,
@@ -18,10 +19,11 @@ from core.config.structs import ExchangeConfig
 class PublicExchangeSpotRestInterface(BaseExchangeRestInterface):
     """Abstract interface for public exchange operations (market data)"""
     
-    def __init__(self, config: ExchangeConfig):
-        """Initialize public interface with transport manager."""
+    def __init__(self, config: ExchangeConfig, mapper: BaseExchangeMapper):
+        """Initialize public interface with transport manager and mapper."""
         super().__init__(
             config=config,
+            mapper=mapper,
             is_private=False  # Public API operations
         )
 

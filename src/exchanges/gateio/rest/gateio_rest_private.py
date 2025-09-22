@@ -32,6 +32,7 @@ from structs.common import (
 from core.transport.rest.structs import HTTPMethod
 from core.exceptions.exchange import BaseExchangeError
 from core.exchanges.rest.spot.base_rest_spot_private import PrivateExchangeSpotRestInterface
+from core.exchanges.services import BaseExchangeMapper
 from core.config.structs import ExchangeConfig
 
 
@@ -43,14 +44,15 @@ class GateioPrivateSpotRest(PrivateExchangeSpotRestInterface):
     Optimized for high-frequency trading operations with minimal overhead.
     """
 
-    def __init__(self, config: ExchangeConfig):
+    def __init__(self, config: ExchangeConfig, mapper: BaseExchangeMapper):
         """
         Initialize Gate.io private REST client.
         
         Args:
             config: ExchangeConfig with Gate.io configuration and credentials
+            mapper: BaseExchangeMapper for data transformations
         """
-        super().__init__(config)
+        super().__init__(config, mapper)
 
     
     def _handle_gateio_exception(self, status_code: int, message: str) -> BaseExchangeError:
@@ -93,7 +95,7 @@ class GateioPrivateSpotRest(PrivateExchangeSpotRestInterface):
             
             balances = []
             for balance_data in response_data:
-                balance = self._mapper.transform_balance_to_unified(balance_data)
+                balance = self._mapper.rest_to_balance(balance_data)
                 # Only include assets with non-zero total balance
                 if balance.total > 0:
                     balances.append(balance)
@@ -175,14 +177,14 @@ class GateioPrivateSpotRest(PrivateExchangeSpotRestInterface):
             # Build order payload
             payload = {
                 'currency_pair': pair,
-                'side': self._mapper.get_exchange_side(side),
-                'type': self._mapper.get_exchange_order_type(order_type)
+                'side': self._mapper.from_side(side),
+                'type': self._mapper.from_order_type(order_type)
             }
             
             # Set time in force
             if time_in_force is None:
                 time_in_force = TimeInForce.GTC
-            payload['time_in_force'] = self._mapper.get_exchange_time_in_force(time_in_force)
+            payload['time_in_force'] = self._mapper.from_time_in_force(time_in_force)
             
             # Handle different order configurations
             if order_type == OrderType.MARKET:
@@ -207,9 +209,10 @@ class GateioPrivateSpotRest(PrivateExchangeSpotRestInterface):
                 payload['amount'] = self._mapper.format_quantity(amount)
             
             # Add special parameters for specific order types
-            order_params = self._mapper.get_order_params(order_type, time_in_force)
-            payload.update(order_params)
-            
+            # TODO: fix or remove !
+            # order_params = self._mapper.get_order_params(order_type, time_in_force)
+            # payload.update(order_params)
+            #
             # Make authenticated request
             endpoint = '/spot/orders'
             
@@ -220,7 +223,7 @@ class GateioPrivateSpotRest(PrivateExchangeSpotRestInterface):
             )
             
             # Transform Gate.io response to unified Order
-            order = self._mapper.transform_exchange_order_to_unified(response_data)
+            order = self._mapper.rest_to_order(response_data)
             
             self.logger.info(f"Placed {side.name} order: {order.order_id}")
             return order
@@ -258,7 +261,7 @@ class GateioPrivateSpotRest(PrivateExchangeSpotRestInterface):
             )
             
             # Transform Gate.io response to unified Order
-            order = self._mapper.transform_exchange_order_to_unified(response_data)
+            order = self._mapper.rest_to_order(response_data)
             
             self.logger.info(f"Cancelled order: {order_id}")
             return order
@@ -298,7 +301,7 @@ class GateioPrivateSpotRest(PrivateExchangeSpotRestInterface):
             
             cancelled_orders = []
             for order_data in response_data:
-                order = self._mapper.transform_exchange_order_to_unified(order_data)
+                order = self._mapper.rest_to_order(order_data)
                 cancelled_orders.append(order)
             
             self.logger.info(f"Cancelled {len(cancelled_orders)} orders for {symbol}")
@@ -337,7 +340,7 @@ class GateioPrivateSpotRest(PrivateExchangeSpotRestInterface):
             )
             
             # Transform Gate.io response to unified Order
-            order = self._mapper.transform_exchange_order_to_unified(response_data)
+            order = self._mapper.rest_to_order(response_data)
             
             self.logger.debug(f"Retrieved order status: {order_id}")
             return order
@@ -388,7 +391,7 @@ class GateioPrivateSpotRest(PrivateExchangeSpotRestInterface):
             
             open_orders = []
             for order_data in response_data:
-                order = self._mapper.transform_exchange_order_to_unified(order_data)
+                order = self._mapper.rest_to_order(order_data)
                 open_orders.append(order)
             
             symbol_str = f" for {symbol}" if symbol else ""

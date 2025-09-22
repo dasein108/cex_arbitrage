@@ -36,6 +36,7 @@ from structs.common import (
     AssetName, Side, KlineInterval, Ticker
 )
 from core.exchanges.rest.spot.base_rest_spot_public import PublicExchangeSpotRestInterface
+from core.exchanges.services import BaseExchangeMapper
 from core.config.structs import ExchangeConfig
 from core.transport.rest.structs import HTTPMethod
 from common.iterators import time_range_iterator
@@ -49,14 +50,15 @@ class MexcPublicSpotRest(PublicExchangeSpotRestInterface):
     Optimized for high-frequency market data retrieval with minimal overhead.
     """
 
-    def __init__(self, config: ExchangeConfig):
+    def __init__(self, config: ExchangeConfig, mapper: BaseExchangeMapper):
         """
         Initialize MEXC public REST client with dependency injection.
 
         Args:
             config: ExchangeConfig with base URL and rate limits
+            mapper: BaseExchangeMapper for data transformations
         """
-        super().__init__(config)
+        super().__init__(config, mapper)
 
         self._symbols_info: Optional[Dict[Symbol, SymbolInfo]] = None
         
@@ -194,6 +196,7 @@ class MexcPublicSpotRest(PublicExchangeSpotRestInterface):
         ]
         
         return OrderBook(
+            symbol=symbol,
             bids=bids,
             asks=asks,
             timestamp=int(time.time())
@@ -480,7 +483,7 @@ class MexcPublicSpotRest(PublicExchangeSpotRestInterface):
             ExchangeAPIError: If unable to fetch kline data
         """
         pair = self._mapper.to_pair(symbol)
-        interval = self._mapper.get_exchange_kline_interval(timeframe)
+        interval = self._mapper.from_kline_interval(timeframe)
         
         params = {
             'symbol': pair,

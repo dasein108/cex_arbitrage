@@ -63,10 +63,11 @@ class DataLoader:
         symbol_files = {}
         
         # Look for files from the 3 supported exchange types
+        # Updated patterns for correct file format: EXCHANGE_TYPE_BASE_QUOTE_1m_dates.csv
         exchange_patterns = {
-            'mexc_spot': f"mexc_{symbol}_1m_*.csv",
-            'gateio_spot': f"gateio_{symbol}_1m_*.csv", 
-            'gateio_futures': f"gateio_futures_{symbol}_1m_*.csv"
+            'mexc_spot': f"MEXC_SPOT_{symbol}_1m_*.csv",
+            'gateio_spot': f"GATEIO_SPOT_{symbol}_1m_*.csv", 
+            'gateio_futures': f"GATEIO_FUTURES_{symbol}_1m_*.csv"
         }
         
         for exchange_type, pattern in exchange_patterns.items():
@@ -78,13 +79,6 @@ class DataLoader:
             else:
                 symbol_files[exchange_type] = None
                 self.logger.debug(f"No data file found for {exchange_type} {symbol}")
-        
-        # Also check for generic gateio files (without futures in name) as spot files
-        if not symbol_files.get('gateio_spot'):
-            generic_pattern = f"gateio_{symbol}_1m_*.csv"
-            matching_files = [f for f in self.data_dir.glob(generic_pattern) if 'futures' not in f.name]
-            if matching_files:
-                symbol_files['gateio_spot'] = max(matching_files, key=lambda p: p.stat().st_mtime)
         
         return symbol_files
     

@@ -2,7 +2,7 @@ import logging
 from typing import Dict, Any, Optional, List
 
 from core.exchanges.websocket import MessageParser, ParsedMessage
-from core.exchanges.services.unified_mapper.exchange_mappings import ExchangeMappingsInterface
+from core.exchanges.services import BaseExchangeMapper
 from core.transport.websocket.structs import MessageType
 from structs.common import Order, AssetBalance, AssetName, Trade, Symbol, Side, OrderStatus, OrderType
 
@@ -10,12 +10,10 @@ from structs.common import Order, AssetBalance, AssetName, Trade, Symbol, Side, 
 class GateioPrivateMessageParser(MessageParser):
     """Gate.io private WebSocket message parser."""
 
-    def __init__(self, mapper: ExchangeMappingsInterface):
+    def __init__(self, mapper: BaseExchangeMapper):
         super().__init__(mapper)
         self.logger = logging.getLogger(f"{__name__}.{self.__class__.__name__}")
         self.mapper = mapper
-        # Maintain backward compatibility
-        self.symbol_mapper = mapper._symbol_mapper if mapper else None
 
     async def parse_message(self, raw_message: str) -> Optional[ParsedMessage]:
         """Parse raw WebSocket message from Gate.io private channels."""
@@ -128,9 +126,9 @@ class GateioPrivateMessageParser(MessageParser):
         
         if channel == "spot.balances":
             return await self._parse_balance_update(result_data)
-        elif channel == "spot.orders":
+        elif channel in ["spot.orders", "spot.orders_v2"]:
             return await self._parse_order_update(result_data)
-        elif channel == "spot.user_trades":
+        elif channel in ["spot.user_trades", "spot.usertrades", "spot.usertrades_v2"]:
             return await self._parse_user_trade_update(result_data)
         else:
             return ParsedMessage(
@@ -156,16 +154,9 @@ class GateioPrivateMessageParser(MessageParser):
             balance_list = data if isinstance(data, list) else [data]
             
             for balance_data in balance_list:
-                asset = AssetName(balance_data.get("currency", ""))
-                available = float(balance_data.get("available", "0"))
-                locked = float(balance_data.get("locked", "0"))
-                
-                balance = AssetBalance(
-                    asset=asset,
-                    free=available,
-                    locked=locked
-                )
-                balances[asset] = balance
+                # Use mapper to transform Gate.io balance to unified AssetBalance
+                balance = self.mapper.ws_to_balance(balance_data)
+                balances[balance.asset] = balance
             
             return ParsedMessage(
                 message_type=MessageType.BALANCE,
@@ -189,34 +180,8 @@ class GateioPrivateMessageParser(MessageParser):
             order_list = data if isinstance(data, list) else [data]
             
             for order_data in order_list:
-                symbol_str = order_data.get("currency_pair", "")
-                symbol = self.symbol_mapper.to_symbol(symbol_str)
-                
-                # Map Gate.io status to unified status
-                status_map = {
-                    "open": OrderStatus.NEW,
-                    "closed": OrderStatus.FILLED,
-                    "cancelled": OrderStatus.CANCELED
-                }
-                status = status_map.get(order_data.get("status", ""), OrderStatus.UNKNOWN)
-                
-                # Map side
-                side = Side.BUY if order_data.get("side") == "buy" else Side.SELL
-                
-                # Map order type
-                order_type = OrderType.LIMIT if order_data.get("type") == "limit" else OrderType.MARKET
-                
-                order = Order(
-                    order_id=str(order_data.get("id", "")),
-                    symbol=symbol,
-                    side=side,
-                    order_type=order_type,
-                    quantity=float(order_data.get("amount", "0")),
-                    price=float(order_data.get("price", "0")) if order_data.get("price") else None,
-                    filled_quantity=float(order_data.get("filled_amount", "0")),
-                    status=status,
-                    timestamp=int(float(order_data.get("create_time", "0")) * 1000)
-                )
+                # Use mapper to transform Gate.io order to unified Order
+                order = self.mapper.ws_to_order(order_data)
                 orders.append(order)
             
             return ParsedMessage(
@@ -241,22 +206,8 @@ class GateioPrivateMessageParser(MessageParser):
             trade_list = data if isinstance(data, list) else [data]
             
             for trade_data in trade_list:
-                symbol_str = trade_data.get("currency_pair", "")
-                symbol = self.symbol_mapper.to_symbol(symbol_str)
-                
-                side = Side.BUY if trade_data.get("side") == "buy" else Side.SELL
-                
-                trade = Trade(
-                    symbol=symbol,
-                    price=float(trade_data.get("price", "0")),
-                    quantity=float(trade_data.get("amount", "0")),
-                    quote_quantity=float(trade_data.get("price", "0")) * float(trade_data.get("amount", "0")),
-                    side=side,
-                    timestamp=int(float(trade_data.get("create_time", "0")) * 1000),
-                    trade_id=str(trade_data.get("id", "")),
-                    is_maker=trade_data.get("role") == "maker",
-                    order_id=str(trade_data.get("order_id", ""))
-                )
+                # Use mapper to transform Gate.io trade to unified Trade
+                trade = self.mapper.ws_to_trade(trade_data)
                 trades.append(trade)
             
             return ParsedMessage(

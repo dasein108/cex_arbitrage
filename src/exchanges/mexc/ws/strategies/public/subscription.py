@@ -19,7 +19,7 @@ from typing import List, Dict, Any, Optional, Set
 from core.transport.websocket.strategies.subscription import SubscriptionStrategy, PublicWebsocketChannelType
 from core.transport.websocket.structs import SubscriptionAction
 from structs.common import Symbol
-from core.exchanges.services.unified_mapper.exchange_mappings import ExchangeMappingsInterface
+from core.exchanges.services import BaseExchangeMapper
 from exchanges.consts import DEFAULT_PUBLIC_WEBSOCKET_CHANNELS
 
 
@@ -31,8 +31,8 @@ class MexcPublicSubscriptionStrategy(SubscriptionStrategy):
     Format: "spot@public.aggre.bookTicker.v3.api.pb@100ms@BTCUSDT"
     """
     
-    def __init__(self, mapper: Optional[ExchangeMappingsInterface] = None):
-        super().__init__(mapper)  # Initialize parent with injected mapper
+    def __init__(self, mapper: BaseExchangeMapper):
+        super().__init__(mapper)  # Initialize parent with mandatory mapper
         self.logger = logging.getLogger(f"{__name__}.{self.__class__.__name__}")
         
         # Track active subscriptions for reconnection
@@ -57,26 +57,29 @@ class MexcPublicSubscriptionStrategy(SubscriptionStrategy):
         if not symbols:
             return []
         
-        method = "SUBSCRIPTION" if action == SubscriptionAction.SUBSCRIBE else "UNSUBSCRIPTION"
+        method = self.mapper.from_subscription_action(action)
         
         # Build params with symbol-specific channels
         if not self.mapper:
             self.logger.error("No symbol mapper available for MEXC subscription")
             return []
             
-        params = []
         messages = []
         for symbol in symbols:
             try:
                 exchange_symbol = self.mapper.to_pair(symbol)
+                params = []  # Reset params for each symbol
                 if PublicWebsocketChannelType.BOOK_TICKER in channels:
-                    params.append(f"spot@public.aggre.bookTicker.v3.api.pb@100ms@{exchange_symbol}")
+                    channel_base = self.mapper.get_spot_channel_name(PublicWebsocketChannelType.BOOK_TICKER)
+                    params.append(f"{channel_base}@100ms@{exchange_symbol}")
 
                 if PublicWebsocketChannelType.ORDERBOOK in channels:
-                    params.append(f"spot@public.aggre.depth.v3.api.pb@10ms@{exchange_symbol}")
+                    channel_base = self.mapper.get_spot_channel_name(PublicWebsocketChannelType.ORDERBOOK)
+                    params.append(f"{channel_base}@10ms@{exchange_symbol}")
 
                 if PublicWebsocketChannelType.TRADES in channels:
-                    params.append( f"spot@public.aggre.deals.v3.api.pb@10ms@{exchange_symbol}")
+                    channel_base = self.mapper.get_spot_channel_name(PublicWebsocketChannelType.TRADES)
+                    params.append(f"{channel_base}@10ms@{exchange_symbol}")
 
                 if not len(params):
                     self.logger.warning(f"No valid channels to subscribe for symbol {symbol}")

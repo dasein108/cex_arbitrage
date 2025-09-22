@@ -20,8 +20,8 @@ from typing import List, Dict, Any, Optional, Set
 from core.transport.websocket.strategies.subscription import SubscriptionStrategy
 from core.transport.websocket.structs import SubscriptionAction
 from structs.common import Symbol
-from core.exchanges.services.unified_mapper.exchange_mappings import ExchangeMappingsInterface
-from exchanges.gateio.services.mapper import GateioWebSocketMappings
+from core.exchanges.services import BaseExchangeMapper
+from exchanges.gateio.services.gateio_mappings import GateioUnifiedMappings
 
 
 class GateioPrivateSubscriptionStrategy(SubscriptionStrategy):
@@ -32,8 +32,8 @@ class GateioPrivateSubscriptionStrategy(SubscriptionStrategy):
     Format: {"time": X, "channel": Y, "event": Z, "payload": ["!all"]}
     """
 
-    def __init__(self, mapper: Optional[ExchangeMappingsInterface] = None):
-        super().__init__(mapper)  # Initialize parent with injected mapper
+    def __init__(self, mapper: BaseExchangeMapper):
+        super().__init__(mapper)  # Initialize parent with mandatory mapper
         self.logger = logging.getLogger(f"{__name__}.{self.__class__.__name__}")
 
     async def create_subscription_messages(self, action: SubscriptionAction, **kwargs) -> List[Dict[str, Any]]:
@@ -49,21 +49,22 @@ class GateioPrivateSubscriptionStrategy(SubscriptionStrategy):
         Returns:
             List of messages, one per private channel type
         """
-        event = GateioWebSocketMappings.get_event_type(action)
+        event = self.mapper.from_subscription_action(action)
         messages = []
 
         # Private channel definitions using centralized mappings
+        from core.transport.websocket.structs import PrivateWebsocketChannelType
         private_channels = [
             {
-                "channel": GateioWebSocketMappings.get_private_channel_name("orders"),
+                "channel": self.mapper.get_spot_private_channel_name(PrivateWebsocketChannelType.ORDER),
                 "payload": ["!all"]  # Subscribe to all order updates
             },
             {
-                "channel": GateioWebSocketMappings.get_private_channel_name("user_trades"),
+                "channel": self.mapper.get_spot_private_channel_name(PrivateWebsocketChannelType.TRADE),
                 "payload": ["!all"]  # Subscribe to all trade updates
             },
             {
-                "channel": GateioWebSocketMappings.get_private_channel_name("balances"),
+                "channel": self.mapper.get_spot_private_channel_name(PrivateWebsocketChannelType.BALANCE),
             }
         ]
 

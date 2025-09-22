@@ -9,6 +9,7 @@ from core.exchanges.websocket import ConnectionStrategy, ConnectionContext
 from core.transport.websocket.strategies.connection import ReconnectionPolicy
 from core.config.structs import ExchangeConfig
 from core.exceptions.exchange import BaseExchangeError
+from structs.common import WebSocketConnectionSettings, ReconnectionSettings
 from structs.common import Symbol
 
 
@@ -16,16 +17,23 @@ class GateioPublicConnectionStrategy(ConnectionStrategy):
     """Gate.io public WebSocket connection strategy with direct connection handling."""
 
     def __init__(self, config: ExchangeConfig):
-        super().__init__()  # Initialize parent with _websocket = None
-        self.config = config
+        super().__init__(config)  # Initialize parent with _websocket = None
         self.logger = logging.getLogger(f"{__name__}.{self.__class__.__name__}")
         
         # Gate.io-specific connection settings
         self.websocket_url = config.websocket_url
-        self.ping_interval = 20  # Gate.io uses 20s ping interval
-        self.ping_timeout = 10
-        self.max_queue_size = 512
-        self.max_message_size = 1024 * 1024  # 1MB
+        ws_settings = WebSocketConnectionSettings(
+            ping_interval=20,  # Gate.io uses 20s ping interval
+            ping_timeout=10,
+            max_queue_size=512,
+            max_message_size=1024 * 1024,  # 1MB
+            write_limit=2 ** 20  # 1MB write buffer
+        )
+        self.ping_interval = ws_settings.ping_interval
+        self.ping_timeout = ws_settings.ping_timeout
+        self.max_queue_size = ws_settings.max_queue_size
+        self.max_message_size = ws_settings.max_message_size
+        self.write_limit = ws_settings.write_limit
 
     async def connect(self) -> WebSocketClientProtocol:
         """
@@ -58,7 +66,7 @@ class GateioPublicConnectionStrategy(ConnectionStrategy):
                 # Gate.io works well with compression
                 compression="deflate",
                 max_size=self.max_message_size,
-                write_limit=2 ** 20,  # 1MB write buffer
+                write_limit=self.write_limit
             )
             
             self.logger.info("Gate.io WebSocket connected successfully")
@@ -70,12 +78,19 @@ class GateioPublicConnectionStrategy(ConnectionStrategy):
     
     def get_reconnection_policy(self) -> ReconnectionPolicy:
         """Get Gate.io-specific reconnection policy."""
+        settings = ReconnectionSettings(
+            max_attempts=15,  # Gate.io is more stable
+            initial_delay=2.0,
+            backoff_factor=1.5,
+            max_delay=30.0,
+            reset_on_1005=False  # Gate.io 1005 errors are less common
+        )
         return ReconnectionPolicy(
-            max_attempts=15,  # Gate.io is more stable, allow more attempts
-            initial_delay=2.0,  # Longer initial delay
-            backoff_factor=1.5,  # Gentler backoff
-            max_delay=30.0,  # Lower max delay
-            reset_on_1005=False  # Gate.io 1005 errors are less common, don't reset
+            max_attempts=settings.max_attempts,
+            initial_delay=settings.initial_delay,
+            backoff_factor=settings.backoff_factor,
+            max_delay=settings.max_delay,
+            reset_on_1005=settings.reset_on_1005
         )
 
     def get_ping_message(self) -> str:

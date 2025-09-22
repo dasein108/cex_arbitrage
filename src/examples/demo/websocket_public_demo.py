@@ -291,11 +291,11 @@ async def main(exchange_name: str):
 
 
 if __name__ == "__main__":
-    exchange_name = sys.argv[1] if len(sys.argv) > 1 else "gateio_futures"
+    exchange_name = sys.argv[1] if len(sys.argv) > 1 else "mexc_spot"
     
     try:
         asyncio.run(main(exchange_name))
         print(f"\n✅ {exchange_name.upper()} public WebSocket demo completed successfully!")
     except Exception as e:
-        print(f"\n❌ {exchange_name.upper()} public WebSocket demo failed: {e}")
+        print(f"\n❌ {exchmeange_name.upper()} public WebSocket demo failed: {e}")
         sys.exit(1)

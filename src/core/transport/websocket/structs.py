@@ -1,7 +1,7 @@
 import time
 from dataclasses import dataclass
 from enum import IntEnum, Enum
-from typing import Dict, Optional, Any, List
+from typing import Dict, Optional, Any, List, Union
 
 import msgspec
 from structs.common import Symbol
@@ -71,6 +71,7 @@ class MessageType(IntEnum):
     SUBSCRIPTION_CONFIRM = 0
     HEARTBEAT = 999
     ERROR = -1
+    SUBSCRIPTION_ERROR = -2
     UNKNOWN = -999
 
 
@@ -110,7 +111,7 @@ class ParsedMessage:
     channel: Optional[str] = None
     data: Optional[Any] = None
     timestamp: float = 0.0
-    raw_data: Optional[Dict[str, Any]] = None
+    raw_data: Optional[Union[Dict[str, Any], List[Any]]] = None
 
     def __post_init__(self):
         if self.timestamp == 0.0:

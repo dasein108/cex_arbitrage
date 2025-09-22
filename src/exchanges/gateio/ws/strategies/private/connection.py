@@ -18,10 +18,9 @@ class GateioPrivateConnectionStrategy(ConnectionStrategy):
     """Gate.io private WebSocket connection strategy with direct connection and authentication."""
 
     def __init__(self, config: ExchangeConfig):
-        super().__init__()  # Initialize parent with _websocket = None
+        super().__init__(config)  # Initialize parent with _websocket = None
         self.logger = logging.getLogger(f"{__name__}.{self.__class__.__name__}")
-        self.config = config
-        
+
         if not config.credentials.is_configured():
             raise ValueError("Gate.io credentials not configured for private WebSocket")
         

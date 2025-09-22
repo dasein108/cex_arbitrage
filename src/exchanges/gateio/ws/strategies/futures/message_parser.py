@@ -5,7 +5,7 @@ from datetime import datetime
 
 from core.transport.websocket.strategies.message_parser import MessageParser
 from core.transport.websocket.structs import ParsedMessage
-from core.exchanges.services.symbol_mapper.base_symbol_mapper import SymbolMapperInterface
+from core.exchanges.services import BaseExchangeMapper
 from core.transport.websocket.structs import MessageType
 from structs.common import Trade, OrderBookEntry, Symbol, Side, BookTicker, FuturesTicker
 
@@ -13,9 +13,9 @@ from structs.common import Trade, OrderBookEntry, Symbol, Side, BookTicker, Futu
 class GateioFuturesMessageParser(MessageParser):
     """Gate.io futures WebSocket message parser."""
 
-    def __init__(self, symbol_mapper: SymbolMapperInterface):
+    def __init__(self, mapper: BaseExchangeMapper):
         self.logger = logging.getLogger(f"{__name__}.{self.__class__.__name__}")
-        self.symbol_mapper = symbol_mapper
+        self.mapper = mapper
 
     async def parse_message(self, raw_message: str) -> Optional[ParsedMessage]:
         """Parse raw WebSocket message from Gate.io futures."""
@@ -156,59 +156,10 @@ class GateioFuturesMessageParser(MessageParser):
                         raw_data={"error": "No symbol in futures orderbook data", "data": data}
                     )
             
-            symbol = self.symbol_mapper.to_symbol(symbol_str)
+            symbol = self.mapper.to_symbol(symbol_str)
             
-            # Gate.io futures orderbook format is similar to spot:
-            # {
-            #   "t": timestamp,
-            #   "s": symbol,
-            #   "U": first_update_id,
-            #   "u": last_update_id,
-            #   "b": [["price", "amount"], ...],  # bids
-            #   "a": [["price", "amount"], ...]   # asks
-            # }
-            
-            bids = []
-            asks = []
-            
-            # Parse bids - filter out zero-size entries
-            for bid_data in data.get("b", []):
-                if len(bid_data) >= 2:
-                    price = float(bid_data[0])
-                    size = float(bid_data[1])
-                    # Only include non-zero sizes (zero size = removal in orderbook)
-                    if size > 0:
-                        bids.append(OrderBookEntry(price=price, size=size))
-            
-            # Parse asks - filter out zero-size entries  
-            for ask_data in data.get("a", []):
-                if len(ask_data) >= 2:
-                    price = float(ask_data[0])
-                    size = float(ask_data[1])
-                    # Only include non-zero sizes (zero size = removal in orderbook)
-                    if size > 0:
-                        asks.append(OrderBookEntry(price=price, size=size))
-            
-            # Validate orderbook has data
-            if not bids and not asks:
-                self.logger.warning(f"Empty orderbook update for {symbol_str}")
-                return ParsedMessage(
-                    message_type=MessageType.ERROR,
-                    channel=channel,
-                    raw_data={"error": "Empty orderbook data", "data": data}
-                )
-                
-            # Create OrderBook object - Gate.io timestamps are in milliseconds
-            from structs.common import OrderBook
-            timestamp = data.get("t", 0)
-
-            
-            orderbook = OrderBook(
-                bids=bids,
-                asks=asks,
-                timestamp=int(timestamp),
-                last_update_id=data.get("u")
-            )
+            # Use mapper to transform Gate.io futures orderbook to unified OrderBook
+            orderbook = self.mapper.ws_to_orderbook(data, symbol_str)
             
             return ParsedMessage(
                 message_type=MessageType.ORDERBOOK,
@@ -238,37 +189,10 @@ class GateioFuturesMessageParser(MessageParser):
                 # Extract symbol from trade data
                 symbol_str = trade_data.get('contract', '')
                 if symbol_str and symbol is None:
-                    symbol = self.symbol_mapper.to_symbol(symbol_str)
+                    symbol = self.mapper.to_symbol(symbol_str)
                 
-                # Gate.io futures trade format:
-                # {
-                #   "id": trade_id,
-                #   "create_time": timestamp,
-                #   "create_time_ms": timestamp_ms,
-                #   "s": symbol,
-                #   "p": price,
-                #   "size": amount,
-                #   "side": "buy/sell"
-                # }
-                
-                trade_id = str(trade_data.get('id', ''))
-                # Gate.io provides timestamp in seconds, convert to milliseconds for consistency
-                create_time = trade_data.get('create_time', 0)
-                create_time_ms = trade_data.get('create_time_ms', create_time * 1000 if create_time else 0)
-                timestamp = int(create_time_ms)
-                price = float(trade_data.get('price', 0))
-                quantity = float(trade_data.get('size', 0))
-                side = Side.BUY if quantity > 0 else Side.SELL
-                
-                trade = Trade(
-                    symbol=symbol,
-                    side=side,
-                    quantity=quantity,
-                    price=price,
-                    timestamp=timestamp,
-                    trade_id=trade_id,
-                    is_maker=False  # Gate.io doesn't specify maker/taker in public stream
-                )
+                # Use mapper to transform Gate.io futures trade to unified Trade
+                trade = self.mapper.ws_to_trade(trade_data, symbol_str)
                 trades.append(trade)
             
             if not symbol:
@@ -308,30 +232,10 @@ class GateioFuturesMessageParser(MessageParser):
                     raw_data={"error": "No symbol in futures book ticker data", "data": data}
                 )
             
-            symbol = self.symbol_mapper.to_symbol(symbol_str)
+            symbol = self.mapper.to_symbol(symbol_str)
             
-            # Gate.io futures book ticker format:
-            # {
-            #   "contract": symbol,
-            #   "b": best_bid_price,
-            #   "B": best_bid_size,
-            #   "a": best_ask_price,  
-            #   "A": best_ask_size,
-            #   "t": timestamp
-            # }
-            
-            # Handle timestamp conversion for consistency
-            timestamp = data.get('t', 0)
-
-                
-            book_ticker = BookTicker(
-                symbol=symbol,
-                bid_price=float(data.get('b', 0)),
-                bid_quantity=float(data.get('B', 0)),
-                ask_price=float(data.get('a', 0)),
-                ask_quantity=float(data.get('A', 0)),
-                timestamp=int(timestamp)
-            )
+            # Use mapper to transform Gate.io futures book ticker to unified BookTicker
+            book_ticker = self.mapper.ws_to_book_ticker(data, symbol_str)
             
             return ParsedMessage(
                 message_type=MessageType.BOOK_TICKER,
@@ -375,7 +279,7 @@ class GateioFuturesMessageParser(MessageParser):
                     self.logger.warning(f"No contract found in futures ticker data: {ticker_data}")
                     continue
                 
-                symbol = self.symbol_mapper.to_symbol(symbol_str)
+                symbol = self.mapper.to_symbol(symbol_str)
                 
                 # Parse ticker data with comprehensive futures information and validation
                 try:
@@ -460,7 +364,7 @@ class GateioFuturesMessageParser(MessageParser):
                     raw_data={"error": "No symbol in funding rate data", "data": data}
                 )
             
-            symbol = self.symbol_mapper.to_symbol(symbol_str)
+            symbol = self.mapper.to_symbol(symbol_str)
             
             # Gate.io funding rate format:
             # {
@@ -507,7 +411,7 @@ class GateioFuturesMessageParser(MessageParser):
                     raw_data={"error": "No symbol in mark price data", "data": data}
                 )
             
-            symbol = self.symbol_mapper.to_symbol(symbol_str)
+            symbol = self.mapper.to_symbol(symbol_str)
             
             # Gate.io mark price format:
             # {

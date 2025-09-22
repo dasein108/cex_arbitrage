@@ -5,6 +5,7 @@ from urllib.parse import urlencode
 
 from core.transport.rest import AuthStrategy, HTTPMethod, AuthenticationData
 from core.config.structs import ExchangeConfig
+from structs.common import RestConnectionSettings
 
 
 class MexcAuthStrategy(AuthStrategy):
@@ -45,8 +46,13 @@ class MexcAuthStrategy(AuthStrategy):
             auth_params.update(json_data)
         
         # Add required MEXC auth parameters
+        rest_settings = RestConnectionSettings(
+            recv_window=5000,  # MEXC default
+            timeout=30,
+            max_retries=3
+        )
         auth_params['timestamp'] = timestamp
-        auth_params['recvWindow'] = 5000  # MEXC default, can be made configurable
+        auth_params['recvWindow'] = rest_settings.recv_window
 
         # Create query string for signature (sorted parameters)
         query_string = urlencode(auth_params)

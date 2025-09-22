@@ -8,22 +8,30 @@ from core.exchanges.websocket import ConnectionStrategy, ConnectionContext
 from core.transport.websocket.strategies.connection import ReconnectionPolicy
 from core.config.structs import ExchangeConfig
 from core.exceptions.exchange import BaseExchangeError
+from structs.common import WebSocketConnectionSettings, ReconnectionSettings
 
 
 class MexcPublicConnectionStrategy(ConnectionStrategy):
     """MEXC public WebSocket connection strategy with direct connection handling."""
 
     def __init__(self, config: ExchangeConfig):
-        super().__init__()  # Initialize parent with _websocket = None
-        self.config = config
+        super().__init__(config)  # Initialize parent with _websocket = None
         self.logger = logging.getLogger(f"{__name__}.{self.__class__.__name__}")
         
         # MEXC-specific connection settings
         self.websocket_url = config.websocket_url
-        self.ping_interval = 30  # MEXC uses 30s ping interval (built-in only)
-        self.ping_timeout = 15   # Increased timeout for better stability
-        self.max_queue_size = 512
-        self.max_message_size = 1024 * 1024  # 1MB
+        ws_settings = WebSocketConnectionSettings(
+            ping_interval=30,  # MEXC uses 30s ping interval
+            ping_timeout=15,   # Increased timeout for better stability
+            max_queue_size=512,
+            max_message_size=1024 * 1024,  # 1MB
+            write_limit=2 ** 20  # 1MB write buffer
+        )
+        self.ping_interval = ws_settings.ping_interval
+        self.ping_timeout = ws_settings.ping_timeout
+        self.max_queue_size = ws_settings.max_queue_size
+        self.max_message_size = ws_settings.max_message_size
+        self.write_limit = ws_settings.write_limit
 
     async def connect(self) -> WebSocketClientProtocol:
         """
@@ -54,7 +62,7 @@ class MexcPublicConnectionStrategy(ConnectionStrategy):
                 compression=None,
                 max_size=self.max_message_size,
                 # Additional performance settings
-                write_limit=2 ** 20,  # 1MB write buffer
+                write_limit=self.write_limit
             )
             
             self.logger.info("MEXC WebSocket connected successfully")
@@ -66,12 +74,19 @@ class MexcPublicConnectionStrategy(ConnectionStrategy):
     
     def get_reconnection_policy(self) -> ReconnectionPolicy:
         """Get MEXC-specific reconnection policy."""
-        return ReconnectionPolicy(
+        settings = ReconnectionSettings(
             max_attempts=10,
             initial_delay=1.0,
             backoff_factor=2.0,
             max_delay=60.0,
-            reset_on_1005=True  # MEXC often has 1005 errors, treat as network issues
+            reset_on_1005=True  # MEXC often has 1005 errors
+        )
+        return ReconnectionPolicy(
+            max_attempts=settings.max_attempts,
+            initial_delay=settings.initial_delay,
+            backoff_factor=settings.backoff_factor,
+            max_delay=settings.max_delay,
+            reset_on_1005=settings.reset_on_1005
         )
     
     async def create_connection_context(self) -> ConnectionContext:

@@ -3,7 +3,7 @@ import logging
 from typing import Optional, Callable, Awaitable, Any, Dict
 
 from core.config.structs import ExchangeConfig
-from core.exchanges.services import ExchangeMappingsFactory
+from core.exchanges.services import ExchangeMapperFactory
 from core.transport.websocket.utils import create_websocket_manager
 
 
@@ -33,7 +33,7 @@ class BaseExchangeWebsocketInterface(ABC):
         self.logger = logging.getLogger(f"{__name__}.{self.exchange_tag}")
         
         # Factory-based dependency injection (similar to REST pattern)
-        self._mapper = ExchangeMappingsFactory.create(config.name)
+        self._mapper = ExchangeMapperFactory.create(config.name)
         
         # Initialize WebSocket manager using factory pattern
         self._ws_manager = create_websocket_manager(

@@ -22,8 +22,7 @@ class MexcPrivateConnectionStrategy(ConnectionStrategy):
             config: Exchange configuration
             rest_client: MexcPrivateSpotRest instance for listen key management
         """
-        super().__init__()  # Initialize parent with _websocket = None
-        self.config = config
+        super().__init__(config)  # Initialize parent with _websocket = None
         self.logger = logging.getLogger(f"{__name__}.{self.__class__.__name__}")
 
         # Listen key management
@@ -43,7 +42,11 @@ class MexcPrivateConnectionStrategy(ConnectionStrategy):
             self.rest_client = rest_client
             self.logger.debug("Using injected REST client for listen key management")
         else:
-            self.rest_client = MexcPrivateSpotRest(config)
+            # Create REST client with proper mapper injection
+            from core.exchanges.services.exchange_mapper.factory import ExchangeMapperFactory
+            from core.utils.exchange_utils import exchange_name_to_enum
+            mapper = ExchangeMapperFactory.inject(exchange_name_to_enum(config.name))
+            self.rest_client = MexcPrivateSpotRest(config, mapper)
             self.logger.debug("Created new REST client for listen key management")
 
     async def connect(self) -> WebSocketClientProtocol:

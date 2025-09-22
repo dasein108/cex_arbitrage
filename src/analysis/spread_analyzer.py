@@ -107,20 +107,28 @@ class SpreadAnalyzer:
         for file_path in csv_files:
             filename = file_path.name
             
-            # Extract symbol from filename (e.g., "mexc_BTC_USDT_1m_20240613_20240913.csv")
+            # Extract symbol from filename
+            # Format: "EXCHANGE_TYPE_BASE_QUOTE_1m_startdate_enddate.csv"
+            # Examples:
+            # - "MEXC_SPOT_BTC_USDT_1m_20240613_20240913.csv"
+            # - "GATEIO_SPOT_CARV_USDT_1m_20250919_20250922.csv"
+            # - "GATEIO_FUTURES_BTC_USDT_1m_20240613_20240913.csv"
             parts = filename.split('_')
-            if len(parts) >= 3:
-                exchange = parts[0]
-                symbol = f"{parts[1]}_{parts[2]}"
+            
+            # Need at least: EXCHANGE_TYPE_BASE_QUOTE_timeframe_start_end
+            if len(parts) >= 7:
+                exchange = parts[0].lower()  # MEXC or GATEIO
+                market_type = parts[1].lower()  # SPOT or FUTURES
+                base = parts[2]  # Base asset (BTC, ETH, CARV, etc.)
+                quote = parts[3]  # Quote asset (USDT, etc.)
+                
+                symbol = f"{base}_{quote}"
                 
                 if symbol not in symbol_files:
                     symbol_files[symbol] = set()
                 
                 # Track exchange with market type
-                if 'futures' in filename.lower():
-                    symbol_files[symbol].add(f"{exchange}_futures")
-                else:
-                    symbol_files[symbol].add(f"{exchange}_spot")
+                symbol_files[symbol].add(f"{exchange}_{market_type}")
         
         # Find symbols with data for triangular arbitrage (at least 2 of the 3 exchanges)
         complete_symbols = []
