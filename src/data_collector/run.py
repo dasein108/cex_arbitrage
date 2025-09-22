@@ -145,7 +145,7 @@ class DataCollectorCLI:
             print(f"  Enabled: {config.enabled}")
             print(f"  Snapshot interval: {config.snapshot_interval}s")
             print(f"  Analytics interval: {config.analytics_interval}s")
-            print(f"  Exchanges: {', '.join(config.exchanges)}")
+            print(f"  Exchanges: {', '.join([e.value for e in config.exchanges])}")
             print(f"  Symbols: {len(config.symbols)}")
             
             print("\nConfigured symbols:")

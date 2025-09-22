@@ -67,11 +67,16 @@ class MexcPublicSubscriptionStrategy(SubscriptionStrategy):
         messages = []
         for symbol in symbols:
             try:
+                # {'code': 0, 'id': 0,
+                #  'msg': 'Not Subscribed successfully! '
+                #         '[spot@public.increase.depth.v3.api@BTCUSDT,'
+                #         'spot@public.aggre.deals.v3.api.pb@BTCUSDT,'
+                #         'spot@public.aggre.bookTicker.v3.api.pb@BTCUSDT].  Reason： Blocked! '}
                 exchange_symbol = self.mapper.to_pair(symbol)
                 params = []  # Reset params for each symbol
                 if PublicWebsocketChannelType.BOOK_TICKER in channels:
                     channel_base = self.mapper.get_spot_channel_name(PublicWebsocketChannelType.BOOK_TICKER)
-                    params.append(f"{channel_base}@100ms@{exchange_symbol}")
+                    params.append(f"{channel_base}@10ms@{exchange_symbol}")
 
                 if PublicWebsocketChannelType.ORDERBOOK in channels:
                     channel_base = self.mapper.get_spot_channel_name(PublicWebsocketChannelType.ORDERBOOK)

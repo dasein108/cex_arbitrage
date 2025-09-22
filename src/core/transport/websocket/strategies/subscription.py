@@ -19,11 +19,9 @@ class SubscriptionStrategy(ABC):
         """Initialize with mandatory mapper.
         
         Args:
-            mapper: Exchange mappings interface containing symbol_mapper and channel name methods
+            mapper: Exchange mappings interface containing exchange mapper
         """
         self.mapper = mapper
-        # Direct access to symbol_mapper through mapper
-        self.symbol_mapper = mapper._symbol_mapper
 
     @abstractmethod
     async def create_subscription_messages(

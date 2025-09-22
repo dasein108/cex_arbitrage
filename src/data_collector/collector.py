@@ -13,12 +13,13 @@ from dataclasses import dataclass
 
 from core.config import get_exchange_config
 from structs.common import Symbol, BookTicker, Trade
-from core.transport.websocket.structs import PublicWebsocketChannelType
 from core.factories.websocket import PublicWebSocketExchangeFactory
 from db import BookTickerSnapshot
 from db.models import TradeSnapshot
 from structs.common import ExchangeEnum
 from .analytics import RealTimeAnalytics
+from .consts import WEBSOCKET_CHANNELS
+
 
 @dataclass
 class BookTickerCache:
@@ -34,7 +35,6 @@ class TradeCache:
     last_updated: datetime
     exchange: str
 
-WEBSOCKET_CHANNELS=[PublicWebsocketChannelType.BOOK_TICKER, PublicWebsocketChannelType.TRADES]
 
 class UnifiedWebSocketManager:
     """
@@ -158,11 +158,11 @@ class UnifiedWebSocketManager:
                 last_updated=datetime.now(),
                 exchange=exchange.value
             )
+
             
             # Call registered handler if available
             if self.book_ticker_handler:
                 await self.book_ticker_handler(exchange, symbol, book_ticker)
-            
         except Exception as e:
             self.logger.error(f"Error handling book ticker update for {symbol}: {e}")
     
@@ -199,7 +199,6 @@ class UnifiedWebSocketManager:
             if self.trade_handler:
                 for trade in trades:
                     await self.trade_handler(exchange, symbol, trade)
-            
         except Exception as e:
             self.logger.error(f"Error handling trades update for {symbol}: {e}")
     

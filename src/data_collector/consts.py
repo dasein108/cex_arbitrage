@@ -1,0 +1,3 @@
+from core.transport.websocket.structs import PublicWebsocketChannelType
+
+WEBSOCKET_CHANNELS=[PublicWebsocketChannelType.BOOK_TICKER, PublicWebsocketChannelType.TRADES]

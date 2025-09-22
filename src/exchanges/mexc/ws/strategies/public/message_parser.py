@@ -496,9 +496,10 @@ class MexcPublicMessageParser(EnhancedBaseMessageParser):
                     ))
 
                 return OrderBook(
+                    symbol=self.mapper.to_symbol(symbol_str),
                     bids=bids,
                     asks=asks,
-                    timestamp=time.time()
+                    timestamp=int(time.time())
                 )
 
             return None

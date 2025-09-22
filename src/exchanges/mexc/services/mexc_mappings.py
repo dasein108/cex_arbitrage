@@ -19,7 +19,7 @@ from structs.common import (
 )
 from core.exchanges.services.exchange_mapper.base_exchange_mapper import BaseExchangeMapper
 from core.transport.websocket.structs import PublicWebsocketChannelType, PrivateWebsocketChannelType
-from .mapping_configuration import MexcMappingConfiguration, create_mexc_mapping_configuration
+from .mapping_configuration import create_mexc_mapping_configuration
 
 class MexcUnifiedMappings(BaseExchangeMapper):
     """
@@ -33,11 +33,11 @@ class MexcUnifiedMappings(BaseExchangeMapper):
     """
     
     
-    # Spot WebSocket channel mappings (protobuf format) - synced with official MEXC docs
+    # Spot WebSocket channel mappings (protobuf format) - mixed approach based on testing feedback
     SPOT_CHANNEL_MAPPING: Dict[PublicWebsocketChannelType, str] = {
-        PublicWebsocketChannelType.BOOK_TICKER: "spot@public.bookTicker.v3.api.pb",
+        PublicWebsocketChannelType.BOOK_TICKER: "spot@public.aggre.bookTicker.v3.api.pb",
         PublicWebsocketChannelType.TRADES: "spot@public.aggre.deals.v3.api.pb", 
-        PublicWebsocketChannelType.ORDERBOOK: "spot@public.depth.v3.api.pb",
+        PublicWebsocketChannelType.ORDERBOOK: "spot@public.aggre.depth.v3.api.pb",
         PublicWebsocketChannelType.TICKER: "spot@public.miniTickers.v3.api.pb"
     }
     
@@ -52,9 +52,7 @@ class MexcUnifiedMappings(BaseExchangeMapper):
         """Initialize MEXC mappings with exchange-specific configuration."""
         config = create_mexc_mapping_configuration()
         super().__init__(symbol_mapper, config)
-        # Store external configuration mappings for compatibility
-        self._mexc_config = MexcMappingConfiguration
-    
+
     def rest_to_order(self, mexc_order: Any) -> Order:
         """
         Transform MEXC order response to unified Order struct.
@@ -101,12 +99,12 @@ class MexcUnifiedMappings(BaseExchangeMapper):
         # Convert MEXC symbol to unified Symbol
         symbol = self.pair_to_symbol(mexc_ws_order.symbol)
         
-        # Map MEXC status codes to unified statuses
-        status = self._mexc_config.WS_STATUS_REVERSE.get(mexc_ws_order.status, OrderStatus.UNKNOWN)
-        order_type = self._mexc_config.WS_TYPE_REVERSE.get(mexc_ws_order.orderType, OrderType.LIMIT)
+        # Map MEXC status codes to unified statuses using base mapper methods where possible
+        status = self._config.ws_order_status_reverse.get(mexc_ws_order.status, OrderStatus.UNKNOWN)
+        order_type = self._config.ws_order_status_reverse.get(mexc_ws_order.orderType, OrderType.LIMIT)
         
-        # Parse side
-        side = Side.BUY if mexc_ws_order.side == "BUY" else Side.SELL
+        # Parse side using base mapper method
+        side = self.to_side(mexc_ws_order.side)
         
         return Order(
             symbol=symbol,
@@ -145,7 +143,7 @@ class MexcUnifiedMappings(BaseExchangeMapper):
                 is_maker=False
             )
         else:  # Private trade data
-            side = Side.BUY if mexc_ws_trade.side == "BUY" else Side.SELL
+            side = self.to_side(mexc_ws_trade.side)
             return Trade(
                 symbol=self.pair_to_symbol(symbol_str),
                 price=float(mexc_ws_trade.price),

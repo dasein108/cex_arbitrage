@@ -16,7 +16,9 @@ class BaseMappingConfiguration:
         order_type_mapping: Dict[OrderType, str],
         side_mapping: Dict[Side, str],
         time_in_force_mapping: Dict[TimeInForce, str],
-        kline_interval_mapping: Dict[KlineInterval, str]
+        kline_interval_mapping: Dict[KlineInterval, str],
+        ws_order_status_mapping: Dict[OrderStatus, int] = None,
+        ws_order_type_mapping: Dict[OrderType, int] = None
     ):
         # Forward mappings (unified -> exchange)
         self.order_status_mapping = order_status_mapping
@@ -24,6 +26,8 @@ class BaseMappingConfiguration:
         self.side_mapping = side_mapping
         self.time_in_force_mapping = time_in_force_mapping
         self.kline_interval_mapping = kline_interval_mapping
+        self.ws_order_status_mapping = ws_order_status_mapping or self.order_status_mapping
+        self.ws_order_type_mapping = ws_order_type_mapping or self.order_type_mapping
 
         # Reverse mappings (exchange -> unified) - auto-generated
         self.order_status_reverse = {v: k for k, v in order_status_mapping.items()}
@@ -31,3 +35,5 @@ class BaseMappingConfiguration:
         self.side_reverse = {v: k for k, v in side_mapping.items()}
         self.time_in_force_reverse = {v: k for k, v in time_in_force_mapping.items()}
         self.kline_interval_reverse = {v: k for k, v in kline_interval_mapping.items()}
+        self.ws_order_status_reverse = {v: k for k, v in self.ws_order_status_mapping.items()}
+        self.ws_order_type_reverse = {v: k for k, v in self.ws_order_type_mapping.items()}

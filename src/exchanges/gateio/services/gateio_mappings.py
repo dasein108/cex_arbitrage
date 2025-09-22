@@ -21,11 +21,7 @@ from structs.common import (
 )
 from core.exchanges.services.exchange_mapper.base_exchange_mapper import BaseExchangeMapper
 from core.transport.websocket.structs import PublicWebsocketChannelType, PrivateWebsocketChannelType
-from core.exceptions.exchange import (
-    BaseExchangeError, RateLimitErrorBase, TradingDisabled,
-    InsufficientPosition, OversoldException
-)
-from .mapping_configuration import GateioMappingConfiguration, create_gateio_mapping_configuration
+from .mapping_configuration import create_gateio_mapping_configuration
 
 
 class GateioUnifiedMappings(BaseExchangeMapper):
@@ -68,9 +64,7 @@ class GateioUnifiedMappings(BaseExchangeMapper):
         config = create_gateio_mapping_configuration()
         super().__init__(symbol_mapper, config)
         
-        # Store external configuration mappings for compatibility
-        self._gateio_config = GateioMappingConfiguration
-    
+
     def get_exchange_interval(self, interval: KlineInterval) -> str:
         """Convert unified KlineInterval to Gate.io API format."""
         return self._config.kline_interval_mapping.get(interval, "1m")
