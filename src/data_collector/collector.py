@@ -276,6 +276,28 @@ class UnifiedWebSocketManager:
             return cache_entry.ticker
         return None
     
+    def _parse_cache_key(self, cache_key: str) -> tuple[str, str]:
+        """
+        Parse cache key into exchange and symbol components.
+        
+        Cache keys follow the format: {exchange}_{symbol}
+        where exchange may contain underscores (e.g., "MEXC_SPOT").
+        
+        Args:
+            cache_key: Cache key in format "exchange_symbol"
+            
+        Returns:
+            Tuple of (exchange, symbol_str)
+            
+        Raises:
+            ValueError: If cache key format is invalid
+        """
+        parts = cache_key.rsplit("_", 1)
+        if len(parts) != 2:
+            raise ValueError(f"Invalid cache key format: {cache_key}")
+        
+        return parts[0], parts[1]
+    
     def get_all_cached_tickers(self) -> List[BookTickerSnapshot]:
         """
         Get all cached book tickers as BookTickerSnapshot objects.
@@ -288,12 +310,7 @@ class UnifiedWebSocketManager:
         for cache_key, cache_entry in self._book_ticker_cache.items():
             try:
                 # Parse exchange and symbol from cache key
-                parts = cache_key.split("_", 1)
-                if len(parts) != 2:
-                    self.logger.warning(f"Invalid cache key format: {cache_key}")
-                    continue
-                    
-                exchange, symbol_str = parts
+                exchange, symbol_str = self._parse_cache_key(cache_key)
                 
                 # Find the original Symbol object more efficiently
                 symbol = None
@@ -352,16 +369,20 @@ class UnifiedWebSocketManager:
         snapshots = []
         
         for cache_key, trade_cache_list in self._trade_cache.items():
-            # Parse exchange and symbol from cache key
-            exchange, symbol_str = cache_key.split("_", 1)
-            
-            # Convert each cached trade to TradeSnapshot
-            for trade_cache in trade_cache_list:
-                snapshot = TradeSnapshot.from_trade_struct(
-                    exchange=exchange.upper(),
-                    trade=trade_cache.trade
-                )
-                snapshots.append(snapshot)
+            try:
+                # Parse exchange and symbol from cache key
+                exchange, symbol_str = self._parse_cache_key(cache_key)
+                
+                # Convert each cached trade to TradeSnapshot
+                for trade_cache in trade_cache_list:
+                    snapshot = TradeSnapshot.from_trade_struct(
+                        exchange=exchange.upper(),
+                        trade=trade_cache.trade
+                    )
+                    snapshots.append(snapshot)
+            except Exception as e:
+                self.logger.error(f"Error processing cached trades {cache_key}: {e}")
+                continue
         
         return snapshots
     
@@ -399,7 +420,7 @@ class UnifiedWebSocketManager:
         by_exchange = {}
         for cache_key in self._book_ticker_cache.keys():
             try:
-                exchange = cache_key.split("_", 1)[0]
+                exchange, _ = self._parse_cache_key(cache_key)
                 by_exchange[exchange] = by_exchange.get(exchange, 0) + 1
             except Exception as e:
                 self.logger.warning(f"Error parsing cache key {cache_key}: {e}")
@@ -409,7 +430,7 @@ class UnifiedWebSocketManager:
         total_cached_trades = 0
         for cache_key, trade_list in self._trade_cache.items():
             try:
-                exchange = cache_key.split("_", 1)[0]
+                exchange, _ = self._parse_cache_key(cache_key)
                 trade_count = len(trade_list)
                 trades_by_exchange[exchange] = trades_by_exchange.get(exchange, 0) + trade_count
                 total_cached_trades += trade_count
@@ -763,7 +784,7 @@ class DataCollector:
                 self.logger.debug("No snapshots to store")
                 return
             
-            self.logger.info(f"Storing {len(snapshots)} snapshots to database...")
+            self.logger.debug(f"Storing {len(snapshots)} snapshots to database...")
             
             # Store snapshots in database using batch insert
             from db.operations import insert_book_ticker_snapshots_batch
@@ -772,7 +793,7 @@ class DataCollector:
             count = await insert_book_ticker_snapshots_batch(snapshots)
             storage_duration = (datetime.now() - start_time).total_seconds() * 1000
             
-            self.logger.info(
+            self.logger.debug(
                 f"Successfully stored {count} snapshots in {storage_duration:.1f}ms"
             )
             

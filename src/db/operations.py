@@ -142,10 +142,10 @@ async def insert_book_ticker_snapshots_batch(snapshots: List[BookTickerSnapshot]
     if not snapshots:
         return 0
     
-    # Step 0: Clean up cache periodically
+    # Clean up cache periodically
     _cleanup_timestamp_cache()
     
-    # Step 1: Filter out known duplicate timestamps using cache
+    # Filter out known duplicate timestamps using cache
     filtered_snapshots = []
     cache_hits = 0
     
@@ -162,7 +162,7 @@ async def insert_book_ticker_snapshots_batch(snapshots: List[BookTickerSnapshot]
     if not filtered_snapshots:
         return 0
     
-    # Step 2: Deduplicate remaining snapshots in memory
+    # Deduplicate remaining snapshots in memory
     unique_snapshots = {}
     for snapshot in filtered_snapshots:
         key = (snapshot.exchange, snapshot.symbol_base, snapshot.symbol_quote, snapshot.timestamp)
@@ -185,137 +185,9 @@ async def insert_book_ticker_snapshots_batch(snapshots: List[BookTickerSnapshot]
         logger.debug(f"Total deduplication: {len(snapshots)} -> {len(deduplicated_snapshots)} snapshots (cache: {cache_hits}, memory: {len(filtered_snapshots) - len(deduplicated_snapshots)})")
     
     db = get_db_manager()
-    
-    # Step 2: Use batch upsert with ON CONFLICT DO UPDATE
-    query = """
-        INSERT INTO book_ticker_snapshots (
-            exchange, symbol_base, symbol_quote,
-            bid_price, bid_qty, ask_price, ask_qty,
-            timestamp
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-        ON CONFLICT (timestamp, exchange, symbol_base, symbol_quote)
-        DO UPDATE SET
-            bid_price = EXCLUDED.bid_price,
-            bid_qty = EXCLUDED.bid_qty,
-            ask_price = EXCLUDED.ask_price,
-            ask_qty = EXCLUDED.ask_qty,
-            created_at = NOW()
-        RETURNING (xmax = 0) AS inserted
-    """
-    
-    try:
-        # Use the simple fallback method which is more reliable
-        return await insert_book_ticker_snapshots_batch_fallback(deduplicated_snapshots)
-        
-    except Exception as e:
-        logger.error(f"Failed to batch upsert book ticker snapshots: {e}")
-        raise
-
-
-async def insert_book_ticker_snapshots_batch_simple(snapshots: List[BookTickerSnapshot]) -> int:
-    """
-    Simplified batch insert with upsert using single query for better performance.
-    Includes timestamp cache deduplication.
-    
-    Args:
-        snapshots: List of BookTickerSnapshot objects
-        
-    Returns:
-        Number of records processed
-    """
-    if not snapshots:
-        return 0
-    
-    # Clean up cache periodically
-    _cleanup_timestamp_cache()
-    
-    # Filter out known duplicate timestamps using cache
-    filtered_snapshots = []
-    cache_hits = 0
-    
-    for snapshot in snapshots:
-        if not _is_duplicate_timestamp(snapshot.exchange, snapshot.symbol_base, 
-                                      snapshot.symbol_quote, snapshot.timestamp):
-            filtered_snapshots.append(snapshot)
-        else:
-            cache_hits += 1
-    
-    if cache_hits > 0:
-        logger.debug(f"Cache filtered {cache_hits} duplicate timestamps")
-    
-    # Deduplicate by unique key
-    unique_snapshots = {}
-    for snapshot in filtered_snapshots:
-        key = (snapshot.exchange, snapshot.symbol_base, snapshot.symbol_quote, snapshot.timestamp)
-        unique_snapshots[key] = snapshot
-    
-    deduplicated_snapshots = list(unique_snapshots.values())
-    
-    if not deduplicated_snapshots:
-        return 0
-    
-    if len(snapshots) != len(deduplicated_snapshots):
-        logger.debug(f"Total deduplication: {len(snapshots)} -> {len(deduplicated_snapshots)} snapshots (cache: {cache_hits}, memory: {len(filtered_snapshots) - len(deduplicated_snapshots)})")
-    
-    db = get_db_manager()
-    
-    # Use a single query with unnest for best performance
-    query = """
-        INSERT INTO book_ticker_snapshots (
-            exchange, symbol_base, symbol_quote,
-            bid_price, bid_qty, ask_price, ask_qty,
-            timestamp
-        )
-        SELECT * FROM unnest($1::text[], $2::text[], $3::text[], 
-                           $4::numeric[], $5::numeric[], $6::numeric[], $7::numeric[],
-                           $8::timestamptz[])
-        ON CONFLICT (timestamp, exchange, symbol_base, symbol_quote)
-        DO UPDATE SET
-            bid_price = EXCLUDED.bid_price,
-            bid_qty = EXCLUDED.bid_qty,
-            ask_price = EXCLUDED.ask_price,
-            ask_qty = EXCLUDED.ask_qty,
-            created_at = NOW()
-    """
-    
-    try:
-        # Prepare arrays for unnest
-        exchanges = [s.exchange for s in deduplicated_snapshots]
-        symbol_bases = [s.symbol_base for s in deduplicated_snapshots]
-        symbol_quotes = [s.symbol_quote for s in deduplicated_snapshots]
-        bid_prices = [s.bid_price for s in deduplicated_snapshots]
-        bid_qtys = [s.bid_qty for s in deduplicated_snapshots]
-        ask_prices = [s.ask_price for s in deduplicated_snapshots]
-        ask_qtys = [s.ask_qty for s in deduplicated_snapshots]
-        timestamps = [s.timestamp for s in deduplicated_snapshots]
-        
-        result = await db.execute(
-            query,
-            exchanges, symbol_bases, symbol_quotes,
-            bid_prices, bid_qtys, ask_prices, ask_qtys,
-            timestamps
-        )
-        
-        logger.debug(f"Batch upsert processed {len(deduplicated_snapshots)} snapshots")
-        return len(deduplicated_snapshots)
-        
-    except Exception as e:
-        logger.error(f"Failed to batch upsert book ticker snapshots: {e}")
-        # Fall back to the original method if the optimized one fails
-        logger.info("Falling back to individual insert method")
-        return await insert_book_ticker_snapshots_batch_fallback(deduplicated_snapshots)
-
-
-async def insert_book_ticker_snapshots_batch_fallback(snapshots: List[BookTickerSnapshot]) -> int:
-    """
-    Fallback method using individual upserts for compatibility.
-    """
-    if not snapshots:
-        return 0
-        
-    db = get_db_manager()
     count = 0
     
+    # Use individual upserts in transaction for reliability
     query = """
         INSERT INTO book_ticker_snapshots (
             exchange, symbol_base, symbol_quote,
@@ -334,7 +206,7 @@ async def insert_book_ticker_snapshots_batch_fallback(snapshots: List[BookTicker
     try:
         async with db.pool.acquire() as conn:
             async with conn.transaction():
-                for snapshot in snapshots:
+                for snapshot in deduplicated_snapshots:
                     await conn.execute(
                         query,
                         snapshot.exchange,
@@ -348,12 +220,15 @@ async def insert_book_ticker_snapshots_batch_fallback(snapshots: List[BookTicker
                     )
                     count += 1
         
-        logger.debug(f"Fallback upsert processed {count} snapshots")
+        logger.debug(f"Batch upsert processed {count} snapshots")
         return count
         
     except Exception as e:
-        logger.error(f"Failed in fallback upsert method: {e}")
+        logger.error(f"Failed to batch upsert book ticker snapshots: {e}")
         raise
+
+
+
 
 
 async def get_book_ticker_snapshots(
@@ -842,23 +717,6 @@ async def insert_trade_snapshots_batch(snapshots: List[TradeSnapshot]) -> int:
             f"(cache: {cache_hits}, memory: {len(filtered_snapshots) - len(deduplicated_snapshots)})"
         )
     
-    # Use fallback method for reliability
-    return await insert_trade_snapshots_batch_fallback(deduplicated_snapshots)
-
-
-async def insert_trade_snapshots_batch_fallback(snapshots: List[TradeSnapshot]) -> int:
-    """
-    Fallback method for trade batch insert using individual upserts.
-    
-    Args:
-        snapshots: List of TradeSnapshot objects
-        
-    Returns:
-        Number of records inserted
-    """
-    if not snapshots:
-        return 0
-        
     db = get_db_manager()
     count = 0
     
@@ -881,7 +739,7 @@ async def insert_trade_snapshots_batch_fallback(snapshots: List[TradeSnapshot]) 
     try:
         async with db.pool.acquire() as conn:
             async with conn.transaction():
-                for snapshot in snapshots:
+                for snapshot in deduplicated_snapshots:
                     await conn.execute(
                         query,
                         snapshot.exchange,
@@ -904,6 +762,8 @@ async def insert_trade_snapshots_batch_fallback(snapshots: List[TradeSnapshot]) 
     except Exception as e:
         logger.error(f"Failed in trade batch insert: {e}")
         raise
+
+
 
 
 async def get_recent_trades(
