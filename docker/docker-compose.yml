@@ -56,7 +56,7 @@ services:
       GATEIO_SECRET_KEY: ${GATEIO_SECRET_KEY:-}
     volumes:
       - ./logs:/app/logs
-      - ../config.yaml:/app/config.yaml:ro
+      - ../config.yaml:/app/config.yaml:ro  # Mount config file directly
       - ../src:/app/src:ro
     depends_on:
       database:

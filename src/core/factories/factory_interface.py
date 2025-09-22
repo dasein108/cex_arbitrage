@@ -9,7 +9,10 @@ Supports both simple factories (single component types) and composite factories
 """
 
 from abc import ABC, abstractmethod
-from typing import TypeVar, List, Any, Dict
+from typing import TypeVar, List, Any, Dict, Union, TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from structs.common import ExchangeEnum
 
 T = TypeVar('T')
 
@@ -26,12 +29,15 @@ class ExchangeFactoryInterface(ABC):
     
     @classmethod
     @abstractmethod
-    def register(cls, exchange_name: str, implementation: Any, **kwargs) -> None:
+    def register(cls, exchange: Union[str, 'ExchangeEnum'], implementation: Any, **kwargs) -> None:
         """
         Register implementation for an exchange.
         
+        ENTRY POINT: Accepts both string and ExchangeEnum for backward compatibility.
+        Implementations should convert strings to ExchangeEnum immediately at entry point.
+        
         Args:
-            exchange_name: Exchange identifier (e.g., 'MEXC_PUBLIC', 'mexc')
+            exchange: Exchange identifier (string or ExchangeEnum - converted to ExchangeEnum immediately)
             implementation: Implementation class or configuration dict
             **kwargs: Additional registration parameters
         """
@@ -39,12 +45,15 @@ class ExchangeFactoryInterface(ABC):
     
     @classmethod
     @abstractmethod
-    def inject(cls, exchange_name: str, **kwargs) -> Any:
+    def inject(cls, exchange: Union[str, 'ExchangeEnum'], **kwargs) -> Any:
         """
         Create or retrieve component instance for an exchange.
         
+        ENTRY POINT: Accepts both string and ExchangeEnum for backward compatibility.
+        Implementations should convert strings to ExchangeEnum immediately at entry point.
+        
         Args:
-            exchange_name: Exchange identifier
+            exchange: Exchange identifier (string or ExchangeEnum - converted to ExchangeEnum immediately)
             **kwargs: Creation parameters (config, dependencies, etc.)
             
         Returns:
@@ -65,12 +74,15 @@ class ExchangeFactoryInterface(ABC):
     
     @classmethod
     @abstractmethod
-    def is_registered(cls, exchange_name: str) -> bool:
+    def is_registered(cls, exchange: Union[str, 'ExchangeEnum']) -> bool:
         """
         Check if exchange has registered implementation.
         
+        ENTRY POINT: Accepts both string and ExchangeEnum for backward compatibility.
+        Implementations should convert strings to ExchangeEnum immediately at entry point.
+        
         Args:
-            exchange_name: Exchange identifier
+            exchange: Exchange identifier (string or ExchangeEnum - converted to ExchangeEnum immediately)
             
         Returns:
             True if implementation exists

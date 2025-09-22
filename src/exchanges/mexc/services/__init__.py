@@ -14,14 +14,14 @@ Registration happens automatically when this module is imported.
 from .symbol_mapper import MexcSymbolMapper
 from .mapper import MexcMappings
 
-from exchanges.consts import ExchangeEnum
+from structs.common import ExchangeEnum
 
 # Import factories to verify registration
 from core.exchanges.services.symbol_mapper.factory import ExchangeSymbolMapperFactory
 from core.exchanges.services.unified_mapper.factory import ExchangeMappingsFactory
 
-ExchangeSymbolMapperFactory.register(ExchangeEnum.MEXC.value, MexcSymbolMapper)
-ExchangeMappingsFactory.register(ExchangeEnum.MEXC.value, MexcMappings)
+ExchangeSymbolMapperFactory.register(ExchangeEnum.MEXC, MexcSymbolMapper)
+ExchangeMappingsFactory.register(ExchangeEnum.MEXC, MexcMappings)
 
 __all__ = [
     'MexcSymbolMapper',

@@ -28,6 +28,7 @@ import time
 from typing import Dict, Any, List
 
 from structs.common import Symbol, AssetName, Order, AssetBalance, Trade
+from structs.common import ExchangeEnum
 from core.config.config_manager import get_exchange_config
 from examples.utils.ws_api_factory import get_exchange_websocket_classes
 from examples.integration_test_framework import (
@@ -480,8 +481,11 @@ async def main():
         print(f"Error: Unsupported exchange '{args.exchange}'. Supported: {supported_exchanges}")
         sys.exit(EXIT_CODE_CONFIG_ERROR)
     
+    # Convert to ExchangeEnum
+    exchange_enum = ExchangeEnum(args.exchange.upper())
+    
     # Create test suite
-    test_suite = WebSocketPrivateIntegrationTest(args.exchange)
+    test_suite = WebSocketPrivateIntegrationTest(exchange_enum.value)
     
     try:
         # Run tests

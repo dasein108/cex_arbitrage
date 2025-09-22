@@ -94,15 +94,15 @@ class SpreadAnalyzer:
     
     def discover_available_symbols(self) -> List[str]:
         """
-        Discover symbols that have data from both MEXC and Gate.io.
+        Discover symbols that have data from the 3 supported exchanges for triangular arbitrage.
         
         Returns:
-            List of symbols with complete data
+            List of symbols with data from MEXC spot, Gate.io spot, and/or Gate.io futures
         """
         # Find all CSV files
         csv_files = list(self.data_dir.glob("*.csv"))
         
-        # Group by symbol
+        # Group by symbol and track exchange types
         symbol_files = {}
         for file_path in csv_files:
             filename = file_path.name
@@ -115,15 +115,26 @@ class SpreadAnalyzer:
                 
                 if symbol not in symbol_files:
                     symbol_files[symbol] = set()
-                symbol_files[symbol].add(exchange)
+                
+                # Track exchange with market type
+                if 'futures' in filename.lower():
+                    symbol_files[symbol].add(f"{exchange}_futures")
+                else:
+                    symbol_files[symbol].add(f"{exchange}_spot")
         
-        # Find symbols with both exchanges
-        complete_symbols = [
-            symbol for symbol, exchanges in symbol_files.items()
-            if 'mexc' in exchanges and 'gateio' in exchanges
-        ]
+        # Find symbols with data for triangular arbitrage (at least 2 of the 3 exchanges)
+        complete_symbols = []
+        for symbol, exchanges in symbol_files.items():
+            has_mexc_spot = 'mexc_spot' in exchanges
+            has_gateio_spot = 'gateio_spot' in exchanges  
+            has_gateio_futures = 'gateio_futures' in exchanges
+            
+            # Accept symbols with at least 2 exchanges for triangular opportunities
+            exchange_count = sum([has_mexc_spot, has_gateio_spot, has_gateio_futures])
+            if exchange_count >= 2:
+                complete_symbols.append(symbol)
         
-        self.logger.info(f"Found {len(complete_symbols)} symbols with complete data")
+        self.logger.info(f"Found {len(complete_symbols)} symbols with triangular arbitrage data")
         return sorted(complete_symbols)
     
     def analyze_symbol(self, symbol: str, chunk_size: int = 10000) -> Optional[ArbitrageMetrics]:
@@ -140,38 +151,58 @@ class SpreadAnalyzer:
         try:
             self.logger.info(f"Analyzing {symbol}...")
             
-            # Find data files
+            # Find data files for the 3 exchanges
             files = self.data_loader.find_symbol_files(symbol)
             
-            if not files['mexc'] or not files['gateio']:
-                self.logger.warning(f"Missing data files for {symbol}")
+            # Check which exchanges have data
+            available_exchanges = [k for k, v in files.items() if v is not None]
+            
+            if len(available_exchanges) < 2:
+                self.logger.warning(f"Insufficient data files for {symbol} (need at least 2 exchanges)")
                 return None
             
             # Process data in chunks for memory efficiency
             all_spreads = []
-            mexc_candles_sample = []
-            gateio_candles_sample = []
+            exchange_samples = {}
             
-            mexc_chunks = self.data_loader.load_candle_data(files['mexc'], chunk_size)
-            gateio_chunks = self.data_loader.load_candle_data(files['gateio'], chunk_size)
+            # Load data from all available exchanges
+            exchange_chunks = {}
+            for exchange_type in available_exchanges:
+                exchange_chunks[exchange_type] = self.data_loader.load_candle_data(files[exchange_type], chunk_size)
+                exchange_samples[exchange_type] = []
             
-            # Process chunks in parallel
-            for mexc_chunk, gateio_chunk in zip(mexc_chunks, gateio_chunks):
-                # Store sample for liquidity analysis
-                if len(mexc_candles_sample) < 1000:
-                    mexc_candles_sample.extend(mexc_chunk[:100])
-                if len(gateio_candles_sample) < 1000:
-                    gateio_candles_sample.extend(gateio_chunk[:100])
+            # Process chunks - we'll calculate the best spreads from available exchange pairs
+            chunk_data = {exchange: [] for exchange in available_exchanges}
+            
+            # Collect chunks from all exchanges
+            for exchange_type in available_exchanges:
+                try:
+                    chunk_data[exchange_type] = next(exchange_chunks[exchange_type], [])
+                except StopIteration:
+                    chunk_data[exchange_type] = []
+            
+            while any(chunk_data.values()):
+                # Store samples for liquidity analysis
+                for exchange_type in available_exchanges:
+                    if len(exchange_samples[exchange_type]) < 1000 and chunk_data[exchange_type]:
+                        exchange_samples[exchange_type].extend(chunk_data[exchange_type][:100])
                 
-                # Synchronize timestamps
-                synchronized_pairs = self.data_loader.synchronize_timestamps(mexc_chunk, gateio_chunk)
+                # Calculate spreads between all available exchange pairs
+                if 'mexc_spot' in chunk_data and 'gateio_spot' in chunk_data:
+                    if chunk_data['mexc_spot'] and chunk_data['gateio_spot']:
+                        synchronized_pairs = self.data_loader.synchronize_timestamps(
+                            chunk_data['mexc_spot'], chunk_data['gateio_spot']
+                        )
+                        if synchronized_pairs:
+                            chunk_spreads = self.spread_calculator.calculate_batch_spreads(synchronized_pairs)
+                            all_spreads.extend(chunk_spreads)
                 
-                if not synchronized_pairs:
-                    continue
-                
-                # Calculate spreads
-                chunk_spreads = self.spread_calculator.calculate_batch_spreads(synchronized_pairs)
-                all_spreads.extend(chunk_spreads)
+                # Load next chunks
+                for exchange_type in available_exchanges:
+                    try:
+                        chunk_data[exchange_type] = next(exchange_chunks[exchange_type], [])
+                    except StopIteration:
+                        chunk_data[exchange_type] = []
             
             if not all_spreads:
                 self.logger.warning(f"No valid spreads calculated for {symbol}")
@@ -185,12 +216,15 @@ class SpreadAnalyzer:
             else:
                 analysis_days = 7  # Default 7 days
             
-            # Calculate all metrics
+            # Calculate all metrics using available exchange data
+            primary_candles = exchange_samples.get('mexc_spot', [])
+            secondary_candles = exchange_samples.get('gateio_spot', exchange_samples.get('gateio_futures', []))
+            
             metrics_dict = self.metrics_calculator.calculate_all_metrics(
                 symbol=symbol,
                 spreads=all_spreads,
-                mexc_candles=mexc_candles_sample,
-                gateio_candles=gateio_candles_sample,
+                mexc_candles=primary_candles,
+                gateio_candles=secondary_candles,
                 analysis_days=int(analysis_days)
             )
             

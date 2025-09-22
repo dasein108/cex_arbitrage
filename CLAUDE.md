@@ -2,6 +2,10 @@
 
 High-level architectural documentation for the ultra-high-performance CEX arbitrage engine designed for sub-millisecond cryptocurrency trading.
 
+## Development Guidelines
+
+**CRITICAL**: Before working on this codebase, read **[PROJECT_GUIDES.md](PROJECT_GUIDES.md)** for mandatory development rules, patterns, and implementation requirements. This file contains project-specific guidelines that must be followed to prevent common issues and maintain system integrity.
+
 ## System Overview
 
 This is a **high-frequency trading (HFT) arbitrage engine** built for professional cryptocurrency trading across multiple exchanges. The system features a **clean factory-pattern architecture** with unified interfaces and SOLID principles throughout.
@@ -403,3 +407,40 @@ print('✓ Factory pattern working correctly')
 - **NEVER use Decimal()** - Decimal adds unnecessary computational overhead that violates HFT latency requirements
 - **Rationale**: 64-bit float precision (15-17 decimal digits) exceeds cryptocurrency precision needs (typically 8 decimal places max)
 - **Exception**: Only use Decimal if explicitly required by external library APIs that don't accept float
+
+## Project Documentation Structure
+
+### Architecture Documentation (This File)
+
+**[CLAUDE.md](CLAUDE.md)** - High-level system architecture and design principles:
+- System architecture overview and design patterns
+- Core architectural decisions and rationale
+- Interface hierarchy and component relationships
+- Performance benchmarks and HFT requirements
+- General development workflows
+
+### Implementation Guidelines
+
+**[PROJECT_GUIDES.md](PROJECT_GUIDES.md)** - **MANDATORY** project-specific development rules:
+- ExchangeEnum usage requirements and patterns
+- Factory pattern implementation rules
+- Auto-registration patterns and import dependencies
+- Code organization standards and file structure
+- Type safety rules and validation patterns
+- SOLID principles application with concrete examples
+- Performance standards and HFT compliance rules
+- Common implementation patterns and error handling
+- Development checklists and anti-patterns to avoid
+
+**Critical Distinction:**
+- **CLAUDE.md**: "What" and "why" - architectural design and reasoning
+- **PROJECT_GUIDES.md**: "How" - concrete implementation rules and patterns
+
+### Feature-Specific Documentation
+
+Each major component maintains detailed implementation documentation:
+- **[Factory Pattern Components](src/core/factories/README.md)** - Factory implementations and usage
+- **[Exchange Implementations](src/exchanges/README.md)** - Exchange-specific details
+- **[WebSocket Infrastructure](src/core/transport/websocket/README.md)** - Real-time streaming
+- **[REST Infrastructure](src/core/transport/rest/README.md)** - HTTP client implementations
+- **[Data Structures](src/structs/README.md)** - Common msgspec.Struct definitions

@@ -879,6 +879,7 @@ class HftConfig:
         return self._config_data.get('database', {})
 
 
+
 # Create singleton instance
 config = HftConfig()
 
@@ -981,4 +982,5 @@ def get_loading_metrics() -> ConfigLoadingMetrics:
         ConfigLoadingMetrics with performance data
     """
     return config.get_loading_metrics()
+
 

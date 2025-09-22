@@ -9,10 +9,15 @@ HFT COMPLIANCE: Sub-millisecond strategy set creation with efficient assembly.
 """
 
 import logging
-from typing import TypeVar, Generic, Dict, Type, Any, List
+from typing import TypeVar, Generic, Dict, Type, Any, List, TYPE_CHECKING
 from abc import ABC, abstractmethod
 
 from .factory_interface import ExchangeFactoryInterface
+
+if TYPE_CHECKING:
+    from structs.common import ExchangeEnum
+else:
+    from structs.common import ExchangeEnum
 
 logger = logging.getLogger(__name__)
 
@@ -41,9 +46,9 @@ class BaseCompositeFactory(Generic[T], ExchangeFactoryInterface, ABC):
     """
     
     # NOTE: Each subclass gets its own registry by explicit initialization
-    # Stores component configurations: Dict[exchange_key, Dict[component_name, component_class]]
-    _implementations: Dict[str, Dict[str, type]]
-    _instances: Dict[str, T]
+    # Stores component configurations: Dict[ExchangeEnum, Dict[component_name, component_class]]
+    _implementations: Dict[ExchangeEnum, Dict[str, type]]
+    _instances: Dict[str, T]  # Keep string keys for instances (cache includes config hash)
     
     def __init_subclass__(cls, **kwargs):
         """Initialize separate registries for each factory subclass."""
@@ -53,12 +58,12 @@ class BaseCompositeFactory(Generic[T], ExchangeFactoryInterface, ABC):
     
     @classmethod
     @abstractmethod
-    def register(cls, exchange_name: str, strategy_config: Dict[str, type], **kwargs) -> None:
+    def register(cls, exchange: ExchangeEnum, strategy_config: Dict[str, type], **kwargs) -> None:
         """
         Register component configuration for an exchange.
         
         Args:
-            exchange_name: Exchange identifier (e.g., 'MEXC_PUBLIC', 'MEXC_PRIVATE')
+            exchange: Exchange identifier (ExchangeEnum only)
             strategy_config: Dictionary mapping component names to implementation classes
             **kwargs: Additional registration parameters
         """
@@ -66,7 +71,7 @@ class BaseCompositeFactory(Generic[T], ExchangeFactoryInterface, ABC):
     
     @classmethod
     @abstractmethod
-    def inject(cls, exchange_name: str, **kwargs) -> T:
+    def inject(cls, exchange: ExchangeEnum, **kwargs) -> T:
         """
         Create composite object for an exchange.
         
@@ -74,7 +79,7 @@ class BaseCompositeFactory(Generic[T], ExchangeFactoryInterface, ABC):
         Should use _assemble_components() for consistent dependency injection.
         
         Args:
-            exchange_name: Exchange identifier
+            exchange: Exchange identifier (ExchangeEnum only)
             **kwargs: Creation parameters (config, dependencies, etc.)
             
         Returns:
@@ -84,7 +89,7 @@ class BaseCompositeFactory(Generic[T], ExchangeFactoryInterface, ABC):
     
     @classmethod
     @abstractmethod
-    def _assemble_components(cls, exchange_name: str, strategy_config: Dict[str, type], **kwargs) -> T:
+    def _assemble_components(cls, exchange: ExchangeEnum, strategy_config: Dict[str, type], **kwargs) -> T:
         """
         Assemble components into composite object.
         
@@ -92,30 +97,33 @@ class BaseCompositeFactory(Generic[T], ExchangeFactoryInterface, ABC):
         Base class provides dependency resolution infrastructure.
         
         Args:
-            exchange_name: Exchange identifier
+            exchange: Exchange identifier (ExchangeEnum only)
             strategy_config: Component configuration
-            **kwargs: Assembly parameters
+            **kwargs: Assembly parameters (may include is_private, config, etc.)
             
         Returns:
             Assembled composite object
+            
+        Note:
+            Subclasses should check for 'is_private' in kwargs when determining
+            whether to create auth strategies or other private-specific components.
         """
         pass
     
     # Standard utility methods - implemented in base class
     
     @classmethod
-    def is_registered(cls, exchange_name: str) -> bool:
+    def is_registered(cls, exchange: ExchangeEnum) -> bool:
         """
         Check if exchange has registered component configuration.
         
         Args:
-            exchange_name: Exchange identifier
+            exchange: Exchange identifier (ExchangeEnum only)
             
         Returns:
             True if exchange is registered, False otherwise
         """
-        exchange_key = cls._normalize_exchange_key(exchange_name)
-        return exchange_key in cls._implementations
+        return exchange in cls._implementations
     
     @classmethod
     def get_registered_exchanges(cls) -> List[str]:
@@ -123,9 +131,9 @@ class BaseCompositeFactory(Generic[T], ExchangeFactoryInterface, ABC):
         Get list of exchanges with registered configurations.
         
         Returns:
-            List of registered exchange identifiers
+            List of registered exchange identifiers (as string values)
         """
-        return list(cls._implementations.keys())
+        return [exchange.value for exchange in cls._implementations.keys()]
     
     @classmethod
     def clear_cache(cls) -> None:
@@ -160,32 +168,22 @@ class BaseCompositeFactory(Generic[T], ExchangeFactoryInterface, ABC):
         """
         component_counts = {}
         for exchange, config in cls._implementations.items():
-            component_counts[exchange] = len(config)
+            component_counts[exchange.value] = len(config)
             
         return {
             'factory_name': cls.__name__,
             'registered_exchanges_count': len(cls._implementations),
             'active_instances_count': len(cls._instances),
-            'registered_exchanges': list(cls._implementations.keys()),
+            'registered_exchanges': [exchange.value for exchange in cls._implementations.keys()],
             'cached_instances': list(cls._instances.keys()),
             'component_counts_per_exchange': component_counts,
         }
     
-    @staticmethod
-    def _normalize_exchange_key(exchange_name: str) -> str:
-        """
-        Normalize exchange name to standard key format.
-        
-        Args:
-            exchange_name: Exchange identifier in any case
-            
-        Returns:
-            Normalized exchange key (uppercase)
-        """
-        return str(exchange_name).upper()
+    # REMOVED: _normalize_exchange_key method
+    # Use normalize_exchange_input() and exchange_to_key() from exchange_utils instead
     
     @classmethod
-    def _resolve_dependencies(cls, exchange_name: str, **context) -> Dict[str, Any]:
+    def _resolve_dependencies(cls, exchange: ExchangeEnum, **context) -> Dict[str, Any]:
         """
         Generic dependency resolution infrastructure.
         
@@ -194,16 +192,14 @@ class BaseCompositeFactory(Generic[T], ExchangeFactoryInterface, ABC):
         - exchange_mappings via ExchangeMappingsFactory
         
         Args:
-            exchange_name: Exchange identifier for dependency resolution
+            exchange: Exchange identifier for dependency resolution (ExchangeEnum only)
             **context: Additional context for dependency resolution
             
         Returns:
             Dictionary with resolved dependencies for injection
         """
         resolved = {}
-        # Strip API type suffixes for base exchange name
-        base_exchange_name = exchange_name.replace('_PUBLIC', '').replace('_PRIVATE', '').replace('_public', '').replace('_private', '')
-        exchange_key = cls._normalize_exchange_key(base_exchange_name)
+        exchange_key = exchange.value
         
         try:
             # Import factories lazily to avoid circular dependencies
@@ -214,7 +210,7 @@ class BaseCompositeFactory(Generic[T], ExchangeFactoryInterface, ABC):
                 from core.exchanges.services.symbol_mapper.factory import ExchangeSymbolMapperFactory
 
                 try:
-                    symbol_mapper = ExchangeSymbolMapperFactory.inject(exchange_key)
+                    symbol_mapper = ExchangeSymbolMapperFactory.inject(exchange)
                     resolved['symbol_mapper'] = symbol_mapper
                 except Exception:
                     # Graceful fallback - symbol mapper not available
@@ -222,7 +218,7 @@ class BaseCompositeFactory(Generic[T], ExchangeFactoryInterface, ABC):
             # Auto-resolve exchange mappings if symbol mapper available
             if 'exchange_mappings' not in context:
                 try:
-                    exchange_mappings = ExchangeMappingsFactory.inject(exchange_key)
+                    exchange_mappings = ExchangeMappingsFactory.inject(exchange)
                     resolved['exchange_mappings'] = exchange_mappings
                 except Exception:
                     # Graceful fallback - exchange mappings not available
@@ -232,7 +228,7 @@ class BaseCompositeFactory(Generic[T], ExchangeFactoryInterface, ABC):
             pass
         except Exception as e:
             # Log unexpected errors but don't fail
-            logger.debug(f"Dependency resolution failed for {exchange_name}: {e}")
+            logger.debug(f"Dependency resolution failed for {exchange.value}: {e}")
         
         return resolved
     

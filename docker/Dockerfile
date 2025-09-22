@@ -35,8 +35,7 @@ WORKDIR /app
 RUN mkdir -p /app/src /app/logs && \
     chown -R collector:collector /app
 
-# Copy default config files (can be overridden by volumes)
-COPY config.yaml ./config.yaml.default
+# Copy only example env file (config.yaml will be mounted at runtime)
 COPY .env.example ./.env
 
 # Switch to non-root user

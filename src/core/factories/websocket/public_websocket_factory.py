@@ -8,9 +8,11 @@ HFT COMPLIANCE: Sub-millisecond factory operations with efficient singleton mana
 """
 
 import logging
-from typing import Type, Optional, Callable, Awaitable, List
+from typing import Type, Optional, Callable, Awaitable, List, Union
 
 from core.factories.base_exchange_factory import BaseExchangeFactory
+from core.utils.exchange_utils import exchange_name_to_enum
+from structs.common import ExchangeEnum
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -40,31 +42,35 @@ class PublicWebSocketExchangeFactory(BaseExchangeFactory):
     """
 
     @classmethod
-    def register(cls, exchange_name: str, implementation_class: Type) -> None:
+    def register(cls, exchange: Union[str, ExchangeEnum], implementation_class: Type) -> None:
         """
         Register a public WebSocket exchange implementation.
+        
+        ENTRY POINT: Accepts both string and ExchangeEnum for backward compatibility.
+        Converts strings to ExchangeEnum immediately at entry point.
         
         Follows the auto-registration pattern used throughout the system.
         Called by exchange modules on import to self-register.
         
         Args:
-            exchange_name: Exchange identifier (e.g., 'MEXC', 'GATEIO', 'GATEIO_FUTURES')
+            exchange: Exchange identifier (string or ExchangeEnum - converted to ExchangeEnum immediately)
             implementation_class: Implementation class inheriting from BaseExchangePublicWebsocketInterface
             
         Raises:
-            ValueError: If implementation doesn't inherit from correct base class
+            ValueError: If exchange not recognized
         """
-        # Use base class validation and normalization
-        exchange_key = cls._normalize_exchange_key(exchange_name)
+        # Convert to ExchangeEnum at entry point
+        exchange_enum = exchange_name_to_enum(exchange)
+        
         # Skip validation to avoid circular imports - validation happens at runtime
         
-        # Register with base class registry
-        cls._implementations[exchange_key] = implementation_class
+        # Register with base class registry using ExchangeEnum as key
+        cls._implementations[exchange_enum] = implementation_class
         
-        logger.debug(f"Registered public WebSocket implementation for {exchange_key}: {implementation_class.__name__}")
+        logger.debug(f"Registered public WebSocket implementation for {exchange_enum.value}: {implementation_class.__name__}")
 
     @classmethod
-    def inject(cls, exchange_name: str, config: Optional[ExchangeConfig] = None, 
+    def inject(cls, exchange: Union[str, ExchangeEnum], config: Optional[ExchangeConfig] = None, 
                orderbook_diff_handler: Optional[Callable[[OrderBook, Symbol], Awaitable[None]]] = None,
                trades_handler: Optional[Callable[[Symbol, List[Trade]], Awaitable[None]]] = None,
                book_ticker_handler: Optional[Callable[[Symbol, BookTicker], Awaitable[None]]] = None,
@@ -76,8 +82,11 @@ class PublicWebSocketExchangeFactory(BaseExchangeFactory):
         Implements singleton pattern with efficient caching and auto-dependency injection.
         Uses BaseExchangeFactory infrastructure for consistent behavior.
         
+        ENTRY POINT: Accepts both string and ExchangeEnum for backward compatibility.
+        Converts strings to ExchangeEnum immediately at entry point.
+        
         Args:
-            exchange_name: Exchange identifier (e.g., 'MEXC', 'GATEIO', 'GATEIO_FUTURES')
+            exchange: Exchange identifier (string or ExchangeEnum - converted to ExchangeEnum immediately)
             config: ExchangeConfig for the exchange (required for creation)
             orderbook_diff_handler: Callback for orderbook updates
             trades_handler: Callback for trade updates
@@ -89,30 +98,30 @@ class PublicWebSocketExchangeFactory(BaseExchangeFactory):
             WebSocket instance (cached singleton)
             
         Raises:
-            ValueError: If exchange not registered or config not provided
+            ValueError: If exchange not registered, not recognized, or config not provided
         """
         if config is None:
             raise ValueError("ExchangeConfig required for public WebSocket exchange creation")
         
-        # Use base class normalization
-        exchange_key = cls._normalize_exchange_key(exchange_name)
+        # Convert to ExchangeEnum at entry point
+        exchange_enum = exchange_name_to_enum(exchange)
         
         # Check if registered
-        if exchange_key not in cls._implementations:
+        if exchange_enum not in cls._implementations:
             available = cls.get_registered_exchanges()
             raise ValueError(
-                f"No public WebSocket implementation registered for {exchange_name}. "
+                f"No public WebSocket implementation registered for {exchange_enum.value}. "
                 f"Available: {available}"
             )
         
         # Check singleton cache first (HFT performance optimization)
-        cache_key = f"{exchange_key}_{id(config)}"
+        cache_key = f"{exchange_enum.value}_{id(config)}"
         if cache_key in cls._instances:
-            logger.debug(f"Returning cached public WebSocket instance for {exchange_key}")
+            logger.debug(f"Returning cached public WebSocket instance for {exchange_enum.value}")
             return cls._instances[cache_key]
         
         # Create new instance with auto-dependency injection
-        implementation_class = cls._implementations[exchange_key]
+        implementation_class = cls._implementations[exchange_enum]
         
         try:
             # Create instance with WebSocket-specific parameters
@@ -128,12 +137,12 @@ class PublicWebSocketExchangeFactory(BaseExchangeFactory):
             # Cache the instance for future requests
             cls._instances[cache_key] = instance
             
-            logger.info(f"Created and cached public WebSocket instance for {exchange_key}: {implementation_class.__name__}")
+            logger.info(f"Created and cached public WebSocket instance for {exchange_enum.value}: {implementation_class.__name__}")
             return instance
             
         except Exception as e:
-            logger.error(f"Failed to create public WebSocket instance for {exchange_key}: {e}")
-            raise ValueError(f"Failed to create public WebSocket exchange {exchange_name}: {e}") from e
+            logger.error(f"Failed to create public WebSocket instance for {exchange_enum.value}: {e}")
+            raise ValueError(f"Failed to create public WebSocket exchange {exchange_enum.value}: {e}") from e
 
     @classmethod
     def create_for_config(cls, config: ExchangeConfig,
@@ -163,8 +172,8 @@ class PublicWebSocketExchangeFactory(BaseExchangeFactory):
         if not config or not config.name:
             raise ValueError("Valid ExchangeConfig with name required")
         
-        exchange_name = str(config.name).upper()
-        return cls.inject(exchange_name, config=config,
+        # Pass config.name directly to inject() - it will handle string-to-enum conversion
+        return cls.inject(config.name, config=config,
                          orderbook_diff_handler=orderbook_diff_handler,
                          trades_handler=trades_handler,
                          book_ticker_handler=book_ticker_handler,

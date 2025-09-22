@@ -32,8 +32,10 @@ class BaseExchangeRestInterface(ABC):
 
         # Symbol mapper injection
 
-        # Create exchange-agnostic mappings service using factory - FIX: use actual exchange name
-        self._mapper = ExchangeMappingsFactory.inject(config.name)
+        # Create exchange-agnostic mappings service using factory
+        from core.utils.exchange_utils import exchange_name_to_enum
+        exchange_enum = exchange_name_to_enum(config.name)
+        self._mapper = ExchangeMappingsFactory.inject(exchange_enum)
 
         self.logger.info(f"Initialized REST transport manager for {config.name}")
 

@@ -15,6 +15,7 @@ from .common import (
     Symbol,
     
     # Enums
+    ExchangeEnum,
     ExchangeStatus,
     OrderStatus,
     OrderType,
@@ -55,6 +56,7 @@ __all__ = [
     'Symbol',
     
     # Enums
+    'ExchangeEnum',
     'ExchangeStatus',
     'OrderStatus',
     'OrderType',

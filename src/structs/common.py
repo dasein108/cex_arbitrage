@@ -36,6 +36,17 @@ class Symbol(Struct, frozen=True):
 
 # Core enums used across the system
 
+class ExchangeEnum(Enum):
+    """
+    Enumeration of supported centralized exchanges.
+
+    Used throughout the system for type-safe exchange identification
+    and consistent naming across all components.
+    """
+    MEXC = ExchangeName("MEXC_SPOT")
+    GATEIO = ExchangeName("GATEIO_SPOT")  
+    GATEIO_FUTURES = ExchangeName("GATEIO_FUTURES")
+
 class ExchangeStatus(IntEnum):
     """Exchange connection status."""
     CONNECTING = 0

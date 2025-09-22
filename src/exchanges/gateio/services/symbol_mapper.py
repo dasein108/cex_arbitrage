@@ -12,6 +12,7 @@ Integration with existing GateioUtils while following factory pattern.
 
 from core.exchanges.services.symbol_mapper.base_symbol_mapper import SymbolMapperInterface
 from core.exchanges.services.symbol_mapper.factory import ExchangeSymbolMapperFactory
+from structs import ExchangeEnum
 from structs.common import Symbol, AssetName
 
 
@@ -83,7 +84,5 @@ class GateioSymbolMapperInterface(SymbolMapperInterface):
 
 
 # Register Gate.io mapper with factory
-ExchangeSymbolMapperFactory.register('GATEIO', GateioSymbolMapperInterface)
+ExchangeSymbolMapperFactory.register(ExchangeEnum.GATEIO, GateioSymbolMapperInterface)
 
-# Convenience instance using factory pattern
-gateio_symbol_mapper = ExchangeSymbolMapperFactory.inject('GATEIO')

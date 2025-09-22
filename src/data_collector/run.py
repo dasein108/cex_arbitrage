@@ -18,6 +18,9 @@ from typing import Optional
 # Add src to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
+# Import exchanges to trigger factory registrations
+import exchanges  # This triggers auto-registration of WebSocket factories
+
 from data_collector.collector import DataCollector
 from data_collector.config import load_data_collector_config
 from structs.common import Symbol, AssetName

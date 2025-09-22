@@ -10,12 +10,12 @@ from .rate_limit import MexcRateLimitStrategy
 from .retry import MexcRetryStrategy
 from .auth import MexcAuthStrategy
 from .exception_handler import MexcExceptionHandlerStrategy
-from exchanges.consts import ExchangeEnum
+from structs.common import ExchangeEnum
 from core.transport.rest.strategies import RestStrategyFactory
 
 # Register public API strategies
 RestStrategyFactory.register_strategies(
-    exchange=ExchangeEnum.MEXC.value,
+    exchange=ExchangeEnum.MEXC,
     is_private=False,
     request_strategy_cls=MexcRequestStrategy,
     rate_limit_strategy_cls=MexcRateLimitStrategy,
@@ -26,7 +26,7 @@ RestStrategyFactory.register_strategies(
 
 # Register private API strategies
 RestStrategyFactory.register_strategies(
-    exchange=ExchangeEnum.MEXC.value,
+    exchange=ExchangeEnum.MEXC,
     is_private=True,
     request_strategy_cls=MexcRequestStrategy,
     rate_limit_strategy_cls=MexcRateLimitStrategy,

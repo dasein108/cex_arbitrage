@@ -14,7 +14,7 @@ from core.factories.rest.private_rest_factory import PrivateRestExchangeFactory
 
 # Register Gate.io strategies with the factory
 from core.transport.rest.strategies import RestStrategyFactory
-from exchanges.consts import ExchangeEnum
+from structs.common import ExchangeEnum
 
 # Register exchange strategies
 RestStrategyFactory.register_strategies(
@@ -54,10 +54,10 @@ RestStrategyFactory.register_strategies(
     auth_strategy_cls=GateioAuthStrategy
 )
 
-PublicRestExchangeFactory.register(ExchangeEnum.GATEIO.value, GateioPublicSpotRest)
-PrivateRestExchangeFactory.register(ExchangeEnum.GATEIO.value, GateioPrivateSpotRest)
-PublicRestExchangeFactory.register("GATEIO_FUTURES", GateioPublicFuturesRest)
-PrivateRestExchangeFactory.register("GATEIO_FUTURES", GateioPrivateFuturesRest)
+PublicRestExchangeFactory.register(ExchangeEnum.GATEIO, GateioPublicSpotRest)
+PrivateRestExchangeFactory.register(ExchangeEnum.GATEIO, GateioPrivateSpotRest)
+PublicRestExchangeFactory.register(ExchangeEnum.GATEIO_FUTURES, GateioPublicFuturesRest)
+PrivateRestExchangeFactory.register(ExchangeEnum.GATEIO_FUTURES, GateioPrivateFuturesRest)
 
 __all__ = [
     'GateioPublicSpotRest', 

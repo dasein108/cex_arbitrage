@@ -11,6 +11,7 @@ from dataclasses import dataclass
 from structs.common import Symbol, AssetName
 from core.config.config_manager import HftConfig
 from db import DatabaseConfig
+from structs.common import ExchangeEnum
 
 
 # DatabaseConfig is now imported from db.structs
@@ -31,7 +32,7 @@ class DataCollectorConfig:
     snapshot_interval: float  # seconds
     analytics_interval: float  # seconds
     database: DatabaseConfig
-    exchanges: List[str]
+    exchanges: List[ExchangeEnum]
     analytics: AnalyticsConfig
     symbols: List[Symbol]
     collect_trades: bool = True  # Enable/disable trade collection
@@ -104,7 +105,7 @@ class ConfigManager:
             snapshot_interval=dc_config.get("snapshot_interval", 0.5),
             analytics_interval=dc_config.get("analytics_interval", 10),
             database=db_config,
-            exchanges=dc_config.get("exchanges", ["mexc", "gateio"]),
+            exchanges=self._parse_exchanges(dc_config.get("exchanges", ["mexc_spot", "gateio_spot"])),
             analytics=analytics_config,
             symbols=symbols,
             collect_trades=dc_config.get("collect_trades", True),
@@ -175,6 +176,35 @@ class ConfigManager:
         
         return symbols
     
+    def _parse_exchanges(self, exchange_names: List[str]) -> List[ExchangeEnum]:
+        """
+        Parse exchange names to ExchangeEnum values.
+        
+        Args:
+            exchange_names: List of exchange name strings
+            
+        Returns:
+            List of ExchangeEnum values
+        """
+        exchanges = []
+        exchange_mapping = {
+            "mexc": ExchangeEnum.MEXC,
+            "mexc_spot": ExchangeEnum.MEXC,
+            "gateio": ExchangeEnum.GATEIO,
+            "gateio_spot": ExchangeEnum.GATEIO,
+            "gateio_futures": ExchangeEnum.GATEIO_FUTURES
+        }
+        
+        for exchange_name in exchange_names:
+            normalized_name = exchange_name.lower().strip()
+            if normalized_name in exchange_mapping:
+                exchanges.append(exchange_mapping[normalized_name])
+            else:
+                # Log warning but continue with available exchanges
+                print(f"Warning: Unknown exchange '{exchange_name}', skipping")
+        
+        return exchanges
+    
     def _get_default_data_collector_config(self) -> Dict[str, Any]:
         """
         Get default data collector configuration.
@@ -186,7 +216,7 @@ class ConfigManager:
             "enabled": True,
             "snapshot_interval": 1,  # seconds
             "analytics_interval": 10,  # seconds
-            "exchanges": ["mexc", "gateio"],
+            "exchanges": ["mexc_spot", "gateio_spot"],  # Will be converted to ExchangeEnum
             "collect_trades": True,  # Enable trade collection by default
             "trade_snapshot_interval": 1.0,  # Trade snapshot interval
             "analytics": {
@@ -246,7 +276,8 @@ class ConfigManager:
         # Use configured exchanges from core config
         configured_exchanges = self._core_config.get_configured_exchanges()
         for exchange in config.exchanges:
-            if exchange.lower() not in configured_exchanges:
+            exchange_name = exchange.value.lower() if hasattr(exchange, 'value') else str(exchange).lower()
+            if exchange_name not in configured_exchanges:
                 raise ValueError(f"Unsupported exchange: {exchange}. Available: {configured_exchanges}")
         
         # Validate symbols

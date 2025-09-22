@@ -6,10 +6,10 @@ from .mexc_rest_public import MexcPublicSpotRest
 # Register REST implementations with factories (auto-registration pattern)
 from core.factories.rest.public_rest_factory import PublicRestExchangeFactory
 from core.factories.rest.private_rest_factory import PrivateRestExchangeFactory
-from exchanges.consts import ExchangeEnum
+from structs.common import ExchangeEnum
 
-PublicRestExchangeFactory.register(ExchangeEnum.MEXC.value, MexcPublicSpotRest)
-PrivateRestExchangeFactory.register(ExchangeEnum.MEXC.value, MexcPrivateSpotRest)
+PublicRestExchangeFactory.register(ExchangeEnum.MEXC, MexcPublicSpotRest)
+PrivateRestExchangeFactory.register(ExchangeEnum.MEXC, MexcPrivateSpotRest)
 
 __all__ = [
     "MexcPublicSpotRest", 

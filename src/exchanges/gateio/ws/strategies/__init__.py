@@ -22,11 +22,11 @@ from .futures.message_parser import GateioFuturesMessageParser
 
 # Import factory for registration
 from core.transport.websocket.strategies import WebSocketStrategyFactory
-from exchanges.consts import ExchangeEnum
+from structs.common import ExchangeEnum
 
 # Register public strategies with factory
 WebSocketStrategyFactory.register_strategies(
-    ExchangeEnum.GATEIO.value, False,
+    ExchangeEnum.GATEIO, False,
     GateioPublicConnectionStrategy,
     GateioPublicSubscriptionStrategy,
     GateioPublicMessageParser
@@ -34,14 +34,14 @@ WebSocketStrategyFactory.register_strategies(
 
 # Register private strategies with factory
 WebSocketStrategyFactory.register_strategies(
-    ExchangeEnum.GATEIO.value, True,
+    ExchangeEnum.GATEIO, True,
     GateioPrivateConnectionStrategy,
     GateioPrivateSubscriptionStrategy,
     GateioPrivateMessageParser
 )
 
 WebSocketStrategyFactory.register_strategies(
-    ExchangeEnum.GATEIO_FUTURES.value, False,
+    ExchangeEnum.GATEIO_FUTURES, False,
     GateioFuturesConnectionStrategy,
     GateioFuturesSubscriptionStrategy,
     GateioFuturesMessageParser

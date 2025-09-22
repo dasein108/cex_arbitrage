@@ -22,6 +22,7 @@ Usage:
 
 import asyncio
 import sys
+import traceback
 from pathlib import Path
 from typing import Dict, List, Optional
 from datetime import datetime
@@ -33,7 +34,7 @@ sys.path.insert(0, str(src_path))
 # CLAUDE.md compliant imports - use proper interfaces
 from exchanges.interfaces import PublicExchangeInterface
 from core.factories.rest.public_rest_factory import PublicRestExchangeFactory
-from exchanges.consts import ExchangeEnum
+from structs.common import ExchangeEnum
 from core.config.config_manager import HftConfig
 from structs.common import Symbol, SymbolInfo, ExchangeName
 from core.exceptions.exchange import BaseExchangeError
@@ -81,10 +82,11 @@ class SymbolDiscoveryService:
         """
         with PerformanceTimer("Symbol Discovery", self.logger):
             # Get supported exchanges using ExchangeEnum (CLAUDE.md compliant)
+            # 3-exchange setup: MEXC spot, Gate.io spot, Gate.io futures
             exchange_configs = [
-                {"exchange_enum": ExchangeEnum.MEXC, "market_type": "spot"},
-                {"exchange_enum": ExchangeEnum.GATEIO, "market_type": "spot"},
-                {"exchange_enum": ExchangeEnum.GATEIO_FUTURES, "market_type": "futures"}
+                {"exchange_enum": ExchangeEnum.MEXC},
+                {"exchange_enum": ExchangeEnum.GATEIO},
+                {"exchange_enum": ExchangeEnum.GATEIO_FUTURES}
             ]
             
             # Create exchange instances using factory pattern (CLAUDE.md compliant)
@@ -100,7 +102,7 @@ class SymbolDiscoveryService:
             symbol_data = {}
             for i, result in enumerate(results):
                 config = exchange_configs[i]
-                exchange_key = f"{config['exchange_enum'].value.lower()}_{config['market_type']}"
+                exchange_key = config['exchange_enum'].value.lower()
                 
                 if isinstance(result, Exception):
                     self.logger.error(f"Failed to fetch from {exchange_key}: {result}")
@@ -125,16 +127,13 @@ class SymbolDiscoveryService:
         try:
             # Use REST factory for symbol discovery (CLAUDE.md compliant)
             exchange_enum = config["exchange_enum"]
-            market_type = config["market_type"]
             
-            # Handle futures as separate exchange (GATEIO_FUTURES)
-            if market_type == "futures":
-                if exchange_enum != ExchangeEnum.GATEIO_FUTURES:
-                    raise ValueError(f"Futures support only available for GATEIO_FUTURES, got {exchange_enum.value}")
-                # Use gateio_futures configuration section for separate exchange
+            # Get the appropriate exchange configuration
+            # GATEIO_FUTURES is a separate exchange enum that maps to gateio_futures config
+            if exchange_enum == ExchangeEnum.GATEIO_FUTURES:
                 exchange_config = self.config_manager.get_exchange_config("gateio_futures")
             else:
-                # Use standard exchange configuration
+                # Use standard exchange configuration (mexc, gateio)
                 exchange_config = self.config_manager.get_exchange_config(exchange_enum.value.lower())
             
             rest_client = PublicRestExchangeFactory.inject(exchange_enum.value, config=exchange_config)
@@ -200,7 +199,8 @@ class SymbolDiscoveryService:
                 "gateio_futures": symbol_key in [f"{s.base}/{s.quote}" for s in symbol_data.get("gateio_futures", {})]
             }
             
-            # Only include if available on multiple exchanges (arbitrage candidates)
+            # Only include if available on multiple exchanges (triangular arbitrage candidates)
+            # For 3-exchange arbitrage, we need at least 2 exchanges, preferably all 3
             if sum(availability.values()) >= 2:
                 matrix[symbol_key] = availability
         
@@ -223,17 +223,15 @@ class SymbolDiscoveryService:
         if not matrix:
             return {"arbitrage_candidates": 0}
         
-        # Count arbitrage opportunities
+        # Count arbitrage opportunities for 3-exchange setup
         two_way = sum(1 for avail in matrix.values() if sum(avail.values()) >= 2)
-        three_way = sum(1 for avail in matrix.values() if sum(avail.values()) >= 3)
-        four_way = sum(1 for avail in matrix.values() if sum(avail.values()) == 4)
+        three_way = sum(1 for avail in matrix.values() if sum(avail.values()) == 3)
         
         return {
             "arbitrage_candidates": two_way,
             "two_way_opportunities": two_way,
             "three_way_opportunities": three_way,
-            "four_way_opportunities": four_way,
-            "best_opportunities": [k for k, v in matrix.items() if sum(v.values()) == 4][:10]
+            "best_opportunities": [k for k, v in matrix.items() if sum(v.values()) == 3][:10]
         }
     
     async def close(self):
@@ -308,6 +306,7 @@ class DataCollectionService:
                     
         except Exception as e:
             self.logger.error(f"Data collection failed: {e}")
+            traceback.print_exc()
             return False
     
     async def _validate_data(self, pipeline) -> bool:
@@ -570,7 +569,6 @@ class ArbitrageToolController:
         print(f"Arbitrage Candidates: {results.get('arbitrage_candidates', 0)}")
         print(f"Two-Way Opportunities: {stats.get('two_way_opportunities', 0)}")
         print(f"Three-Way Opportunities: {stats.get('three_way_opportunities', 0)}")
-        print(f"Four-Way Opportunities: {stats.get('four_way_opportunities', 0)}")
         
         if stats.get('best_opportunities'):
             print("\nTOP OPPORTUNITIES:")

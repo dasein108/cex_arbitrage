@@ -8,10 +8,16 @@ HFT COMPLIANCE: Sub-millisecond factory operations with efficient singleton mana
 """
 
 import logging
-from typing import TypeVar, Generic, Dict, Type, Any, Optional, List
+from typing import TypeVar, Generic, Dict, Type, Any, Optional, List, Union, TYPE_CHECKING
 from abc import ABC, abstractmethod
 
 from .factory_interface import ExchangeFactoryInterface
+from core.utils.exchange_utils import exchange_name_to_enum, exchange_to_key
+
+if TYPE_CHECKING:
+    from structs.common import ExchangeEnum
+else:
+    from structs.common import ExchangeEnum
 
 logger = logging.getLogger(__name__)
 
@@ -40,8 +46,8 @@ class BaseExchangeFactory(Generic[T], ExchangeFactoryInterface, ABC):
     
     # NOTE: Each subclass gets its own registry by explicit initialization
     # This ensures complete isolation between factory types
-    _implementations: Dict[str, Type[T]]
-    _instances: Dict[str, T]
+    _implementations: Dict[ExchangeEnum, Type[T]]
+    _instances: Dict[str, T]  # Keep string keys for instances (cache includes config hash)
     
     def __init_subclass__(cls, **kwargs):
         """Initialize separate registries for each factory subclass."""
@@ -51,7 +57,7 @@ class BaseExchangeFactory(Generic[T], ExchangeFactoryInterface, ABC):
     
     @classmethod
     @abstractmethod
-    def register(cls, exchange_name: str, implementation_class: Type[T], **kwargs) -> None:
+    def register(cls, exchange: ExchangeEnum, implementation_class: Type[T], **kwargs) -> None:
         """
         Register implementation for an exchange.
         
@@ -59,7 +65,7 @@ class BaseExchangeFactory(Generic[T], ExchangeFactoryInterface, ABC):
         Should use base class infrastructure for consistency.
         
         Args:
-            exchange_name: Exchange identifier (e.g., 'MEXC', 'GATEIO')
+            exchange: Exchange identifier (ExchangeEnum only)
             implementation_class: Implementation class for the exchange
             **kwargs: Additional registration parameters
         """
@@ -67,7 +73,7 @@ class BaseExchangeFactory(Generic[T], ExchangeFactoryInterface, ABC):
     
     @classmethod
     @abstractmethod  
-    def inject(cls, exchange_name: str, **kwargs) -> T:
+    def inject(cls, exchange: ExchangeEnum, **kwargs) -> T:
         """
         Create or retrieve instance for an exchange.
         
@@ -75,7 +81,7 @@ class BaseExchangeFactory(Generic[T], ExchangeFactoryInterface, ABC):
         Should use base class infrastructure and auto-injection patterns.
         
         Args:
-            exchange_name: Exchange identifier
+            exchange: Exchange identifier (ExchangeEnum only)
             **kwargs: Additional creation parameters
             
         Returns:
@@ -89,18 +95,21 @@ class BaseExchangeFactory(Generic[T], ExchangeFactoryInterface, ABC):
     # Standard utility methods - implemented in base class
     
     @classmethod
-    def is_registered(cls, exchange_name: str) -> bool:
+    def is_registered(cls, exchange: Union[str, ExchangeEnum]) -> bool:
         """
         Check if exchange has registered implementation.
         
+        ENTRY POINT: Accepts both string and ExchangeEnum for backward compatibility.
+        Converts strings to ExchangeEnum immediately at entry point.
+        
         Args:
-            exchange_name: Exchange identifier
+            exchange: Exchange identifier (string or ExchangeEnum - converted to ExchangeEnum immediately)
             
         Returns:
             True if exchange is registered, False otherwise
         """
-        exchange_key = cls._normalize_exchange_key(exchange_name)
-        return exchange_key in cls._implementations
+        exchange_enum = exchange_name_to_enum(exchange)
+        return exchange_enum in cls._implementations
     
     @classmethod
     def get_registered_exchanges(cls) -> List[str]:
@@ -108,9 +117,9 @@ class BaseExchangeFactory(Generic[T], ExchangeFactoryInterface, ABC):
         Get list of exchanges with registered implementations.
         
         Returns:
-            List of registered exchange identifiers
+            List of registered exchange identifiers (as string values)
         """
-        return list(cls._implementations.keys())
+        return [exchange.value for exchange in cls._implementations.keys()]
     
     @classmethod
     def clear_cache(cls) -> None:
@@ -146,25 +155,15 @@ class BaseExchangeFactory(Generic[T], ExchangeFactoryInterface, ABC):
             'factory_name': cls.__name__,
             'registered_exchanges_count': len(cls._implementations),
             'active_instances_count': len(cls._instances),
-            'registered_exchanges': list(cls._implementations.keys()),
+            'registered_exchanges': [exchange.value for exchange in cls._implementations.keys()],
             'cached_instances': list(cls._instances.keys()),
         }
     
-    @staticmethod
-    def _normalize_exchange_key(exchange_name: str) -> str:
-        """
-        Normalize exchange name to standard key format.
-        
-        Args:
-            exchange_name: Exchange identifier in any case
-            
-        Returns:
-            Normalized exchange key (uppercase)
-        """
-        return str(exchange_name).upper()
+    # REMOVED: _normalize_exchange_key method
+    # Use normalize_exchange_input() and exchange_to_key() from exchange_utils instead
     
     @classmethod
-    def _resolve_dependencies(cls, exchange_name: str, **context) -> Dict[str, Any]:
+    def _resolve_dependencies(cls, exchange: ExchangeEnum, **context) -> Dict[str, Any]:
         """
         Generic dependency resolution infrastructure.
         
@@ -173,7 +172,7 @@ class BaseExchangeFactory(Generic[T], ExchangeFactoryInterface, ABC):
         - exchange_mappings via ExchangeMappingsFactory
         
         Args:
-            exchange_name: Exchange identifier for dependency resolution
+            exchange: Exchange identifier for dependency resolution (ExchangeEnum only)
             **context: Additional context for dependency resolution
             
         Returns:
@@ -182,7 +181,7 @@ class BaseExchangeFactory(Generic[T], ExchangeFactoryInterface, ABC):
         Performance: Sub-millisecond resolution via factory caching
         """
         resolved = {}
-        exchange_key = cls._normalize_exchange_key(exchange_name)
+        exchange_key = exchange.value
         
         try:
             # Import factories lazily to avoid circular dependencies
@@ -214,14 +213,14 @@ class BaseExchangeFactory(Generic[T], ExchangeFactoryInterface, ABC):
             pass
         except Exception as e:
             # Log unexpected errors but don't fail
-            logger.debug(f"Dependency resolution failed for {exchange_name}: {e}")
+            logger.debug(f"Dependency resolution failed for {exchange}: {e}")
         
         return resolved
     
     @classmethod
     def _create_instance_with_auto_injection(
         cls, 
-        exchange_name: str, 
+        exchange: ExchangeEnum, 
         implementation_class: Type[T], 
         **kwargs
     ) -> T:
@@ -231,7 +230,7 @@ class BaseExchangeFactory(Generic[T], ExchangeFactoryInterface, ABC):
         Helper method for subclasses to create instances with auto-resolved dependencies.
         
         Args:
-            exchange_name: Exchange identifier
+            exchange: Exchange identifier (ExchangeEnum only)
             implementation_class: Class to instantiate
             **kwargs: Additional constructor arguments
             
@@ -239,7 +238,7 @@ class BaseExchangeFactory(Generic[T], ExchangeFactoryInterface, ABC):
             Instance with auto-injected dependencies
         """
         # Resolve dependencies automatically
-        auto_deps = cls._resolve_dependencies(exchange_name, **kwargs)
+        auto_deps = cls._resolve_dependencies(exchange, **kwargs)
         
         # Merge with provided kwargs (provided kwargs take precedence)
         merged_kwargs = {**auto_deps, **kwargs}

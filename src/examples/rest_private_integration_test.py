@@ -30,6 +30,7 @@ from typing import Dict, Any
 from structs.common import Symbol, AssetName, Side, OrderType, TimeInForce
 from core.config.config_manager import get_exchange_config
 from examples.utils.rest_api_factory import get_exchange_rest_instance
+from structs.common import ExchangeEnum
 from examples.integration_test_framework import (
     IntegrationTestRunner, TestCategory, TestStatus, TestMetrics,
     EXIT_CODE_SUCCESS, EXIT_CODE_FAILED_TESTS, EXIT_CODE_ERROR, 
@@ -434,8 +435,11 @@ async def main():
         print(f"Error: Unsupported exchange '{args.exchange}'. Supported: {supported_exchanges}")
         sys.exit(EXIT_CODE_CONFIG_ERROR)
     
+    # Convert to ExchangeEnum
+    exchange_enum = ExchangeEnum(args.exchange.upper())
+    
     # Create test suite
-    test_suite = RestPrivateIntegrationTest(args.exchange)
+    test_suite = RestPrivateIntegrationTest(exchange_enum.value)
     
     try:
         # Run tests

@@ -23,7 +23,7 @@ from typing import List, Optional, Type, Union
 
 from core.config.structs import ExchangeConfig
 from structs.common import Symbol
-from exchanges.consts import ExchangeEnum
+from structs.common import ExchangeEnum
 from ..interfaces import PublicExchangeInterface, PrivateExchangeInterface
 
 logger = logging.getLogger(__name__)

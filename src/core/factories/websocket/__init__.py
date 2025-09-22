@@ -21,7 +21,7 @@ Available Factories:
 
 Usage:
     from core.factories.websocket import PublicWebSocketExchangeFactory, PrivateWebSocketExchangeFactory
-    from exchanges.consts import ExchangeEnum
+    from structs.common import ExchangeEnum
     from core.config.config_manager import HftConfig
     
     # Create MEXC public WebSocket

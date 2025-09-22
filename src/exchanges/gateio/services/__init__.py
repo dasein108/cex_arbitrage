@@ -15,17 +15,17 @@ from .symbol_mapper import GateioSymbolMapperInterface
 from .futures_symbol_mapper import GateioFuturesSymbolMapperInterface
 from .mapper import GateioUnifiedMappings
 
-from exchanges.consts import ExchangeEnum
+from structs.common import ExchangeEnum
 
 # Import factories to verify registration
 from core.exchanges.services.symbol_mapper.factory import ExchangeSymbolMapperFactory
 from core.exchanges.services.unified_mapper.factory import ExchangeMappingsFactory
 
-ExchangeSymbolMapperFactory.register(ExchangeEnum.GATEIO.value, GateioSymbolMapperInterface)
-ExchangeMappingsFactory.register(ExchangeEnum.GATEIO.value, GateioUnifiedMappings)
+ExchangeSymbolMapperFactory.register(ExchangeEnum.GATEIO, GateioSymbolMapperInterface)
+ExchangeMappingsFactory.register(ExchangeEnum.GATEIO, GateioUnifiedMappings)
 
-ExchangeSymbolMapperFactory.register(ExchangeEnum.GATEIO_FUTURES.value, GateioFuturesSymbolMapperInterface)
-ExchangeMappingsFactory.register(ExchangeEnum.GATEIO_FUTURES.value, GateioUnifiedMappings)
+ExchangeSymbolMapperFactory.register(ExchangeEnum.GATEIO_FUTURES, GateioFuturesSymbolMapperInterface)
+ExchangeMappingsFactory.register(ExchangeEnum.GATEIO_FUTURES, GateioUnifiedMappings)
 
 
 __all__ = [

@@ -172,7 +172,7 @@ EOF
 }
 
 update_only() {
-    echo_info "Updating code only..."
+    echo_info "Updating code and configuration..."
     sync_code
     
     ssh -i "$SSH_KEY" "root@$SERVER" << 'EOF'
@@ -184,12 +184,14 @@ if ! command -v docker-compose &> /dev/null; then
     exit 1
 fi
 
-echo "Updating data collector..."
-docker-compose --env-file .env.prod -f docker-compose.yml -f docker-compose.prod.yml up -d --no-deps data_collector
-echo "✅ Collector updated"
+echo "Restarting data collector with fresh configuration..."
+# Use restart to ensure config volume is properly reloaded
+docker-compose --env-file .env.prod -f docker-compose.yml -f docker-compose.prod.yml restart data_collector
+
+echo "✅ Collector restarted with new configuration"
 EOF
 
-    echo_success "Update complete"
+    echo_success "Update complete - configuration reloaded"
 }
 
 case "${1:-deploy}" in

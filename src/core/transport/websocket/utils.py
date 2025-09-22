@@ -10,6 +10,7 @@ HFT COMPLIANT: Sub-millisecond strategy creation with pre-validated combinations
 from core.config.structs import ExchangeConfig
 from .ws_manager import WebSocketManager, WebSocketManagerConfig
 from .strategies import WebSocketStrategyFactory
+from core.utils.exchange_utils import exchange_name_to_enum
 
 
 def create_websocket_manager(
@@ -41,12 +42,9 @@ def create_websocket_manager(
     if is_private and not exchange_config.has_credentials():
         raise ValueError("API key and secret key required for private WebSocket access")
 
-    # Create strategy set using factory pattern
-    exchange_name = str(exchange_config.name).upper()
-    strategy_key = f"{exchange_name}_{'private' if is_private else 'public'}"
-    
     strategy_set = WebSocketStrategyFactory.inject(
-        strategy_key,
+        exchange_name_to_enum(exchange_config.name),
+        is_private=is_private,
         config=exchange_config,
         **kwargs
     )

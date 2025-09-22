@@ -1,5 +1,6 @@
 from core.exchanges.services.symbol_mapper.base_symbol_mapper import SymbolMapperInterface
 from core.exchanges.services.symbol_mapper.factory import ExchangeSymbolMapperFactory
+from structs import ExchangeEnum
 from structs.common import Symbol, AssetName
 
 
@@ -64,5 +65,4 @@ class GateioFuturesSymbolMapperInterface(SymbolMapperInterface):
 
 
 
-ExchangeSymbolMapperFactory.register('GATEIO_FUTURES', GateioFuturesSymbolMapperInterface)
-gateio_futures_symbol_mapper = ExchangeSymbolMapperFactory.inject('GATEIO_FUTURES')
+ExchangeSymbolMapperFactory.register(ExchangeEnum.GATEIO_FUTURES, GateioFuturesSymbolMapperInterface)

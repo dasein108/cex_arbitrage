@@ -18,6 +18,8 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Dict, List, Optional, Any
 
+from exchanges import ExchangeEnum
+
 # Add parent directory to path for imports
 project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
@@ -31,7 +33,8 @@ class ArbitrageDataPipeline:
     Data collection pipeline for arbitrage analysis.
     
     Integrates with existing symbol discovery results and candles downloader
-    to gather 3 months of 1-minute historical data for 4-way arbitrage opportunities.
+    to gather historical 1-minute data for triangular arbitrage opportunities
+    across 3 exchanges: MEXC spot, Gate.io spot, and Gate.io futures.
     """
     
     def __init__(self, output_dir: str = "./data/arbitrage"):
@@ -84,39 +87,38 @@ class ArbitrageDataPipeline:
         except json.JSONDecodeError as e:
             raise ValueError(f"Invalid JSON in discovery file: {e}")
     
-    def extract_four_way_symbols(self, discovery_data: Dict[str, Any]) -> List[str]:
+    def extract_triangular_symbols(self, discovery_data: Dict[str, Any]) -> List[str]:
         """
-        Extract symbols with 4-way coverage from discovery results.
+        Extract symbols with 3-way coverage from discovery results.
         
         Args:
             discovery_data: Discovery results data
             
         Returns:
-            List of symbols available on all 4 markets
+            List of symbols available on all 3 supported markets (MEXC spot, Gate.io spot, Gate.io futures)
         """
-        four_way_symbols = []
+        triangular_symbols = []
         
         # Access the availability matrix
-        availability = discovery_data.get('availability', {})
+        availability = discovery_data.get('availability_matrix', {})
         
         for symbol_key, symbol_availability in availability.items():
-            # Check if symbol is available on all 4 markets
+            # Check if symbol is available on all 3 supported markets
             if all([
                 symbol_availability.get('mexc_spot', False),
-                symbol_availability.get('mexc_futures', False),
                 symbol_availability.get('gateio_spot', False),
                 symbol_availability.get('gateio_futures', False)
             ]):
-                four_way_symbols.append(symbol_key)
+                triangular_symbols.append(symbol_key)
         
-        self.logger.info(f"Found {len(four_way_symbols)} four-way arbitrage opportunities")
+        self.logger.info(f"Found {len(triangular_symbols)} triangular arbitrage opportunities")
         
         # Log first few symbols for verification
-        if four_way_symbols:
-            sample_symbols = four_way_symbols[:5]
+        if triangular_symbols:
+            sample_symbols = triangular_symbols[:5]
             self.logger.info(f"Sample symbols: {sample_symbols}")
         
-        return four_way_symbols
+        return triangular_symbols
     
     def generate_download_configs(self, 
                                 symbols: List[str], 
@@ -150,8 +152,11 @@ class ArbitrageDataPipeline:
             else:
                 candle_symbol = symbol.replace('/', '_')
             
-            # Generate configs for MEXC and Gate.io (spot only for now)
-            for exchange in ['mexc', 'gateio']:
+            # Generate configs for 3-exchange setup: MEXC spot, Gate.io spot, Gate.io futures
+            # Note: Gate.io futures uses 'gateio_futures' as the exchange name
+            exchanges = [ExchangeEnum.MEXC, ExchangeEnum.GATEIO, ExchangeEnum.GATEIO_FUTURES]
+            
+            for exchange in exchanges:
                 config = {
                     'exchange': exchange,
                     'symbol': candle_symbol,
@@ -186,12 +191,12 @@ class ArbitrageDataPipeline:
             self.logger.info("Step 1: Loading symbol discovery results...")
             discovery_data = self.load_discovery_results(discovery_file)
             
-            # Step 2: Extract 4-way symbols
-            self.logger.info("Step 2: Extracting four-way arbitrage opportunities...")
-            symbols = self.extract_four_way_symbols(discovery_data)
+            # Step 2: Extract triangular arbitrage symbols
+            self.logger.info("Step 2: Extracting triangular arbitrage opportunities...")
+            symbols = self.extract_triangular_symbols(discovery_data)
             
             if not symbols:
-                raise ValueError("No four-way arbitrage opportunities found in discovery results")
+                raise ValueError("No triangular arbitrage opportunities found in discovery results")
             
             # Limit symbols for testing if specified
             if max_symbols and len(symbols) > max_symbols:
@@ -266,12 +271,19 @@ class ArbitrageDataPipeline:
                     symbol_files[symbol] = {}
                 symbol_files[symbol][exchange] = file_path
         
-        # Check for symbols with both MEXC and Gate.io data
+        # Check for symbols with complete 3-exchange data
+        # For triangular arbitrage, we need MEXC spot, Gate.io spot, and Gate.io futures
         complete_symbols = []
         incomplete_symbols = []
         
         for symbol, files in symbol_files.items():
-            if 'mexc' in files and 'gateio' in files:
+            # Check if we have all required exchanges for triangular arbitrage
+            has_mexc_spot = any('mexc' in str(path) and 'spot' in str(path) or 'mexc' in str(path) for path in files.values())
+            has_gateio_spot = any('gateio' in str(path) and 'spot' in str(path) or ('gateio' in str(path) and 'futures' not in str(path)) for path in files.values())
+            has_gateio_futures = any('gateio' in str(path) and 'futures' in str(path) for path in files.values())
+            
+            if has_mexc_spot and (has_gateio_spot or has_gateio_futures):
+                # For now, accept symbols with at least MEXC and one Gate.io market
                 complete_symbols.append(symbol)
             else:
                 incomplete_symbols.append(symbol)

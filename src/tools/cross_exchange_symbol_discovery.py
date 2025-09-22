@@ -33,9 +33,10 @@ sys.path.insert(0, str(project_root))
 
 # Direct imports from src directory
 from structs.common import Symbol, SymbolInfo, AssetName, ExchangeName
+from structs.common import ExchangeEnum
 from exchanges.mexc.rest.mexc_rest_public import MexcPublicSpotRest
-from exchanges.gateio.rest.gateio_public import GateioPublicExchangeSpotRest
-from exchanges.gateio.rest.gateio_futures_public import GateioPublicFuturesExchangeSpotRest
+from exchanges.gateio.rest.gateio_rest_public import GateioPublicSpotRest
+from exchanges.gateio.rest.gateio_futures_public import GateioPublicFuturesRest
 from core.exceptions.exchange import BaseExchangeError
 
 
@@ -138,12 +139,12 @@ class MarketType(IntEnum):
 
 class ExchangeMarket(Struct, frozen=True):
     """Immutable exchange-market pair"""
-    exchange: str
+    exchange: ExchangeEnum
     market: MarketType
     
     def __str__(self) -> str:
         market_str = "spot" if self.market == MarketType.SPOT else "futures"
-        return f"{self.exchange}_{market_str}"
+        return f"{self.exchange.value.lower()}_{market_str}"
 
 
 class SymbolAvailability(Struct):
@@ -211,15 +212,15 @@ class SymbolDiscoveryEngine:
     
     def _create_exchange_client(self, exchange_market: ExchangeMarket):
         """Factory method to create exchange clients"""
-        if exchange_market.exchange == "mexc" and exchange_market.market == MarketType.SPOT:
+        if exchange_market.exchange == ExchangeEnum.MEXC and exchange_market.market == MarketType.SPOT:
             return MexcPublicSpotRest()
-        elif exchange_market.exchange == "mexc" and exchange_market.market == MarketType.FUTURES:
+        elif exchange_market.exchange == ExchangeEnum.MEXC and exchange_market.market == MarketType.FUTURES:
             # Return None for MEXC futures - we'll handle this specially
             return None
-        elif exchange_market.exchange == "gateio" and exchange_market.market == MarketType.SPOT:
-            return GateioPublicExchangeSpotRest()
-        elif exchange_market.exchange == "gateio" and exchange_market.market == MarketType.FUTURES:
-            return GateioPublicFuturesExchangeSpotRest()
+        elif exchange_market.exchange == ExchangeEnum.GATEIO and exchange_market.market == MarketType.SPOT:
+            return GateioPublicSpotRest()
+        elif exchange_market.exchange == ExchangeEnum.GATEIO and exchange_market.market == MarketType.FUTURES:
+            return GateioPublicFuturesRest()
         else:
             raise ValueError(f"Unsupported exchange/market: {exchange_market}")
     
@@ -231,7 +232,7 @@ class SymbolDiscoveryEngine:
         """
         try:
             # Special handling for MEXC futures
-            if exchange_market.exchange == "mexc" and exchange_market.market == MarketType.FUTURES:
+            if exchange_market.exchange == ExchangeEnum.MEXC and exchange_market.market == MarketType.FUTURES:
                 start_time = time.perf_counter()
                 info = await fetch_mexc_futures_symbols()
                 elapsed = time.perf_counter() - start_time
@@ -279,10 +280,10 @@ class SymbolDiscoveryEngine:
         
         # Define exchange/market combinations
         targets = [
-            ExchangeMarket(exchange="mexc", market=MarketType.SPOT),
-            ExchangeMarket(exchange="mexc", market=MarketType.FUTURES),
-            ExchangeMarket(exchange="gateio", market=MarketType.SPOT),
-            ExchangeMarket(exchange="gateio", market=MarketType.FUTURES)
+            ExchangeMarket(exchange=ExchangeEnum.MEXC, market=MarketType.SPOT),
+            ExchangeMarket(exchange=ExchangeEnum.MEXC, market=MarketType.FUTURES),
+            ExchangeMarket(exchange=ExchangeEnum.GATEIO, market=MarketType.SPOT),
+            ExchangeMarket(exchange=ExchangeEnum.GATEIO, market=MarketType.FUTURES)
         ]
         
         # Parallel fetch from all exchanges (event-driven architecture)
@@ -362,10 +363,10 @@ class SymbolDiscoveryEngine:
         }
         
         exchange_markets = {
-            'mexc_spot': ExchangeMarket(exchange="mexc", market=MarketType.SPOT),
-            'mexc_futures': ExchangeMarket(exchange="mexc", market=MarketType.FUTURES),
-            'gateio_spot': ExchangeMarket(exchange="gateio", market=MarketType.SPOT),
-            'gateio_futures': ExchangeMarket(exchange="gateio", market=MarketType.FUTURES)
+            'mexc_spot': ExchangeMarket(exchange=ExchangeEnum.MEXC, market=MarketType.SPOT),
+            'mexc_futures': ExchangeMarket(exchange=ExchangeEnum.MEXC, market=MarketType.FUTURES),
+            'gateio_spot': ExchangeMarket(exchange=ExchangeEnum.GATEIO, market=MarketType.SPOT),
+            'gateio_futures': ExchangeMarket(exchange=ExchangeEnum.GATEIO, market=MarketType.FUTURES)
         }
         
         stablecoins = {'USDT', 'USDC'}
@@ -437,10 +438,10 @@ class SymbolDiscoveryEngine:
         for symbol in regular_symbols:
             symbol_key = f"{symbol.base}/{symbol.quote}"
             
-            mexc_spot_market = ExchangeMarket(exchange="mexc", market=MarketType.SPOT)
-            mexc_futures_market = ExchangeMarket(exchange="mexc", market=MarketType.FUTURES)
-            gateio_spot_market = ExchangeMarket(exchange="gateio", market=MarketType.SPOT)
-            gateio_futures_market = ExchangeMarket(exchange="gateio", market=MarketType.FUTURES)
+            mexc_spot_market = ExchangeMarket(exchange=ExchangeEnum.MEXC, market=MarketType.SPOT)
+            mexc_futures_market = ExchangeMarket(exchange=ExchangeEnum.MEXC, market=MarketType.FUTURES)
+            gateio_spot_market = ExchangeMarket(exchange=ExchangeEnum.GATEIO, market=MarketType.SPOT)
+            gateio_futures_market = ExchangeMarket(exchange=ExchangeEnum.GATEIO, market=MarketType.FUTURES)
             
             availability = SymbolAvailability(
                 symbol=symbol,

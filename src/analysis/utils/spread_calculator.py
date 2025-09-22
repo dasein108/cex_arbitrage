@@ -46,42 +46,42 @@ class SpreadCalculator:
         """Initialize spread calculator"""
         self.logger = logging.getLogger(__name__)
     
-    def calculate_spread(self, mexc_candle: CandleData, gateio_candle: CandleData, 
+    def calculate_spread(self, exchange1_candle: CandleData, exchange2_candle: CandleData, 
                         price_type: str = "close") -> SpreadData:
         """
         Calculate spread between two exchange candles.
         
         Args:
-            mexc_candle: MEXC candle data
-            gateio_candle: Gate.io candle data
+            exchange1_candle: First exchange candle data
+            exchange2_candle: Second exchange candle data
             price_type: Price to use ("open", "close", "high", "low", "mid")
             
         Returns:
             SpreadData with calculation results
         """
         # Extract prices based on type
-        mexc_price = self._get_price(mexc_candle, price_type)
-        gateio_price = self._get_price(gateio_candle, price_type)
+        exchange1_price = self._get_price(exchange1_candle, price_type)
+        exchange2_price = self._get_price(exchange2_candle, price_type)
         
-        if mexc_price <= 0 or gateio_price <= 0:
-            raise ValueError(f"Invalid prices: MEXC={mexc_price}, Gate.io={gateio_price}")
+        if exchange1_price <= 0 or exchange2_price <= 0:
+            raise ValueError(f"Invalid prices: Exchange1={exchange1_price}, Exchange2={exchange2_price}")
         
-        # Calculate spread (Gate.io - MEXC)
-        spread_amount = gateio_price - mexc_price
-        spread_percentage = (spread_amount / mexc_price) * 100
+        # Calculate spread (Exchange2 - Exchange1)
+        spread_amount = exchange2_price - exchange1_price
+        spread_percentage = (spread_amount / exchange1_price) * 100
         
-        # Determine direction
+        # Determine direction (keeping legacy field names for compatibility)
         if spread_amount > 0:
-            direction = "gateio_higher"
+            direction = "gateio_higher"  # Exchange2 higher
         elif spread_amount < 0:
-            direction = "mexc_higher"
+            direction = "mexc_higher"    # Exchange1 higher
         else:
             direction = "equal"
         
         return SpreadData(
-            timestamp=mexc_candle.timestamp,
-            mexc_price=mexc_price,
-            gateio_price=gateio_price,
+            timestamp=exchange1_candle.timestamp,
+            mexc_price=exchange1_price,      # Legacy field name (Exchange1)
+            gateio_price=exchange2_price,    # Legacy field name (Exchange2)
             spread_amount=abs(spread_amount),
             spread_percentage=abs(spread_percentage),
             direction=direction
@@ -111,7 +111,7 @@ class SpreadCalculator:
         Calculate spreads for a batch of synchronized candle pairs.
         
         Args:
-            synchronized_pairs: List of (MEXC, Gate.io) candle pairs
+            synchronized_pairs: List of (Exchange1, Exchange2) candle pairs
             price_type: Price type to use for calculations
             
         Returns:
@@ -120,9 +120,9 @@ class SpreadCalculator:
         spreads = []
         invalid_count = 0
         
-        for mexc_candle, gateio_candle in synchronized_pairs:
+        for exchange1_candle, exchange2_candle in synchronized_pairs:
             try:
-                spread = self.calculate_spread(mexc_candle, gateio_candle, price_type)
+                spread = self.calculate_spread(exchange1_candle, exchange2_candle, price_type)
                 spreads.append(spread)
             except ValueError as e:
                 invalid_count += 1
@@ -130,7 +130,7 @@ class SpreadCalculator:
                 continue
         
         if invalid_count > 0:
-            self.logger.warning(f"Skipped {invalid_count} invalid candle pairs")
+            self.logger.debug(f"Skipped {invalid_count} invalid candle pairs")
         
         return spreads
     
@@ -171,23 +171,32 @@ class SpreadCalculator:
                 'percentage': len(above_threshold) / len(spreads) * 100
             }
         
-        # Direction analysis
-        mexc_higher_count = sum(1 for s in spreads if s.direction == "mexc_higher")
-        gateio_higher_count = sum(1 for s in spreads if s.direction == "gateio_higher")
+        # Direction analysis (legacy field names maintained for compatibility)
+        exchange1_higher_count = sum(1 for s in spreads if s.direction == "mexc_higher")
+        exchange2_higher_count = sum(1 for s in spreads if s.direction == "gateio_higher")
         equal_count = sum(1 for s in spreads if s.direction == "equal")
         
         direction_analysis = {
-            'mexc_higher': {
-                'count': mexc_higher_count,
-                'percentage': mexc_higher_count / len(spreads) * 100
+            'exchange1_higher': {
+                'count': exchange1_higher_count,
+                'percentage': exchange1_higher_count / len(spreads) * 100
             },
-            'gateio_higher': {
-                'count': gateio_higher_count,
-                'percentage': gateio_higher_count / len(spreads) * 100
+            'exchange2_higher': {
+                'count': exchange2_higher_count,
+                'percentage': exchange2_higher_count / len(spreads) * 100
             },
             'equal': {
                 'count': equal_count,
                 'percentage': equal_count / len(spreads) * 100
+            },
+            # Legacy field names for backward compatibility
+            'mexc_higher': {
+                'count': exchange1_higher_count,
+                'percentage': exchange1_higher_count / len(spreads) * 100
+            },
+            'gateio_higher': {
+                'count': exchange2_higher_count,
+                'percentage': exchange2_higher_count / len(spreads) * 100
             }
         }
         
@@ -268,32 +277,35 @@ class SpreadCalculator:
         if len(spreads) < 2:
             return {'volatility': 0, 'price_stability': 100}
         
-        # Calculate price changes
-        mexc_prices = [s.mexc_price for s in spreads]
-        gateio_prices = [s.gateio_price for s in spreads]
+        # Calculate price changes (using legacy field names for compatibility)
+        exchange1_prices = [s.mexc_price for s in spreads]    # Exchange1 prices
+        exchange2_prices = [s.gateio_price for s in spreads]  # Exchange2 prices
         
         # Calculate returns (percentage change)
-        mexc_returns = [
-            (mexc_prices[i] - mexc_prices[i-1]) / mexc_prices[i-1] * 100
-            for i in range(1, len(mexc_prices))
+        exchange1_returns = [
+            (exchange1_prices[i] - exchange1_prices[i-1]) / exchange1_prices[i-1] * 100
+            for i in range(1, len(exchange1_prices))
         ]
         
-        gateio_returns = [
-            (gateio_prices[i] - gateio_prices[i-1]) / gateio_prices[i-1] * 100
-            for i in range(1, len(gateio_prices))
+        exchange2_returns = [
+            (exchange2_prices[i] - exchange2_prices[i-1]) / exchange2_prices[i-1] * 100
+            for i in range(1, len(exchange2_prices))
         ]
         
         # Calculate volatility (standard deviation of returns)
-        mexc_volatility = statistics.stdev(mexc_returns) if mexc_returns else 0
-        gateio_volatility = statistics.stdev(gateio_returns) if gateio_returns else 0
-        avg_volatility = (mexc_volatility + gateio_volatility) / 2
+        exchange1_volatility = statistics.stdev(exchange1_returns) if exchange1_returns else 0
+        exchange2_volatility = statistics.stdev(exchange2_returns) if exchange2_returns else 0
+        avg_volatility = (exchange1_volatility + exchange2_volatility) / 2
         
         # Price stability score (inverse of volatility, scaled to 0-100)
         stability_score = max(0, 100 - (avg_volatility * 10))
         
         return {
-            'mexc_volatility': mexc_volatility,
-            'gateio_volatility': gateio_volatility,
+            'exchange1_volatility': exchange1_volatility,
+            'exchange2_volatility': exchange2_volatility,
             'avg_volatility': avg_volatility,
-            'price_stability_score': stability_score
+            'price_stability_score': stability_score,
+            # Legacy field names for backward compatibility
+            'mexc_volatility': exchange1_volatility,
+            'gateio_volatility': exchange2_volatility
         }

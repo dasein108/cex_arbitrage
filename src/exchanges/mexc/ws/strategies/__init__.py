@@ -6,18 +6,18 @@ from core.transport.websocket.strategies import (
     WebSocketStrategyFactory
 )
 
-from exchanges.consts import ExchangeEnum
+from structs.common import ExchangeEnum
 
 # Register strategies with factory
 WebSocketStrategyFactory.register_strategies(
-    ExchangeEnum.MEXC.value, False,
+    ExchangeEnum.MEXC, False,
     MexcPublicConnectionStrategy,
     MexcPublicSubscriptionStrategy,
     MexcPublicMessageParser
 )
 
 WebSocketStrategyFactory.register_strategies(
-    ExchangeEnum.MEXC.value, True,
+    ExchangeEnum.MEXC, True,
     MexcPrivateConnectionStrategy,
     MexcPrivateSubscriptionStrategy,
     MexcPrivateMessageParser

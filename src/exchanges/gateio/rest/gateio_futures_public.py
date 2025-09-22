@@ -29,7 +29,8 @@ class GateioPublicFuturesRest(PublicExchangeSpotRestInterface):
 
         # Override mapper to use futures-specific mapper instead of spot mapper
         from core.exchanges.services import ExchangeMappingsFactory
-        self._mapper = ExchangeMappingsFactory.inject('GATEIO_FUTURES')
+        from structs.common import ExchangeEnum
+        self._mapper = ExchangeMappingsFactory.inject(ExchangeEnum.GATEIO_FUTURES)
 
         # caching for contract info (only config data)
         self._exchange_info: Optional[Dict[Symbol, SymbolInfo]] = None

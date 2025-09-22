@@ -17,7 +17,7 @@ from core.transport.websocket.structs import PublicWebsocketChannelType
 from core.factories.websocket import PublicWebSocketExchangeFactory
 from db import BookTickerSnapshot
 from db.models import TradeSnapshot
-from exchanges.consts import ExchangeEnum
+from structs.common import ExchangeEnum
 from .analytics import RealTimeAnalytics
 
 @dataclass
@@ -49,15 +49,15 @@ class UnifiedWebSocketManager:
     
     def __init__(
         self,
-        exchanges: List[str],
-        book_ticker_handler: Optional[Callable[[str, Symbol, BookTicker], Awaitable[None]]] = None,
-        trade_handler: Optional[Callable[[str, Symbol, Trade], Awaitable[None]]] = None
+        exchanges: List[ExchangeEnum],
+        book_ticker_handler: Optional[Callable[[ExchangeEnum, Symbol, BookTicker], Awaitable[None]]] = None,
+        trade_handler: Optional[Callable[[ExchangeEnum, Symbol, Trade], Awaitable[None]]] = None
     ):
         """
         Initialize unified WebSocket manager.
         
         Args:
-            exchanges: List of exchange names to connect to
+            exchanges: List of exchange enums to connect to
             book_ticker_handler: Handler for book ticker updates
         """
         self.exchanges = exchanges
@@ -68,7 +68,7 @@ class UnifiedWebSocketManager:
         self.logger = logging.getLogger(__name__)
         
         # Exchange WebSocket clients
-        self._exchange_clients: Dict[str, any] = {}
+        self._exchange_clients: Dict[ExchangeEnum, any] = {}
         
         # Book ticker cache: {exchange_symbol: BookTickerCache}
         self._book_ticker_cache: Dict[str, BookTickerCache] = {}
@@ -77,10 +77,10 @@ class UnifiedWebSocketManager:
         self._trade_cache: Dict[str, List[TradeCache]] = {}
         
         # Active symbols per exchange
-        self._active_symbols: Dict[str, Set[Symbol]] = {}
+        self._active_symbols: Dict[ExchangeEnum, Set[Symbol]] = {}
         
         # Connection status
-        self._connected: Dict[str, bool] = {}
+        self._connected: Dict[ExchangeEnum, bool] = {}
         
         self.logger.info(f"Initialized unified WebSocket manager for exchanges: {exchanges}")
     
@@ -104,37 +104,24 @@ class UnifiedWebSocketManager:
             self.logger.error(f"Failed to initialize WebSocket connections: {e}")
             raise
     
-    async def _initialize_exchange_client(self, exchange: str, symbols: List[Symbol]) -> None:
+    async def _initialize_exchange_client(self, exchange: ExchangeEnum, symbols: List[Symbol]) -> None:
         """
         Initialize WebSocket client for a specific exchange.
         
         Args:
-            exchange: Exchange name (mexc, gateio)
+            exchange: Exchange enum (ExchangeEnum.MEXC, ExchangeEnum.GATEIO, etc.)
             symbols: Symbols to subscribe to
         """
         try:
             # Create exchange configuration
-            config = get_exchange_config(exchange)
-            
-            # Ensure exchange registrations are loaded and map to correct exchange key
-            if exchange.lower() == "mexc":
-                import exchanges.mexc.ws  # This triggers registration import
-                exchange_key = ExchangeEnum.MEXC.value
-            elif exchange.lower() == "gateio":
-                import exchanges.gateio.ws  # This triggers registration import
-                exchange_key = ExchangeEnum.GATEIO.value
-            elif exchange.lower() == "gateio_futures":
-                import exchanges.gateio.ws  # This triggers registration import
-                exchange_key = "GATEIO_FUTURES"
-            else:
-                raise ValueError(f"Unsupported exchange: {exchange}")
+            config = get_exchange_config(exchange.value)
             
             # Create WebSocket client using factory pattern
             client = PublicWebSocketExchangeFactory.inject(
-                exchange_name=exchange_key,
+                exchange=exchange,
                 config=config,
-                book_ticker_handler=lambda symbol, ticker: self._handle_book_ticker_update(exchange_key, symbol, ticker),
-                trades_handler=lambda symbol, trades: self._handle_trades_update(exchange_key, symbol, trades)
+                book_ticker_handler=lambda symbol, ticker: self._handle_book_ticker_update(exchange, symbol, ticker),
+                trades_handler=lambda symbol, trades: self._handle_trades_update(exchange, symbol, trades)
             )
             
             # Store client and initialize
@@ -151,24 +138,25 @@ class UnifiedWebSocketManager:
             
         except Exception as e:
             self.logger.error(f"Failed to initialize {exchange} WebSocket: {e}")
-            self._connected[exchange.lower()] = False
+            self._connected[exchange] = False
             raise
     
-    async def _handle_book_ticker_update(self, exchange: str, symbol: Symbol, book_ticker: BookTicker) -> None:
+    async def _handle_book_ticker_update(self, exchange: ExchangeEnum, symbol: Symbol, book_ticker: BookTicker) -> None:
         """
         Handle book ticker updates from any exchange.
         
         Args:
+            exchange: Exchange that was updated
             symbol: Symbol that was updated
             book_ticker: Updated book ticker data
         """
         try:
             # Update cache
-            cache_key = f"{exchange}_{symbol}"
+            cache_key = f"{exchange.value}_{symbol}"
             self._book_ticker_cache[cache_key] = BookTickerCache(
                 ticker=book_ticker,
                 last_updated=datetime.now(),
-                exchange=exchange
+                exchange=exchange.value
             )
             
             # Call registered handler if available
@@ -178,18 +166,18 @@ class UnifiedWebSocketManager:
         except Exception as e:
             self.logger.error(f"Error handling book ticker update for {symbol}: {e}")
     
-    async def _handle_trades_update(self, exchange: str, symbol: Symbol, trades: List[Trade]) -> None:
+    async def _handle_trades_update(self, exchange: ExchangeEnum, symbol: Symbol, trades: List[Trade]) -> None:
         """
         Handle trade updates from any exchange.
         
         Args:
-            exchange: Exchange name
+            exchange: Exchange enum
             symbol: Symbol that was traded
             trades: List of trade data
         """
         try:
             # Update cache (keep recent trades, limit to 100 per symbol)
-            cache_key = f"{exchange}_{symbol}"
+            cache_key = f"{exchange.value}_{symbol}"
             if cache_key not in self._trade_cache:
                 self._trade_cache[cache_key] = []
             
@@ -198,7 +186,7 @@ class UnifiedWebSocketManager:
                 trade_cache_entry = TradeCache(
                     trade=trade,
                     last_updated=datetime.now(),
-                    exchange=exchange
+                    exchange=exchange.value
                 )
                 
                 self._trade_cache[cache_key].append(trade_cache_entry)
@@ -256,7 +244,7 @@ class UnifiedWebSocketManager:
             # Remove from cache
             for symbol in symbols:
                 for exchange in self.exchanges:
-                    cache_key = f"{exchange.lower()}_{symbol}"
+                    cache_key = f"{exchange.value}_{symbol}"
                     self._book_ticker_cache.pop(cache_key, None)
             
             self.logger.info(f"Removed {len(symbols)} symbols from all exchanges")
@@ -264,18 +252,18 @@ class UnifiedWebSocketManager:
         except Exception as e:
             self.logger.error(f"Failed to remove symbols: {e}")
     
-    def get_latest_book_ticker(self, exchange: str, symbol: Symbol) -> Optional[BookTicker]:
+    def get_latest_book_ticker(self, exchange: ExchangeEnum, symbol: Symbol) -> Optional[BookTicker]:
         """
         Get latest book ticker for a specific exchange and symbol.
         
         Args:
-            exchange: Exchange name
+            exchange: Exchange enum
             symbol: Symbol to get ticker for
             
         Returns:
             BookTicker if available, None otherwise
         """
-        cache_key = f"{exchange.lower()}_{symbol}"
+        cache_key = f"{exchange.value}_{symbol}"
         cache_entry = self._book_ticker_cache.get(cache_key)
         
         if cache_entry:
@@ -349,7 +337,7 @@ class UnifiedWebSocketManager:
         Returns:
             Dictionary mapping exchange names to connection status
         """
-        return self._connected.copy()
+        return {exchange.value: status for exchange, status in self._connected.items()}
     
     def get_active_symbols_count(self) -> Dict[str, int]:
         """
@@ -359,7 +347,7 @@ class UnifiedWebSocketManager:
             Dictionary mapping exchange names to symbol counts
         """
         return {
-            exchange: len(symbols) 
+            exchange.value: len(symbols) 
             for exchange, symbols in self._active_symbols.items()
         }
     
@@ -648,7 +636,7 @@ class DataCollector:
         except Exception as e:
             self.logger.error(f"Error stopping data collector: {e}")
     
-    async def _handle_book_ticker_update(self, exchange: str, symbol: Symbol, book_ticker: BookTicker) -> None:
+    async def _handle_book_ticker_update(self, exchange: ExchangeEnum, symbol: Symbol, book_ticker: BookTicker) -> None:
         """
         Handle book ticker updates from WebSocket manager.
         
@@ -656,11 +644,11 @@ class DataCollector:
         """
         try:
             if self.analytics:
-                await self.analytics.on_book_ticker_update(exchange, symbol, book_ticker)
+                await self.analytics.on_book_ticker_update(exchange.value, symbol, book_ticker)
         except Exception as e:
             self.logger.error(f"Error handling book ticker update: {e}")
     
-    async def _handle_trades_update(self, exchange: str, symbol: Symbol, trade: Trade) -> None:
+    async def _handle_trades_update(self, exchange: ExchangeEnum, symbol: Symbol, trades: List[Trade]) -> None:
         """
         Handle trade updates from WebSocket manager.
 
@@ -668,9 +656,11 @@ class DataCollector:
         """
         try:
             if self.analytics:
+                pass
                 # Analytics might have a trades handler method
                 # Process each trade if analytics supports it
-                pass
+                # for trade in trades:
+                #     pass  # Add analytics trade handling if needed
 
         except Exception as e:
             self.logger.error(f"Error handling trades update: {e}")

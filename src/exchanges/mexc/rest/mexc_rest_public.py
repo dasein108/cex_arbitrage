@@ -479,7 +479,7 @@ class MexcPublicSpotRest(PublicExchangeSpotRestInterface):
         Raises:
             ExchangeAPIError: If unable to fetch kline data
         """
-        pair = self._mapper.symbol_mapper.to_pair(symbol)
+        pair = self._mapper.to_pair(symbol)
         interval = self._mapper.get_exchange_kline_interval(timeframe)
         
         params = {

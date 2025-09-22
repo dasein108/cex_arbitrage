@@ -52,27 +52,39 @@ class DataLoader:
     
     def find_symbol_files(self, symbol: str) -> Dict[str, Optional[Path]]:
         """
-        Find CSV files for a symbol across exchanges.
+        Find CSV files for a symbol across the 3 supported exchanges.
         
         Args:
             symbol: Trading symbol (e.g., "BTC_USDT")
             
         Returns:
-            Dictionary mapping exchange names to file paths
+            Dictionary mapping exchange types to file paths
         """
         symbol_files = {}
         
-        # Look for MEXC and Gate.io files
-        for exchange in ['mexc', 'gateio']:
-            pattern = f"{exchange}_{symbol}_1m_*.csv"
+        # Look for files from the 3 supported exchange types
+        exchange_patterns = {
+            'mexc_spot': f"mexc_{symbol}_1m_*.csv",
+            'gateio_spot': f"gateio_{symbol}_1m_*.csv", 
+            'gateio_futures': f"gateio_futures_{symbol}_1m_*.csv"
+        }
+        
+        for exchange_type, pattern in exchange_patterns.items():
             matching_files = list(self.data_dir.glob(pattern))
             
             if matching_files:
                 # Use the most recent file if multiple exist
-                symbol_files[exchange] = max(matching_files, key=lambda p: p.stat().st_mtime)
+                symbol_files[exchange_type] = max(matching_files, key=lambda p: p.stat().st_mtime)
             else:
-                symbol_files[exchange] = None
-                self.logger.warning(f"No data file found for {exchange} {symbol}")
+                symbol_files[exchange_type] = None
+                self.logger.debug(f"No data file found for {exchange_type} {symbol}")
+        
+        # Also check for generic gateio files (without futures in name) as spot files
+        if not symbol_files.get('gateio_spot'):
+            generic_pattern = f"gateio_{symbol}_1m_*.csv"
+            matching_files = [f for f in self.data_dir.glob(generic_pattern) if 'futures' not in f.name]
+            if matching_files:
+                symbol_files['gateio_spot'] = max(matching_files, key=lambda p: p.stat().st_mtime)
         
         return symbol_files
     
@@ -134,24 +146,24 @@ class DataLoader:
             raise
     
     def synchronize_timestamps(self, 
-                             mexc_data: List[CandleData], 
-                             gateio_data: List[CandleData]) -> List[Tuple[CandleData, CandleData]]:
+                             exchange1_data: List[CandleData], 
+                             exchange2_data: List[CandleData]) -> List[Tuple[CandleData, CandleData]]:
         """
         Synchronize candle data by timestamps for spread calculation.
         
         Args:
-            mexc_data: MEXC candle data
-            gateio_data: Gate.io candle data
+            exchange1_data: First exchange candle data
+            exchange2_data: Second exchange candle data
             
         Returns:
-            List of synchronized (MEXC, Gate.io) candle pairs
+            List of synchronized (exchange1, exchange2) candle pairs
         """
         # Convert to dictionaries for O(1) lookup
-        mexc_dict = {candle.timestamp: candle for candle in mexc_data}
-        gateio_dict = {candle.timestamp: candle for candle in gateio_data}
+        exchange1_dict = {candle.timestamp: candle for candle in exchange1_data}
+        exchange2_dict = {candle.timestamp: candle for candle in exchange2_data}
         
         # Find common timestamps
-        common_timestamps = set(mexc_dict.keys()) & set(gateio_dict.keys())
+        common_timestamps = set(exchange1_dict.keys()) & set(exchange2_dict.keys())
         
         if not common_timestamps:
             self.logger.warning("No common timestamps found between exchanges")
@@ -159,12 +171,12 @@ class DataLoader:
         
         # Create synchronized pairs
         synchronized_pairs = [
-            (mexc_dict[ts], gateio_dict[ts]) 
+            (exchange1_dict[ts], exchange2_dict[ts]) 
             for ts in sorted(common_timestamps)
         ]
         
-        sync_rate = len(synchronized_pairs) / max(len(mexc_data), len(gateio_data)) * 100
-        self.logger.info(f"Synchronized {len(synchronized_pairs)} data points ({sync_rate:.1f}% sync rate)")
+        sync_rate = len(synchronized_pairs) / max(len(exchange1_data), len(exchange2_data)) * 100
+        self.logger.debug(f"Synchronized {len(synchronized_pairs)} data points ({sync_rate:.1f}% sync rate)")
         
         return synchronized_pairs
     

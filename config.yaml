@@ -36,7 +36,7 @@ database:
 
 # Exchange API settings - Enhanced with RestTransportConfig
 exchanges:
-  mexc:
+  mexc_spot:
     api_key: "${MEXC_API_KEY}"  # Set via environment variable MEXC_API_KEY
     secret_key: "${MEXC_SECRET_KEY}"  # Set via environment variable MEXC_SECRET_KEY
     base_url: "https://api.mexc.com"
@@ -64,7 +64,7 @@ exchanges:
       enable_compression: true
       user_agent: "HFTArbitrageEngine-MEXC/1.0"
       
-  gateio:
+  gateio_spot:
     api_key: "${GATEIO_API_KEY}"  # Set via environment variable GATEIO_API_KEY (empty for public-only access)
     secret_key: "${GATEIO_SECRET_KEY}"  # Set via environment variable GATEIO_SECRET_KEY (empty for public-only access)
     base_url: "https://api.gateio.ws/api/v4"  # Production URL
@@ -369,7 +369,7 @@ data_collector:
   enabled: true
   snapshot_interval: 0.5  # seconds
   analytics_interval: 10  # seconds for summary logging
-  exchanges: ["mexc", "gateio", "gateio_futures"]
+  exchanges: ["mexc_spot", "gateio_spot", "gateio_futures"]
   
   # Analytics configuration
   analytics:

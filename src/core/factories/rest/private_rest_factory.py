@@ -8,11 +8,13 @@ HFT COMPLIANCE: Sub-millisecond factory operations with efficient singleton mana
 """
 
 import logging
-from typing import Type, Optional
+from typing import Type, Optional, Union
 
 from core.factories.base_exchange_factory import BaseExchangeFactory
 from core.exchanges.rest.spot.base_rest_spot_private import PrivateExchangeSpotRestInterface
 from core.config.structs import ExchangeConfig
+from core.utils.exchange_utils import exchange_name_to_enum
+from structs.common import ExchangeEnum
 
 logger = logging.getLogger(__name__)
 
@@ -35,39 +37,47 @@ class PrivateRestExchangeFactory(BaseExchangeFactory[PrivateExchangeSpotRestInte
     """
 
     @classmethod
-    def register(cls, exchange_name: str, implementation_class: Type[PrivateExchangeSpotRestInterface]) -> None:
+    def register(cls, exchange: Union[str, ExchangeEnum], implementation_class: Type[PrivateExchangeSpotRestInterface]) -> None:
         """
         Register a private REST exchange implementation.
+        
+        ENTRY POINT: Accepts both string and ExchangeEnum for backward compatibility.
+        Converts strings to ExchangeEnum immediately at entry point.
         
         Follows the auto-registration pattern used throughout the system.
         Called by exchange modules on import to self-register.
         
         Args:
-            exchange_name: Exchange identifier (e.g., 'MEXC', 'GATEIO')
+            exchange: Exchange identifier (string or ExchangeEnum - converted to ExchangeEnum immediately)
             implementation_class: Implementation class inheriting from PrivateExchangeSpotRestInterface
             
         Raises:
-            ValueError: If implementation doesn't inherit from correct base class
+            ValueError: If implementation doesn't inherit from correct base class or exchange not recognized
         """
-        # Use base class validation and normalization
-        exchange_key = cls._normalize_exchange_key(exchange_name)
+        # Convert to ExchangeEnum at entry point
+        exchange_enum = exchange_name_to_enum(exchange)
+        
+        # Use base class validation 
         cls._validate_implementation_class(implementation_class, PrivateExchangeSpotRestInterface)
         
-        # Register with base class registry
-        cls._implementations[exchange_key] = implementation_class
+        # Register with base class registry using ExchangeEnum as key
+        cls._implementations[exchange_enum] = implementation_class
         
-        logger.debug(f"Registered private REST implementation for {exchange_key}: {implementation_class.__name__}")
+        logger.debug(f"Registered private REST implementation for {exchange_enum.value}: {implementation_class.__name__}")
 
     @classmethod
-    def inject(cls, exchange_name: str, config: Optional[ExchangeConfig] = None, **kwargs) -> PrivateExchangeSpotRestInterface:
+    def inject(cls, exchange: Union[str, ExchangeEnum], config: Optional[ExchangeConfig] = None, **kwargs) -> PrivateExchangeSpotRestInterface:
         """
         Create or retrieve private REST exchange instance.
         
         Implements singleton pattern with efficient caching and auto-dependency injection.
         Uses BaseExchangeFactory infrastructure for consistent behavior.
         
+        ENTRY POINT: Accepts both string and ExchangeEnum for backward compatibility.
+        Converts strings to ExchangeEnum immediately at entry point.
+        
         Args:
-            exchange_name: Exchange identifier (e.g., 'MEXC', 'GATEIO')
+            exchange: Exchange identifier (string or ExchangeEnum - converted to ExchangeEnum immediately)
             config: ExchangeConfig for the exchange (required for creation)
             **kwargs: Additional creation parameters
             
@@ -75,35 +85,35 @@ class PrivateRestExchangeFactory(BaseExchangeFactory[PrivateExchangeSpotRestInte
             PrivateExchangeSpotRestInterface instance (cached singleton)
             
         Raises:
-            ValueError: If exchange not registered or config not provided
+            ValueError: If exchange not registered, not recognized, or config not provided
         """
         if config is None:
             raise ValueError("ExchangeConfig required for private REST exchange creation")
         
-        # Use base class normalization
-        exchange_key = cls._normalize_exchange_key(exchange_name)
+        # Convert to ExchangeEnum at entry point
+        exchange_enum = exchange_name_to_enum(exchange)
         
         # Check if registered
-        if exchange_key not in cls._implementations:
+        if exchange_enum not in cls._implementations:
             available = cls.get_registered_exchanges()
             raise ValueError(
-                f"No private REST implementation registered for {exchange_name}. "
+                f"No private REST implementation registered for {exchange_enum.value}. "
                 f"Available: {available}"
             )
         
         # Check singleton cache first (HFT performance optimization)
-        cache_key = f"{exchange_key}_{id(config)}"
+        cache_key = f"{exchange_enum.value}_{id(config)}"
         if cache_key in cls._instances:
-            logger.debug(f"Returning cached private REST instance for {exchange_key}")
+            logger.debug(f"Returning cached private REST instance for {exchange_enum.value}")
             return cls._instances[cache_key]
         
         # Create new instance with auto-dependency injection
-        implementation_class = cls._implementations[exchange_key]
+        implementation_class = cls._implementations[exchange_enum]
         
         try:
             # Use base class auto-injection for consistent dependency resolution
             instance = cls._create_instance_with_auto_injection(
-                exchange_name=exchange_name,
+                exchange=exchange_enum,
                 implementation_class=implementation_class,
                 config=config,
                 **kwargs
@@ -112,12 +122,12 @@ class PrivateRestExchangeFactory(BaseExchangeFactory[PrivateExchangeSpotRestInte
             # Cache the instance for future requests
             cls._instances[cache_key] = instance
             
-            logger.info(f"Created and cached private REST instance for {exchange_key}: {implementation_class.__name__}")
+            logger.info(f"Created and cached private REST instance for {exchange_enum.value}: {implementation_class.__name__}")
             return instance
             
         except Exception as e:
-            logger.error(f"Failed to create private REST instance for {exchange_key}: {e}")
-            raise ValueError(f"Failed to create private REST exchange {exchange_name}: {e}") from e
+            logger.error(f"Failed to create private REST instance for {exchange_enum.value}: {e}")
+            raise ValueError(f"Failed to create private REST exchange {exchange_enum.value}: {e}") from e
 
     @classmethod
     def create_for_config(cls, config: ExchangeConfig) -> PrivateExchangeSpotRestInterface:
@@ -139,8 +149,8 @@ class PrivateRestExchangeFactory(BaseExchangeFactory[PrivateExchangeSpotRestInte
         if not config or not config.name:
             raise ValueError("Valid ExchangeConfig with name required")
         
-        exchange_name = str(config.name).upper()
-        return cls.inject(exchange_name, config=config)
+        # Pass config.name directly to inject() - it will handle string-to-enum conversion
+        return cls.inject(config.name, config=config)
 
     @classmethod
     def get_available_exchanges(cls) -> list[str]:

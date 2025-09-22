@@ -8,8 +8,12 @@ HFT COMPLIANT: Fast strategy creation with pre-validated combinations and auto-d
 """
 
 import logging
-from typing import List, Dict, Optional, Any
+from typing import List, Dict, Optional, Any, Union, TYPE_CHECKING, Tuple
 
+if TYPE_CHECKING:
+    from structs.common import ExchangeEnum
+else:
+    from structs.common import ExchangeEnum
 from ....config.structs import ExchangeConfig, ExchangeName
 from .strategy_set import RestStrategySet
 from core.factories.base_composite_factory import BaseCompositeFactory
@@ -31,39 +35,41 @@ class RestStrategyFactory(BaseCompositeFactory[RestStrategySet]):
     @classmethod
     def register(
         cls,
-        exchange_name: str,
+        exchange: ExchangeEnum,
+        is_private: bool,
         strategy_config: Dict[str, type],
         **kwargs
     ) -> None:
         """
-        Register strategy configuration for an exchange.
-        
-        Implements BaseCompositeFactory.register() for REST strategies.
+        Register strategy configuration for an exchange with API type.
         
         Args:
-            exchange_name: Exchange identifier with API type (e.g., 'MEXC_public', 'MEXC_private')
+            exchange: Exchange enum (clean, no suffixes)
+            is_private: True for private API, False for public API
             strategy_config: Dictionary containing strategy class mappings
             **kwargs: Additional registration parameters
+            
+        Raises:
+            ValueError: If strategy config invalid
         """
-        # Use base class validation and normalization
-        exchange_key = cls._normalize_exchange_key(exchange_name)
+        # Use tuple key for clean separation
+        key = (exchange, is_private)
         
         # Validate strategy configuration using base class method
         required_strategies = ['request', 'rate_limit', 'retry']
         cls._validate_strategy_config(strategy_config, required_strategies)
         
-        # Register with base class registry
-        cls._implementations[exchange_key] = strategy_config
+        # Register with tuple key
+        cls._implementations[key] = strategy_config
     
     @classmethod
-    def inject(cls, exchange_name: str, config: ExchangeConfig = None, **kwargs) -> RestStrategySet:
+    def inject(cls, exchange: ExchangeEnum, is_private: bool, config: ExchangeConfig = None, **kwargs) -> RestStrategySet:
         """
         Create or retrieve REST strategy set for an exchange.
         
-        Implements BaseCompositeFactory.inject() with auto-dependency injection.
-        
         Args:
-            exchange_name: Exchange identifier with API type (e.g., 'MEXC_public')
+            exchange: Exchange enum (clean, no suffixes)
+            is_private: True for private API, False for public API
             config: ExchangeConfig required for strategy creation
             **kwargs: Additional creation parameters
             
@@ -76,31 +82,31 @@ class RestStrategyFactory(BaseCompositeFactory[RestStrategySet]):
         if config is None:
             raise ValueError("ExchangeConfig required for REST strategy creation")
         
-        # Use base class normalization
-        exchange_key = cls._normalize_exchange_key(exchange_name)
+        # Use tuple key for lookup
+        key = (exchange, is_private)
         
         # Check if registered
-        if exchange_key not in cls._implementations:
-            available = cls.get_registered_exchanges()
+        if key not in cls._implementations:
+            available = list(cls._implementations.keys())
             raise ValueError(
-                f"No strategies registered for {exchange_name}. Available: {available}"
+                f"No strategies registered for {exchange.value} (private={is_private}). Available: {available}"
             )
         
         # Get strategy configuration and delegate to assembly method
-        strategy_config = cls._implementations[exchange_key]
-        return cls._assemble_components(exchange_name, strategy_config, config=config, **kwargs)
+        strategy_config = cls._implementations[key]
+        return cls._assemble_components(exchange, strategy_config, is_private=is_private, config=config, **kwargs)
     
     @classmethod
-    def _assemble_components(cls, exchange_name: str, strategy_config: Dict[str, type], **kwargs) -> RestStrategySet:
+    def _assemble_components(cls, exchange: ExchangeEnum, strategy_config: Dict[str, type], **kwargs) -> RestStrategySet:
         """
         Assemble REST strategy components into RestStrategySet.
         
         Implements BaseCompositeFactory._assemble_components() for REST strategies.
         
         Args:
-            exchange_name: Exchange identifier
+            exchange: Exchange identifier (ExchangeEnum only)
             strategy_config: Component configuration
-            **kwargs: Assembly parameters including config
+            **kwargs: Assembly parameters including is_private, config, etc.
             
         Returns:
             Assembled RestStrategySet
@@ -109,10 +115,13 @@ class RestStrategyFactory(BaseCompositeFactory[RestStrategySet]):
         if not config:
             raise ValueError("ExchangeConfig required for REST strategy assembly")
         
+        is_private = kwargs.get('is_private', False)
+        
         # Auto-resolve dependencies
-        resolved_kwargs = cls._resolve_dependencies(exchange_name, **{k: v for k, v in kwargs.items() if k != 'config'})
+        resolved_kwargs = cls._resolve_dependencies(exchange, **{k: v for k, v in kwargs.items() if k != 'config'})
         
         # Create strategies with ExchangeConfig - use fallback for constructor differences
+        exchange_name = exchange.value
         request_strategy = cls._create_component_with_fallback(
             strategy_config['request'], exchange_name, 
             {'exchange_config': config, **resolved_kwargs}, {'exchange_config': config}
@@ -128,7 +137,6 @@ class RestStrategyFactory(BaseCompositeFactory[RestStrategySet]):
         
         # Auth strategy for private endpoints
         auth_strategy = None
-        is_private = 'PRIVATE' in exchange_name.upper()
         if is_private and strategy_config.get('auth'):
             auth_strategy = cls._create_component_with_fallback(
                 strategy_config['auth'], exchange_name,
@@ -144,21 +152,7 @@ class RestStrategyFactory(BaseCompositeFactory[RestStrategySet]):
                 {'config': config, **resolved_kwargs},  # Primary: with all dependencies
                 {'config': config},  # Fallback: just config
             )
-        elif 'GATEIO' in exchange_name.upper():
-            # Fallback: Import Gate.io exception handler directly if registration failed
-            try:
-                from exchanges.gateio.rest.strategies.exception_handler import GateioExceptionHandlerStrategy
-                exception_handler_strategy = GateioExceptionHandlerStrategy()
-            except ImportError:
-                pass  # Ignore if import fails
-        elif 'MEXC' in exchange_name.upper():
-            # Fallback: Import MEXC exception handler directly if registration failed
-            try:
-                from exchanges.mexc.rest.strategies.exception_handler import MexcExceptionHandlerStrategy
-                exception_handler_strategy = MexcExceptionHandlerStrategy()
-            except ImportError:
-                pass  # Ignore if import fails
-        
+
         return RestStrategySet(
             request_strategy=request_strategy,
             rate_limit_strategy=rate_limit_strategy,
@@ -170,7 +164,7 @@ class RestStrategyFactory(BaseCompositeFactory[RestStrategySet]):
     @classmethod
     def register_strategies(
         cls,
-        exchange: ExchangeName,
+        exchange: ExchangeEnum,
         is_private: bool,
         request_strategy_cls: type,
         rate_limit_strategy_cls: type,
@@ -185,7 +179,7 @@ class RestStrategyFactory(BaseCompositeFactory[RestStrategySet]):
         Used by exchange modules for backward compatibility.
         
         Args:
-            exchange: Exchange name (e.g., 'mexc', 'gateio')
+            exchange: Exchange identifier (ExchangeEnum only)
             is_private: True for private API, False for public
             request_strategy_cls: RequestStrategy implementation
             rate_limit_strategy_cls: RateLimitStrategy implementation
@@ -205,9 +199,8 @@ class RestStrategyFactory(BaseCompositeFactory[RestStrategySet]):
             'exception_handler': exception_handler_strategy_cls
         }
         
-        # Use standardized register method
-        exchange_key = f"{exchange}_{'private' if is_private else 'public'}"
-        cls.register(exchange_key, strategy_config)
+        # Use standardized register method with tuple key
+        cls.register(exchange, is_private, strategy_config)
     
     @classmethod
     def create_strategies(
@@ -230,11 +223,12 @@ class RestStrategyFactory(BaseCompositeFactory[RestStrategySet]):
         Raises:
             ValueError: If no strategies registered for the exchange
         """
-        exchange_name = str(exchange_config.name).upper()
-        exchange_key = f"{exchange_name}_{'PRIVATE' if is_private else 'PUBLIC'}"
+        # Convert exchange config name to ExchangeEnum
+        from core.utils.exchange_utils import exchange_name_to_enum
+        exchange_enum = exchange_name_to_enum(exchange_config.name)
         
         # Delegate to standardized inject() method
-        return cls.inject(exchange_key, config=exchange_config)
+        return cls.inject(exchange_enum, is_private, config=exchange_config)
 
     @classmethod
     def list_available_strategies(cls) -> Dict[str, List[str]]:
@@ -247,10 +241,13 @@ class RestStrategyFactory(BaseCompositeFactory[RestStrategySet]):
             Dictionary mapping exchange names to available API types
         """
         result = {}
-        for key in cls.get_registered_exchanges():
-            if '_' in key:
-                exchange, api_type = key.rsplit('_', 1)
-                if exchange not in result:
-                    result[exchange] = []
-                result[exchange].append(api_type)
+        for key in cls._implementations.keys():
+            if isinstance(key, tuple) and len(key) == 2:
+                exchange_enum, is_private = key
+                exchange_name = exchange_enum.value
+                api_type = 'private' if is_private else 'public'
+                
+                if exchange_name not in result:
+                    result[exchange_name] = []
+                result[exchange_name].append(api_type)
         return result

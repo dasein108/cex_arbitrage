@@ -6,7 +6,7 @@ Provides both class-based factory pattern and function-based creation.
 """
 
 import logging
-from typing import Dict, Tuple, Type, Optional, Any
+from typing import Dict, Tuple, Type, Optional, Any, TYPE_CHECKING
 
 from core.transport.websocket.strategies.strategy_set import WebSocketStrategySet
 from core.transport.websocket.strategies.connection import ConnectionStrategy
@@ -14,6 +14,11 @@ from core.transport.websocket.strategies.subscription import SubscriptionStrateg
 from core.transport.websocket.strategies.message_parser import MessageParser
 from core.exchanges.services.unified_mapper.factory import ExchangeMappingsFactory
 from core.exceptions.exchange import ConfigurationError
+
+if TYPE_CHECKING:
+    from structs.common import ExchangeEnum
+else:
+    from structs.common import ExchangeEnum
 
 
 class WebSocketStrategyFactory:
@@ -23,13 +28,13 @@ class WebSocketStrategyFactory:
     Supports both registration-based factory pattern and direct creation.
     """
     
-    _registered_strategies: Dict[str, Tuple[Type[ConnectionStrategy], Type[SubscriptionStrategy], Type[MessageParser]]] = {}
+    _registered_strategies: Dict[Tuple[ExchangeEnum, bool], Tuple[Type[ConnectionStrategy], Type[SubscriptionStrategy], Type[MessageParser]]] = {}
     _logger = logging.getLogger(__name__)
     
     @classmethod
     def register_strategies(
         cls,
-        exchange_name: str,
+        exchange: ExchangeEnum,
         is_private: bool,
         connection_strategy: Type[ConnectionStrategy],
         subscription_strategy: Type[SubscriptionStrategy],
@@ -39,23 +44,25 @@ class WebSocketStrategyFactory:
         Register strategy classes for an exchange.
         
         Args:
-            exchange_name: Exchange name (e.g., 'mexc', 'gateio')
+            exchange: Exchange identifier (ExchangeEnum only)
             is_private: Whether strategies are for private API
             connection_strategy: Connection strategy class
             subscription_strategy: Subscription strategy class  
             message_parser: Message parser class
         """
-        key = f"{exchange_name}_{'private' if is_private else 'public'}"
+        # Use tuple key for clean separation
+        key = (exchange, is_private)
         cls._registered_strategies[key] = (connection_strategy, subscription_strategy, message_parser)
-        cls._logger.info(f"Registered WebSocket strategies for {key}")
+        cls._logger.info(f"Registered WebSocket strategies for {exchange.value} (private={is_private})")
     
     @classmethod
-    def inject(cls, strategy_key: str, config: Any = None, **kwargs) -> WebSocketStrategySet:
+    def inject(cls, exchange: ExchangeEnum, is_private: bool, config: Any = None, **kwargs) -> WebSocketStrategySet:
         """
         Create strategy set using dependency injection.
         
         Args:
-            strategy_key: Strategy key (e.g., 'MEXC_public', 'GATEIO_private')
+            exchange: Exchange enum (clean, no suffixes)
+            is_private: True for private API, False for public API
             config: Exchange configuration
             **kwargs: Additional arguments
             
@@ -63,23 +70,24 @@ class WebSocketStrategyFactory:
             Complete WebSocket strategy set
             
         Raises:
-            ConfigurationError: If strategy key not found
+            ConfigurationError: If strategy not found
         """
-        if strategy_key not in cls._registered_strategies:
+        # Use tuple key for lookup
+        key = (exchange, is_private)
+        
+        if key not in cls._registered_strategies:
             available_keys = list(cls._registered_strategies.keys())
-            raise ConfigurationError(f"Strategy key '{strategy_key}' not found. Available: {available_keys}")
+            raise ConfigurationError(f"No strategies registered for {exchange.value} (private={is_private}). Available: {available_keys}")
         
-        connection_cls, subscription_cls, parser_cls = cls._registered_strategies[strategy_key]
-        
-        # Extract exchange name from strategy key
-        exchange_name = strategy_key.split('_')[0]
+        connection_cls, subscription_cls, parser_cls = cls._registered_strategies[key]
         
         # Get exchange mappings (includes symbol mapper)
         try:
-            mapper = ExchangeMappingsFactory.inject(exchange_name)
+            # Pass exchange enum directly
+            mapper = ExchangeMappingsFactory.inject(exchange)
         except Exception as e:
-            cls._logger.error(f"Failed to get mapper for {exchange_name}: {e}")
-            raise ConfigurationError(f"Mapper not available for {exchange_name}")
+            cls._logger.error(f"Failed to get mapper for {exchange.value}: {e}")
+            raise ConfigurationError(f"Mapper not available for {exchange.value}")
         
         # Create strategy instances
         try:
@@ -104,11 +112,11 @@ class WebSocketStrategyFactory:
             )
             
         except Exception as e:
-            cls._logger.error(f"Failed to create strategies for {strategy_key}: {e}")
+            cls._logger.error(f"Failed to create strategies for {exchange.value} (private={is_private}): {e}")
             raise ConfigurationError(f"Strategy creation failed: {e}")
     
     @classmethod
-    def get_registered_strategies(cls) -> Dict[str, Tuple[Type, Type, Type]]:
+    def get_registered_strategies(cls) -> Dict[Tuple[ExchangeEnum, bool], Tuple[Type, Type, Type]]:
         """Get all registered strategies."""
         return cls._registered_strategies.copy()
     
@@ -125,6 +133,8 @@ def create_websocket_strategies(
     """
     Create WebSocket strategies for the specified exchange.
     
+    Legacy function that delegates to the factory pattern.
+    
     Args:
         exchange_name: Name of the exchange (mexc, gateio)
         is_private: Whether to create private or public strategies
@@ -135,71 +145,9 @@ def create_websocket_strategies(
     Raises:
         ConfigurationError: If exchange is not supported
     """
-    logger = logging.getLogger(__name__)
-    exchange_name = exchange_name.lower()
-    
-    # Get mapper for the exchange (includes symbol mapper)
-    mapper = ExchangeMappingsFactory.inject(exchange_name.upper())
-    
-    if exchange_name == "mexc":
-        return _create_mexc_strategies(mapper, is_private)
-    elif exchange_name == "gateio":
-        return _create_gateio_strategies(mapper, is_private)
-    else:
-        raise ConfigurationError(
-            f"Unsupported exchange: {exchange_name}. Supported: mexc, gateio"
-        )
+    # Normalize exchange name to ExchangeEnum and delegate to factory
+    from core.utils.exchange_utils import exchange_name_to_enum
+    exchange_enum = exchange_name_to_enum(exchange_name)
+    return WebSocketStrategyFactory.inject(exchange_enum, is_private)
 
 
-def _create_mexc_strategies(mapper, is_private: bool) -> WebSocketStrategySet:
-    """Create MEXC WebSocket strategies."""
-    
-    if is_private:
-        # Import MEXC private strategies
-        from exchanges.mexc.ws.strategies.private.connection import MexcPrivateConnectionStrategy
-        from exchanges.mexc.ws.strategies.private.subscription import MexcPrivateSubscriptionStrategy
-        from exchanges.mexc.ws.strategies.private.message_parser import MexcPrivateMessageParser
-        
-        return WebSocketStrategySet(
-            connection_strategy=MexcPrivateConnectionStrategy(),
-            subscription_strategy=MexcPrivateSubscriptionStrategy(mapper=mapper),
-            message_parser=MexcPrivateMessageParser(mapper)
-        )
-    else:
-        # Import MEXC public strategies
-        from exchanges.mexc.ws.strategies.public.connection import MexcPublicConnectionStrategy
-        from exchanges.mexc.ws.strategies.public.subscription import MexcPublicSubscriptionStrategy
-        from exchanges.mexc.ws.strategies.public.message_parser import MexcPublicMessageParser
-        
-        return WebSocketStrategySet(
-            connection_strategy=MexcPublicConnectionStrategy(),
-            subscription_strategy=MexcPublicSubscriptionStrategy(mapper=mapper),
-            message_parser=MexcPublicMessageParser(mapper)
-        )
-
-
-def _create_gateio_strategies(mapper, is_private: bool) -> WebSocketStrategySet:
-    """Create Gate.io WebSocket strategies."""
-    
-    if is_private:
-        # Import Gate.io private strategies
-        from exchanges.gateio.ws.strategies.private.connection import GateioPrivateConnectionStrategy
-        from exchanges.gateio.ws.strategies.private.subscription import GateioPrivateSubscriptionStrategy
-        from exchanges.gateio.ws.strategies.private.message_parser import GateioPrivateMessageParser
-        
-        return WebSocketStrategySet(
-            connection_strategy=GateioPrivateConnectionStrategy(),
-            subscription_strategy=GateioPrivateSubscriptionStrategy(mapper=mapper),
-            message_parser=GateioPrivateMessageParser(mapper)
-        )
-    else:
-        # Import Gate.io public strategies
-        from exchanges.gateio.ws.strategies.public.connection import GateioPublicConnectionStrategy
-        from exchanges.gateio.ws.strategies.public.subscription import GateioPublicSubscriptionStrategy
-        from exchanges.gateio.ws.strategies.public.message_parser import GateioPublicMessageParser
-        
-        return WebSocketStrategySet(
-            connection_strategy=GateioPublicConnectionStrategy(),
-            subscription_strategy=GateioPublicSubscriptionStrategy(mapper=mapper),
-            message_parser=GateioPublicMessageParser(mapper)
-        )

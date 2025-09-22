@@ -19,7 +19,7 @@ CLI Usage:
 
 Class Usage:
     downloader = CandlesDownloader(output_dir="./data")
-    await downloader.download_candles("mexc", "BTC_USDT", "1h", days=30)
+    await downloader.download_candles(ExchangeEnum.MEXC, "BTC_USDT", "1h", days=30)
 """
 
 import asyncio
@@ -34,9 +34,8 @@ import logging
 # Import the unified factory for exchange instances
 from core.factories.rest.public_rest_factory import PublicRestExchangeFactory
 from core.config.config_manager import HftConfig
+from structs.common import ExchangeEnum
 from structs.common import Symbol, AssetName, KlineInterval, Kline
-# NOTE: rate_limiter functionality replaced by strategy-based transport system
-# from common.rate_limiter import get_rate_limiter
 
 # Import exchange modules to trigger auto-registration
 import exchanges.mexc.rest
@@ -68,7 +67,7 @@ class CandlesDownloader:
     ]
     
     # Supported exchanges (factory will handle implementation)
-    SUPPORTED_EXCHANGES = ['mexc', 'gateio', 'gateio_futures']
+    SUPPORTED_EXCHANGES = [ExchangeEnum.MEXC, ExchangeEnum.GATEIO, ExchangeEnum.GATEIO_FUTURES]
     
     # Timeframe mapping to KlineInterval enum
     TIMEFRAME_MAP = {
@@ -212,7 +211,7 @@ class CandlesDownloader:
     
     async def download_candles(
         self,
-        exchange: str,
+        exchange: ExchangeEnum,
         symbol: str,
         timeframe: str,
         start_date: Optional[datetime] = None,
@@ -224,7 +223,7 @@ class CandlesDownloader:
         Download candles data from specified exchange and save to CSV.
         
         Args:
-            exchange: Exchange name ('mexc', 'gateio')
+            exchange: Exchange enum (ExchangeEnum.MEXC, ExchangeEnum.GATEIO, etc.)
             symbol: Symbol string (BTC_USDT, BTCUSDT, etc.)
             timeframe: Timeframe string (1m, 5m, 1h, 1d, etc.)
             start_date: Start date for data download
@@ -240,9 +239,9 @@ class CandlesDownloader:
             Exception: If download fails
         """
         # Validate exchange
-        if exchange.lower() not in self.SUPPORTED_EXCHANGES:
-            available = ', '.join(self.SUPPORTED_EXCHANGES)
-            raise ValueError(f"Unsupported exchange: {exchange}. Available: {available}")
+        if exchange not in self.SUPPORTED_EXCHANGES:
+            available = ', '.join([e.value for e in self.SUPPORTED_EXCHANGES])
+            raise ValueError(f"Unsupported exchange: {exchange.value}. Available: {available}")
         
         # Parse parameters
         symbol_obj = self._parse_symbol(symbol)
@@ -260,22 +259,22 @@ class CandlesDownloader:
         
         # Generate filename
         if filename is None:
-            filename = self._generate_filename(exchange, symbol, timeframe, start_date, end_date)
+            filename = self._generate_filename(exchange.value, symbol, timeframe, start_date, end_date)
         
         csv_path = self.output_dir / filename
         
-        self.logger.info(f"Downloading {exchange.upper()} {symbol} {timeframe} candles from {start_date} to {end_date}")
+        self.logger.info(f"Downloading {exchange.value.upper()} {symbol} {timeframe} candles from {start_date} to {end_date}")
         
         # Create exchange client using factory
-        exchange_config = self.config.get_exchange_config(exchange.upper())
-        client = PublicRestExchangeFactory.inject(exchange.upper(), config=exchange_config)
+        exchange_config = self.config.get_exchange_config(exchange.value)
+        client = PublicRestExchangeFactory.inject(exchange.value, config=exchange_config)
         
         try:
             # Download data using batch method for large ranges
             klines = await client.get_klines_batch(symbol_obj, timeframe_enum, start_date, end_date)
             
             if not klines:
-                self.logger.warning("No data received from exchange")
+                self.logger.warning(f"No data received from exchange for {symbol_obj}")
                 return str(csv_path)
             
             self.logger.info(f"Downloaded {len(klines)} candles, writing to CSV...")
@@ -289,7 +288,7 @@ class CandlesDownloader:
                 
                 # Write data rows
                 for kline in klines:
-                    row = self._kline_to_csv_row(kline, exchange, timeframe)
+                    row = self._kline_to_csv_row(kline, exchange.value, timeframe)
                     writer.writerow(row)
             
             self.logger.info(f"Successfully saved {len(klines)} candles to {csv_path}")
@@ -304,20 +303,20 @@ class CandlesDownloader:
             self.logger.error(f"Failed to download candles: {e}")
             traceback.print_exc()
             raise e
-        finally:
-            # Clean up exchange client
-            if hasattr(client, 'close'):
-                await client.close()
-    
+        # finally:
+        #     # Clean up exchange client
+        #     if hasattr(client, 'close'):
+        #         await client.close()
+        #
     async def download_multiple(
         self,
         download_configs: List[Dict[str, Any]]
     ) -> List[str]:
         """
-        Download candles from multiple exchanges/symbols with coordinated rate limiting.
+        Download candles from multiple exchanges/symbols.
         
-        Implements intelligent batching and rate limiting to prevent API throttling
-        while maintaining optimal performance through controlled concurrency.
+        Rate limiting is handled internally by the exchange REST clients,
+        so we can execute downloads efficiently without external coordination.
         
         Args:
             download_configs: List of download configuration dictionaries
@@ -326,46 +325,46 @@ class CandlesDownloader:
         Returns:
             List of paths to saved CSV files
         """
-        self.logger.info(f"Starting rate-limited batch download of {len(download_configs)} configurations")
+        self.logger.info(f"Starting batch download of {len(download_configs)} configurations")
         
-        # Get global rate limiter for coordination
-        rate_limiter = get_rate_limiter()
-        
-        # Group configurations by exchange for coordinated processing
+        # Group configurations by exchange for better organization
         exchange_groups = {}
         for config in download_configs:
-            exchange = config.get('exchange', '').lower()
+            exchange = config.get('exchange')
+            if not isinstance(exchange, ExchangeEnum):
+                self.logger.error(f"Invalid exchange type in config: {type(exchange)}. Expected ExchangeEnum.")
+                continue
             if exchange not in exchange_groups:
                 exchange_groups[exchange] = []
             exchange_groups[exchange].append(config)
         
         self.logger.info(f"Grouped downloads: {[(ex, len(configs)) for ex, configs in exchange_groups.items()]}")
         
-        # Process each exchange group with proper rate limiting
+        # Process each exchange group
         all_results = []
         
         for exchange, configs in exchange_groups.items():
             self.logger.info(f"Processing {len(configs)} downloads for {exchange}")
             
-            # Create rate-limited tasks for this exchange
-            async def download_with_rate_limiting(config):
-                """Download with rate limiting coordination."""
+            # Create download tasks for this exchange
+            async def download_with_error_handling(config):
+                """Download with error handling."""
                 try:
-                    # Coordinate request through rate limiter
-                    async with rate_limiter.coordinate_request(exchange):
-                        result = await self.download_candles(**config)
-                        return result
+                    result = await self.download_candles(**config)
+                    return result
                 except Exception as e:
-                    self.logger.error(f"Rate-limited download failed for {config}: {e}")
+                    self.logger.error(f"Download failed for {config}: {e}")
+                    traceback.print_exc()
                     return e
             
-            # Execute exchange-specific downloads with controlled concurrency
-            exchange_tasks = [download_with_rate_limiting(config) for config in configs]
+            # Execute exchange-specific downloads
+            # Rate limiting is handled internally by the REST clients
+            exchange_tasks = [download_with_error_handling(config) for config in configs]
             exchange_results = await asyncio.gather(*exchange_tasks, return_exceptions=True)
             
             all_results.extend(exchange_results)
             
-            # Add inter-exchange delay to prevent cross-exchange rate limit conflicts
+            # Small delay between exchange groups to be polite to APIs
             if len(exchange_groups) > 1:  # Only delay if multiple exchanges
                 await asyncio.sleep(0.5)  # 500ms between exchange groups
         
@@ -380,16 +379,7 @@ class CandlesDownloader:
             else:
                 successful_files.append(result)
         
-        # Log rate limiting statistics
-        stats = rate_limiter.get_stats()
-        for exchange, stat in stats.items():
-            if stat['total_requests'] > 0:
-                self.logger.info(
-                    f"{stat['name']}: {stat['total_requests']} requests, "
-                    f"{stat['available_tokens']}/{stat['max_concurrent']} tokens available"
-                )
-        
-        self.logger.info(f"Rate-limited batch download completed: {len(successful_files)} successful, {failed_count} failed")
+        self.logger.info(f"Batch download completed: {len(successful_files)} successful, {failed_count} failed")
         
         return successful_files
     
@@ -439,7 +429,7 @@ Examples:
     parser.add_argument(
         '--exchange', '-e',
         required=True,
-        choices=['mexc', 'gateio', 'gateio_futures'],
+        choices=[e.value.lower() for e in [ExchangeEnum.MEXC, ExchangeEnum.GATEIO, ExchangeEnum.GATEIO_FUTURES]],
         help='Exchange to download from'
     )
     
@@ -517,8 +507,11 @@ Examples:
     
     async def download_task():
         try:
+            # Convert string exchange name to ExchangeEnum
+            exchange_enum = ExchangeEnum(args.exchange.upper())
+            
             csv_path = await downloader.download_candles(
-                exchange=args.exchange,
+                exchange=exchange_enum,
                 symbol=args.symbol,
                 timeframe=args.timeframe,
                 start_date=start_date,

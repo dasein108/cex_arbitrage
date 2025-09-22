@@ -68,7 +68,9 @@
       "Bash(echo:*)",
       "Bash(pip show:*)",
       "Bash(git restore:*)",
-      "Bash(./migrations/migrate.sh:*)"
+      "Bash(./migrations/migrate.sh:*)",
+      "Bash(for:*)",
+      "Bash(do echo \"Updating $file\")"
     ],
     "deny": [],
     "ask": [],

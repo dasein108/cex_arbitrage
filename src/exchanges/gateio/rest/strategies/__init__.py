@@ -10,12 +10,12 @@ from .rate_limit import GateioRateLimitStrategy
 from .retry import GateioRetryStrategy
 from .auth import GateioAuthStrategy
 from .exception_handler import GateioExceptionHandlerStrategy
-from exchanges.consts import ExchangeEnum
+from structs.common import ExchangeEnum
 from core.transport.rest.strategies import RestStrategyFactory
 
 # Register public API strategies
 RestStrategyFactory.register_strategies(
-    exchange=ExchangeEnum.GATEIO.value,
+    exchange=ExchangeEnum.GATEIO,
     is_private=False,
     request_strategy_cls=GateioRequestStrategy,
     rate_limit_strategy_cls=GateioRateLimitStrategy,
@@ -26,7 +26,7 @@ RestStrategyFactory.register_strategies(
 
 # Register private API strategies
 RestStrategyFactory.register_strategies(
-    exchange=ExchangeEnum.GATEIO.value,
+    exchange=ExchangeEnum.GATEIO,
     is_private=True,
     request_strategy_cls=GateioRequestStrategy,
     rate_limit_strategy_cls=GateioRateLimitStrategy,
@@ -37,7 +37,7 @@ RestStrategyFactory.register_strategies(
 
 # Register GATEIO_FUTURES public API strategies (uses same strategies as spot)
 RestStrategyFactory.register_strategies(
-    exchange=ExchangeEnum.GATEIO_FUTURES.value,
+    exchange=ExchangeEnum.GATEIO_FUTURES,
     is_private=False,
     request_strategy_cls=GateioRequestStrategy,
     rate_limit_strategy_cls=GateioRateLimitStrategy,
@@ -48,7 +48,7 @@ RestStrategyFactory.register_strategies(
 
 # Register GATEIO_FUTURES private API strategies (uses same strategies as spot)
 RestStrategyFactory.register_strategies(
-    exchange=ExchangeEnum.GATEIO_FUTURES.value,
+    exchange=ExchangeEnum.GATEIO_FUTURES,
     is_private=True,
     request_strategy_cls=GateioRequestStrategy,
     rate_limit_strategy_cls=GateioRateLimitStrategy,

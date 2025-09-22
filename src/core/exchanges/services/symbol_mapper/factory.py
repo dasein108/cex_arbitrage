@@ -21,6 +21,7 @@ import logging
 from typing import Dict, Type, Optional, Any
 from .base_symbol_mapper import SymbolMapperInterface
 from core.factories.base_exchange_factory import BaseExchangeFactory
+from structs.common import ExchangeEnum
 
 logger = logging.getLogger(__name__)
 
@@ -37,44 +38,46 @@ class ExchangeSymbolMapperFactory(BaseExchangeFactory[SymbolMapperInterface]):
     """
     
     @classmethod
-    def register(cls, exchange_name: str, mapper_class: Type[SymbolMapperInterface], **kwargs) -> None:
+    def register(cls, exchange: ExchangeEnum, mapper_class: Type[SymbolMapperInterface], **kwargs) -> None:
         """
         Register a symbol mapper class for an exchange.
         
         Uses base class infrastructure with validation and auto-instance creation.
         
         Args:
-            exchange_name: Exchange identifier (e.g., 'MEXC', 'GATEIO')
+            exchange: Exchange identifier (ExchangeEnum only)
             mapper_class: Symbol mapper class implementing SymbolMapperInterface
+            
+        Raises:
+            ValueError: If mapper class invalid
         """
+        
         # Use base class validation
         cls._validate_implementation_class(mapper_class, SymbolMapperInterface)
         
-        # Use base class normalization
-        exchange_key = cls._normalize_exchange_key(exchange_name)
-        
-        # Register with base class registry
-        cls._implementations[exchange_key] = mapper_class
+        # Register with base class registry using ExchangeEnum as key
+        cls._implementations[exchange] = mapper_class
         
         # Auto-create instance immediately for symbol mappers (they have no dependencies)
         try:
             mapper_instance = mapper_class()
-            cls._instances[exchange_key] = mapper_instance
-            logger.info(f"Registered and created symbol mapper for {exchange_key}: {mapper_class.__name__}")
+            cache_key = exchange.value  # Use string for instance cache
+            cls._instances[cache_key] = mapper_instance
+            logger.info(f"Registered and created symbol mapper for {exchange.value}: {mapper_class.__name__}")
         except Exception as e:
             # Log error but still register the class
-            logger.warning(f"Failed to auto-create symbol mapper for {exchange_key}: {e}")
-            logger.info(f"Registered symbol mapper class for {exchange_key}: {mapper_class.__name__}")
+            logger.warning(f"Failed to auto-create symbol mapper for {exchange.value}: {e}")
+            logger.info(f"Registered symbol mapper class for {exchange.value}: {mapper_class.__name__}")
     
     @classmethod
-    def inject(cls, exchange_name: str, **kwargs) -> SymbolMapperInterface:
+    def inject(cls, exchange: ExchangeEnum, **kwargs) -> SymbolMapperInterface:
         """
         Get or create symbol mapper for specified exchange.
         
         Uses base class infrastructure for consistent error handling and caching.
         
         Args:
-            exchange_name: Exchange identifier (case-insensitive)
+            exchange: Exchange identifier (ExchangeEnum only)
             
         Returns:
             Symbol mapper instance for the exchange
@@ -84,46 +87,45 @@ class ExchangeSymbolMapperFactory(BaseExchangeFactory[SymbolMapperInterface]):
             
         Performance: O(1) lookup with instance reuse via base class
         """
-        # Use base class normalization
-        exchange_key = cls._normalize_exchange_key(exchange_name)
+        cache_key = exchange.value  # Use string for instance cache
         
         # Return existing instance if available (from base class registry)
-        if exchange_key in cls._instances:
-            return cls._instances[exchange_key]
+        if cache_key in cls._instances:
+            return cls._instances[cache_key]
         
         # Create new instance if registered
-        if exchange_key not in cls._implementations:
+        if exchange not in cls._implementations:
             available_exchanges = cls.get_registered_exchanges()
             raise ValueError(
-                f"Unknown exchange: {exchange_name}. "
+                f"Unknown exchange: {exchange.value}. "
                 f"Available exchanges: {available_exchanges}. "
                 f"Use register() to add new exchanges."
             )
         
-        mapper_class = cls._implementations[exchange_key]
+        mapper_class = cls._implementations[exchange]
         mapper_instance = mapper_class()
         
         # Cache instance for reuse (in base class registry)
-        cls._instances[exchange_key] = mapper_instance
+        cls._instances[cache_key] = mapper_instance
         
-        logger.info(f"Created symbol mapper instance for {exchange_key}: {mapper_class.__name__}")
+        logger.info(f"Created symbol mapper instance for {exchange.value}: {mapper_class.__name__}")
         return mapper_instance
     
     # Legacy method aliases for backward compatibility
     @classmethod
-    def is_exchange_supported(cls, exchange_name: str) -> bool:
+    def is_exchange_supported(cls, exchange: ExchangeEnum) -> bool:
         """
         Check if exchange is supported by the factory.
         
         Legacy alias for is_registered() from base class.
         
         Args:
-            exchange_name: Exchange identifier
+            exchange: Exchange identifier (ExchangeEnum only)
             
         Returns:
             True if exchange is registered, False otherwise
         """
-        return cls.is_registered(exchange_name)
+        return cls.is_registered(exchange)
     
     @classmethod
     def get_supported_exchanges(cls) -> list[str]:
@@ -148,9 +150,10 @@ class ExchangeSymbolMapperFactory(BaseExchangeFactory[SymbolMapperInterface]):
             Dictionary mapping exchange names to mapper instances
         """
         # Create instances for all registered exchanges
-        for exchange_name in cls._implementations:
-            if exchange_name not in cls._instances:
-                cls.inject(exchange_name)  # Creates instance
+        for exchange_enum in cls._implementations:
+            cache_key = exchange_enum.value
+            if cache_key not in cls._instances:
+                cls.inject(exchange_enum)  # Creates instance
         
         return cls._instances.copy()
     
