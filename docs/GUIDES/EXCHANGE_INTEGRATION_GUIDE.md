@@ -313,33 +313,35 @@ class NewExchangeRestPublic(BaseRestSpotPublic):
 ### Phase 3: Interface Implementation
 
 **1. Main Exchange Class**
+
 ```python
 # src/exchanges/new_exchange/new_exchange_exchange.py
 from interfaces.cex.base.base_private_exchange import BasePrivateExchangeInterface
-from structs.common import *
+from core.structs.common import *
+
 
 class NewExchangePrivateExchange(BasePrivateExchangeInterface):
     def __init__(self, config: ExchangeConfig):
         super().__init__(config)
-        
+
         # Composition: delegate to specialized components
         self._rest_public = NewExchangeRestPublic()
         self._rest_private = NewExchangeRestPrivate(config)
         self._ws_public = NewExchangeWebSocketPublic()
         self._ws_private = NewExchangeWebSocketPrivate(config)
         self._symbol_mapper = NewExchangeSymbolMapper()
-    
+
     # Implement all abstract methods from BasePrivateExchangeInterface
     @property
     def orderbooks(self) -> Dict[Symbol, OrderBook]:
         return self._orderbooks
-    
-    @property 
+
+    @property
     def balances(self) -> Dict[Symbol, AssetBalance]:
         return self._balances
-    
-    async def place_limit_order(self, symbol: Symbol, side: str, 
-                               quantity: float, price: float) -> Order:
+
+    async def place_limit_order(self, symbol: Symbol, side: str,
+                                quantity: float, price: float) -> Order:
         # HFT COMPLIANT: No caching - fresh API call
         response = await self._rest_private.place_order(
             symbol=self._symbol_mapper.to_exchange_format(symbol),
@@ -441,11 +443,12 @@ class ExchangeWebSocketPublic(BaseWebSocketPublic):
 **ALL exchanges MUST use these exact structures:**
 
 ```python
-from structs.common import (
+from core.structs.common import (
     Symbol, OrderBook, OrderBookEntry,
     Order, AssetBalance, Position,
     Trade, Ticker, Kline, SymbolInfo
 )
+
 
 # Example: Converting exchange response to unified structure
 def _transform_order(self, exchange_response: Dict, symbol: Symbol) -> Order:
@@ -497,7 +500,7 @@ class ExchangeSymbolMapper:
 # src/examples/integration_tests/test_new_exchange.py
 import pytest
 from exchanges.factories.exchange_factory import ExchangeFactory
-from structs.common import Symbol, ExchangeEnum
+from core.structs.common import Symbol, ExchangeEnum
 
 
 class TestNewExchangeIntegration:
@@ -622,8 +625,9 @@ class MexcWebSocketPrivate(BaseWebSocketPrivate):
 # Template: src/exchanges/{exchange}/{exchange}_exchange.py
 from interfaces.cex.base.base_private_exchange import BasePrivateExchangeInterface
 from core.config.structs import ExchangeConfig
-from structs.common import *
+from core.structs.common import *
 from typing import Dict, List, Optional
+
 
 class {Exchange}PrivateExchange(BasePrivateExchangeInterface):
     """
@@ -632,60 +636,87 @@ class {Exchange}PrivateExchange(BasePrivateExchangeInterface):
     Provides trading operations and market data via {Exchange} API.
     Implements composition pattern with specialized REST/WebSocket clients.
     """
-    
+
     def __init__(self, config: ExchangeConfig):
         super().__init__(config)
-        
+
         # Import exchange-specific components
-        from .rest.{exchange}_rest_public import {Exchange}RestPublic
-        from .rest.{exchange}_rest_private import {Exchange}RestPrivate
-        from .ws.{exchange}_ws_public import {Exchange}WebSocketPublic
-        from .ws.{exchange}_ws_private import {Exchange}WebSocketPrivate
-        from .services.symbol_mapper import {Exchange}SymbolMapper
-        
+        from .rest.
+        {exchange}
+        _rest_public
+        import
+        {Exchange}
+        RestPublic
+        from .rest.
+        {exchange}
+        _rest_private
+        import
+        {Exchange}
+        RestPrivate
+        from .ws.
+        {exchange}
+        _ws_public
+        import
+        {Exchange}
+        WebSocketPublic
+        from .ws.
+        {exchange}
+        _ws_private
+        import
+        {Exchange}
+        WebSocketPrivate
+        from .services.symbol_mapper import
+        {Exchange}
+        SymbolMapper
+
         # Composition: delegate to specialized components
-        self._rest_public = {Exchange}RestPublic()
-        self._rest_private = {Exchange}RestPrivate(config)
-        self._ws_public = {Exchange}WebSocketPublic()
-        self._ws_private = {Exchange}WebSocketPrivate(config)
-        self._symbol_mapper = {Exchange}SymbolMapper()
-        
+        self._rest_public = {Exchange}
+        RestPublic()
+        self._rest_private = {Exchange}
+        RestPrivate(config)
+        self._ws_public = {Exchange}
+        WebSocketPublic()
+        self._ws_private = {Exchange}
+        WebSocketPrivate(config)
+        self._symbol_mapper = {Exchange}
+        SymbolMapper()
+
         # Initialize state
         self._orderbooks: Dict[Symbol, OrderBook] = {}
         self._balances: Dict[Symbol, AssetBalance] = {}
         self._open_orders: Dict[Symbol, List[Order]] = {}
         self._positions: Dict[Symbol, Position] = {}
-    
+
     # Public Interface Implementation
     @property
     def orderbooks(self) -> Dict[Symbol, OrderBook]:
         """HFT COMPLIANT: Real-time orderbooks, no caching."""
         return self._orderbooks
-    
+
     async def add_symbol(self, symbol: Symbol) -> None:
         """Start streaming data for a symbol."""
         if symbol not in self._active_symbols:
             self._active_symbols.append(symbol)
-            
+
             # Load initial snapshot
             await self._load_orderbook_snapshot(symbol)
-            
+
             # Start real-time streaming
             await self._ws_public.subscribe_orderbook(symbol)
-    
+
     # Private Interface Implementation
     @property
     def balances(self) -> Dict[Symbol, AssetBalance]:
         """HFT COMPLIANT: Real-time balances, no caching."""
         return self._balances
-    
+
     @property
     def open_orders(self) -> Dict[Symbol, List[Order]]:
         """HFT COMPLIANT: Real-time orders, no caching."""
         return self._open_orders
-    
-    async def place_limit_order(self, symbol: Symbol, side: str, 
-                               quantity: float, price: float, **kwargs) -> Order:
+
+    async def place_limit_order(self, symbol: Symbol, side: str,
+                                quantity: float, price: float, **kwargs) -> Order:
         """Place a limit order."""
         # HFT COMPLIANT: Fresh API call, no caching
         response = await self._rest_private.place_order(
@@ -696,15 +727,15 @@ class {Exchange}PrivateExchange(BasePrivateExchangeInterface):
             price=price,
             **kwargs
         )
-        
+
         # Transform to unified Order structure
         order = self._transform_order(response, symbol)
-        
+
         # Update internal state
         self._update_order(order)
-        
+
         return order
-    
+
     async def cancel_order(self, symbol: Symbol, order_id: str) -> bool:
         """Cancel an existing order."""
         try:
@@ -712,29 +743,29 @@ class {Exchange}PrivateExchange(BasePrivateExchangeInterface):
                 symbol=self._symbol_mapper.to_exchange_format(symbol),
                 order_id=order_id
             )
-            
+
             # Update internal state
             if response.get("status") == "CANCELED":
                 self._remove_order(symbol, order_id)
                 return True
-            
+
             return False
-            
+
         except Exception as e:
             self.logger.error(f"Failed to cancel order {order_id}: {e}")
             return False
-    
+
     # Data Loading Implementation
     async def _load_symbols_info(self) -> None:
         """Load symbol information from REST API."""
         response = await self._rest_public.get_exchange_info()
         self._symbols_info = self._transform_symbols_info(response)
-    
+
     async def _load_balances(self) -> None:
         """Load account balances from REST API."""
         response = await self._rest_private.get_account()
         self._balances = self._transform_balances(response)
-    
+
     # Transformation Methods
     def _transform_order(self, exchange_response: Dict, symbol: Symbol) -> Order:
         """Transform exchange order response to unified Order structure."""
@@ -749,7 +780,7 @@ class {Exchange}PrivateExchange(BasePrivateExchangeInterface):
             status=self._map_order_status(exchange_response["status"]),
             timestamp=int(exchange_response["time"])
         )
-    
+
     def _map_order_status(self, exchange_status: str) -> OrderStatus:
         """Map exchange-specific order status to unified enum."""
         status_mapping = {

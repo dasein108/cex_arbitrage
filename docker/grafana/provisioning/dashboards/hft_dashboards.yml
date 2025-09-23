@@ -1,0 +1,12 @@
+# Grafana Dashboard Provisioning Configuration
+# Automatically loads HFT dashboard configurations
+
+apiVersion: 1
+
+providers:
+  - name: 'HFT Arbitrage Dashboards'
+    type: file
+    updateIntervalSeconds: 30
+    allowUiUpdates: true
+    options:
+      path: /var/lib/grafana/dashboards
