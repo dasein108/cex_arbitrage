@@ -389,9 +389,9 @@ src/core/cex/services/
 ### Interface Layer Components
 
 **Unified Interface System** (`src/interfaces/cex/base/`):
-- **[Base Exchange Interface](src/interfaces/cex/base/base_exchange.py)** - Foundation interface with connection management
-- **[Base Public Exchange Interface](src/interfaces/cex/base/base_public_exchange.py)** - Market data operations
-- **[Base Private Exchange Interface](src/interfaces/cex/base/base_private_exchange.py)** - Trading operations + market data
+- **[Base Exchange Interface](src/interfaces/exchanges/base/base_exchange.py)** - Foundation interface with connection management
+- **[Base Public Exchange Interface](src/interfaces/exchanges/base/base_public_exchange.py)** - Market data operations
+- **[Base Private Exchange Interface](src/interfaces/exchanges/base/base_private_exchange.py)** - Trading operations + market data
 
 ### Core Base Classes
 

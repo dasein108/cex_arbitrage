@@ -49,7 +49,7 @@ from core.structs.common import (
     OrderType,
     Order,
 )
-from interfaces.cex.base import BasePrivateExchangeInterface
+from interfaces.exchanges.base import BasePrivateExchangeInterface
 from core.structs.common import ExchangeName
 from core.exceptions.exchange import OrderExecutionError
 

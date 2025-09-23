@@ -10,7 +10,7 @@ HFT COMPLIANCE: Sub-10ms market data processing, zero-copy patterns.
 import time
 from typing import List, Dict, Optional
 
-from interfaces.cex.base import BasePublicExchangeInterface
+from interfaces.exchanges.base import BasePublicExchangeInterface
 from core.structs.common import (
     OrderBook, Symbol, SymbolsInfo,
     ExchangeStatus, OrderbookUpdateType

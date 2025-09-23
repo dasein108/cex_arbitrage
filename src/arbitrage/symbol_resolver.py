@@ -12,7 +12,7 @@ from typing import Dict, List, Optional, Tuple
 from decimal import Decimal
 from dataclasses import dataclass, field
 
-from interfaces.cex.base import BasePublicExchangeInterface
+from interfaces.exchanges.base import BasePublicExchangeInterface
 from core.structs.common import Symbol, SymbolInfo
 from arbitrage.types import ExchangePairConfig, ArbitragePair, OpportunityType
 

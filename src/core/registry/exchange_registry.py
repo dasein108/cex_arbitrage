@@ -12,7 +12,7 @@ from typing import Dict, List, Type, Optional, Any
 from dataclasses import dataclass
 
 from core.structs.common import ExchangeName
-from interfaces.cex.base import BasePrivateExchangeInterface
+from interfaces.exchanges.base import BasePrivateExchangeInterface
 from core.exceptions.exchange import BaseExchangeError
 
 

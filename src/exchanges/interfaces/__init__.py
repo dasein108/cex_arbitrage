@@ -17,7 +17,7 @@ All exchange implementations should inherit from these interfaces to ensure
 consistent behavior across the arbitrage engine.
 """
 
-from interfaces.cex.base import (
+from interfaces.exchanges.base import (
     BasePublicExchangeInterface,
     BasePrivateExchangeInterface, 
     BaseExchangeInterface

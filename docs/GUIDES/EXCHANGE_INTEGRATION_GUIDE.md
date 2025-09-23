@@ -316,7 +316,7 @@ class NewExchangeRestPublic(BaseRestSpotPublic):
 
 ```python
 # src/exchanges/new_exchange/new_exchange_exchange.py
-from interfaces.cex.base.base_private_exchange import BasePrivateExchangeInterface
+from interfaces.exchanges.base.base_private_exchange import BasePrivateExchangeInterface
 from core.structs.common import *
 
 
@@ -623,7 +623,7 @@ class MexcWebSocketPrivate(BaseWebSocketPrivate):
 
 ```python
 # Template: src/exchanges/{exchange}/{exchange}_exchange.py
-from interfaces.cex.base.base_private_exchange import BasePrivateExchangeInterface
+from interfaces.exchanges.base.base_private_exchange import BasePrivateExchangeInterface
 from core.config.structs import ExchangeConfig
 from core.structs.common import *
 from typing import Dict, List, Optional

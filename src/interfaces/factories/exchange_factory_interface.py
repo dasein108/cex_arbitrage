@@ -11,7 +11,7 @@ from typing import Dict, List, Optional
 from enum import Enum
 
 from core.structs.common import Symbol, ExchangeName
-from interfaces.cex.base import BasePrivateExchangeInterface
+from interfaces.exchanges.base import BasePrivateExchangeInterface
 
 
 class InitializationStrategy(Enum):

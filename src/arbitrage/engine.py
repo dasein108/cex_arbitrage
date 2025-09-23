@@ -43,7 +43,7 @@ from .balance import BalanceMonitor
 from .recovery import RecoveryManager
 from .aggregator import MarketDataAggregator
 
-from interfaces.cex.base.base_private_exchange import BasePrivateExchangeInterface
+from interfaces.exchanges.base.base_private_exchange import BasePrivateExchangeInterface
 from core.exceptions.exchange import ArbitrageEngineError
 
 # HFT Logger Integration

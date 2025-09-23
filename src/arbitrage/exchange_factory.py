@@ -18,7 +18,7 @@ from core.exceptions.exchange import BaseExchangeError
 from exchanges.mexc.private_exchange import MexcPrivateExchange as MexcExchange
 from exchanges.gateio.gateio_exchange import GateioExchange
 from core.structs.common import Symbol, AssetName, ExchangeStatus, ExchangeName
-from interfaces.cex.base.base_private_exchange import BasePrivateExchangeInterface
+from interfaces.exchanges.base.base_private_exchange import BasePrivateExchangeInterface
 from interfaces.factories.exchange_factory_interface import (
     ExchangeFactoryInterface, 
     InitializationStrategy as BaseInitializationStrategy

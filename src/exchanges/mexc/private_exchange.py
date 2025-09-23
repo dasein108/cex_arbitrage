@@ -10,7 +10,7 @@ HFT COMPLIANCE: Sub-50ms order execution, real-time balance updates.
 import time
 from typing import List, Dict
 
-from interfaces.cex.base import BasePrivateExchangeInterface
+from interfaces.exchanges.base import BasePrivateExchangeInterface
 from core.structs.common import (
     Symbol, AssetBalance, AssetName, Order, OrderId, SymbolsInfo, Trade, Side
 )

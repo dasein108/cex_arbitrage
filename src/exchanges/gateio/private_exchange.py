@@ -11,7 +11,7 @@ import logging
 import time
 from typing import List, Dict, Optional
 
-from interfaces.cex.base import BasePrivateExchangeInterface
+from interfaces.exchanges.base import BasePrivateExchangeInterface
 from core.structs.common import (
     OrderBook, Symbol, SymbolsInfo, AssetBalance, AssetName,
     Order, OrderId, Side, TimeInForce, Position,
