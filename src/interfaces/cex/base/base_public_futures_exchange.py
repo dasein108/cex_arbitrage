@@ -7,10 +7,10 @@ orderbook management.
 """
 
 from abc import abstractmethod
-from typing import Dict, List, Optional
+from typing import Dict, List
 from decimal import Decimal
 
-from structs.common import Symbol
+from core.structs.common import Symbol
 from .base_public_exchange import BasePublicExchangeInterface
 
 

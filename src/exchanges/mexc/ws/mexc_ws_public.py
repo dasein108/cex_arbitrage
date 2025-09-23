@@ -22,12 +22,12 @@ MEXC Public WebSocket Specifications:
 Architecture: Dependency injection with base class coordination
 """
 
-from typing import List, Dict, Optional, Callable, Awaitable, Set
+from typing import List, Optional, Callable, Awaitable
 
-from structs.common import Symbol, Trade, OrderBook, BookTicker
+from core.structs.common import Symbol, Trade, OrderBook, BookTicker
 from core.config.structs import ExchangeConfig
 from core.exchanges.websocket import BaseWebsocketPublicFutures
-from core.transport.websocket.structs import ConnectionState, MessageType
+from core.transport.websocket.structs import ConnectionState
 
 # MEXC-specific protobuf imports for message parsing
 from exchanges.mexc.structs.protobuf.PushDataV3ApiWrapper_pb2 import PushDataV3ApiWrapper

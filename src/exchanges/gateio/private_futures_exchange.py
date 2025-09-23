@@ -20,11 +20,11 @@ Architecture: Follows the same pattern as other exchange implementations but
 treats futures as a completely separate exchange system with trading capabilities.
 """
 
-from typing import List, Dict, Optional
+from typing import List, Dict
 import logging
 
 from exchanges.interfaces import PrivateExchangeInterface
-from structs.common import Symbol, Order, Position, AssetBalance
+from core.structs.common import Symbol, Order, Position, AssetBalance
 from core.config.structs import ExchangeConfig
 
 

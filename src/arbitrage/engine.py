@@ -23,7 +23,6 @@ Core Responsibilities:
 from __future__ import annotations
 
 import asyncio
-import logging
 from contextlib import asynccontextmanager
 from typing import Any, Dict, List, Optional, AsyncIterator
 from weakref import WeakSet
@@ -47,7 +46,8 @@ from .aggregator import MarketDataAggregator
 from interfaces.cex.base.base_private_exchange import BasePrivateExchangeInterface
 from core.exceptions.exchange import ArbitrageEngineError
 
-logger = logging.getLogger(__name__)
+# HFT Logger Integration
+from core.logging import get_exchange_logger, HFTLoggerInterface, LoggingTimer
 
 
 class ArbitrageEngine:
@@ -69,6 +69,7 @@ class ArbitrageEngine:
         self,
         config: ArbitrageConfig,
         exchanges: Dict[str, BasePrivateExchangeInterface],
+        logger: Optional[HFTLoggerInterface] = None,
     ):
         """
         Initialize arbitrage engine with exchange connections and configuration.
@@ -95,9 +96,16 @@ class ArbitrageEngine:
             config: Arbitrage engine configuration
             exchanges: Dictionary of exchange instances (name -> BasePrivateExchangeInterface)
                       Each exchange encapsulates both public and private API functionality
+            logger: Optional HFT logger injection
         """
         self.config = config
         self.exchanges = exchanges
+        
+        # Use injected logger or create arbitrage-specific logger
+        if logger is None:
+            logger = get_exchange_logger('arbitrage', 'engine')
+        
+        self.logger = logger
         
         # Core Engine State
         self._state = ArbitrageState.IDLE
@@ -124,7 +132,17 @@ class ArbitrageEngine:
         from .opportunity_processor import OpportunityProcessor
         self.opportunity_processor = OpportunityProcessor(self.config, self.statistics)
         
-        logger.info(f"Arbitrage engine initialized: {config.engine_name}")
+        # Log comprehensive initialization with structured data
+        self.logger.info("ArbitrageEngine initialized",
+                        engine_name=config.engine_name,
+                        exchange_count=len(exchanges),
+                        exchange_names=list(exchanges.keys()),
+                        symbols_configured=len(getattr(config, 'symbols', [])),
+                        state=self._state.name)
+        
+        # Track component initialization metrics
+        self.logger.metric("arbitrage_engines_initialized", 1,
+                          tags={"engine_name": config.engine_name, "exchange_count": str(len(exchanges))})
     
     async def initialize(self) -> None:
         """

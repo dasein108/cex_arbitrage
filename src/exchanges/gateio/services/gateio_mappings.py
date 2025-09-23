@@ -10,14 +10,13 @@ Consolidated Gate.io-specific mapper combining all mapping functionality:
 HFT COMPLIANCE: Sub-microsecond mapping operations, zero-copy patterns.
 """
 
-from datetime import datetime
-from typing import Any, Dict
+from typing import Dict
 from enum import Enum
 
-from structs.common import (
-    Order, OrderId, OrderStatus, OrderType, Side,
+from core.structs.common import (
+    Order, OrderId, OrderType, Side,
     TimeInForce, KlineInterval, Trade, AssetBalance, AssetName,
-    OrderBook, OrderBookEntry, BookTicker, Symbol
+    OrderBook, OrderBookEntry, BookTicker
 )
 from core.exchanges.services.exchange_mapper.base_exchange_mapper import BaseExchangeMapper
 from core.transport.websocket.structs import PublicWebsocketChannelType, PrivateWebsocketChannelType

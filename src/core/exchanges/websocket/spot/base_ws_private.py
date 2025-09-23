@@ -1,9 +1,9 @@
 import traceback
 from abc import ABC
-from typing import Callable, Optional, Awaitable, List, Dict
+from typing import Callable, Optional, Awaitable, Dict
 
 from core.config.structs import ExchangeConfig
-from structs.common import Order, AssetBalance, Trade, AssetName
+from core.structs.common import Order, AssetBalance, Trade, AssetName
 from core.transport.websocket.structs import MessageType
 from core.exchanges.websocket.ws_base import BaseExchangeWebsocketInterface
 

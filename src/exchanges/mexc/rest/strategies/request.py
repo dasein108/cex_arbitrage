@@ -3,19 +3,38 @@ from typing import Dict, Any
 from core.transport.rest import RequestStrategy, RequestContext, HTTPMethod, PerformanceTargets
 from core.config.structs import ExchangeConfig
 
+# HFT Logger Integration
+from core.logging import get_strategy_logger, LoggingTimer
+
 
 class MexcRequestStrategy(RequestStrategy):
     """MEXC-specific request configuration based on ExchangeConfig."""
 
-    def __init__(self, exchange_config: ExchangeConfig):
+    def __init__(self, exchange_config: ExchangeConfig, logger=None):
         """
         Initialize MEXC request strategy from ExchangeConfig.
         
         Args:
             exchange_config: Exchange configuration containing base_url and settings
+            logger: Optional HFT logger injection
         """
         super().__init__(exchange_config.base_url)
+        
+        # Initialize HFT logger with hierarchical tags
+        if logger is None:
+            tags = ['mexc', 'public', 'rest', 'request']  # Default to public
+            logger = get_strategy_logger('rest.request.mexc.public', tags)
+        
+        self.logger = logger
         self.exchange_config = exchange_config
+        
+        # Log strategy initialization
+        self.logger.info("MEXC request strategy initialized",
+                        base_url=exchange_config.base_url,
+                        has_network_config=exchange_config.network is not None)
+        
+        self.logger.metric("rest_request_strategies_created", 1,
+                          tags={"exchange": "mexc"})
 
     async def create_request_context(self) -> RequestContext:
         """Create MEXC request configuration from ExchangeConfig."""

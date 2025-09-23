@@ -5,7 +5,6 @@ Container for complete REST strategy configuration.
 HFT COMPLIANT: Zero-allocation strategy access.
 """
 
-import logging
 from typing import Optional
 
 from .request import RequestStrategy
@@ -14,6 +13,9 @@ from .retry import RetryStrategy
 from .auth import AuthStrategy
 from .exception_handler import ExceptionHandlerStrategy
 from .structs import PerformanceTargets
+
+# HFT Logger Integration
+from core.logging import get_logger
 
 
 class RestStrategySet:
@@ -29,7 +31,8 @@ class RestStrategySet:
         rate_limit_strategy: RateLimitStrategy,
         retry_strategy: RetryStrategy,
         auth_strategy: Optional[AuthStrategy] = None,
-        exception_handler_strategy: Optional[ExceptionHandlerStrategy] = None
+        exception_handler_strategy: Optional[ExceptionHandlerStrategy] = None,
+        logger=None
     ):
         self.request_strategy = request_strategy
         self.rate_limit_strategy = rate_limit_strategy
@@ -37,11 +40,20 @@ class RestStrategySet:
         self.auth_strategy = auth_strategy
         self.exception_handler_strategy = exception_handler_strategy
         
+        # Initialize HFT logger with optional injection
+        self.logger = logger or get_logger('rest.strategy_set.core')
+        
         # HFT Optimization: Pre-validate strategy compatibility
         self._validate_strategies()
         self._performance_targets = request_strategy.get_performance_targets()
         
-        self.logger = logging.getLogger(__name__)
+        # Track strategy set creation metrics
+        self.logger.info("REST strategy set created",
+                        has_auth=auth_strategy is not None,
+                        has_exception_handler=exception_handler_strategy is not None)
+        
+        self.logger.metric("rest_strategy_sets_created", 1,
+                          tags={"type": "core"})
     
     def _validate_strategies(self) -> None:
         """Validate strategy compatibility at initialization."""

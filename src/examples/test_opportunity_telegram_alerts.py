@@ -7,7 +7,7 @@ to verify that Telegram alerts are sent correctly.
 
 import asyncio
 import logging
-from structs.common import Symbol, AssetName, ExchangeName
+from core.structs.common import Symbol, AssetName, ExchangeName
 from arbitrage.structures import ArbitrageOpportunity, OpportunityType
 from arbitrage.opportunity_processor import OpportunityProcessor
 from arbitrage.types import ArbitrageConfig, EngineStatistics, RiskLimits

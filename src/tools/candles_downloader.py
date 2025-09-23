@@ -34,12 +34,10 @@ import logging
 # Import the unified factory for exchange instances
 from core.factories.rest.public_rest_factory import PublicRestExchangeFactory
 from core.config.config_manager import HftConfig
-from structs.common import ExchangeEnum
-from structs.common import Symbol, AssetName, KlineInterval, Kline
+from core.structs.common import ExchangeEnum
+from core.structs.common import Symbol, AssetName, KlineInterval, Kline
 
 # Import exchange modules to trigger auto-registration
-import exchanges.mexc.rest
-import exchanges.gateio.rest
 
 
 class CandlesDownloader:

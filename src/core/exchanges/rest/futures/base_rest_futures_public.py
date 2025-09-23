@@ -1,9 +1,8 @@
 from abc import ABC
-from typing import Callable
 from core.exchanges.rest.base_rest import BaseExchangeRestInterface
 from core.exchanges.services import BaseExchangeMapper
 from core.config.structs import ExchangeConfig
-from structs import Symbol
+from core.structs import Symbol
 
 
 class PublicExchangeFuturesRestInterface(BaseExchangeRestInterface, ABC):

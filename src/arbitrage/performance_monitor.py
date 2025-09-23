@@ -8,12 +8,12 @@ HFT COMPLIANT: Lock-free metrics collection with minimal overhead (<1μs).
 """
 
 import asyncio
-import logging
+from core.logging import get_logger
 import time
 from typing import Dict, Any, Optional, Callable
 from arbitrage.types import EngineStatistics, ArbitrageConfig
 
-logger = logging.getLogger(__name__)
+logger = get_logger('arbitrage.performance_monitor')
 
 
 class PerformanceMonitor:

@@ -8,12 +8,12 @@ HFT COMPLIANT: Fast shutdown with position safety guarantees.
 """
 
 import asyncio
-import logging
+from core.logging import get_logger
 import signal
 from typing import Optional, Callable, List, Any
 from enum import Enum
 
-logger = logging.getLogger(__name__)
+logger = get_logger('arbitrage.shutdown_manager')
 
 
 class ShutdownReason(Enum):

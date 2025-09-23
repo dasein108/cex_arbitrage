@@ -12,18 +12,19 @@ Usage:
 """
 
 import asyncio
-import logging
 import sys
 from typing import List, Dict
 
-from structs.common import Symbol, AssetName, OrderBook, Trade, BookTicker
+from core.structs.common import Symbol, AssetName, OrderBook, Trade, BookTicker
 from core.config.config_manager import get_exchange_config
 
 from examples.utils.ws_api_factory import get_exchange_websocket_instance
 
-# Set up logging
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+# HFT Logger Integration
+from core.logging import get_logger
+
+# Set up HFT logging
+logger = get_logger('websocket_public_demo')
 
 
 
@@ -50,20 +51,24 @@ class PublicWebSocketClient:
             state_change_handler=self._handle_state_change
         )
         
-        logger.info(f"{self.exchange_name} public WebSocket client initialized with {type(self.websocket).__name__}")
+        logger.info("Public WebSocket client initialized",
+                    exchange=self.exchange_name,
+                    websocket_class=type(self.websocket).__name__)
     
     async def initialize(self, symbols: List[Symbol]) -> None:
         """Initialize WebSocket connection and subscriptions."""
         # Pass symbols to initialize() - they will be subscribed automatically when connection is established
         await self.websocket.initialize(symbols)
-        logger.info(f"WebSocket initialized with {len(symbols)} symbols")
+        logger.info("WebSocket initialized",
+                    symbol_count=len(symbols))
     
     async def add_symbols(self, symbols: List[Symbol]) -> None:
         """Add symbols for real-time subscription (only after connection established)."""
         if not self.is_connected():
             raise ValueError("WebSocket not connected - use initialize() with symbols instead")
         await self.websocket.add_symbols(symbols)
-        logger.info(f"Added {len(symbols)} symbols to existing subscription")
+        logger.info("Added symbols to subscription",
+                    symbol_count=len(symbols))
     
     async def close(self) -> None:
         """Close WebSocket connection."""
@@ -94,7 +99,9 @@ class PublicWebSocketClient:
     
     async def _handle_state_change(self, state) -> None:
         """Handle WebSocket state changes."""
-        logger.info(f"🔗 {self.exchange_name} WebSocket state changed: {state}")
+        logger.info("🔗 WebSocket state changed",
+                    exchange=self.exchange_name,
+                    new_state=state)
 
 
 class OrderBookManager:
@@ -120,10 +127,14 @@ class OrderBookManager:
         
         # Log the update (less verbose for frequent updates)
         if self.update_counts[symbol] % 10 == 1:  # Log every 10th update
-            logger.info(f"📊 {self.exchange_name} orderbook update #{self.update_counts[symbol]} for {symbol.base}/{symbol.quote}:")
-            logger.info(f"   Best bid: {orderbook.bids[0].price if orderbook.bids else 'N/A'}")
-            logger.info(f"   Best ask: {orderbook.asks[0].price if orderbook.asks else 'N/A'}")
-            logger.info(f"   Bids: {len(orderbook.bids)}, Asks: {len(orderbook.asks)}")
+            logger.info("📊 Orderbook update",
+                        exchange=self.exchange_name,
+                        symbol=f"{symbol.base}/{symbol.quote}",
+                        update_number=self.update_counts[symbol],
+                        best_bid=orderbook.bids[0].price if orderbook.bids else None,
+                        best_ask=orderbook.asks[0].price if orderbook.asks else None,
+                        bid_count=len(orderbook.bids),
+                        ask_count=len(orderbook.asks))
     
     async def handle_trades_update(self, symbol: Symbol, trades: List[Trade]):
         """Store and process trade updates."""
@@ -137,10 +148,14 @@ class OrderBookManager:
             self.trade_history[symbol] = self.trade_history[symbol][-100:]
         
         # Log the update
-        logger.info(f"💹 {self.exchange_name} trades update for {symbol.base}/{symbol.quote}: {len(trades)} trades")
-        if trades:
-            latest_trade = trades[0]
-            logger.info(f"   Latest: {latest_trade.side.name} {latest_trade.quantity} @ {latest_trade.price}")
+        latest_trade = trades[0] if trades else None
+        logger.info("💹 Trades update",
+                    exchange=self.exchange_name,
+                    symbol=f"{symbol.base}/{symbol.quote}",
+                    trade_count=len(trades),
+                    latest_side=latest_trade.side.name if latest_trade else None,
+                    latest_quantity=latest_trade.quantity if latest_trade else None,
+                    latest_price=latest_trade.price if latest_trade else None)
     
     async def handle_book_ticker_update(self, symbol: Symbol, book_ticker: BookTicker):
         """Store and process book ticker updates."""
@@ -158,10 +173,16 @@ class OrderBookManager:
         
         # Log the update (less verbose for frequent updates)
         if self.book_ticker_counts[symbol] % 5 == 1:  # Log every 5th update
-            logger.info(f"📈 {self.exchange_name} book ticker update #{self.book_ticker_counts[symbol]} for {symbol.base}/{symbol.quote}:")
-            logger.info(f"   Bid: {book_ticker.bid_price} ({book_ticker.bid_quantity})")
-            logger.info(f"   Ask: {book_ticker.ask_price} ({book_ticker.ask_quantity})")
-            logger.info(f"   Spread: {spread:.8f} ({spread_percentage:.4f}%)")
+            logger.info("📈 Book ticker update",
+                        exchange=self.exchange_name,
+                        symbol=f"{symbol.base}/{symbol.quote}",
+                        update_number=self.book_ticker_counts[symbol],
+                        bid_price=book_ticker.bid_price,
+                        bid_quantity=book_ticker.bid_quantity,
+                        ask_price=book_ticker.ask_price,
+                        ask_quantity=book_ticker.ask_quantity,
+                        spread=spread,
+                        spread_percentage=spread_percentage)
     
     def get_orderbook(self, symbol: Symbol) -> OrderBook:
         """Get stored orderbook for symbol."""
@@ -190,7 +211,8 @@ class OrderBookManager:
 async def main(exchange_name: str):
     """Test public WebSocket functionality for the specified exchange."""
     exchange_upper = exchange_name.upper()
-    logger.info(f"🚀 Starting {exchange_upper} Public WebSocket Demo...")
+    logger.info("🚀 Starting Public WebSocket Demo",
+                exchange=exchange_upper)
     logger.info("=" * 60)
     
     try:
@@ -211,47 +233,61 @@ async def main(exchange_name: str):
             Symbol(base=AssetName('ETH'), quote=AssetName('USDT'), is_futures=False)
         ]
 
-        logger.info(f"🔌 Testing {exchange_upper} WebSocket factory architecture...")
+        logger.info("🔌 Testing WebSocket factory architecture",
+                    exchange=exchange_upper)
         await ws.initialize(symbols)
         
-        logger.info(f"⏳ Monitoring {exchange_upper} WebSocket connection (30 seconds)...")
-        logger.info(f"💡 Expecting orderbook and trade updates for {len(symbols)} symbols")
+        logger.info("⏳ Monitoring WebSocket connection",
+                    exchange=exchange_upper,
+                    duration_seconds=30)
+        logger.info("💡 Expecting market data updates",
+                    symbol_count=len(symbols))
         await asyncio.sleep(30)
         
         # Get performance metrics
         metrics = ws.get_performance_metrics()
-        logger.info("📊 WebSocket Performance Metrics:")
-        logger.info(f"   Connection State: {metrics.get('connection_state', 'Unknown')}")
-        logger.info(f"   Messages Processed: {metrics.get('messages_processed', 0)}")
-        logger.info(f"   Error Count: {metrics.get('error_count', 0)}")
-        logger.info(f"   Connection Uptime: {metrics.get('connection_uptime_seconds', 0)}s")
+        logger.info("📊 WebSocket Performance Metrics",
+                    connection_state=metrics.get('connection_state', 'Unknown'),
+                    messages_processed=metrics.get('messages_processed', 0),
+                    error_count=metrics.get('error_count', 0),
+                    uptime_seconds=metrics.get('connection_uptime_seconds', 0))
         
         # Show received data summary
         summary = manager.get_summary()
-        logger.info("📈 Data Summary:")
-        logger.info(f"   Orderbook symbols: {summary['orderbook_symbols']}")
-        logger.info(f"   Trade symbols: {summary['trade_symbols']}")
-        logger.info(f"   Book ticker symbols: {summary['book_ticker_symbols']}")
-        logger.info(f"   Total orderbook updates: {summary['total_orderbook_updates']}")
-        logger.info(f"   Total trades received: {summary['total_trades']}")
-        logger.info(f"   Total book ticker updates: {summary['total_book_ticker_updates']}")
+        logger.info("📈 Data Summary",
+                    orderbook_symbols=summary['orderbook_symbols'],
+                    trade_symbols=summary['trade_symbols'],
+                    book_ticker_symbols=summary['book_ticker_symbols'],
+                    total_orderbook_updates=summary['total_orderbook_updates'],
+                    total_trades=summary['total_trades'],
+                    total_book_ticker_updates=summary['total_book_ticker_updates'])
         
         # Show latest orderbook for first symbol
         if symbols and manager.get_orderbook(symbols[0]):
             symbol = symbols[0]
             orderbook = manager.get_orderbook(symbol)
-            logger.info(f"💰 Latest {symbol.base}/{symbol.quote} orderbook:")
-            logger.info(f"   Best bid: {orderbook.bids[0].price if orderbook.bids else 'N/A'}")
-            logger.info(f"   Best ask: {orderbook.asks[0].price if orderbook.asks else 'N/A'}")
-            logger.info(f"   Spread: {(orderbook.asks[0].price - orderbook.bids[0].price) if orderbook.bids and orderbook.asks else 'N/A'}")
+            best_bid = orderbook.bids[0].price if orderbook.bids else None
+            best_ask = orderbook.asks[0].price if orderbook.asks else None
+            spread = (best_ask - best_bid) if best_bid and best_ask else None
+            logger.info("💰 Latest orderbook",
+                        symbol=f"{symbol.base}/{symbol.quote}",
+                        best_bid=best_bid,
+                        best_ask=best_ask,
+                        spread=spread)
         
         # Show recent trades
         if symbols and manager.get_trades(symbols[0]):
             symbol = symbols[0]
             recent_trades = manager.get_trades(symbol)[-3:]  # Last 3 trades
-            logger.info(f"🔄 Recent {symbol.base}/{symbol.quote} trades:")
+            logger.info("🔄 Recent trades",
+                        symbol=f"{symbol.base}/{symbol.quote}",
+                        trade_count=len(recent_trades))
             for i, trade in enumerate(recent_trades, 1):
-                logger.info(f"   {i}. {trade.side.name} {trade.quantity} @ {trade.price}")
+                logger.info("Recent trade",
+                           trade_number=i,
+                           side=trade.side.name,
+                           quantity=trade.quantity,
+                           price=trade.price)
         
         # Show latest book ticker
         if symbols and manager.get_book_ticker(symbols[0]):
@@ -259,25 +295,39 @@ async def main(exchange_name: str):
             book_ticker = manager.get_book_ticker(symbol)
             spread = book_ticker.ask_price - book_ticker.bid_price
             spread_percentage = (spread / book_ticker.bid_price) * 100 if book_ticker.bid_price else 0
-            logger.info(f"📊 Latest {symbol.base}/{symbol.quote} book ticker:")
-            logger.info(f"   Bid: {book_ticker.bid_price} ({book_ticker.bid_quantity})")
-            logger.info(f"   Ask: {book_ticker.ask_price} ({book_ticker.ask_quantity})")
-            logger.info(f"   Spread: {spread:.8f} ({spread_percentage:.4f}%)")
+            logger.info("📊 Latest book ticker",
+                        symbol=f"{symbol.base}/{symbol.quote}",
+                        bid_price=book_ticker.bid_price,
+                        bid_quantity=book_ticker.bid_quantity,
+                        ask_price=book_ticker.ask_price,
+                        ask_quantity=book_ticker.ask_quantity,
+                        spread=spread,
+                        spread_percentage=spread_percentage)
         
         if summary['total_orderbook_updates'] > 0 or summary['total_trades'] > 0 or summary['total_book_ticker_updates'] > 0:
-            logger.info(f"✅ {exchange_upper} public WebSocket demo successful!")
-            logger.info("🎉 Received real-time market data!")
+            logger.info("✅ Public WebSocket demo successful!",
+                        exchange=exchange_upper)
+            logger.info("🎉 Received real-time market data")
         else:
-            logger.info(f"ℹ️  No market data received from {exchange_upper}")
+            logger.info("ℹ️  No market data received",
+                        exchange=exchange_upper)
             logger.info("✅ WebSocket connection and subscription working correctly")
             logger.info("💡 This may be normal if markets are quiet or symbols are inactive")
 
     except ValueError as e:
-        logger.error(f"Configuration Error: {e}")
-        logger.error(f"Make sure {exchange_upper} configuration is available")
+        logger.error("Configuration Error",
+                    exchange=exchange_upper,
+                    error_type=type(e).__name__,
+                    error_message=str(e))
+        logger.error("Configuration validation failed",
+                    exchange=exchange_upper,
+                    suggestion="Check exchange configuration availability")
         raise
     except Exception as e:
-        logger.error(f"Error during {exchange_upper} WebSocket test: {e}")
+        logger.error("WebSocket test failed",
+                    exchange=exchange_upper,
+                    error_type=type(e).__name__,
+                    error_message=str(e))
         import traceback
         traceback.print_exc()
         raise
@@ -287,7 +337,8 @@ async def main(exchange_name: str):
             await ws.close()
     
     logger.info("=" * 60)
-    logger.info(f"✅ {exchange_upper} public WebSocket demo completed!")
+    logger.info("✅ Public WebSocket demo completed",
+                exchange=exchange_upper)
 
 
 if __name__ == "__main__":

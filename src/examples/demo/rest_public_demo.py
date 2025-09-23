@@ -13,7 +13,7 @@ Usage:
 import asyncio
 import sys
 import time
-from structs.common import Symbol, AssetName
+from core.structs.common import Symbol, AssetName
 from core.config.config_manager import get_exchange_config
 
 from examples.utils.rest_api_factory import get_exchange_rest_instance

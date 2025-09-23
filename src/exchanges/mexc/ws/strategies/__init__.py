@@ -6,7 +6,7 @@ from core.transport.websocket.strategies import (
     WebSocketStrategyFactory
 )
 
-from structs.common import ExchangeEnum
+from core.structs.common import ExchangeEnum
 
 # Register strategies with factory
 WebSocketStrategyFactory.register_strategies(

@@ -1,10 +1,12 @@
 from abc import ABC
-import logging
 from typing import Optional, Callable, Awaitable, Any, Dict
 
 from core.config.structs import ExchangeConfig
 from core.exchanges.services import ExchangeMapperFactory
 from core.transport.websocket.utils import create_websocket_manager
+
+# HFT Logger Integration
+from core.logging import get_logger, get_exchange_logger, LoggingTimer
 
 
 class BaseExchangeWebsocketInterface(ABC):
@@ -21,7 +23,8 @@ class BaseExchangeWebsocketInterface(ABC):
         config: ExchangeConfig, 
         is_private: bool = False,
         message_handler: Optional[Callable[[Any], Awaitable[None]]] = None,
-        state_change_handler: Optional[Callable] = None
+        state_change_handler: Optional[Callable] = None,
+        logger=None
     ):
         self.config = config
         self.exchange_name = config.name
@@ -30,32 +33,57 @@ class BaseExchangeWebsocketInterface(ABC):
         # Tag for logging consistency
         tag = 'private' if is_private else 'public'
         self.exchange_tag = f'{self.exchange_name}_{tag}'
-        self.logger = logging.getLogger(f"{__name__}.{self.exchange_tag}")
+        
+        # Initialize HFT logger with optional injection or exchange-specific logger
+        self.logger = logger or get_exchange_logger(self.exchange_name, f'ws.{tag}')
         
         # Factory-based dependency injection (similar to REST pattern)
         self._mapper = ExchangeMapperFactory.create(config.name)
         
-        # Initialize WebSocket manager using factory pattern
+        # Initialize WebSocket manager using factory pattern with logger injection
         self._ws_manager = create_websocket_manager(
             exchange_config=config,
             is_private=is_private,
             message_handler=message_handler or self._handle_parsed_message,
-            state_change_handler=state_change_handler
+            state_change_handler=state_change_handler,
+            logger=self.logger  # Inject HFT logger into WebSocket manager
         )
         
-        self.logger.info(f"Initialized WebSocket manager for {self.exchange_name} ({tag})")
+        self.logger.info("Initialized WebSocket manager",
+                        exchange=self.exchange_name,
+                        tag=tag,
+                        is_private=is_private)
 
     async def _handle_parsed_message(self, parsed_message) -> None:
         """Default message handler - should be overridden by subclasses."""
-        self.logger.debug(f"Received message: {parsed_message.message_type}")
+        self.logger.debug("Received message",
+                         message_type=parsed_message.message_type if hasattr(parsed_message, 'message_type') else 'unknown')
 
     async def initialize(self, symbols=None) -> None:
         """Initialize WebSocket connection using strategy pattern."""
         try:
-            await self._ws_manager.initialize(symbols or [])
-            self.logger.info(f"WebSocket initialized for {self.exchange_name}")
+            with LoggingTimer(self.logger, "ws_interface_initialization") as timer:
+                await self._ws_manager.initialize(symbols or [])
+            
+            self.logger.info("WebSocket initialized",
+                           exchange=self.exchange_name,
+                           symbols_count=len(symbols) if symbols else 0,
+                           initialization_time_ms=timer.elapsed_ms)
+            
+            # Track initialization metrics
+            self.logger.metric("ws_interface_initializations", 1,
+                             tags={"exchange": self.exchange_name, "type": "private" if self.is_private else "public"})
+            
         except Exception as e:
-            self.logger.error(f"Failed to initialize WebSocket: {e}")
+            self.logger.error("Failed to initialize WebSocket",
+                            exchange=self.exchange_name,
+                            error_type=type(e).__name__,
+                            error_message=str(e))
+            
+            # Track initialization failure metrics
+            self.logger.metric("ws_interface_initialization_failures", 1,
+                             tags={"exchange": self.exchange_name, "type": "private" if self.is_private else "public"})
+            
             raise
 
     def is_connected(self) -> bool:
@@ -68,9 +96,30 @@ class BaseExchangeWebsocketInterface(ABC):
 
     async def close(self) -> None:
         """Close WebSocket connection and clean up resources."""
-        self.logger.info(f"Stopping {self.exchange_tag} WebSocket connection")
-        await self._ws_manager.close()
-        self.logger.info(f"{self.exchange_tag} WebSocket stopped")
+        self.logger.info("Stopping WebSocket connection",
+                        exchange_tag=self.exchange_tag)
+        
+        try:
+            with LoggingTimer(self.logger, "ws_interface_close") as timer:
+                await self._ws_manager.close()
+            
+            self.logger.info("WebSocket stopped",
+                           exchange_tag=self.exchange_tag,
+                           close_time_ms=timer.elapsed_ms)
+            
+            # Track close metrics
+            self.logger.metric("ws_interface_closes", 1,
+                             tags={"exchange": self.exchange_name, "type": "private" if self.is_private else "public"})
+            
+        except Exception as e:
+            self.logger.error("Error stopping WebSocket connection",
+                            exchange_tag=self.exchange_tag,
+                            error_type=type(e).__name__,
+                            error_message=str(e))
+            
+            # Track close error metrics
+            self.logger.metric("ws_interface_close_errors", 1,
+                             tags={"exchange": self.exchange_name, "type": "private" if self.is_private else "public"})
 
     async def __aenter__(self):
         """Async context manager entry."""

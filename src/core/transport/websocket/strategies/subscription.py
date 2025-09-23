@@ -1,8 +1,7 @@
 from abc import ABC, abstractmethod
-from typing import List, Dict, Any, Optional, TYPE_CHECKING
+from typing import List, Dict, Any
 
-from core.transport.websocket.structs import SubscriptionAction, PublicWebsocketChannelType
-from structs.common import Symbol
+from core.transport.websocket.structs import SubscriptionAction
 from core.exchanges.services import BaseExchangeMapper
 
 class SubscriptionStrategy(ABC):

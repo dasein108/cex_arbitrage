@@ -24,11 +24,11 @@ Memory: O(1) per request, optimized for high-frequency access
 import asyncio
 import time
 from typing import Dict, List, Optional, Any
-from datetime import datetime, timedelta
+from datetime import datetime
 
-from structs.common import (
+from core.structs.common import (
     Symbol, SymbolInfo, OrderBook, OrderBookEntry, Trade, Kline,
-    ExchangeName, KlineInterval, Ticker
+    KlineInterval, Ticker
 )
 from core.exchanges.rest.spot.base_rest_spot_public import PublicExchangeSpotRestInterface
 from core.exchanges.services import BaseExchangeMapper
@@ -46,15 +46,22 @@ class GateioPublicSpotRest(PublicExchangeSpotRestInterface):
     Optimized for high-frequency market data retrieval with minimal overhead.
     """
     
-    def __init__(self, config: ExchangeConfig, mapper: BaseExchangeMapper):
+    def __init__(self, config: ExchangeConfig, mapper: BaseExchangeMapper, logger=None):
         """
         Initialize Gate.io public REST client.
         
         Args:
             config: ExchangeConfig with Gate.io configuration
             mapper: BaseExchangeMapper for data transformations
+            logger: Optional HFT logger injection
         """
         super().__init__(config, mapper)
+        
+        # Initialize HFT logger
+        if logger is None:
+            from core.logging import get_exchange_logger
+            logger = get_exchange_logger('gateio', 'rest.public')
+        self.logger = logger
         
         # Simple caching for exchange info to reduce API calls (HFT compliant - config data only)
         self._exchange_info: Optional[Dict[Symbol, SymbolInfo]] = None

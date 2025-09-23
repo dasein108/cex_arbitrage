@@ -19,7 +19,7 @@ from typing import List, Dict, Any, Optional, Set
 
 from core.transport.websocket.strategies.subscription import SubscriptionStrategy
 from core.transport.websocket.structs import SubscriptionAction, PublicWebsocketChannelType
-from structs.common import Symbol
+from core.structs.common import Symbol
 from core.exchanges.services import BaseExchangeMapper
 from exchanges.consts import DEFAULT_PUBLIC_WEBSOCKET_CHANNELS
 from exchanges.gateio.services.gateio_mappings import GateioMappings

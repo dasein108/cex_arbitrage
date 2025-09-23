@@ -4,7 +4,6 @@ from typing import Dict, Any, Optional, List
 from core.exchanges.websocket import MessageParser, ParsedMessage
 from core.exchanges.services import BaseExchangeMapper
 from core.transport.websocket.structs import MessageType
-from structs.common import Order, AssetBalance, AssetName, Trade, Symbol, Side, OrderStatus, OrderType
 
 
 class GateioPrivateMessageParser(MessageParser):

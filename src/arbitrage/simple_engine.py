@@ -8,7 +8,7 @@ HFT COMPLIANT: Event-driven architecture with comprehensive opportunity detectio
 """
 
 import asyncio
-import logging
+from core.logging import get_logger
 import time
 from typing import Dict, Any, Optional, List, Set
 
@@ -17,10 +17,10 @@ from arbitrage.detector import OpportunityDetector
 from arbitrage.aggregator import MarketDataAggregator
 from arbitrage.structures import ArbitrageOpportunity
 from interfaces.cex.base import BasePrivateExchangeInterface
-from structs.common import ExchangeStatus, Symbol, AssetName, ExchangeName
+from core.structs.common import ExchangeStatus, Symbol, AssetName, ExchangeName
 from core.exceptions.exchange import ArbitrageDetectionError
 
-logger = logging.getLogger(__name__)
+logger = get_logger('arbitrage.simple_engine')
 
 
 class SimpleArbitrageEngine:

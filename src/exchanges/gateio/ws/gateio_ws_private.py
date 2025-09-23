@@ -23,9 +23,9 @@ Gate.io Private WebSocket Specifications:
 Architecture: Dependency injection with base class coordination
 """
 
-from typing import List, Dict, Optional, Callable, Awaitable
+from typing import Dict, Optional, Callable, Awaitable
 
-from structs.common import Symbol, Order, AssetBalance, Trade, Side, AssetName
+from core.structs.common import Order, AssetBalance, Trade, AssetName
 from core.config.structs import ExchangeConfig
 from core.exchanges.websocket.spot.base_ws_private import BaseExchangePrivateWebsocketInterface
 

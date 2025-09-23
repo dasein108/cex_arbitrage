@@ -14,11 +14,11 @@ from core.factories.rest.private_rest_factory import PrivateRestExchangeFactory
 
 # Register Gate.io strategies with the factory
 from core.transport.rest.strategies import RestStrategyFactory
-from structs.common import ExchangeEnum
+from core.structs.common import ExchangeEnum
 
 # Register exchange strategies
 RestStrategyFactory.register_strategies(
-    exchange=ExchangeEnum.GATEIO.value,
+    exchange=ExchangeEnum.GATEIO,
     is_private=False,
     request_strategy_cls=GateioRequestStrategy,
     rate_limit_strategy_cls=GateioRateLimitStrategy,
@@ -27,7 +27,7 @@ RestStrategyFactory.register_strategies(
 )
 
 RestStrategyFactory.register_strategies(
-    exchange=ExchangeEnum.GATEIO.value,
+    exchange=ExchangeEnum.GATEIO,
     is_private=True,
     request_strategy_cls=GateioRequestStrategy,
     rate_limit_strategy_cls=GateioRateLimitStrategy,
@@ -37,7 +37,7 @@ RestStrategyFactory.register_strategies(
 
 # Register Gate.io Futures strategies  
 RestStrategyFactory.register_strategies(
-    exchange="GATEIO_FUTURES",
+    exchange=ExchangeEnum.GATEIO_FUTURES,
     is_private=False,
     request_strategy_cls=GateioRequestStrategy,
     rate_limit_strategy_cls=GateioRateLimitStrategy,
@@ -46,7 +46,7 @@ RestStrategyFactory.register_strategies(
 )
 
 RestStrategyFactory.register_strategies(
-    exchange="GATEIO_FUTURES",
+    exchange=ExchangeEnum.GATEIO_FUTURES,
     is_private=True,
     request_strategy_cls=GateioRequestStrategy,
     rate_limit_strategy_cls=GateioRateLimitStrategy,

@@ -4,7 +4,7 @@ from enum import IntEnum, Enum
 from typing import Dict, Optional, Any, List, Union
 
 import msgspec
-from structs.common import Symbol
+from core.structs.common import Symbol
 
 
 class ConnectionState(Enum):

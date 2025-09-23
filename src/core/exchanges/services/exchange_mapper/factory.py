@@ -7,9 +7,9 @@ the standardized BaseExchangeFactory infrastructure with enhanced auto-injection
 HFT COMPLIANCE: Fast service instantiation, cached instances, factory coordination.
 """
 
-from typing import Dict, Type, Union
+from typing import Type, Union
 
-from structs.common import ExchangeName, ExchangeEnum
+from core.structs.common import ExchangeName, ExchangeEnum
 from core.exchanges.services.exchange_mapper.base_exchange_mapper import BaseExchangeMapper
 from core.exchanges.services.symbol_mapper.base_symbol_mapper import SymbolMapperInterface
 from core.factories.base_exchange_factory import BaseExchangeFactory

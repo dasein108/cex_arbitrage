@@ -7,14 +7,16 @@ code duplication while maintaining HFT performance requirements.
 HFT COMPLIANT: Zero-allocation patterns, <1ms parsing latency.
 """
 
-import logging
 from abc import ABC, abstractmethod
-from typing import Optional, Dict, Any, List, AsyncIterator, TYPE_CHECKING
+from typing import Optional, Dict, Any, List, AsyncIterator
 
 from core.transport.websocket.structs import ParsedMessage, MessageType
 from core.transport.websocket.error_handling import BaseMessageErrorHandler
-from structs.common import OrderBook, Trade, BookTicker, Symbol, OrderBookEntry
+from core.structs.common import Symbol, OrderBookEntry
 from core.exchanges.services import BaseExchangeMapper
+
+# HFT Logger Integration
+from core.logging import get_strategy_logger, HFTLoggerInterface, LoggingTimer
 
 
 class EnhancedBaseMessageParser(ABC):
@@ -29,22 +31,37 @@ class EnhancedBaseMessageParser(ABC):
     - HFT-optimized data conversion helpers
     """
     
-    def __init__(self, mapper: BaseExchangeMapper, exchange_name: str = "unknown"):
+    def __init__(self, mapper: BaseExchangeMapper, exchange_name: str = "unknown", logger: Optional[HFTLoggerInterface] = None):
         """
         Initialize enhanced parser with unified components.
         
         Args:
             mapper: Exchange mappings interface for symbol conversion (mandatory)
             exchange_name: Name of exchange for error tracking
+            logger: Optional injected HFT logger
         """
         self.mapper = mapper
         self.exchange_name = exchange_name
         
-        # Initialize logger with exchange-specific name
-        self.logger = logging.getLogger(f"{self.__class__.__module__}.{self.__class__.__name__}")
+        # Use injected logger or create strategy-specific logger
+        if logger is None:
+            # Create hierarchical tags for enhanced message parser
+            tags = [exchange_name.lower(), 'public', 'ws', 'message_parser']
+            logger = get_strategy_logger('ws.message_parser.enhanced', tags)
         
-        # Initialize unified error handler
+        self.logger = logger
+        
+        # Initialize unified error handler with HFT logger
         self.error_handler = BaseMessageErrorHandler(exchange_name, self.logger)
+        
+        # Log initialization with structured data
+        self.logger.info("EnhancedBaseMessageParser initialized",
+                        exchange=exchange_name,
+                        has_mapper=mapper is not None)
+        
+        # Track component initialization metrics
+        self.logger.metric("ws_enhanced_parsers_initialized", 1,
+                          tags={"exchange": exchange_name})
     
     @abstractmethod
     async def parse_message(self, raw_message: Any) -> Optional[ParsedMessage]:
@@ -74,19 +91,54 @@ class EnhancedBaseMessageParser(ABC):
         Yields:
             ParsedMessage instances
         """
-        for raw_message in raw_messages:
-            try:
-                parsed = await self.parse_message(raw_message)
-                if parsed:
-                    yield parsed
-            except Exception as e:
-                # Use unified error handler for batch parsing errors
-                error_msg = self.error_handler.handle_parsing_exception(
-                    exception=e,
-                    context="batch message parsing",
-                    raw_data={"message": raw_message}
-                )
-                yield error_msg
+        batch_size = len(raw_messages)
+        
+        # Track batch parsing performance
+        with LoggingTimer(self.logger, "ws_batch_message_parsing") as timer:
+            self.logger.debug("Starting batch message parsing",
+                            exchange=self.exchange_name,
+                            batch_size=batch_size)
+            
+            parsed_count = 0
+            error_count = 0
+            
+            for raw_message in raw_messages:
+                try:
+                    parsed = await self.parse_message(raw_message)
+                    if parsed:
+                        parsed_count += 1
+                        yield parsed
+                except Exception as e:
+                    error_count += 1
+                    # Use unified error handler for batch parsing errors
+                    error_msg = self.error_handler.handle_parsing_exception(
+                        exception=e,
+                        context="batch message parsing",
+                        raw_data={"message": raw_message}
+                    )
+                    yield error_msg
+            
+            # Log batch processing metrics
+            self.logger.info("Batch message parsing completed",
+                           exchange=self.exchange_name,
+                           batch_size=batch_size,
+                           parsed_count=parsed_count,
+                           error_count=error_count,
+                           processing_time_ms=timer.elapsed_ms)
+            
+            # Track batch processing metrics
+            self.logger.metric("ws_batch_messages_processed", batch_size,
+                              tags={"exchange": self.exchange_name})
+            
+            self.logger.metric("ws_batch_messages_parsed", parsed_count,
+                              tags={"exchange": self.exchange_name, "status": "success"})
+            
+            if error_count > 0:
+                self.logger.metric("ws_batch_messages_parsed", error_count,
+                                  tags={"exchange": self.exchange_name, "status": "error"})
+            
+            self.logger.metric("ws_batch_parsing_duration_ms", timer.elapsed_ms,
+                              tags={"exchange": self.exchange_name})
     
     def create_parsed_message(
         self,
@@ -174,9 +226,16 @@ class EnhancedBaseMessageParser(ABC):
                 potential_symbol = parts[-1]
                 # Check if it looks like a symbol (contains no special chars except underscore)
                 if potential_symbol and (potential_symbol.replace('_', '').replace('-', '').isalnum()):
+                    self.logger.debug("Symbol extracted from channel",
+                                    exchange=self.exchange_name,
+                                    channel=channel,
+                                    extracted_symbol=potential_symbol)
                     return potential_symbol
-        except Exception:
-            pass
+        except Exception as e:
+            self.logger.debug("Failed to extract symbol from channel",
+                            exchange=self.exchange_name,
+                            channel=channel,
+                            error_message=str(e))
         return None
 
     @abstractmethod

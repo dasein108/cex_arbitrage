@@ -7,16 +7,18 @@ BaseExchangeFactory pattern with singleton management and auto-dependency inject
 HFT COMPLIANCE: Sub-millisecond factory operations with efficient singleton management.
 """
 
-import logging
 from typing import Type, Optional, Union
 
 from core.factories.base_exchange_factory import BaseExchangeFactory
 from core.exchanges.rest.spot.base_rest_spot_public import PublicExchangeSpotRestInterface
 from core.config.structs import ExchangeConfig
 from core.utils.exchange_utils import exchange_name_to_enum
-from structs.common import ExchangeEnum
+from core.structs.common import ExchangeEnum
 
-logger = logging.getLogger(__name__)
+# HFT Logger Integration
+from core.logging import get_logger, get_exchange_logger, LoggingTimer
+
+logger = get_logger('rest.factory.public')
 
 
 class PublicRestExchangeFactory(BaseExchangeFactory[PublicExchangeSpotRestInterface]):
@@ -63,7 +65,13 @@ class PublicRestExchangeFactory(BaseExchangeFactory[PublicExchangeSpotRestInterf
         # Register with base class registry using ExchangeEnum as key
         cls._implementations[exchange_enum] = implementation_class
         
-        logger.debug(f"Registered public REST implementation for {exchange_enum.value}: {implementation_class.__name__}")
+        logger.info("Registered public REST implementation", 
+                   exchange=exchange_enum.value,
+                   implementation_class=implementation_class.__name__)
+        
+        # Track registration metrics
+        logger.metric("rest_implementations_registered", 1,
+                     tags={"exchange": exchange_enum.value, "type": "public"})
 
     @classmethod
     def inject(cls, exchange: Union[str, ExchangeEnum], config: Optional[ExchangeConfig] = None, **kwargs) -> PublicExchangeSpotRestInterface:
@@ -104,28 +112,72 @@ class PublicRestExchangeFactory(BaseExchangeFactory[PublicExchangeSpotRestInterf
         # Check singleton cache first (HFT performance optimization)
         cache_key = f"{exchange_enum.value}_{id(config)}"
         if cache_key in cls._instances:
-            logger.debug(f"Returning cached public REST instance for {exchange_enum.value}")
+            logger.debug("Returning cached public REST instance",
+                        exchange=exchange_enum.value,
+                        cache_key=cache_key)
+            
+            # Track cache hit metrics
+            logger.metric("rest_cache_hits", 1,
+                         tags={"exchange": exchange_enum.value, "type": "public"})
+            
             return cls._instances[cache_key]
         
-        # Create new instance with auto-dependency injection
+        # Create exchange-specific logger for the instance
+        exchange_logger = get_exchange_logger(exchange_enum.value, 'rest.public')
+        
+        # Create new instance with auto-dependency injection and performance tracking
         implementation_class = cls._implementations[exchange_enum]
         
         try:
-            # Explicitly inject exchange mapper (not handled by base factory due to circular dependency)
-            from core.exchanges.services.exchange_mapper.factory import ExchangeMapperFactory
-            mapper = ExchangeMapperFactory.inject(exchange_enum)
+            logger.info("Creating new public REST instance",
+                       exchange=exchange_enum.value,
+                       implementation_class=implementation_class.__name__)
             
-            # Create instance directly with only required parameters (config, mapper)
-            instance = implementation_class(config=config, mapper=mapper)
+            # Track creation performance
+            with LoggingTimer(logger, "rest_instance_creation") as timer:
+                # Explicitly inject exchange mapper (not handled by base factory due to circular dependency)
+                from core.exchanges.services.exchange_mapper.factory import ExchangeMapperFactory
+                
+                with LoggingTimer(logger, "mapper_creation") as mapper_timer:
+                    mapper = ExchangeMapperFactory.inject(exchange_enum)
+                
+                logger.metric("mapper_creation_time_ms", mapper_timer.elapsed_ms,
+                             tags={"exchange": exchange_enum.value, "type": "public"})
+                
+                # Create instance with injected logger and dependencies
+                instance = implementation_class(
+                    config=config, 
+                    mapper=mapper,
+                    logger=exchange_logger  # Inject HFT logger
+                )
             
             # Cache the instance for future requests
             cls._instances[cache_key] = instance
             
-            logger.info(f"Created and cached public REST instance for {exchange_enum.value}: {implementation_class.__name__}")
+            logger.info("Created and cached public REST instance",
+                       exchange=exchange_enum.value,
+                       implementation_class=implementation_class.__name__,
+                       creation_time_ms=timer.elapsed_ms)
+            
+            # Track creation metrics
+            logger.metric("rest_instances_created", 1,
+                         tags={"exchange": exchange_enum.value, "type": "public"})
+            
+            logger.metric("rest_creation_time_ms", timer.elapsed_ms,
+                         tags={"exchange": exchange_enum.value, "type": "public"})
+            
             return instance
             
         except Exception as e:
-            logger.error(f"Failed to create public REST instance for {exchange_enum.value}: {e}")
+            logger.error("Failed to create public REST instance",
+                        exchange=exchange_enum.value,
+                        error_type=type(e).__name__,
+                        error_message=str(e))
+            
+            # Track creation failure metrics
+            logger.metric("rest_creation_failures", 1,
+                         tags={"exchange": exchange_enum.value, "type": "public"})
+            
             raise ValueError(f"Failed to create public REST exchange {exchange_enum.value}: {e}") from e
 
     @classmethod

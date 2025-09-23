@@ -3,9 +3,9 @@ import time
 from typing import Dict, List, Optional, Any
 from datetime import datetime
 
-from structs.common import (
+from core.structs.common import (
     Symbol, SymbolInfo, OrderBook, OrderBookEntry, Trade, Kline,
-    ExchangeName, KlineInterval, Ticker, Side
+    KlineInterval, Ticker, Side
 )
 from core.exchanges.rest.spot.base_rest_spot_public import PublicExchangeSpotRestInterface
 from core.exchanges.services import BaseExchangeMapper
@@ -25,8 +25,14 @@ class GateioPublicFuturesRest(PublicExchangeSpotRestInterface):
     - Robust parsing: supports both array and dict payload shapes.
     """
 
-    def __init__(self, config: ExchangeConfig, mapper: BaseExchangeMapper):
+    def __init__(self, config: ExchangeConfig, mapper: BaseExchangeMapper, logger=None):
         super().__init__(config, mapper)
+
+        # Initialize HFT logger
+        if logger is None:
+            from core.logging import get_exchange_logger
+            logger = get_exchange_logger('gateio_futures', 'rest.public')
+        self.logger = logger
 
         # caching for contract info (only config data)
         self._exchange_info: Optional[Dict[Symbol, SymbolInfo]] = None

@@ -9,10 +9,9 @@ Supports both simple factories (single component types) and composite factories
 """
 
 from abc import ABC, abstractmethod
-from typing import TypeVar, List, Any, Dict, Union, TYPE_CHECKING
+from typing import TypeVar, List, Any, Union
 
-if TYPE_CHECKING:
-    from structs.common import ExchangeEnum
+from core.structs.common import ExchangeEnum
 
 T = TypeVar('T')
 
@@ -29,7 +28,7 @@ class ExchangeFactoryInterface(ABC):
     
     @classmethod
     @abstractmethod
-    def register(cls, exchange: Union[str, 'ExchangeEnum'], implementation: Any, **kwargs) -> None:
+    def register(cls, exchange: Union[str, ExchangeEnum], implementation: Any, **kwargs) -> None:
         """
         Register implementation for an exchange.
         
@@ -45,7 +44,7 @@ class ExchangeFactoryInterface(ABC):
     
     @classmethod
     @abstractmethod
-    def inject(cls, exchange: Union[str, 'ExchangeEnum'], **kwargs) -> Any:
+    def inject(cls, exchange: Union[str, ExchangeEnum], **kwargs) -> Any:
         """
         Create or retrieve component instance for an exchange.
         
@@ -74,7 +73,7 @@ class ExchangeFactoryInterface(ABC):
     
     @classmethod
     @abstractmethod
-    def is_registered(cls, exchange: Union[str, 'ExchangeEnum']) -> bool:
+    def is_registered(cls, exchange: Union[str, ExchangeEnum]) -> bool:
         """
         Check if exchange has registered implementation.
         

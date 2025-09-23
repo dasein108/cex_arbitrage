@@ -24,10 +24,9 @@ import time
 import asyncio
 import logging
 from typing import Dict, List, Optional, Set, Callable, Awaitable, Any
-from concurrent.futures import ThreadPoolExecutor
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
-from structs.common import Symbol, OrderBook
+from core.structs.common import Symbol, OrderBook
 from common.hft_orderbook import HFTOrderBook
 from common.orderbook_diff_processor import (
     OrderbookDiffProcessor, 

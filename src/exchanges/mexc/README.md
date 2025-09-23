@@ -49,7 +49,7 @@ Production-ready high-level interface implementing `BaseExchangeInterface`.
 
 ```python
 from exchanges.mexc.mexc_exchange import MexcExchange
-from structs import Symbol, AssetName, Side
+from core.structs import Symbol, AssetName, Side
 
 # Initialize exchange
 exchange = MexcExchange(api_key="your_key", secret_key="your_secret")

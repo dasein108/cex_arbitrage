@@ -24,7 +24,7 @@ try:
 except ImportError:
     # Fall back to module path imports
     try:
-        from src.exchanges.mexc_api.websocket import PublicBookTickerV3Api_pb2 as PublicBookTickerV3Api__pb2
+        from exchanges.mexc_api.websocket import PublicBookTickerV3Api_pb2 as PublicBookTickerV3Api__pb2
     except ImportError:
         # Fall back to direct imports (when imported as standalone)
         import PublicBookTickerV3Api_pb2 as PublicBookTickerV3Api__pb2

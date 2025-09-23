@@ -1,5 +1,5 @@
 from typing import Dict
-from structs.common import OrderStatus, OrderType, Side, TimeInForce, KlineInterval
+from core.structs.common import OrderStatus, OrderType, Side, TimeInForce, KlineInterval
 
 
 class BaseMappingConfiguration:

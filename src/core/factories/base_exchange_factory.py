@@ -8,16 +8,16 @@ HFT COMPLIANCE: Sub-millisecond factory operations with efficient singleton mana
 """
 
 import logging
-from typing import TypeVar, Generic, Dict, Type, Any, Optional, List, Union, TYPE_CHECKING
+from typing import TypeVar, Generic, Dict, Type, Any, List, Union, TYPE_CHECKING
 from abc import ABC, abstractmethod
 
 from .factory_interface import ExchangeFactoryInterface
 from core.utils.exchange_utils import exchange_name_to_enum
 
 if TYPE_CHECKING:
-    from structs.common import ExchangeEnum
+    from core.structs.common import ExchangeEnum
 else:
-    from structs.common import ExchangeEnum
+    from core.structs.common import ExchangeEnum
 
 logger = logging.getLogger(__name__)
 

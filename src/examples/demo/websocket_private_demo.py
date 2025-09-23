@@ -17,7 +17,7 @@ import logging
 import sys
 from typing import List, Dict
 
-from structs.common import Symbol, AssetName, Order, AssetBalance, Trade
+from core.structs.common import Symbol, Order, AssetBalance, Trade
 from core.config.config_manager import get_exchange_config
 from examples.utils.ws_api_factory import get_exchange_websocket_instance
 
@@ -75,7 +75,7 @@ class PrivateWebSocketClient:
         """Get HFT performance metrics."""
         return self.websocket.get_performance_metrics()
     
-    async def _handle_order_update(self, symbol: Symbol, order: Order) -> None:
+    async def _handle_order_update(self,  order: Order) -> None:
         """Handle order updates from WebSocket."""
         logger.info(f"📋 {self.exchange_name} ORDER update")
         if self.order_handler:
@@ -316,7 +316,7 @@ async def main(exchange_name: str):
 
 
 if __name__ == "__main__":
-    exchange_name = sys.argv[1] if len(sys.argv) > 1 else "mexc_spot"
+    exchange_name = sys.argv[1] if len(sys.argv) > 1 else "gateio_futures"
 
     try:
         asyncio.run(main(exchange_name))

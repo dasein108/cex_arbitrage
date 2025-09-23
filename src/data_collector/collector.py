@@ -6,19 +6,21 @@ Provides unified interface for MEXC and Gate.io book ticker data collection.
 """
 
 import asyncio
-import logging
 from datetime import datetime
 from typing import Dict, List, Optional, Set, Callable, Awaitable
 from dataclasses import dataclass
 
 from core.config import get_exchange_config
-from structs.common import Symbol, BookTicker, Trade
+from core.structs.common import Symbol, BookTicker, Trade
 from core.factories.websocket import PublicWebSocketExchangeFactory
 from db import BookTickerSnapshot
 from db.models import TradeSnapshot
-from structs.common import ExchangeEnum
+from core.structs.common import ExchangeEnum
 from .analytics import RealTimeAnalytics
 from .consts import WEBSOCKET_CHANNELS
+
+# HFT Logger Integration
+from core.logging import get_logger, LoggingTimer
 
 
 @dataclass
@@ -64,14 +66,24 @@ class UnifiedWebSocketManager:
         self.book_ticker_handler = book_ticker_handler
         self.trade_handler = trade_handler
         
-        # Logging
-        self.logger = logging.getLogger(__name__)
+        # HFT Logging
+        self.logger = get_logger('data_collector.websocket_manager')
         
         # Exchange WebSocket clients
         self._exchange_clients: Dict[ExchangeEnum, any] = {}
         
         # Book ticker cache: {exchange_symbol: BookTickerCache}
         self._book_ticker_cache: Dict[str, BookTickerCache] = {}
+        
+        # Performance tracking
+        self._total_messages_received = 0
+        self._total_data_processed = 0
+        
+        # Log initialization
+        self.logger.info("UnifiedWebSocketManager initialized",
+                        exchanges=[e.value for e in exchanges],
+                        has_book_ticker_handler=book_ticker_handler is not None,
+                        has_trade_handler=trade_handler is not None)
         
         # Trade cache: {exchange_symbol: List[TradeCache]} (keep recent trades)
         self._trade_cache: Dict[str, List[TradeCache]] = {}
@@ -129,15 +141,35 @@ class UnifiedWebSocketManager:
             self._active_symbols[exchange] = set()
             self._connected[exchange] = False
             
-            # Initialize connection and subscribe to symbols
-            await client.initialize(symbols, WEBSOCKET_CHANNELS)
-            self._active_symbols[exchange].update(symbols)
-            self._connected[exchange] = True
+            # Initialize connection and subscribe to symbols with performance tracking
+            with LoggingTimer(self.logger, "websocket_initialization") as timer:
+                await client.initialize(symbols, WEBSOCKET_CHANNELS)
+                self._active_symbols[exchange].update(symbols)
+                self._connected[exchange] = True
             
-            self.logger.info(f"Initialized {exchange} WebSocket with {len(symbols)} symbols using factory")
+            self.logger.info("WebSocket initialized successfully",
+                            exchange=exchange.value,
+                            symbols_count=len(symbols),
+                            initialization_time_ms=timer.elapsed_ms)
+            
+            # Track successful initialization metrics
+            self.logger.metric("websocket_initializations", 1,
+                              tags={"exchange": exchange.value, "status": "success"})
+            
+            self.logger.metric("websocket_symbols_subscribed", len(symbols),
+                              tags={"exchange": exchange.value})
             
         except Exception as e:
-            self.logger.error(f"Failed to initialize {exchange} WebSocket: {e}")
+            self.logger.error("Failed to initialize WebSocket",
+                             exchange=exchange.value,
+                             error_type=type(e).__name__,
+                             error_message=str(e),
+                             symbols_count=len(symbols))
+            
+            # Track initialization failures
+            self.logger.metric("websocket_initializations", 1,
+                              tags={"exchange": exchange.value, "status": "error"})
+            
             self._connected[exchange] = False
             raise
     
@@ -151,27 +183,67 @@ class UnifiedWebSocketManager:
             book_ticker: Updated book ticker data
         """
         try:
+            # Track message reception
+            self._total_messages_received += 1
+            
             # Update cache - use symbol directly without prefixes
             cache_key = f"{exchange.value}_{symbol}"
-            self._book_ticker_cache[cache_key] = BookTickerCache(
-                ticker=book_ticker,
-                last_updated=datetime.now(),
-                exchange=exchange.value
-            )
+            with LoggingTimer(self.logger, "book_ticker_cache_update") as timer:
+                self._book_ticker_cache[cache_key] = BookTickerCache(
+                    ticker=book_ticker,
+                    last_updated=datetime.now(),
+                    exchange=exchange.value
+                )
             
-            # Log successful cache update for debugging
-            self.logger.debug(
-                f"Cached ticker update: {exchange.value} {symbol} - "
-                f"bid={book_ticker.bid_price} ask={book_ticker.ask_price}"
-            )
+            # Log update with performance context
+            self.logger.debug("Book ticker cached",
+                             exchange=exchange.value,
+                             symbol=str(symbol),
+                             bid_price=book_ticker.bid_price,
+                             ask_price=book_ticker.ask_price,
+                             cache_time_us=timer.elapsed_ms * 1000)
+            
+            # Track performance metrics
+            self.logger.metric("book_ticker_updates", 1,
+                              tags={"exchange": exchange.value, "symbol": str(symbol)})
+            
+            self.logger.metric("cache_update_time_us", timer.elapsed_ms * 1000,
+                              tags={"exchange": exchange.value, "operation": "book_ticker"})
             
             # Call registered handler if available
             if self.book_ticker_handler:
-                await self.book_ticker_handler(exchange, symbol, book_ticker)
+                with LoggingTimer(self.logger, "book_ticker_handler") as handler_timer:
+                    await self.book_ticker_handler(exchange, symbol, book_ticker)
+                
+                self.logger.metric("handler_processing_time_us", handler_timer.elapsed_ms * 1000,
+                                  tags={"exchange": exchange.value, "handler": "book_ticker"})
+            
+            self._total_data_processed += 1
+            
+            # Log periodic performance stats
+            if self._total_messages_received % 1000 == 0:
+                self.logger.info("Performance checkpoint",
+                                messages_received=self._total_messages_received,
+                                data_processed=self._total_data_processed,
+                                cache_size=len(self._book_ticker_cache))
+                
+                self.logger.metric("messages_received_total", self._total_messages_received)
+                self.logger.metric("data_processed_total", self._total_data_processed)
+                self.logger.metric("cache_size", len(self._book_ticker_cache))
+            
         except Exception as e:
-            self.logger.error(f"Error handling book ticker update for {symbol}: {e}")
+            self.logger.error("Error handling book ticker update",
+                             exchange=exchange.value,
+                             symbol=str(symbol),
+                             error_type=type(e).__name__,
+                             error_message=str(e))
+            
+            # Track error metrics
+            self.logger.metric("book_ticker_processing_errors", 1,
+                              tags={"exchange": exchange.value, "symbol": str(symbol)})
+            
             import traceback
-            self.logger.error(traceback.format_exc())
+            self.logger.debug("Full traceback", traceback=traceback.format_exc())
     
     async def _handle_trades_update(self, exchange: ExchangeEnum, symbol: Symbol, trades: List[Trade]) -> None:
         """
@@ -329,7 +401,7 @@ class UnifiedWebSocketManager:
                     # Parse symbol string directly without prefixes
                     # Try to parse symbol string manually as fallback
                     if len(symbol_str) >= 6 and symbol_str.endswith('USDT'):
-                        from structs.common import Symbol, AssetName, ExchangeEnum
+                        from core.structs.common import Symbol, AssetName, ExchangeEnum
                         base = symbol_str[:-4]  # Remove USDT
                         quote = 'USDT'
                         # Determine if futures based on exchange type
@@ -502,7 +574,7 @@ class SnapshotScheduler:
         self.snapshot_handler = snapshot_handler
         self.trade_handler = trade_handler
         
-        self.logger = logging.getLogger(__name__)
+        self.logger = get_logger('data_collector.snapshot_scheduler')
         self._running = False
         self._snapshot_count = 0
         
@@ -616,8 +688,9 @@ class DataCollector:
         from data_collector.config import load_data_collector_config
         self.config = load_data_collector_config(config_path)
         
-        # Logging
-        self.logger = logging.getLogger(__name__)
+        # HFT Logging
+        from core.logging import get_logger
+        self.logger = get_logger('data_collector.collector')
         
         # Components
         self.ws_manager: Optional[UnifiedWebSocketManager] = None

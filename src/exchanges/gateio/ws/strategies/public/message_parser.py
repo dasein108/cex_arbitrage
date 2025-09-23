@@ -1,12 +1,11 @@
 import logging
-from typing import Dict, Any, Optional, List, Tuple
-from datetime import datetime
+from typing import Dict, Any, Optional, List
 import msgspec
 
 from core.transport.websocket.strategies.enhanced_message_parser import EnhancedBaseMessageParser
 from core.transport.websocket.structs import ParsedMessage, MessageType
 from core.exchanges.services import BaseExchangeMapper
-from structs.common import Trade, OrderBookEntry, Symbol, Side, BookTicker, OrderBook
+from core.structs.common import Symbol
 
 
 class GateioPublicMessageParser(EnhancedBaseMessageParser):

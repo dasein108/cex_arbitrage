@@ -1,8 +1,8 @@
 from abc import abstractmethod
-from typing import Dict, List, Optional, Callable, Tuple, Any
+from typing import Dict, List, Optional
 from core.exchanges.rest.base_rest import BaseExchangeRestInterface
 from core.exchanges.services import BaseExchangeMapper
-from structs.common import (
+from core.structs.common import (
     Symbol,
     Order,
     OrderId,
@@ -15,12 +15,15 @@ from structs.common import (
 
 from core.config.structs import ExchangeConfig
 
+# HFT Logger Integration
+from core.logging import HFTLoggerInterface
+
 
 class PrivateExchangeSpotRestInterface(BaseExchangeRestInterface):
     """Abstract interface for private exchange operations (trading, account management)"""
     CAN_MODIFY_ORDERS = False  # Default capability flag for modifying orders
 
-    def __init__(self, config: ExchangeConfig, mapper: BaseExchangeMapper):
+    def __init__(self, config: ExchangeConfig, mapper: BaseExchangeMapper, logger: Optional[HFTLoggerInterface] = None):
         """Initialize private interface with transport manager and mapper."""
         if not config.has_credentials():
             raise ValueError(f"{config.name} API credentials must be provided")
@@ -28,7 +31,8 @@ class PrivateExchangeSpotRestInterface(BaseExchangeRestInterface):
         super().__init__(
             config=config,
             mapper=mapper,
-            is_private=True  # Private API operations with authentication
+            is_private=True,  # Private API operations with authentication
+            logger=logger  # Pass logger to parent for specialized private.spot logging
         )
 
     @abstractmethod

@@ -2,7 +2,7 @@ from typing import List
 
 from exchanges.consts import DEFAULT_PUBLIC_WEBSOCKET_CHANNELS
 from .spot.base_ws_public import BaseExchangePublicWebsocketInterface
-from structs.common import Symbol, Trade, OrderBook, BookTicker
+from core.structs.common import Symbol
 from core.transport.websocket.structs import PublicWebsocketChannelType
 
 
@@ -12,7 +12,6 @@ class BaseWebsocketPublicFutures(BaseExchangePublicWebsocketInterface):
         await super().initialize(self._fix_futures_symbols(symbols), channels)
 
     async def add_symbols(self, symbols: List[Symbol]) -> None:
-        futures_symbols = [Symbol(s.base, s.quote, is_futures=True) for s in symbols]
         await super().add_symbols(self._fix_futures_symbols(symbols))
 
     async def remove_symbols(self, symbols: List[Symbol]) -> None:

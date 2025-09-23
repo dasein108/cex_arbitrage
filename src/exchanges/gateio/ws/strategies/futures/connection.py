@@ -1,7 +1,5 @@
 import logging
-import time
-import msgspec
-from typing import Dict, Any, Optional
+from typing import Dict, Any
 from websockets import connect
 from websockets.client import WebSocketClientProtocol
 
@@ -9,7 +7,6 @@ from core.exchanges.websocket import ConnectionStrategy, ConnectionContext
 from core.transport.websocket.strategies.connection import ReconnectionPolicy
 from core.config.structs import ExchangeConfig
 from core.exceptions.exchange import BaseExchangeError
-from structs.common import Symbol
 
 
 class GateioFuturesConnectionStrategy(ConnectionStrategy):

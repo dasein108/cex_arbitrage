@@ -8,24 +8,23 @@ HFT COMPLIANT: Optimized exchange initialization with connection pooling.
 """
 
 import asyncio
-import logging
+from core.logging import get_logger
 import time
 from typing import Dict, Any, List, Optional, Type
 from dataclasses import dataclass
-from enum import Enum
 
 from core.config.config_manager import config
 from core.exceptions.exchange import BaseExchangeError
 from exchanges.mexc.private_exchange import MexcPrivateExchange as MexcExchange
 from exchanges.gateio.gateio_exchange import GateioExchange
-from structs.common import Symbol, AssetName, ExchangeStatus, ExchangeName
+from core.structs.common import Symbol, AssetName, ExchangeStatus, ExchangeName
 from interfaces.cex.base.base_private_exchange import BasePrivateExchangeInterface
 from interfaces.factories.exchange_factory_interface import (
     ExchangeFactoryInterface, 
     InitializationStrategy as BaseInitializationStrategy
 )
 
-logger = logging.getLogger(__name__)
+logger = get_logger('arbitrage.exchange_factory')
 
 
 # Use the base InitializationStrategy from the interface

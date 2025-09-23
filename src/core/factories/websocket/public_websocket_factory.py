@@ -7,21 +7,23 @@ BaseExchangeFactory pattern with singleton management and auto-dependency inject
 HFT COMPLIANCE: Sub-millisecond factory operations with efficient singleton management.
 """
 
-import logging
 from typing import Type, Optional, Callable, Awaitable, List, Union
 
 from core.factories.base_exchange_factory import BaseExchangeFactory
 from core.utils.exchange_utils import exchange_name_to_enum
-from structs.common import ExchangeEnum
+from core.structs.common import ExchangeEnum
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from core.exchanges.websocket.spot.base_ws_public import BaseExchangePublicWebsocketInterface
+    pass
 from core.config.structs import ExchangeConfig
-from structs.common import Symbol, OrderBook, Trade, BookTicker
+from core.structs.common import Symbol, OrderBook, Trade, BookTicker
 from core.transport.websocket.structs import ConnectionState
 
-logger = logging.getLogger(__name__)
+# HFT Logger Integration
+from core.logging import get_logger, get_exchange_logger, LoggingTimer
+
+logger = get_logger('websocket.factory.public')
 
 
 class PublicWebSocketExchangeFactory(BaseExchangeFactory):
@@ -67,7 +69,13 @@ class PublicWebSocketExchangeFactory(BaseExchangeFactory):
         # Register with base class registry using ExchangeEnum as key
         cls._implementations[exchange_enum] = implementation_class
         
-        logger.debug(f"Registered public WebSocket implementation for {exchange_enum.value}: {implementation_class.__name__}")
+        logger.info("Registered public WebSocket implementation", 
+                   exchange=exchange_enum.value,
+                   implementation_class=implementation_class.__name__)
+        
+        # Track registration metrics
+        logger.metric("websocket_implementations_registered", 1,
+                     tags={"exchange": exchange_enum.value, "type": "public"})
 
     @classmethod
     def inject(cls, exchange: Union[str, ExchangeEnum], config: Optional[ExchangeConfig] = None, 
@@ -117,31 +125,84 @@ class PublicWebSocketExchangeFactory(BaseExchangeFactory):
         # Check singleton cache first (HFT performance optimization)
         cache_key = f"{exchange_enum.value}_{id(config)}"
         if cache_key in cls._instances:
-            logger.debug(f"Returning cached public WebSocket instance for {exchange_enum.value}")
+            logger.debug("Returning cached public WebSocket instance", 
+                        exchange=exchange_enum.value,
+                        cache_key=cache_key)
+            
+            # Track cache hit metrics
+            logger.metric("websocket_cache_hits", 1,
+                         tags={"exchange": exchange_enum.value, "type": "public"})
+            
             return cls._instances[cache_key]
         
-        # Create new instance with auto-dependency injection
+        # Create exchange-specific logger for the instance
+        exchange_logger = get_exchange_logger(exchange_enum.value, 'websocket.public')
+        
+        # Create new instance with auto-dependency injection and performance tracking
         implementation_class = cls._implementations[exchange_enum]
         
         try:
-            # Create instance with WebSocket-specific parameters
-            instance = implementation_class(
-                config=config,
-                orderbook_diff_handler=orderbook_diff_handler,
-                trades_handler=trades_handler,
-                book_ticker_handler=book_ticker_handler,
-                state_change_handler=state_change_handler,
-                **kwargs
-            )
+            logger.info("Creating new public WebSocket instance",
+                       exchange=exchange_enum.value,
+                       implementation_class=implementation_class.__name__)
+            
+            # Track creation performance
+            with LoggingTimer(logger, "websocket_instance_creation") as timer:
+                # Try to create instance with logger injection first, fallback without logger
+                try:
+                    instance = implementation_class(
+                        config=config,
+                        logger=exchange_logger,  # Try to inject HFT logger
+                        orderbook_diff_handler=orderbook_diff_handler,
+                        trades_handler=trades_handler,
+                        book_ticker_handler=book_ticker_handler,
+                        state_change_handler=state_change_handler,
+                        **kwargs
+                    )
+                except TypeError as e:
+                    if "unexpected keyword argument 'logger'" in str(e):
+                        # Fallback: create without logger injection
+                        logger.debug("Constructor doesn't support logger injection, creating without it",
+                                   exchange=exchange_enum.value,
+                                   implementation=implementation_class.__name__)
+                        instance = implementation_class(
+                            config=config,
+                            orderbook_diff_handler=orderbook_diff_handler,
+                            trades_handler=trades_handler,
+                            book_ticker_handler=book_ticker_handler,
+                            state_change_handler=state_change_handler,
+                            **kwargs
+                        )
+                    else:
+                        raise
             
             # Cache the instance for future requests
             cls._instances[cache_key] = instance
             
-            logger.info(f"Created and cached public WebSocket instance for {exchange_enum.value}: {implementation_class.__name__}")
+            logger.info("Created and cached public WebSocket instance",
+                       exchange=exchange_enum.value,
+                       implementation_class=implementation_class.__name__,
+                       creation_time_ms=timer.elapsed_ms)
+            
+            # Track creation metrics
+            logger.metric("websocket_instances_created", 1,
+                         tags={"exchange": exchange_enum.value, "type": "public"})
+            
+            logger.metric("websocket_creation_time_ms", timer.elapsed_ms,
+                         tags={"exchange": exchange_enum.value, "type": "public"})
+            
             return instance
             
         except Exception as e:
-            logger.error(f"Failed to create public WebSocket instance for {exchange_enum.value}: {e}")
+            logger.error("Failed to create public WebSocket instance",
+                        exchange=exchange_enum.value,
+                        error_type=type(e).__name__,
+                        error_message=str(e))
+            
+            # Track creation failure metrics
+            logger.metric("websocket_creation_failures", 1,
+                         tags={"exchange": exchange_enum.value, "type": "public"})
+            
             raise ValueError(f"Failed to create public WebSocket exchange {exchange_enum.value}: {e}") from e
 
     @classmethod

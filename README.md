@@ -318,7 +318,7 @@ async def example_usage():
 # ✅ CORRECT: Using unified exchanges standards
 from core.exchanges.rest import PublicExchangeSpotRestInterface
 from core.exchanges.rest.spot.base_rest_spot_private import PrivateExchangeSpotRestInterface
-from structs import Symbol, OrderBook, Order, ExchangeName
+from core.structs import Symbol, OrderBook, Order, ExchangeName
 from core.transport.rest.rest_client_legacy import HighPerformanceRestClient, RequestConfig
 from core.exceptions.exchange import BaseExchangeError, RateLimitErrorBase
 
@@ -455,7 +455,7 @@ The `raw/` directory contains legacy code that is **incompatible with unified in
    
    # ✅ REPLACE with unified imports:
    from core.exchanges.rest import PublicExchangeSpotRestInterface
-   from structs import Order, SymbolInfo, AssetBalance
+   from core.structs import Order, SymbolInfo, AssetBalance
    from core.exceptions.exchange import BaseExchangeError
    ```
 

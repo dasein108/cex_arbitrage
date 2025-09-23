@@ -106,4 +106,4 @@ class GateioRetryStrategy(RetryStrategy):
                 pass
 
         # Default rate limit delay (Gate.io requires longer waits)
-        return 45.0  # 45 seconds default (more conservative than MEXC)
+        return 45.0  # 45 seconds default

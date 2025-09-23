@@ -8,10 +8,8 @@ HFT COMPLIANCE: Strategy pattern for exchange-specific optimizations.
 """
 
 from abc import ABC, abstractmethod
-from typing import List, Dict, Any, Optional, Set
+from typing import List, Any, Set
 from enum import IntEnum
-
-from structs.common import Symbol
 
 
 class SubscriptionAction(IntEnum):

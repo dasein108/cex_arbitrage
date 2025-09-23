@@ -25,16 +25,15 @@ import asyncio
 import sys
 import argparse
 import time
-from typing import Dict, Any, List
+from typing import Dict, Any
 
-from structs.common import Symbol, AssetName, Order, AssetBalance, Trade
-from structs.common import ExchangeEnum
+from core.structs.common import Order, AssetBalance
+from core.structs.common import ExchangeEnum
 from core.config.config_manager import get_exchange_config
 from examples.utils.ws_api_factory import get_exchange_websocket_classes
 from examples.integration_test_framework import (
-    IntegrationTestRunner, TestCategory, TestStatus, TestMetrics,
-    EXIT_CODE_SUCCESS, EXIT_CODE_FAILED_TESTS, EXIT_CODE_ERROR, 
-    EXIT_CODE_TIMEOUT, EXIT_CODE_CONFIG_ERROR
+    IntegrationTestRunner, TestCategory, TestStatus, EXIT_CODE_SUCCESS, EXIT_CODE_FAILED_TESTS, EXIT_CODE_ERROR,
+    EXIT_CODE_CONFIG_ERROR
 )
 
 

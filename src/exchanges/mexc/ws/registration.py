@@ -5,7 +5,7 @@ Separate module to handle factory registration and avoid circular imports.
 """
 
 from core.factories.websocket import PublicWebSocketExchangeFactory, PrivateWebSocketExchangeFactory
-from structs.common import ExchangeEnum
+from core.structs.common import ExchangeEnum
 from .mexc_ws_public import MexcWebsocketPublic
 from .mexc_ws_private import MexcWebsocketPrivate
 

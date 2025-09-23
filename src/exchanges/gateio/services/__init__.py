@@ -15,7 +15,7 @@ from .symbol_mapper import GateioSymbolMapperInterface
 from .futures_symbol_mapper import GateioFuturesSymbolMapperInterface
 from .gateio_mappings import GateioMappings
 from .gateio_funtures_mappings import GateioFuturesMappings
-from structs.common import ExchangeEnum
+from core.structs.common import ExchangeEnum
 
 # Import factories to verify registration
 from core.exchanges.services import ExchangeSymbolMapperFactory, ExchangeMapperFactory

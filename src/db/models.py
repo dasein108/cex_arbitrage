@@ -6,11 +6,10 @@ Optimized for HFT requirements with zero-copy serialization.
 """
 
 from datetime import datetime
-from decimal import Decimal
 from typing import Optional
 import msgspec
 
-from structs.common import Symbol
+from core.structs.common import Symbol
 
 
 class BookTickerSnapshot(msgspec.Struct):
@@ -82,7 +81,7 @@ class BookTickerSnapshot(msgspec.Struct):
         Returns:
             Symbol object reconstructed from base/quote strings
         """
-        from structs.common import AssetName
+        from core.structs.common import AssetName
         return Symbol(
             base=AssetName(self.symbol_base),
             quote=AssetName(self.symbol_quote),
@@ -162,7 +161,7 @@ class TradeSnapshot(msgspec.Struct):
         Returns:
             TradeSnapshot instance
         """
-        from structs.common import Side
+        from core.structs.common import Side
         
         return cls(
             exchange=exchange.upper(),
@@ -231,7 +230,7 @@ class TradeSnapshot(msgspec.Struct):
         Returns:
             Symbol object reconstructed from base/quote strings
         """
-        from structs.common import AssetName
+        from core.structs.common import AssetName
         return Symbol(
             base=AssetName(self.symbol_base),
             quote=AssetName(self.symbol_quote),
@@ -245,7 +244,7 @@ class TradeSnapshot(msgspec.Struct):
         Returns:
             Trade struct from structs.common
         """
-        from structs.common import Trade, Side
+        from core.structs.common import Trade, Side
         
         return Trade(
             symbol=self.to_symbol(),

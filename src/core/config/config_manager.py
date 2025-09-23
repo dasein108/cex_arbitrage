@@ -45,7 +45,7 @@ import traceback
 from dataclasses import dataclass
 from core.exceptions.exchange import ConfigurationError
 from core.config.structs import ExchangeCredentials, NetworkConfig, RateLimitConfig, WebSocketConfig, ExchangeConfig, RestTransportConfig
-from common.logging.simple_logger import getLogger
+from core.logging import get_logger
 from enum import Enum
 from msgspec import Struct
 
@@ -778,6 +778,19 @@ class HftConfig:
         """
         arbitrage_config = self._config_data.get('arbitrage', {})
         return arbitrage_config.get('risk_limits', {})
+    
+    def get_logging_config(self) -> Dict[str, Any]:
+        """
+        Get logging configuration from config.yaml.
+        
+        Returns:
+            Dictionary with logging configuration settings including:
+            - console: Console output settings
+            - file: File output settings  
+            - prometheus: Metrics collection settings
+            - performance: Performance optimization settings
+        """
+        return self._config_data.get('logging', {})
 
     def get_logger(self, name: str):
         """
@@ -789,7 +802,7 @@ class HftConfig:
         Returns:
             Configured logger instance
         """
-        return getLogger(name)
+        return get_logger(name)
     
     def validate_configuration(self) -> bool:
         """
@@ -955,6 +968,15 @@ def get_all_exchange_configs() -> Dict[str, ExchangeConfig]:
         Dictionary mapping exchange names to ExchangeConfig structs
     """
     return config.get_all_exchange_configs()
+
+def get_logging_config() -> Dict[str, Any]:
+    """
+    Get logging configuration from config.yaml.
+    
+    Returns:
+        Dictionary with logging configuration settings
+    """
+    return config.get_logging_config()
 
 def validate_hft_compliance() -> bool:
     """

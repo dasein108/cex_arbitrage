@@ -24,7 +24,7 @@ import asyncio
 import sys
 import traceback
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Dict, List
 from datetime import datetime
 
 # Add src to path for imports
@@ -32,12 +32,10 @@ src_path = Path(__file__).parent.parent
 sys.path.insert(0, str(src_path))
 
 # CLAUDE.md compliant imports - use proper interfaces
-from exchanges.interfaces import PublicExchangeInterface
 from core.factories.rest.public_rest_factory import PublicRestExchangeFactory
-from structs.common import ExchangeEnum
+from core.structs.common import ExchangeEnum
 from core.config.config_manager import HftConfig
-from structs.common import Symbol, SymbolInfo, ExchangeName
-from core.exceptions.exchange import BaseExchangeError
+from core.structs.common import Symbol, SymbolInfo
 
 # Import existing analysis components through proper interfaces
 from analysis.collect_arbitrage_data import ArbitrageDataPipeline
@@ -469,9 +467,7 @@ class ArbitrageToolController:
         self.config_manager = HftConfig()
         
         # Import exchange modules to trigger auto-registration with ExchangeFactory
-        import exchanges.mexc  # Registers MEXC with ExchangeFactory
-        import exchanges.gateio  # Registers Gate.io with ExchangeFactory
-        
+
         # Initialize services with dependency injection
         self.discovery_service = SymbolDiscoveryService(self.config_manager, self.logger)
         self.collection_service = DataCollectionService(self.logger)

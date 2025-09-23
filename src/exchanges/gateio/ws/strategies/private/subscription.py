@@ -15,13 +15,12 @@ Message Format:
 
 import time
 import logging
-from typing import List, Dict, Any, Optional, Set
+from typing import List, Dict, Any
 
 from core.transport.websocket.strategies.subscription import SubscriptionStrategy
 from core.transport.websocket.structs import SubscriptionAction
-from structs.common import Symbol
+from core.structs.common import Symbol
 from core.exchanges.services import BaseExchangeMapper
-from exchanges.gateio.services.gateio_mappings import GateioMappings
 
 
 class GateioPrivateSubscriptionStrategy(SubscriptionStrategy):

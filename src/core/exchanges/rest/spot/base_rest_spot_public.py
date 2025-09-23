@@ -1,9 +1,9 @@
 from abc import abstractmethod
 from datetime import datetime
-from typing import Dict, List, Optional, Callable
+from typing import Dict, List, Optional
 from core.exchanges.rest.base_rest import BaseExchangeRestInterface
 from core.exchanges.services import BaseExchangeMapper
-from structs.common import (
+from core.structs.common import (
     Symbol,
     SymbolInfo,
     OrderBook,
@@ -15,16 +15,20 @@ from structs.common import (
 
 from core.config.structs import ExchangeConfig
 
+# HFT Logger Integration
+from core.logging import HFTLoggerInterface
+
 
 class PublicExchangeSpotRestInterface(BaseExchangeRestInterface):
     """Abstract interface for public exchange operations (market data)"""
     
-    def __init__(self, config: ExchangeConfig, mapper: BaseExchangeMapper):
+    def __init__(self, config: ExchangeConfig, mapper: BaseExchangeMapper, logger: Optional[HFTLoggerInterface] = None):
         """Initialize public interface with transport manager and mapper."""
         super().__init__(
             config=config,
             mapper=mapper,
-            is_private=False  # Public API operations
+            is_private=False,  # Public API operations
+            logger=logger  # Pass logger to parent for specialized public.spot logging
         )
 
     @abstractmethod

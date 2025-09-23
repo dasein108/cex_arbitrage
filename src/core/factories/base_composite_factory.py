@@ -9,15 +9,11 @@ HFT COMPLIANCE: Sub-millisecond strategy set creation with efficient assembly.
 """
 
 import logging
-from typing import TypeVar, Generic, Dict, Type, Any, List, TYPE_CHECKING
+from typing import TypeVar, Generic, Dict, Any, List, TYPE_CHECKING
 from abc import ABC, abstractmethod
 
 from .factory_interface import ExchangeFactoryInterface
-
-if TYPE_CHECKING:
-    from structs.common import ExchangeEnum
-else:
-    from structs.common import ExchangeEnum
+from core.structs.common import ExchangeEnum
 
 logger = logging.getLogger(__name__)
 

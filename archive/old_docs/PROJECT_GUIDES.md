@@ -25,8 +25,9 @@
 **Rule**: NEVER use raw strings for exchange identification. Always use `ExchangeEnum`.
 
 **✅ Correct:**
+
 ```python
-from structs.common import ExchangeEnum
+from core.structs.common import ExchangeEnum
 
 # Factory registration
 PublicWebSocketExchangeFactory.register(ExchangeEnum.MEXC, MexcWebsocketPublic)
@@ -36,7 +37,7 @@ exchange = PublicWebSocketExchangeFactory.inject(ExchangeEnum.MEXC, config=confi
 
 # Configuration
 if exchange_enum == ExchangeEnum.MEXC:
-    # MEXC-specific logic
+# MEXC-specific logic
 ```
 
 **❌ Incorrect:**
@@ -117,14 +118,17 @@ ws_exchange = MexcWebsocketPublic(config=config)
 **Rule**: All exchange implementations must auto-register on import using the established pattern.
 
 **Implementation Template:**
+
 ```python
 # In exchange implementation module (e.g., mexc_ws_public.py)
 from core.factories.websocket import PublicWebSocketExchangeFactory
-from structs.common import ExchangeEnum
+from core.structs.common import ExchangeEnum
+
 
 class MexcWebsocketPublic(BaseExchangePublicWebsocketInterface):
     # Implementation here
     pass
+
 
 # Auto-register on import (at module level)
 PublicWebSocketExchangeFactory.register(ExchangeEnum.MEXC, MexcWebsocketPublic)
@@ -266,15 +270,17 @@ src/
 **Rule**: All function signatures must include complete type hints.
 
 **✅ Correct:**
+
 ```python
 from typing import Optional, List, Dict, Union
-from structs.common import Symbol, OrderBook, ExchangeEnum
+from core.structs.common import Symbol, OrderBook, ExchangeEnum
 from core.config.structs import ExchangeConfig
 
+
 def create_exchange(
-    exchange: ExchangeEnum,
-    config: ExchangeConfig,
-    symbols: Optional[List[Symbol]] = None
+        exchange: ExchangeEnum,
+        config: ExchangeConfig,
+        symbols: Optional[List[Symbol]] = None
 ) -> BaseExchangeInterface:
     """Type-safe exchange creation."""
 ```
@@ -290,8 +296,10 @@ def create_exchange(exchange, config, symbols=None):
 **Rule**: ALL data structures must use `msgspec.Struct` from `structs.common.py`.
 
 **✅ Correct:**
+
 ```python
-from structs.common import Symbol, OrderBook, Trade, BookTicker
+from core.structs.common import Symbol, OrderBook, Trade, BookTicker
+
 
 def process_orderbook(orderbook: OrderBook) -> None:
     """Use unified structures."""
@@ -439,25 +447,28 @@ balance_cache = {}    # FORBIDDEN
 ### Exchange Implementation Template
 
 **Base Implementation Pattern:**
+
 ```python
 from core.factories.websocket import PublicWebSocketExchangeFactory
 from core.exchanges.websocket.spot.base_ws_public import BaseExchangePublicWebsocketInterface
-from structs.common import ExchangeEnum
+from core.structs.common import ExchangeEnum
+
 
 class ExchangeWebsocketPublic(BaseExchangePublicWebsocketInterface):
     """Exchange-specific WebSocket implementation."""
-    
+
     def __init__(self, config: ExchangeConfig, **kwargs):
         super().__init__(config, **kwargs)
         # Exchange-specific initialization
-    
+
     async def connect(self) -> None:
         """Implement connection logic."""
         pass
-    
+
     async def disconnect(self) -> None:
         """Implement disconnection logic."""
         pass
+
 
 # Auto-register on import
 PublicWebSocketExchangeFactory.register(ExchangeEnum.EXCHANGE_NAME, ExchangeWebsocketPublic)

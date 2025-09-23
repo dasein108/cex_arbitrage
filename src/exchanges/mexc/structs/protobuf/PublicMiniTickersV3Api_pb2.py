@@ -24,7 +24,7 @@ try:
 except ImportError:
     # Fall back to module path imports
     try:
-        from src.exchanges.mexc_api.websocket import PublicMiniTickerV3Api_pb2 as PublicMiniTickerV3Api__pb2
+        from exchanges.mexc.structs.protobuf import PublicMiniTickerV3Api_pb2 as PublicMiniTickerV3Api__pb2
     except ImportError:
         # Fall back to direct imports (when imported as standalone)
         import PublicMiniTickerV3Api_pb2 as PublicMiniTickerV3Api__pb2

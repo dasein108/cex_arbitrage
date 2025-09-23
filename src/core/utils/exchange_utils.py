@@ -6,7 +6,7 @@ Prevents code duplication and ensures consistent exchange key normalization.
 """
 
 from typing import Union
-from structs.common import ExchangeEnum
+from core.structs.common import ExchangeEnum
 
 
 def exchange_name_to_enum(exchange: Union[str, ExchangeEnum]) -> ExchangeEnum:

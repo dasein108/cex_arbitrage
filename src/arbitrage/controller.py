@@ -8,7 +8,7 @@ HFT COMPLIANT: Event-driven architecture with minimal latency.
 """
 
 import asyncio
-import logging
+from core.logging import get_logger
 from typing import Dict, Optional, Any
 
 from arbitrage.types import ArbitrageConfig
@@ -19,7 +19,7 @@ from arbitrage.shutdown_manager import ShutdownManager, ShutdownReason
 from arbitrage.symbol_resolver import SymbolResolver
 from interfaces.cex.base.base_private_exchange import BasePrivateExchangeInterface
 
-logger = logging.getLogger(__name__)
+logger = get_logger('arbitrage.controller')
 
 
 class ArbitrageController:

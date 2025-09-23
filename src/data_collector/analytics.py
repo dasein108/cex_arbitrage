@@ -5,12 +5,11 @@ Processes book ticker updates to detect arbitrage opportunities and market condi
 Provides real-time analytics logging for monitoring market health and opportunities.
 """
 
-import logging
 from datetime import datetime, timedelta
 from typing import Dict, List, Set
 from dataclasses import dataclass
 
-from structs.common import Symbol, BookTicker, Trade
+from core.structs.common import Symbol, BookTicker, Trade
 from data_collector.config import AnalyticsConfig
 
 
@@ -106,7 +105,8 @@ class RealTimeAnalytics:
             config: Analytics configuration
         """
         self.config = config
-        self.logger = logging.getLogger(__name__)
+        from core.logging import get_logger
+        self.logger = get_logger('data_collector.analytics')
         
         # Latest book ticker data: {exchange_symbol: BookTicker}
         self._latest_tickers: Dict[str, BookTicker] = {}

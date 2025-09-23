@@ -7,16 +7,16 @@ Eliminates need for manual configuration of symbol details.
 HFT COMPLIANT: Symbol info cached at startup, no runtime API calls.
 """
 
-import logging
+from core.logging import get_logger
 from typing import Dict, List, Optional, Tuple
 from decimal import Decimal
 from dataclasses import dataclass, field
 
 from interfaces.cex.base import BasePublicExchangeInterface
-from structs.common import Symbol, SymbolInfo
+from core.structs.common import Symbol, SymbolInfo
 from arbitrage.types import ExchangePairConfig, ArbitragePair, OpportunityType
 
-logger = logging.getLogger(__name__)
+logger = get_logger('arbitrage.symbol_resolver')
 
 
 @dataclass

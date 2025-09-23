@@ -19,11 +19,11 @@ Performance Targets:
 """
 
 import time
-from typing import List, Dict, Optional, Tuple, Iterator
+from typing import List, Dict, Optional, Tuple
 from sortedcontainers import SortedDict
 import msgspec
 
-from structs.common import Symbol, OrderBook, OrderBookEntry
+from core.structs.common import Symbol, OrderBook, OrderBookEntry
 
 
 class HFTOrderBookEntry(msgspec.Struct):

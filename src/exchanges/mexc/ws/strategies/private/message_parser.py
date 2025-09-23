@@ -7,11 +7,9 @@ from core.exchanges.websocket import MessageParser, ParsedMessage, MessageType
 from core.exchanges.services import BaseExchangeMapper
 from exchanges.mexc.ws.protobuf_parser import MexcProtobufParser
 from exchanges.mexc.structs.exchange import (
-    MexcWSPrivateOrderMessage, MexcWSPrivateBalanceMessage, MexcWSPrivateTradeMessage,
     MexcWSPrivateOrderData, MexcWSPrivateBalanceData, MexcWSPrivateTradeData
 )
-from exchanges.mexc.services.mexc_mappings import MexcUnifiedMappings
-from structs.common import OrderBook
+from core.structs.common import OrderBook
 
 
 class MexcPrivateMessageParser(MessageParser):

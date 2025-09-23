@@ -1,13 +1,12 @@
 import logging
 import traceback
-from typing import Dict, Any, Optional, List
-from datetime import datetime
+from typing import Dict, Any, Optional
 
 from core.transport.websocket.strategies.message_parser import MessageParser
 from core.transport.websocket.structs import ParsedMessage
 from core.exchanges.services import BaseExchangeMapper
 from core.transport.websocket.structs import MessageType
-from structs.common import Trade, OrderBookEntry, Symbol, Side, BookTicker, FuturesTicker
+from core.structs.common import FuturesTicker
 
 
 class GateioFuturesMessageParser(MessageParser):

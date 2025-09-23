@@ -10,7 +10,6 @@ import asyncio
 import argparse
 import signal
 import sys
-import logging
 import traceback
 from pathlib import Path
 from typing import Optional
@@ -19,12 +18,14 @@ from typing import Optional
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 # Import exchanges to trigger factory registrations
-import exchanges  # This triggers auto-registration of WebSocket factories
 
 from data_collector.collector import DataCollector
 from data_collector.config import load_data_collector_config
-from structs.common import Symbol, AssetName
+from core.structs.common import Symbol, AssetName
 from core.config.config_manager import HftConfig
+
+# HFT Logger Integration
+from core.logging import get_logger
 
 
 class DataCollectorCLI:
@@ -32,24 +33,23 @@ class DataCollectorCLI:
     
     def __init__(self):
         self.collector: Optional[DataCollector] = None
-        self.logger = logging.getLogger(__name__)
-        self._shutdown_event = asyncio.Event()
+        self.logger = get_logger('data_collector.cli')
+        self._shutdown_event = None  # Will be created in async context
     
     def setup_logging(self, log_level: str = "INFO") -> None:
-        """Setup logging configuration."""
-        log_format = "[%(asctime)s] %(levelname)s [%(name)s:%(lineno)d] %(message)s"
-        logging.getLogger("websockets.client").setLevel(logging.WARNING)
-        logging.basicConfig(
-            level=getattr(logging, log_level.upper()),
-            format=log_format,
-            datefmt="%Y-%m-%d %H:%M:%S"
-        )
+        """Setup HFT logging configuration."""
+        # HFT logging is already configured through factory
+        # This method now just logs the configuration
+        self.logger.info("DataCollectorCLI logging configured",
+                        log_level=log_level)
     
     def setup_signal_handlers(self) -> None:
         """Setup signal handlers for graceful shutdown."""
         def signal_handler(signum, frame):
-            self.logger.info(f"Received signal {signum}, initiating shutdown...")
-            self._shutdown_event.set()
+            self.logger.info("Received shutdown signal",
+                           signal_number=signum)
+            if self._shutdown_event:
+                self._shutdown_event.set()
         
         signal.signal(signal.SIGINT, signal_handler)
         signal.signal(signal.SIGTERM, signal_handler)
@@ -66,20 +66,26 @@ class DataCollectorCLI:
             dry_run: Run without storing data to database
             symbols_override: Override symbols from config
         """
+        # Initialize shutdown event in async context
+        self._shutdown_event = asyncio.Event()
+        
         try:
             self.logger.info("Starting Data Collector")
             
             # Initialize core config manager (singleton)
             config = HftConfig()
-            self.logger.info(f"Environment: {config.ENVIRONMENT}")
-            self.logger.info(f"Dry run mode: {dry_run}")
+            self.logger.info("Data collector configuration loaded",
+                           environment=config.ENVIRONMENT,
+                           dry_run=dry_run)
             
             # Initialize collector (uses core config internally)
             self.collector = DataCollector()
             
             # Override symbols if provided
             if symbols_override:
-                self.logger.info(f"Overriding symbols with: {symbols_override}")
+                self.logger.info("Overriding symbols configuration",
+                               symbol_override_count=len(symbols_override),
+                               symbols=symbols_override)
                 symbols = []
                 for symbol_str in symbols_override:
                     if "/" in symbol_str:
@@ -102,12 +108,14 @@ class DataCollectorCLI:
             
             # Log startup status
             status = self.collector.get_status()
-            self.logger.info(f"Initialized for {len(status['config']['exchanges'])} exchanges")
-            self.logger.info(f"Monitoring {status['config']['symbols_count']} symbols")
-            self.logger.info(f"Snapshot interval: {status['config']['snapshot_interval']}s")
+            self.logger.info("Data collector initialized successfully",
+                           exchange_count=len(status['config']['exchanges']),
+                           symbol_count=status['config']['symbols_count'],
+                           snapshot_interval=status['config']['snapshot_interval'])
             
             if dry_run:
-                self.logger.warning("DRY RUN MODE: No data will be stored to database")
+                self.logger.warning("DRY RUN MODE: No data will be stored to database",
+                                  dry_run=True)
                 # In dry run mode, we could disable the database storage
                 # For now, we'll just log the warning
             
@@ -126,7 +134,9 @@ class DataCollectorCLI:
                 pass
             
         except Exception as e:
-            self.logger.error(f"Data collector error: {e}")
+            self.logger.error("Data collector error",
+                            error_type=type(e).__name__,
+                            error_message=str(e))
             traceback.print_exc()
             raise
         finally:

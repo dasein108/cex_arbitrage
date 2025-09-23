@@ -12,7 +12,7 @@ from typing import List, Dict, Optional, Callable, Awaitable, Set
 from abc import ABC
 
 from exchanges.consts import DEFAULT_PUBLIC_WEBSOCKET_CHANNELS
-from structs.common import Symbol, OrderBook, Trade, BookTicker
+from core.structs.common import Symbol, OrderBook, Trade, BookTicker
 from core.config.structs import ExchangeConfig
 from core.transport.websocket.structs import ConnectionState, MessageType, ParsedMessage, PublicWebsocketChannelType
 import traceback

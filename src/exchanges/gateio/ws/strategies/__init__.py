@@ -16,13 +16,19 @@ from .private.connection import GateioPrivateConnectionStrategy
 from .private.subscription import GateioPrivateSubscriptionStrategy
 from .private.message_parser import GateioPrivateMessageParser
 
+# Futures strategies
 from .futures.connection import GateioFuturesConnectionStrategy
 from .futures.subscription import GateioFuturesSubscriptionStrategy
 from .futures.message_parser import GateioFuturesMessageParser
 
+# Private futures strategies
+from .private_futures.connection import GateioPrivateFuturesConnectionStrategy
+from .private_futures.subscription import GateioPrivateFuturesSubscriptionStrategy
+from .private_futures.message_parser import GateioPrivateFuturesMessageParser
+
 # Import factory for registration
 from core.transport.websocket.strategies import WebSocketStrategyFactory
-from structs.common import ExchangeEnum
+from core.structs.common import ExchangeEnum
 
 # Register public strategies with factory
 WebSocketStrategyFactory.register_strategies(
@@ -40,11 +46,20 @@ WebSocketStrategyFactory.register_strategies(
     GateioPrivateMessageParser
 )
 
+# Register public futures strategies with factory
 WebSocketStrategyFactory.register_strategies(
     ExchangeEnum.GATEIO_FUTURES, False,
     GateioFuturesConnectionStrategy,
     GateioFuturesSubscriptionStrategy,
     GateioFuturesMessageParser
+)
+
+# Register private futures strategies with factory
+WebSocketStrategyFactory.register_strategies(
+    ExchangeEnum.GATEIO_FUTURES, True,
+    GateioPrivateFuturesConnectionStrategy,
+    GateioPrivateFuturesSubscriptionStrategy,
+    GateioPrivateFuturesMessageParser
 )
 
 __all__ = [
@@ -61,5 +76,10 @@ __all__ = [
     # Futures strategies
     'GateioFuturesConnectionStrategy',
     'GateioFuturesSubscriptionStrategy',
-    'GateioFuturesMessageParser'
+    'GateioFuturesMessageParser',
+
+    # Private futures strategies
+    'GateioPrivateFuturesConnectionStrategy',
+    'GateioPrivateFuturesSubscriptionStrategy',
+    'GateioPrivateFuturesMessageParser'
 ]

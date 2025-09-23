@@ -5,25 +5,43 @@ from urllib.parse import urlencode
 
 from core.transport.rest import AuthStrategy, HTTPMethod, AuthenticationData
 from core.config.structs import ExchangeConfig
-from structs.common import RestConnectionSettings
+from core.structs.common import RestConnectionSettings
+
+# HFT Logger Integration
+from core.logging import get_strategy_logger, LoggingTimer
 
 
 class MexcAuthStrategy(AuthStrategy):
     """MEXC-specific authentication based on ExchangeConfig credentials."""
 
-    def __init__(self, exchange_config: ExchangeConfig):
+    def __init__(self, exchange_config: ExchangeConfig, logger=None):
         """
         Initialize MEXC authentication strategy from ExchangeConfig.
         
         Args:
             exchange_config: Exchange configuration containing credentials
+            logger: Optional HFT logger injection
         """
         if not exchange_config.credentials.is_configured():
             raise ValueError("MEXC credentials not configured in ExchangeConfig")
         
+        # Initialize HFT logger with hierarchical tags
+        if logger is None:
+            tags = ['mexc', 'private', 'rest', 'auth']
+            logger = get_strategy_logger('rest.auth.mexc.private', tags)
+        
+        self.logger = logger
         self.api_key = exchange_config.credentials.api_key
         self.secret_key = exchange_config.credentials.secret_key.encode('utf-8')
         self.exchange_config = exchange_config
+        
+        # Log strategy initialization
+        self.logger.info("MEXC auth strategy initialized",
+                        api_key_configured=bool(self.api_key),
+                        recv_window=5000)
+        
+        self.logger.metric("rest_auth_strategies_created", 1,
+                          tags={"exchange": "mexc", "type": "private"})
 
     async def sign_request(
         self,
@@ -34,46 +52,74 @@ class MexcAuthStrategy(AuthStrategy):
         timestamp: int
     ) -> AuthenticationData:
         """Generate MEXC authentication data with proper signature handling."""
-        # MEXC puts ALL parameters (including json_data) in query string for authenticated requests
-        auth_params = {}
-        
-        # Add query parameters if any
-        if params:
-            auth_params.update(params)
-        
-        # Add JSON data parameters if any (MEXC requirement)
-        if json_data:
-            auth_params.update(json_data)
-        
-        # Add required MEXC auth parameters
-        rest_settings = RestConnectionSettings(
-            recv_window=5000,  # MEXC default
-            timeout=30,
-            max_retries=3
-        )
-        auth_params['timestamp'] = timestamp
-        auth_params['recvWindow'] = rest_settings.recv_window
+        try:
+            with LoggingTimer(self.logger, "mexc_auth_signature_generation") as timer:
+                # MEXC puts ALL parameters (including json_data) in query string for authenticated requests
+                auth_params = {}
+                
+                # Add query parameters if any
+                if params:
+                    auth_params.update(params)
+                
+                # Add JSON data parameters if any (MEXC requirement)
+                if json_data:
+                    auth_params.update(json_data)
+                
+                # Add required MEXC auth parameters
+                rest_settings = RestConnectionSettings(
+                    recv_window=5000,  # MEXC default
+                    timeout=30,
+                    max_retries=3
+                )
+                auth_params['timestamp'] = timestamp
+                auth_params['recvWindow'] = rest_settings.recv_window
 
-        # Create query string for signature (sorted parameters)
-        query_string = urlencode(auth_params)
+                # Create query string for signature (sorted parameters)
+                query_string = urlencode(auth_params)
 
-        # Create HMAC SHA256 signature
-        signature = hmac.new(
-            self.secret_key,
-            query_string.encode('utf-8'),
-            hashlib.sha256
-        ).hexdigest()
+                # Create HMAC SHA256 signature
+                signature = hmac.new(
+                    self.secret_key,
+                    query_string.encode('utf-8'),
+                    hashlib.sha256
+                ).hexdigest()
 
-        # Return authentication data (ALL params including business params for MEXC)
-        # MEXC requires ALL parameters in query string for authenticated requests
-        return AuthenticationData(
-            headers={
-                'X-MEXC-APIKEY': self.api_key,
-                'Content-Type': 'application/json'
-            },
-            params=auth_params | {'signature': signature},
-            data=None  # MEXC uses query parameters, not request body
-        )
+                # Prepare authentication data
+                auth_data = AuthenticationData(
+                    headers={
+                        'X-MEXC-APIKEY': self.api_key,
+                        'Content-Type': 'application/json'
+                    },
+                    params=auth_params | {'signature': signature},
+                    data=None  # MEXC uses query parameters, not request body
+                )
+            
+            # Track signature generation metrics
+            self.logger.metric("rest_auth_signatures_generated", 1,
+                              tags={"exchange": "mexc", "endpoint": endpoint, "method": method.value})
+            
+            self.logger.metric("rest_auth_signature_time_us", timer.elapsed_ms * 1000,
+                              tags={"exchange": "mexc", "endpoint": endpoint})
+            
+            self.logger.debug("MEXC authentication signature generated",
+                            endpoint=endpoint,
+                            method=method.value,
+                            params_count=len(auth_params),
+                            signature_time_us=timer.elapsed_ms * 1000)
+            
+            return auth_data
+            
+        except Exception as e:
+            self.logger.error("Failed to generate MEXC authentication signature",
+                            endpoint=endpoint,
+                            method=method.value,
+                            error_type=type(e).__name__,
+                            error_message=str(e))
+            
+            self.logger.metric("rest_auth_signature_failures", 1,
+                              tags={"exchange": "mexc", "endpoint": endpoint})
+            
+            raise
 
     def requires_auth(self, endpoint: str) -> bool:
         """Check if MEXC endpoint requires authentication."""

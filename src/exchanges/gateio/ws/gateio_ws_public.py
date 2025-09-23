@@ -22,12 +22,12 @@ Gate.io Public WebSocket Specifications:
 Architecture: Dependency injection with base class coordination
 """
 
-from typing import List, Dict, Optional, Callable, Awaitable, Set
+from typing import List, Optional, Callable, Awaitable, Set
 
-from structs.common import Symbol, Trade, OrderBook, BookTicker
+from core.structs.common import Symbol, Trade, OrderBook, BookTicker
 from core.config.structs import ExchangeConfig
 from core.exchanges.websocket.spot.base_ws_public import BaseExchangePublicWebsocketInterface
-from core.transport.websocket.structs import ConnectionState, MessageType
+from core.transport.websocket.structs import ConnectionState
 
 
 class GateioWebsocketPublic(BaseExchangePublicWebsocketInterface):

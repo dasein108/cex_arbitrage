@@ -31,20 +31,20 @@ Performance Targets:
 from __future__ import annotations
 
 import asyncio
-import logging
+from core.logging import get_logger
 from decimal import Decimal
 from typing import Dict, Optional, Callable, Any
 from dataclasses import dataclass
 
 from .structures import ArbitrageConfig
 
-from structs.common import AssetBalance
+from core.structs.common import AssetBalance
 from interfaces.cex.base.base_private_exchange import BasePrivateExchangeInterface
-from structs.common import ExchangeName
+from core.structs.common import ExchangeName
 from core.exceptions.exchange import BalanceManagementError
 
 
-logger = logging.getLogger(__name__)
+logger = get_logger('arbitrage.balance')
 
 
 @dataclass

@@ -13,14 +13,16 @@ Message Format:
 }
 """
 
-import logging
 from typing import List, Dict, Any, Optional, Set
 
-from core.transport.websocket.strategies.subscription import SubscriptionStrategy, PublicWebsocketChannelType
-from core.transport.websocket.structs import SubscriptionAction
-from structs.common import Symbol
+from core.transport.websocket.strategies.subscription import SubscriptionStrategy
+from core.transport.websocket.structs import SubscriptionAction, PublicWebsocketChannelType
+from core.structs.common import Symbol
 from core.exchanges.services import BaseExchangeMapper
 from exchanges.consts import DEFAULT_PUBLIC_WEBSOCKET_CHANNELS
+
+# HFT Logger Integration
+from core.logging import get_strategy_logger, HFTLoggerInterface
 
 
 class MexcPublicSubscriptionStrategy(SubscriptionStrategy):
@@ -31,12 +33,27 @@ class MexcPublicSubscriptionStrategy(SubscriptionStrategy):
     Format: "spot@public.aggre.bookTicker.v3.api.pb@100ms@BTCUSDT"
     """
     
-    def __init__(self, mapper: BaseExchangeMapper):
+    def __init__(self, mapper: BaseExchangeMapper, logger: Optional[HFTLoggerInterface] = None):
         super().__init__(mapper)  # Initialize parent with mandatory mapper
-        self.logger = logging.getLogger(f"{__name__}.{self.__class__.__name__}")
+        
+        # Use injected logger or create strategy-specific logger
+        if logger is None:
+            tags = ['mexc', 'public', 'ws', 'subscription']
+            logger = get_strategy_logger('ws.subscription.mexc.public', tags)
+        
+        self.logger = logger
         
         # Track active subscriptions for reconnection
         self._active_symbols: Set[Symbol] = set()
+        
+        # Log initialization
+        self.logger.info("MexcPublicSubscriptionStrategy initialized",
+                        exchange="mexc",
+                        api_type="public")
+        
+        # Track component initialization
+        self.logger.metric("mexc_public_subscription_strategies_initialized", 1,
+                          tags={"exchange": "mexc", "api_type": "public"})
 
     async def create_subscription_messages(self, action: SubscriptionAction,
                                            symbols: List[Symbol],

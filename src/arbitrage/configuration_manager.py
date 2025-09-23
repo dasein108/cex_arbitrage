@@ -7,7 +7,7 @@ Follows Single Responsibility Principle - focused solely on configuration concer
 HFT COMPLIANT: Fast configuration loading with validation caching.
 """
 
-import logging
+from core.logging import get_logger
 from typing import Dict, Any, List, Optional
 from core.config.config_manager import config
 from core.exceptions.exchange import ConfigurationError
@@ -16,7 +16,7 @@ from arbitrage.types import (
 )
 from arbitrage.symbol_resolver import SymbolResolver
 
-logger = logging.getLogger(__name__)
+logger = get_logger('arbitrage.configuration_manager')
 
 
 class ConfigurationManager:
@@ -295,7 +295,7 @@ class ConfigurationManager:
         Returns:
             List of Symbol objects for exchange initialization
         """
-        from structs.common import Symbol, AssetName
+        from core.structs.common import Symbol, AssetName
         
         if not self._raw_pairs_config:
             logger.warning("No arbitrage pairs configured, using default symbols")

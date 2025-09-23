@@ -31,7 +31,7 @@ from exchanges.mexc.structs.exchange import (
     MexcSymbolResponse, MexcExchangeInfoResponse, 
     MexcOrderBookResponse, MexcTradeResponse, MexcServerTimeResponse
 )
-from structs.common import (
+from core.structs.common import (
     Symbol, SymbolInfo, OrderBook, OrderBookEntry, Trade, Kline,
     AssetName, Side, KlineInterval, Ticker
 )
@@ -50,17 +50,24 @@ class MexcPublicSpotRest(PublicExchangeSpotRestInterface):
     Optimized for high-frequency market data retrieval with minimal overhead.
     """
 
-    def __init__(self, config: ExchangeConfig, mapper: BaseExchangeMapper):
+    def __init__(self, config: ExchangeConfig, mapper: BaseExchangeMapper, logger=None):
         """
         Initialize MEXC public REST client with dependency injection.
 
         Args:
             config: ExchangeConfig with base URL and rate limits
             mapper: BaseExchangeMapper for data transformations
+            logger: Optional HFT logger injection
         """
         super().__init__(config, mapper)
 
         self._symbols_info: Optional[Dict[Symbol, SymbolInfo]] = None
+        
+        # Initialize HFT logger
+        if logger is None:
+            from core.logging import get_exchange_logger
+            logger = get_exchange_logger('mexc', 'rest.public')
+        self.logger = logger
         
     def _extract_symbol_precision(self, mexc_symbol: MexcSymbolResponse) -> tuple[int, int, float, float]:
         """

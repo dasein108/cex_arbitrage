@@ -7,14 +7,13 @@ Implements true strategy-driven connection handling with encapsulated policies.
 HFT COMPLIANCE: Sub-millisecond message processing, <100ms reconnection.
 """
 
-import logging
 import asyncio
 import time
 from typing import List, Dict, Optional, Callable, Any, Awaitable, Set
 from websockets.client import WebSocketClientProtocol
 from websockets.protocol import State as WsState
 
-from structs.common import Symbol
+from core.structs.common import Symbol
 from core.transport.websocket.structs import SubscriptionAction, PublicWebsocketChannelType
 from core.transport.websocket.strategies.strategy_set import WebSocketStrategySet
 from .structs import ParsedMessage, WebSocketManagerConfig, PerformanceMetrics
@@ -22,6 +21,9 @@ from core.config.structs import WebSocketConfig
 from core.transport.websocket.structs import ConnectionState
 from core.exceptions.exchange import BaseExchangeError
 import msgspec
+
+# HFT Logger Integration
+from core.logging import get_logger, LoggingTimer
 
 
 class WebSocketManager:
@@ -45,7 +47,8 @@ class WebSocketManager:
         strategies: WebSocketStrategySet,
         message_handler: Callable[[ParsedMessage], Awaitable[None]],
         state_change_handler: Optional[Callable[[ConnectionState], Awaitable[None]]] = None,
-        manager_config: Optional[WebSocketManagerConfig] = None
+        manager_config: Optional[WebSocketManagerConfig] = None,
+        logger=None
     ):
         self.config = config
         self.strategies = strategies
@@ -53,7 +56,8 @@ class WebSocketManager:
         self.state_change_handler = state_change_handler
         self.manager_config = manager_config or WebSocketManagerConfig()
         
-        self.logger = logging.getLogger(f"{__name__}.{self.__class__.__name__}")
+        # Initialize HFT logger with optional injection
+        self.logger = logger or get_logger('ws.manager')
         
         # Direct WebSocket connection management
         self._websocket: Optional[WebSocketClientProtocol] = None
@@ -79,7 +83,9 @@ class WebSocketManager:
             maxsize=self.manager_config.max_pending_messages
         )
         
-        self.logger.info("WebSocket manager V2 initialized with strategy-driven architecture")
+        self.logger.info("WebSocket manager V3 initialized with strategy-driven architecture",
+                        websocket_url=config.url,
+                        max_pending=self.manager_config.max_pending_messages)
     
     async def initialize(self, symbols: Optional[List[Symbol]] = None,
                          channels: Optional[List[PublicWebsocketChannelType]] = None) -> None:
@@ -97,25 +103,44 @@ class WebSocketManager:
             self._ws_channels = channels
 
         try:
-            self.logger.info("Initializing WebSocket manager with direct strategy connection")
+            with LoggingTimer(self.logger, "ws_manager_initialization") as timer:
+                self.logger.info("Initializing WebSocket manager with direct strategy connection",
+                               symbols_count=len(symbols) if symbols else 0,
+                               channels_count=len(channels) if channels else 0)
+                
+                # Start connection loop (handles reconnection with strategy policies)
+                self._should_reconnect = True
+                self._connection_task = asyncio.create_task(self._connection_loop())
+                
+                # Start message processing
+                self._processing_task = asyncio.create_task(self._process_messages())
+                
+                # Start strategy-managed heartbeat if needed
+                # Note: This heartbeat supplements built-in ping/pong for exchanges requiring custom ping
+                if self.config.heartbeat_interval and self.config.heartbeat_interval > 0:
+                    self._heartbeat_task = asyncio.create_task(self._heartbeat_loop())
+                    self.logger.info("Started custom heartbeat",
+                                   heartbeat_interval=self.config.heartbeat_interval,
+                                   note="supplements built-in ping/pong")
             
-            # Start connection loop (handles reconnection with strategy policies)
-            self._should_reconnect = True
-            self._connection_task = asyncio.create_task(self._connection_loop())
+            self.logger.info("WebSocket manager V3 initialized successfully",
+                           initialization_time_ms=timer.elapsed_ms)
             
-            # Start message processing
-            self._processing_task = asyncio.create_task(self._process_messages())
-            
-            # Start strategy-managed heartbeat if needed
-            # Note: This heartbeat supplements built-in ping/pong for exchanges requiring custom ping
-            if self.config.heartbeat_interval and self.config.heartbeat_interval > 0:
-                self._heartbeat_task = asyncio.create_task(self._heartbeat_loop())
-                self.logger.info(f"Started custom heartbeat with {self.config.heartbeat_interval}s interval (supplements built-in ping/pong)")
-            
-            self.logger.info("WebSocket manager V2 initialized successfully")
+            # Track initialization metrics
+            self.logger.metric("ws_manager_initializations", 1,
+                             tags={"exchange": "websocket"})
+            self.logger.metric("ws_initialization_time_ms", timer.elapsed_ms,
+                             tags={"exchange": "websocket"})
             
         except Exception as e:
-            self.logger.error(f"Failed to initialize WebSocket manager V2: {e}")
+            self.logger.error("Failed to initialize WebSocket manager V3",
+                            error_type=type(e).__name__,
+                            error_message=str(e))
+            
+            # Track initialization failure metrics
+            self.logger.metric("ws_initialization_failures", 1,
+                             tags={"exchange": "websocket"})
+            
             await self.close()
             raise BaseExchangeError(500, f"WebSocket initialization failed: {e}")
     
@@ -125,22 +150,42 @@ class WebSocketManager:
             raise BaseExchangeError(503, "WebSocket not connected")
 
         try:
-            messages = await self.strategies.subscription_strategy.create_subscription_messages(
-                action=SubscriptionAction.SUBSCRIBE, symbols=symbols, channels=self._ws_channels)
+            with LoggingTimer(self.logger, "subscription_processing") as timer:
+                messages = await self.strategies.subscription_strategy.create_subscription_messages(
+                    action=SubscriptionAction.SUBSCRIBE, symbols=symbols, channels=self._ws_channels)
+                
+                if not messages:
+                    self.logger.warning("No subscription messages created",
+                                      symbols_count=len(symbols),
+                                      channels_count=len(self._ws_channels))
+                    return
+                
+                self.logger.info("Sending subscription messages",
+                               messages_count=len(messages),
+                               symbols_count=len(symbols))
+                
+                for message in messages:
+                    await self.send_message(message)
+                    self.logger.debug("Sent subscription message", message=message)
+                
+                self._active_symbols.update(symbols)
             
-            if not messages:
-                self.logger.warning("No subscription messages created")
-                return
-            
-            self.logger.info(f"Sending {len(messages)} subscription messages for {len(symbols)} symbols")
-            
-            for message in messages:
-                await self.send_message(message)
-                self.logger.info(f'Subscribed with message: {message}')
-            self._active_symbols.update(symbols)
+            # Track subscription metrics
+            self.logger.metric("ws_subscriptions", len(symbols),
+                             tags={"exchange": "websocket"})
+            self.logger.metric("subscription_time_ms", timer.elapsed_ms,
+                             tags={"exchange": "websocket"})
             
         except Exception as e:
-            self.logger.error(f"Subscription failed: {e}")
+            self.logger.error("Subscription failed",
+                            symbols_count=len(symbols),
+                            error_type=type(e).__name__,
+                            error_message=str(e))
+            
+            # Track subscription failure metrics
+            self.logger.metric("ws_subscription_failures", 1,
+                             tags={"exchange": "websocket"})
+            
             raise BaseExchangeError(400, f"Subscription failed: {e}")
     
     async def unsubscribe(self, symbols: List[Symbol]) -> None:
@@ -205,8 +250,14 @@ class WebSocketManager:
                 auth_success = await self.strategies.connection_strategy.authenticate()
                 if not auth_success:
                     self.logger.error("Authentication failed")
+                    self.logger.metric("ws_auth_failures", 1,
+                                     tags={"exchange": "websocket"})
                     await self._websocket.close()
                     continue
+                
+                # Track successful connection
+                self.logger.metric("ws_connections", 1,
+                                 tags={"exchange": "websocket"})
                 
                 # Subscribe to active symbols
                 # if self._active_symbols:
@@ -215,7 +266,8 @@ class WebSocketManager:
                 # Start message reader
                 self._reader_task = asyncio.create_task(self._message_reader())
                 
-                self.logger.info("Strategy-driven WebSocket connection established successfully")
+                self.logger.info("Strategy-driven WebSocket connection established successfully",
+                               active_symbols_count=len(self._active_symbols))
                 
                 # Wait for connection to close
                 await self._reader_task
@@ -275,7 +327,15 @@ class WebSocketManager:
                 policy.max_delay
             )
         
-        self.logger.warning(f"Connection error ({error_type}, attempt {attempt + 1}): {error}. Reconnecting in {delay:.1f}s")
+        self.logger.warning("Connection error, reconnecting",
+                           error_type=error_type,
+                           attempt=attempt + 1,
+                           delay_seconds=delay,
+                           error_message=str(error))
+        
+        # Track reconnection metrics
+        self.logger.metric("ws_reconnection_attempts", 1,
+                         tags={"exchange": "websocket", "error_type": error_type})
         
         await self._update_state(ConnectionState.RECONNECTING)
         await asyncio.sleep(delay)
@@ -286,21 +346,38 @@ class WebSocketManager:
         self.connection_state = state
         
         if previous_state != state:
-            self.logger.info(f"Connection state: {previous_state.name} → {state.name}")
+            self.logger.info("Connection state changed",
+                           previous_state=previous_state.name,
+                           new_state=state.name)
+            
+            # Track state change metrics
+            self.logger.metric("ws_state_changes", 1,
+                             tags={"exchange": "websocket", 
+                                   "from_state": previous_state.name,
+                                   "to_state": state.name})
             
             # Notify external handler
             if self.state_change_handler:
                 try:
                     await self.state_change_handler(state)
                 except Exception as e:
-                    self.logger.error(f"Error in state change handler: {e}")
+                    self.logger.error("Error in state change handler",
+                                    error_type=type(e).__name__,
+                                    error_message=str(e))
     
     async def _on_raw_message(self, raw_message: Any) -> None:
         """Queue raw message for processing."""
         start_time = time.perf_counter()
         try:
             if self._message_queue.full():
-                self.logger.warning("Message queue full, dropping oldest")
+                self.logger.warning("Message queue full, dropping oldest",
+                                  queue_size=self._message_queue.qsize(),
+                                  max_size=self.manager_config.max_pending_messages)
+                
+                # Track queue overflow metrics
+                self.logger.metric("ws_queue_overflows", 1,
+                                 tags={"exchange": "websocket"})
+                
                 try:
                     self._message_queue.get_nowait()
                 except asyncio.QueueEmpty:
@@ -308,9 +385,19 @@ class WebSocketManager:
             
             await self._message_queue.put((raw_message, start_time))
             
+            # Track message queuing metrics
+            self.logger.metric("ws_messages_queued", 1,
+                             tags={"exchange": "websocket"})
+            
         except Exception as e:
             self.metrics.error_count += 1
-            self.logger.error(f"Error queuing message: {e}")
+            self.logger.error("Error queuing message",
+                            error_type=type(e).__name__,
+                            error_message=str(e))
+            
+            # Track queuing error metrics
+            self.logger.metric("ws_queuing_errors", 1,
+                             tags={"exchange": "websocket"})
     
     async def _process_messages(self) -> None:
         """Process queued messages asynchronously."""
@@ -328,10 +415,22 @@ class WebSocketManager:
                         processing_time_ms = (time.perf_counter() - processing_start) * 1000
                         self.metrics.update_processing_time(processing_time_ms)
                         self.metrics.messages_processed += 1
+                        
+                        # Track message processing metrics with detailed timing
+                        self.logger.metric("ws_messages_processed", 1,
+                                         tags={"exchange": "websocket"})
+                        self.logger.metric("ws_message_processing_time_ms", processing_time_ms,
+                                         tags={"exchange": "websocket"})
                 
                 except Exception as e:
                     self.metrics.error_count += 1
-                    self.logger.error(f"Error processing message: {e}")
+                    self.logger.error("Error processing message",
+                                    error_type=type(e).__name__,
+                                    error_message=str(e))
+                    
+                    # Track message processing error metrics
+                    self.logger.metric("ws_message_processing_errors", 1,
+                                     tags={"exchange": "websocket"})
                 
                 finally:
                     self._message_queue.task_done()
@@ -339,7 +438,14 @@ class WebSocketManager:
             except asyncio.CancelledError:
                 break
             except Exception as e:
-                self.logger.error(f"Error in message processing loop: {e}")
+                self.logger.error("Error in message processing loop",
+                                error_type=type(e).__name__,
+                                error_message=str(e))
+                
+                # Track processing loop error metrics
+                self.logger.metric("ws_processing_loop_errors", 1,
+                                 tags={"exchange": "websocket"})
+                
                 await asyncio.sleep(0.1)
     
     async def _on_error(self, error: Exception) -> None:
@@ -349,9 +455,17 @@ class WebSocketManager:
         error_type = self.strategies.connection_strategy.classify_error(error)
         
         if error_type == "abnormal_closure":
-            self.logger.warning(f"WebSocket {error_type}: {error}")
+            self.logger.warning("WebSocket error",
+                              error_type=error_type,
+                              error_message=str(error))
         else:
-            self.logger.error(f"WebSocket {error_type}: {error}")
+            self.logger.error("WebSocket error",
+                            error_type=error_type,
+                            error_message=str(error))
+        
+        # Track WebSocket error metrics
+        self.logger.metric("ws_errors", 1,
+                         tags={"exchange": "websocket", "error_type": error_type})
         
         # Strategy decides on reconnection in _connection_loop
     
@@ -370,19 +484,42 @@ class WebSocketManager:
                         await self.strategies.connection_strategy.handle_heartbeat()
                         consecutive_failures = 0  # Reset on success
                         self.logger.debug("Strategy heartbeat sent successfully")
+                        
+                        # Track successful heartbeat
+                        self.logger.metric("ws_heartbeats_sent", 1,
+                                         tags={"exchange": "websocket"})
+                        
                     except Exception as e:
                         consecutive_failures += 1
-                        self.logger.warning(f"Strategy heartbeat failed ({consecutive_failures}/{max_failures}): {e}")
+                        self.logger.warning("Strategy heartbeat failed",
+                                          consecutive_failures=consecutive_failures,
+                                          max_failures=max_failures,
+                                          error_message=str(e))
+                        
+                        # Track heartbeat failures
+                        self.logger.metric("ws_heartbeat_failures", 1,
+                                         tags={"exchange": "websocket"})
                         
                         # If too many consecutive failures, stop heartbeat (built-in ping/pong will handle)
                         if consecutive_failures >= max_failures:
-                            self.logger.error(f"Too many consecutive heartbeat failures ({max_failures}), stopping custom heartbeat")
+                            self.logger.error("Too many consecutive heartbeat failures, stopping custom heartbeat",
+                                            max_failures=max_failures)
+                            
+                            # Track heartbeat loop failure
+                            self.logger.metric("ws_heartbeat_loop_failures", 1,
+                                             tags={"exchange": "websocket"})
                             break
                         
         except asyncio.CancelledError:
             self.logger.debug("Strategy heartbeat loop cancelled")
         except Exception as e:
-            self.logger.error(f"Strategy heartbeat loop error: {e}")
+            self.logger.error("Strategy heartbeat loop error",
+                            error_type=type(e).__name__,
+                            error_message=str(e))
+            
+            # Track heartbeat loop error metrics
+            self.logger.metric("ws_heartbeat_loop_errors", 1,
+                             tags={"exchange": "websocket"})
     
     def is_connected(self) -> bool:
         """Check if WebSocket is connected."""
@@ -391,7 +528,8 @@ class WebSocketManager:
         try:
             return self._websocket.state == WsState.OPEN
         except AttributeError:
-            self.logger.error(f"WebSocket object {type(self._websocket)} has no 'closed' attribute")
+            self.logger.error("WebSocket object has no 'state' attribute",
+                            websocket_type=type(self._websocket).__name__)
             return False
     
     def get_performance_metrics(self) -> Dict[str, Any]:
@@ -411,41 +549,59 @@ class WebSocketManager:
     
     async def close(self) -> None:
         """Close WebSocket manager and cleanup resources."""
-        self.logger.info("Closing WebSocket manager V2...")
+        self.logger.info("Closing WebSocket manager V3...",
+                        active_symbols_count=len(self._active_symbols))
         
         try:
-            self._should_reconnect = False
-            
-            # Cancel all tasks
-            tasks = [
-                self._processing_task,
-                self._heartbeat_task,
-                self._connection_task,
-                self._reader_task
-            ]
-            
-            for task in tasks:
-                if task and not task.done():
-                    task.cancel()
+            with LoggingTimer(self.logger, "ws_manager_close") as timer:
+                self._should_reconnect = False
+                
+                # Cancel all tasks
+                tasks = [
+                    self._processing_task,
+                    self._heartbeat_task,
+                    self._connection_task,
+                    self._reader_task
+                ]
+                
+                for task in tasks:
+                    if task and not task.done():
+                        task.cancel()
+                        try:
+                            await task
+                        except asyncio.CancelledError:
+                            pass
+                
+                # Close WebSocket connection
+                if self._websocket:
                     try:
-                        await task
-                    except asyncio.CancelledError:
-                        pass
+                        await self._websocket.close()
+                    except Exception as e:
+                        self.logger.error("Error closing WebSocket",
+                                        error_type=type(e).__name__,
+                                        error_message=str(e))
+                    self._websocket = None
+                
+                # Strategy cleanup
+                if self.strategies and self.strategies.connection_strategy:
+                    await self.strategies.connection_strategy.cleanup()
+                
+                self.connection_state = ConnectionState.DISCONNECTED
             
-            # Close WebSocket connection
-            if self._websocket:
-                try:
-                    await self._websocket.close()
-                except Exception as e:
-                    self.logger.error(f"Error closing WebSocket: {e}")
-                self._websocket = None
+            self.logger.info("WebSocket manager V3 closed",
+                           close_time_ms=timer.elapsed_ms)
             
-            # Strategy cleanup
-            if self.strategies and self.strategies.connection_strategy:
-                await self.strategies.connection_strategy.cleanup()
-            
-            self.connection_state = ConnectionState.DISCONNECTED
-            self.logger.info("WebSocket manager V2 closed")
+            # Track close metrics
+            self.logger.metric("ws_manager_closes", 1,
+                             tags={"exchange": "websocket"})
+            self.logger.metric("ws_close_time_ms", timer.elapsed_ms,
+                             tags={"exchange": "websocket"})
             
         except Exception as e:
-            self.logger.error(f"Error closing WebSocket manager V2: {e}")
+            self.logger.error("Error closing WebSocket manager V3",
+                            error_type=type(e).__name__,
+                            error_message=str(e))
+            
+            # Track close error metrics
+            self.logger.metric("ws_close_errors", 1,
+                             tags={"exchange": "websocket"})

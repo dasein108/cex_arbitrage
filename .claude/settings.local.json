@@ -70,7 +70,9 @@
       "Bash(git restore:*)",
       "Bash(./migrations/migrate.sh:*)",
       "Bash(for:*)",
-      "Bash(do echo \"Updating $file\")"
+      "Bash(do echo \"Updating $file\")",
+      "Bash(ssh:*)",
+      "Bash(scp:*)"
     ],
     "deny": [],
     "ask": [],

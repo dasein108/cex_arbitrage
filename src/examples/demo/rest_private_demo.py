@@ -11,7 +11,7 @@ Usage:
 
 import asyncio
 import sys
-from structs.common import Symbol, AssetName, Side, OrderType, TimeInForce
+from core.structs.common import Symbol, AssetName, Side, OrderType, TimeInForce
 from core.exchanges.rest import PrivateExchangeSpotRestInterface
 from core.config.config_manager import get_exchange_config
 
@@ -205,7 +205,7 @@ async def main(exchange_name: str):
 
 
 if __name__ == "__main__":
-    exchange_name = sys.argv[1] if len(sys.argv) > 1 else "mexc_spot"
+    exchange_name = sys.argv[1] if len(sys.argv) > 1 else "gateio_futures"
 
     try:
         asyncio.run(main(exchange_name))

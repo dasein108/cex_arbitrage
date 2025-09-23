@@ -8,15 +8,15 @@ ArbitrageEngine and SimpleArbitrageEngine while maintaining <50ms execution targ
 HFT COMPLIANT: Pre-initialized counters, float-only arithmetic, zero-copy patterns.
 """
 
-import logging
+from core.logging import get_logger
 from typing import Any
 
 from .structures import ArbitrageOpportunity, ArbitrageState
 from .types import ArbitrageConfig, EngineStatistics
-from structs.common import Symbol
+from core.structs.common import Symbol
 from common.telegram_utils import send_trade_alert
 
-logger = logging.getLogger(__name__)
+logger = get_logger('arbitrage.opportunity_processor')
 
 
 class OpportunityProcessor:

@@ -7,12 +7,12 @@ Streamlines the engine selection architecture.
 HFT COMPLIANT: Fast engine instantiation with minimal overhead.
 """
 
-import logging
+from core.logging import get_logger
 from typing import Dict, Type, Union
 from arbitrage.types import ArbitrageConfig
 from interfaces.cex.base.base_private_exchange import BasePrivateExchangeInterface
 
-logger = logging.getLogger(__name__)
+logger = get_logger('arbitrage.engine_factory')
 
 
 class EngineType:

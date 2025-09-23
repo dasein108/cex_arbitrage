@@ -22,12 +22,10 @@ Memory: O(1) per request, optimized for trading operations
 """
 
 from typing import Dict, List, Optional
-import logging
-import msgspec
 
-from structs.common import (
+from core.structs.common import (
     Symbol, Order, OrderId, OrderType, Side, AssetBalance,
-    AssetName, TimeInForce, ExchangeName, TradingFee
+    AssetName, TimeInForce, TradingFee
 )
 from core.transport.rest.structs import HTTPMethod
 from core.exceptions.exchange import BaseExchangeError
@@ -44,15 +42,22 @@ class GateioPrivateSpotRest(PrivateExchangeSpotRestInterface):
     Optimized for high-frequency trading operations with minimal overhead.
     """
 
-    def __init__(self, config: ExchangeConfig, mapper: BaseExchangeMapper):
+    def __init__(self, config: ExchangeConfig, mapper: BaseExchangeMapper, logger=None):
         """
         Initialize Gate.io private REST client.
         
         Args:
             config: ExchangeConfig with Gate.io configuration and credentials
             mapper: BaseExchangeMapper for data transformations
+            logger: Optional HFT logger injection
         """
         super().__init__(config, mapper)
+        
+        # Initialize HFT logger
+        if logger is None:
+            from core.logging import get_exchange_logger
+            logger = get_exchange_logger('gateio', 'rest.private')
+        self.logger = logger
 
     
     def _handle_gateio_exception(self, status_code: int, message: str) -> BaseExchangeError:

@@ -42,3 +42,4 @@ pandas
 pyyaml
 zmq
 asyncpg
+aiofiles

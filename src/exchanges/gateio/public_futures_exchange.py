@@ -19,12 +19,11 @@ Architecture: Follows the same pattern as other exchange implementations but
 treats futures as a completely separate exchange system.
 """
 
-from typing import List, Dict, Optional, Set
+from typing import List, Dict, Optional
 import logging
 
 from exchanges.interfaces import PublicExchangeInterface
-from structs.common import Symbol, SymbolsInfo, OrderBook
-from core.config.structs import ExchangeConfig
+from core.structs.common import Symbol, SymbolsInfo, OrderBook
 
 
 class GateioPublicFuturesExchange(PublicExchangeInterface):
@@ -44,7 +43,6 @@ class GateioPublicFuturesExchange(PublicExchangeInterface):
             symbols: Optional list of futures symbols to initialize
         """
         # Create a mock config for now - this will be properly configured when used via factory
-        from core.config.structs import ExchangeConfig
         from core.config.config_manager import HftConfig
         
         # Load the proper gateio_futures configuration

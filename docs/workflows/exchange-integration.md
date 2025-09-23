@@ -102,7 +102,7 @@ KRAKEN_SECRET_KEY=your_kraken_secret_key
 ```python
 # src/exchanges/binance/binance_exchange.py
 from core.exchanges.base import BaseExchangeInterface
-from structs import (
+from core.structs import (
     Symbol, SymbolInfo, OrderBook, AssetBalance, ExchangeStatus, Order
 )
 
@@ -224,7 +224,7 @@ class ExchangeFactory:
 
 import pytest
 from exchanges.binance.binance_exchange import BinanceExchange
-from structs import Symbol, AssetName
+from core.structs import Symbol, AssetName
 from core.config.config_manager import config
 
 

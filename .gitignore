@@ -128,3 +128,4 @@ src/tools/output/*.*
 .env
 .env.*
 update_server.sh
+output/

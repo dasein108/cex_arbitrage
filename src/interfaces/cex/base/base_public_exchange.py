@@ -8,9 +8,9 @@ without requiring authentication credentials.
 import asyncio
 import time
 from abc import abstractmethod
-from typing import Dict, List, Set, Optional, Callable, Awaitable
+from typing import Dict, List, Optional, Callable, Awaitable
 
-from structs.common import (Symbol, SymbolsInfo, OrderBook, OrderbookUpdateType)
+from core.structs.common import (Symbol, SymbolsInfo, OrderBook, OrderbookUpdateType)
 from .base_exchange import BaseExchangeInterface
 
 

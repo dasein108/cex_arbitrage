@@ -1,7 +1,7 @@
 from core.exchanges.services.symbol_mapper.base_symbol_mapper import SymbolMapperInterface
 from core.exchanges.services.symbol_mapper.factory import ExchangeSymbolMapperFactory
-from structs import ExchangeEnum
-from structs.common import Symbol, AssetName
+from core.structs import ExchangeEnum
+from core.structs.common import Symbol, AssetName
 
 
 class GateioFuturesSymbolMapperInterface(SymbolMapperInterface):

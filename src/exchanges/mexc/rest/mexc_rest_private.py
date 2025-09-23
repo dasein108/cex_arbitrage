@@ -27,7 +27,7 @@ import msgspec
 from exchanges.mexc.structs.exchange import (
     MexcAccountResponse, MexcOrderResponse
 )
-from structs.common import (
+from core.structs.common import (
     Symbol, Order, OrderId, OrderType, Side, AssetBalance,
     AssetName, TimeInForce
 )

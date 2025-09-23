@@ -1,8 +1,7 @@
 from abc import ABC, abstractmethod
-from typing import Optional, Dict, Any, List, AsyncIterator, TYPE_CHECKING
+from typing import Optional, List, AsyncIterator
 
-from core.transport.websocket.structs import ParsedMessage, MessageType
-from structs.common import OrderBook
+from core.transport.websocket.structs import ParsedMessage
 from core.exchanges.services import BaseExchangeMapper
 
 

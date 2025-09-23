@@ -1,11 +1,10 @@
 import time
 from typing import Dict, List, Optional, Any
-from datetime import datetime
 import logging
 
-from structs.common import (
+from core.structs.common import (
     Symbol, Order, OrderId, OrderType, Side, AssetBalance, AssetName,
-    TimeInForce, TradingFee, Position, ExchangeName
+    TimeInForce, TradingFee, Position
 )
 from core.transport.rest.structs import HTTPMethod
 from core.exceptions.exchange import BaseExchangeError
@@ -16,15 +15,21 @@ from core.config.structs import ExchangeConfig
 
 class GateioPrivateFuturesRest(PrivateExchangeSpotRestInterface):
 
-    def __init__(self, config: ExchangeConfig, mapper: BaseExchangeMapper):
+    def __init__(self, config: ExchangeConfig, mapper: BaseExchangeMapper, logger=None):
         """
         Args:
             config: ExchangeConfig containing credentials & transport config.
             mapper: BaseExchangeMapper for data transformations
+            logger: Optional HFT logger injection
         """
         super().__init__(config, mapper)
-        # reuse same cache pattern if needed in future
-        self._logger = logging.getLogger(f"{__name__}.{self.__class__.__name__}")
+        
+        # Initialize HFT logger
+        if logger is None:
+            from core.logging import get_exchange_logger
+            logger = get_exchange_logger('gateio_futures', 'rest.private')
+        self.logger = logger
+        self._logger = logger  # For backward compatibility
 
     def _handle_gateio_exception(self, status_code: int, message: str) -> BaseExchangeError:
         return BaseExchangeError(f"Gate.io futures error {status_code}: {message}")

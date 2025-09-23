@@ -11,7 +11,7 @@ import time
 from typing import List, Dict, Optional
 
 from interfaces.cex.base import BasePublicExchangeInterface
-from structs.common import (
+from core.structs.common import (
     OrderBook, Symbol, SymbolsInfo,
     ExchangeStatus, OrderbookUpdateType
 )

@@ -7,7 +7,7 @@ Optimized for HFT performance with minimal complexity.
 
 from datetime import datetime
 from typing import Tuple, Generator
-from structs.common import KlineInterval
+from core.structs.common import KlineInterval
 
 def get_interval_seconds(interval: KlineInterval) -> int:
     """Get interval duration in seconds for batch processing."""

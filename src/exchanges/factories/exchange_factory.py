@@ -18,15 +18,15 @@ All created exchange instances are properly configured with:
 - Rate limiting and performance optimization
 """
 
-import logging
-from typing import List, Optional, Type, Union
+from typing import List, Optional, Union
 
 from core.config.structs import ExchangeConfig
-from structs.common import Symbol
-from structs.common import ExchangeEnum
+from core.structs.common import Symbol
+from core.structs.common import ExchangeEnum
 from ..interfaces import PublicExchangeInterface, PrivateExchangeInterface
 
-logger = logging.getLogger(__name__)
+# HFT Logger Integration
+from core.logging import get_exchange_logger, HFTLoggerInterface, LoggingTimer
 
 
 class ExchangeFactory:
@@ -37,11 +37,19 @@ class ExchangeFactory:
     with automatic dependency injection, service registration, and configuration.
     """
     
+    # Factory-level HFT logger
+    _logger = get_exchange_logger('factory', 'exchange_factory')
+    
+    # Track factory initialization
+    _logger.info("ExchangeFactory initialized")
+    _logger.metric("exchange_factories_initialized", 1, tags={"component": "factory"})
+    
     @classmethod
     def create_public_exchange(
         cls,
         exchange: ExchangeEnum,
-        symbols: Optional[List[Union[str, Symbol]]] = None
+        symbols: Optional[List[Union[str, Symbol]]] = None,
+        logger: Optional[HFTLoggerInterface] = None
     ) -> PublicExchangeInterface:
         """
         Create a public exchange instance for market data operations.
@@ -49,6 +57,7 @@ class ExchangeFactory:
         Args:
             exchange: Exchange type to create
             symbols: Optional list of symbols to initialize
+            logger: Optional HFT logger to inject into exchange
             
         Returns:
             Configured public exchange instance
@@ -57,32 +66,75 @@ class ExchangeFactory:
             ValueError: If exchange type is not supported
             ImportError: If exchange implementation is not available
         """
-        try:
-            if exchange == ExchangeEnum.MEXC:
-                from ..mexc import MexcPublicExchange
-                return MexcPublicExchange(symbols=symbols or [])
+        # Track factory operation performance
+        with LoggingTimer(cls._logger, "public_exchange_creation") as timer:
+            cls._logger.info("Creating public exchange",
+                           exchange=exchange.value,
+                           symbol_count=len(symbols) if symbols else 0,
+                           has_injected_logger=logger is not None)
+            
+            # Create exchange-specific logger if not provided
+            if logger is None:
+                logger = get_exchange_logger(exchange.value, 'public_exchange')
+            
+            try:
+                if exchange == ExchangeEnum.MEXC:
+                    from ..mexc import MexcPublicExchange
+                    instance = MexcPublicExchange(symbols=symbols or [], logger=logger)
+                    
+                elif exchange == ExchangeEnum.GATEIO:
+                    from ..gateio import GateioPublicExchange
+                    instance = GateioPublicExchange(symbols=symbols or [], logger=logger)
+                    
+                elif exchange == ExchangeEnum.GATEIO_FUTURES:
+                    from ..gateio import GateioPublicFuturesExchange
+                    instance = GateioPublicFuturesExchange(symbols=symbols or [], logger=logger)
+                    
+                else:
+                    cls._logger.error("Unsupported exchange type",
+                                    exchange=exchange.value,
+                                    api_type="public")
+                    
+                    # Track failed creation
+                    cls._logger.metric("public_exchange_creations", 1,
+                                      tags={"exchange": exchange.value, "status": "unsupported"})
+                    
+                    raise ValueError(f"Unsupported exchange: {exchange}")
                 
-            elif exchange == ExchangeEnum.GATEIO:
-                from ..gateio import GateioPublicExchange
-                return GateioPublicExchange(symbols=symbols or [])
+                # Track successful creation
+                cls._logger.info("Public exchange created successfully",
+                               exchange=exchange.value,
+                               creation_time_ms=timer.elapsed_ms)
                 
-            elif exchange == ExchangeEnum.GATEIO_FUTURES:
-                from ..gateio import GateioPublicFuturesExchange
-                return GateioPublicFuturesExchange(symbols=symbols or [])
+                cls._logger.metric("public_exchange_creations", 1,
+                                  tags={"exchange": exchange.value, "status": "success"})
                 
-            else:
-                raise ValueError(f"Unsupported exchange: {exchange}")
+                cls._logger.metric("public_exchange_creation_duration_ms", timer.elapsed_ms,
+                                  tags={"exchange": exchange.value})
                 
-        except ImportError as e:
-            logger.error(f"Failed to import {exchange.value} exchange: {e}")
-            raise ImportError(f"Exchange {exchange.value} implementation not available") from e
+                return instance
+                
+            except ImportError as e:
+                cls._logger.error("Failed to import exchange implementation",
+                                exchange=exchange.value,
+                                api_type="public",
+                                error_type=type(e).__name__,
+                                error_message=str(e),
+                                creation_time_ms=timer.elapsed_ms)
+                
+                # Track import failure
+                cls._logger.metric("public_exchange_creations", 1,
+                                  tags={"exchange": exchange.value, "status": "import_failed"})
+                
+                raise ImportError(f"Exchange {exchange.value} implementation not available") from e
     
     @classmethod
     def create_private_exchange(
         cls,
         exchange: ExchangeEnum,
         config: ExchangeConfig,
-        symbols: Optional[List[Union[str, Symbol]]] = None
+        symbols: Optional[List[Union[str, Symbol]]] = None,
+        logger: Optional[HFTLoggerInterface] = None
     ) -> PrivateExchangeInterface:
         """
         Create a private exchange instance for trading operations.
@@ -91,6 +143,7 @@ class ExchangeFactory:
             exchange: Exchange type to create
             config: Exchange configuration including credentials
             symbols: Optional list of symbols to initialize
+            logger: Optional HFT logger to inject into exchange
             
         Returns:
             Configured private exchange instance
@@ -99,28 +152,80 @@ class ExchangeFactory:
             ValueError: If exchange type is not supported or config is invalid
             ImportError: If exchange implementation is not available
         """
+        # Validate credentials before creation
         if not config.credentials.is_configured():
-            raise ValueError(f"Exchange {exchange.value} requires valid credentials for private operations")
+            cls._logger.error("Missing credentials for private exchange",
+                            exchange=exchange.value,
+                            api_type="private")
             
-        try:
-            if exchange == ExchangeEnum.MEXC:
-                from ..mexc import MexcPrivateExchange
-                return MexcPrivateExchange(config=config, symbols=symbols or [])
+            # Track credential validation failure
+            cls._logger.metric("private_exchange_creations", 1,
+                              tags={"exchange": exchange.value, "status": "invalid_credentials"})
+            
+            raise ValueError(f"Exchange {exchange.value} requires valid credentials for private operations")
+        
+        # Track factory operation performance
+        with LoggingTimer(cls._logger, "private_exchange_creation") as timer:
+            cls._logger.info("Creating private exchange",
+                           exchange=exchange.value,
+                           symbol_count=len(symbols) if symbols else 0,
+                           has_injected_logger=logger is not None,
+                           has_credentials=config.credentials.is_configured())
+            
+            # Create exchange-specific logger if not provided
+            if logger is None:
+                logger = get_exchange_logger(exchange.value, 'private_exchange')
+            
+            try:
+                if exchange == ExchangeEnum.MEXC:
+                    from ..mexc import MexcPrivateExchange
+                    instance = MexcPrivateExchange(config=config, symbols=symbols or [], logger=logger)
+                    
+                elif exchange == ExchangeEnum.GATEIO:
+                    from ..gateio import GateioPrivateExchange
+                    instance = GateioPrivateExchange(config=config, symbols=symbols or [], logger=logger)
+                    
+                elif exchange == ExchangeEnum.GATEIO_FUTURES:
+                    from ..gateio import GateioPrivateFuturesExchange
+                    instance = GateioPrivateFuturesExchange(config=config, symbols=symbols or [], logger=logger)
+                    
+                else:
+                    cls._logger.error("Unsupported exchange type",
+                                    exchange=exchange.value,
+                                    api_type="private")
+                    
+                    # Track failed creation
+                    cls._logger.metric("private_exchange_creations", 1,
+                                      tags={"exchange": exchange.value, "status": "unsupported"})
+                    
+                    raise ValueError(f"Unsupported exchange: {exchange}")
                 
-            elif exchange == ExchangeEnum.GATEIO:
-                from ..gateio import GateioPrivateExchange
-                return GateioPrivateExchange(config=config, symbols=symbols or [])
+                # Track successful creation
+                cls._logger.info("Private exchange created successfully",
+                               exchange=exchange.value,
+                               creation_time_ms=timer.elapsed_ms)
                 
-            elif exchange == ExchangeEnum.GATEIO_FUTURES:
-                from ..gateio import GateioPrivateFuturesExchange
-                return GateioPrivateFuturesExchange(config=config, symbols=symbols or [])
+                cls._logger.metric("private_exchange_creations", 1,
+                                  tags={"exchange": exchange.value, "status": "success"})
                 
-            else:
-                raise ValueError(f"Unsupported exchange: {exchange}")
+                cls._logger.metric("private_exchange_creation_duration_ms", timer.elapsed_ms,
+                                  tags={"exchange": exchange.value})
                 
-        except ImportError as e:
-            logger.error(f"Failed to import {exchange.value} private exchange: {e}")
-            raise ImportError(f"Private exchange {exchange.value} implementation not available") from e
+                return instance
+                
+            except ImportError as e:
+                cls._logger.error("Failed to import private exchange implementation",
+                                exchange=exchange.value,
+                                api_type="private",
+                                error_type=type(e).__name__,
+                                error_message=str(e),
+                                creation_time_ms=timer.elapsed_ms)
+                
+                # Track import failure
+                cls._logger.metric("private_exchange_creations", 1,
+                                  tags={"exchange": exchange.value, "status": "import_failed"})
+                
+                raise ImportError(f"Private exchange {exchange.value} implementation not available") from e
     
     @classmethod
     def get_supported_exchanges(cls) -> List[ExchangeEnum]:
@@ -173,5 +278,6 @@ class ExchangeFactory:
                 return False
                 
         except ImportError:
-            logger.warning(f"Exchange {exchange.value} implementation not available")
+            cls._logger.warning("Exchange implementation not available",
+                              exchange=exchange.value)
             return False

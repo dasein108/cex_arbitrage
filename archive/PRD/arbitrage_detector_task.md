@@ -493,7 +493,7 @@ This document provides a comprehensive task breakdown for implementing the HFT-c
   
   from arbitrage.detector import OpportunityDetector
   from arbitrage.structures import ArbitrageConfig, RiskLimits
-  from structs import Symbol, OrderBook, OrderBookEntry
+  from core.structs import Symbol, OrderBook, OrderBookEntry
   
   @pytest.fixture
   def mock_config():

@@ -1,7 +1,7 @@
 from collections import deque
 from typing import List
 
-from structs.common import OrderBookEntry
+from core.structs.common import OrderBookEntry
 
 
 class OrderBookEntryPool:

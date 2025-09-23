@@ -11,7 +11,7 @@ import time
 from typing import List, Dict
 
 from interfaces.cex.base import BasePrivateExchangeInterface
-from structs.common import (
+from core.structs.common import (
     Symbol, AssetBalance, AssetName, Order, OrderId, SymbolsInfo, Trade, Side
 )
 from exchanges.mexc.ws.mexc_ws_private import MexcWebsocketPrivate

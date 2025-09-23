@@ -42,7 +42,7 @@ This implementation follows strict HFT compliance rules:
 
 ```python
 from exchanges.gateio import GateioExchange
-from structs import Symbol, AssetName, Side
+from core.structs import Symbol, AssetName, Side
 
 # Initialize exchange
 exchange = GateioExchange(api_key="your_key", secret_key="your_secret")

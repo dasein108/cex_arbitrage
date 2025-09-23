@@ -31,7 +31,7 @@ Performance Targets:
 from __future__ import annotations
 
 import asyncio
-import logging
+from core.logging import get_logger
 from typing import Dict, List, Optional, Callable, Any
 from dataclasses import dataclass
 
@@ -41,12 +41,12 @@ from .structures import (
     ArbitrageConfig,
 )
 
-from structs.common import Symbol
-from structs.common import ExchangeName
+from core.structs.common import Symbol
+from core.structs.common import ExchangeName
 from core.exceptions.exchange import RiskManagementError
 
 
-logger = logging.getLogger(__name__)
+logger = get_logger('arbitrage.risk')
 
 
 @dataclass

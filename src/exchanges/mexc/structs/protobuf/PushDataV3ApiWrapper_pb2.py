@@ -38,23 +38,23 @@ try:
 except ImportError:
     # Fall back to module path imports
     try:
-        from src.exchanges.mexc_api.websocket import PrivateAccountV3Api_pb2 as PrivateAccountV3Api__pb2
-        from src.exchanges.mexc_api.websocket import PrivateDealsV3Api_pb2 as PrivateDealsV3Api__pb2
-        from src.exchanges.mexc_api.websocket import PrivateOrdersV3Api_pb2 as PrivateOrdersV3Api__pb2
-        from src.exchanges.mexc_api.websocket import PublicAggreBookTickerV3Api_pb2 as PublicAggreBookTickerV3Api__pb2
-        from src.exchanges.mexc_api.websocket import PublicAggreDealsV3Api_pb2 as PublicAggreDealsV3Api__pb2
-        from src.exchanges.mexc_api.websocket import PublicAggreDepthsV3Api_pb2 as PublicAggreDepthsV3Api__pb2
-        from src.exchanges.mexc_api.websocket import PublicBookTickerBatchV3Api_pb2 as PublicBookTickerBatchV3Api__pb2
-        from src.exchanges.mexc_api.websocket import PublicBookTickerV3Api_pb2 as PublicBookTickerV3Api__pb2
-        from src.exchanges.mexc_api.websocket import PublicDealsV3Api_pb2 as PublicDealsV3Api__pb2
-        from src.exchanges.mexc_api.websocket import (
+        from exchanges.mexc.structs.protobuf import PrivateAccountV3Api_pb2 as PrivateAccountV3Api__pb2
+        from exchanges.mexc.structs.protobuf import PrivateDealsV3Api_pb2 as PrivateDealsV3Api__pb2
+        from exchanges.mexc.structs.protobuf import PrivateOrdersV3Api_pb2 as PrivateOrdersV3Api__pb2
+        from exchanges.mexc.structs.protobuf import PublicAggreBookTickerV3Api_pb2 as PublicAggreBookTickerV3Api__pb2
+        from exchanges.mexc.structs.protobuf import PublicAggreDealsV3Api_pb2 as PublicAggreDealsV3Api__pb2
+        from exchanges.mexc.structs.protobuf import PublicAggreDepthsV3Api_pb2 as PublicAggreDepthsV3Api__pb2
+        from exchanges.mexc.structs.protobuf import PublicBookTickerBatchV3Api_pb2 as PublicBookTickerBatchV3Api__pb2
+        from exchanges.mexc.structs.protobuf import PublicBookTickerV3Api_pb2 as PublicBookTickerV3Api__pb2
+        from exchanges.mexc.structs.protobuf import PublicDealsV3Api_pb2 as PublicDealsV3Api__pb2
+        from exchanges.mexc.structs.protobuf import (
             PublicIncreaseDepthsBatchV3Api_pb2 as PublicIncreaseDepthsBatchV3Api__pb2,
         )
-        from src.exchanges.mexc_api.websocket import PublicIncreaseDepthsV3Api_pb2 as PublicIncreaseDepthsV3Api__pb2
-        from src.exchanges.mexc_api.websocket import PublicLimitDepthsV3Api_pb2 as PublicLimitDepthsV3Api__pb2
-        from src.exchanges.mexc_api.websocket import PublicMiniTickersV3Api_pb2 as PublicMiniTickersV3Api__pb2
-        from src.exchanges.mexc_api.websocket import PublicMiniTickerV3Api_pb2 as PublicMiniTickerV3Api__pb2
-        from src.exchanges.mexc_api.websocket import PublicSpotKlineV3Api_pb2 as PublicSpotKlineV3Api__pb2
+        from exchanges.mexc.structs.protobuf import PublicIncreaseDepthsV3Api_pb2 as PublicIncreaseDepthsV3Api__pb2
+        from exchanges.mexc.structs.protobuf import PublicLimitDepthsV3Api_pb2 as PublicLimitDepthsV3Api__pb2
+        from exchanges.mexc.structs.protobuf import PublicMiniTickersV3Api_pb2 as PublicMiniTickersV3Api__pb2
+        from exchanges.mexc.structs.protobuf import PublicMiniTickerV3Api_pb2 as PublicMiniTickerV3Api__pb2
+        from exchanges.mexc.structs.protobuf import PublicSpotKlineV3Api_pb2 as PublicSpotKlineV3Api__pb2
     except ImportError:
         # Fall back to direct imports (when imported as standalone)
         import PrivateAccountV3Api_pb2 as PrivateAccountV3Api__pb2

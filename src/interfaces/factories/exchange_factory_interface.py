@@ -7,10 +7,10 @@ based on configuration or runtime requirements.
 """
 
 from abc import ABC, abstractmethod
-from typing import Dict, List, Optional, AsyncContextManager
+from typing import Dict, List, Optional
 from enum import Enum
 
-from structs.common import Symbol, ExchangeName
+from core.structs.common import Symbol, ExchangeName
 from interfaces.cex.base import BasePrivateExchangeInterface
 
 

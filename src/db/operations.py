@@ -8,13 +8,12 @@ Optimized for HFT requirements with minimal latency and maximum throughput.
 import logging
 from datetime import datetime, timedelta
 from typing import List, Optional, Dict, Any, Set
-import asyncpg
 from collections import defaultdict
 import time
 
 from .connection import get_db_manager
 from .models import BookTickerSnapshot, TradeSnapshot
-from structs.common import Symbol
+from core.structs.common import Symbol
 
 
 logger = logging.getLogger(__name__)
