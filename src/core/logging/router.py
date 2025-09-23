@@ -6,8 +6,9 @@ HFT COMPLIANT: <1μs routing decisions.
 """
 
 import os
-from typing import Dict, List
+from typing import Dict, List, Union, Optional
 from .interfaces import LogBackend, LogRecord, LogLevel, LogType, LogRouter
+from .structs import RouterConfig
 
 
 class SimpleRouter(LogRouter):
@@ -18,9 +19,26 @@ class SimpleRouter(LogRouter):
     Use when you don't need complex rule configuration.
     """
     
-    def __init__(self, backends: Dict[str, LogBackend], environment: str = None):
+    def __init__(self, backends: Dict[str, LogBackend], config: RouterConfig):
+        """
+        Initialize router with struct configuration.
+        
+        Args:
+            backends: Available backends
+            config: RouterConfig struct (required)
+        """
+        if not isinstance(config, RouterConfig):
+            raise TypeError(f"Expected RouterConfig, got {type(config)}")
+        
         self.backends = backends
-        self.environment = environment or os.getenv('ENVIRONMENT', 'dev')
+        self.config = config
+        
+        # Configuration from struct
+        self.environment = config.environment or os.getenv('ENVIRONMENT', 'dev')
+        self.correlation_tracking = config.correlation_tracking
+        self.enable_smart_routing = config.enable_smart_routing
+        self.default_backends = config.get_default_backends()
+        
         self.is_dev = self.environment.lower() in ('dev', 'development', 'local', 'test')
     
     def get_backends(self, record: LogRecord) -> List[LogBackend]:
@@ -67,15 +85,15 @@ class SimpleRouter(LogRouter):
         return matching_backends
 
 
-def create_router(backends: Dict[str, LogBackend], environment: str = None) -> LogRouter:
+def create_router(backends: Dict[str, LogBackend], config: RouterConfig) -> LogRouter:
     """
     Create a router instance.
     
     Args:
         backends: Available backends
-        environment: Environment name (dev, prod, test)
+        config: RouterConfig struct (required)
         
     Returns:
         SimpleRouter instance (only router type supported now)
     """
-    return SimpleRouter(backends, environment)
+    return SimpleRouter(backends, config)

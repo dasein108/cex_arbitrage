@@ -13,11 +13,12 @@ import os
 import time
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, Any, Optional
+from typing import Optional
 import aiofiles
 import aiofiles.os
 
 from ..interfaces import LogBackend, LogRecord, LogLevel, LogType
+from ..structs import FileBackendConfig, AuditBackendConfig
 
 
 class FileBackend(LogBackend):
@@ -30,28 +31,45 @@ class FileBackend(LogBackend):
     - Automatic directory creation
     - Error resilience with fallback
     - File rotation support
+    
+    Accepts only FileBackendConfig struct for configuration.
     """
     
-    def __init__(self, name: str = "file", config: Dict[str, Any] = None):
-        super().__init__(name, config)
+    def __init__(self, config: FileBackendConfig, name: str = "file"):
+        """
+        Initialize file backend with struct configuration.
         
-        # Configuration
-        config = config or {}
-        self.file_path = Path(config.get('file_path', 'logs/hft.log'))
-        self.format_type = config.get('format', 'text')  # 'text' or 'json'
-        min_level_config = config.get('min_level', LogLevel.WARNING)
-        if isinstance(min_level_config, str):
-            self.min_level = LogLevel[min_level_config.upper()]
+        Args:
+            name: Backend name
+            config: FileBackendConfig struct (required)
+        """
+        if not isinstance(config, FileBackendConfig):
+            raise TypeError(f"Expected FileBackendConfig, got {type(config)}")
+        
+        super().__init__(name, {})  # Empty dict for base class compatibility
+        
+        # Store struct config
+        self.config = config
+        
+        # Configuration from struct
+        self.file_path = Path(config.path)
+        self.format_type = config.format  # 'text' or 'json'
+        if isinstance(config.min_level, str):
+            self.min_level = LogLevel[config.min_level.upper()]
         else:
-            self.min_level = LogLevel(min_level_config)
-        self.include_types = set(config.get('include_types', [LogType.TEXT, LogType.AUDIT]))
-        self.max_file_size = config.get('max_file_size_mb', 100) * 1024 * 1024  # Convert to bytes
-        self.backup_count = config.get('backup_count', 5)
-        self.buffer_size = config.get('buffer_size', 8192)
-        self.flush_interval = config.get('flush_interval', 5.0)  # seconds
+            self.min_level = LogLevel(config.min_level)
+        self.include_types = set([LogType.TEXT, LogType.AUDIT])  # Default types
+        self.max_file_size = config.max_size_mb * 1024 * 1024  # Convert to bytes
+        self.backup_count = config.backup_count
+        self.buffer_size = config.buffer_size
+        self.flush_interval = config.flush_interval
+        
+        # Enable based on struct config
+        self.enabled = config.enabled
         
         # Ensure log directory exists
-        self._ensure_directory()
+        if self.enabled:
+            self._ensure_directory()
         
         # Buffering for performance
         self._write_buffer = []
@@ -59,7 +77,11 @@ class FileBackend(LogBackend):
         self._lock = asyncio.Lock()
     
     def should_handle(self, record: LogRecord) -> bool:
-        """Handle warnings/errors and audit logs."""
+        """
+        Handle warnings, errors, and audit logs.
+        
+        Fast filtering - called in hot path.
+        """
         if not self.enabled:
             return False
         
@@ -67,143 +89,121 @@ class FileBackend(LogBackend):
         if record.level < self.min_level:
             return False
         
-        # Check log type
-        if record.log_type not in self.include_types:
-            return False
-        
-        return True
+        # Handle warnings/errors and audit logs
+        return (
+            record.level >= LogLevel.WARNING or 
+            record.log_type in self.include_types
+        )
     
     async def write(self, record: LogRecord) -> None:
-        """Write record to file with buffering."""
-        try:
-            # Format the record
+        """Async write with buffering for performance."""
+        if not self.enabled:
+            return
+        
+        async with self._lock:
+            # Format message
             if self.format_type == 'json':
                 formatted = self._format_json(record)
             else:
                 formatted = self._format_text(record)
             
             # Add to buffer
-            async with self._lock:
-                self._write_buffer.append(formatted)
-                
-                # Check if we should flush
-                should_flush = (
-                    len(self._write_buffer) >= 50 or  # Buffer size
-                    time.time() - self._last_flush > self.flush_interval or  # Time-based
-                    record.level >= LogLevel.ERROR  # Immediate flush for errors
-                )
-                
-                if should_flush:
-                    await self._flush_buffer()
-        
-        except Exception as e:
-            # Handle file errors gracefully
-            self._handle_error(e)
-            # Fallback to console
-            print(f"FileBackend error: {e}")
-            print(f"{record.level.name}: {record.logger_name}: {record.message}")
+            self._write_buffer.append(formatted)
+            
+            # Flush if buffer is full or time interval reached
+            current_time = time.time()
+            should_flush = (
+                len(self._write_buffer) >= self.buffer_size or
+                (current_time - self._last_flush) >= self.flush_interval
+            )
+            
+            if should_flush:
+                await self._flush_buffer()
     
     async def flush(self) -> None:
-        """Flush buffered data to file."""
+        """Force flush of buffered messages."""
+        if not self.enabled:
+            return
+        
         async with self._lock:
             await self._flush_buffer()
     
     async def _flush_buffer(self) -> None:
-        """Internal method to flush write buffer."""
+        """Internal buffer flush implementation."""
         if not self._write_buffer:
             return
         
         try:
-            # Check file rotation
+            # Check file rotation before writing
             await self._check_rotation()
             
-            # Write all buffered lines
-            async with aiofiles.open(self.file_path, 'a', buffering=self.buffer_size) as f:
-                for line in self._write_buffer:
-                    await f.write(line + '\n')
-            
-            # Clear buffer
+            # Write all buffered messages
+            async with aiofiles.open(self.file_path, 'a', encoding='utf-8') as f:
+                for message in self._write_buffer:
+                    await f.write(message + '\n')
+                
+            # Clear buffer and update flush time
             self._write_buffer.clear()
             self._last_flush = time.time()
             
         except Exception as e:
-            # File write failed
-            self._handle_error(e)
-            # Clear buffer to prevent memory growth
-            self._write_buffer.clear()
-    
-    async def _check_rotation(self) -> None:
-        """Check if file needs rotation."""
-        try:
-            if await aiofiles.os.path.exists(self.file_path):
-                stat = await aiofiles.os.stat(self.file_path)
-                if stat.st_size > self.max_file_size:
-                    await self._rotate_file()
-        except Exception as e:
-            # Rotation failed, continue with current file
-            print(f"File rotation error: {e}")
-    
-    async def _rotate_file(self) -> None:
-        """Rotate log file."""
-        try:
-            # Move existing backups
-            for i in range(self.backup_count - 1, 0, -1):
-                old_backup = self.file_path.with_suffix(f'.{i}{self.file_path.suffix}')
-                new_backup = self.file_path.with_suffix(f'.{i+1}{self.file_path.suffix}')
-                
-                if await aiofiles.os.path.exists(old_backup):
-                    if await aiofiles.os.path.exists(new_backup):
-                        await aiofiles.os.remove(new_backup)
-                    await aiofiles.os.rename(old_backup, new_backup)
-            
-            # Move current file to .1
-            backup_path = self.file_path.with_suffix(f'.1{self.file_path.suffix}')
-            if await aiofiles.os.path.exists(self.file_path):
-                await aiofiles.os.rename(self.file_path, backup_path)
-                
-        except Exception as e:
-            print(f"File rotation error: {e}")
+            # Log error but don't fail
+            print(f"FileBackend flush error: {e}")
     
     def _ensure_directory(self) -> None:
         """Ensure log directory exists."""
         try:
             self.file_path.parent.mkdir(parents=True, exist_ok=True)
         except Exception as e:
-            print(f"Failed to create log directory: {e}")
-            # Try to use current directory as fallback
-            self.file_path = Path(self.file_path.name)
+            print(f"FileBackend directory creation error: {e}")
+    
+    async def _check_rotation(self) -> None:
+        """Check if file rotation is needed."""
+        try:
+            if not self.file_path.exists():
+                return
+            
+            # Check file size
+            file_size = await aiofiles.os.path.getsize(self.file_path)
+            if file_size >= self.max_file_size:
+                await self._rotate_file()
+                
+        except Exception as e:
+            print(f"FileBackend rotation check error: {e}")
+    
+    async def _rotate_file(self) -> None:
+        """Rotate log files when max size is reached."""
+        try:
+            # Rotate backup files
+            for i in range(self.backup_count - 1, 0, -1):
+                old_file = self.file_path.with_suffix(f'.{i}')
+                new_file = self.file_path.with_suffix(f'.{i + 1}')
+                
+                if old_file.exists():
+                    if new_file.exists():
+                        new_file.unlink()  # Remove oldest backup
+                    old_file.rename(new_file)
+            
+            # Move current file to .1
+            if self.file_path.exists():
+                backup_file = self.file_path.with_suffix('.1')
+                if backup_file.exists():
+                    backup_file.unlink()
+                self.file_path.rename(backup_file)
+                
+        except Exception as e:
+            print(f"FileBackend rotation error: {e}")
     
     def _format_text(self, record: LogRecord) -> str:
-        """Format record as human-readable text."""
-        # Timestamp
-        dt = datetime.fromtimestamp(record.timestamp)
-        timestamp_str = dt.strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]  # Millisecond precision
+        """Format as readable text."""
+        timestamp = datetime.fromtimestamp(record.timestamp).isoformat()
         
-        # Level and logger
-        level_str = record.level.name.ljust(8)
-        logger_str = record.logger_name
-        
-        # Base message
-        message = f"{timestamp_str} {level_str} {logger_str}: {record.message}"
+        message = f"[{timestamp}] {record.level.name} {record.logger_name}: {record.message}"
         
         # Add context
         if record.context:
-            context_parts = []
-            for key, value in record.context.items():
-                # Handle complex values
-                if isinstance(value, (dict, list)):
-                    value_str = json.dumps(value, separators=(',', ':'))
-                else:
-                    value_str = str(value)
-                
-                # Limit length
-                if len(value_str) > 200:
-                    value_str = value_str[:200] + "..."
-                
-                context_parts.append(f"{key}={value_str}")
-            
-            if context_parts:
-                message += f" | {', '.join(context_parts)}"
+            context_parts = [f"{k}={v}" for k, v in record.context.items()]
+            message += f" | {', '.join(context_parts)}"
         
         # Add correlation info
         correlation_parts = []
@@ -217,17 +217,12 @@ class FileBackend(LogBackend):
         if correlation_parts:
             message += f" | {', '.join(correlation_parts)}"
         
-        # Add log type for non-text logs
-        if record.log_type != LogType.TEXT:
-            message += f" | type={record.log_type.name}"
-        
         return message
     
     def _format_json(self, record: LogRecord) -> str:
-        """Format record as JSON for structured logging."""
+        """Format as JSON for structured logging."""
         data = {
             'timestamp': record.timestamp,
-            'iso_timestamp': datetime.fromtimestamp(record.timestamp).isoformat(),
             'level': record.level.name,
             'type': record.log_type.name,
             'logger': record.logger_name,
@@ -238,7 +233,7 @@ class FileBackend(LogBackend):
         if record.context:
             data['context'] = record.context
         
-        # Add correlation tracking
+        # Add correlation info
         if record.correlation_id:
             data['correlation_id'] = record.correlation_id
         if record.exchange:
@@ -246,73 +241,15 @@ class FileBackend(LogBackend):
         if record.symbol:
             data['symbol'] = record.symbol
         
-        # Add metric data for metrics
-        if record.log_type == LogType.METRIC and record.metric_name:
+        # Add metric info for metrics
+        if record.log_type == LogType.METRIC:
             data['metric'] = {
                 'name': record.metric_name,
                 'value': record.metric_value,
                 'tags': record.metric_tags
             }
         
-        try:
-            return json.dumps(data, separators=(',', ':'), ensure_ascii=False)
-        except Exception as e:
-            # JSON encoding failed, fallback to text
-            return self._format_text(record)
-
-
-class RotatingFileBackend(FileBackend):
-    """
-    File backend with time-based rotation.
-    
-    Creates new files based on time intervals (daily, hourly, etc.)
-    """
-    
-    def __init__(self, name: str = "rotating_file", config: Dict[str, Any] = None):
-        config = config or {}
-        
-        # Time-based rotation settings
-        self.rotation_interval = config.get('rotation_interval', 'daily')  # 'hourly', 'daily', 'weekly'
-        self.date_format = config.get('date_format', '%Y-%m-%d')
-        
-        # Modify file path to include date
-        base_path = Path(config.get('file_path', 'logs/hft.log'))
-        self._base_path = base_path
-        self._current_date = None
-        
-        # Update config with current dated path
-        config['file_path'] = str(self._get_current_file_path())
-        
-        super().__init__(name, config)
-    
-    def _get_current_file_path(self) -> Path:
-        """Get file path with current date."""
-        now = datetime.now()
-        
-        if self.rotation_interval == 'hourly':
-            date_str = now.strftime('%Y-%m-%d_%H')
-        elif self.rotation_interval == 'daily':
-            date_str = now.strftime('%Y-%m-%d')
-        elif self.rotation_interval == 'weekly':
-            # Get Monday of current week
-            monday = now - datetime.timedelta(days=now.weekday())
-            date_str = monday.strftime('%Y-%m-%d_week')
-        else:
-            date_str = now.strftime('%Y-%m-%d')
-        
-        # Insert date before file extension
-        stem = self._base_path.stem
-        suffix = self._base_path.suffix
-        return self._base_path.with_name(f"{stem}_{date_str}{suffix}")
-    
-    async def _check_rotation(self) -> None:
-        """Check if we need to rotate to a new file."""
-        current_path = self._get_current_file_path()
-        
-        if current_path != self.file_path:
-            # Date changed, switch to new file
-            self.file_path = current_path
-            self._ensure_directory()
+        return json.dumps(data, separators=(',', ':'))
 
 
 class AuditFileBackend(FileBackend):
@@ -320,18 +257,54 @@ class AuditFileBackend(FileBackend):
     Specialized file backend for audit logs.
     
     Always uses JSON format and includes additional audit metadata.
+    Accepts only AuditBackendConfig struct for configuration.
     """
     
-    def __init__(self, name: str = "audit_file", config: Dict[str, Any] = None):
-        config = config or {}
+    def __init__(self, config: AuditBackendConfig, name: str = "audit_file"):
+        """
+        Initialize audit file backend with struct configuration.
         
-        # Force audit-specific settings
-        config['format'] = 'json'
-        config['file_path'] = config.get('file_path', 'logs/audit.log')
-        config['include_types'] = [LogType.AUDIT]
-        config['min_level'] = LogLevel.INFO
+        Args:
+            name: Backend name
+            config: AuditBackendConfig struct (required)
+        """
+        if not isinstance(config, AuditBackendConfig):
+            raise TypeError(f"Expected AuditBackendConfig, got {type(config)}")
         
-        super().__init__(name, config)
+        # Convert to FileBackendConfig for parent class
+        file_config = FileBackendConfig(
+            enabled=config.enabled,
+            min_level=config.min_level,
+            environment=config.environment,
+            path=config.path,
+            format=config.format,
+            max_size_mb=100,  # Use reasonable default
+            backup_count=10,  # More backups for audit logs
+            buffer_size=1024,
+            flush_interval=1.0  # Faster flush for audit
+        )
+        
+        super().__init__(file_config, name)
+        
+        # Store audit config
+        self.audit_config = config
+        self.include_all_context = config.include_all_context
+        self.immutable = config.immutable
+        
+        # Override include types for audit
+        self.include_types = set([LogType.AUDIT])
+    
+    def should_handle(self, record: LogRecord) -> bool:
+        """Handle audit logs only."""
+        if not self.enabled:
+            return False
+        
+        # Check level threshold
+        if record.level < self.min_level:
+            return False
+        
+        # Handle audit logs only
+        return record.log_type == LogType.AUDIT
     
     def _format_json(self, record: LogRecord) -> str:
         """Enhanced JSON format for audit logs."""

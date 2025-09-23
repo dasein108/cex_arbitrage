@@ -10,7 +10,7 @@ HFT COMPLIANT: No blocking operations, minimal allocation overhead.
 import asyncio
 import logging
 import time
-from typing import Dict, List, Optional, Any
+from typing import Dict, List, Optional, Any, Union
 import weakref
 
 from common.ring_buffer import RingBuffer
@@ -18,6 +18,7 @@ from .interfaces import (
     HFTLoggerInterface, LogBackend, LogRouter, LogRecord, 
     LogLevel, LogType, PerformanceMonitor
 )
+from .structs import PerformanceConfig
 
 
 class HFTLogger(HFTLoggerInterface):
@@ -37,22 +38,31 @@ class HFTLogger(HFTLoggerInterface):
     _instances = weakref.WeakSet()
     _global_shutdown = False
     
-    def __init__(self, name: str, backends: List[LogBackend], router: LogRouter, 
-                 buffer_size: int = 10000, batch_size: int = 50):
+    def __init__(self, name: str, backends: List[LogBackend], router: LogRouter, config: PerformanceConfig):
         """
-        Initialize HFT logger.
+        Initialize HFT logger with struct configuration.
         
         Args:
             name: Logger name
             backends: List of backend instances
             router: Router for message routing
-            buffer_size: Ring buffer size
-            batch_size: Dispatch batch size
+            config: PerformanceConfig struct (required)
         """
+        if not isinstance(config, PerformanceConfig):
+            raise TypeError(f"Expected PerformanceConfig, got {type(config)}")
+        
         self.name = name
         self.backends = backends
         self.router = router
-        self.batch_size = batch_size
+        self.perf_config = config
+        
+        # Configuration from struct
+        self.batch_size = config.batch_size
+        buffer_size = config.buffer_size
+        self.dispatch_interval = config.dispatch_interval
+        self.max_queue_size = config.max_queue_size
+        self.enable_sampling = config.enable_sampling
+        self.sampling_rate = config.sampling_rate
         
         # Persistent context for all log messages
         self.context = {}

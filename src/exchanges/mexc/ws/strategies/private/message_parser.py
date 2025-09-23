@@ -176,9 +176,3 @@ class MexcPrivateMessageParser(MessageParser):
 
         return MessageType.UNKNOWN
 
-    async def parse_orderbook_message(
-        self,
-        message: Dict[str, Any]
-    ) -> Optional[OrderBook]:
-        """Private messages don't contain orderbook data."""
-        return None

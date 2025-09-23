@@ -42,7 +42,21 @@ from .factory import (
     get_arbitrage_logger,
     get_strategy_logger,
     get_strategy_metrics_logger,
-    configure_logging
+    configure_logging,
+    configure_logging_from_struct
+)
+
+# Configuration structures
+from .structs import (
+    LoggingConfig,
+    ConsoleBackendConfig,
+    FileBackendConfig,
+    PrometheusBackendConfig,
+    AuditBackendConfig,
+    PerformanceConfig,
+    RouterConfig,
+    LoggerComponentConfig,
+    BackendConfig
 )
 
 # Router (simplified)
@@ -78,6 +92,18 @@ __all__ = [
     'get_strategy_logger',
     'get_strategy_metrics_logger',
     'configure_logging',
+    'configure_logging_from_struct',
+    
+    # Configuration structures
+    'LoggingConfig',
+    'ConsoleBackendConfig',
+    'FileBackendConfig',
+    'PrometheusBackendConfig',
+    'AuditBackendConfig',
+    'PerformanceConfig',
+    'RouterConfig',
+    'LoggerComponentConfig',
+    'BackendConfig',
     
     # Router
     'SimpleRouter',

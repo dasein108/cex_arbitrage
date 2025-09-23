@@ -9,9 +9,10 @@ HFT COMPLIANT: Fast filtering, async dispatch.
 
 import logging
 import os
-from typing import Dict, Any
+from typing import Dict, Optional
 
 from ..interfaces import LogBackend, LogRecord, LogLevel, LogType
+from ..structs import ConsoleBackendConfig
 
 
 class ConsoleBackend(LogBackend):
@@ -20,25 +21,38 @@ class ConsoleBackend(LogBackend):
     
     Uses Python's standard logging for full compatibility with existing
     console handlers, formatters, and log management tools.
+    
+    Accepts only ConsoleBackendConfig struct for configuration.
     """
     
-    def __init__(self, name: str = "console", config: Dict[str, Any] = None):
-        super().__init__(name, config)
+    def __init__(self, config: ConsoleBackendConfig, name: str = "console"):
+        """
+        Initialize console backend with struct configuration.
         
-        # Configuration
-        config = config or {}
-        self.environment = config.get('environment', os.getenv('ENVIRONMENT', 'dev'))
-        min_level_config = config.get('min_level', LogLevel.DEBUG)
-        if isinstance(min_level_config, str):
-            self.min_level = LogLevel[min_level_config.upper()]
+        Args:
+            name: Backend name
+            config: ConsoleBackendConfig struct (required)
+        """
+        if not isinstance(config, ConsoleBackendConfig):
+            raise TypeError(f"Expected ConsoleBackendConfig, got {type(config)}")
+        
+        super().__init__(name, {})  # Empty dict for base class compatibility
+        
+        # Store struct config
+        self.config = config
+        
+        # Configuration from struct
+        self.environment = config.environment or os.getenv('ENVIRONMENT', 'dev')
+        if isinstance(config.min_level, str):
+            self.min_level = LogLevel[config.min_level.upper()]
         else:
-            self.min_level = LogLevel(min_level_config)
-        self.color_enabled = config.get('color', True)
-        self.include_context = config.get('include_context', True)
-        self.max_message_length = config.get('max_message_length', 1000)
+            self.min_level = LogLevel(config.min_level)
+        self.color_enabled = config.color
+        self.include_context = config.include_context
+        self.max_message_length = config.max_message_length
         
-        # Enable based on config (always respect config.yaml settings)
-        self.enabled = config.get('enabled', True)  # Default to enabled if not specified
+        # Enable based on struct config
+        self.enabled = config.enabled
         
         # Cache for Python loggers (one per logger name)
         self._py_loggers: Dict[str, logging.Logger] = {}
@@ -196,6 +210,7 @@ class ColorConsoleBackend(ConsoleBackend):
     Console backend with color support for better readability.
     
     Adds ANSI color codes based on log level.
+    Accepts only ConsoleBackendConfig struct for configuration.
     """
     
     # ANSI color codes
@@ -208,8 +223,15 @@ class ColorConsoleBackend(ConsoleBackend):
     }
     RESET = '\033[0m'
     
-    def __init__(self, name: str = "color_console", config: Dict[str, Any] = None):
-        super().__init__(name, config)
+    def __init__(self, config: ConsoleBackendConfig, name: str = "color_console"):
+        """
+        Initialize color console backend with struct configuration.
+        
+        Args:
+            name: Backend name
+            config: ConsoleBackendConfig struct (required)
+        """
+        super().__init__(config, name)
         
         # Check if colors are supported
         self.colors_supported = (
@@ -221,8 +243,7 @@ class ColorConsoleBackend(ConsoleBackend):
         # Only use colors if explicitly enabled and supported
         self.use_colors = (
             self.color_enabled and 
-            self.colors_supported and
-            config.get('force_color', False) or self.colors_supported
+            self.colors_supported
         )
     
     def _format_message(self, record: LogRecord) -> str:
@@ -241,11 +262,19 @@ class StructuredConsoleBackend(ConsoleBackend):
     Console backend that outputs structured data (JSON) for analysis.
     
     Useful for development debugging and log parsing.
+    Accepts only ConsoleBackendConfig struct for configuration.
     """
     
-    def __init__(self, name: str = "structured_console", config: Dict[str, Any] = None):
-        super().__init__(name, config)
-        self.include_raw_data = config.get('include_raw_data', False)
+    def __init__(self, config: ConsoleBackendConfig, name: str = "structured_console"):
+        """
+        Initialize structured console backend with struct configuration.
+        
+        Args:
+            name: Backend name
+            config: ConsoleBackendConfig struct (required)
+        """
+        super().__init__(config, name)
+        self.include_raw_data = False  # Fixed property for structured output
     
     def _format_message(self, record: LogRecord) -> str:
         """Format as JSON structure."""
