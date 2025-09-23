@@ -95,8 +95,9 @@ sudo chmod 700 /opt/arbitrage/data/postgres
 echo "Stopping existing services..."
 docker-compose --env-file .env.prod -f docker-compose.yml -f docker-compose.prod.yml down --remove-orphans || true
 
-echo "Pulling latest images..."
+echo "Pulling latest images and rebuilding custom images..."
 docker-compose --env-file .env.prod -f docker-compose.yml -f docker-compose.prod.yml pull
+docker-compose --env-file .env.prod -f docker-compose.yml -f docker-compose.prod.yml build --no-cache data_collector
 
 echo "Starting database..."
 docker-compose --env-file .env.prod -f docker-compose.yml -f docker-compose.prod.yml up -d database
@@ -194,6 +195,34 @@ EOF
     echo_success "Update complete - configuration reloaded"
 }
 
+rebuild_image() {
+    echo_info "Rebuilding Docker image..."
+    sync_code
+    
+    ssh -i "$SSH_KEY" "root@$SERVER" << 'EOF'
+cd /opt/arbitrage/docker
+
+# Verify Docker Compose is available
+if ! command -v docker-compose &> /dev/null; then
+    echo "❌ Docker Compose not found"
+    exit 1
+fi
+
+echo "Stopping data collector..."
+docker-compose --env-file .env.prod -f docker-compose.yml -f docker-compose.prod.yml stop data_collector
+
+echo "Rebuilding data collector image with latest dependencies..."
+docker-compose --env-file .env.prod -f docker-compose.yml -f docker-compose.prod.yml build --no-cache data_collector
+
+echo "Starting data collector with rebuilt image..."
+docker-compose --env-file .env.prod -f docker-compose.yml -f docker-compose.prod.yml up -d data_collector
+
+echo "✅ Image rebuilt and collector restarted"
+EOF
+
+    echo_success "Docker image rebuilt successfully"
+}
+
 case "${1:-deploy}" in
     "deploy")
         sync_code
@@ -202,16 +231,25 @@ case "${1:-deploy}" in
     "update")
         update_only
         ;;
+    "rebuild")
+        rebuild_image
+        ;;
     "sync")
         sync_code
         ;;
     *)
-        echo "Usage: $0 {deploy|update|sync}"
+        echo "Usage: $0 {deploy|update|rebuild|sync}"
         echo ""
         echo "Commands:"
-        echo "  deploy  - Full deployment (sync + setup + deploy)"
-        echo "  update  - Update code and restart collector"
-        echo "  sync    - Sync code only"
+        echo "  deploy  - Full deployment (sync + setup + deploy + rebuild)"
+        echo "  update  - Update code/config and restart collector (no rebuild)"
+        echo "  rebuild - Rebuild Docker image with new dependencies"
+        echo "  sync    - Sync code only (no restart)"
+        echo ""
+        echo "Examples:"
+        echo "  ./deploy.sh update          # Quick update for code/config changes"
+        echo "  ./deploy.sh rebuild         # Rebuild image after dependency changes"
+        echo "  ./deploy.sh deploy          # Full deployment for new servers"
         exit 1
         ;;
 esac
