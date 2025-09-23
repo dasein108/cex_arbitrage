@@ -114,7 +114,6 @@ The engine follows a **high-performance event-driven architecture** with these f
 
 **Purpose**: **STANDARDIZED** ultra-high performance REST API client optimized for cryptocurrency trading
 
-**CRITICAL**: **ALL exchanges MUST use `HighPerformanceRestClient` - NO custom HTTP clients allowed**
 
 **Key Features**:
 - **Connection pooling** with persistent aiohttp sessions
@@ -156,13 +155,11 @@ The engine follows a **high-performance event-driven architecture** with these f
 - `src/exchanges/interface/PrivateExchangeInterface` - Trading operations  
 - `src/structs/exchange.py` - All data structures (Order, OrderBook, Trade, etc.)
 - `src/common/exceptions.py` - Exception handling (ExchangeAPIError, RateLimitError)
-- `src/common/rest.HighPerformanceRestClient` - HTTP operations
 
 #### ❌ **NEVER USE** - Legacy/Deprecated:
 - `raw/common/interfaces/` - Legacy interface system (performance issues)
 - `raw/common/entities.py` - Legacy data structures (lacks msgspec optimization)  
 - `raw/common/exceptions.py` - MEXC-specific exceptions (incompatible attributes)
-- Custom HTTP clients - Use standardized `HighPerformanceRestClient` only
 
 #### 📋 **Compliance Verification**:
 ```bash
@@ -319,7 +316,6 @@ async def example_usage():
 from core.exchanges.rest import PublicExchangeSpotRestInterface
 from core.exchanges.rest.spot.base_rest_spot_private import PrivateExchangeSpotRestInterface
 from core.structs import Symbol, OrderBook, Order, ExchangeName
-from core.transport.rest.rest_client_legacy import HighPerformanceRestClient, RequestConfig
 from core.exceptions.exchange import BaseExchangeError, RateLimitErrorBase
 
 
@@ -329,12 +325,6 @@ class BinancePublic(PublicExchangeSpotRestInterface):
    def __init__(self):
       super().__init__(ExchangeName("binance"), "https://api.binance.com")
 
-      # MANDATORY: Use standardized REST client
-      self.client = HighPerformanceRestClient(
-         base_url=self.base_url,
-         max_concurrent_requests=40,
-         enable_metrics=True
-      )
 
    @property
    def exchange_name(self) -> ExchangeName:
@@ -481,10 +471,6 @@ The `raw/` directory contains legacy code that is **incompatible with unified in
        async with session.get(url) as response:
            data = await response.json()
    
-   # ✅ Use standardized client:
-   from core.transport.rest.rest_client_legacy import HighPerformanceRestClient
-   async with HighPerformanceRestClient(base_url) as client:
-       data = await client.get(endpoint)
    ```
 
 #### **Phase 2: Interface Migration (1-2 weeks)**

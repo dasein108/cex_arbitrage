@@ -1,5 +1,5 @@
 from .structs import HTTPMethod
-from .rest_client_legacy import RestClient
+# from .rest_client_legacy import RestClient  # File missing - commented out to prevent import error
 from .strategies import (
     RequestStrategy, RateLimitStrategy, RetryStrategy, AuthStrategy, ExceptionHandlerStrategy,
     RestStrategySet, RestStrategyFactory,
@@ -11,7 +11,7 @@ from .rest_transport_manager import RestTransportManager
 
 __all__ = [
     "HTTPMethod",
-    "RestClient",
+    # "RestClient",  # Commented out due to missing file
     # Strategy interfaces
     "RequestStrategy", "RateLimitStrategy", "RetryStrategy", "AuthStrategy", "ExceptionHandlerStrategy",
     "RestStrategySet", "RestStrategyFactory",

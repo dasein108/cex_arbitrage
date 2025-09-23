@@ -17,7 +17,7 @@ from .backends.console import ConsoleBackend, ColorConsoleBackend
 from .backends.file import FileBackend, AuditFileBackend
 from .backends.prometheus import PrometheusBackend, PrometheusHistogramBackend
 from .backends.python_bridge import PythonLoggingBridge
-from core.config.config_manager import get_logging_config
+# Lazy import to avoid circular dependency - import moved to functions where needed
 
 
 class LoggerFactory:
@@ -63,7 +63,8 @@ class LoggerFactory:
         # Create router
         router = cls._create_router(backends, effective_config)
         
-        # Get performance settings from config.yaml
+        # Get performance settings from config.yaml (lazy import to avoid circular dependency)
+        from core.config.config_manager import get_logging_config
         yaml_config = get_logging_config()
         performance_config = yaml_config.get('performance', {})
         
@@ -156,7 +157,8 @@ class LoggerFactory:
         """Create and configure logging backends based on config.yaml."""
         backends = {}
         
-        # Get configuration from config.yaml
+        # Get configuration from config.yaml (lazy import to avoid circular dependency)
+        from core.config.config_manager import get_logging_config
         yaml_config = get_logging_config()
         
         # Merge with provided config (provided config takes precedence)

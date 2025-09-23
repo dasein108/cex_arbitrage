@@ -1,7 +1,8 @@
 import logging
 from typing import Dict, Any, Optional, List
 
-from core.exchanges.websocket import MessageParser, ParsedMessage
+from core.transport.websocket.strategies.message_parser import MessageParser
+from core.transport.websocket.structs import ParsedMessage
 from core.exchanges.services import BaseExchangeMapper
 from core.transport.websocket.structs import MessageType
 
@@ -9,10 +10,8 @@ from core.transport.websocket.structs import MessageType
 class GateioPrivateMessageParser(MessageParser):
     """Gate.io private WebSocket message parser."""
 
-    def __init__(self, mapper: BaseExchangeMapper):
-        super().__init__(mapper)
-        self.logger = logging.getLogger(f"{__name__}.{self.__class__.__name__}")
-        self.mapper = mapper
+    def __init__(self, mapper: BaseExchangeMapper, logger):
+        super().__init__(mapper, logger)
 
     async def parse_message(self, raw_message: str) -> Optional[ParsedMessage]:
         """Parse raw WebSocket message from Gate.io private channels."""

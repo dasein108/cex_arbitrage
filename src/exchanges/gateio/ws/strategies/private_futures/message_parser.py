@@ -3,7 +3,7 @@ import msgspec
 from typing import Dict, Any, List, Optional
 from decimal import Decimal
 
-from core.exchanges.websocket import MessageParser
+from core.transport.websocket.strategies.message_parser import MessageParser
 from core.exchanges.services import BaseExchangeMapper
 from core.structs.common import (
     Symbol, Order, Trade, AssetBalance, AssetName,
@@ -15,9 +15,8 @@ from core.transport.websocket.structs import ParsedMessage, MessageType
 class GateioPrivateFuturesMessageParser(MessageParser):
     """Gate.io private futures WebSocket message parser."""
 
-    def __init__(self, mapper: BaseExchangeMapper):
-        super().__init__(mapper)
-        self.logger = logging.getLogger(f"{__name__}.{self.__class__.__name__}")
+    def __init__(self, mapper: BaseExchangeMapper, logger):
+        super().__init__(mapper, logger)
 
     async def parse_message(self, raw_message: str) -> Optional[ParsedMessage]:
         """Parse Gate.io private futures WebSocket message."""

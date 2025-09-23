@@ -9,12 +9,14 @@ from core.config.structs import ExchangeConfig
 class GateioRateLimitStrategy(RateLimitStrategy):
     """Gate.io-specific rate limiting based on ExchangeConfig."""
 
-    def __init__(self, exchange_config: ExchangeConfig):
+    def __init__(self, exchange_config: ExchangeConfig, logger=None, **kwargs):
         """
         Initialize Gate.io rate limiting strategy from ExchangeConfig.
         
         Args:
             exchange_config: Exchange configuration containing rate_limit settings
+            logger: Optional HFT logger injection
+            **kwargs: Additional parameters (ignored for compatibility)
         """
         # Extract rate limits from config or use Gate.io defaults
         if exchange_config.rate_limit:
@@ -28,6 +30,13 @@ class GateioRateLimitStrategy(RateLimitStrategy):
             self.global_limit = 3
         
         self.exchange_config = exchange_config
+        
+        # Initialize HFT logger with hierarchical tags
+        if logger is None:
+            from core.logging import get_strategy_logger
+            tags = ['gateio', 'rest', 'rate_limit']
+            logger = get_strategy_logger('rest.rate_limit.gateio', tags)
+        self.logger = logger
         
         # Gate.io endpoint-specific rate limits based on API documentation
         self._endpoint_limits = {

@@ -157,7 +157,15 @@ class WebSocketStrategyFactory:
                     connection_strategy = connection_cls()
                 
                 subscription_strategy = subscription_cls(mapper=mapper)
-                message_parser = parser_cls(mapper)
+                
+                # Create logger for message parser
+                api_type_str = "private" if is_private else "public"
+                exchange_name = exchange.value.lower()
+                parser_logger = get_strategy_logger(
+                    f'ws.message_parser.{exchange_name}.{api_type_str}',
+                    [exchange_name, 'ws', 'message_parser', api_type_str]
+                )
+                message_parser = parser_cls(mapper, parser_logger)
                 
                 strategy_set = WebSocketStrategySet(
                     connection_strategy=connection_strategy,
@@ -203,58 +211,4 @@ class WebSocketStrategyFactory:
     def clear_registrations(cls) -> None:
         """Clear all registered strategies (for testing)."""
         cls._registered_strategies.clear()
-
-
-def create_websocket_strategies(
-    exchange_name: str,
-    is_private: bool = False
-) -> WebSocketStrategySet:
-    """
-    Create WebSocket strategies for the specified exchange.
-    
-    Legacy function that delegates to the factory pattern.
-    
-    Args:
-        exchange_name: Name of the exchange (mexc, gateio)
-        is_private: Whether to create private or public strategies
-    
-    Returns:
-        Complete strategy set for the exchange
-    
-    Raises:
-        ConfigurationError: If exchange is not supported
-    """
-    # Get logger for legacy function tracking
-    logger = get_strategy_logger('ws.strategy.legacy', ['core', 'legacy', 'ws', 'strategy'])
-    
-    api_type = 'private' if is_private else 'public'
-    logger.info("Legacy WebSocket strategy creation requested",
-               exchange_name=exchange_name,
-               api_type=api_type)
-    
-    # Track legacy function usage
-    logger.metric("ws_legacy_strategy_requests", 1,
-                  tags={"exchange": exchange_name, "api_type": api_type})
-    
-    try:
-        # Normalize exchange name to ExchangeEnum and delegate to factory
-        from core.utils.exchange_utils import exchange_name_to_enum
-        exchange_enum = exchange_name_to_enum(exchange_name)
-        
-        result = WebSocketStrategyFactory.inject(exchange_enum, is_private)
-        
-        logger.info("Legacy WebSocket strategy creation completed",
-                   exchange_name=exchange_name,
-                   api_type=api_type)
-        
-        return result
-        
-    except Exception as e:
-        logger.error("Legacy WebSocket strategy creation failed",
-                    exchange_name=exchange_name,
-                    api_type=api_type,
-                    error_type=type(e).__name__,
-                    error_message=str(e))
-        raise
-
 

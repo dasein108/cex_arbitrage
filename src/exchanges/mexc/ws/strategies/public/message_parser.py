@@ -7,7 +7,7 @@ import msgspec
 from common.orderbook_entry_pool import OrderBookEntryPool
 from common.orderbook_diff_processor import ParsedOrderbookUpdate
 from core.exchanges.services import BaseExchangeMapper
-from core.transport.websocket.strategies.enhanced_message_parser import EnhancedBaseMessageParser
+from core.transport.websocket.strategies.message_parser import MessageParser
 from core.transport.websocket.structs import ParsedMessage, MessageType
 from exchanges.mexc.ws.protobuf_parser import MexcProtobufParser
 from core.structs.common import OrderBook, Trade, BookTicker
@@ -18,7 +18,7 @@ from exchanges.mexc.services.mexc_mappings import MexcUnifiedMappings
 from core.logging import HFTLoggerInterface
 
 
-class MexcPublicMessageParser(EnhancedBaseMessageParser):
+class MexcPublicMessageParser(MessageParser):
     """MEXC public WebSocket message parser with HFT optimizations."""
 
     # Fast message type detection constants (compiled once)
@@ -29,8 +29,8 @@ class MexcPublicMessageParser(EnhancedBaseMessageParser):
         0x1a: 'symbol',  # '\\x1a' - Symbol field tag
     }
 
-    def __init__(self, mapper: BaseExchangeMapper, logger: Optional[HFTLoggerInterface] = None):
-        super().__init__(mapper, exchange_name="mexc", logger=logger)
+    def __init__(self, mapper: BaseExchangeMapper, logger: HFTLoggerInterface):
+        super().__init__(mapper, logger)
         self.entry_pool = OrderBookEntryPool(initial_size=200, max_size=500)
         # Ensure we have the correct mapper type for MEXC-specific operations
         if not isinstance(mapper, MexcUnifiedMappings):
@@ -326,7 +326,7 @@ class MexcPublicMessageParser(EnhancedBaseMessageParser):
 
         return None
 
-    # Removed redundant batch processing - using inherited implementation from EnhancedBaseMessageParser
+    # Removed redundant batch processing - using inherited implementation from unified MessageParser
     # The base class provides comprehensive batch processing with metrics tracking and error handling
 
     async def _parse_json_message(self, msg: Dict[str, Any]) -> Optional[ParsedMessage]:
