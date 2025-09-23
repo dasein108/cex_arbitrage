@@ -5,7 +5,7 @@ from urllib.parse import urlencode
 
 from core.transport.rest import AuthStrategy, HTTPMethod, AuthenticationData
 from core.config.structs import ExchangeConfig
-from core.structs.common import RestConnectionSettings
+from core.structs.connection import RestConnectionSettings
 
 # HFT Logger Integration
 from core.logging import get_strategy_logger, LoggingTimer

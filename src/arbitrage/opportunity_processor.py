@@ -14,7 +14,7 @@ from typing import Any
 from .structures import ArbitrageOpportunity, ArbitrageState
 from .types import ArbitrageConfig, EngineStatistics
 from core.structs.common import Symbol
-from common.telegram_utils import send_trade_alert
+from core.transport.telegram import send_trade_alert
 
 logger = get_logger('arbitrage.opportunity_processor')
 

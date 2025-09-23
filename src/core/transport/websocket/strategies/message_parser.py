@@ -53,5 +53,3 @@ class MessageParser(ABC):
             mapper: Exchange mappings interface containing symbol_mapper functionality
         """
         self.mapper = mapper
-        # Maintain backward compatibility with symbol_mapper property
-        self.symbol_mapper = mapper._symbol_mapper if mapper else None

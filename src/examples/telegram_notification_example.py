@@ -7,11 +7,10 @@ using the async aiohttp-based utility functions.
 
 import asyncio
 import os
-from common.telegram_utils import (
+from core.transport.telegram import (
     configure_telegram,
     send_to_telegram,
     send_alert,
-    send_error_alert,
     send_warning_alert,
     send_info_alert,
     send_trade_alert,

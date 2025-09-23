@@ -17,24 +17,7 @@ from .backends.console import ConsoleBackend, ColorConsoleBackend
 from .backends.file import FileBackend, AuditFileBackend
 from .backends.prometheus import PrometheusBackend, PrometheusHistogramBackend
 from .backends.python_bridge import PythonLoggingBridge
-
-# Lazy import to avoid circular dependency
-_config_loaded = False
-_logging_config = None
-
-def _get_logging_config() -> Dict[str, Any]:
-    """Get logging configuration from config.yaml."""
-    global _config_loaded, _logging_config
-    if not _config_loaded:
-        try:
-            from core.config.config_manager import get_logging_config
-            _logging_config = get_logging_config()
-            _config_loaded = True
-        except Exception:
-            # Fallback to default configuration if config.yaml not available
-            _logging_config = {}
-            _config_loaded = True
-    return _logging_config or {}
+from core.config.config_manager import get_logging_config
 
 
 class LoggerFactory:
@@ -81,7 +64,7 @@ class LoggerFactory:
         router = cls._create_router(backends, effective_config)
         
         # Get performance settings from config.yaml
-        yaml_config = _get_logging_config()
+        yaml_config = get_logging_config()
         performance_config = yaml_config.get('performance', {})
         
         # Create logger with config.yaml settings
@@ -174,7 +157,7 @@ class LoggerFactory:
         backends = {}
         
         # Get configuration from config.yaml
-        yaml_config = _get_logging_config()
+        yaml_config = get_logging_config()
         
         # Merge with provided config (provided config takes precedence)
         environment = config.get('environment', os.getenv('ENVIRONMENT', 'dev'))

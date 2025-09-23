@@ -5,7 +5,7 @@ from core.exchanges.websocket import ConnectionStrategy, ConnectionContext
 from core.transport.websocket.strategies.connection import ReconnectionPolicy
 from core.config.structs import ExchangeConfig
 from core.exceptions.exchange import BaseExchangeError
-from core.structs.common import WebSocketConnectionSettings, ReconnectionSettings
+from core.structs.connection import WebSocketConnectionSettings, ReconnectionSettings
 
 # HFT Logger Integration
 from core.logging import get_strategy_logger, LoggingTimer
