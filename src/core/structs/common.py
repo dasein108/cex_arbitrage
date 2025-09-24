@@ -192,6 +192,51 @@ class SymbolInfo(Struct, frozen=True):
 # Type alias for collections
 SymbolsInfo = Dict[Symbol, SymbolInfo]
 
+class NetworkInfo(Struct, frozen=True):
+    """Deposit/withdraw details for a specific network of an asset."""
+    network: str
+    deposit_enable: bool
+    withdraw_enable: bool
+    withdraw_fee: float
+    withdraw_min: float
+    withdraw_max: Optional[float] = None
+    min_confirmations: Optional[int] = None
+    address_regex: Optional[str] = None
+    memo_regex: Optional[str] = None
+    deposit_desc: Optional[str] = None
+    withdraw_desc: Optional[str] = None
+    address: Optional[str] = None
+    memo: Optional[str] = None
+
+class AssetInfo(Struct, frozen=True):
+    """Currency information across all supported networks."""
+    asset: AssetName
+    name: str
+    deposit_enable: bool
+    withdraw_enable: bool
+    networks: Dict[str, NetworkInfo]  
+
+class NetworkInfo(Struct, frozen=True):
+    network: str
+    deposit_enable: bool
+    withdraw_enable: bool
+    withdraw_fee: float
+    withdraw_min: float
+    withdraw_max: Optional[float] = None  # если есть
+    deposit_min: Optional[float] = None
+    confirmations: Optional[int] = None
+    contract_address: Optional[str] = None
+    memo_required: Optional[bool] = None
+    address_regex: Optional[str] = None  # если Gate.io предоставляет
+    // другие поля, если есть
+
+class AssetInfo(Struct, frozen=True):
+    asset: AssetName
+    name: str
+    deposit_enable: bool
+    withdraw_enable: bool
+    networks: Dict[str, NetworkInfo]
+    
 class Trade(Struct):
     """Individual trade/transaction."""
     symbol: Symbol

@@ -10,6 +10,7 @@ from core.structs.common import (
     Side,
     AssetBalance,
     AssetName,
+    AssetInfo,
     TimeInForce
 )
 
@@ -131,9 +132,22 @@ class PrivateExchangeSpotRestInterface(BaseExchangeRestInterface):
     async def delete_listen_key(self, listen_key: str) -> None:
         """
         Delete/close a listen key.
-        
+
         Args:
             listen_key: The listen key to delete
+        """
+        pass
+
+    @abstractmethod
+    async def get_currency_info(self) -> Dict[AssetName, AssetInfo]:
+        """
+        Get currency information including deposit/withdrawal status and network details.
+
+        Returns:
+            Dictionary mapping AssetName to AssetInfo with network configurations
+
+        Raises:
+            ExchangeAPIError: If unable to fetch currency information
         """
         pass
     

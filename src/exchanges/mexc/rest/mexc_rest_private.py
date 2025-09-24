@@ -25,11 +25,11 @@ from typing import Dict, List, Optional, Any
 import msgspec
 
 from exchanges.mexc.structs.exchange import (
-    MexcAccountResponse, MexcOrderResponse
+    MexcAccountResponse, MexcOrderResponse, MexcCurrencyInfoResponse
 )
 from core.structs.common import (
     Symbol, Order, OrderId, OrderType, Side, AssetBalance,
-    AssetName, TimeInForce
+    AssetName, AssetInfo, NetworkInfo, TimeInForce
 )
 from core.exceptions.exchange import BaseExchangeError
 
@@ -484,3 +484,62 @@ class MexcPrivateSpotRest(PrivateExchangeSpotRestInterface):
         )
 
         self.logger.debug(f"Deleted listen key: {listen_key[:8]}...")
+
+    async def get_currency_info(self) -> Dict[AssetName, AssetInfo]:
+        """
+        Get currency information including deposit/withdrawal status and network details.
+
+        Returns:
+            Dictionary mapping AssetName to AssetInfo with network configurations
+
+        Raises:
+            ExchangeAPIError: If unable to fetch currency information
+        """
+        response_data = await self.request(
+            HTTPMethod.GET,
+            '/api/v3/capital/config/getall'
+        )
+
+        currency_responses = msgspec.convert(response_data, list[MexcCurrencyInfoResponse])
+
+        currency_info_map: Dict[AssetName, AssetInfo] = {}
+
+        for currency_data in currency_responses:
+            asset_name = AssetName(currency_data.coin)
+
+            networks: Dict[str, NetworkInfo] = {}
+            overall_deposit_enable = False
+            overall_withdraw_enable = False
+
+            for network_data in currency_data.networkList:
+                network_info = NetworkInfo(
+                    network=network_data.network,
+                    deposit_enable=network_data.depositEnable,
+                    withdraw_enable=network_data.withdrawEnable,
+                    withdraw_fee=float(network_data.withdrawFee),
+                    withdraw_min=float(network_data.withdrawMin),
+                    withdraw_max=float(network_data.withdrawMax) if network_data.withdrawMax else None,
+                    confirmations=network_data.minConfirm,
+                    contract_address=network_data.contract,
+                    memo_required=None  # MEXC doesn't provide this info
+                )
+
+                networks[network_data.network] = network_info
+
+                if network_data.depositEnable:
+                    overall_deposit_enable = True
+                if network_data.withdrawEnable:
+                    overall_withdraw_enable = True
+
+            asset_info = AssetInfo(
+                asset=asset_name,
+                name=currency_data.name,
+                deposit_enable=overall_deposit_enable,
+                withdraw_enable=overall_withdraw_enable,
+                networks=networks
+            )
+
+            currency_info_map[asset_name] = asset_info
+
+        self.logger.info(f"Retrieved currency info for {len(currency_info_map)} assets")
+        return currency_info_map
