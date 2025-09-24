@@ -30,6 +30,9 @@ from exchanges.structs.types import AssetName
 from exchanges.integrations.mexc.rest.mexc_rest_private import MexcPrivateSpotRest
 from config.structs import ExchangeConfig
 from exchanges.interfaces.ws import PrivateSpotWebsocket
+from exchanges.services.exchange_mapper.factory import ExchangeMapperFactory
+from exchanges.structs import ExchangeEnum
+from infrastructure.logging import get_exchange_logger
 # Mappings now consolidated in MexcUnifiedMappings
 
 # MEXC-specific protobuf imports for message parsing
@@ -43,11 +46,7 @@ class MexcPrivateSpotWebsocket(PrivateSpotWebsocket):
 
     def __init__(
         self,
-        private_rest_client: MexcPrivateSpotRest,
         config: ExchangeConfig,
-        order_handler: Optional[Callable[[Order], Awaitable[None]]] = None,
-        balance_handler: Optional[Callable[[Dict[AssetName, AssetBalance]], Awaitable[None]]] = None,
-        trade_handler: Optional[Callable[[Trade], Awaitable[None]]] = None,
         **kwargs
     ):
         """
@@ -56,15 +55,19 @@ class MexcPrivateSpotWebsocket(PrivateSpotWebsocket):
         Base class handles all strategy creation, WebSocket manager setup, and dependency injection.
         Only MEXC-specific initialization logic and REST client management goes here.
         """
-        # Store REST client for MEXC-specific operations
-        self.rest_client = private_rest_client
+        # Create REST client for MEXC-specific operations (e.g., listen key management)
+        mapper = ExchangeMapperFactory.inject(ExchangeEnum.MEXC)
+        rest_logger = get_exchange_logger('mexc', 'rest_private')
+        self.rest_client = MexcPrivateSpotRest(
+            config=config,
+            mapper=mapper,
+            logger=rest_logger
+        )
         
         # Initialize via composite class dependency injection (like REST pattern)
         super().__init__(
             config=config,
-            order_handler=order_handler,
-            balance_handler=balance_handler,
-            trade_handler=trade_handler
+            **kwargs
         )
         
         self.logger.info("MEXC private WebSocket initialized with dependency injection")

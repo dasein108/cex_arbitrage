@@ -19,7 +19,7 @@ class GateioAuthStrategy(AuthStrategy):
             logger: Optional HFT logger injection
             **kwargs: Additional parameters (ignored for compatibility)
         """
-        if not exchange_config.credentials.has_private_api():
+        if not exchange_config.credentials.has_private_api:
             raise ValueError("Gate.io credentials not configured in ExchangeConfig")
         
         self.api_key = exchange_config.credentials.api_key

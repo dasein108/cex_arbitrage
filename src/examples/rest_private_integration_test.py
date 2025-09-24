@@ -33,7 +33,8 @@ from exchanges.structs.enums import TimeInForce
 from exchanges.structs import OrderType, Side
 from config import get_exchange_config
 from examples.utils.rest_api_factory import get_exchange_rest_instance
-from exchanges.structs import ExchangeEnumfrom examples.integration_test_framework import (
+from exchanges.structs import ExchangeEnum
+from examples.integration_test_framework import (
     IntegrationTestRunner, TestCategory, TestStatus, EXIT_CODE_SUCCESS, EXIT_CODE_FAILED_TESTS, EXIT_CODE_ERROR,
     EXIT_CODE_CONFIG_ERROR
 )

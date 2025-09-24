@@ -104,7 +104,7 @@ class RestStrategyFactory(BaseCompositeFactory[RestStrategySet]):
         cls._validate_strategy_config(strategy_config, required_strategies)
         
         # Register with tuple key
-        cls._implementations[key] = strategy_config
+        cls._implementations[exchange] = strategy_config
         
         # Log registration with metrics
         api_type = 'private' if is_private else 'public'

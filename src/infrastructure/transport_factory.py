@@ -14,12 +14,73 @@ Supports:
 HFT COMPLIANT: Minimal overhead transport client creation.
 """
 
-from typing import Type, Optional, Union, Dict, Any
+from typing import Type, Optional, Union, Dict, Any, Callable
+from msgspec import Struct
 from exchanges.structs import ExchangeEnum
 from config.structs import ExchangeConfig
 from infrastructure.logging import get_logger, get_exchange_logger
 
 logger = get_logger('transport.factory')
+
+
+class PublicWebsocketHandlers(Struct):
+    """Handler collection for public WebSocket clients."""
+    orderbook_diff_handler: Optional[Callable] = None
+    trades_handler: Optional[Callable] = None
+    book_ticker_handler: Optional[Callable] = None
+    state_change_handler: Optional[Callable] = None
+
+    def has_any_handler(self) -> bool:
+        """Check if any handler is configured."""
+        return any([
+            self.orderbook_diff_handler,
+            self.trades_handler,
+            self.book_ticker_handler,
+            self.state_change_handler
+        ])
+
+    def to_kwargs(self) -> Dict[str, Any]:
+        """Convert to kwargs dict for WebSocket client construction."""
+        kwargs = {}
+        if self.orderbook_diff_handler:
+            kwargs['orderbook_diff_handler'] = self.orderbook_diff_handler
+        if self.trades_handler:
+            kwargs['trades_handler'] = self.trades_handler
+        if self.book_ticker_handler:
+            kwargs['book_ticker_handler'] = self.book_ticker_handler
+        if self.state_change_handler:
+            kwargs['state_change_handler'] = self.state_change_handler
+        return kwargs
+
+
+class PrivateWebsocketHandlers(Struct):
+    """Handler collection for private WebSocket clients."""
+    order_handler: Optional[Callable] = None
+    balance_handler: Optional[Callable] = None
+    trade_handler: Optional[Callable] = None  # Note: private uses 'trade_handler' not 'trades_handler'
+    state_change_handler: Optional[Callable] = None
+
+    def has_any_handler(self) -> bool:
+        """Check if any handler is configured."""
+        return any([
+            self.order_handler,
+            self.balance_handler,
+            self.trade_handler,
+            self.state_change_handler
+        ])
+
+    def to_kwargs(self) -> Dict[str, Any]:
+        """Convert to kwargs dict for WebSocket client construction."""
+        kwargs = {}
+        if self.order_handler:
+            kwargs['order_handler'] = self.order_handler
+        if self.balance_handler:
+            kwargs['balance_handler'] = self.balance_handler
+        if self.trade_handler:
+            kwargs['trade_handler'] = self.trade_handler
+        if self.state_change_handler:
+            kwargs['state_change_handler'] = self.state_change_handler
+        return kwargs
 
 # Transport type registries
 _rest_public_registry: Dict[ExchangeEnum, Type] = {}
@@ -30,8 +91,8 @@ _ws_private_registry: Dict[ExchangeEnum, Type] = {}
 # Singleton caches
 _rest_public_cache: Dict[ExchangeEnum, Any] = {}
 _rest_private_cache: Dict[ExchangeEnum, Any] = {}
-_ws_public_cache: Dict[ExchangeEnum, Any] = {}
-_ws_private_cache: Dict[ExchangeEnum, Any] = {}
+_ws_public_cache: Dict[ExchangeEnum, Any] = {}  # Changed to str for handler-based cache keys
+_ws_private_cache: Dict[ExchangeEnum, Any] = {}  # Changed to str for handler-based cache keys
 
 
 def register_rest_public(exchange: ExchangeEnum, implementation_class: Type) -> None:
@@ -133,15 +194,7 @@ def create_websocket_client(
     is_private: bool = False,
     use_cache: bool = True,
     logger_override: Optional[Any] = None,
-    # Public WebSocket handlers
-    orderbook_diff_handler: Optional[Any] = None,
-    trades_handler: Optional[Any] = None,
-    book_ticker_handler: Optional[Any] = None,
-    # Private WebSocket handlers  
-    order_handler: Optional[Any] = None,
-    balance_handler: Optional[Any] = None,
-    # Common handlers
-    state_change_handler: Optional[Any] = None,
+    handlers: Optional[Union[PublicWebsocketHandlers, PrivateWebsocketHandlers]] = None,
     **kwargs
 ) -> Any:
     """
@@ -153,13 +206,14 @@ def create_websocket_client(
         is_private: Whether to create private or public client
         use_cache: Whether to use singleton caching
         logger_override: Custom logger to inject
-        **kwargs: Additional arguments for WebSocket client (handlers, etc.)
+        handlers: WebSocket handlers (PublicWebsocketHandlers for public, PrivateWebsocketHandlers for private)
+        **kwargs: Additional arguments for WebSocket client
         
     Returns:
         WebSocket client instance
         
     Raises:
-        ValueError: If exchange not registered or config missing for private client
+        ValueError: If exchange not registered, config missing for private client, or handler type mismatch
     """
     registry = _ws_private_registry if is_private else _ws_public_registry
     cache = _ws_private_cache if is_private else _ws_public_cache
@@ -170,17 +224,16 @@ def create_websocket_client(
         available = list(registry.keys())
         raise ValueError(f"No {client_type} WebSocket implementation for {exchange.value}. Available: {available}")
     
-    # Check cache first (but allow bypass for WebSocket with different handlers)
-    # Create cache key based on all relevant parameters
-    handler_params = {
-        'orderbook_diff_handler': orderbook_diff_handler is not None,
-        'trades_handler': trades_handler is not None,
-        'book_ticker_handler': book_ticker_handler is not None,
-        'order_handler': order_handler is not None,
-        'balance_handler': balance_handler is not None,
-        'state_change_handler': state_change_handler is not None,
-        'is_private': is_private
-    }
+    # Validate handler type matches client type
+    if handlers:
+        if is_private and not isinstance(handlers, PrivateWebsocketHandlers):
+            raise ValueError(f"Private WebSocket client requires PrivateWebsocketHandlers, got {type(handlers).__name__}")
+        elif not is_private and not isinstance(handlers, PublicWebsocketHandlers):
+            raise ValueError(f"Public WebSocket client requires PublicWebsocketHandlers, got {type(handlers).__name__}")
+    
+    # Create cache key including handler configuration
+
+
     if use_cache and exchange in cache:
         logger.debug(f"Using cached {client_type} WebSocket client for {exchange.value}")
         return cache[exchange]
@@ -197,29 +250,11 @@ def create_websocket_client(
     implementation_class = registry[exchange]
     logger.info(f"Creating {client_type} WebSocket client: {exchange.value} -> {implementation_class.__name__}")
     
-    # Build kwargs for specific client type
+    # Build kwargs from handlers struct
     client_kwargs = {}
-    
-    if is_private:
-        # Private WebSocket parameters
-        if order_handler:
-            client_kwargs['order_handler'] = order_handler
-        if balance_handler:
-            client_kwargs['balance_handler'] = balance_handler
-        if trades_handler:
-            client_kwargs['trade_handler'] = trades_handler  # Note: private may use 'trade_handler'
-    else:
-        # Public WebSocket parameters
-        if orderbook_diff_handler:
-            client_kwargs['orderbook_diff_handler'] = orderbook_diff_handler
-        if trades_handler:
-            client_kwargs['trades_handler'] = trades_handler
-        if book_ticker_handler:
-            client_kwargs['book_ticker_handler'] = book_ticker_handler
-    
-    # Common parameters
-    if state_change_handler:
-        client_kwargs['state_change_handler'] = state_change_handler
+    if handlers:
+        client_kwargs.update(handlers.to_kwargs())
+        logger.debug(f"Applied {len(client_kwargs)} handlers for {client_type} WebSocket client")
     
     # Add any additional kwargs
     client_kwargs.update(kwargs)

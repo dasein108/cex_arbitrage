@@ -37,9 +37,6 @@ class GateioPrivateSpotWebsocket(PrivateSpotWebsocket):
     def __init__(
         self,
         config: ExchangeConfig,
-        order_handler: Optional[Callable[[Order], Awaitable[None]]] = None,
-        balance_handler: Optional[Callable[[Dict[AssetName, AssetBalance]], Awaitable[None]]] = None,
-        trade_handler: Optional[Callable[[Trade], Awaitable[None]]] = None,
         **kwargs
     ):
         """
@@ -55,9 +52,6 @@ class GateioPrivateSpotWebsocket(PrivateSpotWebsocket):
         # Initialize via composite class dependency injection (like REST pattern)
         super().__init__(
             config=config,
-            order_handler=order_handler,
-            balance_handler=balance_handler,
-            trade_handler=trade_handler,
             **kwargs
         )
         

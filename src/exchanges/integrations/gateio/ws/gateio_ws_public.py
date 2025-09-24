@@ -36,10 +36,7 @@ class GateioPublicSpotWebsocket(PublicSpotWebsocket):
     def __init__(
         self,
         config: ExchangeConfig,
-        orderbook_diff_handler: Optional[Callable[[any, Symbol], Awaitable[None]]] = None,
-        trades_handler: Optional[Callable[[Symbol, List[Trade]], Awaitable[None]]] = None,
-        book_ticker_handler: Optional[Callable[[Symbol, BookTicker], Awaitable[None]]] = None,
-        state_change_handler: Optional[Callable[[ConnectionState], Awaitable[None]]] = None,
+        **kwargs
     ):
         """
         Initialize Gate.io public WebSocket with dependency injection.
@@ -54,10 +51,7 @@ class GateioPublicSpotWebsocket(PublicSpotWebsocket):
         # Initialize via composite class dependency injection (like REST pattern)
         super().__init__(
             config=config,
-            orderbook_diff_handler=orderbook_diff_handler,
-            trades_handler=trades_handler,
-            book_ticker_handler=book_ticker_handler,
-            state_change_handler=state_change_handler
+            **kwargs
         )
         
         # State management for symbols (moved from WebSocket manager)

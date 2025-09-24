@@ -60,7 +60,6 @@ class MexcPrivateCompositePrivateExchange(CompositePrivateExchange):
 
         # Initialize private WebSocket client
         self._private_websocket = MexcPrivateSpotWebsocket(
-            private_rest_client=self._private_rest,
             config=self._config,
             order_handler=self._handle_order_update,
             balance_handler=self._handle_balance_update,

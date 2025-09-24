@@ -12,7 +12,7 @@ from dataclasses import dataclass
 
 from config import get_exchange_config
 from exchanges.structs.common import Symbol, BookTicker, Trade
-from infrastructure.transport_factory import create_websocket_client
+from infrastructure.transport_factory import create_websocket_client, PublicWebsocketHandlers
 from db import BookTickerSnapshot
 from db.models import TradeSnapshot
 from exchanges.structs import ExchangeEnum
@@ -129,12 +129,16 @@ class UnifiedWebSocketManager:
             config = get_exchange_config(exchange.value)
             
             # Create WebSocket client using simplified factory
+            handlers = PublicWebsocketHandlers(
+                book_ticker_handler=lambda symbol, ticker: self._handle_book_ticker_update(exchange, symbol, ticker),
+                trades_handler=lambda symbol, trades: self._handle_trades_update(exchange, symbol, trades)
+            )
+            
             client = create_websocket_client(
                 exchange=exchange,
                 config=config,
                 is_private=False,
-                book_ticker_handler=lambda symbol, ticker: self._handle_book_ticker_update(exchange, symbol, ticker),
-                trades_handler=lambda symbol, trades: self._handle_trades_update(exchange, symbol, trades)
+                handlers=handlers
             )
             
             # Store client and initialize

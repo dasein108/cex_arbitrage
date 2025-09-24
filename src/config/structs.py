@@ -248,7 +248,7 @@ class ExchangeConfig(Struct, frozen=True):
         Returns:
             True if exchange has valid API credentials
         """
-        return self.credentials.has_private_api()
+        return self.credentials.has_private_api
     
     def is_public_only(self) -> bool:
         """
