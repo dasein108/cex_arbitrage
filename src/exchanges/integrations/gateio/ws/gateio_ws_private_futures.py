@@ -37,7 +37,7 @@ from config.structs import ExchangeConfig
 from exchanges.interfaces.ws import PrivateSpotWebsocket
 
 
-class GateioWebsocketPrivateSpotFutures(PrivateSpotWebsocket):
+class GateioPrivateFuturesWebsocket(PrivateSpotWebsocket):
     """Gate.io private futures WebSocket client using dependency injection pattern."""
 
     def __init__(

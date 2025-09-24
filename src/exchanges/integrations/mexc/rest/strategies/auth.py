@@ -22,7 +22,7 @@ class MexcAuthStrategy(AuthStrategy):
             exchange_config: Exchange configuration containing credentials
             logger: Optional HFT logger injection
         """
-        if not exchange_config.credentials.is_configured():
+        if not exchange_config.credentials.has_private_api():
             raise ValueError("MEXC credentials not configured in ExchangeConfig")
         
         # Initialize HFT logger with hierarchical tags

@@ -15,13 +15,15 @@ def register_mexc_websocket_implementations():
     This function should be called after the factory modules are fully initialized.
     """
     # Delayed imports to avoid circular dependencies
-    from infrastructure.factories.websocket import PublicWebSocketExchangeFactory, PrivateWebSocketExchangeFactory
-    from .mexc_ws_public import MexcWebsocketExchangePublicWebsocket
-    from .mexc_ws_private import MexcWebsocketPrivateSpot
+    from infrastructure.transport_factory import register_ws_public, register_ws_private
+    from .mexc_ws_public import MexcPublicSpotWebsocket
+    from .mexc_ws_private import MexcPrivateSpotWebsocket
     
-    # Register MEXC WebSocket implementations
-    PublicWebSocketExchangeFactory.register(ExchangeEnum.MEXC, MexcWebsocketExchangePublicWebsocket)
-    PrivateWebSocketExchangeFactory.register(ExchangeEnum.MEXC, MexcWebsocketPrivateSpot)
+    # Register MEXC WebSocket implementations with correct enum values
+    register_ws_public(ExchangeEnum.MEXC, MexcPublicSpotWebsocket)
+    register_ws_private(ExchangeEnum.MEXC, MexcPrivateSpotWebsocket)
+    
+    print(f"✅ Registered MEXC WebSocket implementations: {ExchangeEnum.MEXC.value}")
 
 
 # Auto-register when this module is imported (delayed execution)

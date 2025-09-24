@@ -274,7 +274,7 @@ src/
 ```python
 from typing import Optional, List, Dict, Union
 from core.structs.common import Symbol, OrderBook, ExchangeEnum
-from core.config.structs import ExchangeConfig
+from config.structs import ExchangeConfig
 
 
 def create_exchange(

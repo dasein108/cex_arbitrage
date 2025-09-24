@@ -1,14 +1,11 @@
 """
 REST Factory Module
 
-Provides factory infrastructure for creating REST exchange implementations.
-Follows the established BaseExchangeFactory pattern with auto-registration support.
+DEPRECATED: REST factories have been consolidated into infrastructure.transport_factory.
+Use infrastructure.transport_factory.create_rest_client() instead.
 """
 
-from .public_rest_factory import PublicRestExchangeFactory
-from .private_rest_factory import PrivateRestExchangeFactory
+# REST factories have been replaced by the unified transport factory
+# Import from infrastructure.transport_factory instead
 
-__all__ = [
-    "PublicRestExchangeFactory",
-    "PrivateRestExchangeFactory"
-]
+__all__ = []

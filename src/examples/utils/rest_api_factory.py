@@ -5,8 +5,7 @@ Unified factory function for creating REST exchange clients.
 """
 
 from typing import Optional
-from infrastructure.factories.rest.public_rest_factory import PublicRestExchangeFactory
-from infrastructure.factories.rest.private_rest_factory import PrivateRestExchangeFactory
+from infrastructure.transport_factory import create_rest_client
 from config import HftConfig
 
 # Import exchange modules to trigger auto-registration
@@ -37,7 +36,11 @@ def get_exchange_rest_instance(exchange_name: str, is_private: bool = False, con
     
     exchange_upper = exchange_name.upper()
     
-    if is_private:
-        return PrivateRestExchangeFactory.inject(exchange_upper, config=config)
-    else:
-        return PublicRestExchangeFactory.inject(exchange_upper, config=config)
+    from exchanges.structs import ExchangeEnum
+    exchange_enum = ExchangeEnum(exchange_upper)
+    
+    return create_rest_client(
+        exchange=exchange_enum,
+        config=config,
+        is_private=is_private
+    )

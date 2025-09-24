@@ -15,7 +15,7 @@ from exchanges.structs.common import (
     OrderBook, Symbol, SymbolsInfo
 )
 from exchanges.structs.enums import ExchangeStatus, OrderbookUpdateType
-from exchanges.integrations.mexc.ws.mexc_ws_public import MexcWebsocketExchangePublicWebsocket
+from exchanges.integrations.mexc.ws.mexc_ws_public import MexcPublicSpotWebsocket
 from exchanges.integrations.mexc.rest.mexc_rest_public import MexcPublicSpotRest
 from exchanges.interfaces.ws import ConnectionState
 from config.structs import ExchangeConfig
@@ -47,7 +47,7 @@ class MexcPublicPublicExchange(CompositePublicExchange):
 
         # Initialize components using composition pattern
         self._public_rest = MexcPublicSpotRest(config)
-        self._websocket_client = MexcWebsocketExchangePublicWebsocket(
+        self._websocket_client = MexcPublicSpotWebsocket(
             config=self._config,
             orderbook_diff_handler=self._handle_raw_orderbook_message,
             state_change_handler=self._handle_connection_state_change

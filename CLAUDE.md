@@ -637,7 +637,7 @@ exchange = ExchangeFactory.create_public_exchange(
 )
 
 # Private exchange (requires credentials)
-from src.core.config.structs import ExchangeConfig
+from src.config.structs import ExchangeConfig
 from src.structs.common import ExchangeCredentials
 
 config = ExchangeConfig(

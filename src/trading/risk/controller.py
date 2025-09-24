@@ -192,14 +192,14 @@ class ArbitrageController:
     async def _run_engine_session(self):
         """Run the engine trading session."""
         # Import here to avoid circular dependency
-        from trading.arbitrage.engine_factory import EngineFactory
+        from trading.arbitrage.engine_utils import get_recommended_engine_type, create_engine
         
         # Get recommended engine type based on configuration
-        engine_type = EngineFactory.get_recommended_engine_type(self.config)
+        engine_type = get_recommended_engine_type(self.config)
         logger.info(f"Using {engine_type} engine based on configuration")
         
-        # Create engine using factory
-        self.engine = EngineFactory.create_engine(engine_type, self.config, self.exchanges)
+        # Create engine directly
+        self.engine = create_engine(engine_type, self.config, self.exchanges)
         
         # CRITICAL FIX: Start the engine (was missing!)
         await self.engine.start()

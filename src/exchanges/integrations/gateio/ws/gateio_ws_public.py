@@ -30,7 +30,7 @@ from exchanges.interfaces import PublicSpotWebsocket
 from infrastructure.networking.websocket.structs import ConnectionState
 
 
-class GateioWebsocketPublic(PublicSpotWebsocket):
+class GateioPublicSpotWebsocket(PublicSpotWebsocket):
     """Gate.io public WebSocket client using dependency injection pattern."""
 
     def __init__(

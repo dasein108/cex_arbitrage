@@ -203,7 +203,8 @@ class ExchangeCredentials(Struct, frozen=True):
     api_key: str
     secret_key: str
 
-    def is_configured(self) -> bool:
+    @property
+    def has_private_api(self) -> bool:
         """Check if both credentials are provided."""
         return bool(self.api_key) and bool(self.secret_key)
 
@@ -247,7 +248,7 @@ class ExchangeConfig(Struct, frozen=True):
         Returns:
             True if exchange has valid API credentials
         """
-        return self.credentials.is_configured()
+        return self.credentials.has_private_api()
     
     def is_public_only(self) -> bool:
         """

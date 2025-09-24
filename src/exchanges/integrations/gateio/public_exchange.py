@@ -15,7 +15,7 @@ from exchanges.structs.common import (
     OrderBook, Symbol, SymbolInfo, SymbolsInfo
 )
 from exchanges.structs.enums import ExchangeStatus, OrderbookUpdateType
-from exchanges.integrations.gateio.ws.gateio_ws_public import GateioWebsocketPublic
+from exchanges.integrations.gateio.ws.gateio_ws_public import GateioPublicSpotWebsocket
 from infrastructure.networking.websocket.structs import ConnectionState
 from infrastructure.exceptions.exchange import BaseExchangeError
 from config.structs import ExchangeConfig
@@ -51,7 +51,7 @@ class GateioPublicPublicExchange(CompositePublicExchange):
         self.rest_client = None  # Temporarily disabled until REST client is updated
         
         # WebSocket client for real-time data streaming
-        self.ws_client: Optional[GateioWebsocketPublic] = None
+        self.ws_client: Optional[GateioPublicSpotWebsocket] = None
         
         # Performance tracking
         self._market_data_updates = 0
@@ -97,7 +97,7 @@ class GateioPublicPublicExchange(CompositePublicExchange):
             if not self.config.websocket:
                 raise ValueError("Gate.io exchange configuration missing WebSocket settings")
             
-            self.ws_client = GateioWebsocketPublic(
+            self.ws_client = GateioPublicSpotWebsocket(
                 config=self.config,
                 orderbook_handler=self._handle_raw_orderbook_message,
                 state_change_handler=self._handle_connection_state_change

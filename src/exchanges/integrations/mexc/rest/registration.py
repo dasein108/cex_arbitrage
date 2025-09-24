@@ -15,14 +15,13 @@ def register_mexc_rest_implementations():
     This function should be called after the factory modules are fully initialized.
     """
     # Delayed imports to avoid circular dependencies
-    from infrastructure.factories.rest.public_rest_factory import PublicRestExchangeFactory
-    from infrastructure.factories.rest.private_rest_factory import PrivateRestExchangeFactory
+    from infrastructure.transport_factory import register_rest_public, register_rest_private
     from .mexc_rest_public import MexcPublicSpotRest
     from .mexc_rest_private import MexcPrivateSpotRest
     
     # Register MEXC REST implementations
-    PublicRestExchangeFactory.register(ExchangeEnum.MEXC, MexcPublicSpotRest)
-    PrivateRestExchangeFactory.register(ExchangeEnum.MEXC, MexcPrivateSpotRest)
+    register_rest_public(ExchangeEnum.MEXC, MexcPublicSpotRest)
+    register_rest_private(ExchangeEnum.MEXC, MexcPrivateSpotRest)
 
 
 # Auto-register when this module is imported (delayed execution)

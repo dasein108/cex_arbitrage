@@ -16,7 +16,7 @@ from exchanges.structs.common import (
 )
 from exchanges.structs.types import AssetName, OrderId
 from exchanges.structs import Side
-from exchanges.integrations.mexc.ws.mexc_ws_private import MexcWebsocketPrivateSpot
+from exchanges.integrations.mexc.ws.mexc_ws_private import MexcPrivateSpotWebsocket
 from exchanges.integrations.mexc.rest.mexc_rest_private import MexcPrivateSpotRest
 from infrastructure.exceptions.exchange import BaseExchangeError
 from config.structs import ExchangeConfig
@@ -59,7 +59,7 @@ class MexcPrivateCompositePrivateExchange(CompositePrivateExchange):
         self._private_rest = MexcPrivateSpotRest(config)
 
         # Initialize private WebSocket client
-        self._private_websocket = MexcWebsocketPrivateSpot(
+        self._private_websocket = MexcPrivateSpotWebsocket(
             private_rest_client=self._private_rest,
             config=self._config,
             order_handler=self._handle_order_update,

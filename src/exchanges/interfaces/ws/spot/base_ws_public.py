@@ -14,6 +14,7 @@ from abc import ABC
 from exchanges.consts import DEFAULT_PUBLIC_WEBSOCKET_CHANNELS
 from exchanges.structs.common import Symbol, OrderBook, Trade, BookTicker
 from config.structs import ExchangeConfig
+from infrastructure.logging import HFTLogger
 from infrastructure.networking.websocket.structs import ConnectionState, MessageType, ParsedMessage, PublicWebsocketChannelType
 import traceback
 
@@ -30,6 +31,7 @@ class PublicSpotWebsocket(ABC):
     def __init__(
         self,
         config: ExchangeConfig,
+        logger: HFTLogger,
         orderbook_diff_handler: Optional[Callable[[OrderBook, Symbol], Awaitable[None]]] = None,
         trades_handler: Optional[Callable[[Symbol, List[Trade]], Awaitable[None]]] = None,
         book_ticker_handler: Optional[Callable[[Symbol, BookTicker], Awaitable[None]]] = None,
@@ -55,7 +57,7 @@ class PublicSpotWebsocket(ABC):
         self._state_change_handler = state_change_handler
         
         # Logger
-        self.logger = logging.getLogger(f"{__name__}.{self.exchange_name}_public")
+        self.logger = logger
         
         # Create WebSocket manager using dependency injection
         from infrastructure.networking.websocket.utils import create_websocket_manager

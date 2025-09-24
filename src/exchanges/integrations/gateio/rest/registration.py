@@ -15,18 +15,17 @@ def register_gateio_rest_implementations():
     This function should be called after the factory modules are fully initialized.
     """
     # Delayed imports to avoid circular dependencies
-    from infrastructure.factories.rest.public_rest_factory import PublicRestExchangeFactory
-    from infrastructure.factories.rest.private_rest_factory import PrivateRestExchangeFactory
+    from infrastructure.transport_factory import register_rest_public, register_rest_private
     from .gateio_rest_public import GateioPublicSpotRest
     from .gateio_rest_private import GateioPrivateSpotRest
     from .gateio_futures_public import GateioPublicFuturesRest
     from .gateio_futures_private import GateioPrivateFuturesRest
     
     # Register Gate.io REST implementations
-    PublicRestExchangeFactory.register(ExchangeEnum.GATEIO, GateioPublicSpotRest)
-    PrivateRestExchangeFactory.register(ExchangeEnum.GATEIO, GateioPrivateSpotRest)
-    PublicRestExchangeFactory.register(ExchangeEnum.GATEIO_FUTURES, GateioPublicFuturesRest)
-    PrivateRestExchangeFactory.register(ExchangeEnum.GATEIO_FUTURES, GateioPrivateFuturesRest)
+    register_rest_public(ExchangeEnum.GATEIO, GateioPublicSpotRest)
+    register_rest_private(ExchangeEnum.GATEIO, GateioPrivateSpotRest)
+    register_rest_public(ExchangeEnum.GATEIO_FUTURES, GateioPublicFuturesRest)
+    register_rest_private(ExchangeEnum.GATEIO_FUTURES, GateioPrivateFuturesRest)
 
 
 # Auto-register when this module is imported (delayed execution)

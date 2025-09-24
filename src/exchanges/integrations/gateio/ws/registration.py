@@ -15,19 +15,19 @@ def register_gateio_websocket_implementations():
     This function should be called after the factory modules are fully initialized.
     """
     # Delayed imports to avoid circular dependencies
-    from infrastructure.factories.websocket import PublicWebSocketExchangeFactory, PrivateWebSocketExchangeFactory
-    from .gateio_ws_public import GateioWebsocketPublic
-    from .gateio_ws_private import GateioWebsocketPrivateSpot
-    from .gateio_ws_public_futures import GateioWebsocketExchangePublicFuturesWebsocket
-    from .gateio_ws_private_futures import GateioWebsocketPrivateSpotFutures
+    from infrastructure.transport_factory import register_ws_public, register_ws_private
+    from .gateio_ws_public import GateioPublicSpotWebsocket
+    from .gateio_ws_private import GateioPrivateSpotWebsocket
+    from .gateio_ws_public_futures import GateioPublicFuturesWebsocket
+    from .gateio_ws_private_futures import GateioPrivateFuturesWebsocket
     
     # Register Gate.io WebSocket implementations
-    PublicWebSocketExchangeFactory.register(ExchangeEnum.GATEIO, GateioWebsocketPublic)
-    PrivateWebSocketExchangeFactory.register(ExchangeEnum.GATEIO, GateioWebsocketPrivateSpot)
+    register_ws_public(ExchangeEnum.GATEIO, GateioPublicSpotWebsocket)
+    register_ws_private(ExchangeEnum.GATEIO, GateioPrivateSpotWebsocket)
     
     # Register Gate.io futures as separate exchange
-    PublicWebSocketExchangeFactory.register(ExchangeEnum.GATEIO_FUTURES, GateioWebsocketExchangePublicFuturesWebsocket)
-    PrivateWebSocketExchangeFactory.register(ExchangeEnum.GATEIO_FUTURES, GateioWebsocketPrivateSpotFutures)
+    register_ws_public(ExchangeEnum.GATEIO_FUTURES, GateioPublicFuturesWebsocket)
+    register_ws_private(ExchangeEnum.GATEIO_FUTURES, GateioPrivateFuturesWebsocket)
 
 
 # Auto-register when this module is imported (delayed execution)

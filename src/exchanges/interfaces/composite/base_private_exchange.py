@@ -11,7 +11,7 @@ from typing import Dict, List, Optional, Any
 from exchanges.structs.common import (
     Symbol, AssetBalance, Order, Position, WithdrawalRequest, WithdrawalResponse, SymbolsInfo
 )
-from ...structs.types import AssetName
+from exchanges.structs.types import AssetName
 from config.structs import ExchangeConfig
 from .base_public_exchange import BaseCompositeExchange
 

@@ -47,7 +47,7 @@ from .public_exchange import MexcPublicPublicExchange
 
 # REST and WebSocket clients for direct access
 from exchanges.integrations.mexc.rest.mexc_rest_public import MexcPublicSpotRest
-from exchanges.integrations.mexc.ws.mexc_ws_public import MexcWebsocketExchangePublicWebsocket
+from exchanges.integrations.mexc.ws.mexc_ws_public import MexcPublicSpotWebsocket
 
 # Auto-register MEXC services (symbol mapper, mappings) 
 from . import services
@@ -65,5 +65,5 @@ __all__ = [
     
     # Direct client access
     'MexcPublicSpotRest',
-    'MexcWebsocketExchangePublicWebsocket',
+    'MexcPublicSpotWebsocket',
 ]

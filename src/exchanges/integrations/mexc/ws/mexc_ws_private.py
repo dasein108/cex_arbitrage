@@ -38,7 +38,7 @@ from exchanges.integrations.mexc.structs.protobuf.PrivateOrdersV3Api_pb2 import 
 from exchanges.integrations.mexc.structs.protobuf.PrivateDealsV3Api_pb2 import PrivateDealsV3Api
 
 
-class MexcWebsocketPrivateSpot(PrivateSpotWebsocket):
+class MexcPrivateSpotWebsocket(PrivateSpotWebsocket):
     """MEXC private WebSocket client using dependency injection pattern."""
 
     def __init__(

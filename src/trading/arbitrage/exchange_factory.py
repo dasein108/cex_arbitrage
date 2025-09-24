@@ -14,6 +14,7 @@ from typing import Dict, Any, List, Optional, Type
 from dataclasses import dataclass
 
 from config.config_manager import config
+from config.structs import ExchangeCredentials
 from infrastructure.exceptions.exchange import BaseExchangeError
 from exchanges.integrations.mexc.private_exchange import MexcPrivateCompositePrivateExchange as MexcExchange
 from exchanges.integrations.gateio.gateio_exchange import GateioExchange
@@ -31,36 +32,6 @@ logger = get_logger('arbitrage.exchange_factory')
 
 # Use the composite InitializationStrategy from the interface
 InitializationStrategy = BaseInitializationStrategy
-
-
-@dataclass
-class ExchangeCredentials:
-    """Credentials for exchange API access."""
-    api_key: Optional[str] = None
-    secret_key: Optional[str] = None
-    
-    @property
-    def has_private_access(self) -> bool:
-        """Check if private API credentials are available."""
-        return bool(self.api_key and self.secret_key)
-    
-    def validate(self) -> List[str]:
-        """Validate credentials format."""
-        errors = []
-        
-        if self.api_key:
-            if len(self.api_key) < 10:
-                errors.append("API key appears too short")
-            if ' ' in self.api_key:
-                errors.append("API key contains spaces")
-        
-        if self.secret_key:
-            if len(self.secret_key) < 20:
-                errors.append("Secret key appears too short")
-            if ' ' in self.secret_key:
-                errors.append("Secret key contains spaces")
-        
-        return errors
 
 
 @dataclass

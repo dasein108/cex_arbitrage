@@ -43,7 +43,7 @@ import yaml
 from dotenv import load_dotenv
 from dataclasses import dataclass
 from infrastructure.exceptions.exchange import ConfigurationError
-from config.structs import ExchangeCredentials, NetworkConfig, RateLimitConfig, WebSocketConfig, ExchangeConfig, RestTransportConfig
+from .structs import ExchangeCredentials, NetworkConfig, RateLimitConfig, WebSocketConfig, ExchangeConfig, RestTransportConfig
 from infrastructure.logging import get_logger
 
 # Type aliases and constants

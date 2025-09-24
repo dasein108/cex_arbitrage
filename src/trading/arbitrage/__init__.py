@@ -21,11 +21,11 @@ Architecture Principles:
 """
 
 # Import only the refactored components needed for main.py
-from .controller import ArbitrageController
+# ArbitrageController is in trading.risk.controller
 from .simple_engine import SimpleArbitrageEngine
 from .configuration_manager import ConfigurationManager
 from .exchange_factory import ExchangeFactory
-from .performance_monitor import PerformanceMonitor
+# PerformanceMonitor is in trading.analytics.performance_monitor
 from .shutdown_manager import ShutdownManager, ShutdownReason
 from .types import (
     ArbitrageConfig,

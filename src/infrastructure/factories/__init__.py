@@ -1,12 +1,12 @@
 """
 Infrastructure Factories
 
-Factory pattern implementations for creating infrastructure components:
-- base_composite_factory: Composite factory pattern composite
-- base_exchange_factory: Exchange factory pattern composite
-- factory_interface: Common factory interfaces
-- rest/: REST client factories for public and private operations
-- ws/: WebSocket client factories for public and private operations
+PARTIALLY CONSOLIDATED: Transport factories have been simplified.
+
+Use infrastructure.transport_factory for REST/WebSocket client creation.
+Remaining base classes are still used by strategy factories.
+
+TODO: Consider simplifying strategy factories in future refactoring.
 """
 
 from .factory_interface import ExchangeFactoryInterface
@@ -15,6 +15,6 @@ from .base_composite_factory import BaseCompositeFactory
 
 __all__ = [
     'ExchangeFactoryInterface',
-    'BaseExchangeFactory', 
+    'BaseExchangeFactory',
     'BaseCompositeFactory'
 ]

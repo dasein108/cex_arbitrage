@@ -21,7 +21,7 @@ class GateioPrivateFuturesConnectionStrategy(ConnectionStrategy):
         super().__init__(config)  # Initialize parent with _websocket = None
         self.logger = logging.getLogger(f"{__name__}.{self.__class__.__name__}")
 
-        if not config.credentials.is_configured():
+        if not config.credentials.has_private_api():
             raise ValueError("Gate.io credentials not configured for private futures WebSocket")
         
         self.api_key = config.credentials.api_key

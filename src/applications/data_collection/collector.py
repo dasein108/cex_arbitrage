@@ -12,10 +12,11 @@ from dataclasses import dataclass
 
 from config import get_exchange_config
 from exchanges.structs.common import Symbol, BookTicker, Trade
-from infrastructure.factories.websocket import PublicWebSocketExchangeFactory
+from infrastructure.transport_factory import create_websocket_client
 from db import BookTickerSnapshot
 from db.models import TradeSnapshot
-from exchanges.structs import ExchangeEnumfrom .analytics import RealTimeAnalytics
+from exchanges.structs import ExchangeEnum
+from .analytics import RealTimeAnalytics
 from .consts import WEBSOCKET_CHANNELS
 
 # HFT Logger Integration
@@ -127,10 +128,11 @@ class UnifiedWebSocketManager:
             # Create exchange configuration
             config = get_exchange_config(exchange.value)
             
-            # Create WebSocket client using factory pattern
-            client = PublicWebSocketExchangeFactory.inject(
+            # Create WebSocket client using simplified factory
+            client = create_websocket_client(
                 exchange=exchange,
                 config=config,
+                is_private=False,
                 book_ticker_handler=lambda symbol, ticker: self._handle_book_ticker_update(exchange, symbol, ticker),
                 trades_handler=lambda symbol, trades: self._handle_trades_update(exchange, symbol, trades)
             )
@@ -402,7 +404,8 @@ class UnifiedWebSocketManager:
                     if len(symbol_str) >= 6 and symbol_str.endswith('USDT'):
                         from exchanges.structs.common import Symbol
                         from exchanges.structs.types import AssetName
-                        from exchanges.structs import ExchangeEnum                        base = symbol_str[:-4]  # Remove USDT
+                        from exchanges.structs import ExchangeEnum
+                        base = symbol_str[:-4]  # Remove USDT
                         quote = 'USDT'
                         # Determine if futures based on exchange type
                         exchange_enum = ExchangeEnum(exchange)

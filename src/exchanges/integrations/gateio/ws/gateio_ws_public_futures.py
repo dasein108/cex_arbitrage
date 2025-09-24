@@ -37,7 +37,7 @@ from exchanges.interfaces.ws import PublicFuturesWebsocket
 from infrastructure.networking.websocket.structs import ConnectionState, PublicWebsocketChannelType
 
 
-class GateioWebsocketExchangePublicFuturesWebsocket(PublicFuturesWebsocket):
+class GateioPublicFuturesWebsocket(PublicFuturesWebsocket):
     """Gate.io public futures WebSocket client using dependency injection pattern."""
 
     def __init__(

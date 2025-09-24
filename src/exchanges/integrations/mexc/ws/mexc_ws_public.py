@@ -26,7 +26,7 @@ from typing import List, Optional, Callable, Awaitable
 
 from exchanges.structs.common import Symbol, Trade, OrderBook, BookTicker
 from config.structs import ExchangeConfig
-from exchanges.interfaces.ws import PublicFuturesWebsocket
+from exchanges.interfaces.ws import PublicSpotWebsocket
 from infrastructure.networking.websocket.structs import ConnectionState
 
 # MEXC-specific protobuf imports for message parsing
@@ -35,16 +35,13 @@ from exchanges.integrations.mexc.structs.protobuf.PublicLimitDepthsV3Api_pb2 imp
 from exchanges.integrations.mexc.structs.protobuf.PublicAggreDealsV3Api_pb2 import PublicAggreDealsV3Api
 
 
-class MexcWebsocketExchangePublicWebsocket(PublicFuturesWebsocket):
+class MexcPublicSpotWebsocket(PublicSpotWebsocket):
     """MEXC public WebSocket client using dependency injection pattern."""
 
     def __init__(
         self,
         config: ExchangeConfig,
-        orderbook_diff_handler: Optional[Callable[[any, Symbol], Awaitable[None]]] = None,
-        trades_handler: Optional[Callable[[Symbol, List[Trade]], Awaitable[None]]] = None,
-        book_ticker_handler: Optional[Callable[[Symbol, BookTicker], Awaitable[None]]] = None,
-        state_change_handler: Optional[Callable[[ConnectionState], Awaitable[None]]] = None,
+        **kwargs
     ):
         """
         Initialize MEXC public WebSocket with dependency injection.
@@ -59,10 +56,7 @@ class MexcWebsocketExchangePublicWebsocket(PublicFuturesWebsocket):
         # Initialize via composite class dependency injection (like REST pattern)
         super().__init__(
             config=config,
-            orderbook_diff_handler=orderbook_diff_handler,
-            trades_handler=trades_handler,
-            book_ticker_handler=book_ticker_handler,
-            state_change_handler=state_change_handler
+            **kwargs
         )
 
         self.logger.info("MEXC public WebSocket initialized with dependency injection")
