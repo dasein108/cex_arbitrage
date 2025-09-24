@@ -1,11 +1,11 @@
 from abc import ABC
-from exchanges.base.rest.base_rest import BaseExchangeRestInterface
+from exchanges.interfaces.rest.base_rest import BaseExchangeRestInterface
 from exchanges.services import BaseExchangeMapper
 from infrastructure.config.structs import ExchangeConfig
 from infrastructure.data_structures import Symbol
 
 
-class PublicExchangeFuturesRestInterface(BaseExchangeRestInterface, ABC):
+class PublicExchangeFuturesRest(BaseExchangeRestInterface, ABC):
     """Abstract interface for public futures exchange operations (market data)"""
     
     def __init__(self, config: ExchangeConfig, mapper: BaseExchangeMapper):

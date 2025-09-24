@@ -11,7 +11,7 @@ from infrastructure.logging import get_exchange_logger, HFTLoggerInterface, Logg
 
 class BaseExchangeRestInterface(ABC):
     """
-    Abstract base for exchange REST operations using the new transport system.
+    Abstract composite for exchange REST operations using the new transport system.
     
     Provides unified interface for both public and private exchange operations
     with automatic strategy selection, authentication, and rate limiting.
@@ -24,7 +24,7 @@ class BaseExchangeRestInterface(ABC):
         self.exchange_tag = f'{self.exchange_name}_{api_type}'
 
         # Use injected logger or create exchange-specific logger
-        component_name = f'rest.base.{api_type}'
+        component_name = f'rest.composite.{api_type}'
         self.logger = logger or get_exchange_logger(config.name, component_name)
 
         # Initialize REST transport manager using factory

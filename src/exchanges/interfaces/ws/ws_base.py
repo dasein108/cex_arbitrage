@@ -11,7 +11,7 @@ from infrastructure.logging import get_logger, get_exchange_logger, LoggingTimer
 
 class BaseExchangeWebsocketInterface(ABC):
     """
-    Abstract base for exchange WebSocket operations using dependency injection.
+    Abstract composite for exchange WebSocket operations using dependency injection.
     
     Provides unified interface for both public and private exchange WebSocket operations
     with automatic strategy selection, authentication, and message handling.
