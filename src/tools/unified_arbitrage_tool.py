@@ -38,8 +38,8 @@ from core.config.config_manager import HftConfig
 from core.structs.common import Symbol, SymbolInfo
 
 # Import existing analysis components through proper interfaces
-from analysis.collect_arbitrage_data import ArbitrageDataPipeline
-from analysis.spread_analyzer import SpreadAnalyzer
+from trading.analysis import ArbitrageDataPipeline
+from trading.analysis import SpreadAnalyzer
 
 # Import shared utilities (DRY compliance)
 from tools.shared_utils import (

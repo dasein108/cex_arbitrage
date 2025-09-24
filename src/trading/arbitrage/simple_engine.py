@@ -12,10 +12,10 @@ from core.logging import get_logger
 import time
 from typing import Dict, Any, Optional, List, Set
 
-from arbitrage.types import ArbitrageConfig, EngineStatistics, ArbitragePair
-from arbitrage.detector import OpportunityDetector
-from arbitrage.aggregator import MarketDataAggregator
-from arbitrage.structures import ArbitrageOpportunity
+from trading.arbitrage.types import ArbitrageConfig, EngineStatistics, ArbitragePair
+from trading.arbitrage.detector import OpportunityDetector
+from trading.arbitrage.aggregator import MarketDataAggregator
+from trading.arbitrage.structures import ArbitrageOpportunity
 from interfaces.exchanges.base import BasePrivateExchangeInterface
 from core.structs.common import ExchangeStatus, Symbol, AssetName, ExchangeName
 from core.exceptions.exchange import ArbitrageDetectionError

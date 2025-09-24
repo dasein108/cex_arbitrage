@@ -11,12 +11,12 @@ import asyncio
 from core.logging import get_logger
 from typing import Dict, Optional, Any
 
-from arbitrage.types import ArbitrageConfig
-from arbitrage.configuration_manager import ConfigurationManager
-from arbitrage.exchange_factory import ExchangeFactory
-from arbitrage.performance_monitor import PerformanceMonitor
-from arbitrage.shutdown_manager import ShutdownManager, ShutdownReason
-from arbitrage.symbol_resolver import SymbolResolver
+from trading.arbitrage.types import ArbitrageConfig
+from trading.arbitrage.configuration_manager import ConfigurationManager
+from trading.arbitrage.exchange_factory import ExchangeFactory
+from trading.arbitrage.performance_monitor import PerformanceMonitor
+from trading.arbitrage.shutdown_manager import ShutdownManager, ShutdownReason
+from trading.arbitrage.symbol_resolver import SymbolResolver
 from interfaces.exchanges.base.base_private_exchange import BasePrivateExchangeInterface
 
 logger = get_logger('arbitrage.controller')
@@ -73,7 +73,7 @@ class ArbitrageController:
         logger.info(f"Initializing exchanges with {len(arbitrage_symbols)} symbols from arbitrage configuration")
         
         # HFT OPTIMIZATION: Initialize exchanges with arbitrage symbols
-        from arbitrage.exchange_factory import InitializationStrategy
+        from trading.arbitrage.exchange_factory import InitializationStrategy
         
         strategy = InitializationStrategy.CONTINUE_ON_ERROR if self.config.enable_dry_run else InitializationStrategy.RETRY_WITH_BACKOFF
         exchanges_task = self.exchange_factory.create_exchanges(
@@ -192,7 +192,7 @@ class ArbitrageController:
     async def _run_engine_session(self):
         """Run the engine trading session."""
         # Import here to avoid circular dependency
-        from arbitrage.engine_factory import EngineFactory
+        from trading.arbitrage.engine_factory import EngineFactory
         
         # Get recommended engine type based on configuration
         engine_type = EngineFactory.get_recommended_engine_type(self.config)

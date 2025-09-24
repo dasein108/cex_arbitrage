@@ -274,7 +274,7 @@ async def test_binance_with_credentials():
 async def test_binance_factory_integration():
     """Test integration with ExchangeFactory"""
 
-    from arbitrage.exchange_factory import ExchangeFactory
+    from trading.arbitrage import ExchangeFactory
 
     factory = ExchangeFactory()
 

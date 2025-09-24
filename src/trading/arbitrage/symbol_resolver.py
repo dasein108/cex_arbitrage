@@ -14,7 +14,7 @@ from dataclasses import dataclass, field
 
 from interfaces.exchanges.base import BasePublicExchangeInterface
 from core.structs.common import Symbol, SymbolInfo
-from arbitrage.types import ExchangePairConfig, ArbitragePair, OpportunityType
+from trading.arbitrage.types import ExchangePairConfig, ArbitragePair, OpportunityType
 
 logger = get_logger('arbitrage.symbol_resolver')
 

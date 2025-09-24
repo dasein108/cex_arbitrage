@@ -11,10 +11,10 @@ from core.logging import get_logger
 from typing import Dict, Any, List, Optional
 from core.config.config_manager import config
 from core.exceptions.exchange import ConfigurationError
-from arbitrage.types import (
+from trading.arbitrage.types import (
     ArbitrageConfig, RiskLimits, OpportunityType, ArbitragePairMap
 )
-from arbitrage.symbol_resolver import SymbolResolver
+from trading.arbitrage.symbol_resolver import SymbolResolver
 
 logger = get_logger('arbitrage.configuration_manager')
 

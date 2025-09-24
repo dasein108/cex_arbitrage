@@ -491,8 +491,8 @@ This document provides a comprehensive task breakdown for implementing the HFT-c
   import pytest
   from unittest.mock import Mock, AsyncMock
   
-  from arbitrage.detector import OpportunityDetector
-  from arbitrage.structures import ArbitrageConfig, RiskLimits
+  from trading.arbitrage.detector import OpportunityDetector
+  from trading.arbitrage import ArbitrageConfig, RiskLimits
   from core.structs import Symbol, OrderBook, OrderBookEntry
   
   @pytest.fixture

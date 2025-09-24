@@ -11,7 +11,7 @@ import asyncio
 from core.logging import get_logger
 import time
 from typing import Dict, Any, Optional, Callable
-from arbitrage.types import EngineStatistics, ArbitrageConfig
+from trading.arbitrage.types import EngineStatistics, ArbitrageConfig
 
 logger = get_logger('arbitrage.performance_monitor')
 

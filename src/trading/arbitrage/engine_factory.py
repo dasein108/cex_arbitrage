@@ -9,7 +9,7 @@ HFT COMPLIANT: Fast engine instantiation with minimal overhead.
 
 from core.logging import get_logger
 from typing import Dict, Type, Union
-from arbitrage.types import ArbitrageConfig
+from trading.arbitrage.types import ArbitrageConfig
 from interfaces.exchanges.base.base_private_exchange import BasePrivateExchangeInterface
 
 logger = get_logger('arbitrage.engine_factory')
@@ -126,14 +126,14 @@ def _register_default_engines():
     """Register default engine implementations."""
     try:
         # Register simple engine
-        from arbitrage.simple_engine import SimpleArbitrageEngine
+        from trading.arbitrage.simple_engine import SimpleArbitrageEngine
         EngineFactory.register_engine(EngineType.SIMPLE, SimpleArbitrageEngine)
     except ImportError as e:
         logger.warning(f"Could not register simple engine: {e}")
     
     try:
         # Register production engine
-        from arbitrage.engine import ArbitrageEngine
+        from trading.arbitrage.engine import ArbitrageEngine
         EngineFactory.register_engine(EngineType.PRODUCTION, ArbitrageEngine)
     except ImportError as e:
         logger.warning(f"Could not register production engine: {e}")

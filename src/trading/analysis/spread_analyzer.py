@@ -15,7 +15,6 @@ import asyncio
 import csv
 import logging
 import sys
-from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Dict, List, Optional, Any
 from msgspec import Struct
@@ -25,9 +24,9 @@ project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
 
 # Import utility classes
-from analysis.utils.data_loader import DataLoader, CandleData
-from analysis.utils.spread_calculator import SpreadCalculator, SpreadData
-from analysis.utils.metrics import MetricsCalculator
+from trading.analysis.utils.data_loader import DataLoader
+from trading.analysis.utils.spread_calculator import SpreadCalculator
+from trading.analysis.utils.metrics import MetricsCalculator
 
 
 class ArbitrageMetrics(Struct):
