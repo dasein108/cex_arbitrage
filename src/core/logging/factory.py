@@ -15,7 +15,6 @@ from .router import create_router
 from .backends.console import ConsoleBackend, ColorConsoleBackend
 from .backends.file import FileBackend, AuditFileBackend
 from .backends.prometheus import PrometheusBackend, PrometheusHistogramBackend
-from .backends.python_bridge import PythonLoggingBridge
 from .structs import (
     LoggingConfig, ConsoleBackendConfig, FileBackendConfig,
     PrometheusBackendConfig, AuditBackendConfig, PerformanceConfig,
@@ -188,15 +187,7 @@ class LoggerFactory:
         # Audit backend
         if config.audit and config.audit.enabled:
             backends['audit'] = AuditFileBackend(config.audit, 'audit')
-        
-        # Python logging bridge (always present for compatibility)
-        python_bridge_config = BackendConfig(
-            enabled=True,
-            min_level="DEBUG",
-            environment=config.environment
-        )
-        backends['python_bridge'] = PythonLoggingBridge(python_bridge_config, 'python_bridge')
-        
+
         return backends
     
     @classmethod

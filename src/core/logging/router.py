@@ -41,48 +41,31 @@ class SimpleRouter(LogRouter):
         
         self.is_dev = self.environment.lower() in ('dev', 'development', 'local', 'test')
     
-    def get_backends(self, record: LogRecord) -> List[LogBackend]:
-        """Simple routing logic for HFT use cases."""
-        matching_backends = []
-        
-        # Route based on log type and level
-        if record.log_type == LogType.METRIC:
-            # Metrics go to Prometheus (and optionally others)
-            for name in ['prometheus', 'prometheus_histogram']:
-                backend = self.backends.get(name)
-                if backend and backend.should_handle(record):
-                    matching_backends.append(backend)
-        
-        elif record.log_type == LogType.AUDIT:
-            # Audit logs go to file and optionally Elasticsearch
-            for name in ['file', 'audit_file', 'elasticsearch']:
-                backend = self.backends.get(name)
-                if backend and backend.should_handle(record):
-                    matching_backends.append(backend)
-        
-        elif record.level >= LogLevel.WARNING:
-            # Warnings/errors go to file and console (dev)
-            backend_names = ['file', 'python_bridge']
-            if self.is_dev:
-                backend_names.append('console')
-            
-            for name in backend_names:
-                backend = self.backends.get(name)
-                if backend and backend.should_handle(record):
-                    matching_backends.append(backend)
-        
-        else:
-            # Debug/info messages go to console (dev only) and python bridge
-            backend_names = ['python_bridge']
-            if self.is_dev:
-                backend_names.append('console')
-            
-            for name in backend_names:
-                backend = self.backends.get(name)
-                if backend and backend.should_handle(record):
-                    matching_backends.append(backend)
-        
-        return matching_backends
+def get_backends(self, record: LogRecord) -> List[LogBackend]:
+    """Simple routing logic for HFT use cases."""
+    log_type = record.log_type
+    level = record.level
+    is_dev = self.is_dev
+
+    routes = {
+        LogType.METRIC: ['prometheus', 'prometheus_histogram'],
+        LogType.AUDIT: ['file', 'audit_file', 'elasticsearch'],
+    }
+
+    if log_type in routes:
+        backend_names = routes[log_type]
+    elif level >= LogLevel.WARNING:
+        backend_names = ['file']
+        if is_dev:
+            backend_names.append('console')
+    else:
+        backend_names = ['console'] if is_dev else []
+
+    return [
+        backend
+        for name in backend_names
+        if (backend := self.backends.get(name)) and backend.should_handle(record)
+    ]
 
 
 def create_router(backends: Dict[str, LogBackend], config: RouterConfig) -> LogRouter:

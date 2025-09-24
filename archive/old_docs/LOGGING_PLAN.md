@@ -125,7 +125,6 @@ class HFTLogger(HFTLoggerInterface):
 - **ConsoleBackend** - DEV environment, Python logging compatibility
 - **FileBackend** - Warnings/errors with text formatting
 - **PrometheusBackend** - Metrics with batching
-- **PythonLoggingBridge** - Backwards compatibility
 
 ### Phase 2: Backend Implementations (Week 3)
 

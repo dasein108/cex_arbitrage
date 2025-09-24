@@ -73,7 +73,8 @@
       "Bash(do echo \"Updating $file\")",
       "Bash(ssh:*)",
       "Bash(scp:*)",
-      "Bash(rsync:*)"
+      "Bash(rsync:*)",
+      "Bash(tree:*)"
     ],
     "deny": [],
     "ask": [],

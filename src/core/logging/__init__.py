@@ -66,7 +66,6 @@ from .router import SimpleRouter, create_router
 from .backends.console import ConsoleBackend, ColorConsoleBackend
 from .backends.file import FileBackend, AuditFileBackend
 from .backends.prometheus import PrometheusBackend, PrometheusHistogramBackend
-from .backends.python_bridge import PythonLoggingBridge
 
 # Version info
 __version__ = "2.0.0"
@@ -116,5 +115,4 @@ __all__ = [
     'AuditFileBackend', 
     'PrometheusBackend',
     'PrometheusHistogramBackend',
-    'PythonLoggingBridge'
 ]
