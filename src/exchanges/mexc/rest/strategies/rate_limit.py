@@ -9,12 +9,14 @@ from core.config.structs import ExchangeConfig
 class MexcRateLimitStrategy(RateLimitStrategy):
     """MEXC-specific rate limiting based on ExchangeConfig."""
 
-    def __init__(self, exchange_config: ExchangeConfig):
+    def __init__(self, exchange_config: ExchangeConfig, logger=None, **kwargs):
         """
         Initialize MEXC rate limiting strategy from ExchangeConfig.
         
         Args:
             exchange_config: Exchange configuration containing rate_limit settings
+            logger: Optional HFT logger injection
+            **kwargs: Additional parameters (ignored for compatibility)
         """
         # Extract rate limits from config or use MEXC defaults
         if exchange_config.rate_limit:
@@ -28,6 +30,13 @@ class MexcRateLimitStrategy(RateLimitStrategy):
             self.global_limit = 5
         
         self.exchange_config = exchange_config
+        
+        # Initialize HFT logger with hierarchical tags
+        if logger is None:
+            from core.logging import get_strategy_logger
+            tags = ['mexc', 'rest', 'rate_limit']
+            logger = get_strategy_logger('rest.rate_limit.mexc', tags)
+        self.logger = logger
         
         # MEXC endpoint-specific rate limits
         self._endpoint_limits = {

@@ -2,13 +2,13 @@ import logging
 from typing import Dict, Any, Optional, List
 import msgspec
 
-from core.transport.websocket.strategies.enhanced_message_parser import EnhancedBaseMessageParser
+from core.transport.websocket.strategies.message_parser import MessageParser
 from core.transport.websocket.structs import ParsedMessage, MessageType
 from core.exchanges.services import BaseExchangeMapper
 from core.structs.common import Symbol
 
 
-class GateioPublicMessageParser(EnhancedBaseMessageParser):
+class GateioPublicMessageParser(MessageParser):
     """Gate.io public WebSocket message parser with integrated parsing utilities."""
     
     @staticmethod
@@ -73,8 +73,8 @@ class GateioPublicMessageParser(EnhancedBaseMessageParser):
                 message_str = message_str[:max_length] + "..."
             logger.debug(f"Parsing {exchange} {message_type}: {message_str}")
 
-    def __init__(self, mapper: BaseExchangeMapper):
-        super().__init__(mapper, exchange_name="gateio")
+    def __init__(self, mapper: BaseExchangeMapper, logger):
+        super().__init__(mapper, logger)
         self.mapper = mapper
 
     async def parse_message(self, raw_message: str) -> Optional[ParsedMessage]:

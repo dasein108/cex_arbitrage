@@ -3,7 +3,8 @@ from typing import Optional, Dict, Any
 
 import msgspec
 
-from core.exchanges.websocket import MessageParser, ParsedMessage, MessageType
+from core.transport.websocket.strategies.message_parser import MessageParser
+from core.transport.websocket.structs import ParsedMessage, MessageType
 from core.exchanges.services import BaseExchangeMapper
 from exchanges.mexc.ws.protobuf_parser import MexcProtobufParser
 from exchanges.mexc.structs.exchange import (
@@ -15,9 +16,8 @@ from core.structs.common import OrderBook
 class MexcPrivateMessageParser(MessageParser):
     """MEXC private WebSocket message parser."""
 
-    def __init__(self, mapper: BaseExchangeMapper):
-        super().__init__(mapper)
-        self.logger = logging.getLogger(f"{__name__}.{self.__class__.__name__}")
+    def __init__(self, mapper: BaseExchangeMapper, logger):
+        super().__init__(mapper, logger)
         self.mexc_mapper = mapper  # Use the injected mapper directly
 
     async def parse_message(self, raw_message: str) -> Optional[ParsedMessage]:
@@ -176,9 +176,3 @@ class MexcPrivateMessageParser(MessageParser):
 
         return MessageType.UNKNOWN
 
-    async def parse_orderbook_message(
-        self,
-        message: Dict[str, Any]
-    ) -> Optional[OrderBook]:
-        """Private messages don't contain orderbook data."""
-        return None

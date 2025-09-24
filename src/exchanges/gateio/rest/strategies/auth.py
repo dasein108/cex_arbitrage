@@ -11,12 +11,14 @@ from core.config.structs import ExchangeConfig
 class GateioAuthStrategy(AuthStrategy):
     """Gate.io-specific authentication based on ExchangeConfig credentials."""
 
-    def __init__(self, exchange_config: ExchangeConfig):
+    def __init__(self, exchange_config: ExchangeConfig, logger=None, **kwargs):
         """
         Initialize Gate.io authentication strategy from ExchangeConfig.
         
         Args:
             exchange_config: Exchange configuration containing credentials
+            logger: Optional HFT logger injection
+            **kwargs: Additional parameters (ignored for compatibility)
         """
         if not exchange_config.credentials.is_configured():
             raise ValueError("Gate.io credentials not configured in ExchangeConfig")
@@ -24,6 +26,13 @@ class GateioAuthStrategy(AuthStrategy):
         self.api_key = exchange_config.credentials.api_key
         self.secret_key = exchange_config.credentials.secret_key.encode('utf-8')
         self.exchange_config = exchange_config
+        
+        # Initialize HFT logger with hierarchical tags
+        if logger is None:
+            from core.logging import get_strategy_logger
+            tags = ['gateio', 'rest', 'auth']
+            logger = get_strategy_logger('rest.auth.gateio', tags)
+        self.logger = logger
 
     async def sign_request(
         self,

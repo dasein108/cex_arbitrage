@@ -12,9 +12,8 @@ from core.structs.common import FuturesTicker
 class GateioFuturesMessageParser(MessageParser):
     """Gate.io futures WebSocket message parser."""
 
-    def __init__(self, mapper: BaseExchangeMapper):
-        super().__init__(mapper)
-        self.logger = logging.getLogger(f"{__name__}.{self.__class__.__name__}")
+    def __init__(self, mapper: BaseExchangeMapper, logger):
+        super().__init__(mapper, logger)
 
     async def parse_message(self, raw_message: str) -> Optional[ParsedMessage]:
         """Parse raw WebSocket message from Gate.io futures."""

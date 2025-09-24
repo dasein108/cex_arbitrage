@@ -9,12 +9,14 @@ from core.config.structs import ExchangeConfig
 class GateioRetryStrategy(RetryStrategy):
     """Gate.io-specific retry logic based on ExchangeConfig."""
 
-    def __init__(self, exchange_config: ExchangeConfig):
+    def __init__(self, exchange_config: ExchangeConfig, logger=None, **kwargs):
         """
         Initialize Gate.io retry strategy from ExchangeConfig.
         
         Args:
             exchange_config: Exchange configuration containing network retry settings
+            logger: Optional HFT logger injection
+            **kwargs: Additional parameters (ignored for compatibility)
         """
         # Extract retry settings from config or use Gate.io defaults
         if exchange_config.network:
@@ -28,6 +30,13 @@ class GateioRetryStrategy(RetryStrategy):
             self.max_delay = 5.0
         
         self.exchange_config = exchange_config
+        
+        # Initialize HFT logger with hierarchical tags
+        if logger is None:
+            from core.logging import get_strategy_logger
+            tags = ['gateio', 'rest', 'retry']
+            logger = get_strategy_logger('rest.retry.gateio', tags)
+        self.logger = logger
 
     def should_retry(self, attempt: int, error: Exception) -> bool:
         """Determine if request should be retried for Gate.io."""

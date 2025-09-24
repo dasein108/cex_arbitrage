@@ -24,13 +24,22 @@ ERROR_CODE_MAPPING = {
 class MexcExceptionHandlerStrategy(ExceptionHandlerStrategy):
     """MEXC-specific exception handling strategy."""
     
-    def __init__(self):
+    def __init__(self, logger=None, **kwargs):
         """
         Initialize MEXC exception handler strategy.
         
+        Args:
+            logger: Optional HFT logger injection
+            **kwargs: Additional parameters (ignored for compatibility)
+        
         No parameters needed - uses static error code mappings.
         """
-        pass  # No initialization needed - static error mappings
+        # Initialize HFT logger with hierarchical tags
+        if logger is None:
+            from core.logging import get_strategy_logger
+            tags = ['mexc', 'rest', 'exception_handler']
+            logger = get_strategy_logger('rest.exception_handler.mexc', tags)
+        self.logger = logger
 
     def handle_error(self, status_code: int, response_text: str) -> BaseExchangeError:
         """

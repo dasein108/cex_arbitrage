@@ -7,15 +7,24 @@ from core.config.structs import ExchangeConfig
 class GateioRequestStrategy(RequestStrategy):
     """Gate.io-specific request configuration based on ExchangeConfig."""
 
-    def __init__(self, exchange_config: ExchangeConfig):
+    def __init__(self, exchange_config: ExchangeConfig, logger=None, **kwargs):
         """
         Initialize Gate.io request strategy from ExchangeConfig.
         
         Args:
             exchange_config: Exchange configuration containing base_url and settings
+            logger: Optional HFT logger injection
+            **kwargs: Additional parameters (ignored for compatibility)
         """
         super().__init__(exchange_config.base_url)
         self.exchange_config = exchange_config
+        
+        # Initialize HFT logger with hierarchical tags
+        if logger is None:
+            from core.logging import get_strategy_logger
+            tags = ['gateio', 'rest', 'request']
+            logger = get_strategy_logger('rest.request.gateio', tags)
+        self.logger = logger
 
     async def create_request_context(self) -> RequestContext:
         """Create Gate.io request configuration from ExchangeConfig."""
