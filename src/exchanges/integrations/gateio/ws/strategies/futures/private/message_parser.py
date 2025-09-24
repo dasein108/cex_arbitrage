@@ -2,21 +2,19 @@ import msgspec
 from typing import Dict, Any, List, Optional
 
 from infrastructure.networking.websocket.strategies.message_parser import MessageParser
-from exchanges.services import BaseExchangeMapper
+from exchanges.integrations.gateio.services.gateio_mapper import GateioMapper
 from exchanges.structs.common import (
     Symbol, Order, Trade, AssetBalance
 )
-from exchanges.structs.types import AssetName
-from exchanges.structs.enums import OrderSide
-from exchanges.structs import OrderStatus, OrderType, Side
 from infrastructure.networking.websocket.structs import ParsedMessage, MessageType
 
 
 class GateioPrivateFuturesMessageParser(MessageParser):
     """Gate.io private futures WebSocket message parser."""
 
-    def __init__(self, mapper: BaseExchangeMapper, logger):
+    def __init__(self, mapper: GateioMapper, logger):
         super().__init__(mapper, logger)
+        self.gateio_mapper = mapper
 
     async def parse_message(self, raw_message: str) -> Optional[ParsedMessage]:
         """Parse Gate.io private futures WebSocket message."""
@@ -72,7 +70,7 @@ class GateioPrivateFuturesMessageParser(MessageParser):
             # Gate.io sends order updates as array
             orders = []
             for order_data in result:
-                order = self._create_order_from_data(order_data)
+                order = self.gateio_mapper.futures_ws_to_order(order_data)
                 if order:
                     orders.append(order)
             
@@ -82,7 +80,7 @@ class GateioPrivateFuturesMessageParser(MessageParser):
                     symbol=orders[0].symbol,  # Use first order's symbol
                     data=orders[0] if len(orders) == 1 else orders,
                     timestamp=message.get("time", 0),
-                    raw_message=message
+                    raw_data=message
                 )
             
             return None
@@ -98,20 +96,12 @@ class GateioPrivateFuturesMessageParser(MessageParser):
             if not result:
                 return None
             
-            # Parse balances
+            # Parse balances using mapper
             balances = {}
             for balance_data in result:
-                asset_name = AssetName(balance_data.get("currency", ""))
-                if not asset_name:
-                    continue
-                
-                balance = AssetBalance(
-                    asset=asset_name,
-                    free=float(balance_data.get("available", 0)),
-                    locked=float(balance_data.get("freeze", 0)),
-                    total=float(balance_data.get("total", 0))
-                )
-                balances[asset_name] = balance
+                balance = self.gateio_mapper.futures_ws_to_balance(balance_data)
+                if balance and balance.asset:
+                    balances[balance.asset] = balance
             
             if balances:
                 return ParsedMessage(
@@ -119,7 +109,7 @@ class GateioPrivateFuturesMessageParser(MessageParser):
                     symbol=None,  # Balance updates are not symbol-specific
                     data=balances,
                     timestamp=message.get("time", 0),
-                    raw_message=message
+                    raw_data=message
                 )
             
             return None
@@ -135,10 +125,10 @@ class GateioPrivateFuturesMessageParser(MessageParser):
             if not result:
                 return None
             
-            # Parse trades
+            # Parse trades using mapper
             trades = []
             for trade_data in result:
-                trade = self._create_trade_from_data(trade_data)
+                trade = self.gateio_mapper.futures_ws_to_trade(trade_data)
                 if trade:
                     trades.append(trade)
             
@@ -148,7 +138,7 @@ class GateioPrivateFuturesMessageParser(MessageParser):
                     symbol=trades[0].symbol,  # Use first trade's symbol
                     data=trades[0] if len(trades) == 1 else trades,
                     timestamp=message.get("time", 0),
-                    raw_message=message
+                    raw_data=message
                 )
             
             return None
@@ -167,7 +157,7 @@ class GateioPrivateFuturesMessageParser(MessageParser):
             # Parse positions (custom message type for futures)
             positions = []
             for position_data in result:
-                symbol = self._parse_symbol_from_contract(position_data.get("contract", ""))
+                symbol = self.gateio_mapper._parse_futures_symbol(position_data.get("contract", ""))
                 if symbol:
                     positions.append({
                         "symbol": symbol,
@@ -187,7 +177,7 @@ class GateioPrivateFuturesMessageParser(MessageParser):
                     symbol=positions[0]["symbol"],
                     data=positions[0] if len(positions) == 1 else positions,
                     timestamp=message.get("time", 0),
-                    raw_message=message
+                    raw_data=message
                 )
             
             return None
@@ -196,94 +186,6 @@ class GateioPrivateFuturesMessageParser(MessageParser):
             self.logger.error(f"Failed to parse Gate.io private futures position message: {e}")
             return None
 
-    def _create_order_from_data(self, order_data: Dict[str, Any]) -> Optional[Order]:
-        """Create Order object from Gate.io private futures order data."""
-        try:
-            # Parse symbol from contract
-            symbol = self._parse_symbol_from_contract(order_data.get("contract", ""))
-            if not symbol:
-                return None
-            
-            # Map Gate.io order status to our enum
-            status_map = {
-                "open": OrderStatus.NEW,
-                "finished": OrderStatus.FILLED,
-                "cancelled": OrderStatus.CANCELED
-            }
-            
-            # Map Gate.io order type
-            type_map = {
-                "limit": OrderType.LIMIT,
-                "market": OrderType.MARKET
-            }
-            
-            # Map Gate.io order side
-            side = OrderSide.BUY if order_data.get("size", 0) > 0 else OrderSide.SELL
-            
-            order = Order(
-                symbol=symbol,
-                order_id=str(order_data.get("id", "")),
-                side=side,
-                order_type=type_map.get(order_data.get("type", ""), OrderType.LIMIT),
-                quantity=abs(float(order_data.get("size", 0))),
-                price=float(order_data.get("price", 0)),
-                filled_quantity=abs(float(order_data.get("filled", 0))),
-                status=status_map.get(order_data.get("status", ""), OrderStatus.UNKNOWN),
-                timestamp=int(order_data.get("create_time", 0))
-            )
-            
-            return order
-            
-        except Exception as e:
-            self.logger.error(f"Failed to create order from Gate.io private futures data: {e}")
-            return None
-
-    def _create_trade_from_data(self, trade_data: Dict[str, Any]) -> Optional[Trade]:
-        """Create Trade object from Gate.io private futures trade data."""
-        try:
-            # Parse symbol from contract
-            symbol = self._parse_symbol_from_contract(trade_data.get("contract", ""))
-            if not symbol:
-                return None
-            
-            # Map Gate.io trade side
-            side = Side.BUY if trade_data.get("size", 0) > 0 else Side.SELL
-            
-            trade = Trade(
-                symbol=symbol,
-                side=side,
-                quantity=abs(float(trade_data.get("size", 0))),
-                price=float(trade_data.get("price", 0)),
-                timestamp=int(trade_data.get("create_time", 0)),
-                trade_id=str(trade_data.get("id", "")),
-                order_id=str(trade_data.get("order_id", "")),
-                is_maker=trade_data.get("role", "") == "maker"
-            )
-            
-            return trade
-            
-        except Exception as e:
-            self.logger.error(f"Failed to create trade from Gate.io private futures data: {e}")
-            return None
-
-    def _parse_symbol_from_contract(self, contract: str) -> Optional[Symbol]:
-        """Parse symbol from Gate.io futures contract string."""
-        try:
-            if not contract or "_" not in contract:
-                return None
-            
-            # Gate.io futures contracts are in format "BTC_USDT"
-            parts = contract.split("_")
-            if len(parts) >= 2:
-                base = parts[0]
-                quote = parts[1]
-                return Symbol(base=AssetName(base), quote=AssetName(quote), is_futures=True)
-            
-            return None
-            
-        except Exception as e:
-            self.logger.debug(f"Could not parse symbol from contract {contract}: {e}")
-            return None
 
     def format_message_for_logging(self, message: Dict[str, Any]) -> str:
         """Format message for logging (remove sensitive data)."""

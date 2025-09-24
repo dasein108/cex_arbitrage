@@ -19,7 +19,7 @@ from typing import List, Dict, Any, Optional
 from infrastructure.networking.websocket.strategies.subscription import SubscriptionStrategy
 from infrastructure.networking.websocket.structs import SubscriptionAction
 from exchanges.services import BaseExchangeMapper
-from exchanges.integrations.mexc.services.mexc_mappings import MexcUnifiedMappings
+from exchanges.integrations.mexc.services.mexc_mapper import MexcMapper
 
 
 class MexcPrivateSubscriptionStrategy(SubscriptionStrategy):

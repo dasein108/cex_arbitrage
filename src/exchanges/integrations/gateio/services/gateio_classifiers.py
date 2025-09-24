@@ -12,7 +12,7 @@ Separated from the main mapper for cleaner architecture and easier maintenance.
 
 from exchanges.structs.enums import TimeInForce, KlineInterval
 from exchanges.structs import OrderStatus, OrderType, Side
-from exchanges.services import BaseMappingConfiguration
+from exchanges.services import BaseExchangeClassifiers
 
 
 # Gate.io Order Status Mapping (Unified enum -> Gate.io string)
@@ -63,14 +63,14 @@ KLINE_INTERVAL_MAPPING = {
 
     
 # Factory function for external use
-def create_gateio_mapping_configuration() -> BaseMappingConfiguration:
+def create_gateio_classifiers() -> BaseExchangeClassifiers:
     """
     Factory function to create Gate.io mapping configuration.
     
     Returns:
-        BaseMappingConfiguration: Complete Gate.io mapping configuration
+        BaseExchangeClassifiers: Complete Gate.io mapping configuration
     """
-    return BaseMappingConfiguration(
+    return BaseExchangeClassifiers(
         order_status_mapping=ORDER_STATUS_MAPPING,
         order_type_mapping=ORDER_TYPE_MAPPING,
         side_mapping=SIDE_MAPPING,

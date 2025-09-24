@@ -12,7 +12,7 @@ from infrastructure.networking.websocket.structs import ParsedMessage, MessageTy
 from exchanges.integrations.mexc.ws.protobuf_parser import MexcProtobufParser
 from exchanges.structs.common import OrderBook, Trade, BookTicker
 from exchanges.integrations.mexc.structs.exchange import MexcWSTradeEntry
-from exchanges.integrations.mexc.services.mexc_mappings import MexcUnifiedMappings
+from exchanges.integrations.mexc.services.mexc_mapper import MexcMapper
 
 # HFT Logger Integration
 from infrastructure.logging import HFTLoggerInterface
@@ -33,7 +33,7 @@ class MexcPublicMessageParser(MessageParser):
         super().__init__(mapper, logger)
         self.entry_pool = OrderBookEntryPool(initial_size=200, max_size=500)
         # Ensure we have the correct mapper type for MEXC-specific operations
-        if not isinstance(mapper, MexcUnifiedMappings):
+        if not isinstance(mapper, MexcMapper):
             raise TypeError(f"Expected MexcUnifiedMappings, got {type(mapper)}")
         self.mexc_mapper = mapper  # Use the injected mapper directly
         

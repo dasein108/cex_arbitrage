@@ -3,7 +3,7 @@ from exchanges.structs.enums import TimeInForce, KlineInterval
 from exchanges.structs import OrderStatus, OrderType, Side
 
 
-class BaseMappingConfiguration:
+class BaseExchangeClassifiers:
     """
     Configuration container for exchange-specific mapping dictionaries.
 

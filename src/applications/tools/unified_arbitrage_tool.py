@@ -33,12 +33,13 @@ sys.path.insert(0, str(src_path))
 
 # CLAUDE.md compliant imports - use proper interfaces
 from infrastructure.factories.rest.public_rest_factory import PublicRestExchangeFactory
-from exchanges.structs import ExchangeEnumfrom config import HftConfig
-from exchanges.structs.common import Symbol, SymbolInfo
+from exchanges.structs import ExchangeEnum, Symbol, SymbolInfo
+from config.config_manager import HftConfig
+from exchanges.interfaces.composite.base_public_exchange import BasePublicExchangeInterface
 
 # Import existing analysis components through proper interfaces
-from trading.analysis import ArbitrageDataPipeline
-from trading.analysis import SpreadAnalyzer
+from trading.analytics.data_collector import ArbitrageDataPipeline
+from trading.analytics.spread_analyzer import SpreadAnalyzer
 
 # Import shared utilities (DRY compliance)
 from applications.tools.shared_utils import (
@@ -95,11 +96,17 @@ class SymbolDiscoveryService:
             # Parallel fetch for performance
             results = await asyncio.gather(*tasks, return_exceptions=True)
             
-            # Process results
+            # Process results with proper exchange key mapping
             symbol_data = {}
+            exchange_key_mapping = {
+                ExchangeEnum.MEXC: "mexc",
+                ExchangeEnum.GATEIO: "gateio", 
+                ExchangeEnum.GATEIO_FUTURES: "gateio_futures"
+            }
+            
             for i, result in enumerate(results):
                 config = exchange_configs[i]
-                exchange_key = config['exchange_enum'].value.lower()
+                exchange_key = exchange_key_mapping.get(config['exchange_enum'], config['exchange_enum'].value.lower())
                 
                 if isinstance(result, Exception):
                     self.logger.error(f"Failed to fetch from {exchange_key}: {result}")
@@ -177,27 +184,28 @@ class SymbolDiscoveryService:
         }
     
     def _build_availability_matrix(self, symbol_data: Dict) -> Dict:
-        """Build symbol availability matrix across exchanges"""
-        # Implementation simplified for core functionality
-        # Focus on essential arbitrage candidates only (YAGNI compliance)
-        matrix = {}
-        all_symbols = set()
+        """Build symbol availability matrix across exchanges with O(1) lookups."""
+        # Pre-build symbol sets for O(1) lookups (performance optimization)
+        exchange_symbol_sets = {
+            exchange: {f"{s.base}/{s.quote}" for s in symbols.keys()}
+            for exchange, symbols in symbol_data.items()
+        }
         
         # Collect all unique symbols
-        for exchange_symbols in symbol_data.values():
-            for symbol in exchange_symbols.keys():
-                all_symbols.add(f"{symbol.base}/{symbol.quote}")
+        all_symbols = set()
+        for symbol_set in exchange_symbol_sets.values():
+            all_symbols.update(symbol_set)
         
-        # Build availability for each symbol
+        # Build availability matrix with efficient lookups
+        matrix = {}
         for symbol_key in all_symbols:
             availability = {
-                "mexc_spot": symbol_key in [f"{s.base}/{s.quote}" for s in symbol_data.get("mexc_spot", {})],
-                "gateio_spot": symbol_key in [f"{s.base}/{s.quote}" for s in symbol_data.get("gateio_spot", {})],
-                "gateio_futures": symbol_key in [f"{s.base}/{s.quote}" for s in symbol_data.get("gateio_futures", {})]
+                "mexc_spot": symbol_key in exchange_symbol_sets.get("mexc", set()),
+                "gateio_spot": symbol_key in exchange_symbol_sets.get("gateio", set()), 
+                "gateio_futures": symbol_key in exchange_symbol_sets.get("gateio_futures", set())
             }
             
-            # Only include if available on multiple exchanges (triangular arbitrage candidates)
-            # For 3-exchange arbitrage, we need at least 2 exchanges, preferably all 3
+            # Only include arbitrage candidates (available on 2+ exchanges) 
             if sum(availability.values()) >= 2:
                 matrix[symbol_key] = availability
         

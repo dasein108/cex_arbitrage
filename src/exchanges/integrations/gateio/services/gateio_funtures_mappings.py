@@ -1,8 +1,8 @@
-from .gateio_mappings import GateioMappings
-from .mapping_configuration import create_gateio_mapping_configuration
+from .gateio_mapper import GateioMapper
+from .gateio_classifiers import create_gateio_classifiers
 
 
-class GateioFuturesMappings(GateioMappings):
+class GateioFuturesMapper(GateioMapper):
     """
     Gate.io futures-specific mapping implementation.
     
@@ -20,7 +20,7 @@ class GateioFuturesMappings(GateioMappings):
         """
         # Use the same configuration as spot for now
         # Could be extended to futures-specific config if needed
-        config = create_gateio_mapping_configuration()
+        config = create_gateio_classifiers()
         
         # Initialize composite mapper with futures symbol mapper
         from exchanges.services.exchange_mapper.base_exchange_mapper import BaseExchangeMapper

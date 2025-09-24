@@ -41,7 +41,6 @@ class CompositePublicExchange(BaseCompositeExchange):
         
         # Market data state
         self._orderbooks: Dict[Symbol, OrderBook] = {}
-        self._symbols_info: SymbolsInfo = {}
         self._active_symbols: List[Symbol] = []
 
         # Update handlers for arbitrage layer
@@ -50,6 +49,16 @@ class CompositePublicExchange(BaseCompositeExchange):
         ] = []
 
     # Abstract properties and methods
+
+    @property
+    def active_symbols(self) -> List[Symbol]:
+        """Get list of actively tracked symbols."""
+        return self._active_symbols.copy()
+
+    @property
+    def symbols_info(self) -> Optional[SymbolsInfo]:
+        """Get symbol information."""
+        return self._symbols_info
 
     @property
     @abstractmethod
@@ -62,7 +71,6 @@ class CompositePublicExchange(BaseCompositeExchange):
         """Load symbol information from REST API."""
         pass
 
-    @abstractmethod
     async def add_symbol(self, symbol: Symbol) -> None:
         """
         Start streaming data for a new symbol.
@@ -70,9 +78,8 @@ class CompositePublicExchange(BaseCompositeExchange):
         Args:
             symbol: Symbol to start tracking
         """
-        pass
+        self._active_symbols.append(symbol)
 
-    @abstractmethod
     async def remove_symbol(self, symbol: Symbol) -> None:
         """
         Stop streaming data for a symbol.
@@ -80,7 +87,7 @@ class CompositePublicExchange(BaseCompositeExchange):
         Args:
             symbol: Symbol to stop tracking
         """
-        pass
+        self.active_symbols.remove(symbol)
 
     @abstractmethod
     async def _get_orderbook_snapshot(self, symbol: Symbol) -> OrderBook:
@@ -109,18 +116,6 @@ class CompositePublicExchange(BaseCompositeExchange):
     async def _stop_real_time_streaming(self) -> None:
         """Stop real-time WebSocket streaming."""
         pass
-
-    # Public interface properties
-
-    @property
-    def active_symbols(self) -> List[Symbol]:
-        """Get list of actively tracked symbols."""
-        return self._active_symbols.copy()
-
-    @property
-    def symbols_info(self) -> Optional[SymbolsInfo]:
-        """Get symbol information."""
-        return self._symbols_info
 
     # Initialization and lifecycle
 

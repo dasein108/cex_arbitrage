@@ -9,14 +9,14 @@ interface to also provide market data functionality.
 from abc import abstractmethod
 from typing import Dict, List, Optional, Any
 from exchanges.structs.common import (
-    Symbol, AssetBalance, Order, Position, WithdrawalRequest, WithdrawalResponse
+    Symbol, AssetBalance, Order, Position, WithdrawalRequest, WithdrawalResponse, SymbolsInfo
 )
 from ...structs.types import AssetName
 from config.structs import ExchangeConfig
-from .base_public_exchange import CompositePublicExchange
+from .base_public_exchange import BaseCompositeExchange
 
 
-class CompositePrivateExchange(CompositePublicExchange):
+class CompositePrivateExchange(BaseCompositeExchange):
     """
     Base interface for private exchange operations (trading + market data).
     
@@ -319,7 +319,7 @@ class CompositePrivateExchange(CompositePublicExchange):
 
     # Initialization override for private exchanges
 
-    async def initialize(self, symbols: List[Symbol] = None) -> None:
+    async def initialize(self, symbols_info: SymbolsInfo) -> None:
         """
         Initialize private exchange with symbols and private data.
         
@@ -327,7 +327,8 @@ class CompositePrivateExchange(CompositePublicExchange):
             symbols: Optional list of symbols to track
         """
         # First initialize public functionality
-        await super().initialize(symbols)
+        self._symbols_info = symbols_info
+        await super().initialize()
 
         try:
             # Load private data

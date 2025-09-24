@@ -19,9 +19,9 @@ from exchanges.structs.types import AssetName, OrderId
 from exchanges.structs import OrderStatus, OrderType, Side
 from exchanges.services.exchange_mapper.base_exchange_mapper import BaseExchangeMapper
 from infrastructure.networking.websocket.structs import PublicWebsocketChannelType, PrivateWebsocketChannelType
-from .mapping_configuration import create_mexc_mapping_configuration
+from .mexc_classifiers import create_mexc_classifiers
 
-class MexcUnifiedMappings(BaseExchangeMapper):
+class MexcMapper(BaseExchangeMapper):
     """
     MEXC-specific unified mapping implementation.
     
@@ -50,7 +50,7 @@ class MexcUnifiedMappings(BaseExchangeMapper):
     
     def __init__(self, symbol_mapper):
         """Initialize MEXC mappings with exchange-specific configuration."""
-        config = create_mexc_mapping_configuration()
+        config = create_mexc_classifiers()
         super().__init__(symbol_mapper, config)
 
     def rest_to_order(self, mexc_order: Any) -> Order:

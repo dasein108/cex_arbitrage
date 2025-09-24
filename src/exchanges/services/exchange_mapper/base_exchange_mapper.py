@@ -2,14 +2,13 @@ from abc import ABC, abstractmethod
 from typing import Any
 
 from exchanges.services.symbol_mapper.base_symbol_mapper import SymbolMapperInterface
-from exchanges.structs.common import Trade, OrderBook, BookTicker, AssetBalance
-from .mapping_configuration import BaseMappingConfiguration
+from exchanges.structs.common import (Trade, OrderBook, BookTicker, AssetBalance,
+                                      TimeInForce, KlineInterval,  OrderStatus, OrderType, Side)
+from .base_exchange_classifier import BaseExchangeClassifiers
 from infrastructure.networking.websocket.structs import PublicWebsocketChannelType, PrivateWebsocketChannelType, SubscriptionAction
 from exchanges.structs.common import (
     Symbol, Order
 )
-from ...structs.enums import TimeInForce, KlineInterval
-from ...structs import OrderStatus, OrderType, Side
 
 
 class BaseExchangeMapper(ABC):
@@ -20,7 +19,7 @@ class BaseExchangeMapper(ABC):
     Exchange-specific implementations inherit and provide configuration.
     """
 
-    def __init__(self, symbol_mapper: SymbolMapperInterface, config: BaseMappingConfiguration):
+    def __init__(self, symbol_mapper: SymbolMapperInterface, config: BaseExchangeClassifiers):
         """Initialize with symbol mapper and mapping configuration."""
         self._symbol_mapper = symbol_mapper
         self._config = config

@@ -12,7 +12,7 @@ Registration happens automatically when this module is imported.
 """
 
 from .symbol_mapper import MexcSymbolMapper
-from .mexc_mappings import MexcUnifiedMappings
+from .mexc_mapper import MexcMapper
 
 from exchanges.structs import ExchangeEnum
 # Import factories to verify registration
@@ -20,9 +20,9 @@ from exchanges.services.symbol_mapper.factory import ExchangeSymbolMapperFactory
 from exchanges.services.exchange_mapper.factory import ExchangeMapperFactory
 
 ExchangeSymbolMapperFactory.register(ExchangeEnum.MEXC, MexcSymbolMapper)
-ExchangeMapperFactory.register(ExchangeEnum.MEXC, MexcUnifiedMappings)
+ExchangeMapperFactory.register(ExchangeEnum.MEXC, MexcMapper)
 
 __all__ = [
     'MexcSymbolMapper',
-    'MexcUnifiedMappings'
+    'MexcMapper'
 ]

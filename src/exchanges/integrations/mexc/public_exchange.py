@@ -63,9 +63,8 @@ class MexcPublicPublicExchange(CompositePublicExchange):
         try:
             # Get symbol information from REST API
             symbols_info = await self._public_rest.get_exchange_info()
-            self._symbols_info_dict.update(symbols_info)
-            self._symbols_info = self._symbols_info_dict.copy()
-            
+            self._symbols_info.update(symbols_info)
+
             self.logger.info(f"Loaded {len(symbols_info)} symbols from MEXC")
             
         except Exception as e:

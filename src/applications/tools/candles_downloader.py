@@ -28,14 +28,13 @@ import csv
 import traceback
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Dict, List, Optional, Any
+from typing import Dict, List, Optional, Any, Tuple
 import logging
 
 # Import the unified factory for exchange instances
 from infrastructure.factories.rest.public_rest_factory import PublicRestExchangeFactory
-from config import HftConfig
-from exchanges.structs import ExchangeEnumfrom exchanges.structs.common import Symbol, Kline
-from exchanges.structs.types import AssetName
+from config.config_manager import HftConfig
+from exchanges.structs import ExchangeEnum, Symbol, Kline, AssetName
 from exchanges.structs.enums import KlineInterval
 
 
@@ -238,16 +237,29 @@ class CandlesDownloader:
             ValueError: If invalid parameters provided
             Exception: If download fails
         """
-        # Validate exchange
+        # Parameter validation and preparation
+        self._validate_exchange(exchange)
+        symbol_obj = self._parse_symbol(symbol)
+        timeframe_enum = self._get_timeframe(timeframe)
+        start_date, end_date = self._resolve_date_range(days, start_date, end_date)
+        
+        # Generate paths
+        filename = filename or self._generate_filename(exchange.value, symbol, timeframe, start_date, end_date)
+        csv_path = self.output_dir / filename
+        
+        self.logger.info(f"Downloading {exchange.value.upper()} {symbol} {timeframe} candles from {start_date} to {end_date}")
+        
+        # Perform download with simplified error handling
+        return await self._execute_download(exchange, symbol_obj, timeframe_enum, timeframe, start_date, end_date, csv_path)
+    
+    def _validate_exchange(self, exchange: ExchangeEnum) -> None:
+        """Validate exchange is supported."""
         if exchange not in self.SUPPORTED_EXCHANGES:
             available = ', '.join([e.value for e in self.SUPPORTED_EXCHANGES])
             raise ValueError(f"Unsupported exchange: {exchange.value}. Available: {available}")
-        
-        # Parse parameters
-        symbol_obj = self._parse_symbol(symbol)
-        timeframe_enum = self._get_timeframe(timeframe)
-        
-        # Calculate date range
+    
+    def _resolve_date_range(self, days: Optional[int], start_date: Optional[datetime], end_date: Optional[datetime]) -> Tuple[datetime, datetime]:
+        """Resolve date range from parameters."""
         if days is not None:
             end_date = datetime.utcnow()
             start_date = end_date - timedelta(days=days)
@@ -257,57 +269,50 @@ class CandlesDownloader:
             start_date = end_date - timedelta(days=7)
             self.logger.info("No date range specified, defaulting to last 7 days")
         
-        # Generate filename
-        if filename is None:
-            filename = self._generate_filename(exchange.value, symbol, timeframe, start_date, end_date)
-        
-        csv_path = self.output_dir / filename
-        
-        self.logger.info(f"Downloading {exchange.value.upper()} {symbol} {timeframe} candles from {start_date} to {end_date}")
-        
-        # Create exchange client using factory
+        return start_date, end_date
+    
+    async def _execute_download(self, exchange: ExchangeEnum, symbol_obj: Symbol, timeframe_enum: KlineInterval, timeframe: str, start_date: datetime, end_date: datetime, csv_path: Path) -> str:
+        """Execute the download operation with simplified error handling."""
+        # Create exchange client
         exchange_config = self.config.get_exchange_config(exchange.value)
         client = PublicRestExchangeFactory.inject(exchange.value, config=exchange_config)
         
         try:
-            # Download data using batch method for large ranges
-            klines = await client.get_klines_batch(symbol_obj, timeframe_enum, start_date, end_date)
-            
+            klines = await self._fetch_klines(client, symbol_obj, timeframe_enum)
             if not klines:
                 self.logger.warning(f"No data received from exchange for {symbol_obj}")
                 return str(csv_path)
             
-            self.logger.info(f"Downloaded {len(klines)} candles, writing to CSV...")
-            
-            # Write to CSV file
-            with open(csv_path, 'w', newline='', encoding='utf-8') as csvfile:
-                writer = csv.writer(csvfile)
-                
-                # Write header
-                writer.writerow(self.CSV_HEADER)
-                
-                # Write data rows
-                for kline in klines:
-                    row = self._kline_to_csv_row(kline, exchange.value, timeframe)
-                    writer.writerow(row)
-            
-            self.logger.info(f"Successfully saved {len(klines)} candles to {csv_path}")
-            
-            # Log file size
-            file_size = csv_path.stat().st_size
-            self.logger.info(f"File size: {file_size / 1024:.1f} KB")
+            await self._save_to_csv(klines, exchange.value, timeframe, csv_path)
+            self._log_completion_stats(klines, csv_path)
             
             return str(csv_path)
             
         except Exception as e:
-            self.logger.error(f"Failed to download candles: {e}")
-            traceback.print_exc()
-            raise e
-        # finally:
-        #     # Clean up exchange client
-        #     if hasattr(client, 'close'):
-        #         await client.close()
-        #
+            self.logger.error(f"Download failed for {exchange.value} {symbol_obj}: {e}")
+            raise
+    
+    async def _fetch_klines(self, client, symbol_obj: Symbol, timeframe_enum: KlineInterval) -> List:
+        """Fetch klines data from exchange client."""
+        klines = await client.get_klines_batch(symbol_obj, timeframe_enum)
+        self.logger.info(f"Downloaded {len(klines)} candles")
+        return klines
+    
+    async def _save_to_csv(self, klines: List, exchange_name: str, timeframe: str, csv_path: Path) -> None:
+        """Save klines data to CSV file."""
+        with open(csv_path, 'w', newline='', encoding='utf-8') as csvfile:
+            writer = csv.writer(csvfile)
+            writer.writerow(self.CSV_HEADER)
+            
+            for kline in klines:
+                row = self._kline_to_csv_row(kline, exchange_name, timeframe)
+                writer.writerow(row)
+    
+    def _log_completion_stats(self, klines: List, csv_path: Path) -> None:
+        """Log completion statistics."""
+        file_size = csv_path.stat().st_size
+        self.logger.info(f"Successfully saved {len(klines)} candles to {csv_path}")
+        self.logger.info(f"File size: {file_size / 1024:.1f} KB")
     async def download_multiple(
         self,
         download_configs: List[Dict[str, Any]]

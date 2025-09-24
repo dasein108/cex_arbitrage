@@ -10,21 +10,21 @@ Consolidated Gate.io-specific mapper combining all mapping functionality:
 HFT COMPLIANCE: Sub-microsecond mapping operations, zero-copy patterns.
 """
 
-from typing import Dict
+from typing import Dict, Optional
 from enum import Enum
 
 from exchanges.structs.common import (
-    Order, Trade, AssetBalance, OrderBook, OrderBookEntry, BookTicker, WithdrawalStatus
+    Order, Trade, AssetBalance, OrderBook, OrderBookEntry, BookTicker, WithdrawalStatus, Symbol
 )
 from exchanges.structs.types import AssetName, OrderId
 from exchanges.structs.enums import TimeInForce, KlineInterval
 from exchanges.structs import OrderType, Side
 from exchanges.services.exchange_mapper.base_exchange_mapper import BaseExchangeMapper
 from infrastructure.networking.websocket.structs import PublicWebsocketChannelType, PrivateWebsocketChannelType
-from .mapping_configuration import create_gateio_mapping_configuration
+from .gateio_classifiers import create_gateio_classifiers
 
 
-class GateioMappings(BaseExchangeMapper):
+class GateioMapper(BaseExchangeMapper):
     """
     Gate.io-specific unified mapping implementation.
     
@@ -61,7 +61,7 @@ class GateioMappings(BaseExchangeMapper):
     
     def __init__(self, symbol_mapper):
         """Initialize Gate.io mappings with exchange-specific configuration."""
-        config = create_gateio_mapping_configuration()
+        config = create_gateio_classifiers()
         super().__init__(symbol_mapper, config)
         
 
@@ -275,9 +275,79 @@ class GateioMappings(BaseExchangeMapper):
         futures_private_mapping = {
             PrivateWebsocketChannelType.ORDER: "futures.orders",
             PrivateWebsocketChannelType.TRADE: "futures.usertrades", 
-            PrivateWebsocketChannelType.BALANCE: "futures.balance"
+            PrivateWebsocketChannelType.BALANCE: "futures.balances"
         }
         return futures_private_mapping.get(channel_type, "futures.orders")
+    
+    def futures_ws_to_order(self, gate_ws_order) -> Order:
+        """Transform Gate.io futures WebSocket order data to unified Order."""
+        # Gate.io futures WebSocket order format - uses 'contract' instead of 'currency_pair'
+        symbol = self._parse_futures_symbol(gate_ws_order.get('contract', ''))
+        
+        return Order(
+            order_id=OrderId(str(gate_ws_order.get('id', ''))),
+            symbol=symbol,
+            side=self.to_side(gate_ws_order.get('side', 'buy')),
+            order_type=self.to_order_type(gate_ws_order.get('type', 'limit')),
+            quantity=abs(float(gate_ws_order.get('size', '0'))),  # Gate.io futures uses 'size' and can be negative
+            price=float(gate_ws_order.get('price', '0')) if gate_ws_order.get('price') else None,
+            filled_quantity=abs(float(gate_ws_order.get('filled', '0'))),
+            remaining_quantity=abs(float(gate_ws_order.get('left', '0'))),
+            status=self.to_order_status(gate_ws_order.get('status', 'open')),
+            timestamp=int(float(gate_ws_order.get('create_time', '0')) * 1000)
+        )
+    
+    def futures_ws_to_trade(self, gate_ws_trade) -> Trade:
+        """Transform Gate.io futures WebSocket trade data to unified Trade."""
+        # Parse symbol from contract
+        symbol = self._parse_futures_symbol(gate_ws_trade.get('contract', ''))
+        
+        # Gate.io futures trade format - size can be negative (indicates side)
+        size = float(gate_ws_trade.get('size', 0))
+        side = Side.BUY if size > 0 else Side.SELL
+        quantity = abs(size)
+        price = float(gate_ws_trade.get('price', 0))
+        
+        return Trade(
+            symbol=symbol,
+            price=price,
+            quantity=quantity,
+            quote_quantity=price * quantity,
+            side=side,
+            timestamp=int(float(gate_ws_trade.get('create_time', 0))),
+            trade_id=str(gate_ws_trade.get('id', '')),
+            order_id=str(gate_ws_trade.get('order_id', '')),
+            is_maker=gate_ws_trade.get('role', '') == 'maker'
+        )
+    
+    def futures_ws_to_balance(self, gate_ws_balance) -> AssetBalance:
+        """Transform Gate.io futures WebSocket balance data to unified AssetBalance."""
+        return AssetBalance(
+            asset=AssetName(gate_ws_balance.get('currency', '')),
+            free=float(gate_ws_balance.get('available', '0')),
+            locked=float(gate_ws_balance.get('freeze', '0'))  # Gate.io uses 'freeze' for locked
+        )
+    
+    def _parse_futures_symbol(self, contract: str) -> Optional[Symbol]:
+        """Parse symbol from Gate.io futures contract string."""
+        try:
+            if not contract or '_' not in contract:
+                return None
+            
+            # Gate.io futures contracts are in format "BTC_USDT"
+            parts = contract.split('_')
+            if len(parts) >= 2:
+                base = parts[0]
+                quote = parts[1]
+                return self._symbol_mapper.to_symbol(f"{base}/{quote}", is_futures=True)
+            
+            return None
+            
+        except Exception as e:
+            # Use logger if available, otherwise silent fail
+            if hasattr(self, 'logger'):
+                self.logger.debug(f"Could not parse futures symbol from contract {contract}: {e}")
+            return None
     
     def get_spot_private_channel_name(self, channel_type: PrivateWebsocketChannelType) -> str:
         """Get Gate.io spot private channel name for WebSocket channel type."""

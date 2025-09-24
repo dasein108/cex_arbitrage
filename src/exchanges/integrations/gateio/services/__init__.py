@@ -11,25 +11,25 @@ Services auto-registered:
 Registration happens automatically when this module is imported.
 """
 
-from .symbol_mapper import GateioSymbolMapperInterface
+from .spot_symbol_mapper import GateioSymbolMapperInterface
 from .futures_symbol_mapper import GateioFuturesSymbolMapperInterface
-from .gateio_mappings import GateioMappings
-from .gateio_funtures_mappings import GateioFuturesMappings
+from .gateio_mapper import GateioMapper
+from .gateio_funtures_mappings import GateioFuturesMapper
 from exchanges.structs.enums import ExchangeEnum
 
 # Import factories to verify registration
 from exchanges.services import ExchangeSymbolMapperFactory, ExchangeMapperFactory
 
 ExchangeSymbolMapperFactory.register(ExchangeEnum.GATEIO, GateioSymbolMapperInterface)
-ExchangeMapperFactory.register(ExchangeEnum.GATEIO, GateioMappings)
+ExchangeMapperFactory.register(ExchangeEnum.GATEIO, GateioMapper)
 
 ExchangeSymbolMapperFactory.register(ExchangeEnum.GATEIO_FUTURES, GateioFuturesSymbolMapperInterface)
-ExchangeMapperFactory.register(ExchangeEnum.GATEIO_FUTURES, GateioFuturesMappings)
+ExchangeMapperFactory.register(ExchangeEnum.GATEIO_FUTURES, GateioFuturesMapper)
 
 
 __all__ = [
     'GateioSymbolMapperInterface',
-    'GateioMappings',
+    'GateioMapper',
     'GateioFuturesSymbolMapperInterface',
-    'GateioFuturesMappings'
+    'GateioFuturesMapper'
 ]

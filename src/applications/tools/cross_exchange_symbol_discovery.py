@@ -32,9 +32,8 @@ project_root = Path(__file__).parent.parent  # Now points to src/
 sys.path.insert(0, str(project_root))
 
 # Direct imports from src directory
-from exchanges.structs.common import Symbol, SymbolInfo
-from exchanges.structs.types import ExchangeName, AssetName
-from exchanges.structs import ExchangeEnumfrom exchanges.integrations.mexc.rest.mexc_rest_public import MexcPublicSpotRest
+from exchanges.structs import Symbol, SymbolInfo, ExchangeEnum, ExchangeName, AssetName
+from exchanges.integrations.mexc.rest.mexc_rest_public import MexcPublicSpotRest
 from exchanges.integrations.gateio.rest.gateio_rest_public import GateioPublicSpotRest
 from exchanges.integrations.gateio.rest.gateio_futures_public import GateioPublicFuturesRest
 from infrastructure.exceptions.exchange import BaseExchangeError
@@ -384,76 +383,104 @@ class SymbolDiscoveryEngine:
                                   exchange_data: Dict[ExchangeMarket, Dict[Symbol, SymbolInfo]]
                                   ) -> Dict[str, SymbolAvailability]:
         """Build symbol availability matrix across all exchanges with stablecoin equivalence"""
-        # Collect all unique exchanges assets that trade against stablecoins
-        base_assets_with_stables: Set[str] = set()
-        regular_symbols: Set[Symbol] = set()
+        matrix = {}
         
+        # Process stablecoin pairs with equivalence (YAGNI: focus on USDT/USDC only)
+        stablecoin_symbols = self._extract_stablecoin_symbols(exchange_data)
+        matrix.update(self._process_stablecoin_pairs(stablecoin_symbols, exchange_data))
+        
+        # Process regular pairs with exact matching
+        regular_symbols = self._extract_regular_symbols(exchange_data)
+        matrix.update(self._process_regular_pairs(regular_symbols, exchange_data))
+        
+        return matrix
+    
+    def _extract_stablecoin_symbols(self, exchange_data: Dict[ExchangeMarket, Dict[Symbol, SymbolInfo]]) -> Set[str]:
+        """Extract base assets that trade against stablecoins."""
         stablecoins = {'USDT', 'USDC'}
+        base_assets = set()
         
         for symbols in exchange_data.values():
             for symbol in symbols:
                 if symbol.quote in stablecoins:
-                    base_assets_with_stables.add(symbol.base)
-                else:
+                    base_assets.add(symbol.base)
+        
+        return base_assets
+    
+    def _extract_regular_symbols(self, exchange_data: Dict[ExchangeMarket, Dict[Symbol, SymbolInfo]]) -> Set[Symbol]:
+        """Extract symbols that don't trade against stablecoins."""
+        stablecoins = {'USDT', 'USDC'}
+        regular_symbols = set()
+        
+        for symbols in exchange_data.values():
+            for symbol in symbols:
+                if symbol.quote not in stablecoins:
                     regular_symbols.add(symbol)
         
+        return regular_symbols
+    
+    def _process_stablecoin_pairs(self, base_assets: Set[str], exchange_data: Dict[ExchangeMarket, Dict[Symbol, SymbolInfo]]) -> Dict[str, SymbolAvailability]:
+        """Process stablecoin pairs with equivalence matching."""
         matrix = {}
         
-        # Handle stablecoin pairs with equivalence matching
-        for base_asset in base_assets_with_stables:
+        for base_asset in base_assets:
             matches = self._find_stablecoin_matches(base_asset, exchange_data)
-            
-            # Create a representative symbol for display (prefer USDT)
-            representative_symbol = None
-            for symbols in exchange_data.values():
-                for symbol in symbols:
-                    if symbol.base == base_asset and symbol.quote == 'USDT':
-                        representative_symbol = symbol
-                        break
-                if representative_symbol:
-                    break
-            
-            # If no USDT pair found, use USDC
-            if not representative_symbol:
-                for symbols in exchange_data.values():
-                    for symbol in symbols:
-                        if symbol.base == base_asset and symbol.quote == 'USDC':
-                            representative_symbol = symbol
-                            break
-                    if representative_symbol:
-                        break
+            representative_symbol = self._get_representative_stablecoin_symbol(base_asset, exchange_data)
             
             if representative_symbol:
                 symbol_key = f"{base_asset}/USD_STABLE"
-                availability = SymbolAvailability(
+                matrix[symbol_key] = SymbolAvailability(
                     symbol=representative_symbol,
                     mexc_spot=matches['mexc_spot'],
-                    mexc_futures=matches['mexc_futures'],
+                    mexc_futures=matches['mexc_futures'], 
                     gateio_spot=matches['gateio_spot'],
                     gateio_futures=matches['gateio_futures']
                 )
-                matrix[symbol_key] = availability
         
-        # Handle regular non-stablecoin pairs with exact matching
+        return matrix
+    
+    def _process_regular_pairs(self, regular_symbols: Set[Symbol], exchange_data: Dict[ExchangeMarket, Dict[Symbol, SymbolInfo]]) -> Dict[str, SymbolAvailability]:
+        """Process regular pairs with exact matching."""
+        matrix = {}
+        
+        # Pre-build market lookup for efficiency (O(1) instead of O(n))
+        market_lookup = {
+            'mexc_spot': ExchangeMarket(exchange=ExchangeEnum.MEXC, market=MarketType.SPOT),
+            'mexc_futures': ExchangeMarket(exchange=ExchangeEnum.MEXC, market=MarketType.FUTURES),
+            'gateio_spot': ExchangeMarket(exchange=ExchangeEnum.GATEIO, market=MarketType.SPOT),
+            'gateio_futures': ExchangeMarket(exchange=ExchangeEnum.GATEIO, market=MarketType.FUTURES)
+        }
+        
         for symbol in regular_symbols:
             symbol_key = f"{symbol.base}/{symbol.quote}"
             
-            mexc_spot_market = ExchangeMarket(exchange=ExchangeEnum.MEXC, market=MarketType.SPOT)
-            mexc_futures_market = ExchangeMarket(exchange=ExchangeEnum.MEXC, market=MarketType.FUTURES)
-            gateio_spot_market = ExchangeMarket(exchange=ExchangeEnum.GATEIO, market=MarketType.SPOT)
-            gateio_futures_market = ExchangeMarket(exchange=ExchangeEnum.GATEIO, market=MarketType.FUTURES)
-            
             availability = SymbolAvailability(
                 symbol=symbol,
-                mexc_spot=symbol in exchange_data.get(mexc_spot_market, {}),
-                mexc_futures=symbol in exchange_data.get(mexc_futures_market, {}),
-                gateio_spot=symbol in exchange_data.get(gateio_spot_market, {}),
-                gateio_futures=symbol in exchange_data.get(gateio_futures_market, {})
+                mexc_spot=symbol in exchange_data.get(market_lookup['mexc_spot'], {}),
+                mexc_futures=symbol in exchange_data.get(market_lookup['mexc_futures'], {}),
+                gateio_spot=symbol in exchange_data.get(market_lookup['gateio_spot'], {}),
+                gateio_futures=symbol in exchange_data.get(market_lookup['gateio_futures'], {})
             )
             
             matrix[symbol_key] = availability
         
         return matrix
+    
+    def _get_representative_stablecoin_symbol(self, base_asset: str, exchange_data: Dict[ExchangeMarket, Dict[Symbol, SymbolInfo]]) -> Optional[Symbol]:
+        """Get representative symbol for stablecoin base asset (prefer USDT over USDC)."""
+        # Try USDT first
+        for symbols in exchange_data.values():
+            for symbol in symbols:
+                if symbol.base == base_asset and symbol.quote == 'USDT':
+                    return symbol
+        
+        # Fall back to USDC
+        for symbols in exchange_data.values():
+            for symbol in symbols:
+                if symbol.base == base_asset and symbol.quote == 'USDC':
+                    return symbol
+        
+        return None
     
     def _extract_metadata(self,
                          exchange_data: Dict[ExchangeMarket, Dict[Symbol, SymbolInfo]],
