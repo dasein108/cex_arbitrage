@@ -4,11 +4,11 @@ import hashlib
 import hmac
 import asyncio
 import msgspec
-from typing import Dict, Any, Optional
+from typing import Dict, Any
 from websockets import connect
 from websockets.client import WebSocketClientProtocol
 
-from exchanges.base.websocket import ConnectionStrategy, ConnectionContext
+from exchanges.interfaces.ws import ConnectionStrategy, ConnectionContext
 from infrastructure.networking.websocket.strategies.connection import ReconnectionPolicy
 from infrastructure.config.structs import ExchangeConfig
 from infrastructure.exceptions.exchange import BaseExchangeError

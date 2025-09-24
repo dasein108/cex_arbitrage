@@ -43,11 +43,11 @@ from .balance import BalanceMonitor
 from .recovery import RecoveryManager
 from .aggregator import MarketDataAggregator
 
-from interfaces.exchanges.base.base_private_exchange import BasePrivateExchangeInterface
+from exchanges.interfaces.composite.base_private_exchange import CompositePrivateExchange
 from infrastructure.exceptions.exchange import ArbitrageEngineError
 
 # HFT Logger Integration
-from infrastructure.logging import get_exchange_logger, HFTLoggerInterface, LoggingTimer
+from infrastructure.logging import get_exchange_logger, HFTLoggerInterface
 
 
 class ArbitrageEngine:
@@ -68,7 +68,7 @@ class ArbitrageEngine:
     def __init__(
         self,
         config: ArbitrageConfig,
-        exchanges: Dict[str, BasePrivateExchangeInterface],
+        exchanges: Dict[str, CompositePrivateExchange],
         logger: Optional[HFTLoggerInterface] = None,
     ):
         """

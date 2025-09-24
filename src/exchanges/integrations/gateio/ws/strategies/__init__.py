@@ -7,24 +7,24 @@ public and private WebSocket channels.
 """
 
 # Public strategies
-from .public.connection import GateioPublicConnectionStrategy
-from .public.subscription import GateioPublicSubscriptionStrategy  
-from .public.message_parser import GateioPublicMessageParser
+from exchanges.integrations.gateio.ws.strategies.spot.public import GateioPublicConnectionStrategy
+from exchanges.integrations.gateio.ws.strategies.spot.public.subscription import GateioPublicSubscriptionStrategy
+from exchanges.integrations.gateio.ws.strategies.spot.public import GateioPublicMessageParser
 
 # Private strategies
-from .private.connection import GateioPrivateConnectionStrategy
-from .private.subscription import GateioPrivateSubscriptionStrategy
-from .private.message_parser import GateioPrivateMessageParser
+from exchanges.integrations.gateio.ws.strategies.spot.private import GateioPrivateConnectionStrategy
+from exchanges.integrations.gateio.ws.strategies.spot.private.subscription import GateioPrivateSubscriptionStrategy
+from exchanges.integrations.gateio.ws.strategies.spot.private.message_parser import GateioPrivateMessageParser
 
 # Futures strategies
-from .futures.connection import GateioFuturesConnectionStrategy
-from .futures.subscription import GateioFuturesSubscriptionStrategy
-from .futures.message_parser import GateioFuturesMessageParser
+from exchanges.integrations.gateio.ws.strategies.futures.public.connection import GateioPublicFuturesConnectionStrategy
+from exchanges.integrations.gateio.ws.strategies.futures.public.subscription import GateioPublicFuturesSubscriptionStrategy
+from exchanges.integrations.gateio.ws.strategies.futures.public.message_parser import GateioPublicFuturesMessageParser
 
 # Private futures strategies
-from .private_futures.connection import GateioPrivateFuturesConnectionStrategy
-from .private_futures.subscription import GateioPrivateFuturesSubscriptionStrategy
-from .private_futures.message_parser import GateioPrivateFuturesMessageParser
+from exchanges.integrations.gateio.ws.strategies.futures.private.connection import GateioPrivateFuturesConnectionStrategy
+from exchanges.integrations.gateio.ws.strategies.futures.private import GateioPrivateFuturesSubscriptionStrategy
+from exchanges.integrations.gateio.ws.strategies.futures.private import GateioPrivateFuturesMessageParser
 
 # Import factory for registration
 from infrastructure.networking.websocket.strategies import WebSocketStrategyFactory
@@ -49,9 +49,9 @@ WebSocketStrategyFactory.register_strategies(
 # Register public futures strategies with factory
 WebSocketStrategyFactory.register_strategies(
     ExchangeEnum.GATEIO_FUTURES, False,
-    GateioFuturesConnectionStrategy,
-    GateioFuturesSubscriptionStrategy,
-    GateioFuturesMessageParser
+    GateioPublicFuturesConnectionStrategy,
+    GateioPublicFuturesSubscriptionStrategy,
+    GateioPublicFuturesMessageParser
 )
 
 # Register private futures strategies with factory
@@ -74,9 +74,9 @@ __all__ = [
     'GateioPrivateMessageParser',
 
     # Futures strategies
-    'GateioFuturesConnectionStrategy',
-    'GateioFuturesSubscriptionStrategy',
-    'GateioFuturesMessageParser',
+    'GateioPublicFuturesConnectionStrategy',
+    'GateioPublicFuturesSubscriptionStrategy',
+    'GateioPublicFuturesMessageParser',
 
     # Private futures strategies
     'GateioPrivateFuturesConnectionStrategy',

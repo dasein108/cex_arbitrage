@@ -333,5 +333,5 @@ class GateioPublicMessageParser(MessageParser):
         )
     
     def _create_heartbeat_response(self, message: Dict[str, Any]) -> ParsedMessage:
-        """Create heartbeat response message using base class method."""
+        """Create heartbeat response message using composite class method."""
         return self.create_heartbeat_response(message)

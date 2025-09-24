@@ -86,7 +86,7 @@ class LoggerFactory:
         Create logger for specific component using default configuration.
         
         Args:
-            component_name: Name of component (e.g., 'mexc.websocket.public')
+            component_name: Name of component (e.g., 'mexc.ws.public')
             
         Returns:
             Configured logger instance
@@ -102,7 +102,7 @@ class LoggerFactory:
         
         Args:
             exchange: Exchange name (e.g., 'mexc', 'gateio')
-            component: Optional component name (e.g., 'websocket.public')
+            component: Optional component name (e.g., 'ws.public')
             
         Returns:
             Configured logger with exchange context

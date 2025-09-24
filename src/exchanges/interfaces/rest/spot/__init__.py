@@ -2,10 +2,10 @@
 Spot trading REST interface exports.
 """
 
-from .base_rest_spot_public import PublicExchangeSpotRestInterface
-from .base_rest_spot_private import PrivateExchangeSpotRestInterface
+from .rest_spot_public import PublicSpotRest
+from .rest_spot_private import PrivateSpotRest
 
 __all__ = [
-    "PublicExchangeSpotRestInterface",
-    "PrivateExchangeSpotRestInterface",
+    "PublicSpotRest",
+    "PrivateSpotRest",
 ]

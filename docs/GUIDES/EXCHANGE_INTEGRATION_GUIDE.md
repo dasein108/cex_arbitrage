@@ -105,7 +105,7 @@ Trade, Ticker, Kline, SymbolInfo, etc.
 ### Interface Hierarchy
 
 ```python
-# src/interfaces/exchanges/base/base_exchange.py
+# src/interfaces/exchanges/composite/base_exchange.py
 class BaseExchangeInterface(ABC):
     """Foundation interface with connection and state management."""
     async def initialize(self, **kwargs) -> None
@@ -117,7 +117,7 @@ class BaseExchangeInterface(ABC):
 ```
 
 ```python
-# src/interfaces/exchanges/base/base_public_exchange.py
+# src/interfaces/exchanges/composite/base_public_exchange.py
 class BasePublicExchangeInterface(BaseExchangeInterface):
     """Public market data operations (no authentication)."""
     @property
@@ -135,7 +135,7 @@ class BasePublicExchangeInterface(BaseExchangeInterface):
 ```
 
 ```python
-# src/interfaces/exchanges/base/base_private_exchange.py
+# src/interfaces/exchanges/composite/base_private_exchange.py
 class BasePrivateExchangeInterface(BasePublicExchangeInterface):
     """Trading operations + market data (requires authentication)."""
     @property
@@ -316,7 +316,7 @@ class NewExchangeRestPublic(BaseRestSpotPublic):
 
 ```python
 # src/exchanges/new_exchange/new_exchange_exchange.py
-from interfaces.exchanges.base.base_private_exchange import BasePrivateExchangeInterface
+from exchanges.interfaces.composite import BasePrivateExchangeInterface
 from core.structs.common import *
 
 
@@ -387,7 +387,7 @@ def validate_exchange_availability(cls, exchange: ExchangeEnum) -> bool:
 **Base Class Usage**
 
 ```python
-# ALL REST clients MUST inherit from core base classes
+# ALL REST clients MUST inherit from core composite classes
 from core.exchanges.rest.spot.base_rest_spot_public import BaseRestSpotPublic
 from core.exchanges.rest.spot.base_rest_spot_private import BaseRestSpotPrivate
 
@@ -623,7 +623,7 @@ class MexcWebSocketPrivate(BaseWebSocketPrivate):
 
 ```python
 # Template: src/exchanges/{exchange}/{exchange}_exchange.py
-from interfaces.exchanges.base.base_private_exchange import BasePrivateExchangeInterface
+from exchanges.interfaces.composite import BasePrivateExchangeInterface
 from core.config.structs import ExchangeConfig
 from core.structs.common import *
 from typing import Dict, List, Optional

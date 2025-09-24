@@ -327,7 +327,7 @@ class MexcPublicMessageParser(MessageParser):
         return None
 
     # Removed redundant batch processing - using inherited implementation from unified MessageParser
-    # The base class provides comprehensive batch processing with metrics tracking and error handling
+    # The composite class provides comprehensive batch processing with metrics tracking and error handling
 
     async def _parse_json_message(self, msg: Dict[str, Any]) -> Optional[ParsedMessage]:
         """Parse JSON message."""

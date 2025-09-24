@@ -1,6 +1,6 @@
 from abc import abstractmethod
 from typing import Dict, List, Optional
-from exchanges.interfaces.rest.base_rest import BaseExchangeRestInterface
+from exchanges.interfaces.rest.rest_base import BaseRestInterface
 from exchanges.services import BaseExchangeMapper
 from infrastructure.data_structures.common import (
     Symbol,
@@ -22,7 +22,7 @@ from infrastructure.config.structs import ExchangeConfig
 from infrastructure.logging import HFTLoggerInterface
 
 
-class PrivateExchangeSpotRest(BaseExchangeRestInterface):
+class PrivateSpotRest(BaseRestInterface):
     """Abstract interface for private exchange operations (trading, account management)"""
     CAN_MODIFY_ORDERS = False  # Default capability flag for modifying orders
 

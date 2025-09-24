@@ -20,7 +20,7 @@ class ExchangeMapperFactory(BaseExchangeFactory[BaseExchangeMapper]):
     Factory for creating exchange-specific mapping services.
     
     Inherits from BaseExchangeFactory to provide standardized factory patterns:
-    - Registry management via base class (_implementations, _instances)
+    - Registry management via composite class (_implementations, _instances)
     - Enhanced auto-injection with symbol_mapper dependency resolution
     - Factory-to-factory coordination for seamless dependency management
     - Consistent error handling and validation patterns
@@ -36,7 +36,7 @@ class ExchangeMapperFactory(BaseExchangeFactory[BaseExchangeMapper]):
         """
         Register a mapping implementation for an exchange.
         
-        Enhanced with base class infrastructure and automatic symbol_mapper injection.
+        Enhanced with composite class infrastructure and automatic symbol_mapper injection.
         
         Args:
             exchange: Exchange identifier (ExchangeEnum only)
@@ -46,10 +46,10 @@ class ExchangeMapperFactory(BaseExchangeFactory[BaseExchangeMapper]):
             ValueError: If implementation class invalid
         """
         
-        # Use base class validation
+        # Use composite class validation
         cls._validate_implementation_class(implementation_class, BaseExchangeMapper)
         
-        # Register with base class registry using ExchangeEnum as key
+        # Register with composite class registry using ExchangeEnum as key
         cls._implementations[exchange] = implementation_class
         
         # Enhanced auto-injection with symbol_mapper dependency
@@ -59,7 +59,7 @@ class ExchangeMapperFactory(BaseExchangeFactory[BaseExchangeMapper]):
             # Get or create symbol mapper for this exchange
             symbol_mapper = ExchangeSymbolMapperFactory.inject(exchange)
             
-            # Create and cache the instance immediately using base class helper
+            # Create and cache the instance immediately using composite class helper
             instance = cls._create_instance_with_auto_injection(
                 exchange, implementation_class, symbol_mapper=symbol_mapper
             )
@@ -175,4 +175,4 @@ class ExchangeMapperFactory(BaseExchangeFactory[BaseExchangeMapper]):
         return instance
 
     # Note: get_registered_exchanges(), clear_cache(), is_registered(), and reset_factory()
-    # are inherited from BaseExchangeFactory and work with the base class registries
+    # are inherited from BaseExchangeFactory and work with the composite class registries

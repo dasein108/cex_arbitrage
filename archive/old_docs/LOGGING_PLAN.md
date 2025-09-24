@@ -222,7 +222,7 @@ class ConsoleBackend(LogBackend):
 ```python
 class LoggerFactory:
     """
-    Creates and configures loggers for injection into base classes.
+    Creates and configures loggers for injection into composite classes.
     Handles environment-specific configurations.
     """
     
@@ -268,7 +268,7 @@ class LoggerFactory:
 #### 3.2 Base Class Integration (`src/core/transport/websocket/strategies/enhanced_message_parser.py`)
 ```python
 class EnhancedBaseMessageParser(ABC):
-    """Enhanced base with injected logger"""
+    """Enhanced composite with injected logger"""
     
     def __init__(self, mapper: BaseExchangeMapper, exchange_name: str, logger: HFTLoggerInterface = None):
         self.mapper = mapper
@@ -522,7 +522,7 @@ class MexcPublicMessageParser(EnhancedBaseMessageParser):
 class WebSocketManager:
     def __init__(self, logger=None):
         # Backwards compatible - existing logs still work
-        self.logger = logger or LoggerFactory.create_logger("websocket")
+        self.logger = logger or LoggerFactory.create_logger("ws")
     
     async def connect(self):
         try:

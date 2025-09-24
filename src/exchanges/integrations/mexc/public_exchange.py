@@ -10,18 +10,18 @@ HFT COMPLIANCE: Sub-10ms market data processing, zero-copy patterns.
 import time
 from typing import List, Dict, Optional
 
-from interfaces.exchanges.base import BasePublicExchangeInterface
+from exchanges.interfaces.composite import CompositePublicExchange
 from infrastructure.data_structures.common import (
     OrderBook, Symbol, SymbolsInfo,
     ExchangeStatus, OrderbookUpdateType
 )
-from exchanges.integrations.mexc.ws.mexc_ws_public import MexcWebsocketPublic
+from exchanges.integrations.mexc.ws.mexc_ws_public import MexcWebsocketExchangePublicWebsocket
 from exchanges.integrations.mexc.rest.mexc_rest_public import MexcPublicSpotRest
-from exchanges.base.websocket import ConnectionState
+from exchanges.interfaces.ws import ConnectionState
 from infrastructure.config.structs import ExchangeConfig
 
 
-class MexcPublicExchange(BasePublicExchangeInterface):
+class MexcPublicPublicExchange(CompositePublicExchange):
     """
     MEXC Public Exchange - Market Data Only
     
@@ -47,7 +47,7 @@ class MexcPublicExchange(BasePublicExchangeInterface):
 
         # Initialize components using composition pattern
         self._public_rest = MexcPublicSpotRest(config)
-        self._websocket_client = MexcWebsocketPublic(
+        self._websocket_client = MexcWebsocketExchangePublicWebsocket(
             config=self._config,
             orderbook_diff_handler=self._handle_raw_orderbook_message,
             state_change_handler=self._handle_connection_state_change
@@ -154,7 +154,7 @@ class MexcPublicExchange(BasePublicExchangeInterface):
         Args:
             symbols: Optional list of symbols to initialize for streaming
         """
-        # Call the base class initialize method which handles the common sequence
+        # Call the composite class initialize method which handles the common sequence
         await super().initialize(symbols)
     
     async def add_symbol(self, symbol: Symbol) -> None:
@@ -172,7 +172,7 @@ class MexcPublicExchange(BasePublicExchangeInterface):
             # Add to active symbols set
             self._active_symbols.add(symbol)
             
-            # Load initial orderbook snapshot using base class method
+            # Load initial orderbook snapshot using composite class method
             await self._load_orderbook_snapshot(symbol)
             
             # WebSocket subscription is handled during initialization
@@ -199,7 +199,7 @@ class MexcPublicExchange(BasePublicExchangeInterface):
             # Remove from active symbols
             self._active_symbols.discard(symbol)
             
-            # Remove from base class orderbook storage
+            # Remove from composite class orderbook storage
             if symbol in self._orderbooks:
                 del self._orderbooks[symbol]
             
@@ -219,7 +219,7 @@ class MexcPublicExchange(BasePublicExchangeInterface):
             # Stop real-time streaming
             await self._stop_real_time_streaming()
             
-            # Call base class close for common cleanup
+            # Call composite class close for common cleanup
             await super().close()
             
             # Clean up exchange-specific state
@@ -235,7 +235,7 @@ class MexcPublicExchange(BasePublicExchangeInterface):
         """
         Handle orderbook messages from WebSocket with HFT diff processing.
         
-        HFT COMPLIANT: Uses base class orderbook management for consistency.
+        HFT COMPLIANT: Uses composite class orderbook management for consistency.
         Processes MEXC orderbook diffs per documentation:
         https://mexcdevelop.github.io/apidocs/spot_v3_en/#diff-depth-stream
         
@@ -251,10 +251,10 @@ class MexcPublicExchange(BasePublicExchangeInterface):
         from common.orderbook_diff_processor import ParsedOrderbookUpdate
         
         if isinstance(parsed_update_or_raw, ParsedOrderbookUpdate):
-            # Convert ParsedOrderbookUpdate to OrderBook for base class
+            # Convert ParsedOrderbookUpdate to OrderBook for composite class
             # This is a simplified conversion - in production might need full orderbook reconstruction
             if symbol in self._orderbooks:
-                # Update existing orderbook using base class method
+                # Update existing orderbook using composite class method
                 current_orderbook = self._orderbooks[symbol]
                 # Apply diff to create new orderbook (simplified)
                 updated_orderbook = self._apply_diff_to_orderbook(current_orderbook, parsed_update_or_raw)
@@ -298,7 +298,7 @@ class MexcPublicExchange(BasePublicExchangeInterface):
     
     def get_market_data_statistics(self) -> Dict[str, any]:
         """Get comprehensive HFT market data processing statistics."""
-        # Use base class statistics method
+        # Use composite class statistics method
         base_stats = self.get_orderbook_stats()
         
         return {

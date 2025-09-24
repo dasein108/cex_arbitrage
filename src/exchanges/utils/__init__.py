@@ -1,7 +1,7 @@
 """
 Exchange Base Utils
 
-Core utilities for exchange base classes:
+Core utilities for exchange composite classes:
 - kline_utils: Candlestick data processing utilities
 - exchange_utils: Exchange enumeration and conversion utilities
 

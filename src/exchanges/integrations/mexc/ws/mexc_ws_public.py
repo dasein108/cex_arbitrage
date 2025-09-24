@@ -8,7 +8,7 @@ Handles public WebSocket streams for market data including:
 - Real-time market information
 
 Features:
-- Dependency injection via base class (like REST pattern)
+- Dependency injection via composite class (like REST pattern)
 - HFT-optimized message processing 
 - Event-driven architecture with injected handlers
 - Clean separation of concerns
@@ -19,14 +19,14 @@ MEXC Public WebSocket Specifications:
 - Protocol: JSON and Protocol Buffers
 - Performance: <50ms latency with batch processing
 
-Architecture: Dependency injection with base class coordination
+Architecture: Dependency injection with composite class coordination
 """
 
 from typing import List, Optional, Callable, Awaitable
 
 from infrastructure.data_structures.common import Symbol, Trade, OrderBook, BookTicker
 from infrastructure.config.structs import ExchangeConfig
-from exchanges.base.websocket import BaseWebsocketPublicFutures
+from exchanges.interfaces.ws import PublicFuturesWebsocket
 from infrastructure.networking.websocket.structs import ConnectionState
 
 # MEXC-specific protobuf imports for message parsing
@@ -35,7 +35,7 @@ from exchanges.integrations.mexc.structs.protobuf.PublicLimitDepthsV3Api_pb2 imp
 from exchanges.integrations.mexc.structs.protobuf.PublicAggreDealsV3Api_pb2 import PublicAggreDealsV3Api
 
 
-class MexcWebsocketPublic(BaseWebsocketPublicFutures):
+class MexcWebsocketExchangePublicWebsocket(PublicFuturesWebsocket):
     """MEXC public WebSocket client using dependency injection pattern."""
 
     def __init__(
@@ -56,7 +56,7 @@ class MexcWebsocketPublic(BaseWebsocketPublicFutures):
         if not config.websocket_url:
             raise ValueError("MEXC exchange configuration missing WebSocket URL")
         
-        # Initialize via base class dependency injection (like REST pattern)
+        # Initialize via composite class dependency injection (like REST pattern)
         super().__init__(
             config=config,
             orderbook_diff_handler=orderbook_diff_handler,

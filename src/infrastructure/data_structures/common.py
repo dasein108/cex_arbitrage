@@ -25,7 +25,7 @@ AssetName = NewType('AssetName', str)
 OrderId = NewType("OrderId", str)
 
 class Symbol(Struct, frozen=True):
-    """Trading symbol with base and quote assets."""
+    """Trading symbol with composite and quote assets."""
     base: AssetName
     quote: AssetName
     is_futures: bool = False

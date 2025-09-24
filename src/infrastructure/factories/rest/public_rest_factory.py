@@ -10,7 +10,7 @@ HFT COMPLIANCE: Sub-millisecond factory operations with efficient singleton mana
 from typing import Type, Optional, Union
 
 from infrastructure.factories.base_exchange_factory import BaseExchangeFactory
-from exchanges.base.rest.spot.base_rest_spot_public import PublicExchangeSpotRestInterface
+from exchanges.interfaces import PublicSpotRest
 from infrastructure.config.structs import ExchangeConfig
 from infrastructure.utils.exchange_utils import exchange_name_to_enum
 from infrastructure.data_structures.common import ExchangeEnum
@@ -21,7 +21,7 @@ from infrastructure.logging import get_logger, get_exchange_logger, LoggingTimer
 logger = get_logger('rest.factory.public')
 
 
-class PublicRestExchangeFactory(BaseExchangeFactory[PublicExchangeSpotRestInterface]):
+class PublicRestExchangeFactory(BaseExchangeFactory[PublicSpotRest]):
     """
     Factory for creating public REST exchange instances.
     
@@ -39,7 +39,7 @@ class PublicRestExchangeFactory(BaseExchangeFactory[PublicExchangeSpotRestInterf
     """
 
     @classmethod
-    def register(cls, exchange: ExchangeEnum, implementation_class: Type[PublicExchangeSpotRestInterface]) -> None:
+    def register(cls, exchange: ExchangeEnum, implementation_class: Type[PublicSpotRest]) -> None:
         """
         Register a public REST exchange implementation.
         
@@ -54,15 +54,15 @@ class PublicRestExchangeFactory(BaseExchangeFactory[PublicExchangeSpotRestInterf
             implementation_class: Implementation class inheriting from PublicExchangeSpotRestInterface
             
         Raises:
-            ValueError: If implementation doesn't inherit from correct base class or exchange not recognized
+            ValueError: If implementation doesn't inherit from correct composite class or exchange not recognized
         """
         # Convert to ExchangeEnum at entry point
         exchange_enum = exchange_name_to_enum(exchange)
         
-        # Use base class validation 
-        cls._validate_implementation_class(implementation_class, PublicExchangeSpotRestInterface)
+        # Use composite class validation
+        cls._validate_implementation_class(implementation_class, PublicSpotRest)
         
-        # Register with base class registry using ExchangeEnum as key
+        # Register with composite class registry using ExchangeEnum as key
         cls._implementations[exchange_enum] = implementation_class
         
         logger.info("Registered public REST implementation", 
@@ -74,7 +74,7 @@ class PublicRestExchangeFactory(BaseExchangeFactory[PublicExchangeSpotRestInterf
                      tags={"exchange": exchange_enum.value, "type": "public"})
 
     @classmethod
-    def inject(cls, exchange: Union[str, ExchangeEnum], config: Optional[ExchangeConfig] = None, **kwargs) -> PublicExchangeSpotRestInterface:
+    def inject(cls, exchange: Union[str, ExchangeEnum], config: Optional[ExchangeConfig] = None, **kwargs) -> PublicSpotRest:
         """
         Create or retrieve public REST exchange instance.
         
@@ -135,7 +135,7 @@ class PublicRestExchangeFactory(BaseExchangeFactory[PublicExchangeSpotRestInterf
             
             # Track creation performance
             with LoggingTimer(logger, "rest_instance_creation") as timer:
-                # Explicitly inject exchange mapper (not handled by base factory due to circular dependency)
+                # Explicitly inject exchange mapper (not handled by composite factory due to circular dependency)
                 from exchanges.services.exchange_mapper.factory import ExchangeMapperFactory
                 
                 with LoggingTimer(logger, "mapper_creation") as mapper_timer:
@@ -181,7 +181,7 @@ class PublicRestExchangeFactory(BaseExchangeFactory[PublicExchangeSpotRestInterf
             raise ValueError(f"Failed to create public REST exchange {exchange_enum.value}: {e}") from e
 
     @classmethod
-    def create_for_config(cls, config: ExchangeConfig) -> PublicExchangeSpotRestInterface:
+    def create_for_config(cls, config: ExchangeConfig) -> PublicSpotRest:
         """
         Convenience method to create exchange from ExchangeConfig.
         

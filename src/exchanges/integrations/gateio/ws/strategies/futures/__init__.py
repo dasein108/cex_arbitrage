@@ -5,12 +5,12 @@ Strategy implementations for Gate.io futures WebSocket connections.
 Extends spot strategies with futures-specific endpoints and message handling.
 """
 
-from .connection import GateioFuturesConnectionStrategy
-from .message_parser import GateioFuturesMessageParser
-from .subscription import GateioFuturesSubscriptionStrategy
+from exchanges.integrations.gateio.ws.strategies.futures.public.connection import GateioPublicFuturesConnectionStrategy
+from exchanges.integrations.gateio.ws.strategies.futures.public.message_parser import GateioPublicFuturesMessageParser
+from exchanges.integrations.gateio.ws.strategies.futures.public.subscription import GateioPublicFuturesSubscriptionStrategy
 
 __all__ = [
-    "GateioFuturesConnectionStrategy",
-    "GateioFuturesMessageParser", 
-    "GateioFuturesSubscriptionStrategy"
+    "GateioPublicFuturesConnectionStrategy",
+    "GateioPublicFuturesMessageParser",
+    "GateioPublicFuturesSubscriptionStrategy"
 ]

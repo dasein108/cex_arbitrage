@@ -99,11 +99,11 @@ class MexcUnifiedMappings(BaseExchangeMapper):
         # Convert MEXC symbol to unified Symbol
         symbol = self.pair_to_symbol(mexc_ws_order.symbol)
         
-        # Map MEXC status codes to unified statuses using base mapper methods where possible
+        # Map MEXC status codes to unified statuses using composite mapper methods where possible
         status = self._config.ws_order_status_reverse.get(mexc_ws_order.status, OrderStatus.UNKNOWN)
         order_type = self._config.ws_order_status_reverse.get(mexc_ws_order.orderType, OrderType.LIMIT)
         
-        # Parse side using base mapper method
+        # Parse side using composite mapper method
         side = self.to_side(mexc_ws_order.side)
         
         return Order(

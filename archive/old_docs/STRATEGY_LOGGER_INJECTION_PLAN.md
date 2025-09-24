@@ -85,7 +85,7 @@ class RestStrategyFactory(BaseCompositeFactory[RestStrategySet]):
 
 #### WebSocket Strategy Factory Enhancement
 ```python
-# src/core/transport/websocket/strategies/factory.py
+# src/core/transport/ws/strategies/factory.py
 
 class WebSocketStrategyFactory(BaseCompositeFactory[WebSocketStrategySet]):
     
@@ -120,16 +120,16 @@ class WebSocketStrategyFactory(BaseCompositeFactory[WebSocketStrategySet]):
 class RequestStrategy(ABC):
     def __init__(self, base_url: str, logger=None, **kwargs):
         self.base_url = base_url
-        self.logger = logger or get_logger('strategy.request.base')
+        self.logger = logger or get_logger('strategy.request.composite')
 ```
 
 #### WebSocket Strategy Base Classes  
 ```python
-# src/core/exchanges/websocket/strategies/connection.py
+# src/core/exchanges/ws/strategies/connection.py
 class ConnectionStrategy(ABC):
     def __init__(self, config: ExchangeConfig, logger=None):
         self.config = config
-        self.logger = logger or get_logger('strategy.connection.base')
+        self.logger = logger or get_logger('strategy.connection.composite')
 ```
 
 ### 3. Exchange-Specific Strategy Implementation

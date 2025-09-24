@@ -30,7 +30,7 @@ from infrastructure.data_structures.common import (
     Symbol, SymbolInfo, OrderBook, OrderBookEntry, Trade, Kline,
     KlineInterval, Ticker
 )
-from exchanges.base.rest.spot.base_rest_spot_public import PublicExchangeSpotRestInterface
+from exchanges.interfaces.rest.spot import PublicSpotRest
 from exchanges.services import BaseExchangeMapper
 from infrastructure.networking.http.structs import HTTPMethod
 from infrastructure.config.structs import ExchangeConfig
@@ -38,7 +38,7 @@ from infrastructure.exceptions.exchange import BaseExchangeError
 from common.iterators import time_range_iterator, get_interval_seconds
 
 
-class GateioPublicSpotRest(PublicExchangeSpotRestInterface):
+class GateioPublicSpotRest(PublicSpotRest):
     """
     Gate.io public REST API client focused on direct API calls.
     

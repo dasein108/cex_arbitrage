@@ -16,7 +16,7 @@ from trading.arbitrage.types import ArbitrageConfig, EngineStatistics, Arbitrage
 from trading.arbitrage.detector import OpportunityDetector
 from trading.arbitrage.aggregator import MarketDataAggregator
 from trading.arbitrage.structures import ArbitrageOpportunity
-from interfaces.exchanges.base import BasePrivateExchangeInterface
+from exchanges.interfaces.composite import CompositePrivateExchange
 from infrastructure.data_structures.common import ExchangeStatus, Symbol, AssetName, ExchangeName
 from infrastructure.exceptions.exchange import ArbitrageDetectionError
 
@@ -38,7 +38,7 @@ class SimpleArbitrageEngine:
     def __init__(
         self,
         config: ArbitrageConfig,
-        exchanges: Dict[ExchangeName, BasePrivateExchangeInterface]
+        exchanges: Dict[ExchangeName, CompositePrivateExchange]
     ):
         self.config = config
         self.exchanges = exchanges

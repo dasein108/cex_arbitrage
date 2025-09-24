@@ -10,8 +10,15 @@ from infrastructure.factories.rest.private_rest_factory import PrivateRestExchan
 from infrastructure.config.config_manager import HftConfig
 
 # Import exchange modules to trigger auto-registration
-import exchanges.mexc.rest
-import exchanges.gateio.rest
+import exchanges.integrations.mexc.rest
+import exchanges.integrations.gateio.rest
+
+# Trigger manual registration after modules are loaded
+from exchanges.integrations.mexc.rest.registration import register_mexc_rest_implementations
+from exchanges.integrations.gateio.rest.registration import register_gateio_rest_implementations
+
+register_mexc_rest_implementations()
+register_gateio_rest_implementations()
 
 
 def get_exchange_rest_instance(exchange_name: str, is_private: bool = False, config: Optional[any] = None):

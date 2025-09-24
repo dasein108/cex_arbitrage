@@ -33,10 +33,10 @@ from typing import Dict, Optional, Callable, Awaitable
 
 from infrastructure.data_structures.common import Order, AssetBalance, Trade, AssetName
 from infrastructure.config.structs import ExchangeConfig
-from exchanges.base.websocket.spot.base_ws_private import BaseExchangePrivateWebsocketInterface
+from exchanges.interfaces.ws import PrivateSpotWebsocket
 
 
-class GateioWebsocketPrivateFutures(BaseExchangePrivateWebsocketInterface):
+class GateioWebsocketPrivateSpotFutures(PrivateSpotWebsocket):
     """Gate.io private futures WebSocket client using dependency injection pattern."""
 
     def __init__(
@@ -60,7 +60,7 @@ class GateioWebsocketPrivateFutures(BaseExchangePrivateWebsocketInterface):
         # Store the actual futures URL (config is immutable)
         self._futures_websocket_url = config.websocket_url
         
-        # Initialize via base class dependency injection (like REST pattern)
+        # Initialize via composite class dependency injection (like REST pattern)
         super().__init__(
             config=config,
             order_handler=order_handler,

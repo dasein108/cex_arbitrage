@@ -49,7 +49,7 @@ from infrastructure.data_structures.common import (
     OrderType,
     Order,
 )
-from interfaces.exchanges.base import BasePrivateExchangeInterface
+from exchanges.interfaces.composite import CompositePrivateExchange
 from infrastructure.data_structures.common import ExchangeName
 from infrastructure.exceptions.exchange import OrderExecutionError
 
@@ -158,7 +158,7 @@ class OrderOrchestrator:
     def __init__(
         self,
         config: ArbitrageConfig,
-        exchanges: Dict[str, BasePrivateExchangeInterface],
+        exchanges: Dict[str, CompositePrivateExchange],
     ):
         """
         Initialize order orchestrator with exchange connections and configuration.

@@ -27,7 +27,7 @@ T = TypeVar('T')
 
 class BaseExchangeFactory(Generic[T], ExchangeFactoryInterface, ABC):
     """
-    Abstract base factory for exchange-specific service management.
+    Abstract composite factory for exchange-specific service management.
     
     Provides standardized patterns for all exchange-based factories:
     - Exchange-based service registration and retrieval
@@ -62,7 +62,7 @@ class BaseExchangeFactory(Generic[T], ExchangeFactoryInterface, ABC):
         Register implementation for an exchange.
         
         Must be implemented by subclass to handle factory-specific registration logic.
-        Should use base class infrastructure for consistency.
+        Should use composite class infrastructure for consistency.
         
         Args:
             exchange: Exchange identifier (ExchangeEnum only)
@@ -78,7 +78,7 @@ class BaseExchangeFactory(Generic[T], ExchangeFactoryInterface, ABC):
         Create or retrieve instance for an exchange.
         
         Must be implemented by subclass to handle factory-specific creation logic.
-        Should use base class infrastructure and auto-injection patterns.
+        Should use composite class infrastructure and auto-injection patterns.
         
         Args:
             exchange: Exchange identifier (ExchangeEnum only)
@@ -92,7 +92,7 @@ class BaseExchangeFactory(Generic[T], ExchangeFactoryInterface, ABC):
         """
         pass
     
-    # Standard utility methods - implemented in base class
+    # Standard utility methods - implemented in composite class
     
     @classmethod
     def is_registered(cls, exchange: Union[str, ExchangeEnum]) -> bool:
@@ -228,14 +228,14 @@ class BaseExchangeFactory(Generic[T], ExchangeFactoryInterface, ABC):
     @classmethod
     def _validate_implementation_class(cls, implementation_class: Type[T], expected_base: Type) -> None:
         """
-        Validate that implementation class inherits from expected base class.
+        Validate that implementation class inherits from expected composite class.
         
         Args:
             implementation_class: Class to validate
-            expected_base: Expected base class
+            expected_base: Expected composite class
             
         Raises:
-            ValueError: If implementation doesn't inherit from expected base
+            ValueError: If implementation doesn't inherit from expected composite
         """
         if not issubclass(implementation_class, expected_base):
             raise ValueError(

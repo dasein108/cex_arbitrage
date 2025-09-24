@@ -1,20 +1,18 @@
 import time
 from typing import Dict, List, Optional, Any
-import logging
 
 from infrastructure.data_structures.common import (
     Symbol, Order, OrderId, OrderType, Side, AssetBalance, AssetName,
-    TimeInForce, TradingFee, Position
+    TimeInForce, TradingFee, Position, AssetInfo, WithdrawalResponse, WithdrawalRequest
 )
 from infrastructure.networking.http.structs import HTTPMethod
 from infrastructure.exceptions.exchange import BaseExchangeError
-from exchanges.base.rest.spot.base_rest_spot_private import PrivateExchangeSpotRestInterface
+from exchanges.interfaces.rest.spot.rest_spot_private import PrivateSpotRest
 from exchanges.services import BaseExchangeMapper
 from infrastructure.config.structs import ExchangeConfig
 
 
-class GateioPrivateFuturesRest(PrivateExchangeSpotRestInterface):
-
+class GateioPrivateFuturesRest(PrivateSpotRest):
     def __init__(self, config: ExchangeConfig, mapper: BaseExchangeMapper, logger=None):
         """
         Args:
@@ -105,7 +103,7 @@ class GateioPrivateFuturesRest(PrivateExchangeSpotRestInterface):
         Place a futures order. Uses /futures/usdt/orders.
         Notes:
           - Uses self._mapper to convert symbol <-> contract and types/sides.
-          - For MARKET orders, prefer 'amount' as size (base units). If quote_quantity given
+          - For MARKET orders, prefer 'amount' as size (composite units). If quote_quantity given
             and price provided, compute size = quote_quantity / price.
         """
         try:
@@ -117,9 +115,9 @@ class GateioPrivateFuturesRest(PrivateExchangeSpotRestInterface):
             if time_in_force is not None:
                 payload["time_in_force"] = self._mapper.from_time_in_force(time_in_force)
 
-            # Amount handling: futures commonly use 'size' field for base quantity
+            # Amount handling: futures commonly use 'size' field for composite quantity
             if order_type == OrderType.MARKET:
-                # Market order: size required (base units)
+                # Market order: size required (composite units)
                 if amount is None:
                     if quote_quantity is not None and price:
                         amount = quote_quantity / price
@@ -435,6 +433,7 @@ class GateioPrivateFuturesRest(PrivateExchangeSpotRestInterface):
             self.logger.error(f"Failed to get position for {symbol}: {e}")
             raise
 
+    # TODO: this MEXC specific endpoint may not exist on Gate.io futures, need exclude from global interface
     # ---------- Listen key helpers (public-only / simple defaults) ----------
     async def create_listen_key(self) -> str:
         """If Gate.io futures private stream not used, return empty string for compatibility."""
@@ -447,6 +446,24 @@ class GateioPrivateFuturesRest(PrivateExchangeSpotRestInterface):
         pass
 
     async def delete_listen_key(self, listen_key: str) -> None:
+        pass
+
+    # TODO: this SPOT specific endpoint not persist on futures, need to separate common operations for futures/spot in common interfaces
+
+    async def submit_withdrawal(self, request: WithdrawalRequest) -> WithdrawalResponse:
+        pass
+
+    async def cancel_withdrawal(self, withdrawal_id: str) -> bool:
+        pass
+
+    async def get_withdrawal_status(self, withdrawal_id: str) -> WithdrawalResponse:
+        pass
+
+    async def get_withdrawal_history(self, asset: Optional[AssetName] = None, limit: int = 100) -> List[
+        WithdrawalResponse]:
+        pass
+
+    async def get_currency_info(self) -> Dict[AssetName, AssetInfo]:
         pass
 
     # ---------- Fees ----------

@@ -12,7 +12,7 @@ Usage:
     logger.info("Component initialized")
     
     # Exchange logger with context
-    logger = get_exchange_logger('mexc', 'websocket.public')
+    logger = get_exchange_logger('mexc', 'ws.public')
     logger.debug("WebSocket connected", correlation_id="abc123")
     
     # Metrics logging

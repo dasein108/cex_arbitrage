@@ -25,7 +25,7 @@ from exchanges.consts import DEFAULT_PUBLIC_WEBSOCKET_CHANNELS
 from exchanges.integrations.gateio.services.gateio_mappings import GateioMappings
 
 
-class GateioFuturesSubscriptionStrategy(SubscriptionStrategy):
+class GateioPublicFuturesSubscriptionStrategy(SubscriptionStrategy):
     """
     Gate.io futures WebSocket subscription strategy.
     

@@ -39,7 +39,7 @@ from dataclasses import dataclass
 from .structures import ArbitrageConfig
 
 from infrastructure.data_structures.common import AssetBalance
-from interfaces.exchanges.base.base_private_exchange import BasePrivateExchangeInterface
+from exchanges.interfaces.composite import CompositePrivateExchange
 from infrastructure.data_structures.common import ExchangeName
 from infrastructure.exceptions.exchange import BalanceManagementError
 
@@ -98,7 +98,7 @@ class BalanceMonitor:
     def __init__(
         self,
         config: ArbitrageConfig,
-        exchanges: Dict[str, BasePrivateExchangeInterface],
+        exchanges: Dict[str, CompositePrivateExchange],
         balance_alert_callback: Optional[Callable[[str, Dict[str, Any]], None]] = None,
     ):
         """
@@ -244,7 +244,7 @@ class BalanceMonitor:
     async def _balance_monitoring_loop(
         self,
         exchange_name: ExchangeName,
-        exchange_client: BasePrivateExchangeInterface,
+        exchange_client: CompositePrivateExchange,
     ) -> None:
         """
         Balance monitoring loop for specific exchange.
@@ -295,7 +295,7 @@ class BalanceMonitor:
     async def _refresh_exchange_balances(
         self,
         exchange_name: ExchangeName,
-        exchange_client: BasePrivateExchangeInterface,
+        exchange_client: CompositePrivateExchange,
     ) -> None:
         """
         Refresh balances for specific exchange.

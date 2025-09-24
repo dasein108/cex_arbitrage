@@ -2,33 +2,33 @@
 CEX REST interface exports.
 
 This module provides access to all REST interfaces for cryptocurrency exchanges.
-Includes spot trading, futures trading, and common base interfaces.
+Includes spot trading, futures trading, and common composite interfaces.
 """
 
-# Common base interfaces
-from .base_rest import BaseExchangeRestInterface
+# Common composite interfaces
+from .rest_base import BaseRestInterface
 
 # Spot trading interfaces
 from .spot import (
-    PublicExchangeSpotRestInterface,
-    PrivateExchangeSpotRestInterface,
+    PublicSpotRest,
+    PrivateSpotRest,
 )
 
 # Futures trading interfaces
 from .futures import (
-    PublicExchangeFuturesRestInterface,
-    PrivateExchangeFuturesRestInterface,
+    PublicFuturesRest,
+    PrivateFuturesRest,
 )
 
 __all__ = [
     # Common
-    "BaseExchangeRestInterface",
+    "BaseRestInterface",
     
     # Spot trading
-    "PublicExchangeSpotRestInterface",
-    "PrivateExchangeSpotRestInterface",
+    "PublicSpotRest",
+    "PrivateSpotRest",
     
     # Futures trading
-    "PublicExchangeFuturesRestInterface",
-    "PrivateExchangeFuturesRestInterface",
+    "PublicFuturesRest",
+    "PrivateFuturesRest",
 ]

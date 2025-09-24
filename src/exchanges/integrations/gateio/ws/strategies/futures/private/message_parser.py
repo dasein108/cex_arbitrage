@@ -324,3 +324,28 @@ class GateioPrivateFuturesMessageParser(MessageParser):
                 "channel": message.get("channel", "unknown")
             }
         return None
+
+    def get_message_type(self, message: Dict[str, Any]) -> MessageType:
+        """Detect Gate.io private futures message type from JSON structure."""
+        event = message.get("event")
+        
+        if event in ["ping", "pong"]:
+            return MessageType.HEARTBEAT
+        elif event == "subscribe":
+            return MessageType.SUBSCRIPTION_CONFIRM
+        elif event == "unsubscribe":
+            return MessageType.SUBSCRIPTION_CONFIRM
+        elif event == "update":
+            # Check channel for specific type
+            channel = message.get("channel", "")
+            if channel == "futures.orders":
+                return MessageType.ORDER
+            elif channel == "futures.balances":
+                return MessageType.BALANCE
+            elif channel == "futures.usertrades":
+                return MessageType.TRADE
+            elif channel == "futures.positions":
+                return MessageType.HEARTBEAT  # Reusing heartbeat type for positions
+            return MessageType.UNKNOWN
+        else:
+            return MessageType.UNKNOWN

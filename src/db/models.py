@@ -53,7 +53,7 @@ class BookTickerSnapshot(msgspec.Struct):
         
         Args:
             exchange: Exchange identifier (MEXC, GATEIO, etc.)
-            symbol: Symbol object with base/quote assets
+            symbol: Symbol object with composite/quote assets
             bid_price: Best bid price
             bid_qty: Best bid quantity
             ask_price: Best ask price
@@ -79,7 +79,7 @@ class BookTickerSnapshot(msgspec.Struct):
         Convert back to Symbol object.
         
         Returns:
-            Symbol object reconstructed from base/quote strings
+            Symbol object reconstructed from composite/quote strings
         """
         from infrastructure.data_structures.common import AssetName
         return Symbol(
@@ -196,7 +196,7 @@ class TradeSnapshot(msgspec.Struct):
         
         Args:
             exchange: Exchange identifier
-            symbol: Symbol object with base/quote assets
+            symbol: Symbol object with composite/quote assets
             price: Trade execution price
             quantity: Trade quantity
             side: Trade side ('buy' or 'sell')
@@ -228,7 +228,7 @@ class TradeSnapshot(msgspec.Struct):
         Convert back to Symbol object.
         
         Returns:
-            Symbol object reconstructed from base/quote strings
+            Symbol object reconstructed from composite/quote strings
         """
         from infrastructure.data_structures.common import AssetName
         return Symbol(

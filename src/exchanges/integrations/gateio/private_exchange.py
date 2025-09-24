@@ -11,18 +11,18 @@ import logging
 import time
 from typing import List, Dict, Optional
 
-from interfaces.exchanges.base import BasePrivateExchangeInterface
+from exchanges.interfaces.composite import CompositePrivateExchange
 from infrastructure.data_structures.common import (
     OrderBook, Symbol, SymbolsInfo, AssetBalance, AssetName,
     Order, OrderId, Side, TimeInForce, Position,
     ExchangeStatus, WithdrawalRequest, WithdrawalResponse
 )
-from exchanges.integrations.gateio.public_exchange import GateioPublicExchange
+from exchanges.integrations.gateio.public_exchange import GateioPublicPublicExchange
 from infrastructure.exceptions.exchange import BaseExchangeError
 from infrastructure.config.structs import ExchangeConfig
 
 
-class GateioPrivateExchange(BasePrivateExchangeInterface):
+class GateioPrivateCompositePrivateExchange(CompositePrivateExchange):
     """
     Gate.io Private Exchange - Full Trading Operations
     
@@ -48,7 +48,7 @@ class GateioPrivateExchange(BasePrivateExchangeInterface):
         self.logger = logging.getLogger(f"{__name__}.{self.__class__.__name__}")
 
         # Composition: Use public exchange for market data
-        self.public_exchange = GateioPublicExchange(config)
+        self.public_exchange = GateioPublicPublicExchange(config)
         
         # Initialize private REST client for trading operations
         # TODO: Update REST client to use unified config pattern  

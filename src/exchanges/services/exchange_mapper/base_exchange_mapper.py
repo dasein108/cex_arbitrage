@@ -11,7 +11,7 @@ from infrastructure.data_structures.common import (
 )
 
 
-class BaseExchangeMapper(ABC):
+classBaseExchangeMapper(ABC):
     """
     Base implementation providing common mapping utilities.
 

@@ -21,7 +21,7 @@ from infrastructure.factories.rest.private_rest_factory import PrivateRestExchan
 # HFT Logger Integration
 from infrastructure.logging import get_logger, get_exchange_logger, LoggingTimer
 
-logger = get_logger('websocket.factory.private')
+logger = get_logger('ws.factory.private')
 
 
 class PrivateWebSocketExchangeFactory(BaseExchangeFactory):
@@ -64,7 +64,7 @@ class PrivateWebSocketExchangeFactory(BaseExchangeFactory):
         
         # Skip validation to avoid circular imports - validation happens at runtime
         
-        # Register with base class registry using ExchangeEnum as key
+        # Register with composite class registry using ExchangeEnum as key
         cls._implementations[exchange_enum] = implementation_class
         
         logger.info("Registered private WebSocket implementation", 
@@ -134,7 +134,7 @@ class PrivateWebSocketExchangeFactory(BaseExchangeFactory):
             return cls._instances[cache_key]
         
         # Create exchange-specific logger for the instance
-        exchange_logger = get_exchange_logger(exchange_enum.value, 'websocket.private')
+        exchange_logger = get_exchange_logger(exchange_enum.value, 'ws.private')
         
         # Create new instance with auto-dependency injection and performance tracking
         implementation_class = cls._implementations[exchange_enum]

@@ -440,13 +440,13 @@ config = {
         'min_level': 'ERROR'  # Only log errors and critical for this component
     }
 }
-logger = get_logger('mexc.websocket.private', config)
+logger = get_logger('mexc.ws.private', config)
 
 # Method 2: Using specialized factory functions
 from core.logging import get_exchange_logger, get_strategy_logger
 
 # Exchange-specific logger with default exchange context
-logger = get_exchange_logger('mexc', 'websocket.private')
+logger = get_exchange_logger('mexc', 'ws.private')
 
 # Strategy logger with hierarchical tags
 tags = ['mexc', 'private', 'ws', 'connection']
@@ -476,11 +476,11 @@ def create_mexc_websocket_logger():
         },
         'default_context': {
             'exchange': 'mexc',
-            'transport': 'websocket',
+            'transport': 'ws',
             'component': 'connection'
         }
     }
-    return get_logger('mexc.websocket.connection', config)
+    return get_logger('mexc.ws.connection', config)
 
 # Configure trading module with different settings
 def create_trading_logger():
@@ -537,7 +537,7 @@ class ExchangeLoggerConfig(ComponentLoggerConfig):
             },
             'default_context': {
                 'exchange': 'mexc',
-                'transport': 'websocket'
+                'transport': 'ws'
             }
         })
         return config
@@ -581,7 +581,7 @@ class ArbitrageLoggerConfig(ComponentLoggerConfig):
         return config
 
 # Usage
-mexc_ws_logger = get_logger('mexc.websocket', ExchangeLoggerConfig.mexc_websocket_config())
+mexc_ws_logger = get_logger('mexc.ws', ExchangeLoggerConfig.mexc_websocket_config())
 gateio_rest_logger = get_logger('gateio.rest', ExchangeLoggerConfig.gateio_rest_config())
 arbitrage_logger = get_logger('arbitrage.detector', ArbitrageLoggerConfig.detector_config())
 ```
@@ -644,7 +644,7 @@ def get_module_logger(module_name: str, default_config: Dict[str, Any] = None):
     return get_logger(module_name, config)
 
 # Usage
-mexc_logger = get_module_logger('mexc.websocket')
+mexc_logger = get_module_logger('mexc.ws')
 trading_logger = get_module_logger('trading.orders')
 arbitrage_logger = get_module_logger('arbitrage.detector')
 ```
@@ -676,7 +676,7 @@ logger_config:
 
 default_context:
   exchange: mexc
-  transport: websocket
+  transport: ws
   api_type: public
 
 backends:
@@ -688,7 +688,7 @@ backends:
     format: json
   prometheus:
     enabled: true
-    tags: ["mexc", "websocket"]
+    tags: ["mexc", "ws"]
 ```
 
 **config/modules/trading.yaml**:
@@ -746,7 +746,7 @@ def get_configured_module_logger(module_name: str):
     return get_logger(module_name, module_config)
 
 # Usage
-mexc_logger = get_configured_module_logger('mexc.websocket')
+mexc_logger = get_configured_module_logger('mexc.ws')
 trading_logger = get_configured_module_logger('trading.orders')
 arbitrage_logger = get_configured_module_logger('arbitrage.detector')
 ```
@@ -794,7 +794,7 @@ class DynamicLoggerConfiguration:
         DynamicLoggerConfiguration.update_module_log_level(module_name, 'WARNING')
 
 # Usage - can be called at runtime
-DynamicLoggerConfiguration.enable_debug_for_module('mexc.websocket')
+DynamicLoggerConfiguration.enable_debug_for_module('mexc.ws')
 DynamicLoggerConfiguration.disable_verbose_logging_for_module('arbitrage.detector')
 ```
 
@@ -950,9 +950,9 @@ class ExchangeLoggerManager:
         }
         
         return {
-            'mexc_ws': get_logger('mexc.websocket', mexc_ws_config),
+            'mexc_ws': get_logger('mexc.ws', mexc_ws_config),
             'mexc_rest': get_logger('mexc.rest', mexc_rest_config),
-            'gateio_ws': get_logger('gateio.websocket', gateio_ws_config),
+            'gateio_ws': get_logger('gateio.ws', gateio_ws_config),
             'gateio_rest': get_logger('gateio.rest', gateio_rest_config)
         }
 
@@ -1018,10 +1018,10 @@ class SmartLoggerFactory:
         config['logger_config']['file_path'] = f'logs/{exchange}_websocket.log'
         config['default_context'] = {
             'exchange': exchange,
-            'transport': 'websocket',
+            'transport': 'ws',
             'api_type': api_type
         }
-        return get_logger(f'{exchange}.websocket.{api_type}', config)
+        return get_logger(f'{exchange}.ws.{api_type}', config)
     
     @staticmethod
     def get_rest_logger(exchange: str, api_type: str = 'public'):
@@ -1069,7 +1069,7 @@ from core.logging import get_logger, LoggerFactory
 class EnvironmentConfigManager:
     """Manage environment-aware configuration with intelligent fallbacks."""
     
-    # Environment-specific base configurations
+    # Environment-specific composite configurations
     ENV_CONFIGS = {
         'dev': {
             'console': {'enabled': True, 'color': True, 'min_level': 'DEBUG'},
@@ -1093,7 +1093,7 @@ class EnvironmentConfigManager:
         """Get configuration for current environment with fallbacks."""
         env = os.getenv('ENVIRONMENT', 'dev').lower()
         
-        # Get base environment config
+        # Get composite environment config
         base_config = cls.ENV_CONFIGS.get(env, cls.ENV_CONFIGS['dev'])
         
         # Apply environment variable overrides
@@ -1142,7 +1142,7 @@ class EnvironmentConfigManager:
         
         # Apply module-specific overrides
         if module_overrides:
-            # Merge module overrides into base config
+            # Merge module overrides into composite config
             config = {**base_config, 'logger_config': module_overrides}
         else:
             config = base_config
@@ -1163,7 +1163,7 @@ EnvironmentConfigManager.setup_logging()
 
 # Usage examples
 mexc_logger = EnvironmentConfigManager.get_module_logger(
-    'mexc.websocket',
+    'mexc.ws',
     {'min_level': 'DEBUG', 'file_path': 'logs/mexc_ws.log'}
 )
 
@@ -1419,7 +1419,7 @@ logger.counter('orders_placed_total', 1,
               order_type='limit')
 
 logger.counter('errors_total', 1,
-              component='websocket',
+              component='ws',
               error_type='connection_lost')
 
 # Gauge metrics - track current values
@@ -1753,14 +1753,14 @@ trading_config = {
 }
 trading_logger = get_logger('trading.operations', trading_config)
 
-# WebSocket logger - writes to websocket.log  
+# WebSocket logger - writes to ws.log  
 ws_config = {
     'logger_config': {
-        'file_path': 'logs/websocket.log',
+        'file_path': 'logs/ws.log',
         'min_level': 'DEBUG'
     }
 }
-ws_logger = get_logger('websocket.manager', ws_config)
+ws_logger = get_logger('ws.manager', ws_config)
 
 # Error logger - writes to errors.log
 error_config = {
@@ -1834,7 +1834,7 @@ with logger.timer('database_query'):
 ```python
 # Exchange logger
 from core.logging import get_exchange_logger
-logger = get_exchange_logger('mexc', 'websocket')
+logger = get_exchange_logger('mexc', 'ws')
 
 # Arbitrage logger  
 from core.logging import get_arbitrage_logger
@@ -2201,7 +2201,7 @@ Organize loggers in a clear hierarchy:
 
 ```python
 # Exchange components
-mexc_ws_logger = get_logger('exchanges.mexc.websocket.public')
+mexc_ws_logger = get_logger('exchanges.mexc.ws.public')
 gateio_rest_logger = get_logger('exchanges.gateio.rest.private')
 
 # Arbitrage components  

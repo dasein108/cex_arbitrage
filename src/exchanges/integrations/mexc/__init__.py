@@ -42,12 +42,12 @@ and extensibility.
 """
 
 # Core exchange implementations
-from .private_exchange import MexcPrivateExchange
-from .public_exchange import MexcPublicExchange
+from .private_exchange import MexcPrivateCompositePrivateExchange
+from .public_exchange import MexcPublicPublicExchange
 
 # REST and WebSocket clients for direct access
 from exchanges.integrations.mexc.rest.mexc_rest_public import MexcPublicSpotRest
-from exchanges.integrations.mexc.ws.mexc_ws_public import MexcWebsocketPublic
+from exchanges.integrations.mexc.ws.mexc_ws_public import MexcWebsocketExchangePublicWebsocket
 
 # Auto-register MEXC services (symbol mapper, mappings) 
 from . import services
@@ -60,10 +60,10 @@ from .ws import strategies as ws_strategies
 
 __all__ = [
     # Main exchange interfaces
-    'MexcPrivateExchange',
-    'MexcPublicExchange',
+    'MexcPrivateCompositePrivateExchange',
+    'MexcPublicPublicExchange',
     
     # Direct client access
     'MexcPublicSpotRest',
-    'MexcWebsocketPublic',
+    'MexcWebsocketExchangePublicWebsocket',
 ]

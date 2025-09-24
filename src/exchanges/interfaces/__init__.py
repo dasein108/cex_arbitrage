@@ -1,35 +1,31 @@
-"""
-CEX Exchange Interfaces
+from .rest import (PublicSpotRest, PrivateSpotRest,
+                   PublicFuturesRest, PrivateFuturesRest, BaseRestInterface)
+from .ws import (PublicSpotWebsocket, PrivateSpotWebsocket,
+                 PublicFuturesWebsocket, BaseWebsocketInterface)
 
-Unified interface definitions for all CEX (centralized exchange) implementations.
-Provides consistent contracts for both public and private exchange operations.
-
-This module centralizes interface definitions that were previously scattered
-across individual exchange implementations, promoting code reuse and 
-consistency across all exchange integrations.
-
-Available Interfaces:
-- PublicExchangeInterface: Market data operations (no authentication)
-- PrivateExchangeInterface: Trading operations (requires authentication)
-- ExchangeInterface: Combined interface for full exchange implementations
-
-All exchange implementations should inherit from these interfaces to ensure
-consistent behavior across the arbitrage engine.
-"""
-
-from interfaces.exchanges.base import (
-    BasePublicExchangeInterface,
-    BasePrivateExchangeInterface, 
-    BaseExchangeInterface
-)
-
-# Create convenient aliases for CEX module usage
-PublicExchangeInterface = BasePublicExchangeInterface
-PrivateExchangeInterface = BasePrivateExchangeInterface  
-ExchangeInterface = BaseExchangeInterface
-
+from .composite import (BaseCompositeExchange, CompositePrivateExchange, CompositePublicExchange,
+                        CompositePublicFuturesExchange, CompositePrivateFuturesExchange)
 __all__ = [
-    'PublicExchangeInterface',
-    'PrivateExchangeInterface', 
-    'ExchangeInterface'
+    # common
+    "BaseRestInterface",
+    "BaseWebsocketInterface",
+    # rest
+    "PublicSpotRest",
+    "PrivateSpotRest",
+
+    "PublicFuturesRest",
+    "PrivateFuturesRest",
+
+    # websockets
+    "PublicSpotWebsocket",
+    "PrivateSpotWebsocket",
+
+    "PublicFuturesWebsocket",
+
+    # composite
+    'BaseCompositeExchange',
+    'CompositePrivateExchange',
+    'CompositePublicExchange',
+    'CompositePublicFuturesExchange',
+    'CompositePrivateFuturesExchange'
 ]

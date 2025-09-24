@@ -10,7 +10,7 @@ HFT COMPLIANCE: Sub-10ms market data processing, zero-copy patterns.
 import time
 from typing import List, Dict, Optional
 
-from interfaces.exchanges.base import BasePublicExchangeInterface
+from exchanges.interfaces.composite import CompositePublicExchange
 from infrastructure.data_structures.common import (
     OrderBook, Symbol, SymbolInfo, SymbolsInfo, 
     ExchangeStatus, OrderbookUpdateType
@@ -20,7 +20,7 @@ from infrastructure.networking.websocket.structs import ConnectionState
 from infrastructure.exceptions.exchange import BaseExchangeError
 from infrastructure.config.structs import ExchangeConfig
 
-class GateioPublicExchange(BasePublicExchangeInterface):
+class GateioPublicPublicExchange(CompositePublicExchange):
     """
     Gate.io Public Exchange - Market Data Only
     
@@ -165,7 +165,7 @@ class GateioPublicExchange(BasePublicExchangeInterface):
         Args:
             symbols: List of symbols to track for market data
         """
-        # Call the base class initialize method which handles the common sequence
+        # Call the composite class initialize method which handles the common sequence
         await super().initialize(symbols)
     
     async def add_symbol(self, symbol: Symbol) -> None:
@@ -177,7 +177,7 @@ class GateioPublicExchange(BasePublicExchangeInterface):
             # Add to active symbols set
             self._active_symbols.add(symbol)
             
-            # Load initial orderbook snapshot using base class method
+            # Load initial orderbook snapshot using composite class method
             await self._load_orderbook_snapshot(symbol)
             
             # WebSocket subscription is handled during initialization
@@ -198,7 +198,7 @@ class GateioPublicExchange(BasePublicExchangeInterface):
             # Remove from active symbols
             self._active_symbols.discard(symbol)
             
-            # Remove from base class orderbook storage
+            # Remove from composite class orderbook storage
             if symbol in self._orderbooks:
                 del self._orderbooks[symbol]
             
@@ -216,7 +216,7 @@ class GateioPublicExchange(BasePublicExchangeInterface):
         """
         Handle orderbook messages from WebSocket with HFT diff processing.
         
-        HFT COMPLIANT: Uses base class orderbook management for consistency.
+        HFT COMPLIANT: Uses composite class orderbook management for consistency.
         Processes Gate.io orderbook diffs for optimal performance.
         
         Args:
@@ -231,10 +231,10 @@ class GateioPublicExchange(BasePublicExchangeInterface):
         from common.orderbook_diff_processor import ParsedOrderbookUpdate
         
         if isinstance(parsed_update_or_raw, ParsedOrderbookUpdate):
-            # Convert ParsedOrderbookUpdate to OrderBook for base class
+            # Convert ParsedOrderbookUpdate to OrderBook for composite class
             # This is a simplified conversion - in production might need full orderbook reconstruction
             if symbol in self._orderbooks:
-                # Update existing orderbook using base class method
+                # Update existing orderbook using composite class method
                 current_orderbook = self._orderbooks[symbol]
                 # Apply diff to create new orderbook (simplified)
                 updated_orderbook = self._apply_diff_to_orderbook(current_orderbook, parsed_update_or_raw)
@@ -295,7 +295,7 @@ class GateioPublicExchange(BasePublicExchangeInterface):
     
     def get_market_data_statistics(self) -> Dict[str, any]:
         """Get comprehensive HFT market data processing statistics."""
-        # Use base class statistics method
+        # Use composite class statistics method
         base_stats = self.get_orderbook_stats()
         
         return {
@@ -314,7 +314,7 @@ class GateioPublicExchange(BasePublicExchangeInterface):
             # Stop real-time streaming
             await self._stop_real_time_streaming()
             
-            # Call base class close for common cleanup
+            # Call composite class close for common cleanup
             await super().close()
             
             # Clean up exchange-specific state

@@ -1,12 +1,12 @@
 from typing import List
 
 from exchanges.consts import DEFAULT_PUBLIC_WEBSOCKET_CHANNELS
-from exchanges.interfaces.ws.spot.base_ws_public import BaseExchangePublicSpotWebsocket
+from exchanges.interfaces.ws.spot.base_ws_public import PublicSpotWebsocket
 from infrastructure.data_structures.common import Symbol
 from infrastructure.networking.websocket.structs import PublicWebsocketChannelType
 
 
-class BaseExchangePublicFuturesWebsocket(BaseExchangePublicSpotWebsocket):
+class PublicFuturesWebsocket(PublicSpotWebsocket):
     async def initialize(self, symbols: List[Symbol],
                          channels: List[PublicWebsocketChannelType]=DEFAULT_PUBLIC_WEBSOCKET_CHANNELS) -> None:
         await super().initialize(self._fix_futures_symbols(symbols), channels)

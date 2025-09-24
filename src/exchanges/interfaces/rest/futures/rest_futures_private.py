@@ -5,10 +5,10 @@ from infrastructure.data_structures.common import (
 )
 
 from abc import ABC
-from exchanges.interfaces.rest.spot.base_rest_spot_private import PrivateExchangeSpotRest
+from exchanges.interfaces.rest.spot.rest_spot_private import PrivateSpotRest
 
 
-class PrivateExchangeFuturesRest(PrivateExchangeSpotRest, ABC):
+class PrivateFuturesRest(PrivateSpotRest, ABC):
     """Abstract exchanges for private futures exchange operations (trading, account management)"""
 
     async def get_positions(self) -> List[Position]:

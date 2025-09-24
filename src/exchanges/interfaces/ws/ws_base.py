@@ -9,7 +9,7 @@ from infrastructure.networking.websocket.utils import create_websocket_manager
 from infrastructure.logging import get_logger, get_exchange_logger, LoggingTimer
 
 
-class BaseExchangeWebsocketInterface(ABC):
+class BaseWebsocketInterface(ABC):
     """
     Abstract composite for exchange WebSocket operations using dependency injection.
     

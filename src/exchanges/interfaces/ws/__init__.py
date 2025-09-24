@@ -18,10 +18,9 @@ from infrastructure.networking.websocket.structs import (
     PerformanceMetrics, ConnectionState
 )
 
-from .ws_base import BaseExchangeWebsocketInterface
-from exchanges.base.websocket.spot.base_ws_private import BaseExchangePrivateWebsocketInterface
-from exchanges.base.websocket.spot.base_ws_public import BaseExchangePublicWebsocketInterface
-from .base_ws_public_futures import BaseWebsocketPublicFutures
+from .ws_base import BaseWebsocketInterface
+from .spot import PrivateSpotWebsocket, PublicSpotWebsocket
+from .futures import PublicFuturesWebsocket
 __all__ = [
     'WebSocketManager',
     'WebSocketStrategyFactory',
@@ -34,10 +33,11 @@ __all__ = [
     'ParsedMessage',
     'WebSocketManagerConfig',
     'PerformanceMetrics',
-    'BaseExchangeWebsocketInterface',
+    'BaseWebsocketInterface',
     'MessageParser',
     'ConnectionState',
-    'BaseExchangePrivateWebsocketInterface',
-    'BaseExchangePublicWebsocketInterface',
-    'BaseWebsocketPublicFutures'
+    'PrivateSpotWebsocket',
+    'PublicSpotWebsocket',
+    'PublicFuturesWebsocket'
+
 ]

@@ -102,7 +102,7 @@ class RestStrategyFactory(BaseCompositeFactory[RestStrategySet]):
         # Use tuple key for clean separation
         key = (exchange, is_private)
         
-        # Validate strategy configuration using base class method
+        # Validate strategy configuration using composite class method
         required_strategies = ['request', 'rate_limit', 'retry']
         cls._validate_strategy_config(strategy_config, required_strategies)
         
@@ -354,7 +354,7 @@ class RestStrategyFactory(BaseCompositeFactory[RestStrategySet]):
         """
         List all registered strategy combinations.
         
-        Uses base class registry for consistent state management.
+        Uses composite class registry for consistent state management.
         
         Returns:
             Dictionary mapping exchange names to available API types

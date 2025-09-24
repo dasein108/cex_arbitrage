@@ -5,10 +5,10 @@ from typing import Callable, Optional, Awaitable, Dict
 from infrastructure.config.structs import ExchangeConfig
 from infrastructure.data_structures.common import Order, AssetBalance, Trade, AssetName
 from infrastructure.networking.websocket.structs import MessageType
-from exchanges.base.websocket.ws_base import BaseExchangeWebsocketInterface
+from exchanges.interfaces.ws.ws_base import BaseWebsocketInterface
 
 
-class BaseExchangePrivateWebsocketInterface(BaseExchangeWebsocketInterface, ABC):
+class PrivateSpotWebsocket(BaseWebsocketInterface, ABC):
     """Abstract interface for private exchange WebSocket operations (account data)"""
     
     def __init__(self, 
@@ -24,7 +24,7 @@ class BaseExchangePrivateWebsocketInterface(BaseExchangeWebsocketInterface, ABC)
         self.balance_handler = balance_handler
         self.trade_handler = trade_handler
         
-        # Initialize base class with private API configuration
+        # Initialize composite class with private API configuration
         super().__init__(
             config=config,
             is_private=True,  # Private API operations

@@ -29,12 +29,13 @@ from infrastructure.data_structures.common import (
     AssetName, AssetInfo, NetworkInfo, TimeInForce,
     WithdrawalRequest, WithdrawalResponse, WithdrawalStatus
 )
+from infrastructure.networking.http.structs import HTTPMethod
 from infrastructure.exceptions.exchange import BaseExchangeError
-from exchanges.base.rest.spot.base_rest_spot_private import PrivateExchangeSpotRestInterface
+from exchanges.interfaces.rest.spot.rest_spot_private import PrivateSpotRest
 
 
 
-class MexcPrivateSpotRest(PrivateExchangeSpotRestInterface):
+class MexcPrivateSpotRest(PrivateSpotRest):
     """
     MEXC private REST API client focused on trading operations.
     

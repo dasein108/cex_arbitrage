@@ -390,7 +390,7 @@ find src/ -name "*.py" -path "*/trading/*" -prune -o -name "*.py" -exec sed -i '
 ```bash
 # Create infrastructure directories
 mkdir -p src/infrastructure/networking/http
-mkdir -p src/infrastructure/networking/websocket
+mkdir -p src/infrastructure/networking/ws
 mkdir -p src/infrastructure/config
 mkdir -p src/infrastructure/logging
 mkdir -p src/infrastructure/data_structures
@@ -405,10 +405,10 @@ mv src/core/transport/rest/ src/infrastructure/networking/http/
 mv src/infrastructure/networking/http/rest_transport_manager.py src/infrastructure/networking/http/transport_manager.py
 
 # Move WebSocket transport  
-mv src/core/transport/websocket/ src/infrastructure/networking/websocket/
+mv src/core/transport/ws/ src/infrastructure/networking/ws/
 # Update internal structure
-mv src/infrastructure/networking/websocket/ws_manager.py src/infrastructure/networking/websocket/manager.py
-mv src/infrastructure/networking/websocket/ws_client.py src/infrastructure/networking/websocket/client.py
+mv src/infrastructure/networking/ws/ws_manager.py src/infrastructure/networking/ws/manager.py
+mv src/infrastructure/networking/ws/ws_client.py src/infrastructure/networking/ws/client.py
 ```
 
 #### **Task 2.3: Move Configuration Infrastructure**
@@ -443,7 +443,7 @@ mv src/core/utils/ src/infrastructure/utils/
 ```bash
 # Update imports for moved infrastructure
 find src/ -name "*.py" -exec sed -i '' 's/from core\.transport\.rest/from infrastructure.networking.http/g' {} \;
-find src/ -name "*.py" -exec sed -i '' 's/from core\.transport\.websocket/from infrastructure.networking.websocket/g' {} \;
+find src/ -name "*.py" -exec sed -i '' 's/from core\.transport\.ws/from infrastructure.networking.ws/g' {} \;
 find src/ -name "*.py" -exec sed -i '' 's/from core\.config/from infrastructure.config/g' {} \;
 find src/ -name "*.py" -exec sed -i '' 's/from core\.logging/from infrastructure.logging/g' {} \;
 find src/ -name "*.py" -exec sed -i '' 's/from core\.structs/from infrastructure.data_structures/g' {} \;
@@ -464,7 +464,7 @@ mkdir -p src/exchanges/common/orderbook
 #### **Task 3.2: Move Exchange Interfaces**
 ```bash
 # Move interface definitions
-mv src/interfaces/exchanges/base/ src/exchanges/interfaces/
+mv src/interfaces/exchanges/composite/ src/exchanges/interfaces/
 # Update structure
 mv src/exchanges/interfaces/base_exchange.py src/exchanges/interfaces/exchange.py
 mv src/exchanges/interfaces/base_public_exchange.py src/exchanges/interfaces/public_exchange.py

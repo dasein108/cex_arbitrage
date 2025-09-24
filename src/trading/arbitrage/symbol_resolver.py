@@ -12,7 +12,7 @@ from typing import Dict, List, Optional, Tuple
 from decimal import Decimal
 from dataclasses import dataclass, field
 
-from interfaces.exchanges.base import BasePublicExchangeInterface
+from exchanges.interfaces.composite import CompositePublicExchange
 from infrastructure.data_structures.common import Symbol, SymbolInfo
 from trading.arbitrage.types import ExchangePairConfig, ArbitragePair, OpportunityType
 
@@ -60,7 +60,7 @@ class SymbolResolver:
     HFT COMPLIANT: All symbol info fetched once at startup and cached.
     """
     
-    def __init__(self, exchanges: Dict[str, BasePublicExchangeInterface]):
+    def __init__(self, exchanges: Dict[str, CompositePublicExchange]):
         self.exchanges = exchanges
         self._symbol_cache: Dict[str, Dict[Symbol, SymbolInfo]] = {}
         

@@ -18,10 +18,10 @@ HFT Compliance:
 """
 
 # Re-export the main Gate.io exchange implementations
-from exchanges.integrations.gateio.public_exchange import GateioPublicExchange
-from exchanges.integrations.gateio.private_exchange import GateioPrivateExchange
+from exchanges.integrations.gateio.public_exchange import GateioPublicPublicExchange
+from exchanges.integrations.gateio.private_exchange import GateioPrivateCompositePrivateExchange
 
 # For backward compatibility, alias the private exchange as the main exchange
-GateioExchange = GateioPrivateExchange
+GateioExchange = GateioPrivateCompositePrivateExchange
 
-__all__ = ['GateioPublicExchange', 'GateioPrivateExchange', 'GateioExchange']
+__all__ = ['GateioPublicPublicExchange', 'GateioPrivateCompositePrivateExchange', 'GateioExchange']

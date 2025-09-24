@@ -17,7 +17,7 @@ from trading.arbitrage.exchange_factory import ExchangeFactory
 from trading.arbitrage.performance_monitor import PerformanceMonitor
 from trading.arbitrage.shutdown_manager import ShutdownManager, ShutdownReason
 from trading.arbitrage.symbol_resolver import SymbolResolver
-from interfaces.exchanges.base.base_private_exchange import BasePrivateExchangeInterface
+from exchanges.interfaces.composite import CompositePrivateExchange
 
 logger = get_logger('arbitrage.controller')
 
@@ -40,7 +40,7 @@ class ArbitrageController:
         
         # State
         self.config: Optional[ArbitrageConfig] = None
-        self.exchanges: Dict[str, BasePrivateExchangeInterface] = {}
+        self.exchanges: Dict[str, CompositePrivateExchange] = {}
         self.symbol_resolver: Optional[SymbolResolver] = None
         self.engine: Optional[Any] = None  # Will be the actual engine
         self.running = False

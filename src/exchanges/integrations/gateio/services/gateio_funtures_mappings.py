@@ -22,7 +22,7 @@ class GateioFuturesMappings(GateioMappings):
         # Could be extended to futures-specific config if needed
         config = create_gateio_mapping_configuration()
         
-        # Initialize base mapper with futures symbol mapper
+        # Initialize composite mapper with futures symbol mapper
         from exchanges.services.exchange_mapper.base_exchange_mapper import BaseExchangeMapper
         BaseExchangeMapper.__init__(self, symbol_mapper, config)
         

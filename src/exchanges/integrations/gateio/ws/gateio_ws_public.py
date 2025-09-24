@@ -8,7 +8,7 @@ Handles public WebSocket streams for market data including:
 - Real-time market information
 
 Features:
-- Dependency injection via base class (like REST pattern)
+- Dependency injection via composite class (like REST pattern)
 - HFT-optimized message processing
 - Event-driven architecture with injected handlers
 - Clean separation of concerns
@@ -19,18 +19,18 @@ Gate.io Public WebSocket Specifications:
 - Protocol: JSON-based message format
 - Performance: <50ms latency with optimized processing
 
-Architecture: Dependency injection with base class coordination
+Architecture: Dependency injection with composite class coordination
 """
 
 from typing import List, Optional, Callable, Awaitable, Set
 
 from infrastructure.data_structures.common import Symbol, Trade, OrderBook, BookTicker
 from infrastructure.config.structs import ExchangeConfig
-from exchanges.base.websocket.spot.base_ws_public import BaseExchangePublicWebsocketInterface
+from exchanges.interfaces import PublicSpotWebsocket
 from infrastructure.networking.websocket.structs import ConnectionState
 
 
-class GateioWebsocketPublic(BaseExchangePublicWebsocketInterface):
+class GateioWebsocketPublic(PublicSpotWebsocket):
     """Gate.io public WebSocket client using dependency injection pattern."""
 
     def __init__(
@@ -51,7 +51,7 @@ class GateioWebsocketPublic(BaseExchangePublicWebsocketInterface):
         if not config.websocket:
             raise ValueError("Gate.io exchange configuration missing WebSocket settings")
         
-        # Initialize via base class dependency injection (like REST pattern)
+        # Initialize via composite class dependency injection (like REST pattern)
         super().__init__(
             config=config,
             orderbook_diff_handler=orderbook_diff_handler,

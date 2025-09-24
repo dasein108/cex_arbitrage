@@ -42,7 +42,7 @@ groups:
         for: 1m
         labels:
           severity: warning
-          component: websocket
+          component: ws
         annotations:
           summary: "WebSocket connection lost"
           description: "WebSocket connection to {{ $labels.exchange }} has been lost"

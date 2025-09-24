@@ -79,7 +79,7 @@ from exchanges.gateio.rest.gateio_public import GateioPublicExchangeSpotRest
 **After**: Proper interface usage (CLAUDE.md compliant)
 
 ```python
-from interfaces.exchanges.base.base_public_exchange import BasePublicExchangeInterface
+from exchanges.interfaces.composite.base_public_exchange import CompositePublicExchange
 from exchanges.factories.exchange_factory import ExchangeFactory
 ```
 

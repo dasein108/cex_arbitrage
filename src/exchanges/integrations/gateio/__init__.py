@@ -47,8 +47,8 @@ and extensibility.
 """
 
 # Core exchange implementations
-from .private_exchange import GateioPrivateExchange
-from .public_exchange import GateioPublicExchange
+from .private_exchange import GateioPrivateCompositePrivateExchange
+from .public_exchange import GateioPublicPublicExchange
 from .gateio_exchange import GateioExchange
 
 # Futures exchange implementations (separate from spot)
@@ -66,8 +66,8 @@ from .ws import strategies as ws_strategies
 
 __all__ = [
     # Main exchange interfaces
-    'GateioPrivateExchange',
-    'GateioPublicExchange',
+    'GateioPrivateCompositePrivateExchange',
+    'GateioPublicPublicExchange',
     'GateioExchange',
     # Futures exchange interfaces (separate exchange)
     'GateioPublicFuturesExchange',

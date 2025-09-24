@@ -16,7 +16,7 @@ from infrastructure.networking.websocket.structs import ConnectionState
 from infrastructure.logging import get_exchange_logger, LoggingTimer, HFTLoggerInterface
 
 
-class BaseExchangeInterface(ABC):
+class BaseCompositeExchange(ABC):
     """
     Base exchange interface with common connection and state management logic.
     
@@ -33,7 +33,7 @@ class BaseExchangeInterface(ABC):
 
     def __init__(self, tag: str, config: ExchangeConfig, logger: Optional[HFTLoggerInterface] = None):
         """
-        Initialize base exchange interface.
+        Initialize composite exchange interface.
         
         Args:
             tag: Unique identifier for this exchange instance

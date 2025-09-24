@@ -128,9 +128,9 @@ class WebSocketManager:
             
             # Track initialization metrics
             self.logger.metric("ws_manager_initializations", 1,
-                             tags={"exchange": "websocket"})
+                             tags={"exchange": "ws"})
             self.logger.metric("ws_initialization_time_ms", timer.elapsed_ms,
-                             tags={"exchange": "websocket"})
+                             tags={"exchange": "ws"})
             
         except Exception as e:
             self.logger.error("Failed to initialize WebSocket manager V3",
@@ -139,7 +139,7 @@ class WebSocketManager:
             
             # Track initialization failure metrics
             self.logger.metric("ws_initialization_failures", 1,
-                             tags={"exchange": "websocket"})
+                             tags={"exchange": "ws"})
             
             await self.close()
             raise BaseExchangeError(500, f"WebSocket initialization failed: {e}")
@@ -172,9 +172,9 @@ class WebSocketManager:
             
             # Track subscription metrics
             self.logger.metric("ws_subscriptions", len(symbols),
-                             tags={"exchange": "websocket"})
+                             tags={"exchange": "ws"})
             self.logger.metric("subscription_time_ms", timer.elapsed_ms,
-                             tags={"exchange": "websocket"})
+                             tags={"exchange": "ws"})
             
         except Exception as e:
             self.logger.error("Subscription failed",
@@ -184,7 +184,7 @@ class WebSocketManager:
             
             # Track subscription failure metrics
             self.logger.metric("ws_subscription_failures", 1,
-                             tags={"exchange": "websocket"})
+                             tags={"exchange": "ws"})
             
             raise BaseExchangeError(400, f"Subscription failed: {e}")
     
@@ -251,13 +251,13 @@ class WebSocketManager:
                 if not auth_success:
                     self.logger.error("Authentication failed")
                     self.logger.metric("ws_auth_failures", 1,
-                                     tags={"exchange": "websocket"})
+                                     tags={"exchange": "ws"})
                     await self._websocket.close()
                     continue
                 
                 # Track successful connection
                 self.logger.metric("ws_connections", 1,
-                                 tags={"exchange": "websocket"})
+                                 tags={"exchange": "ws"})
                 
                 # Subscribe to active symbols
                 # if self._active_symbols:
@@ -335,7 +335,7 @@ class WebSocketManager:
         
         # Track reconnection metrics
         self.logger.metric("ws_reconnection_attempts", 1,
-                         tags={"exchange": "websocket", "error_type": error_type})
+                         tags={"exchange": "ws", "error_type": error_type})
         
         await self._update_state(ConnectionState.RECONNECTING)
         await asyncio.sleep(delay)
@@ -352,7 +352,7 @@ class WebSocketManager:
             
             # Track state change metrics
             self.logger.metric("ws_state_changes", 1,
-                             tags={"exchange": "websocket", 
+                             tags={"exchange": "ws",
                                    "from_state": previous_state.name,
                                    "to_state": state.name})
             
@@ -376,7 +376,7 @@ class WebSocketManager:
                 
                 # Track queue overflow metrics
                 self.logger.metric("ws_queue_overflows", 1,
-                                 tags={"exchange": "websocket"})
+                                 tags={"exchange": "ws"})
                 
                 try:
                     self._message_queue.get_nowait()
@@ -387,7 +387,7 @@ class WebSocketManager:
             
             # Track message queuing metrics
             self.logger.metric("ws_messages_queued", 1,
-                             tags={"exchange": "websocket"})
+                             tags={"exchange": "ws"})
             
         except Exception as e:
             self.metrics.error_count += 1
@@ -397,7 +397,7 @@ class WebSocketManager:
             
             # Track queuing error metrics
             self.logger.metric("ws_queuing_errors", 1,
-                             tags={"exchange": "websocket"})
+                             tags={"exchange": "ws"})
     
     async def _process_messages(self) -> None:
         """Process queued messages asynchronously."""
@@ -418,9 +418,9 @@ class WebSocketManager:
                         
                         # Track message processing metrics with detailed timing
                         self.logger.metric("ws_messages_processed", 1,
-                                         tags={"exchange": "websocket"})
+                                         tags={"exchange": "ws"})
                         self.logger.metric("ws_message_processing_time_ms", processing_time_ms,
-                                         tags={"exchange": "websocket"})
+                                         tags={"exchange": "ws"})
                 
                 except Exception as e:
                     self.metrics.error_count += 1
@@ -430,7 +430,7 @@ class WebSocketManager:
                     
                     # Track message processing error metrics
                     self.logger.metric("ws_message_processing_errors", 1,
-                                     tags={"exchange": "websocket"})
+                                     tags={"exchange": "ws"})
                 
                 finally:
                     self._message_queue.task_done()
@@ -444,7 +444,7 @@ class WebSocketManager:
                 
                 # Track processing loop error metrics
                 self.logger.metric("ws_processing_loop_errors", 1,
-                                 tags={"exchange": "websocket"})
+                                 tags={"exchange": "ws"})
                 
                 await asyncio.sleep(0.1)
     
@@ -465,7 +465,7 @@ class WebSocketManager:
         
         # Track WebSocket error metrics
         self.logger.metric("ws_errors", 1,
-                         tags={"exchange": "websocket", "error_type": error_type})
+                         tags={"exchange": "ws", "error_type": error_type})
         
         # Strategy decides on reconnection in _connection_loop
     
@@ -487,7 +487,7 @@ class WebSocketManager:
                         
                         # Track successful heartbeat
                         self.logger.metric("ws_heartbeats_sent", 1,
-                                         tags={"exchange": "websocket"})
+                                         tags={"exchange": "ws"})
                         
                     except Exception as e:
                         consecutive_failures += 1
@@ -498,7 +498,7 @@ class WebSocketManager:
                         
                         # Track heartbeat failures
                         self.logger.metric("ws_heartbeat_failures", 1,
-                                         tags={"exchange": "websocket"})
+                                         tags={"exchange": "ws"})
                         
                         # If too many consecutive failures, stop heartbeat (built-in ping/pong will handle)
                         if consecutive_failures >= max_failures:
@@ -507,7 +507,7 @@ class WebSocketManager:
                             
                             # Track heartbeat loop failure
                             self.logger.metric("ws_heartbeat_loop_failures", 1,
-                                             tags={"exchange": "websocket"})
+                                             tags={"exchange": "ws"})
                             break
                         
         except asyncio.CancelledError:
@@ -519,7 +519,7 @@ class WebSocketManager:
             
             # Track heartbeat loop error metrics
             self.logger.metric("ws_heartbeat_loop_errors", 1,
-                             tags={"exchange": "websocket"})
+                             tags={"exchange": "ws"})
     
     def is_connected(self) -> bool:
         """Check if WebSocket is connected."""
@@ -593,9 +593,9 @@ class WebSocketManager:
             
             # Track close metrics
             self.logger.metric("ws_manager_closes", 1,
-                             tags={"exchange": "websocket"})
+                             tags={"exchange": "ws"})
             self.logger.metric("ws_close_time_ms", timer.elapsed_ms,
-                             tags={"exchange": "websocket"})
+                             tags={"exchange": "ws"})
             
         except Exception as e:
             self.logger.error("Error closing WebSocket manager V3",
@@ -604,4 +604,4 @@ class WebSocketManager:
             
             # Track close error metrics
             self.logger.metric("ws_close_errors", 1,
-                             tags={"exchange": "websocket"})
+                             tags={"exchange": "ws"})

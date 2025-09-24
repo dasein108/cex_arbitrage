@@ -11,12 +11,24 @@ from infrastructure.config.config_manager import HftConfig
 from infrastructure.data_structures.common import Symbol, OrderBook, Trade, BookTicker, Order, AssetBalance
 from infrastructure.networking.websocket.structs import ConnectionState
 
-# Import exchange WebSocket modules to trigger auto-registration
-import exchanges.mexc.ws
-import exchanges.gateio.ws
+# Import exchange modules to trigger auto-registration
+import exchanges.integrations.mexc.ws
+import exchanges.integrations.gateio.ws
+import exchanges.integrations.mexc.rest
+import exchanges.integrations.gateio.rest
 
-# Import registration modules to register WebSocket factories
-# (The above imports trigger registration via __init__.py files)
+# Trigger manual WebSocket registration after modules are loaded
+from exchanges.integrations.mexc.ws.registration import register_mexc_websocket_implementations
+from exchanges.integrations.gateio.ws.registration import register_gateio_websocket_implementations
+
+# Trigger manual REST registration (WebSocket depends on REST)
+from exchanges.integrations.mexc.rest.registration import register_mexc_rest_implementations
+from exchanges.integrations.gateio.rest.registration import register_gateio_rest_implementations
+
+register_mexc_websocket_implementations()
+register_gateio_websocket_implementations()
+register_mexc_rest_implementations()
+register_gateio_rest_implementations()
 
 
 def get_exchange_websocket_instance(exchange_name: str, is_private: bool = False, config: Optional[any] = None,

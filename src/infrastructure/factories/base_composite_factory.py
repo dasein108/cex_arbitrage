@@ -23,7 +23,7 @@ T = TypeVar('T')
 
 class BaseCompositeFactory(Generic[T], ExchangeFactoryInterface, ABC):
     """
-    Abstract base factory for composite object creation from multiple components.
+    Abstract composite factory for composite object creation from multiple components.
     
     Designed for factories that need to:
     - Store component configurations (Dict[str, type])
@@ -106,7 +106,7 @@ class BaseCompositeFactory(Generic[T], ExchangeFactoryInterface, ABC):
         """
         pass
     
-    # Standard utility methods - implemented in base class
+    # Standard utility methods - implemented in composite class
     
     @classmethod
     def is_registered(cls, exchange: ExchangeEnum) -> bool:

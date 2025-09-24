@@ -44,7 +44,7 @@ class ParsedOrderbookUpdate:
 
 class OrderbookDiffProcessor(ABC):
     """
-    Abstract base class for exchange-specific orderbook diff processing.
+    Abstract composite class for exchange-specific orderbook diff processing.
     
     Each exchange implementation handles the specific message format and
     converts to unified ParsedOrderbookUpdate for HFTOrderBook consumption.

@@ -932,7 +932,7 @@ class DataCollector:
         
         # WebSocket manager status
         if self.ws_manager:
-            status["websocket"] = {
+            status["ws"] = {
                 "connections": self.ws_manager.get_connection_status(),
                 "active_symbols": self.ws_manager.get_active_symbols_count(),
                 "cache_stats": self.ws_manager.get_cache_statistics()

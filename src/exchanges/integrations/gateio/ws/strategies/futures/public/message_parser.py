@@ -9,7 +9,7 @@ from infrastructure.networking.websocket.structs import MessageType
 from infrastructure.data_structures.common import FuturesTicker
 
 
-class GateioFuturesMessageParser(MessageParser):
+class GateioPublicFuturesMessageParser(MessageParser):
     """Gate.io futures WebSocket message parser."""
 
     def __init__(self, mapper: BaseExchangeMapper, logger):

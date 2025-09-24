@@ -10,7 +10,7 @@ HFT COMPLIANT: Fast engine instantiation with minimal overhead.
 from infrastructure.logging import get_logger
 from typing import Dict, Type, Union
 from trading.arbitrage.types import ArbitrageConfig
-from interfaces.exchanges.base.base_private_exchange import BasePrivateExchangeInterface
+from exchanges.interfaces.composite.base_private_exchange import CompositePrivateExchange
 
 logger = get_logger('arbitrage.engine_factory')
 
@@ -48,7 +48,7 @@ class EngineFactory:
         cls,
         engine_type: str,
         config: ArbitrageConfig,
-        exchanges: Dict[str, BasePrivateExchangeInterface]
+        exchanges: Dict[str, CompositePrivateExchange]
     ) -> Union['SimpleArbitrageEngine', 'ArbitrageEngine']:
         """
         Create engine instance based on type.

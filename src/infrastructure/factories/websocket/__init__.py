@@ -20,7 +20,7 @@ Available Factories:
 - Exchange selection via ExchangeEnum for type safety
 
 Usage:
-    from infrastructure.factories.websocket import PublicWebSocketExchangeFactory, PrivateWebSocketExchangeFactory
+    from infrastructure.factories.ws import PublicWebSocketExchangeFactory, PrivateWebSocketExchangeFactory
     from structs.common import ExchangeEnum
     from infrastructure.config.config_manager import HftConfig
     

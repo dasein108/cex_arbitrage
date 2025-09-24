@@ -29,13 +29,14 @@ from infrastructure.data_structures.common import (
     AssetName, AssetInfo, NetworkInfo, TimeInForce, TradingFee,
     WithdrawalRequest, WithdrawalResponse, WithdrawalStatus
 )
-from exchanges.base.rest.spot.base_rest_spot_private import PrivateExchangeSpotRestInterface
+from infrastructure.networking.http.structs import HTTPMethod
+from exchanges.interfaces.rest.spot.rest_spot_private import PrivateSpotRest
 from infrastructure.config.structs import ExchangeConfig
 from exchanges.services import BaseExchangeMapper
 from infrastructure.exceptions.exchange import BaseExchangeError
 
 
-class GateioPrivateSpotRest(PrivateExchangeSpotRestInterface):
+class GateioPrivateSpotRest(PrivateSpotRest):
     """
     Gate.io private REST API client focused on trading operations.
     

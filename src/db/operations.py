@@ -244,7 +244,7 @@ async def get_book_ticker_snapshots(
     
     Args:
         exchange: Filter by exchange (optional)
-        symbol_base: Filter by base asset (optional)
+        symbol_base: Filter by composite asset (optional)
         symbol_quote: Filter by quote asset (optional)
         timestamp_from: Start time filter (optional)
         timestamp_to: End time filter (optional)
@@ -338,7 +338,7 @@ async def get_latest_book_ticker_snapshots(
     
     Args:
         exchange: Filter by exchange (optional)
-        symbol_base: Filter by base asset (optional)
+        symbol_base: Filter by composite asset (optional)
         symbol_quote: Filter by quote asset (optional)
         
     Returns:

@@ -8,7 +8,7 @@ Handles authenticated WebSocket streams for account data including:
 - Trade confirmations via JSON
 
 Features:
-- Dependency injection via base class (like REST pattern)
+- Dependency injection via composite class (like REST pattern)
 - HFT-optimized message processing
 - Event-driven architecture with injected handlers
 - Clean separation of concerns
@@ -20,17 +20,17 @@ Gate.io Private WebSocket Specifications:
 - Message Format: JSON with channel-based subscriptions
 - Channels: spot.orders, spot.balances, spot.user_trades
 
-Architecture: Dependency injection with base class coordination
+Architecture: Dependency injection with composite class coordination
 """
 
 from typing import Dict, Optional, Callable, Awaitable
 
 from infrastructure.data_structures.common import Order, AssetBalance, Trade, AssetName
 from infrastructure.config.structs import ExchangeConfig
-from exchanges.base.websocket.spot.base_ws_private import BaseExchangePrivateWebsocketInterface
+from exchanges.interfaces.ws import PrivateSpotWebsocket
 
 
-class GateioWebsocketPrivate(BaseExchangePrivateWebsocketInterface):
+class GateioWebsocketPrivateSpot(PrivateSpotWebsocket):
     """Gate.io private WebSocket client using dependency injection pattern."""
 
     def __init__(
@@ -51,7 +51,7 @@ class GateioWebsocketPrivate(BaseExchangePrivateWebsocketInterface):
         if not config.websocket:
             raise ValueError("Gate.io exchange configuration missing WebSocket settings")
         
-        # Initialize via base class dependency injection (like REST pattern)
+        # Initialize via composite class dependency injection (like REST pattern)
         super().__init__(
             config=config,
             order_handler=order_handler,

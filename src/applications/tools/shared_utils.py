@@ -192,7 +192,7 @@ class CLIManager:
         self.parser = self._create_parser()
     
     def _create_parser(self) -> argparse.ArgumentParser:
-        """Create base argument parser with common options"""
+        """Create composite argument parser with common options"""
         parser = argparse.ArgumentParser(
             description=self.description,
             formatter_class=argparse.RawDescriptionHelpFormatter,

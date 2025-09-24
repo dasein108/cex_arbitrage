@@ -12,7 +12,7 @@ Key Features:
 - Performance monitoring and cache statistics
 
 HFT Performance:
-- Mapper retrieval: O(1) lookup via base class
+- Mapper retrieval: O(1) lookup via composite class
 - Instance reuse: Optimal memory usage with singleton pattern
 - Auto-injection: Sub-millisecond dependency resolution
 """
@@ -31,7 +31,7 @@ class ExchangeSymbolMapperFactory(BaseExchangeFactory[SymbolMapperInterface]):
     Factory for creating and managing exchange-specific symbol mappers.
     
     Inherits from BaseExchangeFactory to provide standardized factory patterns:
-    - Registry management via base class (_implementations, _instances)
+    - Registry management via composite class (_implementations, _instances)
     - Exchange key normalization and validation
     - Consistent error handling and logging
     - Auto-dependency injection infrastructure
@@ -42,7 +42,7 @@ class ExchangeSymbolMapperFactory(BaseExchangeFactory[SymbolMapperInterface]):
         """
         Register a symbol mapper class for an exchange.
         
-        Uses base class infrastructure with validation and auto-instance creation.
+        Uses composite class infrastructure with validation and auto-instance creation.
         
         Args:
             exchange: Exchange identifier (ExchangeEnum only)
@@ -52,10 +52,10 @@ class ExchangeSymbolMapperFactory(BaseExchangeFactory[SymbolMapperInterface]):
             ValueError: If mapper class invalid
         """
         
-        # Use base class validation
+        # Use composite class validation
         cls._validate_implementation_class(mapper_class, SymbolMapperInterface)
         
-        # Register with base class registry using ExchangeEnum as key
+        # Register with composite class registry using ExchangeEnum as key
         cls._implementations[exchange] = mapper_class
         
         # Auto-create instance immediately for symbol mappers (they have no dependencies)
@@ -74,7 +74,7 @@ class ExchangeSymbolMapperFactory(BaseExchangeFactory[SymbolMapperInterface]):
         """
         Get or create symbol mapper for specified exchange.
         
-        Uses base class infrastructure for consistent error handling and caching.
+        Uses composite class infrastructure for consistent error handling and caching.
         
         Args:
             exchange: Exchange identifier (ExchangeEnum only)
@@ -85,11 +85,11 @@ class ExchangeSymbolMapperFactory(BaseExchangeFactory[SymbolMapperInterface]):
         Raises:
             ValueError: If exchange is not registered
             
-        Performance: O(1) lookup with instance reuse via base class
+        Performance: O(1) lookup with instance reuse via composite class
         """
         cache_key = exchange.value  # Use string for instance cache
         
-        # Return existing instance if available (from base class registry)
+        # Return existing instance if available (from composite class registry)
         if cache_key in cls._instances:
             return cls._instances[cache_key]
         
@@ -105,7 +105,7 @@ class ExchangeSymbolMapperFactory(BaseExchangeFactory[SymbolMapperInterface]):
         mapper_class = cls._implementations[exchange]
         mapper_instance = mapper_class()
         
-        # Cache instance for reuse (in base class registry)
+        # Cache instance for reuse (in composite class registry)
         cls._instances[cache_key] = mapper_instance
         
         logger.info(f"Created symbol mapper instance for {exchange.value}: {mapper_class.__name__}")
@@ -117,7 +117,7 @@ class ExchangeSymbolMapperFactory(BaseExchangeFactory[SymbolMapperInterface]):
         """
         Check if exchange is supported by the factory.
         
-        Legacy alias for is_registered() from base class.
+        Legacy alias for is_registered() from composite class.
         
         Args:
             exchange: Exchange identifier (ExchangeEnum only)
@@ -132,7 +132,7 @@ class ExchangeSymbolMapperFactory(BaseExchangeFactory[SymbolMapperInterface]):
         """
         Get list of supported exchange names.
         
-        Legacy alias for get_registered_exchanges() from base class.
+        Legacy alias for get_registered_exchanges() from composite class.
         
         Returns:
             List of registered exchange identifiers
@@ -144,7 +144,7 @@ class ExchangeSymbolMapperFactory(BaseExchangeFactory[SymbolMapperInterface]):
         """
         Get all active mapper instances.
         
-        Uses base class registries for consistent state management.
+        Uses composite class registries for consistent state management.
         
         Returns:
             Dictionary mapping exchange names to mapper instances
@@ -162,12 +162,12 @@ class ExchangeSymbolMapperFactory(BaseExchangeFactory[SymbolMapperInterface]):
         """
         Get comprehensive cache statistics across all mappers.
         
-        Enhanced with base class factory statistics.
+        Enhanced with composite class factory statistics.
         
         Returns:
             Dictionary with cache statistics for each exchange
         """
-        # Start with base class statistics
+        # Start with composite class statistics
         stats = cls.get_factory_statistics()
         
         # Add mapper-specific statistics
@@ -187,7 +187,7 @@ class ExchangeSymbolMapperFactory(BaseExchangeFactory[SymbolMapperInterface]):
         """
         Clear all caches across all mapper instances.
         
-        Also clears base class instance cache for consistency.
+        Also clears composite class instance cache for consistency.
         
         Useful for testing or memory management.
         """
@@ -196,7 +196,7 @@ class ExchangeSymbolMapperFactory(BaseExchangeFactory[SymbolMapperInterface]):
             mapper.clear_cache()
             cleared_count += 1
         
-        # Also clear base class cache
+        # Also clear composite class cache
         cls.clear_cache()
         
         logger.info(f"Cleared caches for {cleared_count} mapper instances")
@@ -206,7 +206,7 @@ class ExchangeSymbolMapperFactory(BaseExchangeFactory[SymbolMapperInterface]):
         """
         Validate all registered mapper classes can be instantiated.
         
-        Uses base class registries for consistent validation.
+        Uses composite class registries for consistent validation.
         
         Returns:
             Dictionary mapping exchange names to validation results

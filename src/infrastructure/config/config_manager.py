@@ -231,28 +231,28 @@ def parse_websocket_config(part_config: Dict[str, Any], websocket_url: str) -> W
             url=websocket_url,
             
             # Connection settings with validation
-            connect_timeout=safe_get_config_value(part_config, 'connect_timeout', 10.0, float, 'websocket'),
-            ping_interval=safe_get_config_value(part_config, 'ping_interval', 20.0, float, 'websocket'),
-            ping_timeout=safe_get_config_value(part_config, 'ping_timeout', 10.0, float, 'websocket'),
-            close_timeout=safe_get_config_value(part_config, 'close_timeout', 5.0, float, 'websocket'),
+            connect_timeout=safe_get_config_value(part_config, 'connect_timeout', 10.0, float, 'ws'),
+            ping_interval=safe_get_config_value(part_config, 'ping_interval', 20.0, float, 'ws'),
+            ping_timeout=safe_get_config_value(part_config, 'ping_timeout', 10.0, float, 'ws'),
+            close_timeout=safe_get_config_value(part_config, 'close_timeout', 5.0, float, 'ws'),
             
             # Reconnection settings with validation
-            max_reconnect_attempts=safe_get_config_value(part_config, 'max_reconnect_attempts', 10, int, 'websocket'),
-            reconnect_delay=safe_get_config_value(part_config, 'reconnect_delay', 1.0, float, 'websocket'),
-            reconnect_backoff=safe_get_config_value(part_config, 'reconnect_backoff', 2.0, float, 'websocket'),
-            max_reconnect_delay=safe_get_config_value(part_config, 'max_reconnect_delay', 60.0, float, 'websocket'),
+            max_reconnect_attempts=safe_get_config_value(part_config, 'max_reconnect_attempts', 10, int, 'ws'),
+            reconnect_delay=safe_get_config_value(part_config, 'reconnect_delay', 1.0, float, 'ws'),
+            reconnect_backoff=safe_get_config_value(part_config, 'reconnect_backoff', 2.0, float, 'ws'),
+            max_reconnect_delay=safe_get_config_value(part_config, 'max_reconnect_delay', 60.0, float, 'ws'),
             
             # Performance settings with validation
-            max_message_size=safe_get_config_value(part_config, 'max_message_size', 1048576, int, 'websocket'),  # 1MB
-            max_queue_size=safe_get_config_value(part_config, 'max_queue_size', 1000, int, 'websocket'),
-            heartbeat_interval=safe_get_config_value(part_config, 'heartbeat_interval', 30.0, float, 'websocket'),
+            max_message_size=safe_get_config_value(part_config, 'max_message_size', 1048576, int, 'ws'),  # 1MB
+            max_queue_size=safe_get_config_value(part_config, 'max_queue_size', 1000, int, 'ws'),
+            heartbeat_interval=safe_get_config_value(part_config, 'heartbeat_interval', 30.0, float, 'ws'),
             
             # Optimization settings with validation
-            enable_compression=safe_get_config_value(part_config, 'enable_compression', True, bool, 'websocket'),
-            text_encoding=safe_get_config_value(part_config, 'text_encoding', 'utf-8', str, 'websocket')
+            enable_compression=safe_get_config_value(part_config, 'enable_compression', True, bool, 'ws'),
+            text_encoding=safe_get_config_value(part_config, 'text_encoding', 'utf-8', str, 'ws')
         )
     except Exception as e:
-        raise ConfigurationError(f"Failed to parse WebSocket configuration: {e}", "websocket") from e
+        raise ConfigurationError(f"Failed to parse WebSocket configuration: {e}", "ws") from e
 
 def parse_transport_config(part_config: Dict[str, Any], exchange_name: str, is_private: bool = False) -> RestTransportConfig:
     """
@@ -510,7 +510,7 @@ class HftConfig:
         self._network_config = parse_network_config(network_config)
         
         # Create global WebSocket configuration template (without URL)
-        websocket_config = config_data.get('websocket', {})
+        websocket_config = config_data.get('ws', {})
         # Store as template - will be used as fallback for exchange-specific configs
         self._websocket_config_template = websocket_config
         
@@ -573,10 +573,10 @@ class HftConfig:
                 transport_config = None
                 if 'transport' in exchange_data:
                     transport_config_data = exchange_data['transport']
-                    # Parse transport config (is_private=False for base config)
+                    # Parse transport config (is_private=False for composite config)
                     transport_config = parse_transport_config(transport_config_data, exchange_name, is_private=False)
 
-                # Validate base URL
+                # Validate composite URL
                 base_url = exchange_data.get('base_url', '')
                 if not base_url or not isinstance(base_url, str):
                     raise ConfigurationError(

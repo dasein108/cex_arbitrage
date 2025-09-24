@@ -11,10 +11,10 @@ from abc import abstractmethod
 from typing import Dict, List, Optional, Callable, Awaitable
 
 from infrastructure.data_structures.common import (Symbol, SymbolsInfo, OrderBook, OrderbookUpdateType)
-from .base_exchange import BaseExchangeInterface
+from .base_exchange import BaseCompositeExchange
 
 
-class BasePublicExchangeInterface(BaseExchangeInterface):
+class CompositePublicExchange(BaseCompositeExchange):
     """
     Base interface for public exchange operations (market data only).
     

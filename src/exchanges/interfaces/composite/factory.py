@@ -11,7 +11,7 @@ from typing import Dict, List, Optional
 from enum import Enum
 
 from infrastructure.data_structures.common import Symbol, ExchangeName
-from interfaces.exchanges.base import BasePrivateExchangeInterface
+from exchanges.interfaces.composite import CompositePrivateExchange
 
 
 class InitializationStrategy(Enum):
@@ -36,7 +36,7 @@ class ExchangeFactoryInterface(ABC):
         exchange_names: List[ExchangeName],
         strategy: InitializationStrategy = InitializationStrategy.FAIL_FAST,
         symbols: Optional[List[Symbol]] = None
-    ) -> Dict[str, BasePrivateExchangeInterface]:
+    ) -> Dict[str, CompositePrivateExchange]:
         """
         Create and initialize exchange instances.
         
@@ -58,7 +58,7 @@ class ExchangeFactoryInterface(ABC):
         self,
         exchange_name: ExchangeName,
         symbols: Optional[List[Symbol]] = None
-    ) -> BasePrivateExchangeInterface:
+    ) -> CompositePrivateExchange:
         """
         Create a single exchange instance.
         
@@ -122,7 +122,7 @@ class ExchangeFactoryInterface(ABC):
 
     @property
     @abstractmethod
-    def managed_exchanges(self) -> Dict[str, BasePrivateExchangeInterface]:
+    def managed_exchanges(self) -> Dict[str, CompositePrivateExchange]:
         """
         Get currently managed exchange instances.
         

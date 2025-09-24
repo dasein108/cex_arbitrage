@@ -33,11 +33,11 @@ from typing import List, Dict, Optional, Callable, Awaitable, Set
 from exchanges.consts import DEFAULT_PUBLIC_WEBSOCKET_CHANNELS
 from infrastructure.data_structures.common import Symbol, Trade, OrderBook, BookTicker
 from infrastructure.config.structs import ExchangeConfig
-from exchanges.base.websocket import BaseWebsocketPublicFutures
+from exchanges.interfaces.ws import PublicFuturesWebsocket
 from infrastructure.networking.websocket.structs import ConnectionState, PublicWebsocketChannelType
 
 
-class GateioWebsocketPublicFutures(BaseWebsocketPublicFutures):
+class GateioWebsocketExchangePublicFuturesWebsocket(PublicFuturesWebsocket):
     """Gate.io public futures WebSocket client using dependency injection pattern."""
 
     def __init__(
@@ -61,7 +61,7 @@ class GateioWebsocketPublicFutures(BaseWebsocketPublicFutures):
         # Store the actual futures URL (config is immutable)
         self._futures_websocket_url = config.websocket_url
         
-        # Initialize via base class dependency injection (like REST pattern)
+        # Initialize via composite class dependency injection (like REST pattern)
         super().__init__(
             config=config,
             orderbook_diff_handler=orderbook_diff_handler,

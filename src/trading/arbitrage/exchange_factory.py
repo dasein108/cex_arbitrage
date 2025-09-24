@@ -15,11 +15,11 @@ from dataclasses import dataclass
 
 from infrastructure.config.config_manager import config
 from infrastructure.exceptions.exchange import BaseExchangeError
-from exchanges.integrations.mexc.private_exchange import MexcPrivateExchange as MexcExchange
+from exchanges.integrations.mexc.private_exchange import MexcPrivateCompositePrivateExchange as MexcExchange
 from exchanges.integrations.gateio.gateio_exchange import GateioExchange
 from infrastructure.data_structures.common import Symbol, AssetName, ExchangeStatus, ExchangeName
-from interfaces.exchanges.base.base_private_exchange import BasePrivateExchangeInterface
-from interfaces.factories.exchange_factory_interface import (
+from exchanges.interfaces.composite.base_private_exchange import CompositePrivateExchange
+from exchanges.interfaces.composite.factory import (
     ExchangeFactoryInterface, 
     InitializationStrategy as BaseInitializationStrategy
 )
@@ -27,7 +27,7 @@ from interfaces.factories.exchange_factory_interface import (
 logger = get_logger('arbitrage.exchange_factory')
 
 
-# Use the base InitializationStrategy from the interface
+# Use the composite InitializationStrategy from the interface
 InitializationStrategy = BaseInitializationStrategy
 
 
@@ -66,7 +66,7 @@ class ExchangeInitResult:
     """Result of exchange initialization attempt."""
     exchange_name: str
     success: bool
-    exchange: Optional[BasePrivateExchangeInterface] = None
+    exchange: Optional[CompositePrivateExchange] = None
     error: Optional[Exception] = None
     attempts: int = 1
     initialization_time: float = 0.0
@@ -91,7 +91,7 @@ class ExchangeFactory(ExchangeFactoryInterface):
     """
     
     # Exchange class registry
-    EXCHANGE_CLASSES: Dict[str, Type[BasePrivateExchangeInterface]] = {
+    EXCHANGE_CLASSES: Dict[str, Type[CompositePrivateExchange]] = {
         'MEXC': MexcExchange,
         'GATEIO': GateioExchange,
     }
@@ -103,7 +103,7 @@ class ExchangeFactory(ExchangeFactoryInterface):
     ]
     
     def __init__(self):
-        self.exchanges: Dict[str, BasePrivateExchangeInterface] = {}
+        self.exchanges: Dict[str, CompositePrivateExchange] = {}
         self._initialization_timeout = 10.0  # seconds
         self._retry_attempts = 3
         self._retry_delay = 2.0  # seconds
@@ -125,7 +125,7 @@ class ExchangeFactory(ExchangeFactoryInterface):
             secret_key=credentials.get('secret_key', '')
         )
     
-    def _get_exchange_class(self, exchange_name: str) -> Type[BasePrivateExchangeInterface]:
+    def _get_exchange_class(self, exchange_name: str) -> Type[CompositePrivateExchange]:
         """
         Get exchange class for specified exchange name.
         
@@ -147,7 +147,7 @@ class ExchangeFactory(ExchangeFactoryInterface):
         exchange_name: str,
         symbols: Optional[List[Symbol]] = None,
         max_attempts: Optional[int] = None,
-    ) -> BasePrivateExchangeInterface:
+    ) -> CompositePrivateExchange:
         """
         Create and initialize exchange instance.
         
@@ -254,10 +254,10 @@ class ExchangeFactory(ExchangeFactoryInterface):
     
     async def _create_exchange_instance_enhanced(
         self,
-        exchange_class: Type[BasePrivateExchangeInterface],
+        exchange_class: Type[CompositePrivateExchange],
         credentials: ExchangeCredentials,
         exchange_name: str,
-    ) -> BasePrivateExchangeInterface:
+    ) -> CompositePrivateExchange:
         """Create exchange instance."""
         try:
             # Create basic exchange instance
@@ -270,7 +270,7 @@ class ExchangeFactory(ExchangeFactoryInterface):
                 exchange = exchange_class()
             
             # Validate instance creation
-            if not isinstance(exchange, BasePrivateExchangeInterface):
+            if not isinstance(exchange, CompositePrivateExchange):
                 raise ValueError(f"Exchange {exchange_name} does not implement BasePrivateExchangeInterface")
             
             return exchange
@@ -280,10 +280,10 @@ class ExchangeFactory(ExchangeFactoryInterface):
     
     async def _create_exchange_instance(
         self,
-        exchange_class: Type[BasePrivateExchangeInterface],
+        exchange_class: Type[CompositePrivateExchange],
         credentials: ExchangeCredentials,
         exchange_name: str
-    ) -> BasePrivateExchangeInterface:
+    ) -> CompositePrivateExchange:
         """Create exchange instance with proper error handling (legacy method)."""
         return await self._create_exchange_instance_enhanced(
             exchange_class, credentials, exchange_name
@@ -291,7 +291,7 @@ class ExchangeFactory(ExchangeFactoryInterface):
     
     async def _initialize_exchange_with_validation(
         self,
-        exchange: BasePrivateExchangeInterface,
+        exchange: CompositePrivateExchange,
         name: str,
         symbols: List[Symbol]
     ) -> None:
@@ -338,7 +338,7 @@ class ExchangeFactory(ExchangeFactoryInterface):
         exchange_names: List[str],
         strategy: InitializationStrategy = InitializationStrategy.CONTINUE_ON_ERROR,
         symbols: Optional[List[Symbol]] = None
-    ) -> Dict[str, BasePrivateExchangeInterface]:
+    ) -> Dict[str, CompositePrivateExchange]:
         """
         Create multiple exchanges with intelligent error handling.
         
@@ -371,7 +371,7 @@ class ExchangeFactory(ExchangeFactoryInterface):
         self, 
         exchange_names: List[str],
         symbols: Optional[List[Symbol]]
-    ) -> Dict[str, BasePrivateExchangeInterface]:
+    ) -> Dict[str, CompositePrivateExchange]:
         """Create exchanges with fail-fast strategy."""
         for name in exchange_names:
             exchange = await self.create_exchange(name, symbols, max_attempts=1)
@@ -384,7 +384,7 @@ class ExchangeFactory(ExchangeFactoryInterface):
         self, 
         exchange_names: List[str],
         symbols: Optional[List[Symbol]]
-    ) -> Dict[str, BasePrivateExchangeInterface]:
+    ) -> Dict[str, CompositePrivateExchange]:
         """Create exchanges with continue-on-error strategy."""
         tasks = []
         for name in exchange_names:
@@ -410,7 +410,7 @@ class ExchangeFactory(ExchangeFactoryInterface):
         self, 
         exchange_names: List[str],
         symbols: Optional[List[Symbol]]
-    ) -> Dict[str, BasePrivateExchangeInterface]:
+    ) -> Dict[str, CompositePrivateExchange]:
         """Create exchanges with retry strategy."""
         failed_exchanges = []
         
@@ -463,7 +463,7 @@ class ExchangeFactory(ExchangeFactoryInterface):
         self, 
         name: str, 
         symbols: Optional[List[Symbol]] = None
-    ) -> Optional[BasePrivateExchangeInterface]:
+    ) -> Optional[CompositePrivateExchange]:
         """
         Create exchange with comprehensive error handling.
         
@@ -565,7 +565,7 @@ class ExchangeFactory(ExchangeFactoryInterface):
         self.exchanges.clear()
         logger.info("All exchanges closed")
     
-    async def _close_exchange(self, name: str, exchange: BasePrivateExchangeInterface):
+    async def _close_exchange(self, name: str, exchange: CompositePrivateExchange):
         """Close single exchange connection."""
         try:
             await exchange.close()
@@ -573,11 +573,11 @@ class ExchangeFactory(ExchangeFactoryInterface):
         except Exception as e:
             logger.error(f"Error closing {name}: {e}")
     
-    def get_exchange(self, name: str) -> Optional[BasePrivateExchangeInterface]:
+    def get_exchange(self, name: str) -> Optional[CompositePrivateExchange]:
         """Get exchange instance by name."""
         return self.exchanges.get(name)
     
-    def get_active_exchanges(self) -> Dict[str, BasePrivateExchangeInterface]:
+    def get_active_exchanges(self) -> Dict[str, CompositePrivateExchange]:
         """Get all active exchanges."""
         return {
             name: exchange
@@ -595,7 +595,7 @@ class ExchangeFactory(ExchangeFactoryInterface):
         self,
         exchange_name: ExchangeName,
         symbols: Optional[List[Symbol]] = None
-    ) -> BasePrivateExchangeInterface:
+    ) -> CompositePrivateExchange:
         """Create a single exchange instance."""
         exchanges = await self.create_exchanges([exchange_name], symbols=symbols)
         if str(exchange_name) not in exchanges:
@@ -618,6 +618,6 @@ class ExchangeFactory(ExchangeFactoryInterface):
         return exchange.status == ExchangeStatus.ACTIVE
 
     @property
-    def managed_exchanges(self) -> Dict[str, BasePrivateExchangeInterface]:
+    def managed_exchanges(self) -> Dict[str, CompositePrivateExchange]:
         """Get currently managed exchange instances."""
         return self.exchanges.copy()

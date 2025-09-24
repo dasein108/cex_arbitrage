@@ -67,10 +67,10 @@ Successfully implemented HFT logging system injection across the codebase with f
 logger = logging.getLogger(__name__)
 
 # After: HFT factory injection
-logger = get_logger('websocket.factory.public')
+logger = get_logger('ws.factory.public')
 
 # Exchange-specific logger injection
-exchange_logger = get_exchange_logger(exchange_enum.value, 'websocket.public')
+exchange_logger = get_exchange_logger(exchange_enum.value, 'ws.public')
 instance = implementation_class(
     config=config,
     logger=exchange_logger,  # Inject HFT logger
@@ -183,7 +183,7 @@ logger.info(f"Connection established for {exchange}")  # String formatting overh
 ### After: HFT Logger Benefits
 ```python
 from src.core.logging import get_exchange_logger, LoggingTimer
-logger = get_exchange_logger(exchange, 'websocket.public')
+logger = get_exchange_logger(exchange, 'ws.public')
 
 with LoggingTimer(logger, "connection_establishment") as timer:
     # Connection logic here

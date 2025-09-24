@@ -248,7 +248,7 @@ def websocket_test(test_name: str, monitor_duration: int = 5):
     
     Usage:
         @websocket_test("orderbook_data", monitor_duration=10)
-        async def test_orderbook_stream(websocket):
+        async def test_orderbook_stream(ws):
             # Test implementation
             pass
     """

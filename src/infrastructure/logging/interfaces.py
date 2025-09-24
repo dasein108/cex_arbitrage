@@ -97,7 +97,7 @@ class LogRecord:
 
 class LogBackend(ABC):
     """
-    Abstract base for all logging backends.
+    Abstract composite for all logging backends.
     
     Each backend handles its own formatting and output logic.
     """
@@ -163,7 +163,7 @@ class HFTLoggerInterface(ABC):
     """
     Interface for HFT logger with multiple backends.
     
-    This is what gets injected into base classes via factory pattern.
+    This is what gets injected into composite classes via factory pattern.
     Designed for maximum performance with async dispatch.
     """
     

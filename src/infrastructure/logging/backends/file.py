@@ -46,7 +46,7 @@ class FileBackend(LogBackend):
         if not isinstance(config, FileBackendConfig):
             raise TypeError(f"Expected FileBackendConfig, got {type(config)}")
         
-        super().__init__(name, {})  # Empty dict for base class compatibility
+        super().__init__(name, {})  # Empty dict for composite class compatibility
         
         # Store struct config
         self.config = config

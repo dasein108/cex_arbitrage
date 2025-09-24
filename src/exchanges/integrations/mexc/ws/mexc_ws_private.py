@@ -8,7 +8,7 @@ Handles authenticated WebSocket streams for account data including:
 - Trade confirmations via protobuf
 
 Features:
-- Dependency injection via base class (like REST pattern)
+- Dependency injection via composite class (like REST pattern)
 - HFT-optimized message processing
 - Event-driven architecture with injected handlers
 - Clean separation of concerns
@@ -20,7 +20,7 @@ MEXC Private WebSocket Specifications:
 - Keep-alive: Every 30 minutes to prevent expiration
 - Auto-cleanup: Listen key deletion on disconnect
 
-Architecture: Dependency injection with base class coordination
+Architecture: Dependency injection with composite class coordination
 """
 
 from typing import Dict, Optional, Callable, Awaitable
@@ -28,7 +28,7 @@ from typing import Dict, Optional, Callable, Awaitable
 from infrastructure.data_structures.common import Order, AssetBalance, Trade, AssetName
 from exchanges.integrations.mexc.rest.mexc_rest_private import MexcPrivateSpotRest
 from infrastructure.config.structs import ExchangeConfig
-from exchanges.base.websocket.spot.base_ws_private import BaseExchangePrivateWebsocketInterface
+from exchanges.interfaces.ws import PrivateSpotWebsocket
 # Mappings now consolidated in MexcUnifiedMappings
 
 # MEXC-specific protobuf imports for message parsing
@@ -37,7 +37,7 @@ from exchanges.integrations.mexc.structs.protobuf.PrivateOrdersV3Api_pb2 import 
 from exchanges.integrations.mexc.structs.protobuf.PrivateDealsV3Api_pb2 import PrivateDealsV3Api
 
 
-class MexcWebsocketPrivate(BaseExchangePrivateWebsocketInterface):
+class MexcWebsocketPrivateSpot(PrivateSpotWebsocket):
     """MEXC private WebSocket client using dependency injection pattern."""
 
     def __init__(
@@ -58,7 +58,7 @@ class MexcWebsocketPrivate(BaseExchangePrivateWebsocketInterface):
         # Store REST client for MEXC-specific operations
         self.rest_client = private_rest_client
         
-        # Initialize via base class dependency injection (like REST pattern)
+        # Initialize via composite class dependency injection (like REST pattern)
         super().__init__(
             config=config,
             order_handler=order_handler,

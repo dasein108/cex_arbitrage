@@ -22,11 +22,11 @@ treats futures as a completely separate exchange system.
 from typing import List, Dict, Optional
 import logging
 
-from exchanges.interfaces import PublicExchangeInterface
+from exchanges.interfaces import CompositePublicFuturesExchange
 from infrastructure.data_structures.common import Symbol, SymbolsInfo, OrderBook
 
 
-class GateioPublicFuturesExchange(PublicExchangeInterface):
+class GateioPublicFuturesExchange(CompositePublicFuturesExchange):
     """
     Gate.io public futures exchange for market data operations.
     

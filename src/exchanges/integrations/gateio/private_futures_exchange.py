@@ -23,12 +23,12 @@ treats futures as a completely separate exchange system with trading capabilitie
 from typing import List, Dict
 import logging
 
-from exchanges.interfaces import PrivateExchangeInterface
+from exchanges.interfaces import CompositePrivateFuturesExchange
 from infrastructure.data_structures.common import Symbol, Order, Position, AssetBalance
 from infrastructure.config.structs import ExchangeConfig
 
 
-class GateioPrivateFuturesExchange(PrivateExchangeInterface):
+class GateioPrivateFuturesExchange(CompositePrivateFuturesExchange):
     """
     Gate.io private futures exchange for trading operations.
     

@@ -1,7 +1,7 @@
 """
 Public futures exchange interface for futures market data operations.
 
-This interface extends the base public interface with futures-specific
+This interface extends the composite public interface with futures-specific
 functionality like funding rates, open interest, and futures-specific
 orderbook management.
 """
@@ -11,10 +11,10 @@ from typing import Dict, List
 from decimal import Decimal
 
 from infrastructure.data_structures.common import Symbol
-from .base_public_exchange import BasePublicExchangeInterface
+from .base_public_exchange import CompositePublicExchange
 
 
-class BasePublicFuturesExchangeInterface(BasePublicExchangeInterface):
+class CompositePublicFuturesExchange(CompositePublicExchange):
     """
     Base interface for public futures exchange operations.
     
@@ -161,7 +161,7 @@ class BasePublicFuturesExchangeInterface(BasePublicExchangeInterface):
         Args:
             symbols: Optional list of symbols to track
         """
-        # Initialize base public functionality
+        # Initialize composite public functionality
         await super().initialize(symbols)
 
         if symbols:
@@ -186,7 +186,7 @@ class BasePublicFuturesExchangeInterface(BasePublicExchangeInterface):
         
         Refreshes both standard market data and futures-specific data.
         """
-        # Refresh base market data
+        # Refresh composite market data
         await super()._refresh_exchange_data()
 
         if self._active_symbols:

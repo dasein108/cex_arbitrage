@@ -29,10 +29,8 @@ All exchange implementations follow the same architectural patterns:
 """
 
 # Import interfaces for external access
-from .interfaces import PublicExchangeInterface, PrivateExchangeInterface, ExchangeInterface
-
-# Import centralized factory
-from .factories import ExchangeFactory
+# TODO: Fix naming
+# from .interfaces import PublicExchangeInterface, PrivateExchangeInterface, ExchangeInterface
 # Auto-import exchange modules to trigger service registration
 from .integrations import mexc
 from .integrations import gateio
@@ -45,7 +43,6 @@ __all__ = [
     'PublicExchangeInterface',
     'PrivateExchangeInterface',
     'ExchangeInterface',
-    'ExchangeFactory',
     'mexc',
     'gateio',
     'ExchangeEnum',

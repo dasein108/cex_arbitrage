@@ -1,7 +1,7 @@
 """
 Base Public WebSocket Interface - Refactored
 
-Clean base class for public WebSocket implementations using the new
+Clean composite class for public WebSocket implementations using the new
 strategy-driven architecture.
 
 HFT COMPLIANCE: Optimized for sub-millisecond message processing.
@@ -17,7 +17,7 @@ from infrastructure.config.structs import ExchangeConfig
 from infrastructure.networking.websocket.structs import ConnectionState, MessageType, ParsedMessage, PublicWebsocketChannelType
 import traceback
 
-class BaseExchangePublicWebsocketInterface(ABC):
+class PublicSpotWebsocket(ABC):
     """
     Base class for exchange public WebSocket implementations.
     
@@ -36,7 +36,7 @@ class BaseExchangePublicWebsocketInterface(ABC):
         state_change_handler: Optional[Callable[[ConnectionState], Awaitable[None]]] = None,
     ):
         """
-        Initialize base public WebSocket.
+        Initialize composite public WebSocket.
         
         Args:
             config: Exchange configuration

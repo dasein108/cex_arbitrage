@@ -105,7 +105,7 @@ self.logger = logging.getLogger(f"{__name__}.{exchange_name}")
 
 **Current**:
 ```python
-# src/core/exchanges/rest/base_rest.py
+# src/core/exchanges/rest/rest_base.py
 self.logger = logging.getLogger(f"{__name__}.{self.exchange_tag}")
 ```
 
@@ -113,7 +113,7 @@ self.logger = logging.getLogger(f"{__name__}.{self.exchange_tag}")
 ```python
 def __init__(self, exchange_tag: str, logger: HFTLoggerInterface = None):
     if logger is None:
-        logger = get_exchange_logger(exchange_tag.lower(), 'rest.base')
+        logger = get_exchange_logger(exchange_tag.lower(), 'rest.composite')
     self.logger = logger
 ```
 
@@ -132,7 +132,7 @@ def __init__(self, mapper, logger: HFTLoggerInterface = None):
         # Extract exchange from class name: MexcPublicConnectionStrategy -> mexc
         exchange = self.__class__.__name__.lower()[:4]  # mexc, gate, etc.
         api_type = 'private' if 'private' in self.__class__.__name__.lower() else 'public'
-        transport = 'ws' if 'websocket' in self.__module__ else 'rest'
+        transport = 'ws' if 'ws' in self.__module__ else 'rest'
         strategy_type = self._extract_strategy_type()  # connection, auth, etc.
         
         tags = [exchange, api_type, transport, strategy_type]
@@ -430,13 +430,13 @@ logger = logging.getLogger(__name__)
 
 # After: HFT factory injection
 from src.core.logging import get_logger
-logger = get_logger('websocket.factory.public')
+logger = get_logger('ws.factory.public')
 
 class PublicWebSocketExchangeFactory(BaseExchangeFactory):
     @classmethod
     def inject(cls, exchange, config, **kwargs):
         # Create exchange-specific logger
-        exchange_logger = get_exchange_logger(exchange, 'websocket.public')
+        exchange_logger = get_exchange_logger(exchange, 'ws.public')
         
         # Log performance metrics
         with LoggingTimer(exchange_logger, "websocket_creation"):
@@ -476,7 +476,7 @@ class PublicWebSocketExchangeFactory(BaseExchangeFactory):
 class BaseExchangePublicWebsocket:
     def __init__(self, config, logger=None, **kwargs):
         # Use injected logger or create default
-        self.logger = logger or get_exchange_logger(config.name, 'websocket.public')
+        self.logger = logger or get_exchange_logger(config.name, 'ws.public')
         
         # Connection event logging with correlation
         self.correlation_id = self._generate_correlation_id()

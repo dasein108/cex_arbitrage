@@ -35,14 +35,14 @@ from infrastructure.data_structures.common import (
     Symbol, SymbolInfo, OrderBook, OrderBookEntry, Trade, Kline,
     AssetName, Side, KlineInterval, Ticker
 )
-from exchanges.base.rest.spot.base_rest_spot_public import PublicExchangeSpotRestInterface
+from exchanges.interfaces.rest.spot import PublicSpotRest
 from exchanges.services import BaseExchangeMapper
 from infrastructure.config.structs import ExchangeConfig
 from infrastructure.networking.http.structs import HTTPMethod
 from common.iterators import time_range_iterator
 
 
-class MexcPublicSpotRest(PublicExchangeSpotRestInterface):
+class MexcPublicSpotRest(PublicSpotRest):
     """
     MEXC public REST API client focused on direct API calls.
     
@@ -55,7 +55,7 @@ class MexcPublicSpotRest(PublicExchangeSpotRestInterface):
         Initialize MEXC public REST client with dependency injection.
 
         Args:
-            config: ExchangeConfig with base URL and rate limits
+            config: ExchangeConfig with composite URL and rate limits
             mapper: BaseExchangeMapper for data transformations
             logger: Optional HFT logger injection
         """

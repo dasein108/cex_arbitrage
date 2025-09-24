@@ -9,7 +9,7 @@ from exchanges.services import BaseExchangeMapper
 # HFT Logger Integration
 from infrastructure.logging import get_exchange_logger, HFTLoggerInterface, LoggingTimer
 
-class BaseExchangeRestInterface(ABC):
+class BaseRestInterface(ABC):
     """
     Abstract composite for exchange REST operations using the new transport system.
     

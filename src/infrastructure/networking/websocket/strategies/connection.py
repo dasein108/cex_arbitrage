@@ -44,7 +44,7 @@ class ConnectionStrategy(ABC):
         try:
             return self._websocket.state == WsState.OPEN
         except AttributeError:
-            # Handle case where websocket object doesn't have 'closed' attribute
+            # Handle case where ws object doesn't have 'closed' attribute
             import logging
             logger = logging.getLogger(f"{__name__}.{self.__class__.__name__}")
             logger.error(f"WebSocket object {type(self._websocket)} has no 'closed' attribute")
@@ -162,7 +162,7 @@ class ConnectionStrategy(ABC):
                 if self._websocket.state != WsState.CLOSED:
                     await self._websocket.close()
             except AttributeError:
-                # Handle case where websocket doesn't have 'closed' attribute
+                # Handle case where ws doesn't have 'closed' attribute
                 try:
                     await self._websocket.close()
                 except Exception:

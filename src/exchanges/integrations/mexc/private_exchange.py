@@ -10,18 +10,18 @@ HFT COMPLIANCE: Sub-50ms order execution, real-time balance updates.
 import time
 from typing import List, Dict, Optional
 
-from interfaces.exchanges.base import BasePrivateExchangeInterface
+from exchanges.interfaces.composite import CompositePrivateExchange
 from infrastructure.data_structures.common import (
     Symbol, AssetBalance, AssetName, Order, OrderId, SymbolsInfo, Trade, Side,
     WithdrawalRequest, WithdrawalResponse
 )
-from exchanges.integrations.mexc.ws.mexc_ws_private import MexcWebsocketPrivate
+from exchanges.integrations.mexc.ws.mexc_ws_private import MexcWebsocketPrivateSpot
 from exchanges.integrations.mexc.rest.mexc_rest_private import MexcPrivateSpotRest
 from infrastructure.exceptions.exchange import BaseExchangeError
 from infrastructure.config.structs import ExchangeConfig
 
 
-class MexcPrivateExchange(BasePrivateExchangeInterface):
+class MexcPrivateCompositePrivateExchange(CompositePrivateExchange):
     """
     MEXC Private Exchange - Trading Operations
     
@@ -58,7 +58,7 @@ class MexcPrivateExchange(BasePrivateExchangeInterface):
         self._private_rest = MexcPrivateSpotRest(config)
 
         # Initialize private WebSocket client
-        self._private_websocket = MexcWebsocketPrivate(
+        self._private_websocket = MexcWebsocketPrivateSpot(
             private_rest_client=self._private_rest,
             config=self._config,
             order_handler=self._handle_order_update,
@@ -74,7 +74,7 @@ class MexcPrivateExchange(BasePrivateExchangeInterface):
         self.logger.info("MEXC Private Exchange initialized with trading capabilities")
     
     # === Public Interface Delegation ===
-    # Delegate all public operations to the base public exchange
+    # Delegate all public operations to the composite public exchange
     
     async def initialize(self, symbols_info: SymbolsInfo) -> None:
         """

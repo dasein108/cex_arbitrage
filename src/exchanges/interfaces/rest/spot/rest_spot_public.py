@@ -1,7 +1,7 @@
 from abc import abstractmethod
 from datetime import datetime
 from typing import Dict, List, Optional
-from exchanges.interfaces.rest.base_rest import BaseExchangeRestInterface
+from exchanges.interfaces.rest.rest_base import BaseRestInterface
 from exchanges.services import BaseExchangeMapper
 from infrastructure.data_structures.common import (
     Symbol,
@@ -19,7 +19,7 @@ from infrastructure.config.structs import ExchangeConfig
 from infrastructure.logging import HFTLoggerInterface
 
 
-class PublicExchangeSpotRest(BaseExchangeRestInterface):
+class PublicSpotRest(BaseRestInterface):
     """Abstract interface for public exchange operations (market data)"""
     
     def __init__(self, config: ExchangeConfig, mapper: BaseExchangeMapper, logger: Optional[HFTLoggerInterface] = None):

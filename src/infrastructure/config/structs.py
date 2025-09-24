@@ -260,7 +260,7 @@ class ExchangeConfig(Struct, frozen=True):
             "public_data": True,  # Always available
             "private_data": self.has_credentials(),
             "trading": self.is_ready_for_trading(),
-            "websocket": bool(self.websocket_url),
+            "ws": bool(self.websocket_url),
             "rest_api": bool(self.base_url)
         }
     

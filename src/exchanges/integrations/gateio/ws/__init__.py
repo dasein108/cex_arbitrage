@@ -1,9 +1,9 @@
 """Gate.io WebSocket Implementations"""
 
 from .gateio_ws_public import GateioWebsocketPublic
-from .gateio_ws_private import GateioWebsocketPrivate
-from .gateio_ws_public_futures import GateioWebsocketPublicFutures
-from .gateio_ws_private_futures import GateioWebsocketPrivateFutures
+from .gateio_ws_private import GateioWebsocketPrivateSpot
+from .gateio_ws_public_futures import GateioWebsocketExchangePublicFuturesWebsocket
+from .gateio_ws_private_futures import GateioWebsocketPrivateSpotFutures
 # from .strategies import (
 #     GateioPublicConnectionStrategy,
 #     GateioPublicSubscriptionStrategy,
@@ -15,6 +15,7 @@ from .gateio_ws_private_futures import GateioWebsocketPrivateFutures
 # )
 
 # Import registration to trigger auto-registration with factories
-from . import registration
+# from . import registration
 
-__all__ = ['GateioWebsocketPublic', 'GateioWebsocketPrivate', 'GateioWebsocketPublicFutures', 'GateioWebsocketPrivateFutures']
+__all__ = ['GateioWebsocketPublic', 'GateioWebsocketPrivateSpot', 'GateioWebsocketExchangePublicFuturesWebsocket',
+           'GateioWebsocketPrivateSpotFutures']

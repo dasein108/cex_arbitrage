@@ -13,10 +13,10 @@ from infrastructure.data_structures.common import (
     WithdrawalRequest, WithdrawalResponse
 )
 from infrastructure.config.structs import ExchangeConfig
-from .base_public_exchange import BasePublicExchangeInterface
+from .base_public_exchange import CompositePublicExchange
 
 
-class BasePrivateExchangeInterface(BasePublicExchangeInterface):
+class CompositePrivateExchange(CompositePublicExchange):
     """
     Base interface for private exchange operations (trading + market data).
     

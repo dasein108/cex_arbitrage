@@ -1,7 +1,7 @@
 """
 Private futures exchange interface for futures trading operations.
 
-This interface extends the base private interface with futures-specific
+This interface extends the composite private interface with futures-specific
 trading functionality like leverage management, position control, and
 futures-specific order types.
 """
@@ -11,10 +11,10 @@ from typing import Dict, List, Optional, Any
 from decimal import Decimal
 
 from infrastructure.data_structures.common import Symbol, Order, Position
-from .base_private_exchange import BasePrivateExchangeInterface
+from .base_private_exchange import CompositePrivateExchange
 
 
-class BasePrivateFuturesExchangeInterface(BasePrivateExchangeInterface):
+class CompositePrivateFuturesExchange(CompositePrivateExchange):
     """
     Base interface for private futures exchange operations.
     
@@ -244,7 +244,7 @@ class BasePrivateFuturesExchangeInterface(BasePrivateExchangeInterface):
         Args:
             symbols: Optional list of symbols to track
         """
-        # Initialize base private functionality
+        # Initialize composite private functionality
         await super().initialize(symbols)
 
         try:
@@ -267,7 +267,7 @@ class BasePrivateFuturesExchangeInterface(BasePrivateExchangeInterface):
         
         Refreshes standard private data plus futures-specific data.
         """
-        # Refresh base private data
+        # Refresh composite private data
         await super()._refresh_exchange_data()
 
         try:
