@@ -9,10 +9,10 @@ HFT COMPLIANCE: Sub-millisecond factory operations with efficient singleton mana
 
 from typing import Type, Optional, Union
 
-from core.factories.base_exchange_factory import BaseExchangeFactory
+from infrastructure.factories.base_exchange_factory import BaseExchangeFactory
 from exchanges.base.rest.spot.base_rest_spot_private import PrivateExchangeSpotRestInterface
 from infrastructure.config.structs import ExchangeConfig
-from core.utils.exchange_utils import exchange_name_to_enum
+from exchanges.base.utils.exchange_utils import exchange_name_to_enum
 from infrastructure.data_structures.common import ExchangeEnum
 
 # HFT Logger Integration

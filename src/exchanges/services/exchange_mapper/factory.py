@@ -12,7 +12,7 @@ from typing import Type, Union
 from infrastructure.data_structures.common import ExchangeName, ExchangeEnum
 from exchanges.services.exchange_mapper.base_exchange_mapper import BaseExchangeMapper
 from exchanges.services.symbol_mapper.base_symbol_mapper import SymbolMapperInterface
-from core.factories.base_exchange_factory import BaseExchangeFactory
+from infrastructure.factories.base_exchange_factory import BaseExchangeFactory
 
 
 class ExchangeMapperFactory(BaseExchangeFactory[BaseExchangeMapper]):
@@ -143,7 +143,7 @@ class ExchangeMapperFactory(BaseExchangeFactory[BaseExchangeMapper]):
             ValueError: If exchange implementation not registered
         """
         # Convert to ExchangeEnum
-        from core.utils.exchange_utils import exchange_name_to_enum
+        from exchanges.base.utils.exchange_utils import exchange_name_to_enum
         exchange_enum = exchange_name_to_enum(exchange_name)
         
         if symbol_mapper is None:

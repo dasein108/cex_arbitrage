@@ -18,7 +18,7 @@ else:
     from infrastructure.data_structures.common import ExchangeEnum
 from ....config.structs import ExchangeConfig
 from .strategy_set import RestStrategySet
-from core.factories.base_composite_factory import BaseCompositeFactory
+from infrastructure.factories.base_composite_factory import BaseCompositeFactory
 
 
 class RestStrategyFactory(BaseCompositeFactory[RestStrategySet]):
@@ -343,7 +343,7 @@ class RestStrategyFactory(BaseCompositeFactory[RestStrategySet]):
             ValueError: If no strategies registered for the exchange
         """
         # Convert exchange config name to ExchangeEnum
-        from core.utils.exchange_utils import exchange_name_to_enum
+        from exchanges.base.utils.exchange_utils import exchange_name_to_enum
         exchange_enum = exchange_name_to_enum(exchange_config.name)
         
         # Delegate to standardized inject() method

@@ -4,7 +4,7 @@ Gate.io WebSocket Factory Registration
 Separate module to handle factory registration and avoid circular imports.
 """
 
-from core.factories.websocket import PublicWebSocketExchangeFactory, PrivateWebSocketExchangeFactory
+from infrastructure.factories.websocket import PublicWebSocketExchangeFactory, PrivateWebSocketExchangeFactory
 from infrastructure.data_structures.common import ExchangeEnum
 from .gateio_ws_public import GateioWebsocketPublic
 from .gateio_ws_private import GateioWebsocketPrivate

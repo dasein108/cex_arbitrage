@@ -9,8 +9,8 @@ from .strategies import (
 )
 
 # Register REST implementations with factories (auto-registration pattern)
-from core.factories.rest.public_rest_factory import PublicRestExchangeFactory
-from core.factories.rest.private_rest_factory import PrivateRestExchangeFactory
+from infrastructure.factories.rest.public_rest_factory import PublicRestExchangeFactory
+from infrastructure.factories.rest.private_rest_factory import PrivateRestExchangeFactory
 
 # Register Gate.io strategies with the factory
 from infrastructure.networking.http.strategies import RestStrategyFactory

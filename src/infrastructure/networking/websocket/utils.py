@@ -10,7 +10,7 @@ HFT COMPLIANT: Sub-millisecond strategy creation with pre-validated combinations
 from infrastructure.config.structs import ExchangeConfig
 from .ws_manager import WebSocketManager, WebSocketManagerConfig
 from .strategies import WebSocketStrategyFactory
-from core.utils.exchange_utils import exchange_name_to_enum
+from exchanges.base.utils.exchange_utils import exchange_name_to_enum
 
 
 def create_websocket_manager(

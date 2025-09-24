@@ -32,7 +32,7 @@ src_path = Path(__file__).parent.parent
 sys.path.insert(0, str(src_path))
 
 # CLAUDE.md compliant imports - use proper interfaces
-from core.factories.rest.public_rest_factory import PublicRestExchangeFactory
+from infrastructure.factories.rest.public_rest_factory import PublicRestExchangeFactory
 from infrastructure.data_structures.common import ExchangeEnum
 from infrastructure.config.config_manager import HftConfig
 from infrastructure.data_structures.common import Symbol, SymbolInfo

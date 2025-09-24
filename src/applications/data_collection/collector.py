@@ -12,7 +12,7 @@ from dataclasses import dataclass
 
 from infrastructure.config import get_exchange_config
 from infrastructure.data_structures.common import Symbol, BookTicker, Trade
-from core.factories.websocket import PublicWebSocketExchangeFactory
+from infrastructure.factories.websocket import PublicWebSocketExchangeFactory
 from db import BookTickerSnapshot
 from db.models import TradeSnapshot
 from infrastructure.data_structures.common import ExchangeEnum

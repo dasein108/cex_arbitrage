@@ -44,7 +44,7 @@ class MexcPrivateConnectionStrategy(ConnectionStrategy):
         else:
             # Create REST client with proper mapper injection
             from exchanges.services.exchange_mapper.factory import ExchangeMapperFactory
-            from core.utils.exchange_utils import exchange_name_to_enum
+            from exchanges.base.utils.exchange_utils import exchange_name_to_enum
             mapper = ExchangeMapperFactory.inject(exchange_name_to_enum(config.name))
             self.rest_client = MexcPrivateSpotRest(config, mapper)
             self.logger.debug("Created new REST client for listen key management")

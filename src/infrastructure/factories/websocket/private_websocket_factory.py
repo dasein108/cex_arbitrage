@@ -10,13 +10,13 @@ HFT COMPLIANCE: Sub-millisecond factory operations with efficient singleton mana
 import traceback
 from typing import Type, Optional, Callable, Awaitable, Union, Dict
 
-from core.factories.base_exchange_factory import BaseExchangeFactory
-from core.utils.exchange_utils import exchange_name_to_enum
+from infrastructure.factories.base_exchange_factory import BaseExchangeFactory
+from exchanges.base.utils.exchange_utils import exchange_name_to_enum
 from infrastructure.data_structures.common import ExchangeEnum
 
 from infrastructure.config.structs import ExchangeConfig
 from infrastructure.data_structures.common import Order, AssetBalance, AssetName, Trade
-from core.factories.rest.private_rest_factory import PrivateRestExchangeFactory
+from infrastructure.factories.rest.private_rest_factory import PrivateRestExchangeFactory
 
 # HFT Logger Integration
 from infrastructure.logging import get_logger, get_exchange_logger, LoggingTimer

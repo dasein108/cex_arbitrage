@@ -6,7 +6,7 @@ the same pattern as REST factory. Uses the new WebSocket factory infrastructure.
 """
 
 from typing import Optional, Callable, Awaitable, List
-from core.factories.websocket import PublicWebSocketExchangeFactory, PrivateWebSocketExchangeFactory
+from infrastructure.factories.websocket import PublicWebSocketExchangeFactory, PrivateWebSocketExchangeFactory
 from infrastructure.config.config_manager import HftConfig
 from infrastructure.data_structures.common import Symbol, OrderBook, Trade, BookTicker, Order, AssetBalance
 from infrastructure.networking.websocket.structs import ConnectionState
