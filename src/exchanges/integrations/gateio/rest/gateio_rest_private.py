@@ -29,21 +29,6 @@ from infrastructure.data_structures.common import (
     AssetName, AssetInfo, NetworkInfo, TimeInForce, TradingFee,
     WithdrawalRequest, WithdrawalResponse, WithdrawalStatus
 )
-<<<<<<< HEAD:src/exchanges/integrations/gateio/rest/gateio_rest_private.py
-from infrastructure.networking.http.structs import HTTPMethod
-from infrastructure.exceptions.exchange import BaseExchangeError
-from exchanges.base.rest.spot.base_rest_spot_private import PrivateExchangeSpotRestInterface
-from exchanges.services import BaseExchangeMapper
-from infrastructure.config.structs import ExchangeConfig
-=======
-from core.transport.rest.structs import HTTPMethod
-from core.exceptions.exchange import BaseExchangeError
-from core.exchanges.rest.spot.base_rest_spot_private import PrivateExchangeSpotRestInterface
-from core.exchanges.services import BaseExchangeMapper
-from core.config.structs import ExchangeConfig
-from exchanges.gateio.structs.exchange import GateioCurrencyResponse, GateioChainResponse
-from exchanges.gateio.services.gateio_mappings import map_gateio_withdrawal_status
->>>>>>> 31b90722f25aa35dcbbbb9d83adc389297c6eee7:src/exchanges/gateio/rest/gateio_rest_private.py
 
 
 class GateioPrivateSpotRest(PrivateExchangeSpotRestInterface):

@@ -11,14 +11,9 @@ import time
 from typing import List, Dict, Optional
 
 from interfaces.exchanges.base import BasePrivateExchangeInterface
-<<<<<<< HEAD:src/exchanges/integrations/mexc/private_exchange.py
 from infrastructure.data_structures.common import (
-    Symbol, AssetBalance, AssetName, Order, OrderId, SymbolsInfo, Trade, Side
-=======
-from core.structs.common import (
     Symbol, AssetBalance, AssetName, Order, OrderId, SymbolsInfo, Trade, Side,
     WithdrawalRequest, WithdrawalResponse
->>>>>>> 31b90722f25aa35dcbbbb9d83adc389297c6eee7:src/exchanges/mexc/private_exchange.py
 )
 from exchanges.integrations.mexc.ws.mexc_ws_private import MexcWebsocketPrivate
 from exchanges.integrations.mexc.rest.mexc_rest_private import MexcPrivateSpotRest

@@ -2,15 +2,18 @@
 Common utilities and shared components for the CEX arbitrage system.
 
 This module provides shared components used across the arbitrage trading system:
-- Exception hierarchy for unified error handling
-- High-performance REST client for exchange API interactions
-- Utility functions for common operations
+- Ring buffer for high-performance logging
+- HFT orderbook management
+- Orderbook processing utilities
+- Common iterators and managers
 """
 
-# from .exceptions import *
-# from .rest_client import *
-#
-# __all__ = [
-#     # Exception classes
-#     'BaseExchangeError', 'RateLimitErrorBase'
-# ]
+# Export available modules without importing to avoid circular dependencies
+__all__ = [
+    'ring_buffer',
+    'hft_orderbook',
+    'orderbook_manager',
+    'orderbook_diff_processor',
+    'orderbook_entry_pool',
+    'iterators'
+]

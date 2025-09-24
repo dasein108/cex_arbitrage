@@ -1,14 +1,15 @@
 from collections import deque
-from typing import List
+from typing import List, Generic, TypeVar
 
-from infrastructure.logging import LogRecord
+T = TypeVar('T')
 
 
-class RingBuffer:
+class RingBuffer(Generic[T]):
     """
-    Lock-free ring buffer for log messages.
+    Lock-free ring buffer for items.
 
-    Optimized for single producer (logging calls) and single consumer (dispatch task).
+    Optimized for single producer and single consumer operations.
+    Generic implementation that can hold any type of item.
     """
 
     def __init__(self, maxsize: int = 10000):
@@ -16,7 +17,7 @@ class RingBuffer:
         self._buffer = deque(maxlen=maxsize)
         self._dropped_count = 0
 
-    def put_nowait(self, item: LogRecord) -> bool:
+    def put_nowait(self, item: T) -> bool:
         """
         Add item to buffer without blocking.
 
@@ -34,7 +35,7 @@ class RingBuffer:
             self._dropped_count += 1
             return False
 
-    def get_batch(self, batch_size: int = 100) -> List[LogRecord]:
+    def get_batch(self, batch_size: int = 100) -> List[T]:
         """Get batch of items from buffer."""
         batch = []
         for _ in range(min(batch_size, len(self._buffer))):

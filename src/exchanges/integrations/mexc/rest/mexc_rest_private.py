@@ -24,13 +24,6 @@ Memory: O(1) per request, optimized for trading operations
 from typing import Dict, List, Optional, Any
 import msgspec
 
-<<<<<<< HEAD:src/exchanges/integrations/mexc/rest/mexc_rest_private.py
-from exchanges.integrations.mexc.structs.exchange import (
-    MexcAccountResponse, MexcOrderResponse
-=======
-from exchanges.mexc.structs.exchange import (
-    MexcAccountResponse, MexcOrderResponse, MexcCurrencyInfoResponse
->>>>>>> 31b90722f25aa35dcbbbb9d83adc389297c6eee7:src/exchanges/mexc/rest/mexc_rest_private.py
 )
 from infrastructure.data_structures.common import (
     Symbol, Order, OrderId, OrderType, Side, AssetBalance,
@@ -39,14 +32,6 @@ from infrastructure.data_structures.common import (
 )
 from infrastructure.exceptions.exchange import BaseExchangeError
 
-<<<<<<< HEAD:src/exchanges/integrations/mexc/rest/mexc_rest_private.py
-from exchanges.base.rest.spot.base_rest_spot_private import PrivateExchangeSpotRestInterface
-from infrastructure.networking.http.structs import HTTPMethod
-=======
-from core.exchanges.rest.spot.base_rest_spot_private import PrivateExchangeSpotRestInterface
-from core.transport.rest.structs import HTTPMethod
-from exchanges.mexc.services.mexc_mappings import map_mexc_withdrawal_status
->>>>>>> 31b90722f25aa35dcbbbb9d83adc389297c6eee7:src/exchanges/mexc/rest/mexc_rest_private.py
 
 
 class MexcPrivateSpotRest(PrivateExchangeSpotRestInterface):

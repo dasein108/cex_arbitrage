@@ -68,7 +68,7 @@ class HFTLogger(HFTLoggerInterface):
         self.context = {}
         
         # Ring buffer for async dispatch
-        self._buffer = RingBuffer(buffer_size)
+        self._buffer = RingBuffer[LogRecord](buffer_size)
         
         # Performance monitoring
         self._perf_monitor = PerformanceMonitor()
