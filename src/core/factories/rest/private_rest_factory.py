@@ -10,7 +10,7 @@ HFT COMPLIANCE: Sub-millisecond factory operations with efficient singleton mana
 from typing import Type, Optional, Union
 
 from core.factories.base_exchange_factory import BaseExchangeFactory
-from core.exchanges.rest.spot.base_rest_spot_private import PrivateExchangeSpotRestInterface
+from exchanges.base.rest.spot.base_rest_spot_private import PrivateExchangeSpotRestInterface
 from infrastructure.config.structs import ExchangeConfig
 from core.utils.exchange_utils import exchange_name_to_enum
 from infrastructure.data_structures.common import ExchangeEnum
@@ -136,7 +136,7 @@ class PrivateRestExchangeFactory(BaseExchangeFactory[PrivateExchangeSpotRestInte
             # Track creation performance
             with LoggingTimer(logger, "rest_instance_creation") as timer:
                 # Explicitly inject exchange mapper (not handled by base factory due to circular dependency)
-                from core.exchanges.services.exchange_mapper.factory import ExchangeMapperFactory
+                from exchanges.services.exchange_mapper.factory import ExchangeMapperFactory
                 
                 with LoggingTimer(logger, "mapper_creation") as mapper_timer:
                     mapper = ExchangeMapperFactory.inject(exchange_enum)

@@ -11,7 +11,7 @@ from infrastructure.networking.websocket.strategies.strategy_set import WebSocke
 from infrastructure.networking.websocket.strategies.connection import ConnectionStrategy
 from infrastructure.networking.websocket.strategies.subscription import SubscriptionStrategy
 from infrastructure.networking.websocket.strategies.message_parser import MessageParser
-from core.exchanges.services.exchange_mapper.factory import ExchangeMapperFactory
+from exchanges.services.exchange_mapper.factory import ExchangeMapperFactory
 from infrastructure.exceptions.exchange import ConfigurationError
 
 # HFT Logger Integration

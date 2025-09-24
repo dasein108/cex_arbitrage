@@ -184,7 +184,7 @@ class BaseExchangeFactory(Generic[T], ExchangeFactoryInterface, ABC):
         resolved = {}
         
         # Import symbol mapper factory only (exchange mapper is handled by specific factories)
-        from core.exchanges.services.symbol_mapper.factory import ExchangeSymbolMapperFactory
+        from exchanges.services.symbol_mapper.factory import ExchangeSymbolMapperFactory
         
         # Auto-resolve symbol mapper (mandatory for most factories)
         if 'symbol_mapper' not in context:

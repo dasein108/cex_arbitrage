@@ -8,7 +8,7 @@ Optimized for HFT performance with minimal complexity.
 from datetime import datetime
 from typing import Tuple, Generator
 from infrastructure.data_structures.common import KlineInterval
-from core.exchanges.utils.kline_utils import get_interval_seconds
+from exchanges.base.utils.kline_utils import get_interval_seconds
 
 def time_range_iterator(
     date_from: datetime, 

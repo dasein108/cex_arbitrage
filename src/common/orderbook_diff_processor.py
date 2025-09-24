@@ -257,7 +257,7 @@ class MexcOrderbookDiffProcessor(OrderbookDiffProcessor):
         
         try:
             # Use MEXC protobuf parser utilities
-            from exchanges.mexc.ws.protobuf_parser import MexcProtobufParser
+            from exchanges.integrations.mexc.ws.protobuf_parser import MexcProtobufParser
             
             wrapper = MexcProtobufParser.parse_wrapper_message(data)
             

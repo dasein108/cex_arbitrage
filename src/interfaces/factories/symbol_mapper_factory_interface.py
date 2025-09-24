@@ -8,7 +8,7 @@ based on exchange requirements or testing needs.
 
 from abc import ABC, abstractmethod
 from infrastructure.data_structures.common import ExchangeName
-from core.exchanges.services.symbol_mapper.base_symbol_mapper import SymbolMapperInterface
+from exchanges.services.symbol_mapper.base_symbol_mapper import SymbolMapperInterface
 
 
 class SymbolMapperFactoryInterface(ABC):

@@ -12,7 +12,7 @@ from typing import Optional, Dict, Any, List, AsyncIterator
 
 from infrastructure.networking.websocket.structs import ParsedMessage, MessageType
 from infrastructure.data_structures.common import Symbol, OrderBookEntry
-from core.exchanges.services import BaseExchangeMapper
+from exchanges.services import BaseExchangeMapper
 
 # HFT Logger Integration
 from infrastructure.logging import get_strategy_logger, HFTLoggerInterface, LoggingTimer

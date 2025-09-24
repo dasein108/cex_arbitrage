@@ -34,9 +34,9 @@ sys.path.insert(0, str(project_root))
 # Direct imports from src directory
 from infrastructure.data_structures.common import Symbol, SymbolInfo, AssetName, ExchangeName
 from infrastructure.data_structures.common import ExchangeEnum
-from exchanges.mexc.rest.mexc_rest_public import MexcPublicSpotRest
-from exchanges.gateio.rest.gateio_rest_public import GateioPublicSpotRest
-from exchanges.gateio.rest.gateio_futures_public import GateioPublicFuturesRest
+from exchanges.integrations.mexc.rest.mexc_rest_public import MexcPublicSpotRest
+from exchanges.integrations.gateio.rest.gateio_rest_public import GateioPublicSpotRest
+from exchanges.integrations.gateio.rest.gateio_futures_public import GateioPublicFuturesRest
 from infrastructure.exceptions.exchange import BaseExchangeError
 
 

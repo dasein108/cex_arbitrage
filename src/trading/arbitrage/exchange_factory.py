@@ -15,8 +15,8 @@ from dataclasses import dataclass
 
 from infrastructure.config.config_manager import config
 from infrastructure.exceptions.exchange import BaseExchangeError
-from exchanges.mexc.private_exchange import MexcPrivateExchange as MexcExchange
-from exchanges.gateio.gateio_exchange import GateioExchange
+from exchanges.integrations.mexc.private_exchange import MexcPrivateExchange as MexcExchange
+from exchanges.integrations.gateio.gateio_exchange import GateioExchange
 from infrastructure.data_structures.common import Symbol, AssetName, ExchangeStatus, ExchangeName
 from interfaces.exchanges.base.base_private_exchange import BasePrivateExchangeInterface
 from interfaces.factories.exchange_factory_interface import (
