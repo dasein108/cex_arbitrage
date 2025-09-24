@@ -25,7 +25,7 @@ project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
 
 # Import existing tools
-from tools.candles_downloader import CandlesDownloader
+from applications.tools.candles_downloader import CandlesDownloader
 
 
 class ArbitrageDataPipeline:

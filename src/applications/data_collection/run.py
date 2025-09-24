@@ -19,8 +19,8 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 # Import exchanges to trigger factory registrations
 
-from data_collector.collector import DataCollector
-from data_collector.config import load_data_collector_config
+from applications.data_collection.collector import DataCollector
+from applications.data_collection.config import load_data_collector_config
 from infrastructure.data_structures.common import Symbol, AssetName
 from infrastructure.config.config_manager import HftConfig
 

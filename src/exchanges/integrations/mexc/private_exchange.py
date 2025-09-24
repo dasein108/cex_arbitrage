@@ -8,11 +8,17 @@ HFT COMPLIANCE: Sub-50ms order execution, real-time balance updates.
 """
 
 import time
-from typing import List, Dict
+from typing import List, Dict, Optional
 
 from interfaces.exchanges.base import BasePrivateExchangeInterface
+<<<<<<< HEAD:src/exchanges/integrations/mexc/private_exchange.py
 from infrastructure.data_structures.common import (
     Symbol, AssetBalance, AssetName, Order, OrderId, SymbolsInfo, Trade, Side
+=======
+from core.structs.common import (
+    Symbol, AssetBalance, AssetName, Order, OrderId, SymbolsInfo, Trade, Side,
+    WithdrawalRequest, WithdrawalResponse
+>>>>>>> 31b90722f25aa35dcbbbb9d83adc389297c6eee7:src/exchanges/mexc/private_exchange.py
 )
 from exchanges.integrations.mexc.ws.mexc_ws_private import MexcWebsocketPrivate
 from exchanges.integrations.mexc.rest.mexc_rest_private import MexcPrivateSpotRest
@@ -323,6 +329,112 @@ class MexcPrivateExchange(BasePrivateExchangeInterface):
         # Log trade execution for audit trail
         self.logger.debug(f"Trade executed: {trade.side.name} {trade.quantity} at {trade.price}")
     
+    # === Withdrawal Operations ===
+
+    async def withdraw(self, request: WithdrawalRequest) -> WithdrawalResponse:
+        """
+        Submit a withdrawal request.
+
+        Args:
+            request: Withdrawal request parameters
+
+        Returns:
+            WithdrawalResponse with withdrawal details
+
+        Raises:
+            ExchangeError: If withdrawal submission fails
+        """
+        return await self._private_rest.submit_withdrawal(request)
+
+    async def cancel_withdrawal(self, withdrawal_id: str) -> bool:
+        """
+        Cancel a pending withdrawal.
+
+        Args:
+            withdrawal_id: Exchange withdrawal ID to cancel
+
+        Returns:
+            True if cancellation successful, False otherwise
+
+        Raises:
+            ExchangeError: If cancellation fails
+        """
+        return await self._private_rest.cancel_withdrawal(withdrawal_id)
+
+    async def get_withdrawal_status(self, withdrawal_id: str) -> WithdrawalResponse:
+        """
+        Get current status of a withdrawal.
+
+        Args:
+            withdrawal_id: Exchange withdrawal ID
+
+        Returns:
+            WithdrawalResponse with current status
+
+        Raises:
+            ExchangeError: If withdrawal not found or query fails
+        """
+        return await self._private_rest.get_withdrawal_status(withdrawal_id)
+
+    async def get_withdrawal_history(
+        self,
+        asset: Optional[AssetName] = None,
+        limit: int = 100
+    ) -> List[WithdrawalResponse]:
+        """
+        Get withdrawal history.
+
+        Args:
+            asset: Optional asset filter
+            limit: Maximum number of withdrawals to return
+
+        Returns:
+            List of historical withdrawals
+        """
+        return await self._private_rest.get_withdrawal_history(asset, limit)
+
+    async def validate_withdrawal_address(
+        self,
+        asset: AssetName,
+        address: str,
+        network: Optional[str] = None
+    ) -> bool:
+        """
+        Validate withdrawal address format.
+
+        Args:
+            asset: Asset name
+            address: Destination address
+            network: Network/chain name
+
+        Returns:
+            True if address is valid, False otherwise
+        """
+        try:
+            await self.get_withdrawal_limits(asset, network)
+            # If we can get limits, the asset/network combination is valid
+            # Address format validation is done in the REST client
+            return True
+        except Exception:
+            return False
+
+    async def get_withdrawal_limits(
+        self,
+        asset: AssetName,
+        network: Optional[str] = None
+    ) -> Dict[str, float]:
+        """
+        Get withdrawal limits for an asset.
+
+        Args:
+            asset: Asset name
+            network: Network/chain name
+
+        Returns:
+            Dictionary with 'min', 'max', and 'fee' limits
+        """
+        return await self._private_rest.get_withdrawal_limits_for_asset(asset, network)
+
     def get_trading_statistics(self) -> Dict[str, any]:
         """Get trading performance statistics."""
 

@@ -22,16 +22,28 @@ Memory: O(1) per request, optimized for trading operations
 """
 
 from typing import Dict, List, Optional
+import msgspec
 
 from infrastructure.data_structures.common import (
     Symbol, Order, OrderId, OrderType, Side, AssetBalance,
-    AssetName, TimeInForce, TradingFee
+    AssetName, AssetInfo, NetworkInfo, TimeInForce, TradingFee,
+    WithdrawalRequest, WithdrawalResponse, WithdrawalStatus
 )
+<<<<<<< HEAD:src/exchanges/integrations/gateio/rest/gateio_rest_private.py
 from infrastructure.networking.http.structs import HTTPMethod
 from infrastructure.exceptions.exchange import BaseExchangeError
 from exchanges.base.rest.spot.base_rest_spot_private import PrivateExchangeSpotRestInterface
 from exchanges.services import BaseExchangeMapper
 from infrastructure.config.structs import ExchangeConfig
+=======
+from core.transport.rest.structs import HTTPMethod
+from core.exceptions.exchange import BaseExchangeError
+from core.exchanges.rest.spot.base_rest_spot_private import PrivateExchangeSpotRestInterface
+from core.exchanges.services import BaseExchangeMapper
+from core.config.structs import ExchangeConfig
+from exchanges.gateio.structs.exchange import GateioCurrencyResponse, GateioChainResponse
+from exchanges.gateio.services.gateio_mappings import map_gateio_withdrawal_status
+>>>>>>> 31b90722f25aa35dcbbbb9d83adc389297c6eee7:src/exchanges/gateio/rest/gateio_rest_private.py
 
 
 class GateioPrivateSpotRest(PrivateExchangeSpotRestInterface):
@@ -460,6 +472,78 @@ class GateioPrivateSpotRest(PrivateExchangeSpotRestInterface):
     async def delete_listen_key(self, listen_key: str) -> None:
         """Gate.io doesn't use listen keys - no-op."""
         pass
+
+    async def get_currency_info(self) -> Dict[AssetName, AssetInfo]:
+        """
+        Get currency information including deposit/withdrawal status and network details.
+
+        Uses only Gate.io's `/spot/currencies` endpoint.
+        """
+        try:
+
+            currencies_response = await self.request(
+                HTTPMethod.GET,
+                "/spot/currencies"
+            )
+            currencies_data = msgspec.convert(currencies_response, list[GateioCurrencyResponse])
+
+            currency_info_map: Dict[AssetName, AssetInfo] = {}
+
+            for currency_data in currencies_data:
+                asset_name = AssetName(currency_data.currency)
+
+                if currency_data.delisted:
+                    continue
+
+                networks: Dict[str, NetworkInfo] = {}
+                overall_deposit_enable = False
+                overall_withdraw_enable = False
+
+                
+                for chain in currency_data.chains:
+                    network_info = NetworkInfo(
+                        network=chain.chain,
+                        deposit_enable=chain.deposit,
+                        withdraw_enable=chain.withdraw,
+                        withdraw_fee=float(chain.withdraw_fee or 0),
+                        withdraw_min=float(chain.min_withdraw or 0),
+                        withdraw_max=float(chain.max_withdraw) if chain.max_withdraw else None,
+                        min_confirmations=chain.confirmation,
+                        address=None,
+                        memo=None
+                    )
+
+                    networks[chain.chain] = network_info
+
+                    
+                    if chain.deposit:
+                        overall_deposit_enable = True
+                    if chain.withdraw:
+                        overall_withdraw_enable = True
+
+                
+                if currency_data.deposit_disabled:
+                    overall_deposit_enable = False
+                if currency_data.withdraw_disabled or currency_data.withdraw_delayed:
+                    overall_withdraw_enable = False
+
+                asset_info = AssetInfo(
+                    asset=asset_name,
+                    name=currency_data.currency,
+                    deposit_enable=overall_deposit_enable,
+                    withdraw_enable=overall_withdraw_enable,
+                    networks=networks
+                )
+
+                currency_info_map[asset_name] = asset_info
+
+            self.logger.info(f"Retrieved currency info for {len(currency_info_map)} assets")
+            return currency_info_map
+
+        except Exception as e:
+            self.logger.error(f"Failed to get currency information: {e}")
+            raise BaseExchangeError(500, f"Currency info fetch failed: {str(e)}")
+
     
     async def get_trading_fees(self, symbol: Optional[Symbol] = None) -> TradingFee:
         """
@@ -541,6 +625,205 @@ class GateioPrivateSpotRest(PrivateExchangeSpotRestInterface):
             self.logger.error(f"Failed to get trading fees: {e}")
             raise BaseExchangeError(500, f"Trading fees fetch failed: {str(e)}")
 
+    # Withdrawal operations
+
+    async def submit_withdrawal(self, request: WithdrawalRequest) -> WithdrawalResponse:
+        """
+        Submit a withdrawal request to Gate.io.
+
+        Args:
+            request: Withdrawal request parameters
+
+        Returns:
+            WithdrawalResponse with withdrawal details
+
+        Raises:
+            ExchangeAPIError: If withdrawal submission fails
+        """
+        # Validate request before submission
+        await self.validate_withdrawal_request(request)
+
+        # Prepare Gate.io API parameters
+        payload = {
+            'currency': request.asset,
+            'amount': str(request.amount),
+            'address': request.address
+        }
+
+        # Add chain if specified (required for multi-chain assets)
+        if request.network:
+            payload['chain'] = request.network
+
+        # Add memo if provided (for coins that require it)
+        if request.memo:
+            payload['memo'] = request.memo
+
+        try:
+            response_data = await self.request(
+                HTTPMethod.POST,
+                '/withdrawals',
+                data=payload
+            )
+
+            # Gate.io response format: {"id": "withdrawal_id"}
+            withdrawal_id = response_data.get('id', '')
+
+            if not withdrawal_id:
+                raise BaseExchangeError(500, "No withdrawal ID returned from Gate.io")
+
+            # Get fee from currency info
+            currency_info = await self.get_currency_info()
+            asset_info = currency_info.get(request.asset)
+            fee = 0.0
+
+            if asset_info and request.network:
+                network_info = asset_info.networks.get(request.network)
+                if network_info:
+                    fee = network_info.withdraw_fee
+
+            withdrawal_response = WithdrawalResponse(
+                withdrawal_id=str(withdrawal_id),
+                asset=request.asset,
+                amount=request.amount,
+                fee=fee,
+                address=request.address,
+                network=request.network,
+                status=WithdrawalStatus.PENDING,
+                timestamp=int(self._get_current_timestamp()),
+                memo=request.memo,
+                remark=request.remark
+            )
+
+            self.logger.info(f"Submitted withdrawal: {request.amount} {request.asset} to {request.address}")
+            return withdrawal_response
+
+        except Exception as e:
+            self.logger.error(f"Failed to submit withdrawal: {e}")
+            raise BaseExchangeError(500, f"Withdrawal submission failed: {e}")
+
+    async def cancel_withdrawal(self, withdrawal_id: str) -> bool:
+        """
+        Cancel a pending withdrawal on Gate.io.
+
+        Args:
+            withdrawal_id: Exchange withdrawal ID to cancel
+
+        Returns:
+            True if cancellation successful, False otherwise
+
+        Raises:
+            ExchangeAPIError: If cancellation fails
+        """
+        try:
+            response_data = await self.request(
+                HTTPMethod.DELETE,
+                f'/withdrawals/{withdrawal_id}'
+            )
+
+            # Gate.io returns the cancelled withdrawal details
+            # Success is indicated by receiving the withdrawal data without error
+            self.logger.info(f"Cancelled withdrawal {withdrawal_id}: {response_data}")
+            return True
+
+        except Exception as e:
+            self.logger.error(f"Failed to cancel withdrawal {withdrawal_id}: {e}")
+            # Check if it's a 404 (withdrawal not found) or other error
+            if "404" in str(e) or "not found" in str(e).lower():
+                return False
+            raise BaseExchangeError(500, f"Withdrawal cancellation failed: {e}")
+
+    async def get_withdrawal_status(self, withdrawal_id: str) -> WithdrawalResponse:
+        """
+        Get current status of a withdrawal on Gate.io.
+
+        Args:
+            withdrawal_id: Exchange withdrawal ID
+
+        Returns:
+            WithdrawalResponse with current status
+
+        Raises:
+            ExchangeAPIError: If withdrawal not found
+        """
+        try:
+            # Get recent withdrawal history to find the specific withdrawal
+            history = await self.get_withdrawal_history(limit=1000)
+
+            for withdrawal in history:
+                if withdrawal.withdrawal_id == withdrawal_id:
+                    return withdrawal
+
+            raise BaseExchangeError(404, f"Withdrawal {withdrawal_id} not found")
+
+        except Exception as e:
+            self.logger.error(f"Failed to get withdrawal status: {e}")
+            raise BaseExchangeError(500, f"Failed to get withdrawal status: {e}")
+
+    async def get_withdrawal_history(
+        self,
+        asset: Optional[AssetName] = None,
+        limit: int = 100
+    ) -> List[WithdrawalResponse]:
+        """
+        Get withdrawal history from Gate.io.
+
+        Args:
+            asset: Optional asset filter
+            limit: Maximum number of withdrawals to return
+
+        Returns:
+            List of historical withdrawals
+        """
+        params = {}
+
+        if asset:
+            params['currency'] = asset
+
+        # Gate.io supports up to 1000 records
+        params['limit'] = min(limit, 1000)
+
+        try:
+            response_data = await self.request(
+                HTTPMethod.GET,
+                '/withdrawals',
+                params=params
+            )
+
+            withdrawals = []
+
+            # Gate.io returns a list of withdrawal records
+            for withdrawal_data in response_data:
+                # Map Gate.io status to our enum
+                gateio_status = withdrawal_data.get('status', '')
+                status = map_gateio_withdrawal_status(gateio_status)
+
+                withdrawal = WithdrawalResponse(
+                    withdrawal_id=str(withdrawal_data.get('id', '')),
+                    asset=AssetName(withdrawal_data.get('currency', '')),
+                    amount=float(withdrawal_data.get('amount', 0)),
+                    fee=float(withdrawal_data.get('fee', 0)),
+                    address=withdrawal_data.get('address', ''),
+                    network=withdrawal_data.get('chain'),
+                    status=status,
+                    timestamp=int(withdrawal_data.get('timestamp', 0) * 1000),  # Gate.io uses seconds
+                    memo=withdrawal_data.get('memo'),
+                    tx_id=withdrawal_data.get('txid')
+                )
+                withdrawals.append(withdrawal)
+
+            self.logger.info(f"Retrieved {len(withdrawals)} withdrawal records")
+            return withdrawals
+
+        except Exception as e:
+            self.logger.error(f"Failed to get withdrawal history: {e}")
+            raise BaseExchangeError(500, f"Failed to get withdrawal history: {e}")
+
+
+    def _get_current_timestamp(self) -> int:
+        """Get current timestamp in milliseconds."""
+        import time
+        return int(time.time() * 1000)
+
     async def close(self) -> None:
         """Close the REST client and clean up resources."""
         try:
@@ -548,6 +831,6 @@ class GateioPrivateSpotRest(PrivateExchangeSpotRestInterface):
             self.logger.info("Closed Gate.io private REST client")
         except Exception as e:
             self.logger.error(f"Error closing private REST client: {e}")
-    
+
     def __repr__(self) -> str:
         return f"GateioPrivateExchange(base_url={self.base_url})"

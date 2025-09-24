@@ -42,7 +42,7 @@ from trading.analysis import ArbitrageDataPipeline
 from trading.analysis import SpreadAnalyzer
 
 # Import shared utilities (DRY compliance)
-from tools.shared_utils import (
+from applications.tools.shared_utils import (
     ToolConfig, CLIManager, LoggingConfigurator, PathResolver, 
     ErrorHandler, PerformanceTimer
 )

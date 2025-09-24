@@ -685,7 +685,7 @@ class DataCollector:
             config_path: Path to configuration file
         """
         # Load configuration
-        from data_collector.config import load_data_collector_config
+        from applications.data_collection.config import load_data_collector_config
         self.config = load_data_collector_config(config_path)
         
         # HFT Logging
@@ -727,7 +727,7 @@ class DataCollector:
             self.logger.info("Database connection pool initialized")
             
             # Initialize analytics engine
-            from data_collector.analytics import RealTimeAnalytics
+            from applications.data_collection.analytics import RealTimeAnalytics
             self.analytics = RealTimeAnalytics(self.config.analytics)
             self.logger.info("Analytics engine initialized")
             

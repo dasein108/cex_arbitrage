@@ -146,3 +146,27 @@ class GateioWSSubscriptionMessage(msgspec.Struct):
     event: str  # "subscribe" or "unsubscribe"
     payload: List[str]
     auth: Optional[dict] = None
+
+
+class GateioCurrencyResponse(msgspec.Struct):
+    """Gate.io currency information response structure."""
+    currency: str
+    delisted: bool
+    withdraw_disabled: bool
+    withdraw_delayed: bool
+    deposit_disabled: bool
+    trade_disabled: bool
+
+
+class GateioChainResponse(msgspec.Struct):
+    """Gate.io currency chain information response structure."""
+    chain: str
+    name_cn: str
+    name_en: str
+    is_deposit_enabled: bool
+    is_withdraw_enabled: bool
+    withdraw_fee: str
+    withdraw_min: str
+    withdraw_max: str
+    deposit_min: Optional[str] = None
+    confirmations: Optional[int] = None

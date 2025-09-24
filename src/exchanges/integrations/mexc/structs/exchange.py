@@ -206,3 +206,25 @@ class MexcWSPrivateTradeMessage(msgspec.Struct):
     c: str  # Channel: spot@private.deals.v3.api.pb
     d: MexcWSPrivateTradeData  # Trade data
     t: int  # Timestamp
+
+
+class MexcNetworkConfigResponse(msgspec.Struct):
+    """MEXC network configuration structure."""
+    coin: str
+    depositEnable: bool
+    withdrawEnable: bool
+    network: str
+    withdrawFee: str
+    withdrawMin: str
+    withdrawMax: Optional[str] = None
+    minConfirm: Optional[int] = None
+    depositTips: Optional[str] = None
+    withdrawTips: Optional[str] = None
+    contract: Optional[str] = None
+
+
+class MexcCurrencyInfoResponse(msgspec.Struct):
+    """MEXC currency information API response structure."""
+    coin: str
+    name: str
+    networkList: list[MexcNetworkConfigResponse]

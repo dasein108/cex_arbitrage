@@ -22,8 +22,8 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from infrastructure.data_structures.common import Symbol, AssetName, Trade, Side
-from data_collector.config import load_data_collector_config
-from data_collector.analytics import RealTimeAnalytics
+from applications.data_collection.config import load_data_collector_config
+from applications.data_collection.analytics import RealTimeAnalytics
 from db.models import TradeSnapshot
 
 
