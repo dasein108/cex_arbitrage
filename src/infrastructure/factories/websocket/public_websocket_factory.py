@@ -10,7 +10,7 @@ HFT COMPLIANCE: Sub-millisecond factory operations with efficient singleton mana
 from typing import Type, Optional, Callable, Awaitable, List, Union
 
 from infrastructure.factories.base_exchange_factory import BaseExchangeFactory
-from exchanges.base.utils.exchange_utils import exchange_name_to_enum
+from infrastructure.utils.exchange_utils import exchange_name_to_enum
 from infrastructure.data_structures.common import ExchangeEnum
 from typing import TYPE_CHECKING
 

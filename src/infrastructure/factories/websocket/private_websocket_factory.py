@@ -11,7 +11,7 @@ import traceback
 from typing import Type, Optional, Callable, Awaitable, Union, Dict
 
 from infrastructure.factories.base_exchange_factory import BaseExchangeFactory
-from exchanges.base.utils.exchange_utils import exchange_name_to_enum
+from infrastructure.utils.exchange_utils import exchange_name_to_enum
 from infrastructure.data_structures.common import ExchangeEnum
 
 from infrastructure.config.structs import ExchangeConfig

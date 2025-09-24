@@ -29,6 +29,9 @@ from infrastructure.data_structures.common import (
     AssetName, AssetInfo, NetworkInfo, TimeInForce, TradingFee,
     WithdrawalRequest, WithdrawalResponse, WithdrawalStatus
 )
+from exchanges.base.rest.spot.base_rest_spot_private import PrivateExchangeSpotRestInterface
+from infrastructure.config.structs import ExchangeConfig
+from exchanges.services import BaseExchangeMapper
 
 
 class GateioPrivateSpotRest(PrivateExchangeSpotRestInterface):

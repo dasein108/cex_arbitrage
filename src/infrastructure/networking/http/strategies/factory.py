@@ -343,7 +343,7 @@ class RestStrategyFactory(BaseCompositeFactory[RestStrategySet]):
             ValueError: If no strategies registered for the exchange
         """
         # Convert exchange config name to ExchangeEnum
-        from exchanges.base.utils.exchange_utils import exchange_name_to_enum
+        from infrastructure.utils.exchange_utils import exchange_name_to_enum
         exchange_enum = exchange_name_to_enum(exchange_config.name)
         
         # Delegate to standardized inject() method

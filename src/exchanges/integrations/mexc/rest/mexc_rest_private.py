@@ -30,6 +30,7 @@ from infrastructure.data_structures.common import (
     WithdrawalRequest, WithdrawalResponse, WithdrawalStatus
 )
 from infrastructure.exceptions.exchange import BaseExchangeError
+from exchanges.base.rest.spot.base_rest_spot_private import PrivateExchangeSpotRestInterface
 
 
 

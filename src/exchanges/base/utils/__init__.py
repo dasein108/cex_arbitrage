@@ -1,28 +1,16 @@
 """
-Exchange Interface Utils
+Exchange Base Utils
 
-Unified utilities for exchange integrations including symbol mapping,
-performance optimization tools, and common exchanges implementations.
+Core utilities for exchange base classes:
+- kline_utils: Candlestick data processing utilities
+- exchange_utils: Exchange enumeration and conversion utilities
 
-Factory Pattern Architecture:
-- BaseSymbolMapper: Abstract exchanges for symbol conversion
-- ExchangeSymbolMapperFactory: Factory for exchange-specific mappers
-
-HFT Performance:
-- Sub-microsecond symbol conversion with caching
-- O(1) mapper retrieval and symbol lookup
-- Memory-bounded cache management
+Note: Symbol mapper interfaces are available directly from exchanges.services
+to avoid circular dependencies.
 """
 
-from exchanges.services.symbol_mapper.base_symbol_mapper import SymbolMapperInterface
-from exchanges.services.symbol_mapper.factory import ExchangeSymbolMapperFactory
 from .kline_utils import get_interval_seconds
 
 __all__ = [
-    # New factory pattern (recommended)
-    'SymbolMapperInterface',
-    'ExchangeSymbolMapperFactory', 
-
-    # Utilities
     'get_interval_seconds',
 ]
