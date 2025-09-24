@@ -24,7 +24,6 @@ Memory: O(1) per request, optimized for trading operations
 from typing import Dict, List, Optional, Any
 import msgspec
 
-)
 from infrastructure.data_structures.common import (
     Symbol, Order, OrderId, OrderType, Side, AssetBalance,
     AssetName, AssetInfo, NetworkInfo, TimeInForce,
