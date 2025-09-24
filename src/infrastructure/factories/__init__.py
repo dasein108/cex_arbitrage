@@ -9,12 +9,12 @@ Factory pattern implementations for creating infrastructure components:
 - websocket/: WebSocket client factories for public and private operations
 """
 
-from .factory_interface import FactoryInterface
+from .factory_interface import ExchangeFactoryInterface
 from .base_exchange_factory import BaseExchangeFactory
 from .base_composite_factory import BaseCompositeFactory
 
 __all__ = [
-    'FactoryInterface',
+    'ExchangeFactoryInterface',
     'BaseExchangeFactory', 
     'BaseCompositeFactory'
 ]
