@@ -32,6 +32,7 @@ from infrastructure.data_structures.common import (
 from exchanges.base.rest.spot.base_rest_spot_private import PrivateExchangeSpotRestInterface
 from infrastructure.config.structs import ExchangeConfig
 from exchanges.services import BaseExchangeMapper
+from infrastructure.exceptions.exchange import BaseExchangeError
 
 
 class GateioPrivateSpotRest(PrivateExchangeSpotRestInterface):
