@@ -37,17 +37,14 @@ import os
 import re
 import logging
 import time
-from typing import Dict, Optional, Any, Union, TypeVar, Type
+from typing import Dict, Optional, Any, TypeVar, Type
 from pathlib import Path
 import yaml
 from dotenv import load_dotenv
-import traceback
 from dataclasses import dataclass
 from infrastructure.exceptions.exchange import ConfigurationError
-from infrastructure.config.structs import ExchangeCredentials, NetworkConfig, RateLimitConfig, WebSocketConfig, ExchangeConfig, RestTransportConfig
+from config.structs import ExchangeCredentials, NetworkConfig, RateLimitConfig, WebSocketConfig, ExchangeConfig, RestTransportConfig
 from infrastructure.logging import get_logger
-from enum import Enum
-from msgspec import Struct
 
 # Type aliases and constants
 T = TypeVar('T')

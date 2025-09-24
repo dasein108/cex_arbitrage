@@ -10,7 +10,7 @@ from abc import abstractmethod
 from typing import Dict, List
 from decimal import Decimal
 
-from infrastructure.data_structures.common import Symbol
+from exchanges.structs.common import Symbol
 from .base_public_exchange import CompositePublicExchange
 
 

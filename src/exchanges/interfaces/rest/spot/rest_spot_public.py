@@ -3,17 +3,17 @@ from datetime import datetime
 from typing import Dict, List, Optional
 from exchanges.interfaces.rest.rest_base import BaseRestInterface
 from exchanges.services import BaseExchangeMapper
-from infrastructure.data_structures.common import (
+from exchanges.structs.common import (
     Symbol,
     SymbolInfo,
     OrderBook,
     Trade,
     Kline,
-    KlineInterval,
     Ticker
 )
+from exchanges.structs.enums import KlineInterval
 
-from infrastructure.config.structs import ExchangeConfig
+from config.structs import ExchangeConfig
 
 # HFT Logger Integration
 from infrastructure.logging import HFTLoggerInterface

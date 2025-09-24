@@ -38,9 +38,9 @@ from dataclasses import dataclass
 
 from .structures import ArbitrageConfig
 
-from infrastructure.data_structures.common import AssetBalance
+from exchanges.structs.common import AssetBalance
 from exchanges.interfaces.composite import CompositePrivateExchange
-from infrastructure.data_structures.common import ExchangeName
+from exchanges.structs.types import ExchangeName
 from infrastructure.exceptions.exchange import BalanceManagementError
 
 

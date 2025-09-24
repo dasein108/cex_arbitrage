@@ -7,15 +7,11 @@ the same pattern as REST factory. Uses the new WebSocket factory infrastructure.
 
 from typing import Optional, Callable, Awaitable, List
 from infrastructure.factories.websocket import PublicWebSocketExchangeFactory, PrivateWebSocketExchangeFactory
-from infrastructure.config.config_manager import HftConfig
-from infrastructure.data_structures.common import Symbol, OrderBook, Trade, BookTicker, Order, AssetBalance
+from config import HftConfig
+from exchanges.structs.common import Symbol, OrderBook, Trade, BookTicker, Order, AssetBalance
 from infrastructure.networking.websocket.structs import ConnectionState
 
 # Import exchange modules to trigger auto-registration
-import exchanges.integrations.mexc.ws
-import exchanges.integrations.gateio.ws
-import exchanges.integrations.mexc.rest
-import exchanges.integrations.gateio.rest
 
 # Trigger manual WebSocket registration after modules are loaded
 from exchanges.integrations.mexc.ws.registration import register_mexc_websocket_implementations

@@ -5,7 +5,7 @@ import msgspec
 from infrastructure.networking.websocket.strategies.message_parser import MessageParser
 from infrastructure.networking.websocket.structs import ParsedMessage, MessageType
 from exchanges.services import BaseExchangeMapper
-from infrastructure.data_structures.common import Symbol
+from exchanges.structs.common import Symbol
 
 
 class GateioPublicMessageParser(MessageParser):

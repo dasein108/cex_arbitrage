@@ -28,7 +28,7 @@ from exchanges.integrations.gateio.ws.strategies.futures.private import GateioPr
 
 # Import factory for registration
 from infrastructure.networking.websocket.strategies import WebSocketStrategyFactory
-from infrastructure.data_structures.common import ExchangeEnum
+from exchanges.structs.enums import ExchangeEnum
 
 # Register public strategies with factory
 WebSocketStrategyFactory.register_strategies(

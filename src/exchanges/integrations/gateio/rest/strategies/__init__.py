@@ -10,7 +10,7 @@ from .rate_limit import GateioRateLimitStrategy
 from .retry import GateioRetryStrategy
 from .auth import GateioAuthStrategy
 from .exception_handler import GateioExceptionHandlerStrategy
-from infrastructure.data_structures.common import ExchangeEnum
+from exchanges.structs.enums import ExchangeEnum
 from infrastructure.networking.http.strategies import RestStrategyFactory
 
 # Register Gate.io spot public API strategies

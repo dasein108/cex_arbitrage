@@ -19,7 +19,7 @@ from typing import List, Dict, Any
 
 from infrastructure.networking.websocket.strategies.subscription import SubscriptionStrategy
 from infrastructure.networking.websocket.structs import SubscriptionAction
-from infrastructure.data_structures.common import Symbol
+from exchanges.structs.common import Symbol
 from exchanges.services import BaseExchangeMapper
 
 

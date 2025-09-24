@@ -1,11 +1,10 @@
 import hashlib
 import hmac
-import time
 from typing import Dict, Any
 from urllib.parse import urlencode
 
 from infrastructure.networking.http import AuthStrategy, HTTPMethod, AuthenticationData
-from infrastructure.config.structs import ExchangeConfig
+from config.structs import ExchangeConfig
 
 
 class GateioAuthStrategy(AuthStrategy):

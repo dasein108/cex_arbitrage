@@ -13,11 +13,11 @@ from typing import List, Dict, Optional, Callable, Any, Awaitable, Set
 from websockets.client import WebSocketClientProtocol
 from websockets.protocol import State as WsState
 
-from infrastructure.data_structures.common import Symbol
+from exchanges.structs.common import Symbol
 from infrastructure.networking.websocket.structs import SubscriptionAction, PublicWebsocketChannelType
 from infrastructure.networking.websocket.strategies.strategy_set import WebSocketStrategySet
 from .structs import ParsedMessage, WebSocketManagerConfig, PerformanceMetrics
-from infrastructure.config.structs import WebSocketConfig
+from config.structs import WebSocketConfig
 from infrastructure.networking.websocket.structs import ConnectionState
 from infrastructure.exceptions.exchange import BaseExchangeError
 import msgspec

@@ -77,7 +77,7 @@ trades/
 backtest_results/
 
 # API Keys and Secrets
-config/secrets/
+src/config/secrets/
 *.key
 *.pem
 *.crt

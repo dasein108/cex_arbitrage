@@ -1,14 +1,14 @@
-import logging
 import msgspec
 from typing import Dict, Any, List, Optional
-from decimal import Decimal
 
 from infrastructure.networking.websocket.strategies.message_parser import MessageParser
 from exchanges.services import BaseExchangeMapper
-from infrastructure.data_structures.common import (
-    Symbol, Order, Trade, AssetBalance, AssetName,
-    OrderStatus, OrderType, OrderSide, Side
+from exchanges.structs.common import (
+    Symbol, Order, Trade, AssetBalance
 )
+from exchanges.structs.types import AssetName
+from exchanges.structs.enums import OrderSide
+from exchanges.structs import OrderStatus, OrderType, Side
 from infrastructure.networking.websocket.structs import ParsedMessage, MessageType
 
 

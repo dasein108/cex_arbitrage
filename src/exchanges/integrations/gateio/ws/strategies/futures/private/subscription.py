@@ -4,7 +4,7 @@ from typing import List, Dict, Any, Optional, Set
 
 from infrastructure.networking.websocket.strategies.subscription import SubscriptionStrategy
 from infrastructure.networking.websocket.structs import SubscriptionAction, PrivateWebsocketChannelType
-from infrastructure.data_structures.common import Symbol
+from exchanges.structs.common import Symbol
 from exchanges.services import BaseExchangeMapper
 
 

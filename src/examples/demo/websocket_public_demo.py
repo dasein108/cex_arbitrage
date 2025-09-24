@@ -15,8 +15,9 @@ import asyncio
 import sys
 from typing import List, Dict
 
-from infrastructure.data_structures.common import Symbol, AssetName, OrderBook, Trade, BookTicker
-from infrastructure.config.config_manager import get_exchange_config
+from exchanges.structs.common import Symbol, OrderBook, Trade, BookTicker
+from exchanges.structs.types import AssetName
+from config import get_exchange_config
 
 from examples.utils.ws_api_factory import get_exchange_websocket_instance
 

@@ -10,7 +10,8 @@ from abc import ABC, abstractmethod
 from typing import Dict, List, Optional
 from enum import Enum
 
-from infrastructure.data_structures.common import Symbol, ExchangeName
+from exchanges.structs.common import Symbol
+from exchanges.structs.types import ExchangeName
 from exchanges.interfaces.composite import CompositePrivateExchange
 
 

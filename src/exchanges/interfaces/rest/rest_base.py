@@ -1,9 +1,9 @@
 from abc import ABC
-from typing import Callable, Optional
+from typing import Optional
 
 from infrastructure.networking.http.utils import create_rest_transport_manager
 from infrastructure.networking.http.structs import HTTPMethod
-from infrastructure.config.structs import ExchangeConfig
+from config.structs import ExchangeConfig
 from exchanges.services import BaseExchangeMapper
 
 # HFT Logger Integration

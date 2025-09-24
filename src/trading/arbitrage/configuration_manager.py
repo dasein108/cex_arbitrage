@@ -9,7 +9,7 @@ HFT COMPLIANT: Fast configuration loading with validation caching.
 
 from infrastructure.logging import get_logger
 from typing import Dict, Any, List, Optional
-from infrastructure.config.config_manager import config
+from config.config_manager import config
 from infrastructure.exceptions.exchange import ConfigurationError
 from trading.arbitrage.types import (
     ArbitrageConfig, RiskLimits, OpportunityType, ArbitragePairMap
@@ -295,8 +295,9 @@ class ConfigurationManager:
         Returns:
             List of Symbol objects for exchange initialization
         """
-        from infrastructure.data_structures.common import Symbol, AssetName
-        
+        from exchanges.structs.common import Symbol
+        from exchanges.structs.types import AssetName
+
         if not self._raw_pairs_config:
             logger.warning("No arbitrage pairs configured, using default symbols")
             return []

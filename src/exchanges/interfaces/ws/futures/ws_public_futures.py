@@ -2,7 +2,7 @@ from typing import List
 
 from exchanges.consts import DEFAULT_PUBLIC_WEBSOCKET_CHANNELS
 from exchanges.interfaces.ws.spot.base_ws_public import PublicSpotWebsocket
-from infrastructure.data_structures.common import Symbol
+from exchanges.structs.common import Symbol
 from infrastructure.networking.websocket.structs import PublicWebsocketChannelType
 
 

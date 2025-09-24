@@ -10,18 +10,17 @@ HFT COMPLIANCE: Sub-millisecond factory operations with efficient singleton mana
 from typing import Type, Optional, Union
 
 from infrastructure.factories.base_exchange_factory import BaseExchangeFactory
-from exchanges.interfaces.rest.spot.rest_spot_private import PrivateSpotRest
-from infrastructure.config.structs import ExchangeConfig
+from exchanges.interfaces.rest import PrivateTradingInterface
+from config.structs import ExchangeConfig
 from infrastructure.utils.exchange_utils import exchange_name_to_enum
-from infrastructure.data_structures.common import ExchangeEnum
-
+from exchanges.structs import ExchangeEnum
 # HFT Logger Integration
 from infrastructure.logging import get_logger, get_exchange_logger, LoggingTimer
 
 logger = get_logger('rest.factory.private')
 
 
-class PrivateRestExchangeFactory(BaseExchangeFactory[PrivateSpotRest]):
+class PrivateRestExchangeFactory(BaseExchangeFactory[PrivateTradingInterface]):
     """
     Factory for creating private REST exchange instances.
     
@@ -39,7 +38,7 @@ class PrivateRestExchangeFactory(BaseExchangeFactory[PrivateSpotRest]):
     """
 
     @classmethod
-    def register(cls, exchange: Union[str, ExchangeEnum], implementation_class: Type[PrivateSpotRest]) -> None:
+    def register(cls, exchange: Union[str, ExchangeEnum], implementation_class: Type[PrivateTradingInterface]) -> None:
         """
         Register a private REST exchange implementation.
         
@@ -60,7 +59,7 @@ class PrivateRestExchangeFactory(BaseExchangeFactory[PrivateSpotRest]):
         exchange_enum = exchange_name_to_enum(exchange)
         
         # Use composite class validation
-        cls._validate_implementation_class(implementation_class, PrivateSpotRest)
+        cls._validate_implementation_class(implementation_class, PrivateTradingInterface)
         
         # Register with composite class registry using ExchangeEnum as key
         cls._implementations[exchange_enum] = implementation_class
@@ -74,7 +73,7 @@ class PrivateRestExchangeFactory(BaseExchangeFactory[PrivateSpotRest]):
                      tags={"exchange": exchange_enum.value, "type": "private"})
 
     @classmethod
-    def inject(cls, exchange: Union[str, ExchangeEnum], config: Optional[ExchangeConfig] = None, **kwargs) -> PrivateSpotRest:
+    def inject(cls, exchange: Union[str, ExchangeEnum], config: Optional[ExchangeConfig] = None, **kwargs) -> PrivateTradingInterface:
         """
         Create or retrieve private REST exchange instance.
         
@@ -181,7 +180,7 @@ class PrivateRestExchangeFactory(BaseExchangeFactory[PrivateSpotRest]):
             raise ValueError(f"Failed to create private REST exchange {exchange_enum.value}: {e}") from e
 
     @classmethod
-    def create_for_config(cls, config: ExchangeConfig) -> PrivateSpotRest:
+    def create_for_config(cls, config: ExchangeConfig) -> PrivateTradingInterface:
         """
         Convenience method to create exchange from ExchangeConfig.
         

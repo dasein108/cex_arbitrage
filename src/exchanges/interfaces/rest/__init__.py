@@ -7,6 +7,8 @@ Includes spot trading, futures trading, and common composite interfaces.
 
 # Common composite interfaces
 from .rest_base import BaseRestInterface
+from .trading_interface import PrivateTradingInterface
+from .withdrawal_interface import WithdrawalInterface
 
 # Spot trading interfaces
 from .spot import (
@@ -23,6 +25,8 @@ from .futures import (
 __all__ = [
     # Common
     "BaseRestInterface",
+    "PrivateTradingInterface",
+    "WithdrawalInterface",
     
     # Spot trading
     "PublicSpotRest",

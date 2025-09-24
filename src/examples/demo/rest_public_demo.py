@@ -13,8 +13,9 @@ Usage:
 import asyncio
 import sys
 import time
-from infrastructure.data_structures.common import Symbol, AssetName
-from infrastructure.config.config_manager import get_exchange_config
+from exchanges.structs.common import Symbol
+from exchanges.structs.types import AssetName
+from config import get_exchange_config
 
 from examples.utils.rest_api_factory import get_exchange_rest_instance
 from examples.utils.decorators import rest_api_test

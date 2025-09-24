@@ -4,7 +4,7 @@ from typing import Dict, Any
 from urllib.parse import urlencode
 
 from infrastructure.networking.http import AuthStrategy, HTTPMethod, AuthenticationData
-from infrastructure.config.structs import ExchangeConfig
+from config.structs import ExchangeConfig
 from infrastructure.data_structures.connection import RestConnectionSettings
 
 # HFT Logger Integration

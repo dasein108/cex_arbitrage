@@ -3,7 +3,7 @@ from typing import Dict
 
 from infrastructure.exceptions.exchange import RateLimitErrorBase, ExchangeConnectionError
 from infrastructure.networking.http import RetryStrategy
-from infrastructure.config.structs import ExchangeConfig
+from config.structs import ExchangeConfig
 
 
 class GateioRetryStrategy(RetryStrategy):

@@ -1,4 +1,4 @@
-from infrastructure.config.structs import ExchangeConfig
+from config.structs import ExchangeConfig
 from .rest_transport_manager import RestTransportManager
 from .strategies import RestStrategyFactory
 

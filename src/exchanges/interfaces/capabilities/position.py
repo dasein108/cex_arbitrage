@@ -7,7 +7,7 @@ Not available for spot exchanges.
 
 from abc import ABC, abstractmethod
 from typing import Dict, List, Optional
-from infrastructure.data_structures.common import Symbol, Position
+from exchanges.structs.common import Symbol, Position
 
 
 class PositionCapability(ABC):

@@ -3,7 +3,7 @@ import time
 from typing import Dict, Any
 
 from infrastructure.networking.http import RateLimitStrategy, RateLimitContext
-from infrastructure.config.structs import ExchangeConfig
+from config.structs import ExchangeConfig
 
 
 class MexcRateLimitStrategy(RateLimitStrategy):

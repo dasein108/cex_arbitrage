@@ -9,9 +9,8 @@ Supports both simple factories (single component types) and composite factories
 """
 
 from abc import ABC, abstractmethod
-from typing import TypeVar, List, Any, Union
-
-from infrastructure.data_structures.common import ExchangeEnum
+from typing import TypeVar, List, Any, Union, TYPE_CHECKING
+from exchanges.structs import ExchangeEnum
 
 T = TypeVar('T')
 

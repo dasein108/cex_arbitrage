@@ -23,7 +23,7 @@ from typing import List, Dict, Optional, Tuple
 from sortedcontainers import SortedDict
 import msgspec
 
-from infrastructure.data_structures.common import Symbol, OrderBook, OrderBookEntry
+from exchanges.structs.common import Symbol, OrderBook, OrderBookEntry
 
 
 class HFTOrderBookEntry(msgspec.Struct):

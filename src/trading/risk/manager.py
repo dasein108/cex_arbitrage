@@ -41,8 +41,8 @@ from .structures import (
     ArbitrageConfig,
 )
 
-from infrastructure.data_structures.common import Symbol
-from infrastructure.data_structures.common import ExchangeName
+from exchanges.structs.common import Symbol
+from exchanges.structs.types import ExchangeName
 from infrastructure.exceptions.exchange import RiskManagementError
 
 

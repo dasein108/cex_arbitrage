@@ -13,7 +13,7 @@ from decimal import Decimal
 from dataclasses import dataclass, field
 
 from exchanges.interfaces.composite import CompositePublicExchange
-from infrastructure.data_structures.common import Symbol, SymbolInfo
+from exchanges.structs.common import Symbol, SymbolInfo
 from trading.arbitrage.types import ExchangePairConfig, ArbitragePair, OpportunityType
 
 logger = get_logger('arbitrage.symbol_resolver')

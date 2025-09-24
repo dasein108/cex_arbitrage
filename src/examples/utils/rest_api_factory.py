@@ -7,11 +7,9 @@ Unified factory function for creating REST exchange clients.
 from typing import Optional
 from infrastructure.factories.rest.public_rest_factory import PublicRestExchangeFactory
 from infrastructure.factories.rest.private_rest_factory import PrivateRestExchangeFactory
-from infrastructure.config.config_manager import HftConfig
+from config import HftConfig
 
 # Import exchange modules to trigger auto-registration
-import exchanges.integrations.mexc.rest
-import exchanges.integrations.gateio.rest
 
 # Trigger manual registration after modules are loaded
 from exchanges.integrations.mexc.rest.registration import register_mexc_rest_implementations

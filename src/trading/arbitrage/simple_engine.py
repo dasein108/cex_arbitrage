@@ -17,7 +17,9 @@ from trading.arbitrage.detector import OpportunityDetector
 from trading.arbitrage.aggregator import MarketDataAggregator
 from trading.arbitrage.structures import ArbitrageOpportunity
 from exchanges.interfaces.composite import CompositePrivateExchange
-from infrastructure.data_structures.common import ExchangeStatus, Symbol, AssetName, ExchangeName
+from exchanges.structs.common import Symbol
+from exchanges.structs.types import ExchangeName, AssetName
+from exchanges.structs.enums import ExchangeStatus
 from infrastructure.exceptions.exchange import ArbitrageDetectionError
 
 logger = get_logger('arbitrage.simple_engine')

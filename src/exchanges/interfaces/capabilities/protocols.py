@@ -12,10 +12,12 @@ Usage:
 """
 
 from typing import Protocol, runtime_checkable, Dict, List, Optional
-from infrastructure.data_structures.common import (
-    Symbol, Order, OrderSide, OrderType, AssetName, AssetBalance, 
+from exchanges.structs.common import (
+    Symbol, Order, AssetBalance,
     Position, WithdrawalRequest, WithdrawalResponse
 )
+from exchanges.structs.types import AssetName
+from exchanges.structs.enums import OrderSide
 
 
 @runtime_checkable

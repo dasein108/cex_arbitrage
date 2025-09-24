@@ -44,9 +44,10 @@ from .structures import (
     ArbitrageConfig,
 )
 
-from infrastructure.data_structures.common import Symbol, OrderSide
+from exchanges.structs.common import Symbol
+from exchanges.structs.enums import OrderSide
 from exchanges.interfaces.composite import CompositePrivateExchange
-from infrastructure.data_structures.common import ExchangeName
+from exchanges.structs.types import ExchangeName
 from infrastructure.exceptions.exchange import PositionManagementError
 
 

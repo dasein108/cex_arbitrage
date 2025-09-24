@@ -10,7 +10,7 @@ from .rate_limit import MexcRateLimitStrategy
 from .retry import MexcRetryStrategy
 from .auth import MexcAuthStrategy
 from .exception_handler import MexcExceptionHandlerStrategy
-from infrastructure.data_structures.common import ExchangeEnum
+from exchanges.structs.enums import ExchangeEnum
 from infrastructure.networking.http.strategies import RestStrategyFactory
 
 # Register public API strategies

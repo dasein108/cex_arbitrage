@@ -5,8 +5,7 @@ Separate module to handle factory registration and avoid circular imports.
 Uses delayed import pattern to prevent circular dependencies during module initialization.
 """
 
-from infrastructure.data_structures.common import ExchangeEnum
-
+from exchanges.structs import ExchangeEnum
 
 def register_mexc_rest_implementations():
     """

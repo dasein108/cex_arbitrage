@@ -26,14 +26,15 @@ import time
 from typing import Dict, List, Optional, Any
 from datetime import datetime
 
-from infrastructure.data_structures.common import (
+from exchanges.structs.common import (
     Symbol, SymbolInfo, OrderBook, OrderBookEntry, Trade, Kline,
-    KlineInterval, Ticker
+    Ticker
 )
+from exchanges.structs.enums import KlineInterval
 from exchanges.interfaces.rest.spot import PublicSpotRest
 from exchanges.services import BaseExchangeMapper
 from infrastructure.networking.http.structs import HTTPMethod
-from infrastructure.config.structs import ExchangeConfig
+from config.structs import ExchangeConfig
 from infrastructure.exceptions.exchange import BaseExchangeError
 from common.iterators import time_range_iterator, get_interval_seconds
 

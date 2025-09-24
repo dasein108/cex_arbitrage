@@ -1,9 +1,9 @@
 from abc import ABC, abstractmethod
-from typing import Any, Optional
+from typing import Optional
 from dataclasses import dataclass
 from websockets.client import WebSocketClientProtocol
 from websockets.protocol import State as WsState
-from infrastructure.config.structs import ExchangeConfig
+from config.structs import ExchangeConfig
 
 from infrastructure.networking.websocket.structs import ConnectionContext
 

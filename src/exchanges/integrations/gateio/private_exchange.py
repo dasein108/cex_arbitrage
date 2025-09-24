@@ -12,14 +12,16 @@ import time
 from typing import List, Dict, Optional
 
 from exchanges.interfaces.composite import CompositePrivateExchange
-from infrastructure.data_structures.common import (
-    OrderBook, Symbol, SymbolsInfo, AssetBalance, AssetName,
-    Order, OrderId, Side, TimeInForce, Position,
-    ExchangeStatus, WithdrawalRequest, WithdrawalResponse
+from exchanges.structs.common import (
+    OrderBook, Symbol, SymbolsInfo, AssetBalance, Order, Position,
+    WithdrawalRequest, WithdrawalResponse
 )
+from exchanges.structs.types import AssetName, OrderId
+from exchanges.structs import Side
+from exchanges.structs.enums import ExchangeStatus, TimeInForce
 from exchanges.integrations.gateio.public_exchange import GateioPublicPublicExchange
 from infrastructure.exceptions.exchange import BaseExchangeError
-from infrastructure.config.structs import ExchangeConfig
+from config.structs import ExchangeConfig
 
 
 class GateioPrivateCompositePrivateExchange(CompositePrivateExchange):
@@ -51,7 +53,7 @@ class GateioPrivateCompositePrivateExchange(CompositePrivateExchange):
         self.public_exchange = GateioPublicPublicExchange(config)
         
         # Initialize private REST client for trading operations
-        # TODO: Update REST client to use unified config pattern  
+        # TODO: Update REST client to use unified config pattern
         self.private_client = None  # Temporarily disabled until REST client is updated
         
         # HFT State Management (CRITICAL: NO CACHING OF REAL-TIME TRADING DATA)

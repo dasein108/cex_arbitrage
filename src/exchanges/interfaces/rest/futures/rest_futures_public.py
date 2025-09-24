@@ -1,8 +1,8 @@
 from abc import ABC
 from exchanges.interfaces.rest.rest_base import BaseRestInterface
 from exchanges.services import BaseExchangeMapper
-from infrastructure.config.structs import ExchangeConfig
-from infrastructure.data_structures import Symbol
+from config.structs import ExchangeConfig
+from exchanges.structs import Symbol
 
 
 class PublicFuturesRest(BaseRestInterface, ABC):

@@ -2,16 +2,17 @@ from abc import ABC, abstractmethod
 from typing import Any
 
 from exchanges.services.symbol_mapper.base_symbol_mapper import SymbolMapperInterface
-from infrastructure.data_structures.common import Trade, OrderBook, BookTicker, AssetBalance
+from exchanges.structs.common import Trade, OrderBook, BookTicker, AssetBalance
 from .mapping_configuration import BaseMappingConfiguration
 from infrastructure.networking.websocket.structs import PublicWebsocketChannelType, PrivateWebsocketChannelType, SubscriptionAction
-from infrastructure.data_structures.common import (
-    Symbol, Order, OrderStatus, OrderType, Side,
-    TimeInForce, KlineInterval
+from exchanges.structs.common import (
+    Symbol, Order
 )
+from ...structs.enums import TimeInForce, KlineInterval
+from ...structs import OrderStatus, OrderType, Side
 
 
-classBaseExchangeMapper(ABC):
+class BaseExchangeMapper(ABC):
     """
     Base implementation providing common mapping utilities.
 

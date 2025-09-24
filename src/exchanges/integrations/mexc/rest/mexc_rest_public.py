@@ -31,13 +31,16 @@ from exchanges.integrations.mexc.structs.exchange import (
     MexcSymbolResponse, MexcExchangeInfoResponse, 
     MexcOrderBookResponse, MexcTradeResponse, MexcServerTimeResponse
 )
-from infrastructure.data_structures.common import (
+from exchanges.structs.common import (
     Symbol, SymbolInfo, OrderBook, OrderBookEntry, Trade, Kline,
-    AssetName, Side, KlineInterval, Ticker
+    Ticker
 )
+from exchanges.structs.types import AssetName
+from exchanges.structs.enums import KlineInterval
+from exchanges.structs import Side
 from exchanges.interfaces.rest.spot import PublicSpotRest
 from exchanges.services import BaseExchangeMapper
-from infrastructure.config.structs import ExchangeConfig
+from config.structs import ExchangeConfig
 from infrastructure.networking.http.structs import HTTPMethod
 from common.iterators import time_range_iterator
 

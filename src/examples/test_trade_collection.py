@@ -21,7 +21,9 @@ from pathlib import Path
 # Add src to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from infrastructure.data_structures.common import Symbol, AssetName, Trade, Side
+from exchanges.structs.common import Symbol, Trade
+from exchanges.structs.types import AssetName
+from exchanges.structs import Side
 from applications.data_collection.config import load_data_collector_config
 from applications.data_collection.analytics import RealTimeAnalytics
 from db.models import TradeSnapshot

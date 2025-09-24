@@ -31,8 +31,8 @@ Architecture: Independent exchange with separate configuration and factory suppo
 from typing import List, Dict, Optional, Callable, Awaitable, Set
 
 from exchanges.consts import DEFAULT_PUBLIC_WEBSOCKET_CHANNELS
-from infrastructure.data_structures.common import Symbol, Trade, OrderBook, BookTicker
-from infrastructure.config.structs import ExchangeConfig
+from exchanges.structs.common import Symbol, Trade, OrderBook, BookTicker
+from config.structs import ExchangeConfig
 from exchanges.interfaces.ws import PublicFuturesWebsocket
 from infrastructure.networking.websocket.structs import ConnectionState, PublicWebsocketChannelType
 

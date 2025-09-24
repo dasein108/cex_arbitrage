@@ -11,9 +11,12 @@ Usage:
 
 import asyncio
 import sys
-from infrastructure.data_structures.common import Symbol, AssetName, Side, OrderType, TimeInForce
+from exchanges.structs.common import Symbol
+from exchanges.structs.types import AssetName
+from exchanges.structs.enums import TimeInForce
+from exchanges.structs import OrderType, Side
 from exchanges.interfaces.rest.spot.rest_spot_private import PrivateSpotRest
-from infrastructure.config.config_manager import get_exchange_config
+from config import get_exchange_config
 
 from examples.utils.rest_api_factory import get_exchange_rest_instance
 

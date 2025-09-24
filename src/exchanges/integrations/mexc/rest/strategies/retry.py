@@ -3,10 +3,10 @@ from typing import Dict
 
 from infrastructure.exceptions.exchange import RateLimitErrorBase, ExchangeConnectionError
 from infrastructure.networking.http import RetryStrategy
-from infrastructure.config.structs import ExchangeConfig
+from config.structs import ExchangeConfig
 
 # HFT Logger Integration
-from infrastructure.logging import get_strategy_logger, LoggingTimer
+from infrastructure.logging import get_strategy_logger
 
 
 class MexcRetryStrategy(RetryStrategy):

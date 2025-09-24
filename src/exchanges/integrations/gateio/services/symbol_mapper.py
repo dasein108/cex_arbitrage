@@ -12,8 +12,7 @@ Integration with existing GateioUtils while following factory pattern.
 
 from exchanges.services.symbol_mapper.base_symbol_mapper import SymbolMapperInterface
 from exchanges.services.symbol_mapper.factory import ExchangeSymbolMapperFactory
-from infrastructure.data_structures import ExchangeEnum
-from infrastructure.data_structures.common import Symbol, AssetName
+from exchanges.structs import Symbol, ExchangeEnum, AssetName
 
 
 class GateioSymbolMapperInterface(SymbolMapperInterface):

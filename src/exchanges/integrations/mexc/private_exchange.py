@@ -11,14 +11,15 @@ import time
 from typing import List, Dict, Optional
 
 from exchanges.interfaces.composite import CompositePrivateExchange
-from infrastructure.data_structures.common import (
-    Symbol, AssetBalance, AssetName, Order, OrderId, SymbolsInfo, Trade, Side,
-    WithdrawalRequest, WithdrawalResponse
+from exchanges.structs.common import (
+    Symbol, AssetBalance, Order, SymbolsInfo, Trade, WithdrawalRequest, WithdrawalResponse
 )
+from exchanges.structs.types import AssetName, OrderId
+from exchanges.structs import Side
 from exchanges.integrations.mexc.ws.mexc_ws_private import MexcWebsocketPrivateSpot
 from exchanges.integrations.mexc.rest.mexc_rest_private import MexcPrivateSpotRest
 from infrastructure.exceptions.exchange import BaseExchangeError
-from infrastructure.config.structs import ExchangeConfig
+from config.structs import ExchangeConfig
 
 
 class MexcPrivateCompositePrivateExchange(CompositePrivateExchange):

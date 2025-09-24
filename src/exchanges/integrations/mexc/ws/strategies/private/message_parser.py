@@ -10,7 +10,6 @@ from exchanges.integrations.mexc.ws.protobuf_parser import MexcProtobufParser
 from exchanges.integrations.mexc.structs.exchange import (
     MexcWSPrivateOrderData, MexcWSPrivateBalanceData, MexcWSPrivateTradeData
 )
-from infrastructure.data_structures.common import OrderBook
 
 
 class MexcPrivateMessageParser(MessageParser):

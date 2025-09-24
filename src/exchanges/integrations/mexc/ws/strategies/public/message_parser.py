@@ -10,7 +10,7 @@ from exchanges.services import BaseExchangeMapper
 from infrastructure.networking.websocket.strategies.message_parser import MessageParser
 from infrastructure.networking.websocket.structs import ParsedMessage, MessageType
 from exchanges.integrations.mexc.ws.protobuf_parser import MexcProtobufParser
-from infrastructure.data_structures.common import OrderBook, Trade, BookTicker
+from exchanges.structs.common import OrderBook, Trade, BookTicker
 from exchanges.integrations.mexc.structs.exchange import MexcWSTradeEntry
 from exchanges.integrations.mexc.services.mexc_mappings import MexcUnifiedMappings
 

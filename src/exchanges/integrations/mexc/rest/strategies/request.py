@@ -1,10 +1,10 @@
 from typing import Dict, Any
 
 from infrastructure.networking.http import RequestStrategy, RequestContext, HTTPMethod, PerformanceTargets
-from infrastructure.config.structs import ExchangeConfig
+from config.structs import ExchangeConfig
 
 # HFT Logger Integration
-from infrastructure.logging import get_strategy_logger, LoggingTimer
+from infrastructure.logging import get_strategy_logger
 
 
 class MexcRequestStrategy(RequestStrategy):

@@ -17,8 +17,8 @@ import logging
 import sys
 from typing import List, Dict
 
-from infrastructure.data_structures.common import Symbol, Order, AssetBalance, Trade
-from infrastructure.config.config_manager import get_exchange_config
+from exchanges.structs.common import Symbol, Order, AssetBalance, Trade
+from config import get_exchange_config
 from examples.utils.ws_api_factory import get_exchange_websocket_instance
 
 # Set up logging
@@ -316,7 +316,7 @@ async def main(exchange_name: str):
 
 
 if __name__ == "__main__":
-    exchange_name = sys.argv[1] if len(sys.argv) > 1 else "gateio_futures"
+    exchange_name = sys.argv[1] if len(sys.argv) > 1 else "mexc_spot"
 
     try:
         asyncio.run(main(exchange_name))

@@ -43,14 +43,14 @@ from .structures import (
     ArbitrageConfig,
 )
 
-from infrastructure.data_structures.common import (
+from exchanges.structs.common import (
     Symbol,
-    OrderSide,
-    OrderType,
     Order,
 )
+from exchanges.structs.enums import OrderSide
+from exchanges.structs import OrderType
 from exchanges.interfaces.composite import CompositePrivateExchange
-from infrastructure.data_structures.common import ExchangeName
+from exchanges.structs.types import ExchangeName
 from infrastructure.exceptions.exchange import OrderExecutionError
 
 logger = get_logger('arbitrage.orchestrator')

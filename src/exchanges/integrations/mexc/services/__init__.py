@@ -14,8 +14,7 @@ Registration happens automatically when this module is imported.
 from .symbol_mapper import MexcSymbolMapper
 from .mexc_mappings import MexcUnifiedMappings
 
-from infrastructure.data_structures.common import ExchangeEnum
-
+from exchanges.structs import ExchangeEnum
 # Import factories to verify registration
 from exchanges.services.symbol_mapper.factory import ExchangeSymbolMapperFactory
 from exchanges.services.exchange_mapper.factory import ExchangeMapperFactory

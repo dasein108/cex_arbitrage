@@ -6,7 +6,7 @@ from infrastructure.networking.websocket.strategies import (
     WebSocketStrategyFactory
 )
 
-from infrastructure.data_structures.common import ExchangeEnum
+from exchanges.structs.enums import ExchangeEnum
 
 # Register strategies with factory
 WebSocketStrategyFactory.register_strategies(

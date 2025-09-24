@@ -24,8 +24,8 @@ Architecture: Dependency injection with composite class coordination
 
 from typing import List, Optional, Callable, Awaitable
 
-from infrastructure.data_structures.common import Symbol, Trade, OrderBook, BookTicker
-from infrastructure.config.structs import ExchangeConfig
+from exchanges.structs.common import Symbol, Trade, OrderBook, BookTicker
+from config.structs import ExchangeConfig
 from exchanges.interfaces.ws import PublicFuturesWebsocket
 from infrastructure.networking.websocket.structs import ConnectionState
 

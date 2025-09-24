@@ -12,10 +12,10 @@ from typing import Type, Optional, Callable, Awaitable, Union, Dict
 
 from infrastructure.factories.base_exchange_factory import BaseExchangeFactory
 from infrastructure.utils.exchange_utils import exchange_name_to_enum
-from infrastructure.data_structures.common import ExchangeEnum
-
-from infrastructure.config.structs import ExchangeConfig
-from infrastructure.data_structures.common import Order, AssetBalance, AssetName, Trade
+from exchanges.structs import ExchangeEnum
+from config.structs import ExchangeConfig
+from exchanges.structs.common import Order, AssetBalance, Trade
+from exchanges.structs.types import AssetName
 from infrastructure.factories.rest.private_rest_factory import PrivateRestExchangeFactory
 
 # HFT Logger Integration

@@ -9,7 +9,8 @@ HFT COMPLIANT: Sub-50ms order execution requirements.
 
 from abc import ABC, abstractmethod
 from typing import List, Optional
-from infrastructure.data_structures.common import Symbol, Order, OrderSide, OrderType
+from exchanges.structs.common import Symbol, Order
+from exchanges.structs.enums import OrderSide
 
 
 class TradingCapability(ABC):

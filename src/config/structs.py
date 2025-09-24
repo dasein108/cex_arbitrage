@@ -1,7 +1,7 @@
 from typing import Optional, Dict, Any
 from msgspec import Struct
 import msgspec
-from infrastructure.data_structures.common import ExchangeName, ExchangeCredentials
+from exchanges.structs.types import ExchangeName
 
 
 class NetworkConfig(Struct, frozen=True):
@@ -198,6 +198,24 @@ class RestTransportConfig(Struct, frozen=True):
         }
 
 
+class ExchangeCredentials(Struct, frozen=True):
+    """Exchange API credentials."""
+    api_key: str
+    secret_key: str
+
+    def is_configured(self) -> bool:
+        """Check if both credentials are provided."""
+        return bool(self.api_key) and bool(self.secret_key)
+
+    def get_preview(self) -> str:
+        """Get safe preview of credentials for logging."""
+        if not self.api_key:
+            return "Not configured"
+        if len(self.api_key) > 8:
+            return f"{self.api_key[:4]}...{self.api_key[-4:]}"
+        return "***"
+
+
 class ExchangeConfig(Struct, frozen=True):
     """
     Complete exchange configuration including credentials and settings.
@@ -370,3 +388,5 @@ class ExchangeConfig(Struct, frozen=True):
             f"  Capabilities: {', '.join(enabled_caps)}\n"
             f"  Credentials: {self.credentials.get_preview()}"
         )
+
+

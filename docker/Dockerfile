@@ -48,7 +48,7 @@ ENV PYTHONPATH=/app/src
 # Health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
     CMD python -c "import asyncio; import sys; sys.path.insert(0, '/app/src'); \
-    from data_collector.collector import DataCollector; \
+    from applications.data_collection.collector import DataCollector; \
     collector = DataCollector(); \
     status = collector.get_status(); \
     exit(0 if status else 1)" || exit 1
@@ -57,4 +57,4 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
 EXPOSE 8080
 
 # Default command
-CMD ["python", "src/data_collector/run.py"]
+CMD ["python", "src/applications/data_collection/run.py"]

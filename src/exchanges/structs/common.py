@@ -13,16 +13,16 @@ Design Principles:
 - HFT-optimized for sub-millisecond processing
 """
 
-from enum import Enum, IntEnum
+from enum import IntEnum
 from msgspec import Struct
-from typing import NewType, Optional, Dict, List, Any
+from typing import Optional, Dict, List
+
+from .enums import TimeInForce, KlineInterval, OrderStatus, OrderType, Side
+from .types import ExchangeName, AssetName, OrderId
+
 
 # Connection setting structures for exchanges
 
-# Type aliases for improved type safety
-ExchangeName = NewType('Exchange', str)
-AssetName = NewType('AssetName', str)
-OrderId = NewType("OrderId", str)
 
 class Symbol(Struct, frozen=True):
     """Trading symbol with composite and quote assets."""
@@ -35,79 +35,6 @@ class Symbol(Struct, frozen=True):
         return f"{self.base}{self.quote}"
 
 # Core enums used across the system
-
-class ExchangeEnum(Enum):
-    """
-    Enumeration of supported centralized exchanges.
-
-    Used throughout the system for type-safe exchange identification
-    and consistent naming across all components.
-    """
-    MEXC = ExchangeName("MEXC_SPOT")
-    GATEIO = ExchangeName("GATEIO_SPOT")  
-    GATEIO_FUTURES = ExchangeName("GATEIO_FUTURES")
-
-class ExchangeStatus(IntEnum):
-    """Exchange connection status."""
-    CONNECTING = 0
-    ACTIVE = 1
-    CLOSING = 2
-    INACTIVE = 3
-    ERROR = 4
-
-class OrderStatus(IntEnum):
-    """Order execution status."""
-    UNKNOWN = -1
-    NEW = 1
-    FILLED = 2
-    PARTIALLY_FILLED = 3
-    CANCELED = 4
-    PARTIALLY_CANCELED = 5
-    EXPIRED = 6
-    REJECTED = 7
-
-class OrderType(IntEnum):
-    """Order type definitions."""
-    LIMIT = 1
-    MARKET = 2
-    LIMIT_MAKER = 3
-    IMMEDIATE_OR_CANCEL = 4
-    FILL_OR_KILL = 5
-    STOP_LIMIT = 6
-    STOP_MARKET = 7
-
-class Side(IntEnum):
-    """Order side."""
-    BUY = 1
-    SELL = 2
-
-# Backward compatibility alias
-OrderSide = Side
-
-class TimeInForce(IntEnum):
-    """Time in force for orders."""
-    GTC = 1  # Good Till Cancelled
-    IOC = 2  # Immediate or Cancel
-    FOK = 3  # Fill or Kill
-    GTD = 4  # Good Till Date
-
-class OrderbookUpdateType(Enum):
-    """Type of orderbook update."""
-    SNAPSHOT = "snapshot"
-    DIFF = "diff"
-
-class KlineInterval(IntEnum):
-    """Kline/candlestick interval definitions."""
-    MINUTE_1 = 1    # 1m
-    MINUTE_5 = 2    # 5m  
-    MINUTE_15 = 3   # 15m
-    MINUTE_30 = 4   # 30m
-    HOUR_1 = 5      # 1h
-    HOUR_4 = 6      # 4h
-    HOUR_12 = 7     # 12h
-    DAY_1 = 8       # 1d
-    WEEK_1 = 9      # 1w/7d
-    MONTH_1 = 10    # 1M/30d
 
 # Core data structures
 
@@ -310,65 +237,6 @@ class FuturesTicker(Struct):
 
 # Configuration structures
 
-class ExchangeCredentials(Struct, frozen=True):
-    """Exchange API credentials."""
-    api_key: str
-    secret_key: str
-
-    def is_configured(self) -> bool:
-        """Check if both credentials are provided."""
-        return bool(self.api_key) and bool(self.secret_key)
-
-    def get_preview(self) -> str:
-        """Get safe preview of credentials for logging."""
-        if not self.api_key:
-            return "Not configured"
-        if len(self.api_key) > 8:
-            return f"{self.api_key[:4]}...{self.api_key[-4:]}"
-        return "***"
-
-class ExchangeConfig(Struct):
-    """Exchange configuration."""
-    name: ExchangeName
-    enabled: bool = True
-    credentials: Optional[ExchangeCredentials] = None
-    rate_limits: Dict[str, int] = {}
-    timeouts: Dict[str, float] = {}
-    extra_config: Dict[str, Any] = {}
-
-    def has_credentials(self) -> bool:
-        """Check if exchange has valid credentials."""
-        return self.credentials is not None and self.credentials.is_configured()
-
-# Arbitrage-specific structures
-
-class OpportunityType(IntEnum):
-    """Arbitrage opportunity classification."""
-    SPOT_SPOT = 1           # Cross-exchange spot arbitrage
-    FUNDING_RATE = 2        # Funding rate arbitrage
-    FUTURES_BASIS = 3       # Futures basis arbitrage
-    CROSS_MARGIN = 4        # Cross-margin arbitrage
-    STATISTICAL = 5         # Statistical arbitrage
-    TRIANGULAR = 6          # Triangular arbitrage
-
-class ArbitrageOpportunity(Struct):
-    """Detected arbitrage opportunity."""
-    opportunity_id: str
-    opportunity_type: OpportunityType
-    symbol: Symbol
-    buy_exchange: ExchangeName
-    sell_exchange: ExchangeName
-    buy_price: float
-    sell_price: float
-    spread: float
-    spread_percentage: float
-    max_quantity: float
-    estimated_profit: float
-    confidence_score: float
-    timestamp: int
-    expiry_time: Optional[int] = None
-    execution_time_estimate: Optional[float] = None  # milliseconds
-
 class TradingFee(Struct):
     """Trading fee information for a user."""
     exchange: ExchangeName
@@ -391,19 +259,6 @@ class TradingFee(Struct):
     def taker_percentage(self) -> float:
         """Get taker fee as percentage (e.g., 0.1 for 0.1%)."""
         return self.taker_rate * 100
-
-class ArbitrageExecution(Struct):
-    """Arbitrage execution record."""
-    opportunity_id: str
-    execution_id: str
-    status: str  # "pending", "executing", "completed", "failed", "cancelled"
-    start_timestamp: int
-    buy_order: Optional[Order] = None
-    sell_order: Optional[Order] = None
-    actual_profit: Optional[float] = None
-    execution_time: Optional[float] = None  # milliseconds
-    end_timestamp: Optional[int] = None
-    failure_reason: Optional[str] = None
 
 # Withdrawal structures
 

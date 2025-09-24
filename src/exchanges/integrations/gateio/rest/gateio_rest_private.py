@@ -24,14 +24,17 @@ Memory: O(1) per request, optimized for trading operations
 from typing import Dict, List, Optional
 import msgspec
 
-from infrastructure.data_structures.common import (
-    Symbol, Order, OrderId, OrderType, Side, AssetBalance,
-    AssetName, AssetInfo, NetworkInfo, TimeInForce, TradingFee,
+from exchanges.structs.common import (
+    Symbol, Order, AssetBalance,
+    AssetInfo, NetworkInfo, TradingFee,
     WithdrawalRequest, WithdrawalResponse, WithdrawalStatus
 )
+from exchanges.structs.types import AssetName, OrderId
+from exchanges.structs.enums import TimeInForce
+from exchanges.structs import OrderType, Side
 from infrastructure.networking.http.structs import HTTPMethod
 from exchanges.interfaces.rest.spot.rest_spot_private import PrivateSpotRest
-from infrastructure.config.structs import ExchangeConfig
+from config.structs import ExchangeConfig
 from exchanges.services import BaseExchangeMapper
 from infrastructure.exceptions.exchange import BaseExchangeError
 

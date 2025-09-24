@@ -11,14 +11,14 @@ import time
 from typing import List, Dict, Optional
 
 from exchanges.interfaces.composite import CompositePublicExchange
-from infrastructure.data_structures.common import (
-    OrderBook, Symbol, SymbolsInfo,
-    ExchangeStatus, OrderbookUpdateType
+from exchanges.structs.common import (
+    OrderBook, Symbol, SymbolsInfo
 )
+from exchanges.structs.enums import ExchangeStatus, OrderbookUpdateType
 from exchanges.integrations.mexc.ws.mexc_ws_public import MexcWebsocketExchangePublicWebsocket
 from exchanges.integrations.mexc.rest.mexc_rest_public import MexcPublicSpotRest
 from exchanges.interfaces.ws import ConnectionState
-from infrastructure.config.structs import ExchangeConfig
+from config.structs import ExchangeConfig
 
 
 class MexcPublicPublicExchange(CompositePublicExchange):

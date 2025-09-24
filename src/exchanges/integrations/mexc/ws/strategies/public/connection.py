@@ -3,7 +3,7 @@ from websockets.client import WebSocketClientProtocol
 
 from exchanges.interfaces.ws import ConnectionStrategy, ConnectionContext
 from infrastructure.networking.websocket.strategies.connection import ReconnectionPolicy
-from infrastructure.config.structs import ExchangeConfig
+from config.structs import ExchangeConfig
 from infrastructure.exceptions.exchange import BaseExchangeError
 from infrastructure.data_structures.connection import WebSocketConnectionSettings, ReconnectionSettings
 

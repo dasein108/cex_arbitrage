@@ -13,11 +13,8 @@ from abc import ABC, abstractmethod
 
 from .factory_interface import ExchangeFactoryInterface
 from infrastructure.utils.exchange_utils import exchange_name_to_enum
+from exchanges.structs import ExchangeEnum
 
-if TYPE_CHECKING:
-    from infrastructure.data_structures.common import ExchangeEnum
-else:
-    from infrastructure.data_structures.common import ExchangeEnum
 
 logger = logging.getLogger(__name__)
 

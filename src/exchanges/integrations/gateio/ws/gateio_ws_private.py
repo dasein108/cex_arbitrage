@@ -25,8 +25,9 @@ Architecture: Dependency injection with composite class coordination
 
 from typing import Dict, Optional, Callable, Awaitable
 
-from infrastructure.data_structures.common import Order, AssetBalance, Trade, AssetName
-from infrastructure.config.structs import ExchangeConfig
+from exchanges.structs.common import Order, AssetBalance, Trade
+from exchanges.structs.types import AssetName
+from config.structs import ExchangeConfig
 from exchanges.interfaces.ws import PrivateSpotWebsocket
 
 

@@ -18,7 +18,7 @@ from .backends.prometheus import PrometheusBackend, PrometheusHistogramBackend
 from .structs import (
     LoggingConfig, ConsoleBackendConfig, FileBackendConfig,
     PrometheusBackendConfig, AuditBackendConfig, PerformanceConfig,
-    RouterConfig, BackendConfig
+    RouterConfig
 )
 
 
@@ -255,7 +255,7 @@ class LoggerFactory:
         if cls._default_config is None:
             # Try to load from config.yaml
             try:
-                from infrastructure.config.config_manager import get_logging_config
+                from config import get_logging_config
                 yaml_config = get_logging_config()
                 cls._default_config = cls._yaml_to_struct_config(yaml_config)
             except Exception:

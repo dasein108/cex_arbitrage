@@ -13,7 +13,7 @@ from typing import TypeVar, Generic, Callable, Optional, Dict, Any
 from threading import RLock
 
 from .structures import ArbitrageOpportunity
-from infrastructure.data_structures.common import Symbol, Ticker, Trade
+from exchanges.structs.common import Symbol, Ticker, Trade
 
 logger = get_logger('arbitrage.object_pool')
 
@@ -135,7 +135,7 @@ class HFTObjectPools:
         """Initialize all HFT object pools."""
         
         # Pool for market data structures (high frequency)  
-        from infrastructure.data_structures.common import AssetName
+        from exchanges.structs.types import AssetName
         default_symbol = Symbol(base=AssetName("BTC"), quote=AssetName("USDT"))
         
         self.ticker_pool = ObjectPool(

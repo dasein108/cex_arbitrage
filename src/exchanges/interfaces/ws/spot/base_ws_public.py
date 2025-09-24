@@ -12,8 +12,8 @@ from typing import List, Dict, Optional, Callable, Awaitable, Set
 from abc import ABC
 
 from exchanges.consts import DEFAULT_PUBLIC_WEBSOCKET_CHANNELS
-from infrastructure.data_structures.common import Symbol, OrderBook, Trade, BookTicker
-from infrastructure.config.structs import ExchangeConfig
+from exchanges.structs.common import Symbol, OrderBook, Trade, BookTicker
+from config.structs import ExchangeConfig
 from infrastructure.networking.websocket.structs import ConnectionState, MessageType, ParsedMessage, PublicWebsocketChannelType
 import traceback
 

@@ -9,12 +9,11 @@ HFT COMPLIANCE: Sub-millisecond strategy set creation with efficient assembly.
 """
 
 import logging
-from typing import TypeVar, Generic, Dict, Any, List, TYPE_CHECKING
+from typing import TypeVar, Generic, Dict, Any, List
 from abc import ABC, abstractmethod
 
 from .factory_interface import ExchangeFactoryInterface
-from infrastructure.data_structures.common import ExchangeEnum
-
+from exchanges.structs import ExchangeEnum
 logger = logging.getLogger(__name__)
 
 # Generic type for the composite product (e.g., RestStrategySet, WebSocketStrategySet)

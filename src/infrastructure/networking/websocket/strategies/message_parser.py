@@ -11,11 +11,11 @@ from abc import ABC, abstractmethod
 from typing import Optional, Dict, Any, List, AsyncIterator
 
 from infrastructure.networking.websocket.structs import ParsedMessage, MessageType
-from infrastructure.data_structures.common import Symbol, OrderBookEntry
+from exchanges.structs.common import Symbol
 from exchanges.services import BaseExchangeMapper
 
 # HFT Logger Integration
-from infrastructure.logging import get_strategy_logger, HFTLoggerInterface, LoggingTimer
+from infrastructure.logging import HFTLoggerInterface, LoggingTimer
 
 
 class MessageParser(ABC):

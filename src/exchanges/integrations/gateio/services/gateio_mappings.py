@@ -13,11 +13,12 @@ HFT COMPLIANCE: Sub-microsecond mapping operations, zero-copy patterns.
 from typing import Dict
 from enum import Enum
 
-from infrastructure.data_structures.common import (
-    Order, OrderId, OrderType, Side,
-    TimeInForce, KlineInterval, Trade, AssetBalance, AssetName,
-    OrderBook, OrderBookEntry, BookTicker, WithdrawalStatus
+from exchanges.structs.common import (
+    Order, Trade, AssetBalance, OrderBook, OrderBookEntry, BookTicker, WithdrawalStatus
 )
+from exchanges.structs.types import AssetName, OrderId
+from exchanges.structs.enums import TimeInForce, KlineInterval
+from exchanges.structs import OrderType, Side
 from exchanges.services.exchange_mapper.base_exchange_mapper import BaseExchangeMapper
 from infrastructure.networking.websocket.structs import PublicWebsocketChannelType, PrivateWebsocketChannelType
 from .mapping_configuration import create_gateio_mapping_configuration

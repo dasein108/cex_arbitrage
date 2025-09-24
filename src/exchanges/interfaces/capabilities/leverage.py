@@ -6,8 +6,8 @@ Not available for spot exchanges.
 """
 
 from abc import ABC, abstractmethod
-from typing import Dict, Optional
-from infrastructure.data_structures.common import Symbol
+from typing import Dict
+from exchanges.structs.common import Symbol
 
 
 class LeverageCapability(ABC):

@@ -1,7 +1,7 @@
 from typing import Dict, Any
 
 from infrastructure.networking.http import RequestStrategy, RequestContext, HTTPMethod, PerformanceTargets
-from infrastructure.config.structs import ExchangeConfig
+from config.structs import ExchangeConfig
 
 
 class GateioRequestStrategy(RequestStrategy):

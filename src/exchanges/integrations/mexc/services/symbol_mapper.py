@@ -1,5 +1,6 @@
 from exchanges.services.symbol_mapper.base_symbol_mapper import SymbolMapperInterface
-from infrastructure.data_structures.common import Symbol, AssetName
+from exchanges.structs.common import Symbol
+from exchanges.structs.types import AssetName
 
 
 class MexcSymbolMapper(SymbolMapperInterface):

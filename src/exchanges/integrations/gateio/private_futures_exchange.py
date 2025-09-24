@@ -24,8 +24,8 @@ from typing import List, Dict
 import logging
 
 from exchanges.interfaces import CompositePrivateFuturesExchange
-from infrastructure.data_structures.common import Symbol, Order, Position, AssetBalance
-from infrastructure.config.structs import ExchangeConfig
+from exchanges.structs.common import Symbol, Order, Position, AssetBalance
+from config.structs import ExchangeConfig
 
 
 class GateioPrivateFuturesExchange(CompositePrivateFuturesExchange):
@@ -58,7 +58,7 @@ class GateioPrivateFuturesExchange(CompositePrivateFuturesExchange):
         
         # Validate this is a futures configuration
         if config.name.lower() != 'gateio_futures':
-            raise ValueError(f"Expected 'gateio_futures' config, got '{config.name}'. Use GATEIO_FUTURES enum.")
+            raise ValueError(f"Expected 'gateio_futures' config_, got '{config.name}'. Use GATEIO_FUTURES enum.")
         
         self.logger.info("Gate.io private futures exchange initialized as separate exchange")
     

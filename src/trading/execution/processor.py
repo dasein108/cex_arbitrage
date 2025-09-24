@@ -13,7 +13,7 @@ from typing import Any
 
 from .structures import ArbitrageOpportunity, ArbitrageState
 from .types import ArbitrageConfig, EngineStatistics
-from infrastructure.data_structures.common import Symbol
+from exchanges.structs.common import Symbol
 from core.transport.telegram import send_trade_alert
 
 logger = get_logger('arbitrage.opportunity_processor')

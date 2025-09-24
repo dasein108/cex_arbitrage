@@ -1,4 +1,4 @@
-from infrastructure.data_structures.common import KlineInterval
+from exchanges.structs.enums import KlineInterval
 
 
 def get_interval_seconds(self, interval: KlineInterval) -> int:

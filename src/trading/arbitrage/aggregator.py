@@ -37,7 +37,7 @@ from weakref import WeakSet
 
 from .structures import ArbitrageConfig
 
-from infrastructure.data_structures.common import (
+from exchanges.structs.common import (
     Symbol,
     OrderBook,
     Ticker,
@@ -45,7 +45,7 @@ from infrastructure.data_structures.common import (
     SymbolInfo,
 )
 from exchanges.interfaces.composite import CompositePublicExchange
-from infrastructure.data_structures.common import ExchangeName
+from exchanges.structs.types import ExchangeName
 from infrastructure.exceptions.exchange import BaseExchangeError as MarketDataError
 
 

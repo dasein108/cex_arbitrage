@@ -7,16 +7,13 @@ standardized BaseExchangeFactory infrastructure with enhanced auto-injection.
 HFT COMPLIANT: Fast strategy creation with pre-validated combinations and auto-dependency injection.
 """
 
-from typing import List, Dict, Optional, Any, TYPE_CHECKING
+from typing import List, Dict, Optional, Any
 
 # HFT Logger Integration
 from infrastructure.logging import get_logger, get_strategy_logger, LoggingTimer
 
-if TYPE_CHECKING:
-    from infrastructure.data_structures.common import ExchangeEnum
-else:
-    from infrastructure.data_structures.common import ExchangeEnum
-from ....config.structs import ExchangeConfig
+from exchanges.structs import ExchangeEnum
+from config.structs import ExchangeConfig
 from .strategy_set import RestStrategySet
 from infrastructure.factories.base_composite_factory import BaseCompositeFactory
 

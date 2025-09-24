@@ -21,8 +21,9 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from applications.data_collection.collector import DataCollector
 from applications.data_collection.config import load_data_collector_config
-from infrastructure.data_structures.common import Symbol, AssetName
-from infrastructure.config.config_manager import HftConfig
+from exchanges.structs.common import Symbol
+from exchanges.structs.types import AssetName
+from config import HftConfig
 
 # HFT Logger Integration
 from infrastructure.logging import get_logger

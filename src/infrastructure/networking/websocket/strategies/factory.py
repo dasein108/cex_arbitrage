@@ -17,10 +17,7 @@ from infrastructure.exceptions.exchange import ConfigurationError
 # HFT Logger Integration
 from infrastructure.logging import get_strategy_logger, LoggingTimer
 
-if TYPE_CHECKING:
-    from infrastructure.data_structures.common import ExchangeEnum
-else:
-    from infrastructure.data_structures.common import ExchangeEnum
+from exchanges.structs import ExchangeEnum
 
 
 class WebSocketStrategyFactory:

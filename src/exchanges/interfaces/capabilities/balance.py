@@ -9,7 +9,8 @@ HFT COMPLIANT: Real-time balance updates via WebSocket.
 
 from abc import ABC, abstractmethod
 from typing import Dict
-from infrastructure.data_structures.common import AssetName, AssetBalance
+from exchanges.structs.common import AssetBalance
+from exchanges.structs.types import AssetName
 
 
 class BalanceCapability(ABC):

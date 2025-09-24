@@ -26,7 +26,7 @@ import logging
 from typing import Dict, List, Optional, Set, Callable, Awaitable, Any
 from dataclasses import dataclass
 
-from infrastructure.data_structures.common import Symbol, OrderBook
+from exchanges.structs.common import Symbol, OrderBook
 from common.hft_orderbook import HFTOrderBook
 from common.orderbook_diff_processor import (
     OrderbookDiffProcessor, 

@@ -10,13 +10,12 @@ from datetime import datetime
 from typing import Dict, List, Optional, Set, Callable, Awaitable
 from dataclasses import dataclass
 
-from infrastructure.config import get_exchange_config
-from infrastructure.data_structures.common import Symbol, BookTicker, Trade
+from config import get_exchange_config
+from exchanges.structs.common import Symbol, BookTicker, Trade
 from infrastructure.factories.websocket import PublicWebSocketExchangeFactory
 from db import BookTickerSnapshot
 from db.models import TradeSnapshot
-from infrastructure.data_structures.common import ExchangeEnum
-from .analytics import RealTimeAnalytics
+from exchanges.structs import ExchangeEnumfrom .analytics import RealTimeAnalytics
 from .consts import WEBSOCKET_CHANNELS
 
 # HFT Logger Integration
@@ -401,8 +400,9 @@ class UnifiedWebSocketManager:
                     # Parse symbol string directly without prefixes
                     # Try to parse symbol string manually as fallback
                     if len(symbol_str) >= 6 and symbol_str.endswith('USDT'):
-                        from infrastructure.data_structures.common import Symbol, AssetName, ExchangeEnum
-                        base = symbol_str[:-4]  # Remove USDT
+                        from exchanges.structs.common import Symbol
+                        from exchanges.structs.types import AssetName
+                        from exchanges.structs import ExchangeEnum                        base = symbol_str[:-4]  # Remove USDT
                         quote = 'USDT'
                         # Determine if futures based on exchange type
                         exchange_enum = ExchangeEnum(exchange)
@@ -714,8 +714,8 @@ class DataCollector:
             
             # Ensure exchange modules are imported to trigger registrations
             self.logger.debug("Importing exchange modules for factory registration...")
-            import exchanges.mexc
-            import exchanges.gateio
+            import exchanges.integrations.mexc
+            import exchanges.integrations.gateio
             self.logger.debug("Exchange modules imported successfully")
             
             # Initialize database manager

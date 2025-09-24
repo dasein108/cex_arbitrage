@@ -13,11 +13,13 @@ import time
 from typing import Dict, Any, List, Optional, Type
 from dataclasses import dataclass
 
-from infrastructure.config.config_manager import config
+from config.config_manager import config
 from infrastructure.exceptions.exchange import BaseExchangeError
 from exchanges.integrations.mexc.private_exchange import MexcPrivateCompositePrivateExchange as MexcExchange
 from exchanges.integrations.gateio.gateio_exchange import GateioExchange
-from infrastructure.data_structures.common import Symbol, AssetName, ExchangeStatus, ExchangeName
+from exchanges.structs.common import Symbol
+from exchanges.structs.types import ExchangeName, AssetName
+from exchanges.structs.enums import ExchangeStatus
 from exchanges.interfaces.composite.base_private_exchange import CompositePrivateExchange
 from exchanges.interfaces.composite.factory import (
     ExchangeFactoryInterface, 

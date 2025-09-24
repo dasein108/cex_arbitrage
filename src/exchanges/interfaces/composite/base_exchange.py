@@ -8,8 +8,8 @@ handling connection management, initialization, and state tracking.
 from abc import ABC, abstractmethod
 from typing import Optional
 
-from infrastructure.data_structures.common import SymbolsInfo
-from infrastructure.config.structs import ExchangeConfig
+from exchanges.structs.common import SymbolsInfo
+from config.structs import ExchangeConfig
 from infrastructure.networking.websocket.structs import ConnectionState
 
 # HFT Logger Integration

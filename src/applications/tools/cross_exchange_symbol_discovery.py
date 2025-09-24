@@ -32,9 +32,9 @@ project_root = Path(__file__).parent.parent  # Now points to src/
 sys.path.insert(0, str(project_root))
 
 # Direct imports from src directory
-from infrastructure.data_structures.common import Symbol, SymbolInfo, AssetName, ExchangeName
-from infrastructure.data_structures.common import ExchangeEnum
-from exchanges.integrations.mexc.rest.mexc_rest_public import MexcPublicSpotRest
+from exchanges.structs.common import Symbol, SymbolInfo
+from exchanges.structs.types import ExchangeName, AssetName
+from exchanges.structs import ExchangeEnumfrom exchanges.integrations.mexc.rest.mexc_rest_public import MexcPublicSpotRest
 from exchanges.integrations.gateio.rest.gateio_rest_public import GateioPublicSpotRest
 from exchanges.integrations.gateio.rest.gateio_futures_public import GateioPublicFuturesRest
 from infrastructure.exceptions.exchange import BaseExchangeError

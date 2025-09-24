@@ -11,10 +11,9 @@ from typing import Type, Optional, Union
 
 from infrastructure.factories.base_exchange_factory import BaseExchangeFactory
 from exchanges.interfaces import PublicSpotRest
-from infrastructure.config.structs import ExchangeConfig
+from config.structs import ExchangeConfig
 from infrastructure.utils.exchange_utils import exchange_name_to_enum
-from infrastructure.data_structures.common import ExchangeEnum
-
+from exchanges.structs import ExchangeEnum
 # HFT Logger Integration
 from infrastructure.logging import get_logger, get_exchange_logger, LoggingTimer
 

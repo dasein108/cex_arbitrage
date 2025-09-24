@@ -7,9 +7,10 @@ Not available for futures/derivatives exchanges.
 
 from abc import ABC, abstractmethod
 from typing import List, Dict, Optional
-from infrastructure.data_structures.common import (
-    AssetName, WithdrawalRequest, WithdrawalResponse
+from exchanges.structs.common import (
+    WithdrawalRequest, WithdrawalResponse
 )
+from exchanges.structs.types import AssetName
 
 
 class WithdrawalCapability(ABC):

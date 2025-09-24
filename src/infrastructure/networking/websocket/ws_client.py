@@ -1,15 +1,13 @@
-from enum import Enum
 from typing import Any, Callable, Dict, List, Optional, Awaitable
 import asyncio
 import time
 import logging
-from collections import deque
 from websockets import connect #, State
 import msgspec
 
 from infrastructure.exceptions.exchange import BaseExchangeError
 from infrastructure.networking.websocket.structs import ConnectionState
-from infrastructure.config.structs import WebSocketConfig
+from config.structs import WebSocketConfig
 
 
 class WebsocketClient:

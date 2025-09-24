@@ -18,7 +18,9 @@ from enum import IntEnum
 from typing import Dict, List, Optional, Any
 from msgspec import Struct
 
-from infrastructure.data_structures.common import Symbol, OrderSide, ExchangeName
+from exchanges.structs.common import Symbol
+from exchanges.structs.types import ExchangeName
+from exchanges.structs.enums import OrderSide
 
 
 class OpportunityType(IntEnum):

@@ -10,7 +10,8 @@ This module provides Gate.io-specific mapping configurations for:
 Separated from the main mapper for cleaner architecture and easier maintenance.
 """
 
-from infrastructure.data_structures.common import OrderStatus, OrderType, Side, TimeInForce, KlineInterval
+from exchanges.structs.enums import TimeInForce, KlineInterval
+from exchanges.structs import OrderStatus, OrderType, Side
 from exchanges.services import BaseMappingConfiguration
 
 

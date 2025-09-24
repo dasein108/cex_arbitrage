@@ -1,18 +1,20 @@
 import time
 from typing import Dict, List, Optional, Any
 
-from infrastructure.data_structures.common import (
-    Symbol, Order, OrderId, OrderType, Side, AssetBalance, AssetName,
-    TimeInForce, TradingFee, Position, AssetInfo, WithdrawalResponse, WithdrawalRequest
+from exchanges.interfaces import PrivateFuturesRest
+from exchanges.structs.common import (
+    Symbol, Order, AssetBalance, TradingFee, Position
 )
+from exchanges.structs.types import AssetName, OrderId
+from exchanges.structs.enums import TimeInForce
+from exchanges.structs import OrderType, Side
 from infrastructure.networking.http.structs import HTTPMethod
 from infrastructure.exceptions.exchange import BaseExchangeError
-from exchanges.interfaces.rest.spot.rest_spot_private import PrivateSpotRest
 from exchanges.services import BaseExchangeMapper
-from infrastructure.config.structs import ExchangeConfig
+from config.structs import ExchangeConfig
 
 
-class GateioPrivateFuturesRest(PrivateSpotRest):
+class GateioPrivateFuturesRest(PrivateFuturesRest):
     def __init__(self, config: ExchangeConfig, mapper: BaseExchangeMapper, logger=None):
         """
         Args:
@@ -446,24 +448,6 @@ class GateioPrivateFuturesRest(PrivateSpotRest):
         pass
 
     async def delete_listen_key(self, listen_key: str) -> None:
-        pass
-
-    # TODO: this SPOT specific endpoint not persist on futures, need to separate common operations for futures/spot in common interfaces
-
-    async def submit_withdrawal(self, request: WithdrawalRequest) -> WithdrawalResponse:
-        pass
-
-    async def cancel_withdrawal(self, withdrawal_id: str) -> bool:
-        pass
-
-    async def get_withdrawal_status(self, withdrawal_id: str) -> WithdrawalResponse:
-        pass
-
-    async def get_withdrawal_history(self, asset: Optional[AssetName] = None, limit: int = 100) -> List[
-        WithdrawalResponse]:
-        pass
-
-    async def get_currency_info(self) -> Dict[AssetName, AssetInfo]:
         pass
 
     # ---------- Fees ----------

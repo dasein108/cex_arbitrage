@@ -12,11 +12,11 @@ HFT COMPLIANCE: Sub-microsecond mapping operations, zero-copy patterns.
 
 from typing import Any, Dict
 
-from infrastructure.data_structures.common import (
-    Order, OrderId, OrderStatus, OrderType, Side,
-    Trade, AssetBalance, AssetName,
-    OrderBook, OrderBookEntry, BookTicker, WithdrawalStatus
+from exchanges.structs.common import (
+    Order, Trade, AssetBalance, OrderBook, OrderBookEntry, BookTicker, WithdrawalStatus
 )
+from exchanges.structs.types import AssetName, OrderId
+from exchanges.structs import OrderStatus, OrderType, Side
 from exchanges.services.exchange_mapper.base_exchange_mapper import BaseExchangeMapper
 from infrastructure.networking.websocket.structs import PublicWebsocketChannelType, PrivateWebsocketChannelType
 from .mapping_configuration import create_mexc_mapping_configuration

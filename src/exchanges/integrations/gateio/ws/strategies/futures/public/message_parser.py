@@ -1,4 +1,3 @@
-import logging
 import traceback
 from typing import Dict, Any, Optional
 
@@ -6,7 +5,7 @@ from infrastructure.networking.websocket.strategies.message_parser import Messag
 from infrastructure.networking.websocket.structs import ParsedMessage
 from exchanges.services import BaseExchangeMapper
 from infrastructure.networking.websocket.structs import MessageType
-from infrastructure.data_structures.common import FuturesTicker
+from exchanges.structs.common import FuturesTicker
 
 
 class GateioPublicFuturesMessageParser(MessageParser):

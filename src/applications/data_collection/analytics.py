@@ -9,7 +9,7 @@ from datetime import datetime, timedelta
 from typing import Dict, List, Set
 from dataclasses import dataclass
 
-from infrastructure.data_structures.common import Symbol, BookTicker, Trade
+from exchanges.structs.common import Symbol, BookTicker, Trade
 from applications.data_collection.config import AnalyticsConfig
 
 
