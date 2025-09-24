@@ -22,16 +22,18 @@ Memory: O(1) per request, optimized for trading operations
 """
 
 from typing import Dict, List, Optional
+import msgspec
 
 from core.structs.common import (
     Symbol, Order, OrderId, OrderType, Side, AssetBalance,
-    AssetName, TimeInForce, TradingFee
+    AssetName, AssetInfo, NetworkInfo, TimeInForce, TradingFee
 )
 from core.transport.rest.structs import HTTPMethod
 from core.exceptions.exchange import BaseExchangeError
 from core.exchanges.rest.spot.base_rest_spot_private import PrivateExchangeSpotRestInterface
 from core.exchanges.services import BaseExchangeMapper
 from core.config.structs import ExchangeConfig
+from exchanges.gateio.structs.exchange import GateioCurrencyResponse, GateioChainResponse
 
 
 class GateioPrivateSpotRest(PrivateExchangeSpotRestInterface):
@@ -460,6 +462,78 @@ class GateioPrivateSpotRest(PrivateExchangeSpotRestInterface):
     async def delete_listen_key(self, listen_key: str) -> None:
         """Gate.io doesn't use listen keys - no-op."""
         pass
+
+    async def get_currency_info(self) -> Dict[AssetName, AssetInfo]:
+        """
+        Get currency information including deposit/withdrawal status and network details.
+
+        Uses only Gate.io's `/spot/currencies` endpoint.
+        """
+        try:
+
+            currencies_response = await self.request(
+                HTTPMethod.GET,
+                "/spot/currencies"
+            )
+            currencies_data = msgspec.convert(currencies_response, list[GateioCurrencyResponse])
+
+            currency_info_map: Dict[AssetName, AssetInfo] = {}
+
+            for currency_data in currencies_data:
+                asset_name = AssetName(currency_data.currency)
+
+                if currency_data.delisted:
+                    continue
+
+                networks: Dict[str, NetworkInfo] = {}
+                overall_deposit_enable = False
+                overall_withdraw_enable = False
+
+                
+                for chain in currency_data.chains:
+                    network_info = NetworkInfo(
+                        network=chain.chain,
+                        deposit_enable=chain.deposit,
+                        withdraw_enable=chain.withdraw,
+                        withdraw_fee=float(chain.withdraw_fee or 0),
+                        withdraw_min=float(chain.min_withdraw or 0),
+                        withdraw_max=float(chain.max_withdraw) if chain.max_withdraw else None,
+                        min_confirmations=chain.confirmation,
+                        address=None,
+                        memo=None
+                    )
+
+                    networks[chain.chain] = network_info
+
+                    
+                    if chain.deposit:
+                        overall_deposit_enable = True
+                    if chain.withdraw:
+                        overall_withdraw_enable = True
+
+                
+                if currency_data.deposit_disabled:
+                    overall_deposit_enable = False
+                if currency_data.withdraw_disabled or currency_data.withdraw_delayed:
+                    overall_withdraw_enable = False
+
+                asset_info = AssetInfo(
+                    asset=asset_name,
+                    name=currency_data.currency,
+                    deposit_enable=overall_deposit_enable,
+                    withdraw_enable=overall_withdraw_enable,
+                    networks=networks
+                )
+
+                currency_info_map[asset_name] = asset_info
+
+            self.logger.info(f"Retrieved currency info for {len(currency_info_map)} assets")
+            return currency_info_map
+
+        except Exception as e:
+            self.logger.error(f"Failed to get currency information: {e}")
+            raise BaseExchangeError(500, f"Currency info fetch failed: {str(e)}")
+
     
     async def get_trading_fees(self, symbol: Optional[Symbol] = None) -> TradingFee:
         """
