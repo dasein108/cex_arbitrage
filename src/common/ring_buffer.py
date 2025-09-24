@@ -1,7 +1,7 @@
 from collections import deque
 from typing import List
 
-from core.logging import LogRecord
+from infrastructure.logging import LogRecord
 
 
 class RingBuffer:

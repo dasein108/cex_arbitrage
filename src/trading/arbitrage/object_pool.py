@@ -7,13 +7,13 @@ Eliminates GC pressure and allocation overhead in critical paths.
 HFT COMPLIANT: Sub-microsecond object acquisition with zero allocation.
 """
 
-from core.logging import get_logger
+from infrastructure.logging import get_logger
 from collections import deque
 from typing import TypeVar, Generic, Callable, Optional, Dict, Any
 from threading import RLock
 
 from .structures import ArbitrageOpportunity
-from core.structs.common import Symbol, Ticker, Trade
+from infrastructure.data_structures.common import Symbol, Ticker, Trade
 
 logger = get_logger('arbitrage.object_pool')
 
@@ -135,7 +135,7 @@ class HFTObjectPools:
         """Initialize all HFT object pools."""
         
         # Pool for market data structures (high frequency)  
-        from core.structs.common import AssetName
+        from infrastructure.data_structures.common import AssetName
         default_symbol = Symbol(base=AssetName("BTC"), quote=AssetName("USDT"))
         
         self.ticker_pool = ObjectPool(

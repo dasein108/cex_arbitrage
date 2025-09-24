@@ -13,7 +13,7 @@ import time
 
 from .connection import get_db_manager
 from .models import BookTickerSnapshot, TradeSnapshot
-from core.structs.common import Symbol
+from infrastructure.data_structures.common import Symbol
 
 
 logger = logging.getLogger(__name__)

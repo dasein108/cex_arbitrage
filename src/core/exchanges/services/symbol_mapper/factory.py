@@ -21,7 +21,7 @@ import logging
 from typing import Dict, Type, Any
 from .base_symbol_mapper import SymbolMapperInterface
 from core.factories.base_exchange_factory import BaseExchangeFactory
-from core.structs.common import ExchangeEnum
+from infrastructure.data_structures.common import ExchangeEnum
 
 logger = logging.getLogger(__name__)
 

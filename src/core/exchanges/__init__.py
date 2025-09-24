@@ -3,11 +3,11 @@ from interfaces.exchanges.base.base_public_exchange import BasePublicExchangeInt
 from interfaces.exchanges.base.base_private_exchange import BasePrivateExchangeInterface
 from core.exchanges.rest.spot.base_rest_spot_public import PublicExchangeSpotRestInterface
 from core.exchanges.rest.spot.base_rest_spot_private import PrivateExchangeSpotRestInterface
-from core.transport.websocket.ws_client import (
+from infrastructure.networking.websocket.ws_client import (
     WebsocketClient,
 )
-from core.transport.websocket.structs import WebsocketConfig
-from core.transport.websocket.structs import ConnectionState
+from infrastructure.networking.websocket.structs import WebsocketConfig
+from infrastructure.networking.websocket.structs import ConnectionState
 
 __all__ = [
     "BaseExchangeInterface",  # Base exchanges for all exchanges

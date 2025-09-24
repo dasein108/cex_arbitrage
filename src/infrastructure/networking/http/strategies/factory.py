@@ -10,12 +10,12 @@ HFT COMPLIANT: Fast strategy creation with pre-validated combinations and auto-d
 from typing import List, Dict, Optional, Any, TYPE_CHECKING
 
 # HFT Logger Integration
-from core.logging import get_logger, get_strategy_logger, LoggingTimer
+from infrastructure.logging import get_logger, get_strategy_logger, LoggingTimer
 
 if TYPE_CHECKING:
-    from core.structs.common import ExchangeEnum
+    from infrastructure.data_structures.common import ExchangeEnum
 else:
-    from core.structs.common import ExchangeEnum
+    from infrastructure.data_structures.common import ExchangeEnum
 from ....config.structs import ExchangeConfig
 from .strategy_set import RestStrategySet
 from core.factories.base_composite_factory import BaseCompositeFactory

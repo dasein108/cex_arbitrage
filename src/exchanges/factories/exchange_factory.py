@@ -20,13 +20,13 @@ All created exchange instances are properly configured with:
 
 from typing import List, Optional, Union
 
-from core.config.structs import ExchangeConfig
-from core.structs.common import Symbol
-from core.structs.common import ExchangeEnum
+from infrastructure.config.structs import ExchangeConfig
+from infrastructure.data_structures.common import Symbol
+from infrastructure.data_structures.common import ExchangeEnum
 from ..interfaces import PublicExchangeInterface, PrivateExchangeInterface
 
 # HFT Logger Integration
-from core.logging import get_exchange_logger, HFTLoggerInterface, LoggingTimer
+from infrastructure.logging import get_exchange_logger, HFTLoggerInterface, LoggingTimer
 
 
 class ExchangeFactory:

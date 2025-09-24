@@ -13,8 +13,8 @@ from core.factories.rest.public_rest_factory import PublicRestExchangeFactory
 from core.factories.rest.private_rest_factory import PrivateRestExchangeFactory
 
 # Register Gate.io strategies with the factory
-from core.transport.rest.strategies import RestStrategyFactory
-from core.structs.common import ExchangeEnum
+from infrastructure.networking.http.strategies import RestStrategyFactory
+from infrastructure.data_structures.common import ExchangeEnum
 
 # Register exchange strategies
 RestStrategyFactory.register_strategies(

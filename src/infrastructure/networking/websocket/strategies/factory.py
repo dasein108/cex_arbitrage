@@ -7,20 +7,20 @@ Provides both class-based factory pattern and function-based creation.
 
 from typing import Dict, Tuple, Type, Any, TYPE_CHECKING
 
-from core.transport.websocket.strategies.strategy_set import WebSocketStrategySet
-from core.transport.websocket.strategies.connection import ConnectionStrategy
-from core.transport.websocket.strategies.subscription import SubscriptionStrategy
-from core.transport.websocket.strategies.message_parser import MessageParser
+from infrastructure.networking.websocket.strategies.strategy_set import WebSocketStrategySet
+from infrastructure.networking.websocket.strategies.connection import ConnectionStrategy
+from infrastructure.networking.websocket.strategies.subscription import SubscriptionStrategy
+from infrastructure.networking.websocket.strategies.message_parser import MessageParser
 from core.exchanges.services.exchange_mapper.factory import ExchangeMapperFactory
-from core.exceptions.exchange import ConfigurationError
+from infrastructure.exceptions.exchange import ConfigurationError
 
 # HFT Logger Integration
-from core.logging import get_strategy_logger, LoggingTimer
+from infrastructure.logging import get_strategy_logger, LoggingTimer
 
 if TYPE_CHECKING:
-    from core.structs.common import ExchangeEnum
+    from infrastructure.data_structures.common import ExchangeEnum
 else:
-    from core.structs.common import ExchangeEnum
+    from infrastructure.data_structures.common import ExchangeEnum
 
 
 class WebSocketStrategyFactory:

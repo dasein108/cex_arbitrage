@@ -3,7 +3,7 @@ from datetime import datetime
 from typing import Dict, List, Optional
 from core.exchanges.rest.base_rest import BaseExchangeRestInterface
 from core.exchanges.services import BaseExchangeMapper
-from core.structs.common import (
+from infrastructure.data_structures.common import (
     Symbol,
     SymbolInfo,
     OrderBook,
@@ -13,10 +13,10 @@ from core.structs.common import (
     Ticker
 )
 
-from core.config.structs import ExchangeConfig
+from infrastructure.config.structs import ExchangeConfig
 
 # HFT Logger Integration
-from core.logging import HFTLoggerInterface
+from infrastructure.logging import HFTLoggerInterface
 
 
 class PublicExchangeSpotRestInterface(BaseExchangeRestInterface):

@@ -24,8 +24,8 @@ from typing import List, Dict
 import logging
 
 from exchanges.interfaces import PrivateExchangeInterface
-from core.structs.common import Symbol, Order, Position, AssetBalance
-from core.config.structs import ExchangeConfig
+from infrastructure.data_structures.common import Symbol, Order, Position, AssetBalance
+from infrastructure.config.structs import ExchangeConfig
 
 
 class GateioPrivateFuturesExchange(PrivateExchangeInterface):

@@ -36,7 +36,7 @@ from .factories import ExchangeFactory
 # Auto-import exchange modules to trigger service registration
 from . import mexc
 from . import gateio
-from core.structs.common import ExchangeEnum
+from infrastructure.data_structures.common import ExchangeEnum
 from .consts import DEFAULT_PUBLIC_WEBSOCKET_CHANNELS
 
 

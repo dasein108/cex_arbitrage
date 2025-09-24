@@ -11,12 +11,12 @@ from typing import Type, Optional, Union
 
 from core.factories.base_exchange_factory import BaseExchangeFactory
 from core.exchanges.rest.spot.base_rest_spot_private import PrivateExchangeSpotRestInterface
-from core.config.structs import ExchangeConfig
+from infrastructure.config.structs import ExchangeConfig
 from core.utils.exchange_utils import exchange_name_to_enum
-from core.structs.common import ExchangeEnum
+from infrastructure.data_structures.common import ExchangeEnum
 
 # HFT Logger Integration
-from core.logging import get_logger, get_exchange_logger, LoggingTimer
+from infrastructure.logging import get_logger, get_exchange_logger, LoggingTimer
 
 logger = get_logger('rest.factory.private')
 

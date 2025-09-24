@@ -1,7 +1,7 @@
 from abc import ABC, abstractmethod
 from typing import List, Dict, Any
 
-from core.transport.websocket.structs import SubscriptionAction
+from infrastructure.networking.websocket.structs import SubscriptionAction
 from core.exchanges.services import BaseExchangeMapper
 
 class SubscriptionStrategy(ABC):

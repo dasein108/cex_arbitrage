@@ -32,7 +32,7 @@ Performance Targets:
 from __future__ import annotations
 
 import asyncio
-from core.logging import get_logger
+from infrastructure.logging import get_logger
 from decimal import Decimal
 from typing import Dict, List, Optional, Set
 from dataclasses import dataclass
@@ -44,10 +44,10 @@ from .structures import (
     ArbitrageConfig,
 )
 
-from core.structs.common import Symbol, OrderSide
+from infrastructure.data_structures.common import Symbol, OrderSide
 from interfaces.exchanges.base import BasePrivateExchangeInterface
-from core.structs.common import ExchangeName
-from core.exceptions.exchange import PositionManagementError
+from infrastructure.data_structures.common import ExchangeName
+from infrastructure.exceptions.exchange import PositionManagementError
 
 
 logger = get_logger('arbitrage.position')

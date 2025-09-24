@@ -43,9 +43,9 @@ import yaml
 from dotenv import load_dotenv
 import traceback
 from dataclasses import dataclass
-from core.exceptions.exchange import ConfigurationError
-from core.config.structs import ExchangeCredentials, NetworkConfig, RateLimitConfig, WebSocketConfig, ExchangeConfig, RestTransportConfig
-from core.logging import get_logger
+from infrastructure.exceptions.exchange import ConfigurationError
+from infrastructure.config.structs import ExchangeCredentials, NetworkConfig, RateLimitConfig, WebSocketConfig, ExchangeConfig, RestTransportConfig
+from infrastructure.logging import get_logger
 from enum import Enum
 from msgspec import Struct
 

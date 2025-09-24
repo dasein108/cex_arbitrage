@@ -8,7 +8,7 @@ HFT COMPLIANT: Event-driven architecture with minimal latency.
 """
 
 import asyncio
-from core.logging import get_logger
+from infrastructure.logging import get_logger
 from typing import Dict, Optional, Any
 
 from trading.arbitrage.types import ArbitrageConfig
@@ -122,7 +122,7 @@ class ArbitrageController:
         """
         try:
             # Get log level from config
-            from core.config.config_manager import config as base_config
+            from infrastructure.config.config_manager import config as base_config
             
             # Get environment settings for log level
             log_level = base_config.LOG_LEVEL

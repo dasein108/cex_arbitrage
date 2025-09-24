@@ -10,7 +10,7 @@ import time
 from abc import abstractmethod
 from typing import Dict, List, Optional, Callable, Awaitable
 
-from core.structs.common import (Symbol, SymbolsInfo, OrderBook, OrderbookUpdateType)
+from infrastructure.data_structures.common import (Symbol, SymbolsInfo, OrderBook, OrderbookUpdateType)
 from .base_exchange import BaseExchangeInterface
 
 

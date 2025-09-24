@@ -33,9 +33,9 @@ sys.path.insert(0, str(src_path))
 
 # CLAUDE.md compliant imports - use proper interfaces
 from core.factories.rest.public_rest_factory import PublicRestExchangeFactory
-from core.structs.common import ExchangeEnum
-from core.config.config_manager import HftConfig
-from core.structs.common import Symbol, SymbolInfo
+from infrastructure.data_structures.common import ExchangeEnum
+from infrastructure.config.config_manager import HftConfig
+from infrastructure.data_structures.common import Symbol, SymbolInfo
 
 # Import existing analysis components through proper interfaces
 from trading.analysis import ArbitrageDataPipeline

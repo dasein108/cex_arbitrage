@@ -11,9 +11,9 @@ import logging
 from typing import Dict, List, Type, Optional, Any
 from dataclasses import dataclass
 
-from core.structs.common import ExchangeName
+from infrastructure.data_structures.common import ExchangeName
 from interfaces.exchanges.base import BasePrivateExchangeInterface
-from core.exceptions.exchange import BaseExchangeError
+from infrastructure.exceptions.exchange import BaseExchangeError
 
 
 @dataclass

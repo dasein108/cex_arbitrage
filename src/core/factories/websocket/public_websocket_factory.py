@@ -11,17 +11,17 @@ from typing import Type, Optional, Callable, Awaitable, List, Union
 
 from core.factories.base_exchange_factory import BaseExchangeFactory
 from core.utils.exchange_utils import exchange_name_to_enum
-from core.structs.common import ExchangeEnum
+from infrastructure.data_structures.common import ExchangeEnum
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     pass
-from core.config.structs import ExchangeConfig
-from core.structs.common import Symbol, OrderBook, Trade, BookTicker
-from core.transport.websocket.structs import ConnectionState
+from infrastructure.config.structs import ExchangeConfig
+from infrastructure.data_structures.common import Symbol, OrderBook, Trade, BookTicker
+from infrastructure.networking.websocket.structs import ConnectionState
 
 # HFT Logger Integration
-from core.logging import get_logger, get_exchange_logger, LoggingTimer
+from infrastructure.logging import get_logger, get_exchange_logger, LoggingTimer
 
 logger = get_logger('websocket.factory.public')
 

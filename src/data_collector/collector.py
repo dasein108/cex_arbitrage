@@ -10,17 +10,17 @@ from datetime import datetime
 from typing import Dict, List, Optional, Set, Callable, Awaitable
 from dataclasses import dataclass
 
-from core.config import get_exchange_config
-from core.structs.common import Symbol, BookTicker, Trade
+from infrastructure.config import get_exchange_config
+from infrastructure.data_structures.common import Symbol, BookTicker, Trade
 from core.factories.websocket import PublicWebSocketExchangeFactory
 from db import BookTickerSnapshot
 from db.models import TradeSnapshot
-from core.structs.common import ExchangeEnum
+from infrastructure.data_structures.common import ExchangeEnum
 from .analytics import RealTimeAnalytics
 from .consts import WEBSOCKET_CHANNELS
 
 # HFT Logger Integration
-from core.logging import get_logger, LoggingTimer
+from infrastructure.logging import get_logger, LoggingTimer
 
 
 @dataclass
@@ -401,7 +401,7 @@ class UnifiedWebSocketManager:
                     # Parse symbol string directly without prefixes
                     # Try to parse symbol string manually as fallback
                     if len(symbol_str) >= 6 and symbol_str.endswith('USDT'):
-                        from core.structs.common import Symbol, AssetName, ExchangeEnum
+                        from infrastructure.data_structures.common import Symbol, AssetName, ExchangeEnum
                         base = symbol_str[:-4]  # Remove USDT
                         quote = 'USDT'
                         # Determine if futures based on exchange type
@@ -689,7 +689,7 @@ class DataCollector:
         self.config = load_data_collector_config(config_path)
         
         # HFT Logging
-        from core.logging import get_logger
+        from infrastructure.logging import get_logger
         self.logger = get_logger('data_collector.collector')
         
         # Components

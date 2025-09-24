@@ -10,12 +10,12 @@ HFT COMPLIANT: Zero-allocation patterns, <1ms parsing latency.
 from abc import ABC, abstractmethod
 from typing import Optional, Dict, Any, List, AsyncIterator
 
-from core.transport.websocket.structs import ParsedMessage, MessageType
-from core.structs.common import Symbol, OrderBookEntry
+from infrastructure.networking.websocket.structs import ParsedMessage, MessageType
+from infrastructure.data_structures.common import Symbol, OrderBookEntry
 from core.exchanges.services import BaseExchangeMapper
 
 # HFT Logger Integration
-from core.logging import get_strategy_logger, HFTLoggerInterface, LoggingTimer
+from infrastructure.logging import get_strategy_logger, HFTLoggerInterface, LoggingTimer
 
 
 class MessageParser(ABC):

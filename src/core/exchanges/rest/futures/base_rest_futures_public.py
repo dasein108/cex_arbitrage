@@ -1,8 +1,8 @@
 from abc import ABC
 from core.exchanges.rest.base_rest import BaseExchangeRestInterface
 from core.exchanges.services import BaseExchangeMapper
-from core.config.structs import ExchangeConfig
-from core.structs import Symbol
+from infrastructure.config.structs import ExchangeConfig
+from infrastructure.data_structures import Symbol
 
 
 class PublicExchangeFuturesRestInterface(BaseExchangeRestInterface, ABC):

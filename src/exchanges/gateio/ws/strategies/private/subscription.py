@@ -17,9 +17,9 @@ import time
 import logging
 from typing import List, Dict, Any
 
-from core.transport.websocket.strategies.subscription import SubscriptionStrategy
-from core.transport.websocket.structs import SubscriptionAction
-from core.structs.common import Symbol
+from infrastructure.networking.websocket.strategies.subscription import SubscriptionStrategy
+from infrastructure.networking.websocket.structs import SubscriptionAction
+from infrastructure.data_structures.common import Symbol
 from core.exchanges.services import BaseExchangeMapper
 
 
@@ -52,7 +52,7 @@ class GateioPrivateSubscriptionStrategy(SubscriptionStrategy):
         messages = []
 
         # Private channel definitions using centralized mappings
-        from core.transport.websocket.structs import PrivateWebsocketChannelType
+        from infrastructure.networking.websocket.structs import PrivateWebsocketChannelType
         private_channels = [
             {
                 "channel": self.mapper.get_spot_private_channel_name(PrivateWebsocketChannelType.ORDER),

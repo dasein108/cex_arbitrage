@@ -4,8 +4,8 @@ import time
 from typing import Dict, Any
 from urllib.parse import urlencode
 
-from core.transport.rest import AuthStrategy, HTTPMethod, AuthenticationData
-from core.config.structs import ExchangeConfig
+from infrastructure.networking.http import AuthStrategy, HTTPMethod, AuthenticationData
+from infrastructure.config.structs import ExchangeConfig
 
 
 class GateioAuthStrategy(AuthStrategy):
@@ -29,7 +29,7 @@ class GateioAuthStrategy(AuthStrategy):
         
         # Initialize HFT logger with hierarchical tags
         if logger is None:
-            from core.logging import get_strategy_logger
+            from infrastructure.logging import get_strategy_logger
             tags = ['gateio', 'rest', 'auth']
             logger = get_strategy_logger('rest.auth.gateio', tags)
         self.logger = logger

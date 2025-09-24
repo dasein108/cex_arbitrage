@@ -12,9 +12,9 @@ from typing import List, Dict, Optional, Callable, Awaitable, Set
 from abc import ABC
 
 from exchanges.consts import DEFAULT_PUBLIC_WEBSOCKET_CHANNELS
-from core.structs.common import Symbol, OrderBook, Trade, BookTicker
-from core.config.structs import ExchangeConfig
-from core.transport.websocket.structs import ConnectionState, MessageType, ParsedMessage, PublicWebsocketChannelType
+from infrastructure.data_structures.common import Symbol, OrderBook, Trade, BookTicker
+from infrastructure.config.structs import ExchangeConfig
+from infrastructure.networking.websocket.structs import ConnectionState, MessageType, ParsedMessage, PublicWebsocketChannelType
 import traceback
 
 class BaseExchangePublicWebsocketInterface(ABC):
@@ -58,7 +58,7 @@ class BaseExchangePublicWebsocketInterface(ABC):
         self.logger = logging.getLogger(f"{__name__}.{self.exchange_name}_public")
         
         # Create WebSocket manager using dependency injection
-        from core.transport.websocket.utils import create_websocket_manager
+        from infrastructure.networking.websocket.utils import create_websocket_manager
         
         self._ws_manager = create_websocket_manager(
             exchange_config=config,

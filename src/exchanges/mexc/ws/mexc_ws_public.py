@@ -24,10 +24,10 @@ Architecture: Dependency injection with base class coordination
 
 from typing import List, Optional, Callable, Awaitable
 
-from core.structs.common import Symbol, Trade, OrderBook, BookTicker
-from core.config.structs import ExchangeConfig
+from infrastructure.data_structures.common import Symbol, Trade, OrderBook, BookTicker
+from infrastructure.config.structs import ExchangeConfig
 from core.exchanges.websocket import BaseWebsocketPublicFutures
-from core.transport.websocket.structs import ConnectionState
+from infrastructure.networking.websocket.structs import ConnectionState
 
 # MEXC-specific protobuf imports for message parsing
 from exchanges.mexc.structs.protobuf.PushDataV3ApiWrapper_pb2 import PushDataV3ApiWrapper

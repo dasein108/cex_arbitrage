@@ -27,8 +27,8 @@ from .private_futures.subscription import GateioPrivateFuturesSubscriptionStrate
 from .private_futures.message_parser import GateioPrivateFuturesMessageParser
 
 # Import factory for registration
-from core.transport.websocket.strategies import WebSocketStrategyFactory
-from core.structs.common import ExchangeEnum
+from infrastructure.networking.websocket.strategies import WebSocketStrategyFactory
+from infrastructure.data_structures.common import ExchangeEnum
 
 # Register public strategies with factory
 WebSocketStrategyFactory.register_strategies(

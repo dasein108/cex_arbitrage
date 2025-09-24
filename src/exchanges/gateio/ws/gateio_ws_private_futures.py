@@ -31,8 +31,8 @@ Architecture: Independent exchange with separate configuration and factory suppo
 
 from typing import Dict, Optional, Callable, Awaitable
 
-from core.structs.common import Order, AssetBalance, Trade, AssetName
-from core.config.structs import ExchangeConfig
+from infrastructure.data_structures.common import Order, AssetBalance, Trade, AssetName
+from infrastructure.config.structs import ExchangeConfig
 from core.exchanges.websocket.spot.base_ws_private import BaseExchangePrivateWebsocketInterface
 
 

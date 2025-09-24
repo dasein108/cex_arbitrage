@@ -33,9 +33,9 @@ import logging
 
 # Import the unified factory for exchange instances
 from core.factories.rest.public_rest_factory import PublicRestExchangeFactory
-from core.config.config_manager import HftConfig
-from core.structs.common import ExchangeEnum
-from core.structs.common import Symbol, AssetName, KlineInterval, Kline
+from infrastructure.config.config_manager import HftConfig
+from infrastructure.data_structures.common import ExchangeEnum
+from infrastructure.data_structures.common import Symbol, AssetName, KlineInterval, Kline
 
 # Import exchange modules to trigger auto-registration
 

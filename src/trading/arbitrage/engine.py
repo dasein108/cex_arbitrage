@@ -44,10 +44,10 @@ from .recovery import RecoveryManager
 from .aggregator import MarketDataAggregator
 
 from interfaces.exchanges.base.base_private_exchange import BasePrivateExchangeInterface
-from core.exceptions.exchange import ArbitrageEngineError
+from infrastructure.exceptions.exchange import ArbitrageEngineError
 
 # HFT Logger Integration
-from core.logging import get_exchange_logger, HFTLoggerInterface, LoggingTimer
+from infrastructure.logging import get_exchange_logger, HFTLoggerInterface, LoggingTimer
 
 
 class ArbitrageEngine:

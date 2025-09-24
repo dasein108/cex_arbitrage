@@ -9,7 +9,7 @@ from datetime import datetime
 from typing import Optional
 import msgspec
 
-from core.structs.common import Symbol
+from infrastructure.data_structures.common import Symbol
 
 
 class BookTickerSnapshot(msgspec.Struct):
@@ -81,7 +81,7 @@ class BookTickerSnapshot(msgspec.Struct):
         Returns:
             Symbol object reconstructed from base/quote strings
         """
-        from core.structs.common import AssetName
+        from infrastructure.data_structures.common import AssetName
         return Symbol(
             base=AssetName(self.symbol_base),
             quote=AssetName(self.symbol_quote),
@@ -161,7 +161,7 @@ class TradeSnapshot(msgspec.Struct):
         Returns:
             TradeSnapshot instance
         """
-        from core.structs.common import Side
+        from infrastructure.data_structures.common import Side
         
         return cls(
             exchange=exchange.upper(),
@@ -230,7 +230,7 @@ class TradeSnapshot(msgspec.Struct):
         Returns:
             Symbol object reconstructed from base/quote strings
         """
-        from core.structs.common import AssetName
+        from infrastructure.data_structures.common import AssetName
         return Symbol(
             base=AssetName(self.symbol_base),
             quote=AssetName(self.symbol_quote),
@@ -244,7 +244,7 @@ class TradeSnapshot(msgspec.Struct):
         Returns:
             Trade struct from structs.common
         """
-        from core.structs.common import Trade, Side
+        from infrastructure.data_structures.common import Trade, Side
         
         return Trade(
             symbol=self.to_symbol(),

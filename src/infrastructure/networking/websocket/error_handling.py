@@ -12,8 +12,8 @@ import time
 from typing import Dict, Any, Optional, Union
 from abc import ABC
 
-from core.transport.websocket.structs import ParsedMessage, MessageType
-from core.exceptions.unified import (
+from infrastructure.networking.websocket.structs import ParsedMessage, MessageType
+from infrastructure.exceptions.unified import (
     UnifiedParsingError, 
     UnifiedSubscriptionError, 
     ErrorType

@@ -7,7 +7,7 @@ Provides unified interface for WebSocket creation similar to REST transport patt
 HFT COMPLIANT: Sub-millisecond strategy creation with pre-validated combinations.
 """
 
-from core.config.structs import ExchangeConfig
+from infrastructure.config.structs import ExchangeConfig
 from .ws_manager import WebSocketManager, WebSocketManagerConfig
 from .strategies import WebSocketStrategyFactory
 from core.utils.exchange_utils import exchange_name_to_enum

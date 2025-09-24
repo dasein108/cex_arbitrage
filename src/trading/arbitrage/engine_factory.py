@@ -7,7 +7,7 @@ Streamlines the engine selection architecture.
 HFT COMPLIANT: Fast engine instantiation with minimal overhead.
 """
 
-from core.logging import get_logger
+from infrastructure.logging import get_logger
 from typing import Dict, Type, Union
 from trading.arbitrage.types import ArbitrageConfig
 from interfaces.exchanges.base.base_private_exchange import BasePrivateExchangeInterface

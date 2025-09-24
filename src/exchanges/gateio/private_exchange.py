@@ -12,14 +12,14 @@ import time
 from typing import List, Dict, Optional
 
 from interfaces.exchanges.base import BasePrivateExchangeInterface
-from core.structs.common import (
+from infrastructure.data_structures.common import (
     OrderBook, Symbol, SymbolsInfo, AssetBalance, AssetName,
     Order, OrderId, Side, TimeInForce, Position,
     ExchangeStatus
 )
 from exchanges.gateio.public_exchange import GateioPublicExchange
-from core.exceptions.exchange import BaseExchangeError
-from core.config.structs import ExchangeConfig
+from infrastructure.exceptions.exchange import BaseExchangeError
+from infrastructure.config.structs import ExchangeConfig
 
 
 class GateioPrivateExchange(BasePrivateExchangeInterface):

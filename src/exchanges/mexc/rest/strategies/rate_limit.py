@@ -2,8 +2,8 @@ import asyncio
 import time
 from typing import Dict, Any
 
-from core.transport.rest import RateLimitStrategy, RateLimitContext
-from core.config.structs import ExchangeConfig
+from infrastructure.networking.http import RateLimitStrategy, RateLimitContext
+from infrastructure.config.structs import ExchangeConfig
 
 
 class MexcRateLimitStrategy(RateLimitStrategy):
@@ -33,7 +33,7 @@ class MexcRateLimitStrategy(RateLimitStrategy):
         
         # Initialize HFT logger with hierarchical tags
         if logger is None:
-            from core.logging import get_strategy_logger
+            from infrastructure.logging import get_strategy_logger
             tags = ['mexc', 'rest', 'rate_limit']
             logger = get_strategy_logger('rest.rate_limit.mexc', tags)
         self.logger = logger

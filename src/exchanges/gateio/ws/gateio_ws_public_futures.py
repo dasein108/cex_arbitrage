@@ -31,10 +31,10 @@ Architecture: Independent exchange with separate configuration and factory suppo
 from typing import List, Dict, Optional, Callable, Awaitable, Set
 
 from exchanges.consts import DEFAULT_PUBLIC_WEBSOCKET_CHANNELS
-from core.structs.common import Symbol, Trade, OrderBook, BookTicker
-from core.config.structs import ExchangeConfig
+from infrastructure.data_structures.common import Symbol, Trade, OrderBook, BookTicker
+from infrastructure.config.structs import ExchangeConfig
 from core.exchanges.websocket import BaseWebsocketPublicFutures
-from core.transport.websocket.structs import ConnectionState, PublicWebsocketChannelType
+from infrastructure.networking.websocket.structs import ConnectionState, PublicWebsocketChannelType
 
 
 class GateioWebsocketPublicFutures(BaseWebsocketPublicFutures):

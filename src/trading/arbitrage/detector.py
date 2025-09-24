@@ -29,7 +29,7 @@ Performance Targets:
 from __future__ import annotations
 
 import asyncio
-from core.logging import get_logger
+from infrastructure.logging import get_logger
 from typing import Dict, List, Optional, Set, Callable
 from dataclasses import dataclass
 from weakref import WeakSet
@@ -41,9 +41,9 @@ from .structures import (
 )
 from .aggregator import MarketDataAggregator
 
-from core.structs.common import Symbol, OrderBook
-from core.structs.common import ExchangeName
-from core.exceptions.exchange import ArbitrageDetectionError
+from infrastructure.data_structures.common import Symbol, OrderBook
+from infrastructure.data_structures.common import ExchangeName
+from infrastructure.exceptions.exchange import ArbitrageDetectionError
 
 logger = get_logger('arbitrage.detector')
 
@@ -780,7 +780,7 @@ class OpportunityDetector:
 
             # Check WebSocket connection status
             if hasattr(exchange_instance, 'status'):
-                from core.structs.common import ExchangeStatus
+                from infrastructure.data_structures.common import ExchangeStatus
                 return exchange_instance.status == ExchangeStatus.ACTIVE
 
             return True  # Assume healthy if no status available

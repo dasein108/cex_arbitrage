@@ -27,14 +27,14 @@ import msgspec
 from exchanges.mexc.structs.exchange import (
     MexcAccountResponse, MexcOrderResponse
 )
-from core.structs.common import (
+from infrastructure.data_structures.common import (
     Symbol, Order, OrderId, OrderType, Side, AssetBalance,
     AssetName, TimeInForce
 )
-from core.exceptions.exchange import BaseExchangeError
+from infrastructure.exceptions.exchange import BaseExchangeError
 
 from core.exchanges.rest.spot.base_rest_spot_private import PrivateExchangeSpotRestInterface
-from core.transport.rest.structs import HTTPMethod
+from infrastructure.networking.http.structs import HTTPMethod
 
 
 class MexcPrivateSpotRest(PrivateExchangeSpotRestInterface):

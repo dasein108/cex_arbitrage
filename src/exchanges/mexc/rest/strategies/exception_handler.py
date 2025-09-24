@@ -1,10 +1,10 @@
-from core.exceptions.exchange import (
+from infrastructure.exceptions.exchange import (
     BaseExchangeError, RateLimitErrorBase, TradingDisabled,
     InsufficientPosition, OversoldException, ExchangeOrderCancelledOrNotExist
 )
 import msgspec
 from exchanges.mexc.structs.exchange import MexcErrorResponse
-from core.transport.rest.strategies.exception_handler import ExceptionHandlerStrategy
+from infrastructure.networking.http.strategies.exception_handler import ExceptionHandlerStrategy
 
 ERROR_CODE_MAPPING = {
     -2011: ExchangeOrderCancelledOrNotExist,  # Order cancelled
@@ -36,7 +36,7 @@ class MexcExceptionHandlerStrategy(ExceptionHandlerStrategy):
         """
         # Initialize HFT logger with hierarchical tags
         if logger is None:
-            from core.logging import get_strategy_logger
+            from infrastructure.logging import get_strategy_logger
             tags = ['mexc', 'rest', 'exception_handler']
             logger = get_strategy_logger('rest.exception_handler.mexc', tags)
         self.logger = logger

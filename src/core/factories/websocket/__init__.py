@@ -22,7 +22,7 @@ Available Factories:
 Usage:
     from core.factories.websocket import PublicWebSocketExchangeFactory, PrivateWebSocketExchangeFactory
     from structs.common import ExchangeEnum
-    from core.config.config_manager import HftConfig
+    from infrastructure.config.config_manager import HftConfig
     
     # Create MEXC public WebSocket
     config_manager = HftConfig()

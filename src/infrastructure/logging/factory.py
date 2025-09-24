@@ -255,7 +255,7 @@ class LoggerFactory:
         if cls._default_config is None:
             # Try to load from config.yaml
             try:
-                from core.config.config_manager import get_logging_config
+                from infrastructure.config.config_manager import get_logging_config
                 yaml_config = get_logging_config()
                 cls._default_config = cls._yaml_to_struct_config(yaml_config)
             except Exception:

@@ -12,14 +12,14 @@ from typing import Type, Optional, Callable, Awaitable, Union, Dict
 
 from core.factories.base_exchange_factory import BaseExchangeFactory
 from core.utils.exchange_utils import exchange_name_to_enum
-from core.structs.common import ExchangeEnum
+from infrastructure.data_structures.common import ExchangeEnum
 
-from core.config.structs import ExchangeConfig
-from core.structs.common import Order, AssetBalance, AssetName, Trade
+from infrastructure.config.structs import ExchangeConfig
+from infrastructure.data_structures.common import Order, AssetBalance, AssetName, Trade
 from core.factories.rest.private_rest_factory import PrivateRestExchangeFactory
 
 # HFT Logger Integration
-from core.logging import get_logger, get_exchange_logger, LoggingTimer
+from infrastructure.logging import get_logger, get_exchange_logger, LoggingTimer
 
 logger = get_logger('websocket.factory.private')
 

@@ -7,13 +7,13 @@ Eliminates need for manual configuration of symbol details.
 HFT COMPLIANT: Symbol info cached at startup, no runtime API calls.
 """
 
-from core.logging import get_logger
+from infrastructure.logging import get_logger
 from typing import Dict, List, Optional, Tuple
 from decimal import Decimal
 from dataclasses import dataclass, field
 
 from interfaces.exchanges.base import BasePublicExchangeInterface
-from core.structs.common import Symbol, SymbolInfo
+from infrastructure.data_structures.common import Symbol, SymbolInfo
 from trading.arbitrage.types import ExchangePairConfig, ArbitragePair, OpportunityType
 
 logger = get_logger('arbitrage.symbol_resolver')

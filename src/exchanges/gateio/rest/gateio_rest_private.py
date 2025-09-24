@@ -23,15 +23,15 @@ Memory: O(1) per request, optimized for trading operations
 
 from typing import Dict, List, Optional
 
-from core.structs.common import (
+from infrastructure.data_structures.common import (
     Symbol, Order, OrderId, OrderType, Side, AssetBalance,
     AssetName, TimeInForce, TradingFee
 )
-from core.transport.rest.structs import HTTPMethod
-from core.exceptions.exchange import BaseExchangeError
+from infrastructure.networking.http.structs import HTTPMethod
+from infrastructure.exceptions.exchange import BaseExchangeError
 from core.exchanges.rest.spot.base_rest_spot_private import PrivateExchangeSpotRestInterface
 from core.exchanges.services import BaseExchangeMapper
-from core.config.structs import ExchangeConfig
+from infrastructure.config.structs import ExchangeConfig
 
 
 class GateioPrivateSpotRest(PrivateExchangeSpotRestInterface):
@@ -55,7 +55,7 @@ class GateioPrivateSpotRest(PrivateExchangeSpotRestInterface):
         
         # Initialize HFT logger
         if logger is None:
-            from core.logging import get_exchange_logger
+            from infrastructure.logging import get_exchange_logger
             logger = get_exchange_logger('gateio', 'rest.private')
         self.logger = logger
 

@@ -21,11 +21,11 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from data_collector.collector import DataCollector
 from data_collector.config import load_data_collector_config
-from core.structs.common import Symbol, AssetName
-from core.config.config_manager import HftConfig
+from infrastructure.data_structures.common import Symbol, AssetName
+from infrastructure.config.config_manager import HftConfig
 
 # HFT Logger Integration
-from core.logging import get_logger
+from infrastructure.logging import get_logger
 
 
 class DataCollectorCLI:

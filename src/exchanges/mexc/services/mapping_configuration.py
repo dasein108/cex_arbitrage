@@ -10,7 +10,7 @@ This module provides MEXC-specific mapping configurations for:
 Separated from the main mapper for cleaner architecture and easier maintenance.
 """
 
-from core.structs.common import OrderStatus, OrderType, Side, TimeInForce, KlineInterval
+from infrastructure.data_structures.common import OrderStatus, OrderType, Side, TimeInForce, KlineInterval
 from core.exchanges.services import BaseMappingConfiguration
 
 

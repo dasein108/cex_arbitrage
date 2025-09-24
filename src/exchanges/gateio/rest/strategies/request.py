@@ -1,7 +1,7 @@
 from typing import Dict, Any
 
-from core.transport.rest import RequestStrategy, RequestContext, HTTPMethod, PerformanceTargets
-from core.config.structs import ExchangeConfig
+from infrastructure.networking.http import RequestStrategy, RequestContext, HTTPMethod, PerformanceTargets
+from infrastructure.config.structs import ExchangeConfig
 
 
 class GateioRequestStrategy(RequestStrategy):
@@ -21,7 +21,7 @@ class GateioRequestStrategy(RequestStrategy):
         
         # Initialize HFT logger with hierarchical tags
         if logger is None:
-            from core.logging import get_strategy_logger
+            from infrastructure.logging import get_strategy_logger
             tags = ['gateio', 'rest', 'request']
             logger = get_strategy_logger('rest.request.gateio', tags)
         self.logger = logger

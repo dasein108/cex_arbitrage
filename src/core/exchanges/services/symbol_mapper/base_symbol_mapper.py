@@ -18,7 +18,7 @@ Architecture:
 
 from abc import ABC, abstractmethod
 from typing import Tuple, Dict
-from core.structs.common import Symbol
+from infrastructure.data_structures.common import Symbol
 
 
 class SymbolMapperInterface(ABC):

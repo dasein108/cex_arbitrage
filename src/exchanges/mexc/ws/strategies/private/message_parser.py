@@ -3,14 +3,14 @@ from typing import Optional, Dict, Any
 
 import msgspec
 
-from core.transport.websocket.strategies.message_parser import MessageParser
-from core.transport.websocket.structs import ParsedMessage, MessageType
+from infrastructure.networking.websocket.strategies.message_parser import MessageParser
+from infrastructure.networking.websocket.structs import ParsedMessage, MessageType
 from core.exchanges.services import BaseExchangeMapper
 from exchanges.mexc.ws.protobuf_parser import MexcProtobufParser
 from exchanges.mexc.structs.exchange import (
     MexcWSPrivateOrderData, MexcWSPrivateBalanceData, MexcWSPrivateTradeData
 )
-from core.structs.common import OrderBook
+from infrastructure.data_structures.common import OrderBook
 
 
 class MexcPrivateMessageParser(MessageParser):

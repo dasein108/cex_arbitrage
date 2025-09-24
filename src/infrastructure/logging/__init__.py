@@ -5,7 +5,7 @@ High-performance logging system designed for high-frequency trading applications
 Configured automatically from config.yaml.
 
 Usage:
-    from core.logging import get_logger
+    from infrastructure.logging import get_logger
     
     # Component logger
     logger = get_logger('my.component')

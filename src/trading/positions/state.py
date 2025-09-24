@@ -28,7 +28,7 @@ Performance Targets:
 from __future__ import annotations
 
 import asyncio
-from core.logging import get_logger
+from infrastructure.logging import get_logger
 from typing import Dict, List, Optional, Set, Callable, Any
 from dataclasses import dataclass
 from enum import Enum

@@ -9,7 +9,7 @@ HFT COMPLIANCE: Fast service instantiation, cached instances, factory coordinati
 
 from typing import Type, Union
 
-from core.structs.common import ExchangeName, ExchangeEnum
+from infrastructure.data_structures.common import ExchangeName, ExchangeEnum
 from core.exchanges.services.exchange_mapper.base_exchange_mapper import BaseExchangeMapper
 from core.exchanges.services.symbol_mapper.base_symbol_mapper import SymbolMapperInterface
 from core.factories.base_exchange_factory import BaseExchangeFactory

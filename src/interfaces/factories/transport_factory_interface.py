@@ -8,9 +8,9 @@ plugged in based on performance requirements or testing needs.
 
 from abc import ABC, abstractmethod
 from typing import Optional
-from core.config.structs import ExchangeConfig
-from core.transport.rest.rest_transport_manager import RestTransportManager
-from core.transport.websocket.ws_manager import WebSocketManager
+from infrastructure.config.structs import ExchangeConfig
+from infrastructure.networking.http.rest_transport_manager import RestTransportManager
+from infrastructure.networking.websocket.ws_manager import WebSocketManager
 
 
 class TransportFactoryInterface(ABC):

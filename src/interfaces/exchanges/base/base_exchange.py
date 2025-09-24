@@ -8,12 +8,12 @@ handling connection management, initialization, and state tracking.
 from abc import ABC, abstractmethod
 from typing import Optional
 
-from core.structs.common import SymbolsInfo
-from core.config.structs import ExchangeConfig
-from core.transport.websocket.structs import ConnectionState
+from infrastructure.data_structures.common import SymbolsInfo
+from infrastructure.config.structs import ExchangeConfig
+from infrastructure.networking.websocket.structs import ConnectionState
 
 # HFT Logger Integration
-from core.logging import get_exchange_logger, LoggingTimer, HFTLoggerInterface
+from infrastructure.logging import get_exchange_logger, LoggingTimer, HFTLoggerInterface
 
 
 class BaseExchangeInterface(ABC):

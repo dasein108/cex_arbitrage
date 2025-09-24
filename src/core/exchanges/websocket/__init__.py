@@ -5,14 +5,14 @@ This module provides high-performance WebSocket infrastructure using strategy pa
 composition for exchange-agnostic trading implementations.
 """
 
-from core.transport.websocket.ws_manager import WebSocketManager
-from core.transport.websocket.strategies import (
+from infrastructure.networking.websocket.ws_manager import WebSocketManager
+from infrastructure.networking.websocket.strategies import (
     WebSocketStrategyFactory
 )
-from core.transport.websocket.strategies.subscription import SubscriptionStrategy
-from core.transport.websocket.strategies.connection import ConnectionStrategy
-from core.transport.websocket.strategies import MessageParser
-from core.transport.websocket.structs import (
+from infrastructure.networking.websocket.strategies.subscription import SubscriptionStrategy
+from infrastructure.networking.websocket.strategies.connection import ConnectionStrategy
+from infrastructure.networking.websocket.strategies import MessageParser
+from infrastructure.networking.websocket.structs import (
     MessageType, SubscriptionAction, ConnectionContext, 
     SubscriptionContext, ParsedMessage, WebSocketManagerConfig,
     PerformanceMetrics, ConnectionState

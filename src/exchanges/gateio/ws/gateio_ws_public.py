@@ -24,10 +24,10 @@ Architecture: Dependency injection with base class coordination
 
 from typing import List, Optional, Callable, Awaitable, Set
 
-from core.structs.common import Symbol, Trade, OrderBook, BookTicker
-from core.config.structs import ExchangeConfig
+from infrastructure.data_structures.common import Symbol, Trade, OrderBook, BookTicker
+from infrastructure.config.structs import ExchangeConfig
 from core.exchanges.websocket.spot.base_ws_public import BaseExchangePublicWebsocketInterface
-from core.transport.websocket.structs import ConnectionState
+from infrastructure.networking.websocket.structs import ConnectionState
 
 
 class GateioWebsocketPublic(BaseExchangePublicWebsocketInterface):

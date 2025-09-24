@@ -16,8 +16,8 @@ Message Format:
 import logging
 from typing import List, Dict, Any, Optional
 
-from core.transport.websocket.strategies.subscription import SubscriptionStrategy
-from core.transport.websocket.structs import SubscriptionAction
+from infrastructure.networking.websocket.strategies.subscription import SubscriptionStrategy
+from infrastructure.networking.websocket.structs import SubscriptionAction
 from core.exchanges.services import BaseExchangeMapper
 from exchanges.mexc.services.mexc_mappings import MexcUnifiedMappings
 
@@ -51,7 +51,7 @@ class MexcPrivateSubscriptionStrategy(SubscriptionStrategy):
 
         # Fixed params for private channels (no symbols)
         # Use mapper to get proper channel names and add .pb suffix for subscription
-        from core.transport.websocket.structs import PrivateWebsocketChannelType
+        from infrastructure.networking.websocket.structs import PrivateWebsocketChannelType
         
         params = [
             self.mapper.get_spot_private_channel_name(PrivateWebsocketChannelType.BALANCE) + ".pb",

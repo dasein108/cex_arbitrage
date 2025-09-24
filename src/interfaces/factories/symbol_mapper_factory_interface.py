@@ -7,7 +7,7 @@ based on exchange requirements or testing needs.
 """
 
 from abc import ABC, abstractmethod
-from core.structs.common import ExchangeName
+from infrastructure.data_structures.common import ExchangeName
 from core.exchanges.services.symbol_mapper.base_symbol_mapper import SymbolMapperInterface
 
 

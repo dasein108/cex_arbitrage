@@ -12,13 +12,13 @@ HFT COMPLIANCE: Sub-microsecond mapping operations, zero-copy patterns.
 
 from typing import Any, Dict
 
-from core.structs.common import (
+from infrastructure.data_structures.common import (
     Order, OrderId, OrderStatus, OrderType, Side,
     Trade, AssetBalance, AssetName,
     OrderBook, OrderBookEntry, BookTicker
 )
 from core.exchanges.services.exchange_mapper.base_exchange_mapper import BaseExchangeMapper
-from core.transport.websocket.structs import PublicWebsocketChannelType, PrivateWebsocketChannelType
+from infrastructure.networking.websocket.structs import PublicWebsocketChannelType, PrivateWebsocketChannelType
 from .mapping_configuration import create_mexc_mapping_configuration
 
 class MexcUnifiedMappings(BaseExchangeMapper):
@@ -304,7 +304,7 @@ class MexcUnifiedMappings(BaseExchangeMapper):
     # WebSocket event type methods
     def from_subscription_action(self, action) -> str:
         """Convert unified SubscriptionAction to MEXC format."""
-        from core.transport.websocket.structs import SubscriptionAction
+        from infrastructure.networking.websocket.structs import SubscriptionAction
         return "SUBSCRIPTION" if action == SubscriptionAction.SUBSCRIBE else "UNSUBSCRIPTION"
     
     

@@ -15,9 +15,9 @@ from .factory_interface import ExchangeFactoryInterface
 from core.utils.exchange_utils import exchange_name_to_enum
 
 if TYPE_CHECKING:
-    from core.structs.common import ExchangeEnum
+    from infrastructure.data_structures.common import ExchangeEnum
 else:
-    from core.structs.common import ExchangeEnum
+    from infrastructure.data_structures.common import ExchangeEnum
 
 logger = logging.getLogger(__name__)
 

@@ -2,11 +2,11 @@ from .private import MexcPrivateConnectionStrategy, MexcPrivateSubscriptionStrat
 from .public import MexcPublicConnectionStrategy, MexcPublicSubscriptionStrategy, MexcPublicMessageParser
 
 
-from core.transport.websocket.strategies import (
+from infrastructure.networking.websocket.strategies import (
     WebSocketStrategyFactory
 )
 
-from core.structs.common import ExchangeEnum
+from infrastructure.data_structures.common import ExchangeEnum
 
 # Register strategies with factory
 WebSocketStrategyFactory.register_strategies(

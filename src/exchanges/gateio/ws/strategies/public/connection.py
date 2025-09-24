@@ -4,10 +4,10 @@ from websockets import connect
 from websockets.client import WebSocketClientProtocol
 
 from core.exchanges.websocket import ConnectionStrategy, ConnectionContext
-from core.transport.websocket.strategies.connection import ReconnectionPolicy
-from core.config.structs import ExchangeConfig
-from core.exceptions.exchange import BaseExchangeError
-from core.structs.connection import WebSocketConnectionSettings, ReconnectionSettings
+from infrastructure.networking.websocket.strategies.connection import ReconnectionPolicy
+from infrastructure.config.structs import ExchangeConfig
+from infrastructure.exceptions.exchange import BaseExchangeError
+from infrastructure.data_structures.connection import WebSocketConnectionSettings, ReconnectionSettings
 
 
 class GateioPublicConnectionStrategy(ConnectionStrategy):

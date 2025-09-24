@@ -32,7 +32,7 @@ Performance Targets:
 from __future__ import annotations
 
 import asyncio
-from core.logging import get_logger
+from infrastructure.logging import get_logger
 from typing import Dict, List, Optional, Any
 from dataclasses import dataclass
 from enum import IntEnum
@@ -43,15 +43,15 @@ from .structures import (
     ArbitrageConfig,
 )
 
-from core.structs.common import (
+from infrastructure.data_structures.common import (
     Symbol,
     OrderSide,
     OrderType,
     Order,
 )
 from interfaces.exchanges.base import BasePrivateExchangeInterface
-from core.structs.common import ExchangeName
-from core.exceptions.exchange import OrderExecutionError
+from infrastructure.data_structures.common import ExchangeName
+from infrastructure.exceptions.exchange import OrderExecutionError
 
 logger = get_logger('arbitrage.orchestrator')
 

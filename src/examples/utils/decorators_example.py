@@ -8,7 +8,7 @@ This file shows both the old way (with manual try-catch) and the new way (with d
 """
 
 import asyncio
-from core.structs.common import Symbol, AssetName
+from infrastructure.data_structures.common import Symbol, AssetName
 from examples.utils.decorators import test_method, rest_api_test, integration_test, safe_execution
 
 
@@ -141,7 +141,7 @@ async def demonstrate_decorators():
             return int(time.time() * 1000)
         
         async def get_orderbook(self, symbol, limit=5):
-            from core.structs.common import OrderBook, OrderBookEntry
+            from infrastructure.data_structures.common import OrderBook, OrderBookEntry
             return OrderBook(
                 bids=[OrderBookEntry(price=50000.0, size=1.0)],
                 asks=[OrderBookEntry(price=50001.0, size=1.0)],

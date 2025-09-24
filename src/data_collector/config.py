@@ -8,10 +8,10 @@ Leverages the core configuration manager for consistent config handling.
 from typing import Dict, List, Optional, Any
 from dataclasses import dataclass
 
-from core.structs.common import Symbol, AssetName
-from core.config.config_manager import HftConfig
+from infrastructure.data_structures.common import Symbol, AssetName
+from infrastructure.config.config_manager import HftConfig
 from db import DatabaseConfig
-from core.structs.common import ExchangeEnum
+from infrastructure.data_structures.common import ExchangeEnum
 
 
 # DatabaseConfig is now imported from db.structs

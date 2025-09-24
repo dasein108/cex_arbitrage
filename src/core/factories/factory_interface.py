@@ -11,7 +11,7 @@ Supports both simple factories (single component types) and composite factories
 from abc import ABC, abstractmethod
 from typing import TypeVar, List, Any, Union
 
-from core.structs.common import ExchangeEnum
+from infrastructure.data_structures.common import ExchangeEnum
 
 T = TypeVar('T')
 

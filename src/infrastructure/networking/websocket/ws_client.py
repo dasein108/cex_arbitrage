@@ -7,9 +7,9 @@ from collections import deque
 from websockets import connect #, State
 import msgspec
 
-from core.exceptions.exchange import BaseExchangeError
-from core.transport.websocket.structs import ConnectionState
-from core.config.structs import WebSocketConfig
+from infrastructure.exceptions.exchange import BaseExchangeError
+from infrastructure.networking.websocket.structs import ConnectionState
+from infrastructure.config.structs import WebSocketConfig
 
 
 class WebsocketClient:

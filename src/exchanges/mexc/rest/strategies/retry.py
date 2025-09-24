@@ -1,12 +1,12 @@
 import asyncio
 from typing import Dict
 
-from core.exceptions.exchange import RateLimitErrorBase, ExchangeConnectionError
-from core.transport.rest import RetryStrategy
-from core.config.structs import ExchangeConfig
+from infrastructure.exceptions.exchange import RateLimitErrorBase, ExchangeConnectionError
+from infrastructure.networking.http import RetryStrategy
+from infrastructure.config.structs import ExchangeConfig
 
 # HFT Logger Integration
-from core.logging import get_strategy_logger, LoggingTimer
+from infrastructure.logging import get_strategy_logger, LoggingTimer
 
 
 class MexcRetryStrategy(RetryStrategy):

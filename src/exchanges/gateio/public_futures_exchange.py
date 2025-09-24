@@ -23,7 +23,7 @@ from typing import List, Dict, Optional
 import logging
 
 from exchanges.interfaces import PublicExchangeInterface
-from core.structs.common import Symbol, SymbolsInfo, OrderBook
+from infrastructure.data_structures.common import Symbol, SymbolsInfo, OrderBook
 
 
 class GateioPublicFuturesExchange(PublicExchangeInterface):
@@ -43,7 +43,7 @@ class GateioPublicFuturesExchange(PublicExchangeInterface):
             symbols: Optional list of futures symbols to initialize
         """
         # Create a mock config for now - this will be properly configured when used via factory
-        from core.config.config_manager import HftConfig
+        from infrastructure.config.config_manager import HftConfig
         
         # Load the proper gateio_futures configuration
         config_manager = HftConfig()

@@ -25,9 +25,9 @@ Architecture: Dependency injection with base class coordination
 
 from typing import Dict, Optional, Callable, Awaitable
 
-from core.structs.common import Order, AssetBalance, Trade, AssetName
+from infrastructure.data_structures.common import Order, AssetBalance, Trade, AssetName
 from exchanges.mexc.rest.mexc_rest_private import MexcPrivateSpotRest
-from core.config.structs import ExchangeConfig
+from infrastructure.config.structs import ExchangeConfig
 from core.exchanges.websocket.spot.base_ws_private import BaseExchangePrivateWebsocketInterface
 # Mappings now consolidated in MexcUnifiedMappings
 

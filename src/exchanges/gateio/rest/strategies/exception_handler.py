@@ -1,9 +1,9 @@
-from core.exceptions.exchange import (
+from infrastructure.exceptions.exchange import (
     BaseExchangeError, RateLimitErrorBase, TradingDisabled,
     InsufficientPosition, OversoldException, ExchangeOrderCancelledOrNotExist,
 )
 import msgspec
-from core.transport.rest.strategies.exception_handler import ExceptionHandlerStrategy
+from infrastructure.networking.http.strategies.exception_handler import ExceptionHandlerStrategy
 
 # Gate.io specific error code mappings based on their API documentation
 ERROR_CODE_MAPPING = {

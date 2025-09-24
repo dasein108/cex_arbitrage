@@ -11,13 +11,13 @@ import time
 from typing import List, Dict
 
 from interfaces.exchanges.base import BasePrivateExchangeInterface
-from core.structs.common import (
+from infrastructure.data_structures.common import (
     Symbol, AssetBalance, AssetName, Order, OrderId, SymbolsInfo, Trade, Side
 )
 from exchanges.mexc.ws.mexc_ws_private import MexcWebsocketPrivate
 from exchanges.mexc.rest.mexc_rest_private import MexcPrivateSpotRest
-from core.exceptions.exchange import BaseExchangeError
-from core.config.structs import ExchangeConfig
+from infrastructure.exceptions.exchange import BaseExchangeError
+from infrastructure.config.structs import ExchangeConfig
 
 
 class MexcPrivateExchange(BasePrivateExchangeInterface):

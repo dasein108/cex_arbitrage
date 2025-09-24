@@ -27,10 +27,10 @@ import argparse
 import time
 from typing import Dict, Any
 
-from core.structs.common import Symbol, AssetName, Side, OrderType, TimeInForce
-from core.config.config_manager import get_exchange_config
+from infrastructure.data_structures.common import Symbol, AssetName, Side, OrderType, TimeInForce
+from infrastructure.config.config_manager import get_exchange_config
 from examples.utils.rest_api_factory import get_exchange_rest_instance
-from core.structs.common import ExchangeEnum
+from infrastructure.data_structures.common import ExchangeEnum
 from examples.integration_test_framework import (
     IntegrationTestRunner, TestCategory, TestStatus, EXIT_CODE_SUCCESS, EXIT_CODE_FAILED_TESTS, EXIT_CODE_ERROR,
     EXIT_CODE_CONFIG_ERROR

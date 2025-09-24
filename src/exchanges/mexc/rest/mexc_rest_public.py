@@ -31,14 +31,14 @@ from exchanges.mexc.structs.exchange import (
     MexcSymbolResponse, MexcExchangeInfoResponse, 
     MexcOrderBookResponse, MexcTradeResponse, MexcServerTimeResponse
 )
-from core.structs.common import (
+from infrastructure.data_structures.common import (
     Symbol, SymbolInfo, OrderBook, OrderBookEntry, Trade, Kline,
     AssetName, Side, KlineInterval, Ticker
 )
 from core.exchanges.rest.spot.base_rest_spot_public import PublicExchangeSpotRestInterface
 from core.exchanges.services import BaseExchangeMapper
-from core.config.structs import ExchangeConfig
-from core.transport.rest.structs import HTTPMethod
+from infrastructure.config.structs import ExchangeConfig
+from infrastructure.networking.http.structs import HTTPMethod
 from common.iterators import time_range_iterator
 
 
@@ -65,7 +65,7 @@ class MexcPublicSpotRest(PublicExchangeSpotRestInterface):
         
         # Initialize HFT logger
         if logger is None:
-            from core.logging import get_exchange_logger
+            from infrastructure.logging import get_exchange_logger
             logger = get_exchange_logger('mexc', 'rest.public')
         self.logger = logger
         

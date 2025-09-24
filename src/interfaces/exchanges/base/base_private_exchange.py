@@ -8,10 +8,10 @@ interface to also provide market data functionality.
 
 from abc import abstractmethod
 from typing import Dict, List, Optional, Any
-from core.structs.common import (
+from infrastructure.data_structures.common import (
     Symbol, AssetBalance, Order, Position
 )
-from core.config.structs import ExchangeConfig
+from infrastructure.config.structs import ExchangeConfig
 from .base_public_exchange import BasePublicExchangeInterface
 
 

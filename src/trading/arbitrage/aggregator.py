@@ -30,14 +30,14 @@ Performance Targets:
 from __future__ import annotations
 
 import asyncio
-from core.logging import get_logger
+from infrastructure.logging import get_logger
 from typing import Dict, List, Optional, Set, Callable, Any
 from dataclasses import dataclass
 from weakref import WeakSet
 
 from .structures import ArbitrageConfig
 
-from core.structs.common import (
+from infrastructure.data_structures.common import (
     Symbol,
     OrderBook,
     Ticker,
@@ -45,8 +45,8 @@ from core.structs.common import (
     SymbolInfo,
 )
 from interfaces.exchanges.base import BasePublicExchangeInterface
-from core.structs.common import ExchangeName
-from core.exceptions.exchange import BaseExchangeError as MarketDataError
+from infrastructure.data_structures.common import ExchangeName
+from infrastructure.exceptions.exchange import BaseExchangeError as MarketDataError
 
 
 logger = get_logger('arbitrage.aggregator')

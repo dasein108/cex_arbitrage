@@ -3,13 +3,13 @@ import msgspec
 from typing import Dict, Any, List, Optional
 from decimal import Decimal
 
-from core.transport.websocket.strategies.message_parser import MessageParser
+from infrastructure.networking.websocket.strategies.message_parser import MessageParser
 from core.exchanges.services import BaseExchangeMapper
-from core.structs.common import (
+from infrastructure.data_structures.common import (
     Symbol, Order, Trade, AssetBalance, AssetName,
     OrderStatus, OrderType, OrderSide, Side
 )
-from core.transport.websocket.structs import ParsedMessage, MessageType
+from infrastructure.networking.websocket.structs import ParsedMessage, MessageType
 
 
 class GateioPrivateFuturesMessageParser(MessageParser):

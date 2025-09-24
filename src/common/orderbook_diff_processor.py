@@ -23,7 +23,7 @@ from abc import ABC, abstractmethod
 from typing import List, Tuple, Dict, Any, Optional, Union
 from dataclasses import dataclass
 
-from core.structs.common import Symbol
+from infrastructure.data_structures.common import Symbol
 
 
 @dataclass

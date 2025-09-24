@@ -15,7 +15,7 @@ from .exception_handler import ExceptionHandlerStrategy
 from .structs import PerformanceTargets
 
 # HFT Logger Integration
-from core.logging import get_logger
+from infrastructure.logging import get_logger
 
 
 class RestStrategySet:

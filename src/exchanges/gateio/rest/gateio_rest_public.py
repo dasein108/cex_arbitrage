@@ -26,15 +26,15 @@ import time
 from typing import Dict, List, Optional, Any
 from datetime import datetime
 
-from core.structs.common import (
+from infrastructure.data_structures.common import (
     Symbol, SymbolInfo, OrderBook, OrderBookEntry, Trade, Kline,
     KlineInterval, Ticker
 )
 from core.exchanges.rest.spot.base_rest_spot_public import PublicExchangeSpotRestInterface
 from core.exchanges.services import BaseExchangeMapper
-from core.transport.rest.structs import HTTPMethod
-from core.config.structs import ExchangeConfig
-from core.exceptions.exchange import BaseExchangeError
+from infrastructure.networking.http.structs import HTTPMethod
+from infrastructure.config.structs import ExchangeConfig
+from infrastructure.exceptions.exchange import BaseExchangeError
 from common.iterators import time_range_iterator, get_interval_seconds
 
 
@@ -59,7 +59,7 @@ class GateioPublicSpotRest(PublicExchangeSpotRestInterface):
         
         # Initialize HFT logger
         if logger is None:
-            from core.logging import get_exchange_logger
+            from infrastructure.logging import get_exchange_logger
             logger = get_exchange_logger('gateio', 'rest.public')
         self.logger = logger
         

@@ -8,7 +8,7 @@ HFT COMPLIANT: Lock-free metrics collection with minimal overhead (<1μs).
 """
 
 import asyncio
-from core.logging import get_logger
+from infrastructure.logging import get_logger
 import time
 from typing import Dict, Any, Optional, Callable
 from trading.arbitrage.types import EngineStatistics, ArbitrageConfig

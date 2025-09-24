@@ -8,7 +8,7 @@ HFT COMPLIANT: Fast shutdown with position safety guarantees.
 """
 
 import asyncio
-from core.logging import get_logger
+from infrastructure.logging import get_logger
 import signal
 from typing import Optional, Callable, List, Any
 from enum import Enum

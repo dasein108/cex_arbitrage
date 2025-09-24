@@ -3,9 +3,9 @@ from typing import Any, Optional
 from dataclasses import dataclass
 from websockets.client import WebSocketClientProtocol
 from websockets.protocol import State as WsState
-from core.config.structs import ExchangeConfig
+from infrastructure.config.structs import ExchangeConfig
 
-from core.transport.websocket.structs import ConnectionContext
+from infrastructure.networking.websocket.structs import ConnectionContext
 
 
 @dataclass

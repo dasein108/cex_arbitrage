@@ -1,13 +1,13 @@
 from abc import ABC
 from typing import Callable, Optional
 
-from core.transport.rest.utils import create_rest_transport_manager
-from core.transport.rest.structs import HTTPMethod
-from core.config.structs import ExchangeConfig
+from infrastructure.networking.http.utils import create_rest_transport_manager
+from infrastructure.networking.http.structs import HTTPMethod
+from infrastructure.config.structs import ExchangeConfig
 from core.exchanges.services import BaseExchangeMapper
 
 # HFT Logger Integration
-from core.logging import get_exchange_logger, HFTLoggerInterface, LoggingTimer
+from infrastructure.logging import get_exchange_logger, HFTLoggerInterface, LoggingTimer
 
 class BaseExchangeRestInterface(ABC):
     """

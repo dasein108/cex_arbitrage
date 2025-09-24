@@ -11,5 +11,5 @@ Includes transport, exceptions, and CEX-specific interfaces.
 __all__ = [
     # Main modules are accessible through their submodules
     # Example: from core.exchanges import BaseExchangeInterface
-    # Example: from core.exceptions import ExchangeException
+    # Example: from infrastructure.exceptions import ExchangeException
 ]

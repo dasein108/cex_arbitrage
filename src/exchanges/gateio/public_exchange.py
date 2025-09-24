@@ -11,14 +11,14 @@ import time
 from typing import List, Dict, Optional
 
 from interfaces.exchanges.base import BasePublicExchangeInterface
-from core.structs.common import (
+from infrastructure.data_structures.common import (
     OrderBook, Symbol, SymbolInfo, SymbolsInfo, 
     ExchangeStatus, OrderbookUpdateType
 )
 from exchanges.gateio.ws.gateio_ws_public import GateioWebsocketPublic
-from core.transport.websocket.structs import ConnectionState
-from core.exceptions.exchange import BaseExchangeError
-from core.config.structs import ExchangeConfig
+from infrastructure.networking.websocket.structs import ConnectionState
+from infrastructure.exceptions.exchange import BaseExchangeError
+from infrastructure.config.structs import ExchangeConfig
 
 class GateioPublicExchange(BasePublicExchangeInterface):
     """
@@ -77,7 +77,7 @@ class GateioPublicExchange(BasePublicExchangeInterface):
         try:
             # TODO: Implement when REST client is updated
             # For now, create a placeholder orderbook
-            from core.structs.common import OrderBookEntry
+            from infrastructure.data_structures.common import OrderBookEntry
             
             placeholder_orderbook = OrderBook(
                 bids=[OrderBookEntry(price=0.0, size=0.0)],

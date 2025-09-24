@@ -32,12 +32,12 @@ project_root = Path(__file__).parent.parent  # Now points to src/
 sys.path.insert(0, str(project_root))
 
 # Direct imports from src directory
-from core.structs.common import Symbol, SymbolInfo, AssetName, ExchangeName
-from core.structs.common import ExchangeEnum
+from infrastructure.data_structures.common import Symbol, SymbolInfo, AssetName, ExchangeName
+from infrastructure.data_structures.common import ExchangeEnum
 from exchanges.mexc.rest.mexc_rest_public import MexcPublicSpotRest
 from exchanges.gateio.rest.gateio_rest_public import GateioPublicSpotRest
 from exchanges.gateio.rest.gateio_futures_public import GateioPublicFuturesRest
-from core.exceptions.exchange import BaseExchangeError
+from infrastructure.exceptions.exchange import BaseExchangeError
 
 
 async def fetch_mexc_futures_symbols() -> Dict[Symbol, SymbolInfo]:

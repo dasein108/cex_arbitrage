@@ -1,12 +1,12 @@
 from abc import ABC
 from typing import Optional, Callable, Awaitable, Any, Dict
 
-from core.config.structs import ExchangeConfig
+from infrastructure.config.structs import ExchangeConfig
 from core.exchanges.services import ExchangeMapperFactory
-from core.transport.websocket.utils import create_websocket_manager
+from infrastructure.networking.websocket.utils import create_websocket_manager
 
 # HFT Logger Integration
-from core.logging import get_logger, get_exchange_logger, LoggingTimer
+from infrastructure.logging import get_logger, get_exchange_logger, LoggingTimer
 
 
 class BaseExchangeWebsocketInterface(ABC):

@@ -13,17 +13,17 @@ from typing import List, Dict, Optional, Callable, Any, Awaitable, Set
 from websockets.client import WebSocketClientProtocol
 from websockets.protocol import State as WsState
 
-from core.structs.common import Symbol
-from core.transport.websocket.structs import SubscriptionAction, PublicWebsocketChannelType
-from core.transport.websocket.strategies.strategy_set import WebSocketStrategySet
+from infrastructure.data_structures.common import Symbol
+from infrastructure.networking.websocket.structs import SubscriptionAction, PublicWebsocketChannelType
+from infrastructure.networking.websocket.strategies.strategy_set import WebSocketStrategySet
 from .structs import ParsedMessage, WebSocketManagerConfig, PerformanceMetrics
-from core.config.structs import WebSocketConfig
-from core.transport.websocket.structs import ConnectionState
-from core.exceptions.exchange import BaseExchangeError
+from infrastructure.config.structs import WebSocketConfig
+from infrastructure.networking.websocket.structs import ConnectionState
+from infrastructure.exceptions.exchange import BaseExchangeError
 import msgspec
 
 # HFT Logger Integration
-from core.logging import get_logger, LoggingTimer
+from infrastructure.logging import get_logger, LoggingTimer
 
 
 class WebSocketManager:

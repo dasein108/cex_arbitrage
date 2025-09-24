@@ -9,7 +9,7 @@ from datetime import datetime, timedelta
 from typing import Dict, List, Set
 from dataclasses import dataclass
 
-from core.structs.common import Symbol, BookTicker, Trade
+from infrastructure.data_structures.common import Symbol, BookTicker, Trade
 from data_collector.config import AnalyticsConfig
 
 
@@ -105,7 +105,7 @@ class RealTimeAnalytics:
             config: Analytics configuration
         """
         self.config = config
-        from core.logging import get_logger
+        from infrastructure.logging import get_logger
         self.logger = get_logger('data_collector.analytics')
         
         # Latest book ticker data: {exchange_symbol: BookTicker}

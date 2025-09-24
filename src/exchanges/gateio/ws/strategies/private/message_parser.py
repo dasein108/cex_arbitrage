@@ -1,10 +1,10 @@
 import logging
 from typing import Dict, Any, Optional, List
 
-from core.transport.websocket.strategies.message_parser import MessageParser
-from core.transport.websocket.structs import ParsedMessage
+from infrastructure.networking.websocket.strategies.message_parser import MessageParser
+from infrastructure.networking.websocket.structs import ParsedMessage
 from core.exchanges.services import BaseExchangeMapper
-from core.transport.websocket.structs import MessageType
+from infrastructure.networking.websocket.structs import MessageType
 
 
 class GateioPrivateMessageParser(MessageParser):

@@ -2,10 +2,10 @@ from abc import ABC, abstractmethod
 from typing import Any
 
 from core.exchanges.services.symbol_mapper.base_symbol_mapper import SymbolMapperInterface
-from core.structs.common import Trade, OrderBook, BookTicker, AssetBalance
+from infrastructure.data_structures.common import Trade, OrderBook, BookTicker, AssetBalance
 from .mapping_configuration import BaseMappingConfiguration
-from core.transport.websocket.structs import PublicWebsocketChannelType, PrivateWebsocketChannelType, SubscriptionAction
-from core.structs.common import (
+from infrastructure.networking.websocket.structs import PublicWebsocketChannelType, PrivateWebsocketChannelType, SubscriptionAction
+from infrastructure.data_structures.common import (
     Symbol, Order, OrderStatus, OrderType, Side,
     TimeInForce, KlineInterval
 )

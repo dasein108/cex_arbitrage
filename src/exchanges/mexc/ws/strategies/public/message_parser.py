@@ -7,15 +7,15 @@ import msgspec
 from common.orderbook_entry_pool import OrderBookEntryPool
 from common.orderbook_diff_processor import ParsedOrderbookUpdate
 from core.exchanges.services import BaseExchangeMapper
-from core.transport.websocket.strategies.message_parser import MessageParser
-from core.transport.websocket.structs import ParsedMessage, MessageType
+from infrastructure.networking.websocket.strategies.message_parser import MessageParser
+from infrastructure.networking.websocket.structs import ParsedMessage, MessageType
 from exchanges.mexc.ws.protobuf_parser import MexcProtobufParser
-from core.structs.common import OrderBook, Trade, BookTicker
+from infrastructure.data_structures.common import OrderBook, Trade, BookTicker
 from exchanges.mexc.structs.exchange import MexcWSTradeEntry
 from exchanges.mexc.services.mexc_mappings import MexcUnifiedMappings
 
 # HFT Logger Integration
-from core.logging import HFTLoggerInterface
+from infrastructure.logging import HFTLoggerInterface
 
 
 class MexcPublicMessageParser(MessageParser):

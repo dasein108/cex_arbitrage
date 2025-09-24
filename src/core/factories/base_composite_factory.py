@@ -13,7 +13,7 @@ from typing import TypeVar, Generic, Dict, Any, List, TYPE_CHECKING
 from abc import ABC, abstractmethod
 
 from .factory_interface import ExchangeFactoryInterface
-from core.structs.common import ExchangeEnum
+from infrastructure.data_structures.common import ExchangeEnum
 
 logger = logging.getLogger(__name__)
 

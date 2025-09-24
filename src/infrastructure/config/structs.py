@@ -1,7 +1,7 @@
 from typing import Optional, Dict, Any
 from msgspec import Struct
 import msgspec
-from core.structs.common import ExchangeName, ExchangeCredentials
+from infrastructure.data_structures.common import ExchangeName, ExchangeCredentials
 
 
 class NetworkConfig(Struct, frozen=True):

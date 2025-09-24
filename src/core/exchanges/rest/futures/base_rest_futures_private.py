@@ -1,5 +1,5 @@
 from typing import List, Optional
-from core.structs.common import (
+from infrastructure.data_structures.common import (
     Symbol,
     Position
 )

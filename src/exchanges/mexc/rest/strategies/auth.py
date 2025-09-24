@@ -3,12 +3,12 @@ import hmac
 from typing import Dict, Any
 from urllib.parse import urlencode
 
-from core.transport.rest import AuthStrategy, HTTPMethod, AuthenticationData
-from core.config.structs import ExchangeConfig
-from core.structs.connection import RestConnectionSettings
+from infrastructure.networking.http import AuthStrategy, HTTPMethod, AuthenticationData
+from infrastructure.config.structs import ExchangeConfig
+from infrastructure.data_structures.connection import RestConnectionSettings
 
 # HFT Logger Integration
-from core.logging import get_strategy_logger, LoggingTimer
+from infrastructure.logging import get_strategy_logger, LoggingTimer
 
 
 class MexcAuthStrategy(AuthStrategy):
