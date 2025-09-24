@@ -404,3 +404,37 @@ class ArbitrageExecution(Struct):
     execution_time: Optional[float] = None  # milliseconds
     end_timestamp: Optional[int] = None
     failure_reason: Optional[str] = None
+
+# Withdrawal structures
+
+class WithdrawalStatus(IntEnum):
+    """Withdrawal status enumeration."""
+    PENDING = 1      # Awaiting processing
+    PROCESSING = 2   # Being processed
+    COMPLETED = 3    # Successfully completed
+    FAILED = 4       # Failed/rejected
+    CANCELED = 5     # User canceled
+
+class WithdrawalRequest(Struct, frozen=True):
+    """Withdrawal request parameters."""
+    asset: AssetName
+    amount: float
+    address: str
+    network: Optional[str] = None  # Network/chain (required for multi-chain assets)
+    memo: Optional[str] = None     # Memo/tag for coins requiring it
+    withdrawal_order_id: Optional[str] = None  # Custom identifier
+    remark: Optional[str] = None   # Additional notes
+
+class WithdrawalResponse(Struct):
+    """Withdrawal operation response."""
+    withdrawal_id: str
+    asset: AssetName
+    amount: float
+    fee: float
+    address: str
+    status: WithdrawalStatus
+    timestamp: int
+    network: Optional[str] = None
+    memo: Optional[str] = None
+    remark: Optional[str] = None
+    tx_id: Optional[str] = None  # Transaction ID when available

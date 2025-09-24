@@ -29,12 +29,14 @@ from exchanges.mexc.structs.exchange import (
 )
 from core.structs.common import (
     Symbol, Order, OrderId, OrderType, Side, AssetBalance,
-    AssetName, AssetInfo, NetworkInfo, TimeInForce
+    AssetName, AssetInfo, NetworkInfo, TimeInForce,
+    WithdrawalRequest, WithdrawalResponse, WithdrawalStatus
 )
 from core.exceptions.exchange import BaseExchangeError
 
 from core.exchanges.rest.spot.base_rest_spot_private import PrivateExchangeSpotRestInterface
 from core.transport.rest.structs import HTTPMethod
+from exchanges.mexc.services.mexc_mappings import map_mexc_withdrawal_status
 
 
 class MexcPrivateSpotRest(PrivateExchangeSpotRestInterface):
@@ -543,3 +545,191 @@ class MexcPrivateSpotRest(PrivateExchangeSpotRestInterface):
 
         self.logger.info(f"Retrieved currency info for {len(currency_info_map)} assets")
         return currency_info_map
+
+    # Withdrawal operations
+
+    async def submit_withdrawal(self, request: WithdrawalRequest) -> WithdrawalResponse:
+        """
+        Submit a withdrawal request to MEXC.
+
+        Args:
+            request: Withdrawal request parameters
+
+        Returns:
+            WithdrawalResponse with withdrawal details
+
+        Raises:
+            ExchangeAPIError: If withdrawal submission fails
+        """
+        # Validate request before submission
+        await self.validate_withdrawal_request(request)
+
+        # Prepare MEXC API parameters
+        params = {
+            'coin': request.asset,
+            'amount': str(request.amount),
+            'address': request.address
+        }
+
+        # Add network if specified (required for multi-chain assets)
+        if request.network:
+            params['network'] = request.network
+
+        # Add memo if provided (for coins that require it)
+        if request.memo:
+            params['addressTag'] = request.memo
+
+        # Add custom withdrawal order ID if provided
+        if request.withdrawal_order_id:
+            params['withdrawOrderId'] = request.withdrawal_order_id
+
+        try:
+            response_data = await self.request(
+                HTTPMethod.POST,
+                '/api/v3/capital/withdraw',
+                params=params
+            )
+
+            # MEXC response format: {"id": "withdrawal_id"}
+            withdrawal_id = response_data.get('id', response_data.get('withdrawOrderId', ''))
+
+            if not withdrawal_id:
+                raise BaseExchangeError(500, "No withdrawal ID returned from MEXC")
+
+            # Get fee from currency info
+            currency_info = await self.get_currency_info()
+            asset_info = currency_info.get(request.asset)
+            fee = 0.0
+
+            if asset_info and request.network:
+                network_info = asset_info.networks.get(request.network)
+                if network_info:
+                    fee = network_info.withdraw_fee
+
+            withdrawal_response = WithdrawalResponse(
+                withdrawal_id=str(withdrawal_id),
+                asset=request.asset,
+                amount=request.amount,
+                fee=fee,
+                address=request.address,
+                network=request.network,
+                status=WithdrawalStatus.PENDING,
+                timestamp=int(self._get_current_timestamp()),
+                memo=request.memo,
+                remark=request.remark
+            )
+
+            self.logger.info(f"Submitted withdrawal: {request.amount} {request.asset} to {request.address}")
+            return withdrawal_response
+
+        except Exception as e:
+            self.logger.error(f"Failed to submit withdrawal: {e}")
+            raise BaseExchangeError(500, f"Withdrawal submission failed: {e}")
+
+    async def cancel_withdrawal(self, withdrawal_id: str) -> bool:
+        """
+        Cancel a pending withdrawal on MEXC.
+
+        Note: MEXC API doesn't provide a direct withdrawal cancellation endpoint.
+        This method will always return False as cancellation is not supported.
+
+        Args:
+            withdrawal_id: Exchange withdrawal ID to cancel
+
+        Returns:
+            False (MEXC doesn't support withdrawal cancellation via API)
+        """
+        self.logger.warning(f"MEXC does not support withdrawal cancellation via API for ID: {withdrawal_id}")
+        return False
+
+    async def get_withdrawal_status(self, withdrawal_id: str) -> WithdrawalResponse:
+        """
+        Get current status of a withdrawal on MEXC.
+
+        Args:
+            withdrawal_id: Exchange withdrawal ID
+
+        Returns:
+            WithdrawalResponse with current status
+
+        Raises:
+            ExchangeAPIError: If withdrawal not found
+        """
+        try:
+            # Get recent withdrawal history to find the specific withdrawal
+            history = await self.get_withdrawal_history(limit=1000)
+
+            for withdrawal in history:
+                if withdrawal.withdrawal_id == withdrawal_id:
+                    return withdrawal
+
+            raise BaseExchangeError(404, f"Withdrawal {withdrawal_id} not found")
+
+        except Exception as e:
+            self.logger.error(f"Failed to get withdrawal status: {e}")
+            raise BaseExchangeError(500, f"Failed to get withdrawal status: {e}")
+
+    async def get_withdrawal_history(
+        self,
+        asset: Optional[AssetName] = None,
+        limit: int = 100
+    ) -> List[WithdrawalResponse]:
+        """
+        Get withdrawal history from MEXC.
+
+        Args:
+            asset: Optional asset filter
+            limit: Maximum number of withdrawals to return
+
+        Returns:
+            List of historical withdrawals
+        """
+        params = {}
+
+        if asset:
+            params['coin'] = asset
+
+        # MEXC supports up to 1000 records
+        params['limit'] = min(limit, 1000)
+
+        try:
+            response_data = await self.request(
+                HTTPMethod.GET,
+                '/api/v3/capital/withdraw/history',
+                params=params
+            )
+
+            withdrawals = []
+
+            # MEXC returns a list of withdrawal records
+            for withdrawal_data in response_data:
+                # Map MEXC status to our enum
+                mexc_status = withdrawal_data.get('status', 0)
+                status = map_mexc_withdrawal_status(mexc_status)
+
+                withdrawal = WithdrawalResponse(
+                    withdrawal_id=str(withdrawal_data.get('id', withdrawal_data.get('withdrawOrderId', ''))),
+                    asset=AssetName(withdrawal_data.get('coin', '')),
+                    amount=float(withdrawal_data.get('amount', 0)),
+                    fee=float(withdrawal_data.get('transactionFee', 0)),
+                    address=withdrawal_data.get('address', ''),
+                    network=withdrawal_data.get('network'),
+                    status=status,
+                    timestamp=int(withdrawal_data.get('applyTime', 0)),
+                    memo=withdrawal_data.get('addressTag'),
+                    tx_id=withdrawal_data.get('txId')
+                )
+                withdrawals.append(withdrawal)
+
+            self.logger.info(f"Retrieved {len(withdrawals)} withdrawal records")
+            return withdrawals
+
+        except Exception as e:
+            self.logger.error(f"Failed to get withdrawal history: {e}")
+            raise BaseExchangeError(500, f"Failed to get withdrawal history: {e}")
+
+
+    def _get_current_timestamp(self) -> int:
+        """Get current timestamp in milliseconds."""
+        import time
+        return int(time.time() * 1000)

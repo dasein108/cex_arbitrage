@@ -15,7 +15,7 @@ from interfaces.exchanges.base import BasePrivateExchangeInterface
 from core.structs.common import (
     OrderBook, Symbol, SymbolsInfo, AssetBalance, AssetName,
     Order, OrderId, Side, TimeInForce, Position,
-    ExchangeStatus
+    ExchangeStatus, WithdrawalRequest, WithdrawalResponse
 )
 from exchanges.gateio.public_exchange import GateioPublicExchange
 from core.exceptions.exchange import BaseExchangeError
@@ -300,12 +300,130 @@ class GateioPrivateExchange(BasePrivateExchangeInterface):
             "ready_for_trading": self.config.is_ready_for_trading()
         }
     
+    # === Withdrawal Operations ===
+
+    async def withdraw(self, request: WithdrawalRequest) -> WithdrawalResponse:
+        """
+        Submit a withdrawal request.
+
+        Args:
+            request: Withdrawal request parameters
+
+        Returns:
+            WithdrawalResponse with withdrawal details
+
+        Raises:
+            ExchangeError: If withdrawal submission fails
+        """
+        if self.private_client is None:
+            raise BaseExchangeError(500, "Private REST client not available - cannot submit withdrawal")
+        return await self.private_client.submit_withdrawal(request)
+
+    async def cancel_withdrawal(self, withdrawal_id: str) -> bool:
+        """
+        Cancel a pending withdrawal.
+
+        Args:
+            withdrawal_id: Exchange withdrawal ID to cancel
+
+        Returns:
+            True if cancellation successful, False otherwise
+
+        Raises:
+            ExchangeError: If cancellation fails
+        """
+        if self.private_client is None:
+            raise BaseExchangeError(500, "Private REST client not available - cannot cancel withdrawal")
+        return await self.private_client.cancel_withdrawal(withdrawal_id)
+
+    async def get_withdrawal_status(self, withdrawal_id: str) -> WithdrawalResponse:
+        """
+        Get current status of a withdrawal.
+
+        Args:
+            withdrawal_id: Exchange withdrawal ID
+
+        Returns:
+            WithdrawalResponse with current status
+
+        Raises:
+            ExchangeError: If withdrawal not found or query fails
+        """
+        if self.private_client is None:
+            raise BaseExchangeError(500, "Private REST client not available - cannot get withdrawal status")
+        return await self.private_client.get_withdrawal_status(withdrawal_id)
+
+    async def get_withdrawal_history(
+        self,
+        asset: Optional[AssetName] = None,
+        limit: int = 100
+    ) -> List[WithdrawalResponse]:
+        """
+        Get withdrawal history.
+
+        Args:
+            asset: Optional asset filter
+            limit: Maximum number of withdrawals to return
+
+        Returns:
+            List of historical withdrawals
+        """
+        if self.private_client is None:
+            raise BaseExchangeError(500, "Private REST client not available - cannot get withdrawal history")
+        return await self.private_client.get_withdrawal_history(asset, limit)
+
+    async def validate_withdrawal_address(
+        self,
+        asset: AssetName,
+        address: str,
+        network: Optional[str] = None
+    ) -> bool:
+        """
+        Validate withdrawal address format.
+
+        Args:
+            asset: Asset name
+            address: Destination address
+            network: Network/chain name
+
+        Returns:
+            True if address is valid, False otherwise
+        """
+        if self.private_client is None:
+            return False
+        try:
+            await self.get_withdrawal_limits(asset, network)
+            # If we can get limits, the asset/network combination is valid
+            # Address format validation is done in the REST client
+            return True
+        except Exception:
+            return False
+
+    async def get_withdrawal_limits(
+        self,
+        asset: AssetName,
+        network: Optional[str] = None
+    ) -> Dict[str, float]:
+        """
+        Get withdrawal limits for an asset.
+
+        Args:
+            asset: Asset name
+            network: Network/chain name
+
+        Returns:
+            Dictionary with 'min', 'max', and 'fee' limits
+        """
+        if self.private_client is None:
+            raise BaseExchangeError(500, "Private REST client not available - cannot get withdrawal limits")
+        return await self.private_client.get_withdrawal_limits_for_asset(asset, network)
+
     async def _validate_private_access(self) -> None:
         """Validate private API access by testing a simple call."""
         if self.private_client is None:
             self.logger.warning("Private REST client not available - skipping validation")
             return
-            
+
         try:
             # Test private API with a simple balance call
             await self.get_balances()

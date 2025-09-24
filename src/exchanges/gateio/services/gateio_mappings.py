@@ -16,7 +16,7 @@ from enum import Enum
 from core.structs.common import (
     Order, OrderId, OrderType, Side,
     TimeInForce, KlineInterval, Trade, AssetBalance, AssetName,
-    OrderBook, OrderBookEntry, BookTicker
+    OrderBook, OrderBookEntry, BookTicker, WithdrawalStatus
 )
 from core.exchanges.services.exchange_mapper.base_exchange_mapper import BaseExchangeMapper
 from core.transport.websocket.structs import PublicWebsocketChannelType, PrivateWebsocketChannelType
@@ -299,5 +299,34 @@ class GateioMappings(BaseExchangeMapper):
     def is_subscription_successful(self, status: str) -> bool:
         """Check if subscription status indicates success."""
         return status == "success"
-    
-    
+
+
+def map_gateio_withdrawal_status(gateio_status: str) -> WithdrawalStatus:
+    """
+    Map Gate.io withdrawal status to our standard enum.
+
+    Gate.io status values:
+    - INIT: Initial
+    - VERIFYING: Waiting for verification
+    - PROCESSING: Processing
+    - DONE: Done
+    - FAILED: Failed
+    - CANCELLED: Cancelled
+
+    Args:
+        gateio_status: Gate.io withdrawal status string
+
+    Returns:
+        WithdrawalStatus: Corresponding unified withdrawal status
+    """
+    status_map = {
+        'INIT': WithdrawalStatus.PENDING,
+        'VERIFYING': WithdrawalStatus.PENDING,
+        'PROCESSING': WithdrawalStatus.PROCESSING,
+        'DONE': WithdrawalStatus.COMPLETED,
+        'FAILED': WithdrawalStatus.FAILED,
+        'CANCELLED': WithdrawalStatus.CANCELED
+    }
+    return status_map.get(gateio_status.upper(), WithdrawalStatus.PENDING)
+
+

@@ -9,7 +9,8 @@ interface to also provide market data functionality.
 from abc import abstractmethod
 from typing import Dict, List, Optional, Any
 from core.structs.common import (
-    Symbol, AssetBalance, Order, Position
+    Symbol, AssetBalance, Order, Position, AssetName,
+    WithdrawalRequest, WithdrawalResponse
 )
 from core.config.structs import ExchangeConfig
 from .base_public_exchange import BasePublicExchangeInterface
@@ -176,19 +177,126 @@ class BasePrivateExchangeInterface(BasePublicExchangeInterface):
 
     @abstractmethod
     async def get_order_history(
-        self, 
-        symbol: Optional[Symbol] = None, 
+        self,
+        symbol: Optional[Symbol] = None,
         limit: int = 100
     ) -> List[Order]:
         """
         Get order history.
-        
+
         Args:
             symbol: Optional symbol filter
             limit: Maximum number of orders to return
-            
+
         Returns:
             List of historical orders
+        """
+        pass
+
+    # Abstract withdrawal operations
+
+    @abstractmethod
+    async def withdraw(self, request: WithdrawalRequest) -> WithdrawalResponse:
+        """
+        Submit a withdrawal request.
+
+        Args:
+            request: Withdrawal request parameters
+
+        Returns:
+            WithdrawalResponse with withdrawal details
+
+        Raises:
+            ExchangeError: If withdrawal submission fails
+            ValidationError: If request parameters are invalid
+        """
+        pass
+
+    @abstractmethod
+    async def cancel_withdrawal(self, withdrawal_id: str) -> bool:
+        """
+        Cancel a pending withdrawal.
+
+        Args:
+            withdrawal_id: Exchange withdrawal ID to cancel
+
+        Returns:
+            True if cancellation successful, False otherwise
+
+        Raises:
+            ExchangeError: If cancellation fails
+        """
+        pass
+
+    @abstractmethod
+    async def get_withdrawal_status(self, withdrawal_id: str) -> WithdrawalResponse:
+        """
+        Get current status of a withdrawal.
+
+        Args:
+            withdrawal_id: Exchange withdrawal ID
+
+        Returns:
+            WithdrawalResponse with current status
+
+        Raises:
+            ExchangeError: If withdrawal not found or query fails
+        """
+        pass
+
+    @abstractmethod
+    async def get_withdrawal_history(
+        self,
+        asset: Optional[AssetName] = None,
+        limit: int = 100
+    ) -> List[WithdrawalResponse]:
+        """
+        Get withdrawal history.
+
+        Args:
+            asset: Optional asset filter
+            limit: Maximum number of withdrawals to return
+
+        Returns:
+            List of historical withdrawals
+        """
+        pass
+
+    @abstractmethod
+    async def validate_withdrawal_address(
+        self,
+        asset: AssetName,
+        address: str,
+        network: Optional[str] = None
+    ) -> bool:
+        """
+        Validate withdrawal address format.
+
+        Args:
+            asset: Asset name
+            address: Destination address
+            network: Network/chain name
+
+        Returns:
+            True if address is valid, False otherwise
+        """
+        pass
+
+    @abstractmethod
+    async def get_withdrawal_limits(
+        self,
+        asset: AssetName,
+        network: Optional[str] = None
+    ) -> Dict[str, float]:
+        """
+        Get withdrawal limits for an asset.
+
+        Args:
+            asset: Asset name
+            network: Network/chain name
+
+        Returns:
+            Dictionary with 'min', 'max', and 'fee' limits
         """
         pass
 

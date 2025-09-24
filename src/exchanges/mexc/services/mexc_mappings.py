@@ -15,7 +15,7 @@ from typing import Any, Dict
 from core.structs.common import (
     Order, OrderId, OrderStatus, OrderType, Side,
     Trade, AssetBalance, AssetName,
-    OrderBook, OrderBookEntry, BookTicker
+    OrderBook, OrderBookEntry, BookTicker, WithdrawalStatus
 )
 from core.exchanges.services.exchange_mapper.base_exchange_mapper import BaseExchangeMapper
 from core.transport.websocket.structs import PublicWebsocketChannelType, PrivateWebsocketChannelType
@@ -328,7 +328,38 @@ class MexcUnifiedMappings(BaseExchangeMapper):
         """Backward compatibility: access to WebSocket status mapping."""
         return self._mexc_config.WS_STATUS_REVERSE
     
-    @property 
+    @property
     def type_mapping(self):
         """Backward compatibility: access to WebSocket type mapping."""
         return self._mexc_config.WS_TYPE_REVERSE
+
+
+def map_mexc_withdrawal_status(mexc_status: int) -> WithdrawalStatus:
+    """
+    Map MEXC withdrawal status to our standard enum.
+
+    MEXC status codes:
+    0: Email Sent
+    1: Cancelled
+    2: Awaiting Approval
+    3: Rejected
+    4: Processing
+    5: Failure
+    6: Completed
+
+    Args:
+        mexc_status: MEXC withdrawal status code
+
+    Returns:
+        WithdrawalStatus: Standard withdrawal status enum value
+    """
+    status_map = {
+        0: WithdrawalStatus.PENDING,     # Email Sent
+        1: WithdrawalStatus.CANCELED,    # Cancelled
+        2: WithdrawalStatus.PENDING,     # Awaiting Approval
+        3: WithdrawalStatus.FAILED,      # Rejected
+        4: WithdrawalStatus.PROCESSING,  # Processing
+        5: WithdrawalStatus.FAILED,      # Failure
+        6: WithdrawalStatus.COMPLETED    # Completed
+    }
+    return status_map.get(mexc_status, WithdrawalStatus.PENDING)
