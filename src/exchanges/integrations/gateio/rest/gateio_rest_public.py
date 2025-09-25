@@ -32,11 +32,17 @@ from exchanges.structs.common import (
 )
 from exchanges.structs.enums import KlineInterval
 from exchanges.interfaces.rest.spot import PublicSpotRest
-from exchanges.services import BaseExchangeMapper
+# Removed BaseExchangeMapper import - using direct utility functions
 from infrastructure.networking.http.structs import HTTPMethod
 from config.structs import ExchangeConfig
 from infrastructure.exceptions.exchange import BaseExchangeError
 from common.iterators import time_range_iterator, get_interval_seconds
+
+# Import direct utility functions
+from exchanges.integrations.gateio.utils import (
+    to_pair, to_symbol, format_quantity, format_price, to_side
+)
+from exchanges.integrations.gateio.services.spot_symbol_mapper import GateioSpotSymbol
 
 
 class GateioPublicSpotRest(PublicSpotRest):
@@ -47,16 +53,15 @@ class GateioPublicSpotRest(PublicSpotRest):
     Optimized for high-frequency market data retrieval with minimal overhead.
     """
     
-    def __init__(self, config: ExchangeConfig, mapper: BaseExchangeMapper, logger=None):
+    def __init__(self, config: ExchangeConfig, logger=None):
         """
         Initialize Gate.io public REST client.
         
         Args:
             config: ExchangeConfig with Gate.io configuration
-            mapper: BaseExchangeMapper for data transformations
             logger: Optional HFT logger injection
         """
-        super().__init__(config, mapper)
+        super().__init__(config, is_private=False)
         
         # Initialize HFT logger
         if logger is None:
@@ -140,11 +145,11 @@ class GateioPublicSpotRest(PublicSpotRest):
                 pair_id = gateio_symbol.get('id', '')
                 
                 # Filter out unsupported pairs early to prevent parsing errors
-                if not self._mapper.is_supported_pair(pair_id):
+                if not GateioSpotSymbol.is_supported_pair(pair_id):
                     filtered_count += 1
                     continue
                 
-                symbol = self._mapper.to_symbol(pair_id)
+                symbol = GateioSpotSymbol.to_symbol(pair_id)
                 
                 base_prec, quote_prec, min_quote, min_base = self._extract_symbol_precision(gateio_symbol)
                 
@@ -200,7 +205,7 @@ class GateioPublicSpotRest(PublicSpotRest):
             ExchangeAPIError: If unable to fetch order book data
         """
         try:
-            pair = self._mapper.to_pair(symbol)
+            pair = to_pair(symbol)
             
             # Validate limit for Gate.io API (1-100)
             optimized_limit = max(1, min(100, limit))
@@ -269,7 +274,7 @@ class GateioPublicSpotRest(PublicSpotRest):
             ExchangeAPIError: If unable to fetch trade data
         """
         try:
-            pair = self._mapper.to_pair(symbol)
+            pair = to_pair(symbol)
             
             # Validate limit for Gate.io API (1-1000)
             optimized_limit = max(1, min(1000, limit))
@@ -301,7 +306,7 @@ class GateioPublicSpotRest(PublicSpotRest):
             
             trades = []
             for trade_data in response_data:
-                side = self._mapper.to_side(trade_data.get('side', 'buy'))
+                side = to_side(trade_data.get('side', 'buy'))
                 
                 trade = Trade(
                     symbol=symbol,
@@ -343,7 +348,7 @@ class GateioPublicSpotRest(PublicSpotRest):
             ExchangeAPIError: If unable to fetch trade data
         """
         try:
-            pair = self._mapper.to_pair(symbol)
+            pair = to_pair(symbol)
             
             # Validate limit for Gate.io API (1-1000)
             optimized_limit = max(1, min(1000, limit))
@@ -381,7 +386,7 @@ class GateioPublicSpotRest(PublicSpotRest):
             
             trades = []
             for trade_data in response_data:
-                side = self._mapper.to_side(trade_data.get('side', 'buy'))
+                side = to_side(trade_data.get('side', 'buy'))
                 
                 # Gate.io returns timestamp in seconds, convert to milliseconds
                 timestamp_str = trade_data.get('create_time', '0')
@@ -431,7 +436,7 @@ class GateioPublicSpotRest(PublicSpotRest):
             params = {}
             if symbol:
                 # Get ticker for specific symbol
-                pair = self._mapper.to_pair(symbol)
+                pair = to_pair(symbol)
                 params['currency_pair'] = pair
             # If no currency_pair specified, API returns all tickers
             
@@ -454,11 +459,11 @@ class GateioPublicSpotRest(PublicSpotRest):
                     continue
                 
                 # Skip if not a supported symbol
-                if not self._mapper.is_supported_pair(pair_str):
+                if not GateioSpotSymbol.is_supported_pair(pair_str):
                     continue
                 
                 try:
-                    symbol_obj = self._mapper.to_symbol(pair_str)
+                    symbol_obj = GateioSpotSymbol.to_symbol(pair_str)
                 except:
                     # Skip symbols we can't parse
                     continue
@@ -604,8 +609,9 @@ class GateioPublicSpotRest(PublicSpotRest):
         """
         klines = []
         try:
-            pair = self._mapper.to_pair(symbol)
-            interval = self._mapper.get_exchange_interval(timeframe)
+            pair = to_pair(symbol)
+            from exchanges.integrations.gateio.services.spot_symbol_mapper import get_exchange_interval
+            interval = get_exchange_interval(timeframe)
             
             params = {
                 'currency_pair': pair,

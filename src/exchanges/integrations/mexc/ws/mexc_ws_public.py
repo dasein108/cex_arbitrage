@@ -1,16 +1,16 @@
 """
 MEXC Public WebSocket Implementation
 
-Clean implementation using dependency injection similar to REST pattern.
+Clean implementation using handler objects for organized message processing.
 Handles public WebSocket streams for market data including:
 - Orderbook depth updates
 - Trade stream data
 - Real-time market information
 
 Features:
-- Dependency injection via composite class (like REST pattern)
+- Handler object pattern for clean organization
 - HFT-optimized message processing 
-- Event-driven architecture with injected handlers
+- Event-driven architecture with structured handlers
 - Clean separation of concerns
 - MEXC-specific protobuf message parsing
 
@@ -19,7 +19,7 @@ MEXC Public WebSocket Specifications:
 - Protocol: JSON and Protocol Buffers
 - Performance: <50ms latency with batch processing
 
-Architecture: Dependency injection with composite class coordination
+Architecture: Handler objects with composite class coordination
 """
 
 from typing import List, Optional, Callable, Awaitable
@@ -28,6 +28,7 @@ from exchanges.structs.common import Symbol, Trade, OrderBook, BookTicker
 from config.structs import ExchangeConfig
 from exchanges.interfaces.ws import PublicSpotWebsocket
 from infrastructure.networking.websocket.structs import ConnectionState
+from infrastructure.networking.websocket.handlers import PublicWebsocketHandlers
 
 # MEXC-specific protobuf imports for message parsing
 from exchanges.integrations.mexc.structs.protobuf.PushDataV3ApiWrapper_pb2 import PushDataV3ApiWrapper
@@ -41,10 +42,16 @@ class MexcPublicSpotWebsocket(PublicSpotWebsocket):
     def __init__(
         self,
         config: ExchangeConfig,
+        handlers: PublicWebsocketHandlers,
         **kwargs
     ):
         """
-        Initialize MEXC public WebSocket with dependency injection.
+        Initialize MEXC public WebSocket with handler objects.
+        
+        Args:
+            config: Exchange configuration
+            handlers: PublicWebsocketHandlers object containing message handlers
+            **kwargs: Additional arguments passed to base class
         
         Base class handles all strategy creation, WebSocket manager setup, and dependency injection.
         Only MEXC-specific initialization logic goes here.
@@ -53,13 +60,14 @@ class MexcPublicSpotWebsocket(PublicSpotWebsocket):
         if not config.websocket_url:
             raise ValueError("MEXC exchange configuration missing WebSocket URL")
         
-        # Initialize via composite class dependency injection (like REST pattern)
+        # Initialize via composite class with handler object
         super().__init__(
             config=config,
+            handlers=handlers,
             **kwargs
         )
 
-        self.logger.info("MEXC public WebSocket initialized with dependency injection")
+        self.logger.info("MEXC public WebSocket initialized with handler objects")
 
     # MEXC-specific message handling can be added here if needed
     # Base class handles all common WebSocket operations:

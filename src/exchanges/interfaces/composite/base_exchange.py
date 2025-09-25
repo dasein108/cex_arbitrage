@@ -31,7 +31,7 @@ class BaseCompositeExchange(ABC):
     establishing common patterns for connection management and state tracking.
     """
 
-    def __init__(self, tag: str, config: ExchangeConfig, logger: Optional[HFTLoggerInterface] = None):
+    def __init__(self, config: ExchangeConfig, is_private: bool, logger: Optional[HFTLoggerInterface] = None):
         """
         Initialize composite exchange interface.
         
@@ -40,22 +40,21 @@ class BaseCompositeExchange(ABC):
             config: Exchange configuration containing credentials and settings
             logger: Optional injected HFT logger (auto-created if not provided)
         """
+        self._is_private = is_private
+        self._tag = f"{config.name}_{'private' if is_private else 'public'}"
         self._config = config
         self._initialized = False
         
         # Use injected logger or create exchange-specific logger
-        self.logger = logger or get_exchange_logger(config.name, 'base_exchange')
+        self.logger = logger or get_exchange_logger(config.name, self._tag)
         
         # Connection and state management
         self._symbols_info: Optional[SymbolsInfo] = None
         self._connection_healthy = False
         self._last_update_time = 0.0
-        self._tag = tag
-        
+
         # Log interface initialization
-        self.logger.info("BaseExchangeInterface initialized",
-                        tag=tag,
-                        exchange=config.name)
+        self.logger.info("BaseExchangeInterface initialized", exchange=config.name)
 
     @abstractmethod
     async def close(self):

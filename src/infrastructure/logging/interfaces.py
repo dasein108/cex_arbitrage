@@ -56,16 +56,29 @@ class LogRecord:
     exchange: Optional[str] = None
     symbol: Optional[str] = None
     
+    # For error debugging (stack trace captured for ERROR+ levels)
+    stack_trace: Optional[str] = None
+    
     @classmethod
     def create_text(cls, level: LogLevel, logger_name: str, message: str, **context) -> 'LogRecord':
         """Fast factory method for text log records."""
+        # Capture stack trace for ERROR+ levels
+        stack_trace = None
+        if level >= LogLevel.ERROR:
+            import sys
+            import traceback
+            # Only capture stack trace if we're in an exception context
+            if sys.exc_info()[0] is not None:
+                stack_trace = traceback.format_exc()
+        
         return cls(
             timestamp=time.time(),
             level=level,
             log_type=LogType.TEXT,
             logger_name=logger_name,
             message=message,
-            context=context
+            context=context,
+            stack_trace=stack_trace
         )
     
     @classmethod

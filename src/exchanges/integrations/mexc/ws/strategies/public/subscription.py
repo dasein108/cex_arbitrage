@@ -18,7 +18,7 @@ from typing import List, Dict, Any, Optional, Set
 from infrastructure.networking.websocket.strategies.subscription import SubscriptionStrategy
 from infrastructure.networking.websocket.structs import SubscriptionAction, PublicWebsocketChannelType
 from exchanges.structs.common import Symbol
-from exchanges.services import BaseExchangeMapper
+# BaseExchangeMapper dependency removed - using direct utility functions
 from exchanges.consts import DEFAULT_PUBLIC_WEBSOCKET_CHANNELS
 
 # HFT Logger Integration
@@ -33,8 +33,8 @@ class MexcPublicSubscriptionStrategy(SubscriptionStrategy):
     Format: "spot@public.aggre.bookTicker.v3.api.pb@100ms@BTCUSDT"
     """
     
-    def __init__(self, mapper: BaseExchangeMapper, logger: Optional[HFTLoggerInterface] = None):
-        super().__init__(mapper)  # Initialize parent with mandatory mapper
+    def __init__(self, logger: Optional[HFTLoggerInterface] = None):
+        super().__init__(logger)
         
         # Use injected logger or create strategy-specific logger
         if logger is None:
@@ -47,13 +47,14 @@ class MexcPublicSubscriptionStrategy(SubscriptionStrategy):
         self._active_symbols: Set[Symbol] = set()
         
         # Log initialization
-        self.logger.info("MexcPublicSubscriptionStrategy initialized",
-                        exchange="mexc",
-                        api_type="public")
-        
-        # Track component initialization
-        self.logger.metric("mexc_public_subscription_strategies_initialized", 1,
-                          tags={"exchange": "mexc", "api_type": "public"})
+        if self.logger:
+            self.logger.info("MexcPublicSubscriptionStrategy initialized",
+                            exchange="mexc",
+                            api_type="public")
+            
+            # Track component initialization
+            self.logger.metric("mexc_public_subscription_strategies_initialized", 1,
+                              tags={"exchange": "mexc", "api_type": "public"})
 
     async def create_subscription_messages(self, action: SubscriptionAction,
                                            symbols: List[Symbol],
@@ -74,12 +75,11 @@ class MexcPublicSubscriptionStrategy(SubscriptionStrategy):
         if not symbols:
             return []
         
-        method = self.mapper.from_subscription_action(action)
+        # Use direct utility functions
+        from exchanges.integrations.mexc.utils import from_subscription_action, to_pair, get_spot_channel_name
+        method = from_subscription_action(action)
         
         # Build params with symbol-specific channels
-        if not self.mapper:
-            self.logger.error("No symbol mapper available for MEXC subscription")
-            return []
             
         messages = []
         for symbol in symbols:
@@ -89,25 +89,32 @@ class MexcPublicSubscriptionStrategy(SubscriptionStrategy):
                 #         '[spot@public.increase.depth.v3.api@BTCUSDT,'
                 #         'spot@public.aggre.deals.v3.api.pb@BTCUSDT,'
                 #         'spot@public.aggre.bookTicker.v3.api.pb@BTCUSDT].  Reason： Blocked! '}
-                exchange_symbol = self.mapper.to_pair(symbol)
+                exchange_symbol = to_pair(symbol)
                 params = []  # Reset params for each symbol
                 if PublicWebsocketChannelType.BOOK_TICKER in channels:
-                    channel_base = self.mapper.get_spot_channel_name(PublicWebsocketChannelType.BOOK_TICKER)
+                    channel_base = get_spot_channel_name(PublicWebsocketChannelType.BOOK_TICKER)
                     params.append(f"{channel_base}@10ms@{exchange_symbol}")
 
                 if PublicWebsocketChannelType.ORDERBOOK in channels:
-                    channel_base = self.mapper.get_spot_channel_name(PublicWebsocketChannelType.ORDERBOOK)
+                    channel_base = get_spot_channel_name(PublicWebsocketChannelType.ORDERBOOK)
                     params.append(f"{channel_base}@10ms@{exchange_symbol}")
 
                 if PublicWebsocketChannelType.TRADES in channels:
-                    channel_base = self.mapper.get_spot_channel_name(PublicWebsocketChannelType.TRADES)
+                    channel_base = get_spot_channel_name(PublicWebsocketChannelType.TRADES)
                     params.append(f"{channel_base}@10ms@{exchange_symbol}")
 
                 if not len(params):
-                    self.logger.warning(f"No valid channels to subscribe for symbol {symbol}")
+                    if self.logger:
+                        self.logger.warning(f"No valid channels to subscribe for symbol {symbol}",
+                                          symbol=str(symbol),
+                                          exchange="mexc")
                     continue
 
-                self.logger.debug(f"Added channels for {symbol}: {exchange_symbol}")
+                if self.logger:
+                    self.logger.debug(f"Added channels for {symbol}: {exchange_symbol}",
+                                    symbol=str(symbol),
+                                    exchange_symbol=exchange_symbol,
+                                    exchange="mexc")
 
                 message = {
                     "method": method,
@@ -115,10 +122,21 @@ class MexcPublicSubscriptionStrategy(SubscriptionStrategy):
                 }
                 messages.append(message)
             except Exception as e:
-                self.logger.error(f"Failed to convert symbol {symbol}: {e}")
+                if self.logger:
+                    self.logger.error(f"Failed to convert symbol {symbol}: {e}",
+                                    symbol=str(symbol),
+                                    error=str(e),
+                                    exchange="mexc")
                 continue
         
 
-        self.logger.info(f"Created {method} {len(messages)}  messages")
+        if self.logger:
+            self.logger.info(f"Created {method} {len(messages)} messages",
+                            method=method,
+                            message_count=len(messages),
+                            exchange="mexc")
+            
+            self.logger.metric("mexc_public_subscription_messages_created", len(messages),
+                              tags={"exchange": "mexc", "method": method, "api_type": "public"})
         
         return messages

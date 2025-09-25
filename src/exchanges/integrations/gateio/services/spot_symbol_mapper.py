@@ -1,18 +1,17 @@
 """
 Gate.io Symbol Mapper Implementation
 
-Factory-pattern symbol mapper for Gate.io exchange.
+Direct utility functions for Gate.io exchange symbol mapping.
 Converts between unified Symbol structs and Gate.io trading pair format.
 
 Gate.io Format: Underscore-separated (e.g., "BTC_USDT")
 Supported Quote Assets: USDT, USDC, BTC, ETH, DAI, USD
 
-Integration with existing GateioUtils while following factory pattern.
+HFT COMPLIANT: Direct function calls, no factories, no dependency injection.
 """
 
 from exchanges.services.symbol_mapper.base_symbol_mapper import SymbolMapperInterface
-from exchanges.services.symbol_mapper.factory import ExchangeSymbolMapperFactory
-from exchanges.structs import Symbol, ExchangeEnum, AssetName
+from exchanges.structs import Symbol, AssetName
 
 
 class GateioSymbolMapperInterface(SymbolMapperInterface):
@@ -82,6 +81,12 @@ class GateioSymbolMapperInterface(SymbolMapperInterface):
         raise ValueError(f"Unrecognized Gate.io pair format: {pair}. Expected format: BASE_QUOTE. Supported quotes: {self._quote_assets}")
 
 
-# Register Gate.io mapper with factory
-ExchangeSymbolMapperFactory.register(ExchangeEnum.GATEIO, GateioSymbolMapperInterface)
+# Global singleton instance for direct usage - use GateioSpotSymbol.method() directly
+GateioSpotSymbol = GateioSymbolMapperInterface()
+
+# Convenience functions remain for non-symbol operations
+def get_exchange_interval(interval) -> str:
+    """Convert unified KlineInterval to Gate.io format."""
+    from exchanges.integrations.gateio.services.gateio_classifiers import KLINE_INTERVAL_MAPPING
+    return KLINE_INTERVAL_MAPPING.get(interval, "1m")
 

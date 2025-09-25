@@ -1,10 +1,9 @@
-import logging
 import time
 import hashlib
 import hmac
 import asyncio
 import msgspec
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 from websockets import connect
 from websockets.client import WebSocketClientProtocol
 
@@ -13,13 +12,22 @@ from infrastructure.networking.websocket.strategies.connection import Reconnecti
 from config.structs import ExchangeConfig
 from infrastructure.exceptions.exchange import BaseExchangeError
 
+# HFT Logger Integration
+from infrastructure.logging import HFTLoggerInterface, get_strategy_logger, LoggingTimer
+
 
 class GateioPrivateFuturesConnectionStrategy(ConnectionStrategy):
     """Gate.io private futures WebSocket connection strategy with authentication."""
 
-    def __init__(self, config: ExchangeConfig):
-        super().__init__(config)  # Initialize parent with _websocket = None
-        self.logger = logging.getLogger(f"{__name__}.{self.__class__.__name__}")
+    def __init__(self, config: ExchangeConfig, logger: Optional[HFTLoggerInterface] = None):
+        super().__init__(config, logger)  # Initialize parent with _websocket = None
+        
+        # Initialize HFT logger with hierarchical tags
+        if logger is None:
+            tags = ['gateio', 'private', 'ws', 'connection']
+            logger = get_strategy_logger('ws.connection.gateio.private', tags)
+        
+        self.logger = logger
 
         if not config.credentials.has_private_api:
             raise ValueError("Gate.io credentials not configured for private futures WebSocket")
@@ -33,6 +41,16 @@ class GateioPrivateFuturesConnectionStrategy(ConnectionStrategy):
         self.ping_timeout = 10
         self.max_queue_size = 512
         self.max_message_size = 1024 * 1024  # 1MB
+        
+        # Log strategy initialization
+        self.logger.info("Gate.io private futures connection strategy initialized",
+                        websocket_url=self.websocket_url,
+                        ping_interval=self.ping_interval,
+                        ping_timeout=self.ping_timeout,
+                        max_queue_size=self.max_queue_size)
+        
+        self.logger.metric("ws_connection_strategies_created", 1,
+                          tags={"exchange": "gateio", "type": "private_futures"})
 
     def _get_futures_websocket_url(self, config: ExchangeConfig) -> str:
         """Get appropriate futures WebSocket URL from config or default."""
@@ -56,7 +74,9 @@ class GateioPrivateFuturesConnectionStrategy(ConnectionStrategy):
             BaseExchangeError: If connection fails
         """
         try:
-            self.logger.info(f"Connecting to Gate.io private futures WebSocket: {self.websocket_url}")
+            with LoggingTimer(self.logger, "gateio_private_futures_ws_connection") as timer:
+                self.logger.info("Connecting to Gate.io private futures WebSocket",
+                               websocket_url=self.websocket_url)
             
             # Gate.io private futures connection with same optimizations as spot
             self._websocket = await connect(
@@ -69,7 +89,9 @@ class GateioPrivateFuturesConnectionStrategy(ConnectionStrategy):
                 write_limit=2 ** 20,  # 1MB write buffer
             )
             
-            self.logger.info("Gate.io private futures WebSocket connected, authenticating...")
+            # Track successful connection
+            self.logger.info("Gate.io private futures WebSocket connected, authenticating...",
+                           connection_time_ms=timer.elapsed_ms)
             
             # Authenticate after connection
             auth_success = await self.authenticate()
@@ -78,10 +100,25 @@ class GateioPrivateFuturesConnectionStrategy(ConnectionStrategy):
                 raise BaseExchangeError(401, "Gate.io private futures authentication failed")
             
             self.logger.info("Gate.io private futures WebSocket authenticated successfully")
+            
+            self.logger.metric("ws_connections_established", 1,
+                              tags={"exchange": "gateio", "type": "private_futures"})
+            
+            self.logger.metric("ws_connection_time_ms", timer.elapsed_ms,
+                              tags={"exchange": "gateio", "type": "private_futures"})
+            
             return self._websocket
             
         except Exception as e:
-            self.logger.error(f"Failed to connect to Gate.io private futures WebSocket: {e}")
+            self.logger.error("Failed to connect to Gate.io private futures WebSocket",
+                            websocket_url=self.websocket_url,
+                            error_type=type(e).__name__,
+                            error_message=str(e))
+            
+            # Track connection failure
+            self.logger.metric("ws_connection_failures", 1,
+                              tags={"exchange": "gateio", "type": "private_futures", "error_type": type(e).__name__})
+            
             raise BaseExchangeError(500, f"Gate.io private futures WebSocket connection failed: {str(e)}")
 
     def _create_signature(self, channel: str, event: str, timestamp: str) -> str:
@@ -262,7 +299,9 @@ class GateioPrivateFuturesConnectionStrategy(ConnectionStrategy):
             await self._websocket.send(ping_message)
             self.logger.debug("Sent custom ping message to Gate.io private futures")
         except Exception as e:
-            self.logger.warning(f"Gate.io private futures custom ping failed: {e}")
+            self.logger.warning("Gate.io private futures custom ping failed",
+                              error_type=type(e).__name__,
+                              error_message=str(e))
             # Continue - built-in ping/pong will handle connection health
 
     def should_reconnect(self, error: Exception) -> bool:
@@ -270,24 +309,37 @@ class GateioPrivateFuturesConnectionStrategy(ConnectionStrategy):
         # Classify error first
         error_type = self.classify_error(error)
         
+        should_reconnect = False
+        
         # Authentication failures should not reconnect automatically
         if error_type == "authentication_failure":
             self.logger.error("Gate.io private futures authentication failure - won't reconnect")
-            return False
+            should_reconnect = False
         
         # Gate.io private futures 1005 errors need re-authentication
-        if error_type == "abnormal_closure":
+        elif error_type == "abnormal_closure":
             self.logger.info("Gate.io private futures 1005 error detected - will reconnect with re-auth")
-            return True
+            should_reconnect = True
         
         # Reconnect on network and timeout errors
-        if error_type in ["connection_refused", "timeout"]:
-            self.logger.warning(f"Gate.io private futures {error_type} error - will reconnect")
-            return True
+        elif error_type in ["connection_refused", "timeout"]:
+            self.logger.warning("Gate.io private futures network error - will reconnect",
+                              error_type=error_type)
+            should_reconnect = True
         
         # For unknown errors, try reconnecting with re-authentication
-        self.logger.warning(f"Gate.io private futures unknown error ({error}) - will attempt reconnect")
-        return True
+        else:
+            self.logger.warning("Gate.io private futures unknown error - will attempt reconnect",
+                              error_type=error_type,
+                              error_message=str(error))
+            should_reconnect = True
+        
+        # Track reconnection decision metrics
+        self.logger.metric("ws_reconnection_decisions", 1,
+                          tags={"exchange": "gateio", "type": "private_futures", 
+                                "error_type": error_type, "should_reconnect": str(should_reconnect)})
+        
+        return should_reconnect
     
     async def cleanup(self) -> None:
         """Clean up Gate.io private futures WebSocket resources."""

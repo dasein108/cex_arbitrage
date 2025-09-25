@@ -1,4 +1,4 @@
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, List, TYPE_CHECKING
 from msgspec import Struct
 import msgspec
 from exchanges.structs.types import ExchangeName
@@ -216,6 +216,16 @@ class ExchangeCredentials(Struct, frozen=True):
             return f"{self.api_key[:4]}...{self.api_key[-4:]}"
         return "***"
 
+    def validate(self) -> None:
+        """Validate credentials (basic validation - allows empty for public-only mode)."""
+        # Allow empty credentials for public-only mode
+        if not self.api_key and not self.secret_key:
+            return
+        
+        # If one is provided, both should be provided for consistency
+        if bool(self.api_key) != bool(self.secret_key):
+            raise ValueError("Both api_key and secret_key must be provided together or both empty")
+
 
 class ExchangeConfig(Struct, frozen=True):
     """
@@ -389,5 +399,93 @@ class ExchangeConfig(Struct, frozen=True):
             f"  Capabilities: {', '.join(enabled_caps)}\n"
             f"  Credentials: {self.credentials.get_preview()}"
         )
+
+
+class DatabaseConfig(Struct, frozen=True):
+    """Database configuration settings with connection pool parameters."""
+    host: str
+    port: int
+    database: str
+    username: str
+    password: str
+    
+    # Connection pool settings
+    min_pool_size: int = 5
+    max_pool_size: int = 20
+    max_queries: int = 50000
+    max_inactive_connection_lifetime: int = 300  # 5 minutes
+    command_timeout: int = 60  # 60 seconds
+    statement_cache_size: int = 1024
+    
+    def get_dsn(self) -> str:
+        """Generate PostgreSQL DSN (Data Source Name) connection string."""
+        return f"postgresql://{self.username}:{self.password}@{self.host}:{self.port}/{self.database}"
+    
+    def validate(self) -> None:
+        """Validate database configuration."""
+        if not self.host:
+            raise ValueError("Database host cannot be empty")
+        if self.port <= 0 or self.port > 65535:
+            raise ValueError("Database port must be between 1 and 65535")
+        if not self.database:
+            raise ValueError("Database name cannot be empty")
+        if not self.username:
+            raise ValueError("Database username cannot be empty")
+        if self.min_pool_size <= 0:
+            raise ValueError("min_pool_size must be positive")
+        if self.max_pool_size <= 0:
+            raise ValueError("max_pool_size must be positive")
+        if self.min_pool_size > self.max_pool_size:
+            raise ValueError("min_pool_size cannot be greater than max_pool_size")
+        if self.command_timeout <= 0:
+            raise ValueError("command_timeout must be positive")
+        if self.max_queries <= 0:
+            raise ValueError("max_queries must be positive")
+
+
+class AnalyticsConfig(Struct, frozen=True):
+    """Analytics configuration for real-time opportunity detection."""
+    arbitrage_threshold: float
+    volume_threshold: float
+    spread_alert_threshold: float
+    
+    def validate(self) -> None:
+        """Validate analytics configuration."""
+        if self.arbitrage_threshold <= 0:
+            raise ValueError("arbitrage_threshold must be positive")
+        if self.volume_threshold <= 0:
+            raise ValueError("volume_threshold must be positive")
+        if self.spread_alert_threshold <= 0:
+            raise ValueError("spread_alert_threshold must be positive")
+
+
+class DataCollectorConfig(Struct, frozen=True):
+    """Main configuration for the data collector."""
+    enabled: bool
+    snapshot_interval: float  # seconds
+    analytics_interval: float  # seconds
+    database: DatabaseConfig
+    exchanges: List['ExchangeName']
+    analytics: AnalyticsConfig
+    symbols: List['Symbol']  # Forward reference to avoid circular import
+    collect_trades: bool = True
+    trade_snapshot_interval: float = 1.0
+    
+    def validate(self) -> None:
+        """Validate data collector configuration."""
+        if self.snapshot_interval <= 0:
+            raise ValueError("snapshot_interval must be positive")
+        if self.trade_snapshot_interval <= 0:
+            raise ValueError("trade_snapshot_interval must be positive")
+        if self.analytics_interval <= 0:
+            raise ValueError("analytics_interval must be positive")
+        if not self.exchanges:
+            raise ValueError("At least one exchange must be configured")
+        if not self.symbols:
+            raise ValueError("At least one symbol must be configured")
+        
+        # Validate sub-components
+        self.database.validate()
+        self.analytics.validate()
 
 

@@ -1,17 +1,36 @@
-import logging
 from typing import Dict, Any, Optional, List
 
 from infrastructure.networking.websocket.strategies.message_parser import MessageParser
 from infrastructure.networking.websocket.structs import ParsedMessage
-from exchanges.services import BaseExchangeMapper
+# BaseExchangeMapper dependency removed - using direct utility functions
 from infrastructure.networking.websocket.structs import MessageType
+
+# HFT Logger Integration
+from infrastructure.logging import get_strategy_logger, HFTLoggerInterface
 
 
 class GateioPrivateMessageParser(MessageParser):
     """Gate.io private WebSocket message parser."""
 
-    def __init__(self, mapper: BaseExchangeMapper, logger):
-        super().__init__(mapper, logger)
+    def __init__(self, logger: Optional[HFTLoggerInterface] = None):
+        super().__init__(logger)
+        
+        # Use injected logger or create strategy-specific logger
+        if logger is None:
+            tags = ['gateio', 'spot', 'private', 'ws', 'message_parser']
+            logger = get_strategy_logger('ws.message_parser.gateio.spot.private', tags)
+        
+        self.logger = logger
+        
+        # Log initialization
+        if self.logger:
+            self.logger.info("GateioPrivateMessageParser initialized",
+                            exchange="gateio",
+                            api_type="spot_private")
+            
+            # Track component initialization
+            self.logger.metric("gateio_spot_private_message_parsers_initialized", 1,
+                              tags={"exchange": "gateio", "api_type": "spot_private"})
 
     async def parse_message(self, raw_message: str) -> Optional[ParsedMessage]:
         """Parse raw WebSocket message from Gate.io private channels."""
@@ -52,7 +71,10 @@ class GateioPrivateMessageParser(MessageParser):
                             raw_data=message
                         )
                     else:
-                        self.logger.debug(f"Unknown Gate.io private message format: {message}")
+                        if self.logger:
+                            self.logger.debug(f"Unknown Gate.io private message format: {message}",
+                                            exchange="gateio",
+                                            api_type="spot_private")
                         return ParsedMessage(
                             message_type=MessageType.UNKNOWN,
                             raw_data=message
@@ -61,7 +83,11 @@ class GateioPrivateMessageParser(MessageParser):
             return None
             
         except Exception as e:
-            self.logger.error(f"Failed to parse Gate.io private message: {e}")
+            if self.logger:
+                self.logger.error(f"Failed to parse Gate.io private message: {e}",
+                                exchange="gateio",
+                                error_type=type(e).__name__,
+                                api_type="spot_private")
             return None
 
     async def _parse_subscription_response(self, message: Dict[str, Any]) -> ParsedMessage:
@@ -74,7 +100,12 @@ class GateioPrivateMessageParser(MessageParser):
         if error:
             error_code = error.get("code", "unknown")
             error_msg = error.get("message", "unknown error")
-            self.logger.error(f"Gate.io private subscription error {error_code}: {error_msg}")
+            if self.logger:
+                self.logger.error(f"Gate.io private subscription error {error_code}: {error_msg}",
+                                exchange="gateio",
+                                error_code=error_code,
+                                error_message=error_msg,
+                                api_type="spot_private")
             return ParsedMessage(
                 message_type=MessageType.ERROR,
                 channel=channel,
@@ -87,7 +118,11 @@ class GateioPrivateMessageParser(MessageParser):
         status = result.get("status")
         
         if status == "success":
-            self.logger.debug(f"Gate.io private subscription successful for channel: {channel}")
+            if self.logger:
+                self.logger.debug(f"Gate.io private subscription successful for channel: {channel}",
+                                exchange="gateio",
+                                channel=channel,
+                                api_type="spot_private")
             return ParsedMessage(
                 message_type=MessageType.SUBSCRIPTION_CONFIRM,
                 channel=channel,
@@ -95,7 +130,11 @@ class GateioPrivateMessageParser(MessageParser):
                 raw_data=message
             )
         elif status == "fail":
-            self.logger.error(f"Gate.io private subscription failed for channel: {channel}")
+            if self.logger:
+                self.logger.error(f"Gate.io private subscription failed for channel: {channel}",
+                                exchange="gateio",
+                                channel=channel,
+                                api_type="spot_private")
             return ParsedMessage(
                 message_type=MessageType.ERROR,
                 channel=channel,
@@ -103,7 +142,11 @@ class GateioPrivateMessageParser(MessageParser):
                 raw_data=message
             )
         else:
-            self.logger.warning(f"Unknown Gate.io private subscription status: {status}")
+            if self.logger:
+                self.logger.warning(f"Unknown Gate.io private subscription status: {status}",
+                                  exchange="gateio",
+                                  status=status,
+                                  api_type="spot_private")
             return ParsedMessage(
                 message_type=MessageType.UNKNOWN,
                 channel=channel,
@@ -152,8 +195,9 @@ class GateioPrivateMessageParser(MessageParser):
             balance_list = data if isinstance(data, list) else [data]
             
             for balance_data in balance_list:
-                # Use mapper to transform Gate.io balance to unified AssetBalance
-                balance = self.mapper.ws_to_balance(balance_data)
+                # Use direct utility function to transform Gate.io balance to unified AssetBalance
+                from exchanges.integrations.gateio.utils import ws_to_balance
+                balance = ws_to_balance(balance_data)
                 balances[balance.asset] = balance
             
             return ParsedMessage(
@@ -163,7 +207,11 @@ class GateioPrivateMessageParser(MessageParser):
             )
             
         except Exception as e:
-            self.logger.error(f"Failed to parse balance update: {e}")
+            if self.logger:
+                self.logger.error(f"Failed to parse balance update: {e}",
+                                exchange="gateio",
+                                error_type=type(e).__name__,
+                                api_type="spot_private")
             return ParsedMessage(
                 message_type=MessageType.ERROR,
                 raw_data={"error": str(e), "data": data}
@@ -178,8 +226,9 @@ class GateioPrivateMessageParser(MessageParser):
             order_list = data if isinstance(data, list) else [data]
             
             for order_data in order_list:
-                # Use mapper to transform Gate.io order to unified Order
-                order = self.mapper.ws_to_order(order_data)
+                # Use direct utility function to transform Gate.io order to unified Order
+                from exchanges.integrations.gateio.utils import ws_to_order
+                order = ws_to_order(order_data)
                 orders.append(order)
             
             return ParsedMessage(
@@ -189,7 +238,11 @@ class GateioPrivateMessageParser(MessageParser):
             )
             
         except Exception as e:
-            self.logger.error(f"Failed to parse order update: {e}")
+            if self.logger:
+                self.logger.error(f"Failed to parse order update: {e}",
+                                exchange="gateio",
+                                error_type=type(e).__name__,
+                                api_type="spot_private")
             return ParsedMessage(
                 message_type=MessageType.ERROR,
                 raw_data={"error": str(e), "data": data}
@@ -204,8 +257,9 @@ class GateioPrivateMessageParser(MessageParser):
             trade_list = data if isinstance(data, list) else [data]
             
             for trade_data in trade_list:
-                # Use mapper to transform Gate.io trade to unified Trade
-                trade = self.mapper.ws_to_trade(trade_data)
+                # Use direct utility function to transform Gate.io trade to unified Trade
+                from exchanges.integrations.gateio.utils import ws_to_trade
+                trade = ws_to_trade(trade_data)
                 trades.append(trade)
             
             return ParsedMessage(
@@ -215,7 +269,11 @@ class GateioPrivateMessageParser(MessageParser):
             )
             
         except Exception as e:
-            self.logger.error(f"Failed to parse user trade update: {e}")
+            if self.logger:
+                self.logger.error(f"Failed to parse user trade update: {e}",
+                                exchange="gateio",
+                                error_type=type(e).__name__,
+                                api_type="spot_private")
             return ParsedMessage(
                 message_type=MessageType.ERROR,
                 raw_data={"error": str(e), "data": data}

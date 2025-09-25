@@ -39,7 +39,8 @@ from exchanges.structs.types import AssetName
 from exchanges.structs.enums import KlineInterval
 from exchanges.structs import Side
 from exchanges.interfaces.rest.spot import PublicSpotRest
-from exchanges.services import BaseExchangeMapper
+# Using MexcSymbol singleton for symbol conversions
+from exchanges.integrations.mexc.services.symbol_mapper import MexcSymbol
 from config.structs import ExchangeConfig
 from infrastructure.networking.http.structs import HTTPMethod
 from common.iterators import time_range_iterator
@@ -53,16 +54,15 @@ class MexcPublicSpotRest(PublicSpotRest):
     Optimized for high-frequency market data retrieval with minimal overhead.
     """
 
-    def __init__(self, config: ExchangeConfig, mapper: BaseExchangeMapper, logger=None):
+    def __init__(self, config: ExchangeConfig, logger=None, **kwargs):
         """
-        Initialize MEXC public REST client with dependency injection.
+        Initialize MEXC public REST client.
 
         Args:
             config: ExchangeConfig with composite URL and rate limits
-            mapper: BaseExchangeMapper for data transformations
             logger: Optional HFT logger injection
         """
-        super().__init__(config, mapper)
+        super().__init__(config, is_private=False)
 
         self._symbols_info: Optional[Dict[Symbol, SymbolInfo]] = None
         
@@ -136,7 +136,8 @@ class MexcPublicSpotRest(PublicSpotRest):
             )
             
             # Filter out unsupported symbols (quote assets not supported)
-            if not self._mapper.validate_symbol(symbol):
+            from exchanges.integrations.mexc.services.symbol_mapper import is_supported_symbol
+            if not is_supported_symbol(symbol):
                 filtered_count += 1
                 continue
             
@@ -179,7 +180,7 @@ class MexcPublicSpotRest(PublicSpotRest):
         Raises:
             ExchangeAPIError: If unable to fetch order book data
         """
-        pair = self._mapper.to_pair(symbol)
+        pair = MexcSymbol.to_pair(symbol)
         
         params = {
             'symbol': pair,
@@ -226,7 +227,7 @@ class MexcPublicSpotRest(PublicSpotRest):
         Raises:
             ExchangeAPIError: If unable to fetch trade data
         """
-        pair = self._mapper.to_pair(symbol)
+        pair = MexcSymbol.to_pair(symbol)
         optimized_limit = min(limit, 1000)  # MEXC max limit
         
         params = {
@@ -290,7 +291,8 @@ class MexcPublicSpotRest(PublicSpotRest):
             the most recent trades up to the limit. For true historical access,
             use fromId parameter (not exposed in this unified interface).
         """
-        pair = self._mapper.to_pair(symbol)
+        from exchanges.integrations.mexc.utils import to_pair
+        pair = to_pair(symbol)
         optimized_limit = min(limit, 1000)  # MEXC max limit
         
         params = {
@@ -357,7 +359,8 @@ class MexcPublicSpotRest(PublicSpotRest):
         params = {}
         if symbol:
             # Get ticker for specific symbol
-            pair = self._mapper.to_pair(symbol)
+            from exchanges.integrations.mexc.utils import to_pair
+            pair = to_pair(symbol)
             params['symbol'] = pair
         # If no symbol specified, API returns all tickers
         
@@ -380,11 +383,12 @@ class MexcPublicSpotRest(PublicSpotRest):
                 continue
             
             # Skip if not a supported symbol
-            if not self._mapper.is_supported_pair(pair_str):
+            from exchanges.integrations.mexc.services.symbol_mapper import MexcSymbol
+            if not MexcSymbol.is_supported_pair(pair_str):
                 continue
             
             try:
-                symbol_obj = self._mapper.to_symbol(pair_str)
+                symbol_obj = MexcSymbol.to_symbol(pair_str)
             except:
                 # Skip symbols we can't parse
                 continue
@@ -492,8 +496,10 @@ class MexcPublicSpotRest(PublicSpotRest):
         Raises:
             ExchangeAPIError: If unable to fetch kline data
         """
-        pair = self._mapper.to_pair(symbol)
-        interval = self._mapper.from_kline_interval(timeframe)
+        from exchanges.integrations.mexc.utils import to_pair
+        from exchanges.integrations.mexc.services.symbol_mapper import from_kline_interval
+        pair = to_pair(symbol)
+        interval = from_kline_interval(timeframe)
         
         params = {
             'symbol': pair,

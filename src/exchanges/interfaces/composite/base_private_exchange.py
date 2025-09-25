@@ -38,7 +38,7 @@ class CompositePrivateExchange(BaseCompositeExchange):
         Args:
             config: Exchange configuration with API credentials
         """
-        super().__init__(config)
+        super().__init__(config=config, is_private=True)
         
         # Override tag to indicate private operations
         self._tag = f'{config.name}_private'
@@ -321,10 +321,10 @@ class CompositePrivateExchange(BaseCompositeExchange):
 
     async def initialize(self, symbols_info: SymbolsInfo) -> None:
         """
-        Initialize private exchange with symbols and private data.
+        Initialize private exchange with private data.
         
         Args:
-            symbols: Optional list of symbols to track
+            symbols_info: Preloaded symbol information
         """
         # First initialize public functionality
         self._symbols_info = symbols_info
@@ -358,10 +358,6 @@ class CompositePrivateExchange(BaseCompositeExchange):
         (balances, orders, positions).
         """
         try:
-            # Refresh public data first
-            if self._active_symbols:
-                await self._initialize_orderbooks_from_rest(self._active_symbols)
-
             # Refresh private data
             await self._load_balances()
             await self._load_open_orders()
@@ -436,8 +432,6 @@ class CompositePrivateExchange(BaseCompositeExchange):
         Returns:
             Dictionary with trading and account statistics
         """
-        base_stats = self.get_orderbook_stats()
-        
         trading_stats = {
             'total_balances': len(self._balances),
             'open_orders_count': sum(len(orders) for orders in self._open_orders.values()),
@@ -445,4 +439,4 @@ class CompositePrivateExchange(BaseCompositeExchange):
             'has_credentials': self._config.has_credentials(),
         }
         
-        return {**base_stats, **trading_stats}
+        return {**trading_stats}

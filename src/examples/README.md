@@ -42,15 +42,15 @@ Tests public REST API functionality without authentication:
 ```bash
 # Basic usage (defaults to mexc)
 python src/examples/rest_public_integration_test.py
-python src/examples/rest_public_integration_test.py mexc
-python src/examples/rest_public_integration_test.py gateio
+python src/examples/rest_public_integration_test.py mexc_spot
+python src/examples/rest_public_integration_test.py gateio_spot
 
 # With JSON output
 python src/examples/rest_public_integration_test.py --output results.json
-python src/examples/rest_public_integration_test.py mexc --output results.json
+python src/examples/rest_public_integration_test.py mexc_spot --output results.json
 
 # Custom timeout
-python src/examples/rest_public_integration_test.py gateio --timeout 60
+python src/examples/rest_public_integration_test.py gateio_spot --timeout 60
 ```
 
 **Tests Performed:**
@@ -72,8 +72,8 @@ export MEXC_SECRET_KEY="your_secret_key"
 
 # Basic usage (defaults to mexc)
 python src/examples/rest_private_integration_test.py
-python src/examples/rest_private_integration_test.py mexc
-python src/examples/rest_private_integration_test.py gateio --output private_results.json
+python src/examples/rest_private_integration_test.py mexc_spot
+python src/examples/rest_private_integration_test.py gateio_spot --output private_results.json
 ```
 
 **Tests Performed:**
@@ -94,15 +94,15 @@ Tests public WebSocket real-time data streaming:
 ```bash
 # Basic usage (defaults to mexc)
 python src/examples/websocket_public_integration_test.py
-python src/examples/websocket_public_integration_test.py mexc
-python src/examples/websocket_public_integration_test.py gateio
+python src/examples/websocket_public_integration_test.py mexc_spot
+python src/examples/websocket_public_integration_test.py gateio_spot
 
 # Custom monitoring duration
 python src/examples/websocket_public_integration_test.py --monitor-time 30
-python src/examples/websocket_public_integration_test.py mexc --monitor-time 30
+python src/examples/websocket_public_integration_test.py mexc_spot --monitor-time 30
 
 # Full customization
-python src/examples/websocket_public_integration_test.py gateio --timeout 60 --monitor-time 20 --output ws_results.json
+python src/examples/websocket_public_integration_test.py gateio_futures --timeout 60 --monitor-time 20 --output ws_results.json
 ```
 
 **Tests Performed:**
@@ -123,8 +123,8 @@ export MEXC_SECRET_KEY="your_secret_key"
 
 # Basic usage (defaults to mexc)
 python src/examples/websocket_private_integration_test.py
-python src/examples/websocket_private_integration_test.py mexc --monitor-time 30 --output private_ws_results.json
-python src/examples/websocket_private_integration_test.py gateio
+python src/examples/websocket_private_integration_test.py mexc_spot --monitor-time 30 --output private_ws_results.json
+python src/examples/websocket_private_integration_test.py gateio_futures
 ```
 
 **Tests Performed:**

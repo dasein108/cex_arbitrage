@@ -42,7 +42,6 @@ class ConsoleBackendConfig(BackendConfig):
     include_context: bool = True
     max_message_length: int = 1000
 
-
 class FileBackendConfig(BackendConfig):
     """
     File backend configuration.

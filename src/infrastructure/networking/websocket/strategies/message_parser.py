@@ -12,7 +12,7 @@ from typing import Optional, Dict, Any, List, AsyncIterator
 
 from infrastructure.networking.websocket.structs import ParsedMessage, MessageType
 from exchanges.structs.common import Symbol
-from exchanges.services import BaseExchangeMapper
+# BaseExchangeMapper dependency removed - using direct utility functions
 
 # HFT Logger Integration
 from infrastructure.logging import HFTLoggerInterface, LoggingTimer
@@ -33,24 +33,18 @@ class MessageParser(ABC):
     HFT COMPLIANT: <1ms message processing, zero-copy where possible.
     """
     
-    def __init__(self, mapper: BaseExchangeMapper, logger: HFTLoggerInterface):
+    def __init__(self, logger: Optional[HFTLoggerInterface] = None):
         """
-        Initialize unified parser with all necessary components.
+        Initialize unified parser with HFT logger.
         
         Args:
-            mapper: Exchange mappings interface for symbol conversion (mandatory)
-            logger: HFT logger instance (mandatory)
+            logger: Optional HFT logger for structured logging
         """
-        if mapper is None:
-            raise ValueError("mapper is required for MessageParser initialization")
-        if logger is None:
-            raise ValueError("logger is required for MessageParser initialization")
-            
-        self.mapper = mapper
         self.logger = logger
         
-        # Log initialization with structured data
-        self.logger.info("MessageParser initialized", has_mapper=mapper is not None)
+        # Log initialization with structured data if logger provided
+        if self.logger:
+            self.logger.info("MessageParser initialized")
 
     @abstractmethod
     async def parse_message(self, raw_message: Any) -> Optional[ParsedMessage]:
@@ -184,7 +178,6 @@ class MessageParser(ABC):
             raw_data=raw_data
         )
     
-    @abstractmethod
     def get_message_type(self, message: Dict[str, Any]) -> MessageType:
         """
         Detect message type from parsed JSON.

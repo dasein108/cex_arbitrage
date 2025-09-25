@@ -104,7 +104,6 @@ async def fetch_mexc_futures_symbols() -> Dict[Symbol, SymbolInfo]:
                         
                         # Create SymbolInfo
                         symbol_info = SymbolInfo(
-                            exchange=ExchangeName("mexc_futures"),
                             symbol=symbol,
                             base_precision=amount_scale,
                             quote_precision=price_scale,

@@ -48,7 +48,7 @@ class OrderBook(Struct):
     """Complete orderbook state."""
     bids: List[OrderBookEntry]
     asks: List[OrderBookEntry]
-    timestamp: int
+    timestamp: float
     last_update_id: Optional[int] = None
 
 class Order(Struct):

@@ -38,8 +38,7 @@ class CompositePublicFuturesExchange(CompositePublicExchange):
         super().__init__(config)
         
         # Override tag to indicate futures operations
-        self._tag = f'{config.name}_public_futures'
-        
+
         # Futures-specific data (using generic Dict structures for now)
         self._funding_rates: Dict[Symbol, Dict] = {}
         self._open_interest: Dict[Symbol, Dict] = {}

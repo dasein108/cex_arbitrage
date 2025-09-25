@@ -39,11 +39,7 @@ from .factory import (
     LoggerFactory,
     get_logger,
     get_exchange_logger,
-    get_arbitrage_logger,
-    get_strategy_logger,
-    get_strategy_metrics_logger,
-    configure_logging,
-    configure_logging_from_struct
+    get_strategy_logger
 )
 
 # Configuration structures
@@ -87,11 +83,7 @@ __all__ = [
     'LoggerFactory',
     'get_logger',
     'get_exchange_logger',
-    'get_arbitrage_logger',
     'get_strategy_logger',
-    'get_strategy_metrics_logger',
-    'configure_logging',
-    'configure_logging_from_struct',
     
     # Configuration structures
     'LoggingConfig',

@@ -180,9 +180,8 @@ class BaseCompositeFactory(Generic[T], ExchangeFactoryInterface, ABC):
         """
         Generic dependency resolution infrastructure.
         
-        Automatically resolves common dependencies used across factories:
-        - symbol_mapper via ExchangeSymbolMapperFactory
-        - exchange_mappings via ExchangeMappingsFactory
+        Note: Symbol mapper factory has been removed - exchanges now use direct utility functions.
+        Only exchange mappings are resolved via factory injection.
         
         Args:
             exchange: Exchange identifier for dependency resolution (ExchangeEnum only)
@@ -195,27 +194,9 @@ class BaseCompositeFactory(Generic[T], ExchangeFactoryInterface, ABC):
         exchange_key = exchange.value
         
         try:
-            # Import factories lazily to avoid circular dependencies
-            from exchanges.services.exchange_mapper.factory import ExchangeMapperFactory
-            
-            # Auto-resolve symbol mapper if available
-            if 'symbol_mapper' not in context:
-                from exchanges.services.symbol_mapper.factory import ExchangeSymbolMapperFactory
-
-                try:
-                    symbol_mapper = ExchangeSymbolMapperFactory.inject(exchange)
-                    resolved['symbol_mapper'] = symbol_mapper
-                except Exception:
-                    # Graceful fallback - symbol mapper not available
-                    pass
-            # Auto-resolve exchange mappings if symbol mapper available
-            if 'exchange_mappings' not in context:
-                try:
-                    exchange_mappings = ExchangeMapperFactory.inject(exchange)
-                    resolved['exchange_mappings'] = exchange_mappings
-                except Exception:
-                    # Graceful fallback - exchange mappings not available
-                    pass
+            # ExchangeMapperFactory removed - exchanges use direct utility functions now
+            # Symbol mapper factory removed - exchanges use direct utility functions now
+            pass
         except ImportError:
             # Graceful fallback - factories not available
             pass

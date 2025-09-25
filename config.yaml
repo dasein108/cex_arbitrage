@@ -10,35 +10,36 @@ environment:
 # Logging configuration
 logging:
   # Console output settings
-  console:
-    enabled: true                    # Always show logs in console
-    color: true                      # Colored output for better readability
-    include_context: true            # Show context information
-    min_level: INFO                 # Minimum level for console output
-    
-  # File output settings
-  file:
-    enabled: true                    # Log to file
-    path: logs/hft.log              # Log file path
-    format: text                     # text or json
-    min_level: INFO                  # Minimum level for file output
-    max_size_mb: 100                 # Maximum file size before rotation
-    backup_count: 5                  # Number of backup files to keep
-    
-  # Metrics collection (Prometheus)
-  prometheus:
-    enabled: false                   # Disabled by default, enable when needed
-    push_gateway_url: http://localhost:9091
-    job_name: hft_arbitrage
-    batch_size: 100                  # Metrics per batch
-    flush_interval: 5.0              # Seconds between flushes
-    
-  # Performance settings
-  performance:
-    buffer_size: 10000               # Ring buffer size for async logging
-    batch_size: 50                   # Messages per backend dispatch
-    correlation_tracking: true       # Track correlation IDs
-    performance_tracking: true       # Track performance metrics
+  backends:
+    console:
+      enabled: true                    # Always show logs in console
+      color: true                      # Colored output for better readability
+      include_context: true            # Show context information
+      min_level: INFO                 # Minimum level for console output
+
+    # File output settings
+    file:
+      enabled: true                    # Log to file
+      path: logs/hft.log              # Log file path
+      format: text                     # text or json
+      min_level: INFO                  # Minimum level for file output
+      max_size_mb: 100                 # Maximum file size before rotation
+      backup_count: 5                  # Number of backup files to keep
+
+    # Metrics collection (Prometheus)
+    prometheus:
+      enabled: false                   # Disabled by default, enable when needed
+      push_gateway_url: http://localhost:9091
+      job_name: hft_arbitrage
+      batch_size: 100                  # Metrics per batch
+      flush_interval: 5.0              # Seconds between flushes
+
+    # Performance settings
+    performance:
+      buffer_size: 10000               # Ring buffer size for async logging
+      batch_size: 50                   # Messages per backend dispatch
+      correlation_tracking: true       # Track correlation IDs
+      performance_tracking: true       # Track performance metrics
 
 # Database configuration
 database:
@@ -69,7 +70,7 @@ database:
 
 # Exchange API settings - Enhanced with RestTransportConfig
 exchanges:
-  mexc_spot:
+  MEXC_SPOT:
     api_key: "${MEXC_API_KEY}"  # Set via environment variable MEXC_API_KEY
     secret_key: "${MEXC_SECRET_KEY}"  # Set via environment variable MEXC_SECRET_KEY
     base_url: "https://api.mexc.com"
@@ -97,7 +98,7 @@ exchanges:
       enable_compression: true
       user_agent: "HFTArbitrageEngine-MEXC/1.0"
       
-  gateio_spot:
+  GATEIO_SPOT:
     api_key: "${GATEIO_API_KEY}"  # Set via environment variable GATEIO_API_KEY (empty for public-only access)
     secret_key: "${GATEIO_SECRET_KEY}"  # Set via environment variable GATEIO_SECRET_KEY (empty for public-only access)
     base_url: "https://api.gateio.ws/api/v4"  # Production URL
@@ -125,7 +126,7 @@ exchanges:
       enable_compression: true
       user_agent: "HFTArbitrageEngine-GATEIO/1.0"
 
-  gateio_futures:
+  GATEIO_FUTURES:
     api_key: "${GATEIO_API_KEY}"  # Same credentials as spot but separate configuration
     secret_key: "${GATEIO_SECRET_KEY}"  # Same credentials as spot but separate configuration
     base_url: "https://api.gateio.ws/api/v4"  # Same REST API endpoint for futures

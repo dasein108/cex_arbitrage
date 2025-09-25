@@ -1,6 +1,5 @@
 from exchanges.services.symbol_mapper.base_symbol_mapper import SymbolMapperInterface
-from exchanges.services.symbol_mapper.factory import ExchangeSymbolMapperFactory
-from exchanges.structs import Symbol, AssetName, ExchangeEnum
+from exchanges.structs import Symbol, AssetName
 
 
 class GateioFuturesSymbolMapperInterface(SymbolMapperInterface):
@@ -64,4 +63,5 @@ class GateioFuturesSymbolMapperInterface(SymbolMapperInterface):
 
 
 
-ExchangeSymbolMapperFactory.register(ExchangeEnum.GATEIO_FUTURES, GateioFuturesSymbolMapperInterface)
+# Global singleton instance for direct usage - use GateioFuturesSymbol.method() directly
+GateioFuturesSymbol = GateioFuturesSymbolMapperInterface()

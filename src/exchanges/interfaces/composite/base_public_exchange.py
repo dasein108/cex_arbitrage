@@ -8,7 +8,7 @@ without requiring authentication credentials.
 import asyncio
 import time
 from abc import abstractmethod
-from typing import Dict, List, Optional, Callable, Awaitable
+from typing import Dict, List, Optional, Callable, Awaitable, Set
 
 from exchanges.structs.common import (Symbol, SymbolsInfo, OrderBook)
 from ...structs.enums import OrderbookUpdateType
@@ -37,11 +37,11 @@ class CompositePublicExchange(BaseCompositeExchange):
         Args:
             config: Exchange configuration (credentials not required)
         """
-        super().__init__(f'{config.name}_public', config)
+        super().__init__(config, is_private=False)
         
         # Market data state
         self._orderbooks: Dict[Symbol, OrderBook] = {}
-        self._active_symbols: List[Symbol] = []
+        self._active_symbols: Set[Symbol] = []
 
         # Update handlers for arbitrage layer
         self._orderbook_update_handlers: List[
@@ -78,7 +78,7 @@ class CompositePublicExchange(BaseCompositeExchange):
         Args:
             symbol: Symbol to start tracking
         """
-        self._active_symbols.append(symbol)
+        self._active_symbols.add(symbol)
 
     async def remove_symbol(self, symbol: Symbol) -> None:
         """
@@ -134,7 +134,7 @@ class CompositePublicExchange(BaseCompositeExchange):
 
             if symbols:
                 await self._initialize_orderbooks_from_rest(symbols)
-                self._active_symbols.extend(symbols)
+                self._active_symbols.update(symbols)
 
             await self._start_real_time_streaming(symbols or [])
 

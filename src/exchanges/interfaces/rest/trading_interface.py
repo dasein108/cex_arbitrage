@@ -8,7 +8,7 @@ for both spot and futures exchanges.
 from abc import abstractmethod
 from typing import Dict, List, Optional
 from exchanges.interfaces.rest.rest_base import BaseRestInterface
-from exchanges.services import BaseExchangeMapper
+# BaseExchangeMapper dependency removed - using direct utility functions
 from exchanges.structs.common import (
     Symbol,
     Order,
@@ -28,14 +28,13 @@ class PrivateTradingInterface(BaseRestInterface):
     """Abstract interface for private exchange trading operations (both spot and futures)"""
     CAN_MODIFY_ORDERS = False  # Default capability flag for modifying orders
 
-    def __init__(self, config: ExchangeConfig, mapper: BaseExchangeMapper, logger: Optional[HFTLoggerInterface] = None):
-        """Initialize private trading interface with transport manager and mapper."""
+    def __init__(self, config: ExchangeConfig, logger: Optional[HFTLoggerInterface] = None, **kwargs):
+        """Initialize private trading interface with transport manager."""
         if not config.has_credentials():
             raise ValueError(f"{config.name} API credentials must be provided")
             
         super().__init__(
             config=config,
-            mapper=mapper,
             is_private=True,  # Private API operations with authentication
             logger=logger  # Pass logger to parent for specialized private logging
         )

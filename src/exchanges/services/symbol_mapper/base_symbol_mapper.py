@@ -1,193 +1,111 @@
 """
 Base Symbol Mapper Interface
 
-Provides abstract exchanges for exchange-specific symbol format conversion.
-Eliminates singleton pattern in favor of factory-based instance management.
+Foundation interface for exchange-specific symbol mappers.
+Defines the common contract that all symbol mapper implementations must follow.
 
-HFT Performance Requirements:
-- Symbol conversion: <0.5μs per operation
-- Cache hit rate: >98% for common trading pairs
-- Memory bounded: <50MB for 10,000+ symbols
-- Thread safe: Lock-free read operations
-
-Architecture:
-- Factory pattern for exchange-specific mapper creation
-- Unified caching layer with O(1) lookup performance
-- Interface segregation for clean exchange integration
+HFT COMPLIANCE: Pure interface definition, zero runtime overhead.
 """
 
 from abc import ABC, abstractmethod
-from typing import Tuple, Dict
+from typing import Tuple, Set
 from exchanges.structs.common import Symbol
 
 
 class SymbolMapperInterface(ABC):
     """
-    Abstract exchanges for exchange-specific symbol mapping.
+    Abstract base class for exchange-specific symbol mappers.
     
-    Provides contract for converting between unified Symbol structs
-    and exchange-specific string formats with HFT-optimized performance.
+    Defines the contract for converting between unified Symbol structs and 
+    exchange-specific pair strings. All exchange symbol mappers should inherit 
+    from this interface to ensure consistent behavior.
+    
+    This interface supports the global singleton pattern where each exchange
+    has a single mapper instance that can be directly imported and used.
     """
     
-    def __init__(self, quote_assets: Tuple[str, ...]):
+    def __init__(self, quote_assets: Tuple[str, ...] = None):
         """
-        Initialize symbol mapper with exchange-specific quote assets.
+        Initialize with supported quote assets.
         
         Args:
-            quote_assets: Tuple of supported quote assets for this exchange
+            quote_assets: Tuple of supported quote asset symbols (e.g., ('USDT', 'USDC', 'BTC'))
         """
-        self._quote_assets = quote_assets
-        self._symbol_to_pair_cache: Dict[Symbol, str] = {}
-        self._pair_to_symbol_cache: Dict[str, Symbol] = {}
-    
-    @property
-    def quote_assets(self) -> Tuple[str, ...]:
-        """Get supported quote assets for this exchange."""
-        return self._quote_assets
+        self._quote_assets: Set[str] = set(quote_assets or ())
     
     @abstractmethod
     def _symbol_to_string(self, symbol: Symbol) -> str:
         """
         Convert Symbol to exchange-specific string format.
         
-        Args:
-            symbol: Unified Symbol struct
-            
-        Returns:
-            Exchange-specific string format
-            
-        Note: This method defines exchange-specific formatting rules
-        """
-        pass
-    
-    @abstractmethod
-    def _string_to_symbol(self, pair: str) -> Symbol:
-        """
-        Parse exchange-specific string to Symbol struct.
-        
-        Args:
-            pair: Exchange-specific trading pair string
-            
-        Returns:
-            Unified Symbol struct
-            
-        Note: This method implements exchange-specific parsing logic
-        """
-        pass
-    
-    def to_pair(self, symbol: Symbol) -> str:
-        """
-        Convert Symbol to exchange-specific pair string with caching.
+        Must be implemented by each exchange to handle their specific format.
         
         Args:
             symbol: Unified Symbol struct
             
         Returns:
             Exchange-specific pair string
-            
-        Performance: O(1) with cache hit, sub-microsecond target
         """
-        if symbol in self._symbol_to_pair_cache:
-            return self._symbol_to_pair_cache[symbol]
-        
-        # Cache miss - compute and store
-        pair = self._symbol_to_string(symbol)
-        self._symbol_to_pair_cache[symbol] = pair.upper()
-
-        # self._cache_mapping(symbol, pair)
-        
-        return pair
+        pass
     
-    def to_symbol(self, pair: str) -> Symbol:
+    @abstractmethod
+    def _string_to_symbol(self, pair: str) -> Symbol:
         """
-        Convert exchange-specific pair string to Symbol with caching.
+        Parse exchange-specific pair string to Symbol struct.
+        
+        Must be implemented by each exchange to handle their specific format.
         
         Args:
-            pair: Exchange-specific trading pair string
+            pair: Exchange-specific pair string
             
         Returns:
             Unified Symbol struct
             
-        Performance: O(1) with cache hit, sub-microsecond target
+        Raises:
+            ValueError: If pair format is not recognized
         """
-        if pair in self._pair_to_symbol_cache:
-            return self._pair_to_symbol_cache[pair]
-        
-        # Cache miss - parse and store
-        symbol = self._string_to_symbol(pair)
-        # self._cache_mapping(symbol, pair)
-        self._pair_to_symbol_cache[pair.upper()] = symbol
-        return symbol
+        pass
     
-    def _cache_mapping(self, symbol: Symbol, pair: str) -> None:
+    # Public API methods that use the abstract methods
+    def to_pair(self, symbol: Symbol) -> str:
+        """Convert Symbol to exchange pair string."""
+        return self._symbol_to_string(symbol)
+    
+    def to_symbol(self, pair: str) -> Symbol:
+        """Convert exchange pair string to Symbol."""
+        return self._string_to_symbol(pair)
+    
+    def is_supported_pair(self, pair: str) -> bool:
         """
-        Cache bidirectional mapping between Symbol and pair string.
+        Check if pair string is supported by this exchange.
         
         Args:
-            symbol: Unified Symbol struct
-            pair: Exchange-specific pair string
+            pair: Exchange pair string to validate
+            
+        Returns:
+            True if pair format is valid and quote asset is supported
         """
-        self._symbol_to_pair_cache[symbol] = pair.upper()
-        self._pair_to_symbol_cache[pair.upper()] = symbol
+        try:
+            symbol = self.to_symbol(pair)
+            return symbol.quote in self._quote_assets
+        except (ValueError, AttributeError):
+            return False
     
     def validate_symbol(self, symbol: Symbol) -> bool:
         """
-        Validate if symbol is supported by this exchange.
+        Check if symbol is supported by this exchange.
         
         Args:
             symbol: Symbol to validate
             
         Returns:
-            True if symbol is supported, False otherwise
+            True if symbol's quote asset is supported
         """
-        return str(symbol.quote) in self._quote_assets
-    
-    def is_supported_pair(self, pair: str) -> bool:
-        """
-        Validate if trading pair string is supported by this exchange.
-        
-        Performs validation of:
-        - Exchange-specific format compliance 
-        - Quote asset support
-        - Basic format structure
-        
-        Args:
-            pair: Exchange-specific trading pair string
-            
-        Returns:
-            True if pair is supported and valid, False otherwise
-            
-        Performance: O(1) validation, <0.1μs target for HFT compliance
-        """
-        try:
-            # Attempt to parse the pair using exchange-specific logic
-            symbol = self._string_to_symbol(pair)
-            
-            # Validate quote asset is supported
-            if str(symbol.quote) not in self._quote_assets:
-                return False
-                
-            # Additional validation can be added here by subclasses
+        if not self._quote_assets:
             return True
-            
-        except (ValueError, AttributeError, IndexError):
-            # Any parsing error means the pair is not supported
-            return False
+        return symbol.quote in self._quote_assets
     
-    def get_cache_stats(self) -> Dict[str, int]:
-        """
-        Get cache statistics for performance monitoring.
-        
-        Returns:
-            Dictionary with cache size information
-        """
-        return {
-            'symbol_to_pair_cache_size': len(self._symbol_to_pair_cache),
-            'pair_to_symbol_cache_size': len(self._pair_to_symbol_cache),
-            'supported_quote_assets': len(self._quote_assets)
-        }
-    
-    def clear_cache(self) -> None:
-        """Clear all cached mappings (for testing/memory management)."""
-        self._symbol_to_pair_cache.clear()
-        self._pair_to_symbol_cache.clear()
+    @property
+    def supported_quote_assets(self) -> Set[str]:
+        """Get set of supported quote assets."""
+        return self._quote_assets.copy()

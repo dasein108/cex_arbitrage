@@ -1,23 +1,42 @@
-import logging
 from typing import Optional, Dict, Any
 
 import msgspec
 
 from infrastructure.networking.websocket.strategies.message_parser import MessageParser
 from infrastructure.networking.websocket.structs import ParsedMessage, MessageType
-from exchanges.services import BaseExchangeMapper
+# BaseExchangeMapper dependency removed - using direct utility functions
+from exchanges.integrations.mexc.utils import ws_to_order, ws_to_balance, ws_to_trade
 from exchanges.integrations.mexc.ws.protobuf_parser import MexcProtobufParser
 from exchanges.integrations.mexc.structs.exchange import (
     MexcWSPrivateOrderData, MexcWSPrivateBalanceData, MexcWSPrivateTradeData
 )
 
+# HFT Logger Integration
+from infrastructure.logging import get_strategy_logger, HFTLoggerInterface
+
 
 class MexcPrivateMessageParser(MessageParser):
     """MEXC private WebSocket message parser."""
 
-    def __init__(self, mapper: BaseExchangeMapper, logger):
-        super().__init__(mapper, logger)
-        self.mexc_mapper = mapper  # Use the injected mapper directly
+    def __init__(self, logger: Optional[HFTLoggerInterface] = None):
+        super().__init__(logger)
+        
+        # Use injected logger or create strategy-specific logger
+        if logger is None:
+            tags = ['mexc', 'private', 'ws', 'message_parser']
+            logger = get_strategy_logger('ws.message_parser.mexc.private', tags)
+        
+        self.logger = logger
+        
+        # Log initialization
+        if self.logger:
+            self.logger.info("MexcPrivateMessageParser initialized",
+                            exchange="mexc",
+                            api_type="private")
+            
+            # Track component initialization
+            self.logger.metric("mexc_private_message_parsers_initialized", 1,
+                              tags={"exchange": "mexc", "api_type": "private"})
 
     async def parse_message(self, raw_message: str) -> Optional[ParsedMessage]:
         """Parse MEXC private WebSocket message.
@@ -26,9 +45,11 @@ class MexcPrivateMessageParser(MessageParser):
         """
         try:
             # First, log the raw message for debugging
-            if self.logger.isEnabledFor(logging.DEBUG):
+            if self.logger:
                 preview = str(raw_message)[:200] + "..." if len(str(raw_message)) > 200 else str(raw_message)
-                self.logger.debug(f"Parsing private message: {preview}")
+                self.logger.debug(f"Parsing private message: {preview}",
+                                exchange="mexc",
+                                message_type="private")
 
             # Check if it's bytes (protobuf) or string/dict (JSON)
             if isinstance(raw_message, bytes):
@@ -54,11 +75,17 @@ class MexcPrivateMessageParser(MessageParser):
                     )
 
                 except (msgspec.DecodeError, ValueError) as e:
-                    self.logger.error(f"Failed to parse JSON message: {e}")
+                    if self.logger:
+                        self.logger.error(f"Failed to parse JSON message: {e}",
+                                        exchange="mexc",
+                                        error_type="json_parse_error")
                     return None
 
         except Exception as e:
-            self.logger.error(f"Error parsing private message: {e}")
+            if self.logger:
+                self.logger.error(f"Error parsing private message: {e}",
+                                exchange="mexc",
+                                error_type="message_parse_error")
             return None
 
     async def _parse_protobuf_message(self, raw_message: bytes) -> Optional[ParsedMessage]:
@@ -84,7 +111,7 @@ class MexcPrivateMessageParser(MessageParser):
                     )
                     
                     # Use mapper to convert MEXC struct to unified AssetBalance
-                    unified_balance = self.mexc_mapper.ws_to_balance(mexc_balance)
+                    unified_balance = ws_to_balance(mexc_balance)
                     
                     return ParsedMessage(
                         message_type=MessageType.BALANCE,
@@ -111,7 +138,7 @@ class MexcPrivateMessageParser(MessageParser):
                     )
                     
                     # Use mapper to convert MEXC struct to unified Order
-                    unified_order = self.mexc_mapper.ws_to_order(mexc_order)
+                    unified_order = ws_to_order(mexc_order)
                     
                     return ParsedMessage(
                         message_type=MessageType.ORDER,
@@ -135,7 +162,7 @@ class MexcPrivateMessageParser(MessageParser):
                     )
                     
                     # Use mapper to convert MEXC struct to unified Trade
-                    unified_trade = self.mexc_mapper.ws_to_trade(mexc_trade, symbol)
+                    unified_trade = ws_to_trade(mexc_trade, symbol)
                     
                     return ParsedMessage(
                         message_type=MessageType.TRADE,
@@ -153,7 +180,12 @@ class MexcPrivateMessageParser(MessageParser):
             )
 
         except Exception as e:
-            self.logger.error(f"Error parsing protobuf message: {e}")
+            if self.logger:
+                self.logger.error(f"Error parsing protobuf message: {e}",
+                                exchange="mexc",
+                                error_type="protobuf_parse_error")
+                import traceback
+                traceback.print_exc()
             # Return a basic unknown message so processing continues
             return ParsedMessage(
                 message_type=MessageType.UNKNOWN,

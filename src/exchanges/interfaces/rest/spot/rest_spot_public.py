@@ -2,7 +2,7 @@ from abc import abstractmethod
 from datetime import datetime
 from typing import Dict, List, Optional
 from exchanges.interfaces.rest.rest_base import BaseRestInterface
-from exchanges.services import BaseExchangeMapper
+# BaseExchangeMapper dependency removed - using direct utility functions
 from exchanges.structs.common import (
     Symbol,
     SymbolInfo,
@@ -22,11 +22,10 @@ from infrastructure.logging import HFTLoggerInterface
 class PublicSpotRest(BaseRestInterface):
     """Abstract interface for public exchange operations (market data)"""
     
-    def __init__(self, config: ExchangeConfig, mapper: BaseExchangeMapper, logger: Optional[HFTLoggerInterface] = None):
-        """Initialize public interface with transport manager and mapper."""
+    def __init__(self, config: ExchangeConfig, logger: Optional[HFTLoggerInterface] = None, **kwargs):
+        """Initialize public interface with transport manager."""
         super().__init__(
             config=config,
-            mapper=mapper,
             is_private=False,  # Public API operations
             logger=logger  # Pass logger to parent for specialized public.spot logging
         )

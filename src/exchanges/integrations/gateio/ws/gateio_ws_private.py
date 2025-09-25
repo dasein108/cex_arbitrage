@@ -1,16 +1,16 @@
 """
 Gate.io Private WebSocket Implementation
 
-Clean implementation using dependency injection similar to REST pattern.
+Clean implementation using handler objects for organized message processing.
 Handles authenticated WebSocket streams for account data including:
 - Order updates via JSON
 - Account balance changes via JSON  
 - Trade confirmations via JSON
 
 Features:
-- Dependency injection via composite class (like REST pattern)
+- Handler object pattern for clean organization
 - HFT-optimized message processing
-- Event-driven architecture with injected handlers
+- Event-driven architecture with structured handlers
 - Clean separation of concerns
 - Gate.io-specific JSON message parsing
 
@@ -20,7 +20,7 @@ Gate.io Private WebSocket Specifications:
 - Message Format: JSON with channel-based subscriptions
 - Channels: spot.orders, spot.balances, spot.user_trades
 
-Architecture: Dependency injection with composite class coordination
+Architecture: Handler objects with composite class coordination
 """
 
 from typing import Dict, Optional, Callable, Awaitable
@@ -29,6 +29,7 @@ from exchanges.structs.common import Order, AssetBalance, Trade
 from exchanges.structs.types import AssetName
 from config.structs import ExchangeConfig
 from exchanges.interfaces.ws import PrivateSpotWebsocket
+from infrastructure.networking.websocket.handlers import PrivateWebsocketHandlers
 
 
 class GateioPrivateSpotWebsocket(PrivateSpotWebsocket):
@@ -37,10 +38,16 @@ class GateioPrivateSpotWebsocket(PrivateSpotWebsocket):
     def __init__(
         self,
         config: ExchangeConfig,
+        handlers: PrivateWebsocketHandlers,
         **kwargs
     ):
         """
-        Initialize Gate.io private WebSocket with dependency injection.
+        Initialize Gate.io private WebSocket with handler objects.
+        
+        Args:
+            config: Exchange configuration
+            handlers: PrivateWebsocketHandlers object containing message handlers
+            **kwargs: Additional arguments passed to base class
         
         Base class handles all strategy creation, WebSocket manager setup, and dependency injection.
         Only Gate.io-specific initialization logic goes here.
@@ -49,13 +56,14 @@ class GateioPrivateSpotWebsocket(PrivateSpotWebsocket):
         if not config.websocket:
             raise ValueError("Gate.io exchange configuration missing WebSocket settings")
         
-        # Initialize via composite class dependency injection (like REST pattern)
+        # Initialize via composite class with handler object
         super().__init__(
             config=config,
+            handlers=handlers,
             **kwargs
         )
         
-        self.logger.info("Gate.io private WebSocket initialized with dependency injection")
+        self.logger.info("Gate.io private WebSocket initialized with handler objects")
 
     # Gate.io-specific message handling can be added here if needed
     # Base class handles all common WebSocket operations:

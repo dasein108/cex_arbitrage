@@ -217,6 +217,12 @@ class FileBackend(LogBackend):
         if correlation_parts:
             message += f" | {', '.join(correlation_parts)}"
         
+        # Add stack trace for ERROR+ levels if available
+        if record.stack_trace and record.level >= LogLevel.ERROR:
+            # For text format, add stack trace on new lines with proper indentation
+            indented_trace = '\n'.join(f'    {line}' for line in record.stack_trace.strip().split('\n'))
+            message += f"\n  Stack Trace:\n{indented_trace}"
+        
         return message
     
     def _format_json(self, record: LogRecord) -> str:
@@ -240,6 +246,10 @@ class FileBackend(LogBackend):
             data['exchange'] = record.exchange
         if record.symbol:
             data['symbol'] = record.symbol
+        
+        # Add stack trace for ERROR+ levels if available
+        if record.stack_trace and record.level >= LogLevel.ERROR:
+            data['stack_trace'] = record.stack_trace.strip()
         
         # Add metric info for metrics
         if record.log_type == LogType.METRIC:

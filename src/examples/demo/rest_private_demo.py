@@ -14,12 +14,10 @@ import sys
 from exchanges.structs.common import Symbol
 from exchanges.structs.types import AssetName
 from exchanges.structs.enums import TimeInForce
-from exchanges.structs import OrderType, Side
+from exchanges.structs import OrderType, Side, ExchangeEnum
 from exchanges.interfaces.rest.spot.rest_spot_private import PrivateSpotRest
-from config import get_exchange_config
-
-from examples.utils.rest_api_factory import get_exchange_rest_instance
-
+from config.config_manager import HftConfig
+from exchanges.transport_factory import create_rest_client
 
 
 async def check_get_account_balance(exchange: PrivateSpotRest, exchange_name: str):
@@ -180,9 +178,12 @@ async def main(exchange_name: str):
     
     try:
         # Load exchange configuration and API credentials
-        config = get_exchange_config(exchange_name.upper())
+        config_manager = HftConfig()
+        config = config_manager.get_exchange_config(exchange_name.lower())
         # Use unified factory function for private REST clients
-        exchange = get_exchange_rest_instance(exchange_name, is_private=True, config=config)
+        from exchanges.utils.exchange_utils import get_exchange_enum
+        exchange = get_exchange_enum(exchange_name)
+        exchange = create_rest_client(exchange, is_private=True, config=config)
         
         # Execute all private API checks
         await check_get_account_balance(exchange, exchange_name)

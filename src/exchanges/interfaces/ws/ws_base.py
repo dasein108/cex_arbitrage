@@ -2,7 +2,7 @@ from abc import ABC
 from typing import Optional, Callable, Awaitable, Any, Dict
 
 from config.structs import ExchangeConfig
-from exchanges.services import ExchangeMapperFactory
+# ExchangeMapperFactory dependency removed - using direct utility functions
 from infrastructure.networking.websocket.utils import create_websocket_manager
 
 # HFT Logger Integration
@@ -37,8 +37,7 @@ class BaseWebsocketInterface(ABC):
         # Initialize HFT logger with optional injection or exchange-specific logger
         self.logger = logger or get_exchange_logger(self.exchange_name, f'ws.{tag}')
         
-        # Factory-based dependency injection (similar to REST pattern)
-        self._mapper = ExchangeMapperFactory.create(config.name)
+        # Mapper dependency removed - strategies use direct utility functions
         
         # Initialize WebSocket manager using factory pattern with logger injection
         self._ws_manager = create_websocket_manager(

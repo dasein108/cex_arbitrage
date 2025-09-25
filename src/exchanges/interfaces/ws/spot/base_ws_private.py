@@ -1,11 +1,12 @@
 import traceback
 from abc import ABC
-from typing import Callable, Optional, Awaitable, Dict
+from typing import Optional, Dict
 
 from config.structs import ExchangeConfig
 from exchanges.structs.common import Order, AssetBalance, Trade
 from exchanges.structs.types import AssetName
 from infrastructure.networking.websocket.structs import MessageType
+from infrastructure.networking.websocket.handlers import PrivateWebsocketHandlers
 from exchanges.interfaces.ws.ws_base import BaseWebsocketInterface
 
 
@@ -14,16 +15,12 @@ class PrivateSpotWebsocket(BaseWebsocketInterface, ABC):
     
     def __init__(self, 
                  config: ExchangeConfig,
-                 order_handler: Optional[Callable[[Order], Awaitable[None]]] = None,
-                 balance_handler: Optional[Callable[[Dict[AssetName, AssetBalance]], Awaitable[None]]] = None,
-                 trade_handler: Optional[Callable[[Trade], Awaitable[None]]] = None,
+                 handlers: PrivateWebsocketHandlers,
                  **kwargs):
-        """Initialize private WebSocket interface with dependency injection."""
+        """Initialize private WebSocket interface with handler object."""
         
-        # Store handlers for message routing
-        self.order_handler = order_handler
-        self.balance_handler = balance_handler
-        self.trade_handler = trade_handler
+        # Store handler object for message routing
+        self.handlers = handlers
         
         # Initialize composite class with private API configuration
         super().__init__(
@@ -71,12 +68,9 @@ class PrivateSpotWebsocket(BaseWebsocketInterface, ABC):
     async def _handle_balance_message(self, parsed_message) -> None:
         """Handle balance update messages."""
         try:
-            if parsed_message.data and self.balance_handler:
-                # Use injected handler if available
-                await self.balance_handler(parsed_message.data)
-            elif parsed_message.data:
-                # Fallback to default handler
-                await self.on_balance_update(parsed_message.data)
+            if parsed_message.data:
+                # Use handler object
+                await self.handlers.handle_balance(parsed_message.data)
         except Exception as e:
             traceback.print_exc()
             self.logger.error(f"Error handling balance message: {e}")
@@ -84,24 +78,18 @@ class PrivateSpotWebsocket(BaseWebsocketInterface, ABC):
     async def _handle_order_message(self, parsed_message) -> None:
         """Handle order update messages."""
         try:
-            if parsed_message.data and self.order_handler:
-                # Use injected handler if available
-                await self.order_handler(parsed_message.data)
-            elif parsed_message.data:
-                # Fallback to default handler
-                await self.on_order_update(parsed_message.data)
+            if parsed_message.data:
+                # Use handler object
+                await self.handlers.handle_order(parsed_message.data)
         except Exception as e:
             self.logger.error(f"Error handling order message: {e}")
 
     async def _handle_trade_message(self, parsed_message) -> None:
         """Handle trade execution messages."""
         try:
-            if parsed_message.data and self.trade_handler:
-                # Use injected handler if available
-                await self.trade_handler(parsed_message.data)
-            elif parsed_message.data:
-                # Fallback to default handler
-                await self.on_trade_update(parsed_message.data)
+            if parsed_message.data:
+                # Use handler object
+                await self.handlers.handle_trade(parsed_message.data)
         except Exception as e:
             self.logger.error(f"Error handling trade message: {e}")
 

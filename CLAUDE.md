@@ -11,10 +11,10 @@ High-level architectural documentation for the ultra-high-performance CEX arbitr
 This is a **high-frequency trading (HFT) arbitrage engine** built for professional cryptocurrency trading across multiple exchanges. The system features a **pragmatic architecture** that balances performance, maintainability, and developer productivity with selective application of SOLID principles.
 
 **Current Architecture Features**:
-- **Pragmatic Exchange Architecture** - Exchange creation via `src/exchanges/factories/exchange_factory.py`
-- **Unified Interface System** - All exchanges implement `src/interfaces/exchanges/base/` interfaces
-- **Common Data Structures** - All components use `src/core/structs/common.py` msgspec.Struct types (preferred over dicts)
-- **Core Base Classes** - Implementation foundation via `src/core/exchanges/` base classes
+- **Pragmatic Exchange Architecture** - Exchange creation via `src/exchanges/interfaces/composite/factory.py` and `src/infrastructure/factories/`
+- **Unified Interface System** - All exchanges implement `src/exchanges/interfaces/composite/` interfaces
+- **Common Data Structures** - All components use `src/exchanges/structs/common.py` msgspec.Struct types (preferred over dicts)
+- **Infrastructure Foundation** - Implementation foundation via `src/infrastructure/` modules
 - **Struct-Only Logging System** - Type-safe configuration with <1ms latency and 859K+ messages/second
 - **Sub-50ms latency** for complete arbitrage cycle execution
 - **Balanced design** with coherent, readable components (avoiding over-decomposition)
@@ -28,8 +28,8 @@ This is a **high-frequency trading (HFT) arbitrage engine** built for profession
 - **Struct-Only Configuration**: Complete elimination of dictionary-based config for type safety
 - **Balanced Interface Design**: Pragmatic separation that prioritizes readability over rigid segregation
 - **Component-Based Design**: Coherent components with related responsibilities grouped together
-- **Unified Data Structures**: All exchanges use identical msgspec.Struct types from `src/core/structs/common.py`
-- **Base Class Architecture**: Core functionality provided by `src/core/exchanges/` base classes
+- **Unified Data Structures**: All exchanges use identical msgspec.Struct types from `src/exchanges/structs/common.py`
+- **Infrastructure Architecture**: Core functionality provided by `src/infrastructure/` modules
 - **Pragmatic SOLID**: SOLID principles applied where they add value, avoiding over-decomposition
 
 ## Core Architectural Principles
@@ -57,13 +57,13 @@ The system follows a **factory-pattern-based architecture** with **SOLID princip
 **Factory Layer** → **Interface Layer** → **Core Base Classes** → **Exchange Implementations** → **Common Data Structures**
 
 **Key Components:**
-- **ExchangeFactory** (`src/exchanges/factories/exchange_factory.py`): Pragmatic exchange creation with selective dependency injection
-- **Interface System** (`src/interfaces/exchanges/base/`): Balanced separation prioritizing readability
+- **ExchangeFactory** (`src/exchanges/interfaces/composite/factory.py`): Pragmatic exchange creation with selective dependency injection
+- **Interface System** (`src/exchanges/interfaces/composite/`): Balanced separation prioritizing readability
   - **BaseExchangeInterface**: Foundation with connection and state management
   - **BasePublicExchangeInterface**: Market data operations (orderbooks, symbols, tickers) - *Consider consolidation*
   - **BasePrivateExchangeInterface**: Trading operations + market data (orders, balances, positions)
-- **Core Base Classes** (`src/core/exchanges/`): Implementation foundation for REST/WebSocket clients  
-- **Common Data Structures** (`src/core/structs/common.py`): Unified msgspec.Struct types for all exchanges
+- **Infrastructure Foundation** (`src/infrastructure/`): Implementation foundation for networking, logging, and factories  
+- **Common Data Structures** (`src/exchanges/structs/common.py`): Unified msgspec.Struct types for all exchanges
 
 ### 2. Interface Hierarchy and Separation of Concerns
 
@@ -82,41 +82,47 @@ BaseExchangeInterface (connection & state management)
 
 ### 3. Factory Pattern Implementation
 
-**Type-Safe Exchange Creation**:
+**Interface-Based Exchange Creation**:
 ```python
-# Public exchange (no credentials required)
-exchange = ExchangeFactory.create_public_exchange(
-    ExchangeEnum.MEXC,
+from src.exchanges.interfaces.composite.factory import ExchangeFactoryInterface, InitializationStrategy
+from src.exchanges.structs.common import Symbol
+from src.exchanges.structs.types import ExchangeName
+
+# Create multiple exchanges with error handling strategy
+exchange_factory: ExchangeFactoryInterface = ConcreteExchangeFactory()
+exchanges = await exchange_factory.create_exchanges(
+    exchange_names=[ExchangeName.MEXC, ExchangeName.GATEIO],
+    strategy=InitializationStrategy.CONTINUE_ON_ERROR,
     symbols=[Symbol("BTC", "USDT")]
 )
 
-# Private exchange (requires credentials)
-exchange = ExchangeFactory.create_private_exchange(
-    ExchangeEnum.MEXC,
-    config=ExchangeConfig(credentials=...)
+# Create single exchange instance
+exchange = await exchange_factory.create_exchange(
+    exchange_name=ExchangeName.MEXC,
+    symbols=[Symbol("BTC", "USDT")]
 )
 ```
 
 **Factory Benefits**:
-- **Type Safety**: `ExchangeEnum` ensures only supported exchanges
-- **Automatic Dependency Injection**: REST/WebSocket clients configured automatically
-- **Logger Injection**: HFT logging integration across all created components
-- **Error Handling**: Graceful validation and clear error messages
-- **SOLID Compliance**: Centralized creation logic following Factory pattern
+- **Type Safety**: `ExchangeName` enum ensures only supported exchanges
+- **Error Handling Strategies**: Multiple strategies for handling initialization failures
+- **Health Checking**: Built-in health check capabilities
+- **Resource Management**: Automatic cleanup with `close_all()`
+- **SOLID Compliance**: Interface-based dependency injection following Factory pattern
 
 ### 4. HFT Logging System
 
 The system implements a **comprehensive high-performance logging architecture** designed for sub-millisecond trading operations with factory-based injection patterns throughout the entire codebase.
 
-**Core Logging Architecture** (`src/core/logging/`):
+**Core Logging Architecture** (`src/infrastructure/logging/`):
 ```
 LoggerFactory → HFTLoggerInterface → Multiple Backends → Structured Output
 ```
 
 **Key Components:**
-- **LoggerFactory** (`src/core/logging/factory.py`): Centralized logger creation with dependency injection
-- **HFTLoggerInterface** (`src/core/logging/interfaces.py`): Zero-blocking interface with metrics, audit, and performance tracking
-- **LoggingTimer** (`src/core/logging/hft_logger.py`): Context manager for automatic performance measurement
+- **LoggerFactory** (`src/infrastructure/logging/factory.py`): Centralized logger creation with dependency injection
+- **HFTLoggerInterface** (`src/infrastructure/logging/interfaces.py`): Zero-blocking interface with metrics, audit, and performance tracking
+- **LoggingTimer** (`src/infrastructure/logging/hft_logger.py`): Context manager for automatic performance measurement
 - **Multi-Backend System**: Console, file, Prometheus, audit, and Python logging bridge support
 
 **Performance Specifications:**
@@ -338,15 +344,15 @@ Components should have **coherent, related responsibilities**:
 
 **Exchange Interface Hierarchy** (Consider consolidation):
 ```
-BaseExchangeInterface (src/interfaces/exchanges/base/base_exchange.py)
-├── BasePublicExchangeInterface (src/interfaces/exchanges/base/base_public_exchange.py)
+BaseExchangeInterface (src/exchanges/interfaces/composite/base_exchange.py)
+├── BasePublicExchangeInterface (src/exchanges/interfaces/composite/base_public_exchange.py)
 │   ├── orderbooks: Dict[Symbol, OrderBook] (property)
 │   ├── symbols_info: SymbolsInfo (property) 
 │   ├── active_symbols: List[Symbol] (property)
 │   ├── add_symbol(symbol: Symbol)
 │   └── remove_symbol(symbol: Symbol)
 │
-└── BasePrivateExchangeInterface (src/interfaces/exchanges/base/base_private_exchange.py)
+└── BasePrivateExchangeInterface (src/exchanges/interfaces/composite/base_private_exchange.py)
     ├── Inherits all public methods from BasePublicExchangeInterface
     ├── balances: Dict[Symbol, AssetBalance] (property)
     ├── open_orders: Dict[Symbol, List[Order]] (property)
@@ -371,59 +377,63 @@ BasePrivateExchangeInterface
 - **Interface Segregation**: Components use only the interface level they need
 - **WebSocket Coordination**: Manages real-time streaming without tight coupling
 - **HFT Compliance**: No caching of real-time trading data
-- **Type Safety**: Unified data structures via `src/structs/common.py`
+- **Type Safety**: Unified data structures via `src/exchanges/structs/common.py`
 
 **Key Implementation Requirements**:
 1. **Inherit from BasePrivateExchangeInterface**: Provides both public and private capabilities
 2. **Implement all abstract methods**: Both public and private interface methods
 3. **Composition over inheritance**: Delegate to specialized REST/WebSocket components
 4. **HFT Compliance**: Never cache real-time trading data (balances, orders, positions)
-5. **Unified structures**: Use only `Symbol`, `SymbolInfo`, `OrderBook`, etc. from `src/structs/common.py`
+5. **Unified structures**: Use only `Symbol`, `SymbolInfo`, `OrderBook`, etc. from `src/exchanges/structs/common.py`
 
 ## Key Architectural Decisions
 
 ### Factory Pattern Configuration
 
-**Type-Safe Exchange Selection**:
-- **ExchangeEnum** provides compile-time validation of supported exchanges
-- **Factory Methods** ensure consistent exchange creation patterns
-- **Automatic Configuration** handles REST/WebSocket client setup
-- **Error Validation** provides clear feedback for missing implementations
+**Interface-Based Exchange Selection**:
+- **ExchangeName** enum provides compile-time validation of supported exchanges
+- **ExchangeFactoryInterface** ensures consistent exchange creation patterns
+- **Initialization Strategies** handle different error scenarios (FAIL_FAST, CONTINUE_ON_ERROR, RETRY_WITH_BACKOFF)
+- **Health Checking** provides real-time exchange status validation
 
 **Configuration Flow**:
 ```
-ExchangeEnum → ExchangeFactory → BaseClass Instantiation → Interface Implementation
+ExchangeName → ExchangeFactoryInterface → CompositePrivateExchange → Interface Implementation
 ```
 
 ### Core Base Classes Architecture
 
-**REST Client Foundation** (`src/core/cex/rest/`):
+**REST Client Foundation** (`src/infrastructure/networking/http/`):
 ```
-src/core/cex/rest/
-├── spot/
-│   ├── base_rest_spot_public.py   # Public REST operations
-│   └── base_rest_spot_private.py  # Private REST operations
-└── futures/
-    ├── base_rest_futures_public.py   # Futures public operations  
-    └── base_rest_futures_private.py  # Futures private operations
-```
-
-**WebSocket Client Foundation** (`src/core/cex/websocket/`):
-```
-src/core/cex/websocket/
-└── spot/
-    ├── base_ws_public.py   # Public WebSocket streaming
-    └── base_ws_private.py  # Private WebSocket streaming
+src/infrastructure/networking/http/
+├── rest_transport_manager.py      # HTTP transport management
+├── strategies/                    # HTTP strategies
+│   ├── auth.py                   # Authentication strategies
+│   ├── rate_limit.py             # Rate limiting
+│   └── retry.py                  # Retry policies
+└── utils.py                      # HTTP utilities
 ```
 
-**Service Layer Foundation** (`src/core/cex/services/`):
+**WebSocket Client Foundation** (`src/infrastructure/networking/websocket/`):
 ```
-src/core/cex/services/
-├── symbol_mapper/      # Symbol format conversion
-└── unified_mapper/     # Exchange-specific mappings
+src/infrastructure/networking/websocket/
+├── ws_client.py                  # WebSocket client
+├── ws_manager.py                 # Connection management
+├── strategies/                   # WebSocket strategies
+│   ├── connection.py             # Connection strategies
+│   ├── message_parser.py         # Message parsing
+│   └── subscription.py           # Subscription management
+└── utils.py                      # WebSocket utilities
 ```
 
-### Common Data Structures (`src/structs/common.py`)
+**Service Layer Foundation** (`src/exchanges/services/`):
+```
+src/exchanges/services/
+└── symbol_mapper/      # Symbol format conversion
+    └── base_symbol_mapper.py
+```
+
+### Common Data Structures (`src/exchanges/structs/common.py`)
 
 **ALL exchanges use these unified structures**:
 - **Symbol**: Trading pair representation
@@ -469,46 +479,54 @@ src/core/cex/services/
 ### Factory Pattern Components
 
 **Core Factory Implementation**:
-- **[Exchange Factory](src/exchanges/factories/exchange_factory.py)** - Type-safe exchange creation with dependency injection
+- **[Exchange Factory Interface](src/exchanges/interfaces/composite/factory.py)** - Type-safe exchange creation with dependency injection
+- **[Infrastructure Factories](src/infrastructure/factories/)** - Infrastructure factory patterns
 - **[Exchange Enum](src/exchanges/__init__.py)** - Supported exchange enumeration for type safety
 
 ### HFT Logging System Components
 
-**Core Logging Infrastructure** (`src/core/logging/`):
-- **[Logger Factory](src/core/logging/factory.py)** - Centralized logger creation with dependency injection and environment configuration
-- **[HFT Logger Interface](src/core/logging/interfaces.py)** - Zero-blocking logging interface with metrics and audit capabilities
-- **[HFT Logger Implementation](src/core/logging/hft_logger.py)** - Ring buffer, async dispatch, and LoggingTimer context manager
-- **[Logging Backends](src/core/logging/backends/)** - Console, file, Prometheus, audit, and Python logging bridge backends
-- **[Message Router](src/core/logging/router.py)** - Intelligent message routing based on content, level, and environment
+**Core Logging Infrastructure** (`src/infrastructure/logging/`):
+- **[Logger Factory](src/infrastructure/logging/factory.py)** - Centralized logger creation with dependency injection and environment configuration
+- **[HFT Logger Interface](src/infrastructure/logging/interfaces.py)** - Zero-blocking logging interface with metrics and audit capabilities
+- **[HFT Logger Implementation](src/infrastructure/logging/hft_logger.py)** - Ring buffer, async dispatch, and LoggingTimer context manager
+- **[Logging Backends](src/infrastructure/logging/backends/)** - Console, file, Prometheus, audit, and Python logging bridge backends
+- **[Message Router](src/infrastructure/logging/router.py)** - Intelligent message routing based on content, level, and environment
 
 ### Interface Layer Components
 
-**Unified Interface System** (`src/interfaces/exchanges/base/`):
+**Unified Interface System** (`src/exchanges/interfaces/composite/`):
 - **[Base Exchange Interface](src/exchanges/interfaces/composite/base_exchange.py)** - Foundation interface with connection management
 - **[Base Public Exchange Interface](src/exchanges/interfaces/composite/base_public_exchange.py)** - Market data operations
 - **[Base Private Exchange Interface](src/exchanges/interfaces/composite/base_private_exchange.py)** - Trading operations + market data
+- **[Base Private Futures Exchange Interface](src/exchanges/interfaces/composite/base_private_futures_exchange.py)** - Futures trading operations
+- **[Base Public Futures Exchange Interface](src/exchanges/interfaces/composite/base_public_futures_exchange.py)** - Futures market data operations
 
-### Core Base Classes
+### Interface Layer Components
 
-**REST Client Foundation** (`src/core/cex/rest/`):
-- **[Base REST Spot Public](src/core/exchanges/rest/spot/base_rest_spot_public.py)** - Public REST operations
-- **[Base REST Spot Private](src/core/exchanges/rest/spot/base_rest_spot_private.py)** - Private REST operations
+**REST Interface Foundation** (`src/exchanges/interfaces/rest/`):
+- **[Base REST Spot Public](src/exchanges/interfaces/rest/spot/rest_spot_public.py)** - Public REST operations
+- **[Base REST Spot Private](src/exchanges/interfaces/rest/spot/rest_spot_private.py)** - Private REST operations
+- **[Base REST Futures Public](src/exchanges/interfaces/rest/futures/rest_futures_public.py)** - Futures public REST operations
+- **[Base REST Futures Private](src/exchanges/interfaces/rest/futures/rest_futures_private.py)** - Futures private REST operations
 
-**WebSocket Client Foundation** (`src/core/cex/websocket/`):
-- **[Base WebSocket Public](src/core/exchanges/websocket/spot/base_ws_public.py)** - Public streaming
-- **[Base WebSocket Private](src/core/exchanges/websocket/spot/base_ws_private.py)** - Private streaming
+**WebSocket Interface Foundation** (`src/exchanges/interfaces/ws/`):
+- **[Base WebSocket Public](src/exchanges/interfaces/ws/spot/base_ws_public.py)** - Public streaming
+- **[Base WebSocket Private](src/exchanges/interfaces/ws/spot/base_ws_private.py)** - Private streaming
+- **[Base WebSocket Futures Public](src/exchanges/interfaces/ws/futures/ws_public_futures.py)** - Futures public streaming
 
 ### Exchange Implementations
 
 **Exchange-Specific Implementations**:
-- **[MEXC Implementation](src/exchanges/mexc/README.md)** - MEXC-specific implementation (reference implementation)
-- **[Gate.io Implementation](src/exchanges/gateio/README.md)** - Gate.io-specific implementation
+- **[MEXC Implementation](src/exchanges/integrations/mexc/README.md)** - MEXC-specific implementation (reference implementation)
+- **[Gate.io Implementation](src/exchanges/integrations/gateio/README.md)** - Gate.io-specific implementation
 
 ### Data Structures and Common Components
 
 **Unified Data Structures**:
-- **[Common Structures](src/core/structs/common.py)** - All msgspec.Struct data types used across exchanges
-- **[Common Components](src/common/README.md)** - Shared utilities and base components
+- **[Common Structures](src/exchanges/structs/common.py)** - All msgspec.Struct data types used across exchanges
+- **[Exchange Types](src/exchanges/structs/types.py)** - Type aliases and exchange-specific types
+- **[Exchange Enums](src/exchanges/structs/enums.py)** - Enumeration definitions
+- **[Common Components](src/common/)** - Shared utilities and base components
 
 ## Development Guidelines (UPDATED)
 
@@ -559,12 +577,14 @@ src/core/cex/services/
 - **Acceptable**: Direct instantiation when initialization is trivial
 
 **Component Organization** (Updated paths):
-- **src/interfaces/exchanges/base/**: Interface definitions
-- **src/core/exchanges/**: Base class implementations for REST/WebSocket clients
-- **src/core/structs/common.py**: Unified data structures for all exchanges
-- **src/exchanges/factories/**: Factory pattern implementations
-- **src/exchanges/{exchange}/**: Exchange-specific implementations
-- **src/common/**: Shared utilities and base components
+- **src/exchanges/interfaces/composite/**: Core exchange interface definitions
+- **src/exchanges/interfaces/rest/**: REST interface specifications
+- **src/exchanges/interfaces/ws/**: WebSocket interface specifications
+- **src/exchanges/structs/common.py**: Unified data structures for all exchanges
+- **src/exchanges/interfaces/composite/factory.py**: Main exchange factory
+- **src/infrastructure/factories/**: Infrastructure factory patterns
+- **src/exchanges/integrations/{exchange}/**: Exchange-specific implementations
+- **src/infrastructure/**: Infrastructure utilities and base components
 
 ### Code Quality Metrics and Thresholds (NEW)
 
@@ -626,28 +646,17 @@ src/core/cex/services/
 ```bash
 # Factory-based exchange creation examples
 python -c "
-from src.cex.factories.exchange_factory import ExchangeFactory
-from src.cex import ExchangeEnum
-from src.structs.common import Symbol
+from src.exchanges.interfaces.composite.factory import ExchangeFactoryInterface
+from src.exchanges.structs.common import Symbol
+from src.exchanges.structs.types import ExchangeName
 
-# Public exchange (no credentials)
-exchange = ExchangeFactory.create_public_exchange(
-    ExchangeEnum.MEXC,
+# Create exchange instances
+exchange_factory = ConcreteExchangeFactory()  # Implementation class
+exchange = await exchange_factory.create_exchange(
+    ExchangeName.MEXC,
     symbols=[Symbol('BTC', 'USDT')]
 )
 
-# Private exchange (requires credentials)
-from src.config.structs import ExchangeConfig
-from src.structs.common import ExchangeCredentials
-
-config = ExchangeConfig(
-    name='mexc',
-    credentials=ExchangeCredentials(api_key='...', secret_key='...')
-)
-exchange = ExchangeFactory.create_private_exchange(
-    ExchangeEnum.MEXC,
-    config=config
-)
 print('✓ Factory pattern working correctly')
 "
 ```
@@ -657,7 +666,7 @@ print('✓ Factory pattern working correctly')
 **Logger Factory Integration**:
 ```python
 # Exchange component with logger injection
-from src.core.logging import get_exchange_logger, LoggingTimer
+from src.infrastructure.logging import get_exchange_logger, LoggingTimer
 
 class MexcPrivateExchange:
     def __init__(self, config, symbols=None, logger=None):
@@ -670,7 +679,7 @@ class MexcPrivateExchange:
                         has_credentials=config.credentials is not None)
 
 # Strategy component with hierarchical tagging
-from src.core.logging import get_strategy_logger
+from src.infrastructure.logging import get_strategy_logger
 
 class ConnectionStrategy:
     def __init__(self, config, logger=None):
@@ -693,15 +702,15 @@ async def make_request(self, endpoint, data):
 **Environment-Specific Configuration**:
 ```python
 # Development environment setup
-from src.core.logging import setup_development_logging
+from src.infrastructure.logging import setup_development_logging
 setup_development_logging()  # Console + File + Prometheus
 
 # Production environment setup  
-from src.core.logging import setup_production_logging
+from src.infrastructure.logging import setup_production_logging
 setup_production_logging()   # File + Audit + Prometheus + Histogram
 
 # Custom logger configuration
-from src.core.logging import configure_logging
+from src.infrastructure.logging import configure_logging
 configure_logging({
     'environment': 'prod',
     'backends': {
@@ -784,8 +793,10 @@ This evolution represents a **mature architectural approach** that successfully 
 ### Feature-Specific Documentation
 
 Each major component maintains detailed implementation documentation:
-- **[Factory Pattern Components](src/core/factories/README.md)** - Factory implementations and usage
+- **[Factory Pattern Components](src/infrastructure/factories/README.md)** - Factory implementations and usage
 - **[Exchange Implementations](src/exchanges/README.md)** - Exchange-specific details
-- **[WebSocket Infrastructure](src/core/transport/websocket/README.md)** - Real-time streaming
-- **[REST Infrastructure](src/core/transport/rest/README.md)** - HTTP client implementations
-- **[Data Structures](src/core/structs/README.md)** - Common msgspec.Struct definitions
+- **[Exchange Interfaces](src/exchanges/interfaces/README.md)** - Interface specifications and contracts
+- **[WebSocket Infrastructure](src/infrastructure/networking/websocket/)** - Real-time streaming
+- **[REST Infrastructure](src/infrastructure/networking/http/)** - HTTP client implementations
+- **[Data Structures](src/exchanges/structs/)** - Common msgspec.Struct definitions
+- **[Common Components](src/common/)** - Shared utilities and base components

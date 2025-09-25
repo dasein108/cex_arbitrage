@@ -14,15 +14,16 @@ Message Format:
 """
 
 import time
-import logging
 from typing import List, Dict, Any, Optional, Set
 
 from infrastructure.networking.websocket.strategies.subscription import SubscriptionStrategy
 from infrastructure.networking.websocket.structs import SubscriptionAction, PublicWebsocketChannelType
 from exchanges.structs.common import Symbol
-from exchanges.services import BaseExchangeMapper
+# BaseExchangeMapper dependency removed - using direct utility functions
 from exchanges.consts import DEFAULT_PUBLIC_WEBSOCKET_CHANNELS
-from exchanges.integrations.gateio.services.gateio_mapper import GateioMapper
+
+# HFT Logger Integration
+from infrastructure.logging import get_strategy_logger, HFTLoggerInterface
 
 
 class GateioPublicFuturesSubscriptionStrategy(SubscriptionStrategy):
@@ -33,12 +34,28 @@ class GateioPublicFuturesSubscriptionStrategy(SubscriptionStrategy):
     Format: {"time": X, "channel": Y, "event": Z, "payload": ["BTC_USDT"]}
     """
     
-    def __init__(self, mapper: BaseExchangeMapper):
-        super().__init__(mapper)  # Initialize parent with mandatory mapper
-        self.logger = logging.getLogger(f"{__name__}.{self.__class__.__name__}")
+    def __init__(self, logger: Optional[HFTLoggerInterface] = None):
+        super().__init__(logger)
+        
+        # Use injected logger or create strategy-specific logger
+        if logger is None:
+            tags = ['gateio', 'futures', 'public', 'ws', 'subscription']
+            logger = get_strategy_logger('ws.subscription.gateio.futures.public', tags)
+        
+        self.logger = logger
         
         # Track active subscriptions for reconnection
         self._active_symbols: Set[Symbol] = set()
+        
+        # Log initialization
+        if self.logger:
+            self.logger.info("GateioPublicFuturesSubscriptionStrategy initialized",
+                            exchange="gateio",
+                            api_type="futures_public")
+            
+            # Track component initialization
+            self.logger.metric("gateio_futures_public_subscription_strategies_initialized", 1,
+                              tags={"exchange": "gateio", "api_type": "futures_public"})
     
     async def create_subscription_messages(self, action: SubscriptionAction,
                                            symbols: List[Symbol],
@@ -61,28 +78,38 @@ class GateioPublicFuturesSubscriptionStrategy(SubscriptionStrategy):
             return []
         
         current_time = int(time.time())
-        event = self.mapper.from_subscription_action(action)
+        # Use direct utility functions
+        from exchanges.integrations.gateio.utils import from_subscription_action, get_futures_channel_name, to_pair, to_symbol, EventType
+        event = from_subscription_action(action)
         messages = []
         
         # Convert symbols to Gate.io futures format
-        if not self.mapper:
-            self.logger.error("No symbol mapper available for Gate.io futures subscription")
-            return []
-            
         try:
             symbol_pairs = []
             for symbol in symbols:
                 # For futures, we might need to handle contract symbols differently
-                exchange_symbol = self.mapper.to_pair(symbol)
+                exchange_symbol = to_pair(symbol)
                 symbol_pairs.append(exchange_symbol)
-                self.logger.debug(f"Converted futures symbol {symbol} to {exchange_symbol}")
+                if self.logger:
+                    self.logger.debug(f"Converted futures symbol {symbol} to {exchange_symbol}",
+                                    exchange="gateio",
+                                    symbol=str(symbol),
+                                    exchange_symbol=exchange_symbol,
+                                    api_type="futures_public")
                 
         except Exception as e:
-            self.logger.error(f"Failed to convert futures symbols: {e}")
+            if self.logger:
+                self.logger.error(f"Failed to convert futures symbols: {e}",
+                                exchange="gateio",
+                                error=str(e),
+                                api_type="futures_public")
             return []
         
         if not symbol_pairs:
-            self.logger.warning("No valid futures symbols to subscribe to")
+            if self.logger:
+                self.logger.warning("No valid futures symbols to subscribe to",
+                                  exchange="gateio",
+                                  api_type="futures_public")
             return []
         
         # Create separate message for each futures channel type
@@ -107,7 +134,13 @@ class GateioPublicFuturesSubscriptionStrategy(SubscriptionStrategy):
             messages.append(message)
             i += 1
 
-            self.logger.debug(f"Created Gate.io futures {event} message for {channel}: {symbol_pairs}")
+            if self.logger:
+                self.logger.debug(f"Created Gate.io futures {event} message for {channel}: {symbol_pairs}",
+                                exchange="gateio",
+                                channel=channel,
+                                event=event,
+                                symbol_count=len(symbol_pairs),
+                                api_type="futures_public")
         
         # Update active symbols tracking
         if action == SubscriptionAction.SUBSCRIBE:
@@ -125,10 +158,17 @@ class GateioPublicFuturesSubscriptionStrategy(SubscriptionStrategy):
             List of subscription messages for all currently active symbols
         """
         if not self._active_symbols:
-            self.logger.info("No active futures symbols to resubscribe to")
+            if self.logger:
+                self.logger.info("No active futures symbols to resubscribe to",
+                                exchange="gateio",
+                                api_type="futures_public")
             return []
         
-        self.logger.info(f"Creating resubscription messages for {len(self._active_symbols)} futures symbols")
+        if self.logger:
+            self.logger.info(f"Creating resubscription messages for {len(self._active_symbols)} futures symbols",
+                            exchange="gateio",
+                            active_symbol_count=len(self._active_symbols),
+                            api_type="futures_public")
         return await self.create_subscription_messages(
             action=SubscriptionAction.SUBSCRIBE,
             symbols=list(self._active_symbols),
@@ -141,7 +181,7 @@ class GateioPublicFuturesSubscriptionStrategy(SubscriptionStrategy):
     
     def is_subscription_message(self, message: Dict[str, Any]) -> bool:
         """Check if message is a subscription-related message."""
-        return message.get("event") in [GateioMapper.EventType.SUBSCRIBE.value, GateioMapper.EventType.UNSUBSCRIBE.value]
+        return message.get("event") in [EventType.SUBSCRIBE.value, EventType.UNSUBSCRIBE.value]
     
     def extract_channel_from_message(self, message: Dict[str, Any]) -> Optional[str]:
         """Extract channel name from Gate.io futures message."""
@@ -149,16 +189,13 @@ class GateioPublicFuturesSubscriptionStrategy(SubscriptionStrategy):
     
     def extract_symbol_from_message(self, message: Dict[str, Any]) -> Optional[Symbol]:
         """Extract symbol from Gate.io futures message."""
-        if not self.mapper:
-            return None
-            
         try:
             # Try to get symbol from result data first
             result = message.get("result", {})
             if isinstance(result, dict):
                 symbol_str = result.get("s")
                 if symbol_str:
-                    return self.mapper.to_symbol(symbol_str)
+                    return to_symbol(symbol_str)
             
             # Fallback: try to extract from channel
             channel = message.get("channel", "")
@@ -166,11 +203,15 @@ class GateioPublicFuturesSubscriptionStrategy(SubscriptionStrategy):
                 parts = channel.split(".")
                 if len(parts) > 2:
                     symbol_str = parts[-1]
-                    return self.mapper.to_symbol(symbol_str)
+                    return to_symbol(symbol_str)
             
             return None
         except Exception as e:
-            self.logger.error(f"Failed to extract futures symbol from message: {e}")
+            if self.logger:
+                self.logger.error(f"Failed to extract futures symbol from message: {e}",
+                                exchange="gateio",
+                                error=str(e),
+                                api_type="futures_public")
             return None
     
     async def get_subscription_status_for_symbols(self, symbols: List[Symbol]) -> Dict[Symbol, bool]:
@@ -208,13 +249,13 @@ class GateioPublicFuturesSubscriptionStrategy(SubscriptionStrategy):
         Returns:
             Subscription message or None if not supported
         """
-        channel_name = self.mapper.get_futures_channel_name(channel_type)
-        if not channel_name or not self.mapper:
+        channel_name = get_futures_channel_name(channel_type)
+        if not channel_name:
             return None
         
         try:
-            exchange_symbol = self.mapper.to_pair(symbol)
-            event = self.mapper.from_subscription_action(action)
+            exchange_symbol = to_pair(symbol)
+            event = from_subscription_action(action)
             
             message = {
                 "time": int(time.time()),
@@ -236,12 +277,12 @@ class GateioPublicFuturesSubscriptionStrategy(SubscriptionStrategy):
     
     def _convert_symbols_to_exchange_format(self, symbols: List[Symbol]) -> List[str]:
         """Convert symbols to Gate.io futures exchange format."""
-        if not self.mapper:
-            self.logger.error("No symbol mapper available for Gate.io futures subscription")
-            return []
-            
         try:
-            return [self.mapper.to_pair(symbol) for symbol in symbols]
+            return [to_pair(symbol) for symbol in symbols]
         except Exception as e:
-            self.logger.error(f"Failed to convert futures symbols: {e}")
+            if self.logger:
+                self.logger.error(f"Failed to convert futures symbols: {e}",
+                                exchange="gateio",
+                                error=str(e),
+                                api_type="futures_public")
             return []

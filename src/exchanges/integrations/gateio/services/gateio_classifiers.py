@@ -1,18 +1,17 @@
 """
 Gate.io Exchange Mapping Configuration
 
-This module provides Gate.io-specific mapping configurations for:
+Direct utility mappings for Gate.io-specific transformations:
 - Order status, type, and side mappings
 - Time in force mappings  
 - Kline interval mappings
 - Error code mappings
 
-Separated from the main mapper for cleaner architecture and easier maintenance.
+Direct mappings without BaseExchangeClassifiers dependency.
 """
 
 from exchanges.structs.enums import TimeInForce, KlineInterval
 from exchanges.structs import OrderStatus, OrderType, Side
-from exchanges.services import BaseExchangeClassifiers
 
 
 # Gate.io Order Status Mapping (Unified enum -> Gate.io string)
@@ -61,19 +60,19 @@ KLINE_INTERVAL_MAPPING = {
     KlineInterval.MONTH_1: "30d"  # Gate.io uses 30d instead of 1M
 }
 
-    
-# Factory function for external use
-def create_gateio_classifiers() -> BaseExchangeClassifiers:
-    """
-    Factory function to create Gate.io mapping configuration.
-    
-    Returns:
-        BaseExchangeClassifiers: Complete Gate.io mapping configuration
-    """
-    return BaseExchangeClassifiers(
-        order_status_mapping=ORDER_STATUS_MAPPING,
-        order_type_mapping=ORDER_TYPE_MAPPING,
-        side_mapping=SIDE_MAPPING,
-        time_in_force_mapping=TIME_IN_FORCE_MAPPING,
-        kline_interval_mapping=KLINE_INTERVAL_MAPPING
-    )
+# Create reverse mappings for efficient lookup
+ORDER_STATUS_REVERSE = {v: k for k, v in ORDER_STATUS_MAPPING.items()}
+ORDER_TYPE_REVERSE = {v: k for k, v in ORDER_TYPE_MAPPING.items()}
+SIDE_REVERSE = {v: k for k, v in SIDE_MAPPING.items()}
+TIME_IN_FORCE_REVERSE = {v: k for k, v in TIME_IN_FORCE_MAPPING.items()}
+KLINE_INTERVAL_REVERSE = {v: k for k, v in KLINE_INTERVAL_MAPPING.items()}
+
+# Export all mappings for direct usage
+__all__ = [
+    # Forward mappings (unified -> exchange)
+    'ORDER_STATUS_MAPPING', 'ORDER_TYPE_MAPPING', 'SIDE_MAPPING',
+    'TIME_IN_FORCE_MAPPING', 'KLINE_INTERVAL_MAPPING',
+    # Reverse mappings (exchange -> unified)
+    'ORDER_STATUS_REVERSE', 'ORDER_TYPE_REVERSE', 'SIDE_REVERSE',
+    'TIME_IN_FORCE_REVERSE', 'KLINE_INTERVAL_REVERSE'
+]

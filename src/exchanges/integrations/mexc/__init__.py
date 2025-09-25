@@ -43,7 +43,7 @@ and extensibility.
 
 # Core exchange implementations
 from .private_exchange import MexcPrivateCompositePrivateExchange
-from .public_exchange import MexcPublicPublicExchange
+from .public_exchange import MexcPublicExchange
 
 # REST and WebSocket clients for direct access
 from exchanges.integrations.mexc.rest.mexc_rest_public import MexcPublicSpotRest
@@ -61,7 +61,7 @@ from .ws import strategies as ws_strategies
 __all__ = [
     # Main exchange interfaces
     'MexcPrivateCompositePrivateExchange',
-    'MexcPublicPublicExchange',
+    'MexcPublicExchange',
     
     # Direct client access
     'MexcPublicSpotRest',

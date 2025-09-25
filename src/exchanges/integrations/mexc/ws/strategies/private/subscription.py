@@ -13,13 +13,14 @@ Message Format:
 }
 """
 
-import logging
 from typing import List, Dict, Any, Optional
 
 from infrastructure.networking.websocket.strategies.subscription import SubscriptionStrategy
 from infrastructure.networking.websocket.structs import SubscriptionAction
-from exchanges.services import BaseExchangeMapper
-from exchanges.integrations.mexc.services.mexc_mapper import MexcMapper
+# BaseExchangeMapper dependency removed - using direct utility functions
+
+# HFT Logger Integration
+from infrastructure.logging import get_strategy_logger, HFTLoggerInterface
 
 
 class MexcPrivateSubscriptionStrategy(SubscriptionStrategy):
@@ -30,9 +31,25 @@ class MexcPrivateSubscriptionStrategy(SubscriptionStrategy):
     Format: "spot@private.account.v3.api.pb"
     """
     
-    def __init__(self, mapper: BaseExchangeMapper):
-        super().__init__(mapper)  # Initialize parent with mandatory mapper
-        self.logger = logging.getLogger(f"{__name__}.{self.__class__.__name__}")
+    def __init__(self, logger: Optional[HFTLoggerInterface] = None):
+        super().__init__(logger)
+        
+        # Use injected logger or create strategy-specific logger
+        if logger is None:
+            tags = ['mexc', 'private', 'ws', 'subscription']
+            logger = get_strategy_logger('ws.subscription.mexc.private', tags)
+        
+        self.logger = logger
+        
+        # Log initialization
+        if self.logger:
+            self.logger.info("MexcPrivateSubscriptionStrategy initialized",
+                            exchange="mexc",
+                            api_type="private")
+            
+            # Track component initialization
+            self.logger.metric("mexc_private_subscription_strategies_initialized", 1,
+                              tags={"exchange": "mexc", "api_type": "private"})
         
     async def create_subscription_messages(self, action: SubscriptionAction, **kwargs) -> List[Dict[str, Any]]:
         """
@@ -47,16 +64,18 @@ class MexcPrivateSubscriptionStrategy(SubscriptionStrategy):
         Returns:
             Single message with fixed private channel params
         """
-        method = self.mapper.from_subscription_action(action)
+        # Use direct utility functions
+        from exchanges.integrations.mexc.utils import from_subscription_action, get_spot_private_channel_name
+        method = from_subscription_action(action)
 
         # Fixed params for private channels (no symbols)
-        # Use mapper to get proper channel names and add .pb suffix for subscription
+        # Use MEXC mapper to get proper channel names and add .pb suffix for subscription
         from infrastructure.networking.websocket.structs import PrivateWebsocketChannelType
         
         params = [
-            self.mapper.get_spot_private_channel_name(PrivateWebsocketChannelType.BALANCE) + ".pb",
-            self.mapper.get_spot_private_channel_name(PrivateWebsocketChannelType.TRADE) + ".pb",
-            self.mapper.get_spot_private_channel_name(PrivateWebsocketChannelType.ORDER) + ".pb"
+            get_spot_private_channel_name(PrivateWebsocketChannelType.BALANCE) + ".pb",
+            get_spot_private_channel_name(PrivateWebsocketChannelType.TRADE) + ".pb",
+            get_spot_private_channel_name(PrivateWebsocketChannelType.ORDER) + ".pb"
         ]
         
         message = {
@@ -64,7 +83,14 @@ class MexcPrivateSubscriptionStrategy(SubscriptionStrategy):
             "params": params
         }
         
-        self.logger.info(f"Created {method} message with {len(params)} private channels")
+        if self.logger:
+            self.logger.info(f"Created {method} message with {len(params)} private channels",
+                            method=method,
+                            channel_count=len(params),
+                            exchange="mexc")
+            
+            self.logger.metric("mexc_private_subscription_messages_created", 1,
+                              tags={"exchange": "mexc", "method": method, "api_type": "private"})
         
         return [message]
 

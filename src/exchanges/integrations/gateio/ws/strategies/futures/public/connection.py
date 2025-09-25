@@ -1,5 +1,4 @@
-import logging
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 from websockets import connect
 from websockets.client import WebSocketClientProtocol
 
@@ -8,13 +7,22 @@ from infrastructure.networking.websocket.strategies.connection import Reconnecti
 from config.structs import ExchangeConfig
 from infrastructure.exceptions.exchange import BaseExchangeError
 
+# HFT Logger Integration
+from infrastructure.logging import HFTLoggerInterface, get_strategy_logger, LoggingTimer
+
 
 class GateioPublicFuturesConnectionStrategy(ConnectionStrategy):
     """Gate.io futures WebSocket connection strategy with futures-specific endpoints."""
 
-    def __init__(self, config: ExchangeConfig):
-        super().__init__(config)  # Initialize parent with _websocket = None
-        self.logger = logging.getLogger(f"{__name__}.{self.__class__.__name__}")
+    def __init__(self, config: ExchangeConfig, logger: Optional[HFTLoggerInterface] = None):
+        super().__init__(config, logger)  # Initialize parent with _websocket = None
+        
+        # Initialize HFT logger with hierarchical tags
+        if logger is None:
+            tags = ['gateio', 'public', 'ws', 'connection']
+            logger = get_strategy_logger('ws.connection.gateio.public', tags)
+        
+        self.logger = logger
         
         # Gate.io futures-specific connection settings
         self.websocket_url = self._get_futures_websocket_url(config)
@@ -22,6 +30,16 @@ class GateioPublicFuturesConnectionStrategy(ConnectionStrategy):
         self.ping_timeout = 10
         self.max_queue_size = 512
         self.max_message_size = 1024 * 1024  # 1MB
+        
+        # Log strategy initialization
+        self.logger.info("Gate.io futures public connection strategy initialized",
+                        websocket_url=self.websocket_url,
+                        ping_interval=self.ping_interval,
+                        ping_timeout=self.ping_timeout,
+                        max_queue_size=self.max_queue_size)
+        
+        self.logger.metric("ws_connection_strategies_created", 1,
+                          tags={"exchange": "gateio", "type": "public_futures"})
 
     def _get_futures_websocket_url(self, config: ExchangeConfig) -> str:
         """Get appropriate futures WebSocket URL from config or default."""
@@ -45,7 +63,9 @@ class GateioPublicFuturesConnectionStrategy(ConnectionStrategy):
             BaseExchangeError: If connection fails
         """
         try:
-            self.logger.info(f"Connecting to Gate.io Futures WebSocket: {self.websocket_url}")
+            with LoggingTimer(self.logger, "gateio_futures_ws_connection") as timer:
+                self.logger.info("Connecting to Gate.io Futures WebSocket",
+                               websocket_url=self.websocket_url)
             
             # Gate.io futures connection with same optimizations as spot
             self._websocket = await connect(
@@ -58,11 +78,28 @@ class GateioPublicFuturesConnectionStrategy(ConnectionStrategy):
                 write_limit=2 ** 20,  # 1MB write buffer
             )
             
-            self.logger.info("Gate.io Futures WebSocket connected successfully")
+            # Track successful connection
+            self.logger.info("Gate.io Futures WebSocket connected successfully",
+                           connection_time_ms=timer.elapsed_ms)
+            
+            self.logger.metric("ws_connections_established", 1,
+                              tags={"exchange": "gateio", "type": "public_futures"})
+            
+            self.logger.metric("ws_connection_time_ms", timer.elapsed_ms,
+                              tags={"exchange": "gateio", "type": "public_futures"})
+            
             return self._websocket
             
         except Exception as e:
-            self.logger.error(f"Failed to connect to Gate.io Futures WebSocket: {e}")
+            self.logger.error("Failed to connect to Gate.io Futures WebSocket",
+                            websocket_url=self.websocket_url,
+                            error_type=type(e).__name__,
+                            error_message=str(e))
+            
+            # Track connection failure
+            self.logger.metric("ws_connection_failures", 1,
+                              tags={"exchange": "gateio", "type": "public_futures", "error_type": type(e).__name__})
+            
             raise BaseExchangeError(500, f"Gate.io Futures WebSocket connection failed: {str(e)}")
     
     def get_reconnection_policy(self) -> ReconnectionPolicy:
@@ -123,7 +160,9 @@ class GateioPublicFuturesConnectionStrategy(ConnectionStrategy):
             await self._websocket.send(ping_message)
             self.logger.debug("Sent custom ping message to Gate.io Futures")
         except Exception as e:
-            self.logger.warning(f"Gate.io Futures custom ping failed: {e}")
+            self.logger.warning("Gate.io Futures custom ping failed",
+                              error_type=type(e).__name__,
+                              error_message=str(e))
             # Continue - built-in ping/pong will handle connection health
 
     def should_reconnect(self, error: Exception) -> bool:
@@ -131,24 +170,37 @@ class GateioPublicFuturesConnectionStrategy(ConnectionStrategy):
         # Classify error first
         error_type = self.classify_error(error)
         
+        should_reconnect = False
+        
         # Gate.io futures 1005 errors are less common but still reconnectable
         if error_type == "abnormal_closure":
             self.logger.info("Gate.io Futures 1005 error detected - will reconnect")
-            return True
+            should_reconnect = True
         
         # Reconnect on network and timeout errors
-        if error_type in ["connection_refused", "timeout"]:
-            self.logger.warning(f"Gate.io Futures {error_type} error - will reconnect")
-            return True
+        elif error_type in ["connection_refused", "timeout"]:
+            self.logger.warning("Gate.io Futures network error - will reconnect",
+                              error_type=error_type)
+            should_reconnect = True
         
         # Don't reconnect on authentication failures (shouldn't happen for public)
-        if error_type == "authentication_failure":
+        elif error_type == "authentication_failure":
             self.logger.error("Gate.io Futures authentication failure - won't reconnect")
-            return False
+            should_reconnect = False
         
         # For unknown errors, try reconnecting (Gate.io futures is generally stable)
-        self.logger.warning(f"Gate.io Futures unknown error ({error}) - will attempt reconnect")
-        return True
+        else:
+            self.logger.warning("Gate.io Futures unknown error - will attempt reconnect",
+                              error_type=error_type,
+                              error_message=str(error))
+            should_reconnect = True
+        
+        # Track reconnection decision metrics
+        self.logger.metric("ws_reconnection_decisions", 1,
+                          tags={"exchange": "gateio", "type": "public_futures", 
+                                "error_type": error_type, "should_reconnect": str(should_reconnect)})
+        
+        return should_reconnect
     
     async def cleanup(self) -> None:
         """Clean up Gate.io futures WebSocket resources."""

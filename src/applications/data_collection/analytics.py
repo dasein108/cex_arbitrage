@@ -10,7 +10,7 @@ from typing import Dict, List, Set
 from dataclasses import dataclass
 
 from exchanges.structs.common import Symbol, BookTicker, Trade
-from applications.data_collection.config import AnalyticsConfig
+from config.structs import AnalyticsConfig
 
 
 @dataclass

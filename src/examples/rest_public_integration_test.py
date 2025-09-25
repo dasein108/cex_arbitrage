@@ -27,9 +27,11 @@ from typing import Dict, Any
 
 from exchanges.structs.common import Symbol
 from exchanges.structs.types import AssetName
-from config import get_exchange_config
-from infrastructure.factories.rest.public_rest_factory import PublicRestExchangeFactory
-from exchanges.structs import ExchangeEnumfrom examples.integration_test_framework import (
+from config.config_manager import HftConfig
+from exchanges.structs import ExchangeEnum
+from exchanges.integrations.mexc.public_exchange import MexcPublicExchange
+from exchanges.integrations.gateio.public_exchange import GateioPublicPublicExchange
+from examples.integration_test_framework import (
     IntegrationTestRunner, TestCategory, TestStatus, EXIT_CODE_SUCCESS, EXIT_CODE_FAILED_TESTS, EXIT_CODE_ERROR,
     EXIT_CODE_CONFIG_ERROR
 )
@@ -46,11 +48,21 @@ class RestPublicIntegrationTest:
             test_suite="REST_PUBLIC_API"
         )
         
+    def _create_exchange_client(self, exchange_name: str, config):
+        """Create exchange client using standard constructors."""
+        if exchange_name.upper() == "MEXC":
+            return MexcPublicExchange(config=config)
+        elif exchange_name.upper() == "GATEIO":
+            return GateioPublicPublicExchange(config=config)
+        else:
+            raise ValueError(f"Unsupported exchange: {exchange_name}")
+    
     async def setup(self) -> Dict[str, Any]:
         """Setup exchange connection for testing."""
         try:
-            config = get_exchange_config(self.exchange_name)
-            self.exchange = PublicRestExchangeFactory.inject(self.exchange_name, config=config)
+            config_manager = HftConfig()
+            config = config_manager.get_exchange_config(self.exchange_name.lower())
+            self.exchange = self._create_exchange_client(self.exchange_name, config)
             
             return {
                 "setup_successful": True,
@@ -473,7 +485,7 @@ async def main():
         sys.exit(EXIT_CODE_CONFIG_ERROR)
     
     # Convert to ExchangeEnum
-    exchange_enum = ExchangeEnum(args.exchange.upper())
+    exchange_enum = ExchangeEnum(args.exchange.upper() + "_SPOT")
     
     # Create test suite
     test_suite = RestPublicIntegrationTest(exchange_enum.value)

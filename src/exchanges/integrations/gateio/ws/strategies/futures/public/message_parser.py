@@ -3,16 +3,36 @@ from typing import Dict, Any, Optional
 
 from infrastructure.networking.websocket.strategies.message_parser import MessageParser
 from infrastructure.networking.websocket.structs import ParsedMessage
-from exchanges.services import BaseExchangeMapper
+# BaseExchangeMapper dependency removed - using direct utility functions
 from infrastructure.networking.websocket.structs import MessageType
 from exchanges.structs.common import FuturesTicker
+
+# HFT Logger Integration
+from infrastructure.logging import get_strategy_logger, HFTLoggerInterface
 
 
 class GateioPublicFuturesMessageParser(MessageParser):
     """Gate.io futures WebSocket message parser."""
 
-    def __init__(self, mapper: BaseExchangeMapper, logger):
-        super().__init__(mapper, logger)
+    def __init__(self, logger: Optional[HFTLoggerInterface] = None):
+        super().__init__(logger)
+        
+        # Use injected logger or create strategy-specific logger
+        if logger is None:
+            tags = ['gateio', 'futures', 'public', 'ws', 'message_parser']
+            logger = get_strategy_logger('ws.message_parser.gateio.futures.public', tags)
+        
+        self.logger = logger
+        
+        # Log initialization
+        if self.logger:
+            self.logger.info("GateioPublicFuturesMessageParser initialized",
+                            exchange="gateio",
+                            api_type="futures_public")
+            
+            # Track component initialization
+            self.logger.metric("gateio_futures_public_message_parsers_initialized", 1,
+                              tags={"exchange": "gateio", "api_type": "futures_public"})
 
     async def parse_message(self, raw_message: str) -> Optional[ParsedMessage]:
         """Parse raw WebSocket message from Gate.io futures."""
@@ -45,7 +65,10 @@ class GateioPublicFuturesMessageParser(MessageParser):
                     )
                 else:
                     # Other message types or messages without event field
-                    self.logger.debug(f"Unknown Gate.io futures message format: {message}")
+                    if self.logger:
+                        self.logger.debug(f"Unknown Gate.io futures message format: {message}",
+                                        exchange="gateio",
+                                        api_type="futures_public")
                     return ParsedMessage(
                         message_type=MessageType.UNKNOWN,
                         raw_data=message
@@ -54,7 +77,11 @@ class GateioPublicFuturesMessageParser(MessageParser):
             return None
             
         except Exception as e:
-            self.logger.error(f"Failed to parse Gate.io futures message: {e}")
+            if self.logger:
+                self.logger.error(f"Failed to parse Gate.io futures message: {e}",
+                                exchange="gateio",
+                                error_type=type(e).__name__,
+                                api_type="futures_public")
             return None
 
     async def _parse_subscription_response(self, message: Dict[str, Any]) -> ParsedMessage:
@@ -67,7 +94,12 @@ class GateioPublicFuturesMessageParser(MessageParser):
         if error:
             error_code = error.get("code", "unknown")
             error_msg = error.get("message", "unknown error")
-            self.logger.error(f"Gate.io futures subscription error {error_code}: {error_msg}")
+            if self.logger:
+                self.logger.error(f"Gate.io futures subscription error {error_code}: {error_msg}",
+                                exchange="gateio",
+                                error_code=error_code,
+                                error_message=error_msg,
+                                api_type="futures_public")
             traceback.print_exc()
             return ParsedMessage(
                 message_type=MessageType.ERROR,
@@ -81,7 +113,11 @@ class GateioPublicFuturesMessageParser(MessageParser):
         status = result.get("status")
         
         if status == "success":
-            self.logger.debug(f"Gate.io futures subscription successful for channel: {channel}")
+            if self.logger:
+                self.logger.debug(f"Gate.io futures subscription successful for channel: {channel}",
+                                exchange="gateio",
+                                channel=channel,
+                                api_type="futures_public")
             return ParsedMessage(
                 message_type=MessageType.SUBSCRIPTION_CONFIRM,
                 channel=channel,
@@ -89,7 +125,11 @@ class GateioPublicFuturesMessageParser(MessageParser):
                 raw_data=message
             )
         elif status == "fail":
-            self.logger.error(f"Gate.io futures subscription failed for channel: {channel}")
+            if self.logger:
+                self.logger.error(f"Gate.io futures subscription failed for channel: {channel}",
+                                exchange="gateio",
+                                channel=channel,
+                                api_type="futures_public")
             return ParsedMessage(
                 message_type=MessageType.ERROR,
                 channel=channel,
@@ -97,7 +137,11 @@ class GateioPublicFuturesMessageParser(MessageParser):
                 raw_data=message
             )
         else:
-            self.logger.warning(f"Unknown Gate.io futures subscription status: {status}")
+            if self.logger:
+                self.logger.warning(f"Unknown Gate.io futures subscription status: {status}",
+                                  exchange="gateio",
+                                  status=status,
+                                  api_type="futures_public")
             return ParsedMessage(
                 message_type=MessageType.UNKNOWN,
                 channel=channel,
@@ -124,10 +168,10 @@ class GateioPublicFuturesMessageParser(MessageParser):
             return await self._parse_book_ticker_update(channel, result_data)
         elif "tickers" in channel:
             return await self._parse_tickers_update(channel, result_data, message)
-        elif "funding_rate" in channel:
-            return await self._parse_funding_rate_update(channel, result_data)
-        elif "mark_price" in channel:
-            return await self._parse_mark_price_update(channel, result_data)
+        # elif "funding_rate" in channel:
+        #     return await self._parse_funding_rate_update(channel, result_data)
+        # elif "mark_price" in channel:
+        #     return await self._parse_mark_price_update(channel, result_data)
         else:
             return ParsedMessage(
                 message_type=MessageType.UNKNOWN,
@@ -153,10 +197,12 @@ class GateioPublicFuturesMessageParser(MessageParser):
                         raw_data={"error": "No symbol in futures orderbook data", "data": data}
                     )
             
-            symbol = self.mapper.to_symbol(symbol_str)
+            from exchanges.integrations.gateio.utils import to_futures_symbol
+            symbol = to_futures_symbol(symbol_str)
             
-            # Use mapper to transform Gate.io futures orderbook to unified OrderBook
-            orderbook = self.mapper.ws_to_orderbook(data, symbol_str)
+            # Use Gate.io mapper to transform Gate.io futures orderbook to unified OrderBook
+            from exchanges.integrations.gateio.utils import futures_ws_to_orderbook
+            orderbook = futures_ws_to_orderbook(data, symbol_str)
             
             return ParsedMessage(
                 message_type=MessageType.ORDERBOOK,
@@ -186,10 +232,12 @@ class GateioPublicFuturesMessageParser(MessageParser):
                 # Extract symbol from trade data
                 symbol_str = trade_data.get('contract', '')
                 if symbol_str and symbol is None:
-                    symbol = self.mapper.to_symbol(symbol_str)
+                    from exchanges.integrations.gateio.utils import to_futures_symbol
+                    symbol = to_futures_symbol(symbol_str)
                 
-                # Use mapper to transform Gate.io futures trade to unified Trade
-                trade = self.mapper.ws_to_trade(trade_data, symbol_str)
+                # Use Gate.io mapper to transform Gate.io futures trade to unified Trade
+                from exchanges.integrations.gateio.utils import futures_ws_to_trade
+                trade = futures_ws_to_trade(trade_data)
                 trades.append(trade)
             
             if not symbol:
@@ -229,10 +277,12 @@ class GateioPublicFuturesMessageParser(MessageParser):
                     raw_data={"error": "No symbol in futures book ticker data", "data": data}
                 )
             
-            symbol = self.mapper.to_symbol(symbol_str)
+            from exchanges.integrations.gateio.utils import to_futures_symbol
+            symbol = to_futures_symbol(symbol_str)
             
-            # Use mapper to transform Gate.io futures book ticker to unified BookTicker
-            book_ticker = self.mapper.ws_to_book_ticker(data, symbol_str)
+            # Use Gate.io mapper to transform Gate.io futures book ticker to unified BookTicker
+            from exchanges.integrations.gateio.utils import futures_ws_to_book_ticker
+            book_ticker = futures_ws_to_book_ticker(data, symbol_str)
             
             return ParsedMessage(
                 message_type=MessageType.BOOK_TICKER,
@@ -276,7 +326,8 @@ class GateioPublicFuturesMessageParser(MessageParser):
                     self.logger.warning(f"No contract found in futures ticker data: {ticker_data}")
                     continue
                 
-                symbol = self.mapper.to_symbol(symbol_str)
+                from exchanges.integrations.gateio.utils import to_futures_symbol
+                symbol = to_futures_symbol(symbol_str)
                 
                 # Parse ticker data with comprehensive futures information and validation
                 try:
@@ -361,7 +412,8 @@ class GateioPublicFuturesMessageParser(MessageParser):
                     raw_data={"error": "No symbol in funding rate data", "data": data}
                 )
             
-            symbol = self.mapper.to_symbol(symbol_str)
+            from exchanges.integrations.gateio.utils import to_symbol
+            symbol = to_symbol(symbol_str)
             
             # Gate.io funding rate format:
             # {
@@ -408,7 +460,8 @@ class GateioPublicFuturesMessageParser(MessageParser):
                     raw_data={"error": "No symbol in mark price data", "data": data}
                 )
             
-            symbol = self.mapper.to_symbol(symbol_str)
+            from exchanges.integrations.gateio.utils import to_symbol
+            symbol = to_symbol(symbol_str)
             
             # Gate.io mark price format:
             # {

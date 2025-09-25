@@ -24,7 +24,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 from exchanges.structs.common import Symbol, Trade
 from exchanges.structs.types import AssetName
 from exchanges.structs import Side
-from applications.data_collection.config import load_data_collector_config
+from config.config_manager import get_data_collector_config
 from applications.data_collection.analytics import RealTimeAnalytics
 from db.models import TradeSnapshot
 
@@ -35,7 +35,7 @@ async def test_trade_analytics():
     
     try:
         # Load configuration
-        config = load_data_collector_config()
+        config = get_data_collector_config()
         print(f"✅ Configuration loaded: {len(config.symbols)} symbols, analytics enabled")
         
         # Initialize analytics engine
@@ -180,7 +180,7 @@ async def test_configuration():
     
     try:
         # Load configuration
-        config = load_data_collector_config()
+        config = get_data_collector_config()
         
         # Validate trade collection settings
         assert hasattr(config, 'collect_trades')

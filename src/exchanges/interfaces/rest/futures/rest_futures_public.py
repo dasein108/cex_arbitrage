@@ -1,6 +1,6 @@
 from abc import ABC
 from exchanges.interfaces.rest.rest_base import BaseRestInterface
-from exchanges.services import BaseExchangeMapper
+# BaseExchangeMapper dependency removed - using direct utility functions
 from config.structs import ExchangeConfig
 from exchanges.structs import Symbol
 
@@ -8,11 +8,10 @@ from exchanges.structs import Symbol
 class PublicFuturesRest(BaseRestInterface, ABC):
     """Abstract interface for public futures exchange operations (market data)"""
     
-    def __init__(self, config: ExchangeConfig, mapper: BaseExchangeMapper):
-        """Initialize public futures interface with transport manager and mapper."""
+    def __init__(self, config: ExchangeConfig):
+        """Initialize public futures interface with transport manager."""
         super().__init__(
             config=config,
-            mapper=mapper,
             is_private=False  # Public API operations
         )
     

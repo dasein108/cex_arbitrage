@@ -10,19 +10,26 @@ from exchanges.structs.enums import TimeInForce
 from exchanges.structs import OrderType, Side
 from infrastructure.networking.http.structs import HTTPMethod
 from infrastructure.exceptions.exchange import BaseExchangeError
-from exchanges.services import BaseExchangeMapper
+# Removed BaseExchangeMapper import - using direct utility functions
 from config.structs import ExchangeConfig
+
+# Import direct utility functions
+from exchanges.integrations.gateio.utils import (
+    from_futures_symbol, from_side, from_order_type, format_quantity, format_price, 
+    from_time_in_force, to_order_status, get_order_params, rest_to_order, 
+    reverse_lookup_order_type, to_side
+)
+from exchanges.integrations.gateio.services.futures_symbol_mapper import GateioFuturesSymbol
 
 
 class GateioPrivateFuturesRest(PrivateFuturesRest):
-    def __init__(self, config: ExchangeConfig, mapper: BaseExchangeMapper, logger=None):
+    def __init__(self, config: ExchangeConfig, logger=None):
         """
         Args:
             config: ExchangeConfig containing credentials & transport config.
-            mapper: BaseExchangeMapper for data transformations
             logger: Optional HFT logger injection
         """
-        super().__init__(config, mapper)
+        super().__init__(config, is_private=True)
         
         # Initialize HFT logger
         if logger is None:
@@ -109,13 +116,13 @@ class GateioPrivateFuturesRest(PrivateFuturesRest):
             and price provided, compute size = quote_quantity / price.
         """
         try:
-            contract = self._mapper.to_pair(symbol)
-            payload: Dict[str, Any] = {"contract": contract, "side": self._mapper.from_side(side)}
+            contract = from_futures_symbol(symbol)
+            payload: Dict[str, Any] = {"contract": contract, "side": from_side(side)}
 
             # Map order type/time-in-force to exchange values
-            payload["type"] = self._mapper.from_order_type(order_type)
+            payload["type"] = from_order_type(order_type)
             if time_in_force is not None:
-                payload["time_in_force"] = self._mapper.from_time_in_force(time_in_force)
+                payload["time_in_force"] = from_time_in_force(time_in_force)
 
             # Amount handling: futures commonly use 'size' field for composite quantity
             if order_type == OrderType.MARKET:
@@ -125,29 +132,29 @@ class GateioPrivateFuturesRest(PrivateFuturesRest):
                         amount = quote_quantity / price
                     else:
                         raise ValueError("Futures market orders require amount or (quote_quantity + price)")
-                payload["size"] = self._mapper.format_quantity(amount)
+                payload["size"] = format_quantity(amount)
             else:
                 # Limit-like orders: require amount and price
                 if amount is None or price is None:
                     raise ValueError("Futures limit orders require both amount and price")
-                payload["size"] = self._mapper.format_quantity(amount)
-                payload["price"] = self._mapper.format_price(price)
+                payload["size"] = format_quantity(amount)
+                payload["price"] = format_price(price)
 
             # Optional flags
             if iceberg_qty:
-                payload["iceberg"] = self._mapper.format_quantity(iceberg_qty)
+                payload["iceberg"] = format_quantity(iceberg_qty)
             if stop_price:
-                payload["stop"] = self._mapper.format_price(stop_price)
+                payload["stop"] = format_price(stop_price)
 
             # Add any special order params the mapper knows about
-            payload.update(self._mapper.get_order_params(order_type, time_in_force or TimeInForce.GTC))
+            payload.update(get_order_params(order_type, time_in_force or TimeInForce.GTC))
 
             endpoint = "/futures/usdt/orders"
             response = await self.request(HTTPMethod.POST, endpoint, data=payload)
 
             # Try to transform using shared mapper; if mapper can't, fall back to manual minimal construct
             try:
-                order = self._mapper.rest_to_order(response)
+                order = rest_to_order(response)
                 self.logger.info(f"Placed futures order {order.order_id}")
                 return order
             except Exception:
@@ -162,7 +169,7 @@ class GateioPrivateFuturesRest(PrivateFuturesRest):
                     price=float(response.get("price")) if response.get("price") else None,
                     filled_quantity=float(response.get("filled_size", response.get("filled", 0))),
                     remaining_quantity=float(response.get("left", 0)),
-                    status=self._mapper.to_order_status(response.get("status", "open")),
+                    status=to_order_status(response.get("status", "open")),
                     timestamp=int(float(response.get("create_time_ms", int(time.time() * 1000))))
                 )
 
@@ -175,24 +182,24 @@ class GateioPrivateFuturesRest(PrivateFuturesRest):
         Cancel single futures order. DELETE /futures/usdt/orders/{id}?contract=...
         """
         try:
-            contract = self._mapper.to_pair(symbol)
+            contract = from_futures_symbol(symbol)
             endpoint = f"/futures/usdt/orders/{order_id}"
             params = {"contract": contract}
             response = await self.request(HTTPMethod.DELETE, endpoint, params=params)
 
             try:
-                return self._mapper.rest_to_order(response)
+                return rest_to_order(response)
             except Exception:
                 # Best-effort mapping
                 return Order(
                     order_id=order_id,
                     symbol=symbol,
-                    side=self._mapper.to_side(response.get("side", "buy")),
-                    order_type=self._mapper._reverse_lookup_order_type(response.get("type", "limit")),
+                    side=to_side(response.get("side", "buy")),
+                    order_type=reverse_lookup_order_type(response.get("type", "limit")),
                     quantity=float(response.get("size", 0)),
                     filled_quantity=float(response.get("filled_size", 0)),
                     remaining_quantity=float(response.get("left", 0)),
-                    status=self._mapper.to_order_status(response.get("status", "cancelled")),
+                    status=to_order_status(response.get("status", "cancelled")),
                     timestamp=int(float(response.get("create_time_ms", int(time.time() * 1000))))
                 )
 
@@ -206,7 +213,7 @@ class GateioPrivateFuturesRest(PrivateFuturesRest):
         Endpoint: DELETE /futures/usdt/orders?contract=...
         """
         try:
-            contract = self._mapper.to_pair(symbol)
+            contract = from_futures_symbol(symbol)
             endpoint = "/futures/usdt/orders"
             params = {"contract": contract}
             response = await self.request(HTTPMethod.DELETE, endpoint, params=params)
@@ -215,34 +222,34 @@ class GateioPrivateFuturesRest(PrivateFuturesRest):
             if isinstance(response, list):
                 for item in response:
                     try:
-                        cancelled.append(self._mapper.rest_to_order(item))
+                        cancelled.append(rest_to_order(item))
                     except Exception:
                         # best-effort minimal mapping
                         cancelled.append(Order(
                             order_id=OrderId(str(item.get("id", ""))),
                             symbol=symbol,
-                            side=self._mapper.to_side(item.get("side", "buy")),
-                            order_type=self._mapper._reverse_lookup_order_type(item.get("type", "limit")),
+                            side=to_side(item.get("side", "buy")),
+                            order_type=reverse_lookup_order_type(item.get("type", "limit")),
                             quantity=float(item.get("size", 0)),
                             filled_quantity=float(item.get("filled_size", 0)),
                             remaining_quantity=float(item.get("left", 0)),
-                            status=self._mapper.to_order_status(item.get("status", "cancelled")),
+                            status=to_order_status(item.get("status", "cancelled")),
                             timestamp=int(float(item.get("create_time_ms", int(time.time() * 1000))))
                         ))
             else:
                 # single-object response
                 try:
-                    cancelled.append(self._mapper.rest_to_order(response))
+                    cancelled.append(rest_to_order(response))
                 except Exception:
                     cancelled.append(Order(
                         order_id=OrderId(str(response.get("id", ""))),
                         symbol=symbol,
-                        side=self._mapper.to_side(response.get("side", "buy")),
-                        order_type=self._mapper._reverse_lookup_order_type(response.get("type", "limit")),
+                        side=to_side(response.get("side", "buy")),
+                        order_type=reverse_lookup_order_type(response.get("type", "limit")),
                         quantity=float(response.get("size", 0)),
                         filled_quantity=float(response.get("filled_size", 0)),
                         remaining_quantity=float(response.get("left", 0)),
-                        status=self._mapper.to_order_status(response.get("status", "cancelled")),
+                        status=to_order_status(response.get("status", "cancelled")),
                         timestamp=int(float(response.get("create_time_ms", int(time.time() * 1000))))
                     ))
 
@@ -258,23 +265,23 @@ class GateioPrivateFuturesRest(PrivateFuturesRest):
         Query single futures order: GET /futures/usdt/orders/{id}?contract=...
         """
         try:
-            contract = self._mapper.to_pair(symbol)
+            contract = from_futures_symbol(symbol)
             endpoint = f"/futures/usdt/orders/{order_id}"
             params = {"contract": contract}
             response = await self.request(HTTPMethod.GET, endpoint, params=params)
 
             try:
-                return self._mapper.rest_to_order(response)
+                return rest_to_order(response)
             except Exception:
                 return Order(
                     order_id=order_id,
                     symbol=symbol,
-                    side=self._mapper.to_side(response.get("side", "buy")),
-                    order_type=self._mapper._reverse_lookup_order_type(response.get("type", "limit")),
+                    side=to_side(response.get("side", "buy")),
+                    order_type=reverse_lookup_order_type(response.get("type", "limit")),
                     quantity=float(response.get("size", 0)),
                     filled_quantity=float(response.get("filled_size", 0)),
                     remaining_quantity=float(response.get("left", 0)),
-                    status=self._mapper.to_order_status(response.get("status", "unknown")),
+                    status=to_order_status(response.get("status", "unknown")),
                     timestamp=int(float(response.get("create_time_ms", int(time.time() * 1000))))
                 )
 
@@ -292,7 +299,7 @@ class GateioPrivateFuturesRest(PrivateFuturesRest):
                 self.logger.debug("No symbol provided for get_open_orders - returning empty list (API requires contract)")
                 return []
 
-            contract = self._mapper.to_pair(symbol)
+            contract = from_futures_symbol(symbol)
             endpoint = "/futures/usdt/orders"
             params = {"status": "open", "contract": contract}
             response = await self.request(HTTPMethod.GET, endpoint, params=params)
@@ -303,17 +310,17 @@ class GateioPrivateFuturesRest(PrivateFuturesRest):
             open_orders: List[Order] = []
             for item in response:
                 try:
-                    open_orders.append(self._mapper.rest_to_order(item))
+                    open_orders.append(rest_to_order(item))
                 except Exception:
                     open_orders.append(Order(
                         order_id=OrderId(str(item.get("id", ""))),
                         symbol=symbol,
-                        side=self._mapper.to_side(item.get("side", "buy")),
-                        order_type=self._mapper._reverse_lookup_order_type(item.get("type", "limit")),
+                        side=to_side(item.get("side", "buy")),
+                        order_type=reverse_lookup_order_type(item.get("type", "limit")),
                         quantity=float(item.get("size", 0)),
                         filled_quantity=float(item.get("filled_size", 0)),
                         remaining_quantity=float(item.get("left", 0)),
-                        status=self._mapper.to_order_status(item.get("status", "open")),
+                        status=to_order_status(item.get("status", "open")),
                         timestamp=int(float(item.get("create_time_ms", int(time.time() * 1000))))
                     ))
 
@@ -388,7 +395,7 @@ class GateioPrivateFuturesRest(PrivateFuturesRest):
                             continue
 
                         # Convert to unified symbol
-                        symbol = self._mapper.to_symbol(contract_name)
+                        symbol = GateioFuturesSymbol.to_symbol(contract_name)
 
                         # Parse position size (positive for long, negative for short)
                         size_val = float(pos.get("size", 0))

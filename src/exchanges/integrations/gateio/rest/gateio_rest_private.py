@@ -35,8 +35,13 @@ from exchanges.structs import OrderType, Side
 from infrastructure.networking.http.structs import HTTPMethod
 from exchanges.interfaces.rest.spot.rest_spot_private import PrivateSpotRest
 from config.structs import ExchangeConfig
-from exchanges.services import BaseExchangeMapper
 from infrastructure.exceptions.exchange import BaseExchangeError
+
+# Import direct utility functions
+from exchanges.integrations.gateio.utils import (
+    to_pair, from_side, from_order_type, format_quantity, format_price, 
+    from_time_in_force, to_order_status, rest_to_order, rest_to_balance
+)
 
 
 class GateioPrivateSpotRest(PrivateSpotRest):
@@ -47,16 +52,15 @@ class GateioPrivateSpotRest(PrivateSpotRest):
     Optimized for high-frequency trading operations with minimal overhead.
     """
 
-    def __init__(self, config: ExchangeConfig, mapper: BaseExchangeMapper, logger=None):
+    def __init__(self, config: ExchangeConfig, logger=None):
         """
         Initialize Gate.io private REST client.
         
         Args:
             config: ExchangeConfig with Gate.io configuration and credentials
-            mapper: BaseExchangeMapper for data transformations
             logger: Optional HFT logger injection
         """
-        super().__init__(config, mapper)
+        super().__init__(config, is_private=True)
         
         # Initialize HFT logger
         if logger is None:
@@ -105,7 +109,7 @@ class GateioPrivateSpotRest(PrivateSpotRest):
             
             balances = []
             for balance_data in response_data:
-                balance = self._mapper.rest_to_balance(balance_data)
+                balance = rest_to_balance(balance_data)
                 # Only include assets with non-zero total balance
                 if balance.total > 0:
                     balances.append(balance)
@@ -182,19 +186,19 @@ class GateioPrivateSpotRest(PrivateSpotRest):
             ExchangeAPIError: If order placement fails
         """
         try:
-            pair = self._mapper.to_pair(symbol)
+            pair = to_pair(symbol)
             
             # Build order payload
             payload = {
                 'currency_pair': pair,
-                'side': self._mapper.from_side(side),
-                'type': self._mapper.from_order_type(order_type)
+                'side': from_side(side),
+                'type': from_order_type(order_type)
             }
             
             # Set time in force
             if time_in_force is None:
                 time_in_force = TimeInForce.GTC
-            payload['time_in_force'] = self._mapper.from_time_in_force(time_in_force)
+            payload['time_in_force'] = from_time_in_force(time_in_force)
             
             # Handle different order configurations
             if order_type == OrderType.MARKET:
@@ -204,19 +208,19 @@ class GateioPrivateSpotRest(PrivateSpotRest):
                         if amount is None or price is None:
                             raise ValueError("Market buy orders require quote_quantity or (amount + price)")
                         quote_quantity = amount * price
-                    payload['amount'] = self._mapper.format_quantity(quote_quantity)
+                    payload['amount'] = format_quantity(quote_quantity)
                 else:
                     # Market sell: specify exchanges quantity
                     if amount is None:
                         raise ValueError("Market sell orders require amount")
-                    payload['amount'] = self._mapper.format_quantity(amount)
+                    payload['amount'] = format_quantity(amount)
             else:
                 # Limit order: require both price and amount
                 if price is None or amount is None:
                     raise ValueError("Limit orders require both price and amount")
                 
-                payload['price'] = self._mapper.format_price(price)
-                payload['amount'] = self._mapper.format_quantity(amount)
+                payload['price'] = format_price(price)
+                payload['amount'] = format_quantity(amount)
             
             # Add special parameters for specific order types
             # TODO: fix or remove !
@@ -233,7 +237,7 @@ class GateioPrivateSpotRest(PrivateSpotRest):
             )
             
             # Transform Gate.io response to unified Order
-            order = self._mapper.rest_to_order(response_data)
+            order = rest_to_order(response_data)
             
             self.logger.info(f"Placed {side.name} order: {order.order_id}")
             return order
@@ -259,7 +263,7 @@ class GateioPrivateSpotRest(PrivateSpotRest):
             ExchangeAPIError: If order cancellation fails
         """
         try:
-            pair = self._mapper.to_pair(symbol)
+            pair = to_pair(symbol)
             endpoint = f'/spot/orders/{order_id}'
             
             params = {'currency_pair': pair}
@@ -271,7 +275,7 @@ class GateioPrivateSpotRest(PrivateSpotRest):
             )
             
             # Transform Gate.io response to unified Order
-            order = self._mapper.rest_to_order(response_data)
+            order = rest_to_order(response_data)
             
             self.logger.info(f"Cancelled order: {order_id}")
             return order
@@ -294,7 +298,7 @@ class GateioPrivateSpotRest(PrivateSpotRest):
             ExchangeAPIError: If mass cancellation fails
         """
         try:
-            pair = self._mapper.to_pair(symbol)
+            pair = to_pair(symbol)
             endpoint = '/spot/orders'
             
             params = {'currency_pair': pair}
@@ -311,7 +315,7 @@ class GateioPrivateSpotRest(PrivateSpotRest):
             
             cancelled_orders = []
             for order_data in response_data:
-                order = self._mapper.rest_to_order(order_data)
+                order = rest_to_order(order_data)
                 cancelled_orders.append(order)
             
             self.logger.info(f"Cancelled {len(cancelled_orders)} orders for {symbol}")
@@ -338,7 +342,7 @@ class GateioPrivateSpotRest(PrivateSpotRest):
             ExchangeAPIError: If order query fails
         """
         try:
-            pair = self._mapper.to_pair(symbol)
+            pair = to_pair(symbol)
             endpoint = f'/spot/orders/{order_id}'
             
             params = {'currency_pair': pair}
@@ -350,7 +354,7 @@ class GateioPrivateSpotRest(PrivateSpotRest):
             )
             
             # Transform Gate.io response to unified Order
-            order = self._mapper.rest_to_order(response_data)
+            order = rest_to_order(response_data)
             
             self.logger.debug(f"Retrieved order status: {order_id}")
             return order
@@ -386,7 +390,7 @@ class GateioPrivateSpotRest(PrivateSpotRest):
             endpoint = '/spot/orders'
             params = {
                 'status': 'open',
-                'currency_pair': self._mapper.to_pair(symbol)
+                'currency_pair': to_pair(symbol)
             }
             
             response_data = await self.request(
@@ -401,7 +405,7 @@ class GateioPrivateSpotRest(PrivateSpotRest):
             
             open_orders = []
             for order_data in response_data:
-                order = self._mapper.rest_to_order(order_data)
+                order = rest_to_order(order_data)
                 open_orders.append(order)
             
             symbol_str = f" for {symbol}" if symbol else ""

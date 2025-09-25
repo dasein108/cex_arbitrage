@@ -27,9 +27,10 @@ from typing import Dict, Any, List
 
 from exchanges.structs.common import Symbol, OrderBook, Trade
 from exchanges.structs.types import AssetName
-from config import get_exchange_config
-from examples.utils.ws_api_factory import get_exchange_websocket_classes
-from exchanges.structs import ExchangeEnumfrom examples.integration_test_framework import (
+from config.config_manager import HftConfig
+from exchanges.transport_factory import create_websocket_client, create_public_handlers
+from exchanges.structs import ExchangeEnum
+from examples.integration_test_framework import (
     IntegrationTestRunner, TestCategory, TestStatus, EXIT_CODE_SUCCESS, EXIT_CODE_FAILED_TESTS, EXIT_CODE_ERROR,
     EXIT_CODE_CONFIG_ERROR
 )
@@ -134,20 +135,27 @@ class WebSocketPublicIntegrationTest:
     async def setup(self) -> Dict[str, Any]:
         """Setup WebSocket connection for testing."""
         try:
-            config = get_exchange_config(self.exchange_name)
-            websocket_class, _ = get_exchange_websocket_classes(self.exchange_name)
+            config_manager = HftConfig()
+            config = config_manager.get_exchange_config(self.exchange_name.lower())
+            exchange_enum = ExchangeEnum(self.exchange_name)
             
-            # Create WebSocket instance with data handlers
-            self.websocket = websocket_class(
-                config=config,
+            # Create handler object using factory
+            handlers = create_public_handlers(
                 orderbook_diff_handler=self.data_collector.handle_orderbook_update,
-                trades_handler=self.data_collector.handle_trades_update,
-                state_change_handler=self.data_collector.handle_state_change
+                trades_handler=self.data_collector.handle_trades_update
+            )
+            
+            # Create WebSocket instance using factory
+            self.websocket = create_websocket_client(
+                exchange=exchange_enum,
+                config=config,
+                handlers=handlers,
+                is_private=False
             )
             
             return {
                 "setup_successful": True,
-                "websocket_class": websocket_class.__name__,
+                "websocket_class": type(self.websocket).__name__,
                 "config_loaded": True,
                 "handlers_configured": True
             }
@@ -465,7 +473,8 @@ async def main():
         sys.exit(EXIT_CODE_CONFIG_ERROR)
     
     # Convert to ExchangeEnum
-    exchange_enum = ExchangeEnum(args.exchange.upper())
+    from exchanges.utils.exchange_utils import get_exchange_enum
+    exchange_enum = get_exchange_enum(args.exchange)
     
     # Create test suite
     test_suite = WebSocketPublicIntegrationTest(exchange_enum.value)

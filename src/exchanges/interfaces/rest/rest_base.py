@@ -1,10 +1,12 @@
 from abc import ABC
-from typing import Optional
+from typing import Optional, TYPE_CHECKING
 
 from infrastructure.networking.http.utils import create_rest_transport_manager
 from infrastructure.networking.http.structs import HTTPMethod
-from config.structs import ExchangeConfig
-from exchanges.services import BaseExchangeMapper
+
+if TYPE_CHECKING:
+    from config.structs import ExchangeConfig
+# Removed BaseExchangeMapper import - using direct utility functions
 
 # HFT Logger Integration
 from infrastructure.logging import get_exchange_logger, HFTLoggerInterface, LoggingTimer
@@ -18,7 +20,7 @@ class BaseRestInterface(ABC):
     """
 
 
-    def __init__(self, config: ExchangeConfig, mapper: BaseExchangeMapper, is_private: bool = False, logger: Optional[HFTLoggerInterface] = None):
+    def __init__(self, config: 'ExchangeConfig', is_private: bool = False, logger: Optional[HFTLoggerInterface] = None):
         self.exchange_name = config.name
         api_type = 'private' if is_private else 'public'
         self.exchange_tag = f'{self.exchange_name}_{api_type}'
@@ -33,14 +35,10 @@ class BaseRestInterface(ABC):
             is_private=is_private,
         )
 
-        # Inject mapper via dependency injection
-        self._mapper = mapper
-
         # Log initialization with structured data
         self.logger.info("BaseExchangeRestInterface initialized",
                         exchange=config.name,
-                        api_type=api_type,
-                        has_mapper=mapper is not None)
+                        api_type=api_type)
         
         # Track component initialization metrics
         self.logger.metric("rest_base_interfaces_initialized", 1,

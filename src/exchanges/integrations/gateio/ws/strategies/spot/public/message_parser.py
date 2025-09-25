@@ -1,11 +1,13 @@
-import logging
 from typing import Dict, Any, Optional, List
 import msgspec
 
 from infrastructure.networking.websocket.strategies.message_parser import MessageParser
 from infrastructure.networking.websocket.structs import ParsedMessage, MessageType
-from exchanges.services import BaseExchangeMapper
+# BaseExchangeMapper dependency removed - using direct utility functions
 from exchanges.structs.common import Symbol
+
+# HFT Logger Integration
+from infrastructure.logging import get_strategy_logger, HFTLoggerInterface
 
 
 class GateioPublicMessageParser(MessageParser):
@@ -14,10 +16,9 @@ class GateioPublicMessageParser(MessageParser):
     @staticmethod
     def _safe_extract_symbol(
         data: Dict[str, Any], 
-        mapper: BaseExchangeMapper,
         symbol_fields: List[str] = None,
         channel: str = "",
-        logger: logging.Logger = None
+        logger: Optional[HFTLoggerInterface] = None
     ) -> Optional[Symbol]:
         """Safely extract symbol from message data with multiple fallback strategies."""
         if symbol_fields is None:
@@ -28,7 +29,8 @@ class GateioPublicMessageParser(MessageParser):
             symbol_str = data.get(field)
             if symbol_str:
                 try:
-                    return mapper.to_symbol(symbol_str)
+                    from exchanges.integrations.gateio.utils import to_symbol
+                    return to_symbol(symbol_str)
                 except Exception as e:
                     if logger:
                         logger.debug(f"Failed to convert symbol '{symbol_str}' from field '{field}': {e}")
@@ -40,7 +42,8 @@ class GateioPublicMessageParser(MessageParser):
             if len(channel_parts) > 2:
                 symbol_str = channel_parts[-1]
                 try:
-                    return mapper.to_symbol(symbol_str)
+                    from exchanges.integrations.gateio.utils import to_symbol
+                    return to_symbol(symbol_str)
                 except Exception as e:
                     if logger:
                         logger.debug(f"Failed to convert symbol '{symbol_str}' from channel '{channel}': {e}")
@@ -48,34 +51,55 @@ class GateioPublicMessageParser(MessageParser):
         return None
     
     @staticmethod
-    def _safe_json_decode(raw_message: str, logger: logging.Logger = None) -> Optional[Dict[str, Any]]:
+    def _safe_json_decode(raw_message: str, logger: Optional[HFTLoggerInterface] = None) -> Optional[Dict[str, Any]]:
         """Safely decode JSON message with error handling."""
         try:
             return msgspec.json.decode(raw_message)
         except (msgspec.DecodeError, ValueError) as e:
             if logger:
-                logger.error(f"Failed to decode JSON message: {e}")
-                logger.debug(f"Raw message: {raw_message[:200]}...")
+                logger.error(f"Failed to decode JSON message: {e}",
+                           exchange="gateio",
+                           error_type="json_decode_error")
+                logger.debug(f"Raw message: {raw_message[:200]}...",
+                           exchange="gateio")
             return None
     
     @staticmethod
     def _log_parsing_context(
-        logger: logging.Logger,
+        logger: Optional[HFTLoggerInterface],
         exchange: str,
         message_type: str,
         raw_message: Any,
         max_length: int = 200
     ) -> None:
         """Log parsing context for debugging with length limit."""
-        if logger.isEnabledFor(logging.DEBUG):
+        if logger:
             message_str = str(raw_message)
             if len(message_str) > max_length:
                 message_str = message_str[:max_length] + "..."
-            logger.debug(f"Parsing {exchange} {message_type}: {message_str}")
+            logger.debug(f"Parsing {exchange} {message_type}: {message_str}",
+                       exchange=exchange,
+                       message_type=message_type)
 
-    def __init__(self, mapper: BaseExchangeMapper, logger):
-        super().__init__(mapper, logger)
-        self.mapper = mapper
+    def __init__(self, logger: Optional[HFTLoggerInterface] = None):
+        super().__init__(logger)
+        
+        # Use injected logger or create strategy-specific logger
+        if logger is None:
+            tags = ['gateio', 'spot', 'public', 'ws', 'message_parser']
+            logger = get_strategy_logger('ws.message_parser.gateio.spot.public', tags)
+        
+        self.logger = logger
+        
+        # Log initialization
+        if self.logger:
+            self.logger.info("GateioPublicMessageParser initialized",
+                            exchange="gateio",
+                            api_type="spot_public")
+            
+            # Track component initialization
+            self.logger.metric("gateio_spot_public_message_parsers_initialized", 1,
+                              tags={"exchange": "gateio", "api_type": "spot_public"})
 
     async def parse_message(self, raw_message: str) -> Optional[ParsedMessage]:
         """Parse raw WebSocket message from Gate.io."""
@@ -104,7 +128,10 @@ class GateioPublicMessageParser(MessageParser):
                     return self._create_heartbeat_response(message)
                 else:
                     # Other message types or messages without event field
-                    self.logger.debug(f"Unknown Gate.io message format: {message}")
+                    if self.logger:
+                        self.logger.debug(f"Unknown Gate.io message format: {message}",
+                                        exchange="gateio",
+                                        api_type="spot_public")
                     return ParsedMessage(
                         message_type=MessageType.UNKNOWN,
                         raw_data=message
@@ -113,38 +140,79 @@ class GateioPublicMessageParser(MessageParser):
             return None
             
         except Exception as e:
-            return self.error_handler.handle_parsing_exception(
-                exception=e,
-                context="Gate.io message parsing",
-                raw_data={"raw_message": raw_message}
-            )
+            if self.logger:
+                self.logger.error(f"Error parsing Gate.io message: {e}",
+                                exchange="gateio",
+                                error_type=type(e).__name__,
+                                api_type="spot_public")
+            return None
 
     async def _parse_subscription_response(self, message: Dict[str, Any]) -> ParsedMessage:
         """Parse Gate.io subscription response."""
         # Get channel name from message
         channel = message.get("channel", "")
         
-        # Check for errors first using unified error handler
+        # Check for errors first - just log with details instead of error_handler
         error = message.get("error")
         if error:
-            return self.error_handler.handle_subscription_error(message, channel)
+            # Log error with all details
+            if self.logger:
+                self.logger.error(f"Gate.io subscription error",
+                                exchange="gateio",
+                                channel=channel,
+                                error=error,
+                                raw_message=message,
+                                api_type="spot_public")
+            
+            # TODO: Implement proper event system for subscription errors
+            return ParsedMessage(
+                message_type=MessageType.ERROR,
+                channel=channel,
+                data={"error": error, "channel": channel},
+                raw_data=message
+            )
         
         # Check result status
         result = message.get("result", {})
         status = result.get("status")
-        is_success = self.mapper.is_subscription_successful(status)
+        from exchanges.integrations.gateio.utils import is_subscription_successful
+        is_success = is_subscription_successful(status)
         
         if is_success:
-            self.logger.debug(f"Gate.io subscription successful for channel: {channel}")
+            if self.logger:
+                self.logger.debug(f"Gate.io subscription successful for channel: {channel}",
+                                exchange="gateio",
+                                channel=channel,
+                                api_type="spot_public")
             return self.create_subscription_response(
                 channel=channel,
                 status="success",
                 raw_data=message
             )
         elif status == "fail":
-            return self.error_handler.handle_subscription_error(message, channel)
+            # Log subscription failure with details
+            if self.logger:
+                self.logger.error(f"Gate.io subscription failed",
+                                exchange="gateio",
+                                channel=channel,
+                                status=status,
+                                result=result,
+                                raw_message=message,
+                                api_type="spot_public")
+            
+            # TODO: Implement proper event system for subscription failures
+            return ParsedMessage(
+                message_type=MessageType.ERROR,
+                channel=channel,
+                data={"error": "subscription failed", "status": status, "result": result},
+                raw_data=message
+            )
         else:
-            self.logger.warning(f"Unknown Gate.io subscription status: {status}")
+            if self.logger:
+                self.logger.warning(f"Unknown Gate.io subscription status: {status}",
+                                  exchange="gateio",
+                                  status=status,
+                                  api_type="spot_public")
             return ParsedMessage(
                 message_type=MessageType.UNKNOWN,
                 channel=channel,
@@ -181,20 +249,24 @@ class GateioPublicMessageParser(MessageParser):
         try:
             # Extract symbol from data
             symbol = self._safe_extract_symbol(
-                data, self.mapper, ['s', 'symbol'], channel, self.logger
+                data, ['s', 'symbol'], channel, self.logger
             )
             
             if not symbol:
-                self.logger.error(f"No symbol found in orderbook data: {data}")
+                if self.logger:
+                    self.logger.error(f"No symbol found in orderbook data: {data}",
+                                    exchange="gateio",
+                                    api_type="spot_public")
                 return ParsedMessage(
                     message_type=MessageType.ERROR,
                     channel=channel,
                     raw_data={"error": "No symbol in orderbook data", "data": data}
                 )
             
-            # Use mapper for transformation  
+            # Use Gate.io mapper for transformation  
             symbol_str = data.get('s', '') or channel.split('.')[-1] if '.' in channel else ''
-            orderbook = self.mapper.ws_to_orderbook(data, symbol_str)
+            from exchanges.integrations.gateio.utils import ws_to_orderbook
+            orderbook = ws_to_orderbook(data, symbol_str)
             
             return ParsedMessage(
                 message_type=MessageType.ORDERBOOK,
@@ -205,12 +277,13 @@ class GateioPublicMessageParser(MessageParser):
             )
             
         except Exception as e:
-            return self.error_handler.handle_parsing_exception(
-                exception=e,
-                context="orderbook update",
-                channel=channel,
-                raw_data={"data": data}
-            )
+            if self.logger:
+                self.logger.error(f"Error parsing orderbook update: {e}",
+                                exchange="gateio",
+                                error_type=type(e).__name__,
+                                channel=channel,
+                                api_type="spot_public")
+            return None
 
     async def _parse_trades_update(self, channel: str, data: Dict[str, Any]) -> Optional[ParsedMessage]:
         """Parse Gate.io trades update."""
@@ -231,14 +304,18 @@ class GateioPublicMessageParser(MessageParser):
                 if len(channel_parts) > 2:
                     symbol_str = channel_parts[-1]
                 else:
-                    self.logger.error(f"No symbol found in trades data: {data}")
+                    if self.logger:
+                        self.logger.error(f"No symbol found in trades data: {data}",
+                                        exchange="gateio",
+                                        api_type="spot_public")
                     return ParsedMessage(
                         message_type=MessageType.ERROR,
                         channel=channel,
                         raw_data={"error": "No symbol in trades data", "data": data}
                     )
             
-            symbol = self.mapper.to_symbol(symbol_str)
+            from exchanges.integrations.gateio.utils import to_symbol
+            symbol = to_symbol(symbol_str)
             
             trades = []
             
@@ -246,8 +323,9 @@ class GateioPublicMessageParser(MessageParser):
             trade_list = data if isinstance(data, list) else [data]
             
             for trade_data in trade_list:
-                # Use mapper for transformation
-                trade = self.mapper.ws_to_trade(trade_data, symbol_str)
+                # Use Gate.io mapper for transformation
+                from exchanges.integrations.gateio.utils import ws_to_trade
+                trade = ws_to_trade(trade_data, symbol_str)
                 trades.append(trade)
             
             return ParsedMessage(
@@ -259,12 +337,13 @@ class GateioPublicMessageParser(MessageParser):
             )
             
         except Exception as e:
-            return self.error_handler.handle_parsing_exception(
-                exception=e,
-                context="trades update",
-                channel=channel,
-                raw_data={"data": data}
-            )
+            if self.logger:
+                self.logger.error(f"Error parsing trades update: {e}",
+                                exchange="gateio",
+                                error_type=type(e).__name__,
+                                channel=channel,
+                                api_type="spot_public")
+            return None
 
     async def _parse_book_ticker_update(self, channel: str, data: Dict[str, Any]) -> Optional[ParsedMessage]:
         """Parse Gate.io book ticker update."""
@@ -276,8 +355,9 @@ class GateioPublicMessageParser(MessageParser):
                 if '.' in channel:
                     symbol_str = channel.split('.')[-1]
             
-            # Use mapper for transformation
-            book_ticker = self.mapper.ws_to_book_ticker(data, symbol_str)
+            # Use Gate.io mapper for transformation
+            from exchanges.integrations.gateio.utils import ws_to_book_ticker
+            book_ticker = ws_to_book_ticker(data, symbol_str)
             
             return ParsedMessage(
                 message_type=MessageType.BOOK_TICKER,
@@ -288,12 +368,13 @@ class GateioPublicMessageParser(MessageParser):
             )
             
         except Exception as e:
-            return self.error_handler.handle_parsing_exception(
-                exception=e,
-                context="book ticker update",
-                channel=channel,
-                raw_data={"data": data}
-            )
+            if self.logger:
+                self.logger.error(f"Error parsing book ticker update: {e}",
+                                exchange="gateio",
+                                error_type=type(e).__name__,
+                                channel=channel,
+                                api_type="spot_public")
+            return None
 
     def get_message_type(self, message: Dict[str, Any]) -> MessageType:
         """Detect Gate.io message type from JSON structure."""

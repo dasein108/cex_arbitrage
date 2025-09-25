@@ -13,6 +13,7 @@ from typing import Dict, Optional
 
 from ..interfaces import LogBackend, LogRecord, LogLevel, LogType
 from ..structs import ConsoleBackendConfig
+import traceback
 
 
 class ConsoleBackend(LogBackend):
@@ -60,6 +61,7 @@ class ConsoleBackend(LogBackend):
         # Initialize Python logging if not already configured
         if self.enabled:
             self._ensure_python_logging_configured()
+            self.override_global_loggers()
     
     def should_handle(self, record: LogRecord) -> bool:
         """
@@ -96,6 +98,8 @@ class ConsoleBackend(LogBackend):
             # Log to Python logger (uses existing console handlers)
             py_logger.log(py_level, message)
             
+            # Stack trace is now included in the formatted message above
+            
         except Exception as e:
             # Fallback to print if Python logging fails
             print(f"ConsoleBackend error: {e}")
@@ -105,7 +109,10 @@ class ConsoleBackend(LogBackend):
         """Console output flushes automatically."""
         # Python logging handles console flushing
         pass
-    
+
+    def override_global_loggers(self):
+        logging.getLogger("websockets.client").setLevel(logging.WARNING)
+
     def _ensure_python_logging_configured(self) -> None:
         """Ensure Python logging is configured for console output."""
         # Check if root logger has any handlers
@@ -188,6 +195,10 @@ class ConsoleBackend(LogBackend):
         # Add log type prefix for non-text logs
         if record.log_type != LogType.TEXT:
             message = f"[{record.log_type.name}] {message}"
+        
+        # Add stack trace for ERROR+ levels if available
+        if record.stack_trace and record.level >= LogLevel.ERROR:
+            message += f"\n{record.stack_trace}"
         
         return message
     

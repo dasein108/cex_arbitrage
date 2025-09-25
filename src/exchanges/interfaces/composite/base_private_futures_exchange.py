@@ -38,9 +38,7 @@ class CompositePrivateFuturesExchange(CompositePrivateExchange):
         """
         super().__init__(config)
         
-        # Override tag to indicate futures operations
-        self._tag = f'{config.name}_private_futures'
-        
+
         # Futures-specific private data (using generic Dict structures for now)
         self._leverage_settings: Dict[Symbol, Dict] = {}
         self._margin_info: Dict[Symbol, Dict] = {}

@@ -31,11 +31,13 @@ from pathlib import Path
 from typing import Dict, List, Optional, Any, Tuple
 import logging
 
-# Import the unified factory for exchange instances
-from infrastructure.factories.rest.public_rest_factory import PublicRestExchangeFactory
+# Import exchange classes directly
 from config.config_manager import HftConfig
 from exchanges.structs import ExchangeEnum, Symbol, Kline, AssetName
 from exchanges.structs.enums import KlineInterval
+from exchanges.integrations.mexc.public_exchange import MexcPublicExchange
+from exchanges.integrations.gateio.public_exchange import GateioPublicPublicExchange
+from exchanges.integrations.gateio.public_futures_exchange import GateioPublicFuturesExchange
 
 
 # Import exchange modules to trigger auto-registration
@@ -273,9 +275,9 @@ class CandlesDownloader:
     
     async def _execute_download(self, exchange: ExchangeEnum, symbol_obj: Symbol, timeframe_enum: KlineInterval, timeframe: str, start_date: datetime, end_date: datetime, csv_path: Path) -> str:
         """Execute the download operation with simplified error handling."""
-        # Create exchange client
+        # Create exchange client using standard constructors
         exchange_config = self.config.get_exchange_config(exchange.value)
-        client = PublicRestExchangeFactory.inject(exchange.value, config=exchange_config)
+        client = self._create_exchange_client(exchange, exchange_config)
         
         try:
             klines = await self._fetch_klines(client, symbol_obj, timeframe_enum)
@@ -291,6 +293,9 @@ class CandlesDownloader:
         except Exception as e:
             self.logger.error(f"Download failed for {exchange.value} {symbol_obj}: {e}")
             raise
+        finally:
+            if client:
+                await client.close()
     
     async def _fetch_klines(self, client, symbol_obj: Symbol, timeframe_enum: KlineInterval) -> List:
         """Fetch klines data from exchange client."""
@@ -307,6 +312,17 @@ class CandlesDownloader:
             for kline in klines:
                 row = self._kline_to_csv_row(kline, exchange_name, timeframe)
                 writer.writerow(row)
+    
+    def _create_exchange_client(self, exchange: ExchangeEnum, config):
+        """Create exchange client using standard constructors."""
+        if exchange == ExchangeEnum.MEXC:
+            return MexcPublicExchange(config=config)
+        elif exchange == ExchangeEnum.GATEIO:
+            return GateioPublicPublicExchange(config=config)
+        elif exchange == ExchangeEnum.GATEIO_FUTURES:
+            return GateioPublicFuturesExchange(config=config)
+        else:
+            raise ValueError(f"Unsupported exchange: {exchange.value}")
     
     def _log_completion_stats(self, klines: List, csv_path: Path) -> None:
         """Log completion statistics."""
@@ -513,7 +529,8 @@ Examples:
     async def download_task():
         try:
             # Convert string exchange name to ExchangeEnum
-            exchange_enum = ExchangeEnum(args.exchange.upper())
+            from exchanges.utils.exchange_utils import get_exchange_enum
+            exchange_enum = get_exchange_enum(args.exchange)
             
             csv_path = await downloader.download_candles(
                 exchange=exchange_enum,

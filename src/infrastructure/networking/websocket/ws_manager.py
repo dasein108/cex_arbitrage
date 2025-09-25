@@ -13,12 +13,9 @@ from typing import List, Dict, Optional, Callable, Any, Awaitable, Set
 from websockets.client import WebSocketClientProtocol
 from websockets.protocol import State as WsState
 
-from exchanges.structs.common import Symbol
-from infrastructure.networking.websocket.structs import SubscriptionAction, PublicWebsocketChannelType
 from infrastructure.networking.websocket.strategies.strategy_set import WebSocketStrategySet
-from .structs import ParsedMessage, WebSocketManagerConfig, PerformanceMetrics
+from .structs import ParsedMessage, WebSocketManagerConfig, PerformanceMetrics, ConnectionState, SubscriptionAction, PublicWebsocketChannelType
 from config.structs import WebSocketConfig
-from infrastructure.networking.websocket.structs import ConnectionState
 from infrastructure.exceptions.exchange import BaseExchangeError
 import msgspec
 
@@ -71,6 +68,8 @@ class WebSocketManager:
         
         # Control flags
         self._should_reconnect = True
+        # Delayed import to avoid circular dependency
+        from exchanges.structs.common import Symbol
         self._active_symbols: Set[Symbol] = set()
         self._ws_channels: List[PublicWebsocketChannelType] = []
         
@@ -87,14 +86,16 @@ class WebSocketManager:
                         websocket_url=config.url,
                         max_pending=self.manager_config.max_pending_messages)
     
-    async def initialize(self, symbols: Optional[List[Symbol]] = None,
+    async def initialize(self, symbols: Optional[List] = None,
                          channels: Optional[List[PublicWebsocketChannelType]] = None) -> None:
         """
         Initialize WebSocket connection using strategy.connect() directly.
         
         Args:
-            symbols: Optional list of symbols for initial subscription
+            symbols: Optional list of Symbol instances for initial subscription
         """
+        # Import Symbol type here if needed for type checking
+        from exchanges.structs.common import Symbol
         self.start_time = time.perf_counter()
         if symbols:
             self._active_symbols.update(symbols)
@@ -144,8 +145,10 @@ class WebSocketManager:
             await self.close()
             raise BaseExchangeError(500, f"WebSocket initialization failed: {e}")
     
-    async def subscribe(self, symbols: List[Symbol]) -> None:
+    async def subscribe(self, symbols: List) -> None:
         """Subscribe to symbols using strategy."""
+        # Import Symbol type here if needed
+        from exchanges.structs.common import Symbol
         if not self.is_connected():
             raise BaseExchangeError(503, "WebSocket not connected")
 
@@ -166,7 +169,7 @@ class WebSocketManager:
                 
                 for message in messages:
                     await self.send_message(message)
-                    self.logger.debug("Sent subscription message", message=message)
+                    self.logger.debug("Sent subscription message", subscription_data=message)
                 
                 self._active_symbols.update(symbols)
             
@@ -188,7 +191,7 @@ class WebSocketManager:
             
             raise BaseExchangeError(400, f"Subscription failed: {e}")
     
-    async def unsubscribe(self, symbols: List[Symbol]) -> None:
+    async def unsubscribe(self, symbols: List) -> None:
         """Unsubscribe from symbols using strategy."""
         if not self.is_connected():
             return

@@ -2,11 +2,11 @@
 """
 Unified Arbitrage Tool
 
-Consolidated arbitrage tool following CLAUDE.md principles:
+Consolidated arbitrage tool following clean architecture principles:
 - SOLID compliance with single responsibility components
 - DRY elimination of code duplication 
-- Clean src-only architecture with proper interface usage
-- Factory pattern for exchange creation
+- Clean src-only architecture with direct implementations
+- Standard constructor pattern for exchange creation
 - HFT performance optimizations
 
 Replaces three separate tools:
@@ -31,13 +31,14 @@ from datetime import datetime
 src_path = Path(__file__).parent.parent
 sys.path.insert(0, str(src_path))
 
-# CLAUDE.md compliant imports - use proper interfaces
-from infrastructure.factories.rest.public_rest_factory import PublicRestExchangeFactory
+# Import exchange components
 from exchanges.structs import ExchangeEnum, Symbol, SymbolInfo
 from config.config_manager import HftConfig
-from exchanges.interfaces.composite.base_public_exchange import BasePublicExchangeInterface
+from exchanges.integrations.mexc.public_exchange import MexcPublicExchange
+from exchanges.integrations.gateio.public_exchange import GateioPublicPublicExchange
+from exchanges.integrations.gateio.public_futures_exchange import GateioPublicFuturesExchange
 
-# Import existing analysis components through proper interfaces
+# Import existing analysis components
 from trading.analytics.data_collector import ArbitrageDataPipeline
 from trading.analytics.spread_analyzer import SpreadAnalyzer
 
@@ -52,8 +53,8 @@ class SymbolDiscoveryService:
     """
     Symbol discovery service following SRP.
     
-    Responsibility: Discover symbols across exchanges using proper interfaces.
-    Uses BasePublicExchangeInterface instead of direct REST clients.
+    Responsibility: Discover symbols across exchanges.
+    Uses direct exchange implementations with standard constructors.
     """
     
     def __init__(self, config_manager: HftConfig, logger):
@@ -66,7 +67,7 @@ class SymbolDiscoveryService:
         """
         self.config_manager = config_manager
         self.logger = logger
-        self._exchanges: Dict[str, BasePublicExchangeInterface] = {}
+        self._exchanges: Dict[str, any] = {}
     
     async def discover_symbols(self, filter_major_coins: bool = True) -> Dict:
         """
@@ -79,7 +80,7 @@ class SymbolDiscoveryService:
             Discovery results dictionary
         """
         with PerformanceTimer("Symbol Discovery", self.logger):
-            # Get supported exchanges using ExchangeEnum (CLAUDE.md compliant)
+            # Get supported exchanges using ExchangeEnum
             # 3-exchange setup: MEXC spot, Gate.io spot, Gate.io futures
             exchange_configs = [
                 {"exchange_enum": ExchangeEnum.MEXC},
@@ -87,7 +88,7 @@ class SymbolDiscoveryService:
                 {"exchange_enum": ExchangeEnum.GATEIO_FUTURES}
             ]
             
-            # Create exchange instances using factory pattern (CLAUDE.md compliant)
+            # Create exchange instances using standard constructors
             tasks = []
             for config in exchange_configs:
                 task = self._fetch_exchange_symbols(config)
@@ -118,9 +119,20 @@ class SymbolDiscoveryService:
             # Build availability matrix and calculate statistics
             return self._process_discovery_results(symbol_data, filter_major_coins)
     
+    def _create_exchange_client(self, exchange_enum: ExchangeEnum, exchange_config):
+        """Create exchange client using standard constructors."""
+        if exchange_enum == ExchangeEnum.MEXC:
+            return MexcPublicExchange(config=exchange_config)
+        elif exchange_enum == ExchangeEnum.GATEIO:
+            return GateioPublicPublicExchange(config=exchange_config)
+        elif exchange_enum == ExchangeEnum.GATEIO_FUTURES:
+            return GateioPublicFuturesExchange(config=exchange_config)
+        else:
+            raise ValueError(f"Unsupported exchange: {exchange_enum.value}")
+    
     async def _fetch_exchange_symbols(self, config: Dict) -> Dict[Symbol, SymbolInfo]:
         """
-        Fetch symbols from a specific exchange using proper interface.
+        Fetch symbols from a specific exchange using direct implementation.
         
         Args:
             config: Exchange configuration with ExchangeEnum
@@ -129,7 +141,7 @@ class SymbolDiscoveryService:
             Dictionary of symbols and their info
         """
         try:
-            # Use REST factory for symbol discovery (CLAUDE.md compliant)
+            # Use standard constructors for symbol discovery
             exchange_enum = config["exchange_enum"]
             
             # Get the appropriate exchange configuration
@@ -140,7 +152,7 @@ class SymbolDiscoveryService:
                 # Use standard exchange configuration (mexc, gateio)
                 exchange_config = self.config_manager.get_exchange_config(exchange_enum.value.lower())
             
-            rest_client = PublicRestExchangeFactory.inject(exchange_enum.value, config=exchange_config)
+            rest_client = self._create_exchange_client(exchange_enum, exchange_config)
             
             # Get exchange info using REST client
             symbols_info = await rest_client.get_exchange_info()
@@ -301,7 +313,7 @@ class DataCollectionService:
                 # Create data directory
                 PathResolver.ensure_directory(data_dir)
                 
-                # Use existing pipeline (CLAUDE.md compliant - reuse existing components)
+                # Use existing pipeline (reuse existing components)
                 pipeline = ArbitrageDataPipeline(output_dir=data_dir)
                 
                 if config.validate_only:
@@ -378,7 +390,7 @@ class AnalysisService:
                 # Validate data directory exists
                 PathResolver.validate_file_exists(data_dir, "Data directory")
                 
-                # Use existing analyzer (CLAUDE.md compliant)
+                # Use existing analyzer
                 analyzer = SpreadAnalyzer(data_dir=data_dir)
                 
                 # Check data availability
@@ -470,10 +482,9 @@ class ArbitrageToolController:
         # Setup logging
         self.logger = LoggingConfigurator.setup_logging(config.verbose, "ArbitrageTool")
         
-        # Initialize configuration manager (CLAUDE.md compliant)
+        # Initialize configuration manager
         self.config_manager = HftConfig()
         
-        # Import exchange modules to trigger auto-registration with ExchangeFactory
 
         # Initialize services with dependency injection
         self.discovery_service = SymbolDiscoveryService(self.config_manager, self.logger)
@@ -587,7 +598,7 @@ class ArbitrageToolController:
 
 def create_cli_manager(operation: str) -> CLIManager:
     """
-    Factory function to create CLI manager for specific operations.
+    Create CLI manager for specific operations.
     
     Args:
         operation: Operation type ('discover', 'fetch', 'analyze')

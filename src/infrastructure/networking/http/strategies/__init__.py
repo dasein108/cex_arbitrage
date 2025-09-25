@@ -20,7 +20,7 @@ from .auth import AuthStrategy
 from .exception_handler import ExceptionHandlerStrategy
 from .strategy_set import RestStrategySet
 
-from .factory import RestStrategyFactory
+# Factory pattern removed - using direct instantiation
 
 __all__ = [
     # Data structures
@@ -40,6 +40,5 @@ __all__ = [
     # Strategy container
     'RestStrategySet',
     
-    # Factory
-    'RestStrategyFactory',
+# Factory removed - using direct instantiation
 ]

@@ -1,5 +1,4 @@
 import asyncio
-import logging
 from typing import Optional
 from websockets import connect
 from websockets.client import WebSocketClientProtocol
@@ -10,20 +9,28 @@ from infrastructure.networking.websocket.strategies.connection import Reconnecti
 from config.structs import ExchangeConfig
 from infrastructure.exceptions.exchange import BaseExchangeError
 
+# HFT Logger Integration
+from infrastructure.logging import HFTLoggerInterface, get_strategy_logger
+
 
 class MexcPrivateConnectionStrategy(ConnectionStrategy):
     """MEXC private WebSocket connection strategy with listen key management."""
 
-    def __init__(self, config: ExchangeConfig, rest_client: Optional[MexcPrivateSpotRest] = None):
+    def __init__(self, config: ExchangeConfig, rest_client: Optional[MexcPrivateSpotRest] = None, logger: Optional[HFTLoggerInterface] = None):
         """
         Initialize MEXC private connection strategy.
 
         Args:
             config: Exchange configuration
             rest_client: MexcPrivateSpotRest instance for listen key management
+            logger: Optional HFT logger for structured logging
         """
-        super().__init__(config)  # Initialize parent with _websocket = None
-        self.logger = logging.getLogger(f"{__name__}.{self.__class__.__name__}")
+        # Create hierarchical logger if none provided
+        if logger is None:
+            tags = ['mexc', 'private', 'ws', 'connection']
+            logger = get_strategy_logger('ws.connection.mexc.private', tags)
+            
+        super().__init__(config, logger)  # Initialize parent with logger
 
         # Listen key management
         self.listen_key: Optional[str] = None
@@ -42,11 +49,8 @@ class MexcPrivateConnectionStrategy(ConnectionStrategy):
             self.rest_client = rest_client
             self.logger.debug("Using injected REST client for listen key management")
         else:
-            # Create REST client with proper mapper injection
-            from exchanges.services.exchange_mapper.factory import ExchangeMapperFactory
-            from infrastructure.utils.exchange_utils import exchange_name_to_enum
-            mapper = ExchangeMapperFactory.inject(exchange_name_to_enum(config.name))
-            self.rest_client = MexcPrivateSpotRest(config, mapper)
+            # Create REST client without mapper dependency
+            self.rest_client = MexcPrivateSpotRest(config)
             self.logger.debug("Created new REST client for listen key management")
 
     async def connect(self) -> WebSocketClientProtocol:

@@ -15,12 +15,10 @@ import sys
 import time
 from exchanges.structs.common import Symbol
 from exchanges.structs.types import AssetName
-from config import get_exchange_config
-
-from examples.utils.rest_api_factory import get_exchange_rest_instance
+from config.config_manager import HftConfig
+from exchanges.transport_factory import create_rest_client
 from examples.utils.decorators import rest_api_test
-
-
+from exchanges.utils.exchange_utils import get_exchange_enum
 
 
 @rest_api_test("ping")
@@ -208,8 +206,9 @@ async def main(exchange_name: str):
 
     try:
         # Load exchange configuration and create instance
-        config = get_exchange_config(exchange_name.upper())
-        exchange = get_exchange_rest_instance(exchange_name, is_private=False, config=config)
+        config_manager = HftConfig()
+        config = config_manager.get_exchange_config(exchange_name.lower())
+        exchange = create_rest_client(get_exchange_enum(exchange_name), is_private=False, config=config)
         
         # Execute all public API checks
         await check_ping(exchange, exchange_name)

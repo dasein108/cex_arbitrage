@@ -28,8 +28,9 @@ import time
 from typing import Dict, Any
 
 from exchanges.structs.common import Order, AssetBalance
-from exchanges.structs import ExchangeEnumfrom config import get_exchange_config
-from examples.utils.ws_api_factory import get_exchange_websocket_classes
+from exchanges.structs import ExchangeEnum
+from config.config_manager import HftConfig
+from exchanges.transport_factory import create_websocket_client, create_private_handlers
 from examples.integration_test_framework import (
     IntegrationTestRunner, TestCategory, TestStatus, EXIT_CODE_SUCCESS, EXIT_CODE_FAILED_TESTS, EXIT_CODE_ERROR,
     EXIT_CODE_CONFIG_ERROR
@@ -127,46 +128,39 @@ class WebSocketPrivateIntegrationTest:
     async def setup(self) -> Dict[str, Any]:
         """Setup private WebSocket connection with authentication."""
         try:
-            config = get_exchange_config(self.exchange_name)
+            config_manager = HftConfig()
+            config = config_manager.get_exchange_config(self.exchange_name.lower())
             
             # Verify credentials are available
             if not config.credentials.api_key or not config.credentials.secret_key:
                 raise ValueError(f"{self.exchange_name} API credentials are required for private WebSocket testing")
             
-            # Get WebSocket and REST classes
-            websocket_class, private_rest_class = get_exchange_websocket_classes(
-                self.exchange_name, is_private=True
+            # Get exchange enum for factory
+            exchange_enum = ExchangeEnum(self.exchange_name)
+            
+            # Create handler object using factory
+            handlers = create_private_handlers(
+                balance_handler=self.data_collector.handle_balance_update,
+                order_handler=self.data_collector.handle_order_update,
+                trade_handler=self.data_collector.handle_trade_update
             )
             
-            # Create private REST client for WebSocket initialization
-            private_rest = private_rest_class(config) if private_rest_class else None
-            
-            # Create WebSocket instance with data handlers
-            if private_rest:
-                self.websocket = websocket_class(
-                    private_rest_client=private_rest,
-                    config=config,
-                    balance_handler=self.data_collector.handle_balance_update,
-                    order_handler=self.data_collector.handle_order_update,
-                    trade_handler=self.data_collector.handle_trade_update
-                )
-            else:
-                # Some exchanges might not need REST client
-                self.websocket = websocket_class(
-                    config=config,
-                    balance_handler=self.data_collector.handle_balance_update,
-                    order_handler=self.data_collector.handle_order_update,
-                    trade_handler=self.data_collector.handle_trade_update
-                )
+            # Create WebSocket instance using factory
+            self.websocket = create_websocket_client(
+                exchange=exchange_enum,
+                config=config,
+                handlers=handlers,
+                is_private=True
+            )
             
             return {
                 "setup_successful": True,
-                "websocket_class": websocket_class.__name__,
+                "websocket_class": type(self.websocket).__name__,
                 "config_loaded": True,
                 "credentials_configured": True,
                 "api_key_preview": config.credentials.api_key[:8] + "..." if config.credentials.api_key else None,
                 "handlers_configured": True,
-                "private_rest_available": private_rest is not None
+                "private_rest_available": True  # Factory handles REST client creation internally
             }
         except Exception as e:
             raise ConnectionError(f"Failed to setup {self.exchange_name} private WebSocket: {str(e)}")
@@ -480,7 +474,8 @@ async def main():
         sys.exit(EXIT_CODE_CONFIG_ERROR)
     
     # Convert to ExchangeEnum
-    exchange_enum = ExchangeEnum(args.exchange.upper())
+    from exchanges.utils.exchange_utils import get_exchange_enum
+    exchange_enum = get_exchange_enum(args.exchange)
     
     # Create test suite
     test_suite = WebSocketPrivateIntegrationTest(exchange_enum.value)

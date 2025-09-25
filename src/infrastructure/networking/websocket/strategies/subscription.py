@@ -1,8 +1,11 @@
 from abc import ABC, abstractmethod
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 
 from infrastructure.networking.websocket.structs import SubscriptionAction
-from exchanges.services import BaseExchangeMapper
+# BaseExchangeMapper dependency removed - using direct utility functions
+
+# HFT Logger Integration
+from infrastructure.logging import HFTLoggerInterface
 
 class SubscriptionStrategy(ABC):
     """
@@ -14,13 +17,9 @@ class SubscriptionStrategy(ABC):
     HFT COMPLIANT: <1μs message formatting.
     """
 
-    def __init__(self, mapper: BaseExchangeMapper):
-        """Initialize with mandatory mapper.
-        
-        Args:
-            mapper: Exchange mappings interface containing exchange mapper
-        """
-        self.mapper = mapper
+    def __init__(self, logger: Optional[HFTLoggerInterface] = None):
+        """Initialize subscription strategy with HFT logger."""
+        self.logger = logger
 
     @abstractmethod
     async def create_subscription_messages(

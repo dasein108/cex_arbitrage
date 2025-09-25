@@ -22,7 +22,7 @@ from .operations import (
 )
 from .models import BookTickerSnapshot
 from .migrations import run_migrations
-from .structs import DatabaseConfig
+from config.structs import DatabaseConfig
 
 __all__ = [
     'DatabaseManager',

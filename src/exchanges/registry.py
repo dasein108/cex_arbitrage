@@ -15,14 +15,14 @@ HFT COMPLIANT: Lazy loading, minimal startup overhead, runtime optimization.
 """
 
 import importlib
-from typing import Dict, Optional, Type, Any, List
+from typing import Dict, Optional, Type
 from pathlib import Path
 import yaml
 
 from exchanges.structs import ExchangeEnum
 from config.structs import ExchangeConfig
 from infrastructure.logging import get_logger
-from infrastructure.transport_factory import (
+from exchanges.transport_factory import (
     register_rest_public, 
     register_rest_private,
     register_ws_public,
@@ -244,35 +244,27 @@ class ExchangeRegistry:
     
     @classmethod
     def _register_symbol_mapper(cls, exchange_name: str, exchange_enum: ExchangeEnum) -> bool:
-        """Register symbol mapper for exchange."""
+        """Register symbol mapper for exchange - now using global singletons."""
         try:
-            # Determine module path based on exchange
+            # Import singleton mappers directly - they're already instantiated globally
             if 'mexc' in exchange_name.lower():
-                module_path = "exchanges.integrations.mexc.services.symbol_mapper"
-                class_name = "MexcSymbolMapper"
+                from exchanges.integrations.mexc.services.symbol_mapper import MEXC_SYMBOL_MAPPER
+                logger.debug(f"Using MEXC symbol mapper singleton for {exchange_name}")
+                return True
             elif 'gateio' in exchange_name.lower():
                 if 'futures' in exchange_name.lower():
-                    module_path = "exchanges.integrations.gateio.services.futures_symbol_mapper"
-                    class_name = "GateioFuturesSymbolMapperInterface"
+                    from exchanges.integrations.gateio.services.futures_symbol_mapper import GATEIO_FUTURES_SYMBOL_MAPPER
+                    logger.debug(f"Using Gate.io futures symbol mapper singleton for {exchange_name}")
                 else:
-                    module_path = "exchanges.integrations.gateio.services.spot_symbol_mapper"
-                    class_name = "GateioSymbolMapperInterface"
+                    from exchanges.integrations.gateio.services.spot_symbol_mapper import GATEIO_SPOT_SYMBOL_MAPPER
+                    logger.debug(f"Using Gate.io spot symbol mapper singleton for {exchange_name}")
+                return True
             else:
                 logger.warning(f"Unknown exchange for symbol mapper: {exchange_name}")
                 return False
             
-            # Import and register
-            mapper_class = cls._try_import_class(module_path, class_name)
-            if mapper_class:
-                from exchanges.services.symbol_mapper.factory import ExchangeSymbolMapperFactory
-                ExchangeSymbolMapperFactory.register(exchange_enum, mapper_class)
-                logger.debug(f"Registered symbol mapper for {exchange_name}")
-                return True
-            
-            return False
-            
         except Exception as e:
-            logger.error(f"Failed to register symbol mapper for {exchange_name}: {e}")
+            logger.error(f"Failed to import symbol mapper singleton for {exchange_name}: {e}")
             return False
     
     @classmethod
@@ -289,18 +281,14 @@ class ExchangeRegistry:
                     class_name = "GateioFuturesMappings"
                 else:
                     module_path = "exchanges.integrations.gateio.services.gateio_mapper"
-                    class_name = "GateioMapper"
+                    class_name = "GateioMappings"
             else:
                 logger.warning(f"Unknown exchange for mapper: {exchange_name}")
                 return False
             
-            # Import and register
-            mapper_class = cls._try_import_class(module_path, class_name)
-            if mapper_class:
-                from exchanges.services.exchange_mapper.factory import ExchangeMapperFactory
-                ExchangeMapperFactory.register(exchange_enum, mapper_class)
-                logger.debug(f"Registered exchange mapper for {exchange_name}")
-                return True
+            # ExchangeMapperFactory removed - exchanges use direct utility functions now
+            logger.debug(f"Exchange mapper registration skipped for {exchange_name} (using direct utils)")
+            return True
             
             return False
             

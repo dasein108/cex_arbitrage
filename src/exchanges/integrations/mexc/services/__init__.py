@@ -1,28 +1,10 @@
 """
-MEXC Services Auto-Registration
+MEXC Services - Direct Exports
 
-Auto-registers all MEXC service implementations with their respective factories.
-Follows the same pattern as the WebSocket strategy registration in @src/exchanges/mexc/ws/__init__.py
-
-Services auto-registered:
-- MexcSymbolMapperInterface with ExchangeSymbolMapperFactory
-- MexcUnifiedMappings with ExchangeMappingsFactory
-
-Registration happens automatically when this module is imported.
+All mapping operations are now available as direct utility functions in mexc/utils.py.
+No classes, no factories, no dependency injection - just direct transformations.
 """
 
-from .symbol_mapper import MexcSymbolMapper
-from .mexc_mapper import MexcMapper
+# All mappers removed - using direct utility functions in mexc/utils.py
 
-from exchanges.structs import ExchangeEnum
-# Import factories to verify registration
-from exchanges.services.symbol_mapper.factory import ExchangeSymbolMapperFactory
-from exchanges.services.exchange_mapper.factory import ExchangeMapperFactory
-
-ExchangeSymbolMapperFactory.register(ExchangeEnum.MEXC, MexcSymbolMapper)
-ExchangeMapperFactory.register(ExchangeEnum.MEXC, MexcMapper)
-
-__all__ = [
-    'MexcSymbolMapper',
-    'MexcMapper'
-]
+__all__ = []

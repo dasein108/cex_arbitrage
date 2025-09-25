@@ -14,15 +14,16 @@ Message Format:
 """
 
 import time
-import logging
 from typing import List, Dict, Any, Optional, Set
 
 from infrastructure.networking.websocket.strategies.subscription import SubscriptionStrategy
 from infrastructure.networking.websocket.structs import SubscriptionAction, PublicWebsocketChannelType
 from exchanges.structs.common import Symbol
-from exchanges.services import BaseExchangeMapper
+# BaseExchangeMapper dependency removed - using direct utility functions
 from exchanges.consts import DEFAULT_PUBLIC_WEBSOCKET_CHANNELS
-from exchanges.integrations.gateio.services.gateio_mapper import GateioMapper
+
+# HFT Logger Integration
+from infrastructure.logging import get_strategy_logger, HFTLoggerInterface
 
 
 class GateioPublicSubscriptionStrategy(SubscriptionStrategy):
@@ -33,12 +34,28 @@ class GateioPublicSubscriptionStrategy(SubscriptionStrategy):
     Format: {"time": X, "channel": Y, "event": Z, "payload": ["BTC_USDT"]}
     """
     
-    def __init__(self, mapper: BaseExchangeMapper):
-        super().__init__(mapper)  # Initialize parent with mandatory mapper
-        self.logger = logging.getLogger(f"{__name__}.{self.__class__.__name__}")
+    def __init__(self, logger: Optional[HFTLoggerInterface] = None):
+        super().__init__(logger)
+        
+        # Use injected logger or create strategy-specific logger
+        if logger is None:
+            tags = ['gateio', 'spot', 'public', 'ws', 'subscription']
+            logger = get_strategy_logger('ws.subscription.gateio.spot.public', tags)
+        
+        self.logger = logger
         
         # Track active subscriptions for reconnection
         self._active_symbols: Set[Symbol] = set()
+        
+        # Log initialization
+        if self.logger:
+            self.logger.info("GateioPublicSubscriptionStrategy initialized",
+                            exchange="gateio",
+                            api_type="spot_public")
+            
+            # Track component initialization
+            self.logger.metric("gateio_spot_public_subscription_strategies_initialized", 1,
+                              tags={"exchange": "gateio", "api_type": "spot_public"})
     
     async def create_subscription_messages(self, action: SubscriptionAction,
                                            symbols: List[Symbol],
@@ -61,7 +78,9 @@ class GateioPublicSubscriptionStrategy(SubscriptionStrategy):
             return []
         
         current_time = int(time.time())
-        event = self.mapper.from_subscription_action(action)
+        # Use direct utility functions
+        from exchanges.integrations.gateio.utils import from_subscription_action, get_spot_channel_name, to_pair, to_symbol, EventType
+        event = from_subscription_action(action)
         messages = []
         
         # Convert symbols to Gate.io format
@@ -69,10 +88,10 @@ class GateioPublicSubscriptionStrategy(SubscriptionStrategy):
         if not symbol_pairs:
             return []
         
-        # Create separate message for each channel type using mapper
+        # Create separate message for each channel type using Gate.io mapper
         i = 0
         for channel_type in channels:
-            channel_name = self.mapper.get_spot_channel_name(channel_type)
+            channel_name = get_spot_channel_name(channel_type)
             if not channel_name:
                 continue
 
@@ -85,11 +104,16 @@ class GateioPublicSubscriptionStrategy(SubscriptionStrategy):
             messages.append(message)
             i += 1
             
-            self.logger.debug(f"Created Gate.io {event} message for {channel_name}: {symbol_pairs}")
+            if self.logger:
+                self.logger.debug(f"Created Gate.io {event} message for {channel_name}: {symbol_pairs}",
+                                exchange="gateio",
+                                channel_name=channel_name,
+                                event=event,
+                                symbol_count=len(symbol_pairs))
 
         if PublicWebsocketChannelType.ORDERBOOK in channels:
             # Orderbook update is symbol specific
-            orderbook_channel = self.mapper.get_spot_channel_name(PublicWebsocketChannelType.ORDERBOOK)
+            orderbook_channel = get_spot_channel_name(PublicWebsocketChannelType.ORDERBOOK)
             for pair in symbol_pairs:
                 message = {
                     "time": current_time + i,  # Slightly different timestamps
@@ -106,7 +130,15 @@ class GateioPublicSubscriptionStrategy(SubscriptionStrategy):
         else:
             self._active_symbols.difference_update(symbols)
         
-        self.logger.info(f"Created {len(messages)} {event} messages for {len(symbols)} symbols")
+        if self.logger:
+            self.logger.info(f"Created {len(messages)} {event} messages for {len(symbols)} symbols",
+                            exchange="gateio",
+                            message_count=len(messages),
+                            event=event,
+                            symbol_count=len(symbols))
+            
+            self.logger.metric("gateio_spot_public_subscription_messages_created", len(messages),
+                              tags={"exchange": "gateio", "event": event, "api_type": "spot_public"})
         
         return messages
     
@@ -118,10 +150,17 @@ class GateioPublicSubscriptionStrategy(SubscriptionStrategy):
             List of subscription messages for all currently active symbols
         """
         if not self._active_symbols:
-            self.logger.info("No active symbols to resubscribe to")
+            if self.logger:
+                self.logger.info("No active symbols to resubscribe to",
+                                exchange="gateio",
+                                api_type="spot_public")
             return []
         
-        self.logger.info(f"Creating resubscription messages for {len(self._active_symbols)} symbols")
+        if self.logger:
+            self.logger.info(f"Creating resubscription messages for {len(self._active_symbols)} symbols",
+                            exchange="gateio",
+                            active_symbol_count=len(self._active_symbols),
+                            api_type="spot_public")
         return await self.create_subscription_messages(
             action=SubscriptionAction.SUBSCRIBE,
             symbols=list(self._active_symbols),
@@ -134,7 +173,7 @@ class GateioPublicSubscriptionStrategy(SubscriptionStrategy):
     
     def is_subscription_message(self, message: Dict[str, Any]) -> bool:
         """Check if message is a subscription-related message."""
-        return message.get("event") in [GateioMapper.EventType.SUBSCRIBE.value, GateioMapper.EventType.UNSUBSCRIBE.value]
+        return message.get("event") in [EventType.SUBSCRIBE.value, EventType.UNSUBSCRIBE.value]
     
     def extract_channel_from_message(self, message: Dict[str, Any]) -> Optional[str]:
         """Extract channel name from Gate.io message."""
@@ -142,8 +181,6 @@ class GateioPublicSubscriptionStrategy(SubscriptionStrategy):
     
     def extract_symbol_from_message(self, message: Dict[str, Any]) -> Optional[Symbol]:
         """Extract symbol from Gate.io message."""
-        if not self.mapper:
-            return None
         
         # Try to get symbol from result data first
         result = message.get("result", {})
@@ -151,7 +188,7 @@ class GateioPublicSubscriptionStrategy(SubscriptionStrategy):
             symbol_str = result.get("s")
             if symbol_str:
                 try:
-                    return self.mapper.to_symbol(symbol_str)
+                    return to_symbol(symbol_str)
                 except Exception:
                     pass
         
@@ -162,7 +199,7 @@ class GateioPublicSubscriptionStrategy(SubscriptionStrategy):
             if len(parts) > 2:
                 symbol_str = parts[-1]
                 try:
-                    return self.mapper.to_symbol(symbol_str)
+                    return to_symbol(symbol_str)
                 except Exception:
                     pass
         
@@ -202,13 +239,13 @@ class GateioPublicSubscriptionStrategy(SubscriptionStrategy):
         Returns:
             Subscription message or None if not supported
         """
-        channel_name = self.mapper.get_spot_channel_name(channel_type)
-        if not channel_name or not self.mapper:
+        channel_name = get_spot_channel_name(channel_type)
+        if not channel_name:
             return None
         
         try:
-            exchange_symbol = self.mapper.to_pair(symbol)
-            event = self.mapper.from_subscription_action(action)
+            exchange_symbol = to_pair(symbol)
+            event = from_subscription_action(action)
             
             message = {
                 "time": int(time.time()),
@@ -230,13 +267,14 @@ class GateioPublicSubscriptionStrategy(SubscriptionStrategy):
     
     def _convert_symbols_to_exchange_format(self, symbols: List[Symbol]) -> List[str]:
         """Convert symbols to Gate.io exchange format."""
-        if not self.mapper:
-            self.logger.error("No symbol mapper available for Gate.io subscription")
-            return []
-            
         try:
-            return [self.mapper.to_pair(symbol) for symbol in symbols]
+            from exchanges.integrations.gateio.utils import to_pair
+            return [to_pair(symbol) for symbol in symbols]
         except Exception as e:
-            self.logger.error(f"Failed to convert symbols: {e}")
+            if self.logger:
+                self.logger.error(f"Failed to convert symbols: {e}",
+                                exchange="gateio",
+                                error=str(e),
+                                api_type="spot_public")
             return []
 

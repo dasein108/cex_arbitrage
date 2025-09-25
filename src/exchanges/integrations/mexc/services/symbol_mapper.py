@@ -56,3 +56,30 @@ class MexcSymbolMapper(SymbolMapperInterface):
         raise ValueError(f"Unrecognized MEXC pair format: {pair}. Supported quotes: {self._quote_assets}")
 
 
+# Global singleton instance for direct usage - use MexcSymbol.method() directly
+MexcSymbol = MexcSymbolMapper()
+
+# Convenience functions remain for non-symbol operations
+def from_kline_interval(interval) -> str:
+    """Convert unified KlineInterval to MEXC format."""
+    from exchanges.structs.enums import KlineInterval
+    
+    # MEXC kline interval mappings
+    kline_mapping = {
+        KlineInterval.MIN_1: "1m",
+        KlineInterval.MIN_3: "3m", 
+        KlineInterval.MIN_5: "5m",
+        KlineInterval.MIN_15: "15m",
+        KlineInterval.MIN_30: "30m",
+        KlineInterval.HOUR_1: "1h",
+        KlineInterval.HOUR_2: "2h",
+        KlineInterval.HOUR_4: "4h",
+        KlineInterval.HOUR_6: "6h",
+        KlineInterval.HOUR_8: "8h",
+        KlineInterval.HOUR_12: "12h",
+        KlineInterval.DAY_1: "1d",
+        KlineInterval.DAY_3: "3d",
+        KlineInterval.WEEK_1: "1w",
+        KlineInterval.MONTH_1: "1M"
+    }
+    return kline_mapping.get(interval, "1h")

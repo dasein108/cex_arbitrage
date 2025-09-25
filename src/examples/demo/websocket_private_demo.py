@@ -18,8 +18,9 @@ import sys
 from typing import List, Dict
 
 from exchanges.structs.common import Symbol, Order, AssetBalance, Trade
-from config import get_exchange_config
-from examples.utils.ws_api_factory import get_exchange_websocket_instance
+from config.config_manager import HftConfig
+from exchanges.transport_factory import create_websocket_client, create_private_handlers
+from exchanges.utils.exchange_utils import get_exchange_enum
 
 # Set up logging
 logging.basicConfig(level=logging.INFO)
@@ -28,40 +29,42 @@ logger = logging.getLogger(__name__)
 
 class PrivateWebSocketClient:
     """Exchange-agnostic private WebSocket client using actual exchange implementations."""
-    
+
     def __init__(self, exchange_name: str, account_handler, order_handler, trade_handler=None):
         self.exchange_name = exchange_name.upper()
         self.account_handler = account_handler
         self.order_handler = order_handler
         self.trade_handler = trade_handler
-        
+
         # Get exchange config
-        config = get_exchange_config(self.exchange_name)
+        config_manager = HftConfig()
+        config = config_manager.get_exchange_config(self.exchange_name.lower())
 
         # Verify credentials are available
         if not config.credentials.api_key or not config.credentials.secret_key:
             raise ValueError(f"{self.exchange_name} API credentials are required for private WebSocket")
-        
+
         logger.info(f"Using {self.exchange_name} credentials - API Key: {config.credentials.api_key[:8]}...")
-        
+
         # Create exchange WebSocket instance using the factory pattern
-        self.websocket = get_exchange_websocket_instance(
-            exchange_name=self.exchange_name,
+        self.websocket = create_websocket_client(
+            exchange=get_exchange_enum(exchange_name),
             is_private=True,
             config=config,
-            order_update_handler=self._handle_order_update,
-            balance_update_handler=self._handle_balance_update,
-            trades_handler=self._handle_trade_update
+            handlers=create_private_handlers(
+                order_handler=self._handle_order_update,
+                balance_handler=self._handle_balance_update,
+                trade_handler=self._handle_trade_update
+            )
         )
-        
+
         logger.info(f"{self.exchange_name} private WebSocket client initialized with {type(self.websocket).__name__}")
-    
+
     async def initialize(self) -> None:
         """Initialize WebSocket connection and subscriptions."""
         # For private WebSocket, pass empty list to initialize() - private channels will be subscribed automatically
         await self.websocket.initialize()
         logger.info(f"{self.exchange_name} private WebSocket initialized for account and order updates")
-    
 
     async def close(self) -> None:
         """Close WebSocket connection and REST client."""
@@ -70,17 +73,17 @@ class PrivateWebSocketClient:
     def is_connected(self) -> bool:
         """Check if WebSocket is connected."""
         return self.websocket.is_connected()
-    
+
     def get_performance_metrics(self) -> Dict:
         """Get HFT performance metrics."""
         return self.websocket.get_performance_metrics()
-    
-    async def _handle_order_update(self,  order: Order) -> None:
+
+    async def _handle_order_update(self, order: Order) -> None:
         """Handle order updates from WebSocket."""
         logger.info(f"📋 {self.exchange_name} ORDER update")
         if self.order_handler:
             await self.order_handler(order)
-    
+
     async def _handle_balance_update(self, balances) -> None:
         """Handle balance updates from WebSocket."""
         logger.info(f"📊 {self.exchange_name} BALANCE update")
@@ -93,7 +96,7 @@ class PrivateWebSocketClient:
             else:
                 # Single balance update
                 await self.account_handler(balances)
-    
+
     async def _handle_trade_update(self, symbol: Symbol, trade: List[Trade]) -> None:
         """Handle trade updates from WebSocket."""
         logger.info(f"💹 {self.exchange_name} TRADE update")
@@ -103,35 +106,35 @@ class PrivateWebSocketClient:
 
 class AccountDataManager:
     """Manager for private account and order data."""
-    
+
     def __init__(self, exchange_name: str):
         self.exchange_name = exchange_name.upper()
         self.account_updates = []
         self.order_updates = []
         self.trade_updates = []
         self.balance_data = {}
-    
+
     async def handle_account_update(self, account_data):
         """Handle account balance updates."""
         self.account_updates.append(account_data)
-        
+
         # Keep only last 50 updates
         if len(self.account_updates) > 50:
             self.account_updates = self.account_updates[-50:]
-        
+
         logger.info(f"💰 {self.exchange_name} account update received:")
-        
+
         # Handle unified AssetBalance type
         if isinstance(account_data, AssetBalance):
             asset = account_data.asset
             free = account_data.free
             locked = account_data.locked
-            
+
             if free > 0 or locked > 0:
                 logger.info(f"   {asset}: Free={free}, Locked={locked}, Total={account_data.total}")
                 self.balance_data[asset] = {
-                    'free': free, 
-                    'locked': locked, 
+                    'free': free,
+                    'locked': locked,
                     'total': account_data.total
                 }
         else:
@@ -145,17 +148,17 @@ class AccountDataManager:
                     if float(free) > 0 or float(locked) > 0:
                         logger.info(f"   {asset}: Free={free}, Locked={locked}")
                         self.balance_data[asset] = {'free': free, 'locked': locked}
-    
+
     async def handle_order_update(self, order_data):
         """Handle order status updates."""
         self.order_updates.append(order_data)
-        
+
         # Keep only last 100 order updates
         if len(self.order_updates) > 100:
             self.order_updates = self.order_updates[-100:]
-        
+
         logger.info(f"📋 {self.exchange_name} order update received:")
-        
+
         # Handle unified Order type
         if isinstance(order_data, Order):
             logger.info(f"   Order {order_data.order_id}: {order_data.side.name} {order_data.amount}")
@@ -172,19 +175,19 @@ class AccountDataManager:
                 side = order_data.get('side', 'Unknown')
                 quantity = order_data.get('quantity', order_data.get('amount', '0'))
                 price = order_data.get('price', '0')
-                
+
                 logger.info(f"   Order {order_id}: {side} {quantity} {symbol} @ {price} - Status: {status}")
-    
+
     async def handle_trade_update(self, trade_data):
         """Handle trade execution updates."""
         self.trade_updates.append(trade_data)
-        
+
         # Keep only last 100 trade updates
         if len(self.trade_updates) > 100:
             self.trade_updates = self.trade_updates[-100:]
-        
+
         logger.info(f"💹 {self.exchange_name} trade update received:")
-        
+
         # Handle unified Trade type
         if isinstance(trade_data, Trade):
             logger.info(f"   {trade_data.side.name} {trade_data.amount} @ {trade_data.price}")
@@ -192,19 +195,19 @@ class AccountDataManager:
         else:
             # Handle other data formats (dict, etc.)
             logger.info(f"   Data: {trade_data}")
-    
+
     def get_balances(self) -> Dict:
         """Get current balance data."""
         return self.balance_data.copy()
-    
+
     def get_recent_orders(self, limit: int = 10) -> List:
         """Get recent order updates."""
         return self.order_updates[-limit:] if self.order_updates else []
-    
+
     def get_recent_trades(self, limit: int = 10) -> List:
         """Get recent trade updates."""
         return self.trade_updates[-limit:] if self.trade_updates else []
-    
+
     def get_summary(self) -> Dict:
         """Get summary of received data."""
         return {
@@ -220,11 +223,11 @@ async def main(exchange_name: str):
     exchange_upper = exchange_name.upper()
     logger.info(f"🚀 Starting {exchange_upper} Private WebSocket Demo...")
     logger.info("=" * 60)
-    
+
     try:
         # Create account data manager
         manager = AccountDataManager(exchange_name)
-        
+
         # Create test private WebSocket client
         ws = PrivateWebSocketClient(
             exchange_name=exchange_name,
@@ -232,17 +235,17 @@ async def main(exchange_name: str):
             order_handler=manager.handle_order_update,
             trade_handler=manager.handle_trade_update
         )
-        
+
         logger.info(f"🔌 Testing {exchange_upper} private WebSocket factory architecture...")
-        
+
         await ws.initialize()
-        
+
         # Wait for private data updates
         logger.info(f"⏳ Monitoring {exchange_upper} private WebSocket connection (30 seconds)...")
         logger.info(f"💡 Note: {exchange_upper} private WebSocket only sends data during account activity")
         logger.info("   (trades, balance changes, order updates, deposits, withdrawals, etc.)")
         await asyncio.sleep(30)
-        
+
         # Check if we received any data
         metrics = ws.get_performance_metrics()
         logger.info("📊 WebSocket Performance Metrics:")
@@ -250,7 +253,7 @@ async def main(exchange_name: str):
         logger.info(f"   Messages Processed: {metrics.get('messages_processed', 0)}")
         logger.info(f"   Error Count: {metrics.get('error_count', 0)}")
         logger.info(f"   Connection Uptime: {metrics.get('connection_uptime_seconds', 0)}s")
-        
+
         # Show received data summary
         summary = manager.get_summary()
         logger.info("📈 Data Summary:")
@@ -258,24 +261,24 @@ async def main(exchange_name: str):
         logger.info(f"   Order updates: {summary['order_updates']}")
         logger.info(f"   Trade updates: {summary['trade_updates']}")
         logger.info(f"   Balance assets: {summary['balance_assets']}")
-        
+
         # Show current balances
         balances = manager.get_balances()
         if balances:
             logger.info(f"💰 Current Balances ({len(balances)} assets):")
             for asset, balance in list(balances.items())[:5]:  # Show first 5
                 logger.info(f"   {asset}: {balance}")
-        
+
         # Show recent orders
         recent_orders = manager.get_recent_orders(3)
         if recent_orders:
             logger.info(f"📋 Recent Orders (showing {len(recent_orders)}):")
             for i, order in enumerate(recent_orders, 1):
                 if isinstance(order, Order):
-                    logger.info(f"   {i}. {order.order_id} - {order.status.name}")
+                    logger.info(f"   {i}. {order.order_id} - {order.status}")
                 else:
                     logger.info(f"   {i}. {order}")
-        
+
         # Show recent trades
         recent_trades = manager.get_recent_trades(3)
         if recent_trades:
@@ -285,9 +288,9 @@ async def main(exchange_name: str):
                     logger.info(f"   {i}. {trade.side.name} {trade.quantity} @ {trade.price}")
                 else:
                     logger.info(f"   {i}. {trade}")
-        
+
         total_updates = summary['account_updates'] + summary['order_updates'] + summary['trade_updates']
-        
+
         if total_updates > 0:
             logger.info(f"✅ {exchange_upper} private WebSocket demo successful!")
             logger.info("🎉 Received private account data - your account has activity!")
@@ -306,11 +309,11 @@ async def main(exchange_name: str):
         import traceback
         traceback.print_exc()
         raise
-    
+
     finally:
         if 'ws' in locals():
             await ws.close()
-    
+
     logger.info("=" * 60)
     logger.info(f"✅ {exchange_upper} private WebSocket demo completed!")
 

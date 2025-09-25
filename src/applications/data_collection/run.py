@@ -20,7 +20,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 # Import exchanges to trigger factory registrations
 
 from applications.data_collection.collector import DataCollector
-from applications.data_collection.config import load_data_collector_config
+from config.config_manager import get_data_collector_config
 from exchanges.structs.common import Symbol
 from exchanges.structs.types import AssetName
 from config import HftConfig
@@ -151,7 +151,7 @@ class DataCollectorCLI:
         try:
             # Initialize core config and load data collector config
             core_config = HftConfig()
-            config = load_data_collector_config()
+            config = get_data_collector_config()
             
             print("Data Collector Configuration:")
             print(f"  Enabled: {config.enabled}")

@@ -35,6 +35,7 @@ from exchanges.structs.common import Symbol, Trade, OrderBook, BookTicker
 from config.structs import ExchangeConfig
 from exchanges.interfaces.ws import PublicFuturesWebsocket
 from infrastructure.networking.websocket.structs import ConnectionState, PublicWebsocketChannelType
+from infrastructure.networking.websocket.handlers import PublicWebsocketHandlers
 
 
 class GateioPublicFuturesWebsocket(PublicFuturesWebsocket):
@@ -43,13 +44,16 @@ class GateioPublicFuturesWebsocket(PublicFuturesWebsocket):
     def __init__(
         self,
         config: ExchangeConfig,
-        orderbook_diff_handler: Optional[Callable[[any, Symbol], Awaitable[None]]] = None,
-        trades_handler: Optional[Callable[[Symbol, List[Trade]], Awaitable[None]]] = None,
-        book_ticker_handler: Optional[Callable[[Symbol, BookTicker], Awaitable[None]]] = None,
-        state_change_handler: Optional[Callable[[ConnectionState], Awaitable[None]]] = None,
+        handlers: PublicWebsocketHandlers,
+        **kwargs
     ):
         """
         Initialize Gate.io public futures WebSocket as separate exchange.
+        
+        Args:
+            config: Exchange configuration
+            handlers: PublicWebsocketHandlers object containing message handlers
+            **kwargs: Additional arguments passed to base class
         
         Uses dedicated 'gateio_futures' configuration section with separate endpoints
         and performance targets. Completely independent from Gate.io spot operations.
@@ -61,13 +65,11 @@ class GateioPublicFuturesWebsocket(PublicFuturesWebsocket):
         # Store the actual futures URL (config is immutable)
         self._futures_websocket_url = config.websocket_url
         
-        # Initialize via composite class dependency injection (like REST pattern)
+        # Initialize via composite class with handler object
         super().__init__(
             config=config,
-            orderbook_diff_handler=orderbook_diff_handler,
-            trades_handler=trades_handler,
-            book_ticker_handler=book_ticker_handler,
-            state_change_handler=state_change_handler
+            handlers=handlers,
+            **kwargs
         )
         
         # State management for futures symbols (separate from spot)
@@ -80,7 +82,7 @@ class GateioPublicFuturesWebsocket(PublicFuturesWebsocket):
                               "wss://fx-ws.gateio.ws/v4/ws/delivery/")
         }
 
-        self.logger.info(f"Gate.io futures WebSocket initialized as separate exchange with endpoint: {self._futures_websocket_url}")
+        self.logger.info(f"Gate.io futures WebSocket initialized with handler objects as separate exchange with endpoint: {self._futures_websocket_url}")
 
     # Gate.io futures-specific message handling can be added here if needed
     # Base class handles all common WebSocket operations:

@@ -162,9 +162,8 @@ class BaseExchangeFactory(Generic[T], ExchangeFactoryInterface, ABC):
         """
         Generic dependency resolution infrastructure.
         
-        Automatically resolves mandatory dependencies used across factories:
-        - symbol_mapper via ExchangeSymbolMapperFactory (required)
-        - mapper via ExchangeMapperFactory (required)
+        Note: Symbol mapper factory has been removed - exchanges now use direct utility functions.
+        This method is kept for future dependency resolution needs.
         
         Args:
             exchange: Exchange identifier for dependency resolution (ExchangeEnum only)
@@ -173,22 +172,12 @@ class BaseExchangeFactory(Generic[T], ExchangeFactoryInterface, ABC):
         Returns:
             Dictionary with resolved dependencies for injection
             
-        Raises:
-            Exception: If required dependencies (symbol_mapper, mapper) cannot be resolved
-            
         Performance: Sub-millisecond resolution via factory caching
         """
         resolved = {}
         
-        # Import symbol mapper factory only (exchange mapper is handled by specific factories)
-        from exchanges.services.symbol_mapper.factory import ExchangeSymbolMapperFactory
-        
-        # Auto-resolve symbol mapper (mandatory for most factories)
-        if 'symbol_mapper' not in context:
-            symbol_mapper = ExchangeSymbolMapperFactory.inject(exchange)
-            resolved['symbol_mapper'] = symbol_mapper
-        
-        # Note: Exchange mapper injection removed to prevent circular dependency
+        # Symbol mapper factory removed - exchanges use direct utility functions now
+        # Exchange mapper injection removed to prevent circular dependency
         # Factories that need exchange mapper should inject it explicitly
         
         return resolved

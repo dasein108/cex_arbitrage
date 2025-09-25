@@ -1,16 +1,16 @@
 """
 MEXC Private WebSocket Implementation
 
-Clean implementation using dependency injection similar to REST pattern.
+Clean implementation using handler objects for organized message processing.
 Handles authenticated WebSocket streams for account data including:
 - Order updates via protobuf
 - Account balance changes via protobuf  
 - Trade confirmations via protobuf
 
 Features:
-- Dependency injection via composite class (like REST pattern)
+- Handler object pattern for clean organization
 - HFT-optimized message processing
-- Event-driven architecture with injected handlers
+- Event-driven architecture with structured handlers
 - Clean separation of concerns
 - MEXC-specific protobuf message parsing
 
@@ -20,20 +20,20 @@ MEXC Private WebSocket Specifications:
 - Keep-alive: Every 30 minutes to prevent expiration
 - Auto-cleanup: Listen key deletion on disconnect
 
-Architecture: Dependency injection with composite class coordination
+Architecture: Handler objects with composite class coordination
 """
 
-from typing import Dict, Optional, Callable, Awaitable
+from typing import Dict, Optional
 
 from exchanges.structs.common import Order, AssetBalance, Trade
 from exchanges.structs.types import AssetName
 from exchanges.integrations.mexc.rest.mexc_rest_private import MexcPrivateSpotRest
 from config.structs import ExchangeConfig
 from exchanges.interfaces.ws import PrivateSpotWebsocket
-from exchanges.services.exchange_mapper.factory import ExchangeMapperFactory
+from infrastructure.networking.websocket.handlers import PrivateWebsocketHandlers
+# ExchangeMapperFactory dependency removed - using direct utility functions
 from exchanges.structs import ExchangeEnum
 from infrastructure.logging import get_exchange_logger
-# Mappings now consolidated in MexcUnifiedMappings
 
 # MEXC-specific protobuf imports for message parsing
 from exchanges.integrations.mexc.structs.protobuf.PrivateAccountV3Api_pb2 import PrivateAccountV3Api
@@ -47,30 +47,32 @@ class MexcPrivateSpotWebsocket(PrivateSpotWebsocket):
     def __init__(
         self,
         config: ExchangeConfig,
+        handlers: PrivateWebsocketHandlers,
         **kwargs
     ):
         """
-        Initialize MEXC private WebSocket with dependency injection.
+        Initialize MEXC private WebSocket with handler objects.
         
-        Base class handles all strategy creation, WebSocket manager setup, and dependency injection.
-        Only MEXC-specific initialization logic and REST client management goes here.
+        Args:
+            config: Exchange configuration
+            handlers: PrivateWebsocketHandlers object containing message handlers
+            **kwargs: Additional arguments passed to base class
         """
         # Create REST client for MEXC-specific operations (e.g., listen key management)
-        mapper = ExchangeMapperFactory.inject(ExchangeEnum.MEXC)
         rest_logger = get_exchange_logger('mexc', 'rest_private')
         self.rest_client = MexcPrivateSpotRest(
             config=config,
-            mapper=mapper,
             logger=rest_logger
         )
         
-        # Initialize via composite class dependency injection (like REST pattern)
+        # Initialize via composite class with handler object
         super().__init__(
             config=config,
+            handlers=handlers,
             **kwargs
         )
         
-        self.logger.info("MEXC private WebSocket initialized with dependency injection")
+        self.logger.info("MEXC private WebSocket initialized with handler objects")
 
 
     # Override default handlers if MEXC needs specific behavior

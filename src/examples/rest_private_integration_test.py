@@ -31,7 +31,7 @@ from exchanges.structs.common import Symbol
 from exchanges.structs.types import AssetName
 from exchanges.structs.enums import TimeInForce
 from exchanges.structs import OrderType, Side
-from config import get_exchange_config
+from config.config_manager import HftConfig
 from examples.utils.rest_api_factory import get_exchange_rest_instance
 from exchanges.structs import ExchangeEnum
 from examples.integration_test_framework import (
@@ -54,13 +54,14 @@ class RestPrivateIntegrationTest:
     async def setup(self) -> Dict[str, Any]:
         """Setup exchange connection with authentication."""
         try:
-            config = get_exchange_config(self.exchange_name)
+            config_manager = HftConfig()
+            config = config_manager.get_exchange_config(self.exchange_name.lower())
             
             # Verify credentials are available
             if not config.credentials.api_key or not config.credentials.secret_key:
                 raise ValueError(f"{self.exchange_name} API credentials are required for private API testing")
             
-            self.exchange = get_exchange_rest_instance(self.exchange_name, is_private=True, config=config)
+            self.exchange = get_exchange_rest_instance(self.exchange_name.lower(), is_private=True, config=config)
             
             return {
                 "setup_successful": True,
@@ -438,7 +439,8 @@ async def main():
         sys.exit(EXIT_CODE_CONFIG_ERROR)
     
     # Convert to ExchangeEnum
-    exchange_enum = ExchangeEnum(args.exchange.upper())
+    from exchanges.utils.exchange_utils import get_exchange_enum
+    exchange_enum = get_exchange_enum(args.exchange)
     
     # Create test suite
     test_suite = RestPrivateIntegrationTest(exchange_enum.value)

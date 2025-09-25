@@ -34,6 +34,13 @@ from exchanges.structs import OrderType, Side
 from infrastructure.networking.http.structs import HTTPMethod
 from infrastructure.exceptions.exchange import BaseExchangeError
 from exchanges.interfaces.rest.spot.rest_spot_private import PrivateSpotRest
+from exchanges.integrations.mexc.structs.exchange import MexcAccountResponse, MexcOrderResponse
+
+# Import direct utility functions
+from exchanges.integrations.mexc.utils import (
+    to_pair, from_side, from_order_type, format_quantity, format_price, 
+    from_time_in_force, to_order_status, rest_to_order
+)
 
 
 
@@ -141,7 +148,7 @@ class MexcPrivateSpotRest(PrivateSpotRest):
             ExchangeAPIError: If unable to place order
             ValueError: If required parameters are missing
         """
-        pair = self._mapper.to_pair(symbol)
+        pair = to_pair(symbol)
 
         # Validate required parameters based on order type
         if order_type in [OrderType.LIMIT, OrderType.LIMIT_MAKER, OrderType.STOP_LIMIT]:
@@ -162,34 +169,34 @@ class MexcPrivateSpotRest(PrivateSpotRest):
         # Prepare exchanges order parameters
         params = {
             'symbol': pair,
-            'side': self._mapper.from_side(side),
-            'type': self._mapper.from_order_type(order_type)
+            'side': from_side(side),
+            'type': from_order_type(order_type)
         }
 
         # Add quantity parameters
         if amount is not None:
-            params['quantity'] = self._mapper.format_quantity(amount)
+            params['quantity'] = format_quantity(amount)
 
         if quote_quantity is not None:
-            params['quoteOrderQty'] = self._mapper.format_quantity(quote_quantity)
+            params['quoteOrderQty'] = format_quantity(quote_quantity)
 
         # Add price parameters
         if price is not None:
-            params['price'] = self._mapper.format_price(price)
+            params['price'] = format_price(price)
 
         if stop_price is not None:
-            params['stopPrice'] = self._mapper.format_price(stop_price)
+            params['stopPrice'] = format_price(stop_price)
 
         # Add time in force (default to GTC if not specified for applicable order types)
         if order_type in [OrderType.LIMIT, OrderType.LIMIT_MAKER, OrderType.STOP_LIMIT]:
             tif = time_in_force or TimeInForce.GTC
-            params['timeInForce'] = self._mapper.from_time_in_force(tif)
+            params['timeInForce'] = from_time_in_force(tif)
         elif time_in_force is not None:
-            params['timeInForce'] = self._mapper.from_time_in_force(time_in_force)
+            params['timeInForce'] = from_time_in_force(time_in_force)
 
         # Add optional parameters
         if iceberg_qty is not None:
-            params['icebergQty'] = self._mapper.format_quantity(iceberg_qty)
+            params['icebergQty'] = format_quantity(iceberg_qty)
 
         if new_order_resp_type is not None:
             params['newOrderRespType'] = new_order_resp_type
@@ -203,7 +210,7 @@ class MexcPrivateSpotRest(PrivateSpotRest):
         order_response = msgspec.convert(response_data, MexcOrderResponse)
 
         # Transform to unified format
-        unified_order = self._mapper.rest_to_order(order_response)
+        unified_order = rest_to_order(order_response)
 
         # Log order placement with relevant details
         amount_str = f"{amount} {symbol.base}" if amount else f"{quote_quantity} {symbol.quote}"
@@ -225,7 +232,7 @@ class MexcPrivateSpotRest(PrivateSpotRest):
         Raises:
             ExchangeAPIError: If unable to cancel order
         """
-        pair = self._mapper.to_pair(symbol)
+        pair = to_pair(symbol)
 
         params = {
             'symbol': pair,
@@ -241,7 +248,7 @@ class MexcPrivateSpotRest(PrivateSpotRest):
         order_response = msgspec.convert(response_data, MexcOrderResponse)
 
         # Transform to unified format
-        unified_order = self._mapper.rest_to_order(order_response)
+        unified_order = rest_to_order(order_response)
 
         self.logger.info(f"Cancelled order {order_id} for {symbol.base}/{symbol.quote}")
         return unified_order
@@ -259,7 +266,7 @@ class MexcPrivateSpotRest(PrivateSpotRest):
         Raises:
             ExchangeAPIError: If unable to cancel orders
         """
-        pair = self._mapper.to_pair(symbol)
+        pair = to_pair(symbol)
 
         params = {'symbol': pair}
 
@@ -274,7 +281,7 @@ class MexcPrivateSpotRest(PrivateSpotRest):
         # Transform to unified format
         cancelled_orders = []
         for order_response in order_responses:
-            unified_order = self._mapper.rest_to_order(order_response)
+            unified_order = rest_to_order(order_response)
             cancelled_orders.append(unified_order)
 
         self.logger.info(f"Cancelled {len(cancelled_orders)} orders for {symbol.base}/{symbol.quote}")
@@ -294,7 +301,7 @@ class MexcPrivateSpotRest(PrivateSpotRest):
         Raises:
             ExchangeAPIError: If unable to fetch order
         """
-        pair = self._mapper.to_pair(symbol)
+        pair = to_pair(symbol)
 
         params = {
             'symbol': pair,
@@ -310,7 +317,7 @@ class MexcPrivateSpotRest(PrivateSpotRest):
         order_response = msgspec.convert(response_data, MexcOrderResponse)
 
         # Transform to unified format
-        unified_order = self._mapper.rest_to_order(order_response)
+        unified_order = rest_to_order(order_response)
 
         self.logger.debug(f"Retrieved order {order_id} status: {unified_order.status}")
         return unified_order
@@ -330,7 +337,7 @@ class MexcPrivateSpotRest(PrivateSpotRest):
         """
         params = {}
         if symbol:
-            params['symbol'] = self._mapper.to_pair(symbol)
+            params['symbol'] = to_pair(symbol)
 
         response_data = await self.request(
             HTTPMethod.GET,
@@ -343,7 +350,7 @@ class MexcPrivateSpotRest(PrivateSpotRest):
         # Transform to unified format
         open_orders = []
         for order_response in order_responses:
-            unified_order = self._mapper.rest_to_order(order_response)
+            unified_order = rest_to_order(order_response)
             open_orders.append(unified_order)
 
         symbol_str = f" for {symbol.base}/{symbol.quote}" if symbol else ""

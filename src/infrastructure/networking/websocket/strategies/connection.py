@@ -7,6 +7,9 @@ from config.structs import ExchangeConfig
 
 from infrastructure.networking.websocket.structs import ConnectionContext
 
+# HFT Logger Integration
+from infrastructure.logging import HFTLoggerInterface
+
 
 @dataclass
 class ReconnectionPolicy:
@@ -27,9 +30,16 @@ class ConnectionStrategy(ABC):
     HFT COMPLIANT: <100ms connection establishment.
     """
     
-    def __init__(self, config: ExchangeConfig):
+    def __init__(self, config: ExchangeConfig, logger: Optional[HFTLoggerInterface] = None):
         self._websocket: Optional[WebSocketClientProtocol] = None
         self.config = config
+        self.logger = logger
+        
+        # Log initialization with structured data if logger provided
+        if self.logger:
+            self.logger.info("ConnectionStrategy initialized", 
+                           exchange=config.name,
+                           has_credentials=config.has_credentials())
 
     @property
     def websocket(self) -> Optional[WebSocketClientProtocol]:

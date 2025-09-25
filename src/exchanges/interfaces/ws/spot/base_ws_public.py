@@ -2,13 +2,13 @@
 Base Public WebSocket Interface - Refactored
 
 Clean composite class for public WebSocket implementations using the new
-strategy-driven architecture.
+strategy-driven architecture with handler objects.
 
 HFT COMPLIANCE: Optimized for sub-millisecond message processing.
 """
 
 import logging
-from typing import List, Dict, Optional, Callable, Awaitable, Set
+from typing import List, Dict, Optional, Set, Callable, Awaitable
 from abc import ABC
 
 from exchanges.consts import DEFAULT_PUBLIC_WEBSOCKET_CHANNELS
@@ -16,6 +16,7 @@ from exchanges.structs.common import Symbol, OrderBook, Trade, BookTicker
 from config.structs import ExchangeConfig
 from infrastructure.logging import HFTLogger
 from infrastructure.networking.websocket.structs import ConnectionState, MessageType, ParsedMessage, PublicWebsocketChannelType
+from infrastructure.networking.websocket.handlers import PublicWebsocketHandlers
 import traceback
 
 class PublicSpotWebsocket(ABC):
@@ -31,29 +32,24 @@ class PublicSpotWebsocket(ABC):
     def __init__(
         self,
         config: ExchangeConfig,
+        handlers: PublicWebsocketHandlers,
         logger: HFTLogger,
-        orderbook_diff_handler: Optional[Callable[[OrderBook, Symbol], Awaitable[None]]] = None,
-        trades_handler: Optional[Callable[[Symbol, List[Trade]], Awaitable[None]]] = None,
-        book_ticker_handler: Optional[Callable[[Symbol, BookTicker], Awaitable[None]]] = None,
         state_change_handler: Optional[Callable[[ConnectionState], Awaitable[None]]] = None,
     ):
         """
-        Initialize composite public WebSocket.
+        Initialize composite public WebSocket with handler object.
         
         Args:
             config: Exchange configuration
-            orderbook_diff_handler: Callback for orderbook updates
-            trades_handler: Callback for trade updates
-            book_ticker_handler: Callback for book ticker updates
+            handlers: PublicWebsocketHandlers object containing all message handlers
+            logger: HFT logger instance
             state_change_handler: Callback for connection state changes
         """
         self.config = config
         self.exchange_name = config.name.lower()
         
-        # Store event handlers
-        self._orderbook_handler = orderbook_diff_handler
-        self._trades_handler = trades_handler
-        self._book_ticker_handler = book_ticker_handler
+        # Store handler object and state change handler
+        self.handlers = handlers
         self._state_change_handler = state_change_handler
         
         # Logger
@@ -145,45 +141,36 @@ class PublicSpotWebsocket(ABC):
             message: Parsed message from WebSocket
         """
         try:
-            # Route based on message type
+            # Route based on message type using handler objects
             if message.message_type == MessageType.ORDERBOOK:
-                if self._orderbook_handler and message.data:
-                    # Handle both dict format and direct object format
+                if message.data:
+                    # Convert message data to ParsedOrderbookUpdate format
+                    from common.orderbook_diff_processor import ParsedOrderbookUpdate
                     if isinstance(message.data, dict):
-                        orderbook = message.data.get('orderbook')
-                        symbol = message.data.get('symbol')
-                        if orderbook and symbol:
-                            await self._orderbook_handler(orderbook, symbol)
+                        orderbook_update = ParsedOrderbookUpdate(
+                            orderbook=message.data.get('orderbook'),
+                            symbol=message.data.get('symbol')
+                        )
                     else:
                         # Direct orderbook object with symbol attribute
-                        if hasattr(message.data, 'symbol'):
-                            await self._orderbook_handler(message.data, message.symbol)
+                        orderbook_update = ParsedOrderbookUpdate(
+                            orderbook=message.data,
+                            symbol=getattr(message.data, 'symbol', message.symbol)
+                        )
+                    await self.handlers.handle_orderbook_diff(orderbook_update)
                         
             elif message.message_type == MessageType.TRADE:
-                if self._trades_handler and message.data:
-                    # Handle both dict format and direct list format
-                    if isinstance(message.data, dict):
-                        trades = message.data.get('trades', [])
-                        symbol = message.data.get('symbol')
-                        if trades and symbol:
-                            await self._trades_handler(symbol, trades)
-                    elif isinstance(message.data, list):
-                        # Direct trades list - get symbol from first trade
-                        if message.data and hasattr(message.data[0], 'symbol'):
-                            await self._trades_handler(message.data[0].symbol, message.data)
+                if message.data:
+                    # Handle both single trade and list of trades
+                    if isinstance(message.data, list):
+                        for trade in message.data:
+                            await self.handlers.handle_trades(trade)
+                    else:
+                        await self.handlers.handle_trades(message.data)
                         
             elif message.message_type == MessageType.BOOK_TICKER:
-                if self._book_ticker_handler and message.data:
-                    # Handle both dict format and direct object format
-                    if isinstance(message.data, dict):
-                        book_ticker = message.data.get('book_ticker')
-                        symbol = message.data.get('symbol')
-                        if book_ticker and symbol:
-                            await self._book_ticker_handler(symbol, book_ticker)
-                    else:
-                        # Direct BookTicker object with symbol attribute
-                        if hasattr(message.data, 'symbol'):
-                            await self._book_ticker_handler(message.data.symbol, message.data)
+                if message.data:
+                    await self.handlers.handle_book_ticker(message.data)
                         
             elif message.message_type == MessageType.SUBSCRIPTION_CONFIRM:
                 # Use channel from ParsedMessage

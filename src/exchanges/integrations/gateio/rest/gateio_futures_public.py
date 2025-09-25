@@ -10,10 +10,15 @@ from exchanges.structs.common import (
 from exchanges.structs.enums import KlineInterval
 from exchanges.structs import Side
 from exchanges.interfaces.rest.spot import PublicSpotRest
-from exchanges.services import BaseExchangeMapper
+# Removed BaseExchangeMapper import - using direct utility functions
 from infrastructure.networking.http.structs import HTTPMethod
 from config.structs import ExchangeConfig
 from infrastructure.exceptions.exchange import BaseExchangeError
+
+# Import direct utility functions
+from exchanges.integrations.gateio.utils import from_futures_symbol
+from exchanges.integrations.gateio.services.futures_symbol_mapper import GateioFuturesSymbol
+from exchanges.integrations.gateio.services.spot_symbol_mapper import get_exchange_interval
 
 
 class GateioPublicFuturesRest(PublicSpotRest):
@@ -27,8 +32,8 @@ class GateioPublicFuturesRest(PublicSpotRest):
     - Robust parsing: supports both array and dict payload shapes.
     """
 
-    def __init__(self, config: ExchangeConfig, mapper: BaseExchangeMapper, logger=None):
-        super().__init__(config, mapper)
+    def __init__(self, config: ExchangeConfig, logger=None):
+        super().__init__(config, is_private=False)
 
         # Initialize HFT logger
         if logger is None:
@@ -101,12 +106,12 @@ class GateioPublicFuturesRest(PublicSpotRest):
                     continue
 
                 # Use shared mapper - it must support futures contract format
-                if not self._mapper.is_supported_pair(contract_name):
+                if not GateioFuturesSymbol.is_supported_pair(contract_name):
                     filtered_count += 1
                     continue
 
                 try:
-                    symbol = self._mapper.to_symbol(contract_name)
+                    symbol = GateioFuturesSymbol.to_symbol(contract_name)
                 except Exception:
                     filtered_count += 1
                     continue
@@ -144,7 +149,7 @@ class GateioPublicFuturesRest(PublicSpotRest):
         Get futures order book. Endpoint: /futures/usdt/order_book
         """
         try:
-            contract = self._mapper.to_pair(symbol)  # mapper should output e.g. "BTC_USDT" or "BTC_USDT_20241225"
+            contract = from_futures_symbol(symbol)  # should output e.g. "BTC_USDT" or "BTC_USDT_20241225"
 
             optimized_limit = max(1, min(100, limit))
             params = {
@@ -184,7 +189,7 @@ class GateioPublicFuturesRest(PublicSpotRest):
             timestamp_val = response_data.get('current') or response_data.get('timestamp') or response_data.get('time')
             timestamp = float(timestamp_val) / 1000.0 if timestamp_val else time.time()
 
-            orderbook = OrderBook(bids=bids, asks=asks, timestamp=timestamp)
+            orderbook = OrderBook(symbol=symbol, bids=bids, asks=asks, timestamp=timestamp)
             self.logger.debug(f"Retrieved futures orderbook for {symbol}: {len(bids)} bids, {len(asks)} asks")
             return orderbook
 
@@ -198,7 +203,7 @@ class GateioPublicFuturesRest(PublicSpotRest):
         Gate.io futures may use signed 'size' (positive buy, negative sell).
         """
         try:
-            contract = self._mapper.to_pair(symbol)
+            contract = from_futures_symbol(symbol)
             optimized_limit = max(1, min(1000, limit))
             params = {'contract': contract, 'limit': optimized_limit}
 
@@ -217,7 +222,7 @@ class GateioPublicFuturesRest(PublicSpotRest):
                     # Support multiple field names
                     size_val = td.get('size') or td.get('amount') or td.get('qty') or 0
                     size = float(size_val)
-                    side = Side.BUY if size > 0 else Side.SELL if size < 0 else self._mapper.to_side(td.get('side', 'buy'))
+                    side = Side.BUY if size > 0 else Side.SELL if size < 0 else to_side(td.get('side', 'buy'))
 
                     price = float(td.get('price', td.get('p', 0)))
                     ts = td.get('create_time_ms') or td.get('create_time') or td.get('t') or int(time.time() * 1000)
@@ -252,7 +257,7 @@ class GateioPublicFuturesRest(PublicSpotRest):
         Gate.io expects seconds for 'from'/'to'.
         """
         try:
-            contract = self._mapper.to_pair(symbol)
+            contract = from_futures_symbol(symbol)
             optimized_limit = max(1, min(1000, limit))
             params = {'contract': contract, 'limit': optimized_limit}
             if timestamp_from:
@@ -273,7 +278,7 @@ class GateioPublicFuturesRest(PublicSpotRest):
             for td in response_data:
                 try:
                     size = float(td.get('size', td.get('amount', 0)))
-                    side = Side.BUY if size > 0 else Side.SELL if size < 0 else self._mapper.to_side(td.get('side', 'buy'))
+                    side = Side.BUY if size > 0 else Side.SELL if size < 0 else to_side(td.get('side', 'buy'))
                     ts = td.get('create_time_ms') or td.get('create_time') or int(time.time() * 1000)
                     ts = int(ts) if isinstance(ts, (int, float)) else int(float(ts))
 
@@ -309,7 +314,7 @@ class GateioPublicFuturesRest(PublicSpotRest):
         try:
             params = {}
             if symbol:
-                params['contract'] = self._mapper.to_pair(symbol)
+                params['contract'] = GateioFuturesSymbol.to_pair(symbol)
 
             response_data = await self.request(
                 HTTPMethod.GET,
@@ -324,10 +329,10 @@ class GateioPublicFuturesRest(PublicSpotRest):
                 pair_str = td.get('contract') or td.get('name') or td.get('currency_pair') or ''
                 if not pair_str:
                     continue
-                if not self._mapper.is_supported_pair(pair_str):
+                if not GateioFuturesSymbol.is_supported_pair(pair_str):
                     continue
                 try:
-                    symbol_obj = self._mapper.to_symbol(pair_str)
+                    symbol_obj = GateioFuturesSymbol.to_symbol(pair_str)
                 except Exception:
                     continue
 
@@ -378,7 +383,7 @@ class GateioPublicFuturesRest(PublicSpotRest):
         Returns raw dict (public-only).
         """
         try:
-            contract = self._mapper.to_pair(symbol)
+            contract = from_futures_symbol(symbol)
             params = {'contract': contract}
             response_data = await self.request(
                 HTTPMethod.GET,
@@ -401,8 +406,8 @@ class GateioPublicFuturesRest(PublicSpotRest):
         Gate.io returns array of dicts: {'o', 'h', 'l', 'c', 'v', 't', 'sum'}
         """
         try:
-            contract = self._mapper.to_pair(symbol)
-            interval = self._mapper.get_exchange_interval(timeframe)
+            contract = from_futures_symbol(symbol)
+            interval = get_exchange_interval(timeframe)
 
             params = {'contract': contract, 'interval': interval}
             if date_from:
@@ -538,17 +543,17 @@ class GateioPublicFuturesRest(PublicSpotRest):
         for s in symbols:
             # prime mapper conversions / validation
             try:
-                self._mapper.to_pair(s)
+                GateioFuturesSymbol.to_pair(s)
             except Exception as e:
                 self.logger.debug(f"Failed to pre-cache symbol {s}: {e}")
         self.logger.info("Gate.io Futures initialization complete")
 
     async def start_symbol(self, symbol: Symbol) -> None:
-        contract = self._mapper.to_pair(symbol)
+        contract = GateioFuturesSymbol.to_pair(symbol)
         self.logger.debug(f"Start symbol requested for {contract} (public-only no-op)")
 
     async def stop_symbol(self, symbol: Symbol) -> None:
-        contract = self._mapper.to_pair(symbol)
+        contract = GateioFuturesSymbol.to_pair(symbol)
         self.logger.debug(f"Stop symbol requested for {contract} (public-only no-op)")
 
     def _get_interval_seconds(self, interval: KlineInterval) -> int:

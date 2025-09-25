@@ -200,18 +200,26 @@ class HFTLogger(HFTLoggerInterface):
             exchange = full_context.pop('exchange', None) 
             symbol = full_context.pop('symbol', None)
             
-            # Create log record
-            record = LogRecord(
-                timestamp=time.time(),
-                level=level,
-                log_type=log_type,
-                logger_name=self.name,
-                message=msg,
-                context=full_context,
-                correlation_id=correlation_id,
-                exchange=exchange,
-                symbol=symbol
-            )
+            # Create log record using factory method (includes stack trace for ERROR+)
+            if log_type == LogType.TEXT:
+                record = LogRecord.create_text(level, self.name, msg, **full_context)
+                # Update correlation fields
+                record.correlation_id = correlation_id
+                record.exchange = exchange
+                record.symbol = symbol
+            else:
+                # For non-text records (metrics, audit), use direct constructor
+                record = LogRecord(
+                    timestamp=time.time(),
+                    level=level,
+                    log_type=log_type,
+                    logger_name=self.name,
+                    message=msg,
+                    context=full_context,
+                    correlation_id=correlation_id,
+                    exchange=exchange,
+                    symbol=symbol
+                )
             
             # Add to buffer (non-blocking)
             if not self._buffer.put_nowait(record):

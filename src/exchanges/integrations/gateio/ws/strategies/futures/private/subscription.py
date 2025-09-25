@@ -1,19 +1,37 @@
-import logging
 import msgspec
 from typing import List, Dict, Any, Optional, Set
 
 from infrastructure.networking.websocket.strategies.subscription import SubscriptionStrategy
 from infrastructure.networking.websocket.structs import SubscriptionAction, PrivateWebsocketChannelType
 from exchanges.structs.common import Symbol
-from exchanges.services import BaseExchangeMapper
+# BaseExchangeMapper dependency removed - using direct utility functions
+
+# HFT Logger Integration
+from infrastructure.logging import get_strategy_logger, HFTLoggerInterface
 
 
 class GateioPrivateFuturesSubscriptionStrategy(SubscriptionStrategy):
     """Gate.io private futures WebSocket subscription strategy."""
 
-    def __init__(self, mapper: BaseExchangeMapper):
-        super().__init__(mapper)  # Initialize parent with mandatory mapper
-        self.logger = logging.getLogger(f"{__name__}.{self.__class__.__name__}")
+    def __init__(self, logger: Optional[HFTLoggerInterface] = None):
+        super().__init__(logger)
+        
+        # Use injected logger or create strategy-specific logger
+        if logger is None:
+            tags = ['gateio', 'futures', 'private', 'ws', 'subscription']
+            logger = get_strategy_logger('ws.subscription.gateio.futures.private', tags)
+        
+        self.logger = logger
+        
+        # Log initialization
+        if self.logger:
+            self.logger.info("GateioPrivateFuturesSubscriptionStrategy initialized",
+                            exchange="gateio",
+                            api_type="futures_private")
+            
+            # Track component initialization
+            self.logger.metric("gateio_futures_private_subscription_strategies_initialized", 1,
+                              tags={"exchange": "gateio", "api_type": "futures_private"})
         
         # Track active subscriptions for private futures
         self._active_subscriptions: Set[str] = set()
@@ -38,7 +56,9 @@ class GateioPrivateFuturesSubscriptionStrategy(SubscriptionStrategy):
         Returns:
             List of authenticated messages, one per private futures channel type
         """
-        event = self.mapper.from_subscription_action(action)
+        # Use Gate.io mapper directly
+        from exchanges.integrations.gateio.utils import from_subscription_action
+        event = from_subscription_action(action)
         messages = []
 
         # Private futures channel definitions

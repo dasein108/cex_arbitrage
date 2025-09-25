@@ -1,13 +1,12 @@
 """
-Symbol Mapper Service exports.
+Symbol Mapper Interface
 
-Provides factory pattern for creating exchange-specific symbol mappers.
+Base interface for exchange-specific symbol mappers.
+Factory pattern has been removed in favor of global singleton instances.
 """
 
 from .base_symbol_mapper import SymbolMapperInterface
-from .factory import ExchangeSymbolMapperFactory
 
 __all__ = [
-    "SymbolMapperInterface",
-    "ExchangeSymbolMapperFactory",
+    'SymbolMapperInterface'
 ]

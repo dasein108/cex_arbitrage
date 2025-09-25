@@ -2,19 +2,37 @@ import msgspec
 from typing import Dict, Any, List, Optional
 
 from infrastructure.networking.websocket.strategies.message_parser import MessageParser
-from exchanges.integrations.gateio.services.gateio_mapper import GateioMapper
 from exchanges.structs.common import (
     Symbol, Order, Trade, AssetBalance
 )
 from infrastructure.networking.websocket.structs import ParsedMessage, MessageType
 
+# HFT Logger Integration
+from infrastructure.logging import get_strategy_logger, HFTLoggerInterface
+
 
 class GateioPrivateFuturesMessageParser(MessageParser):
     """Gate.io private futures WebSocket message parser."""
 
-    def __init__(self, mapper: GateioMapper, logger):
-        super().__init__(mapper, logger)
-        self.gateio_mapper = mapper
+    def __init__(self, logger: Optional[HFTLoggerInterface] = None):
+        super().__init__(logger)
+        
+        # Use injected logger or create strategy-specific logger
+        if logger is None:
+            tags = ['gateio', 'futures', 'private', 'ws', 'message_parser']
+            logger = get_strategy_logger('ws.message_parser.gateio.futures.private', tags)
+        
+        self.logger = logger
+        
+        # Log initialization
+        if self.logger:
+            self.logger.info("GateioPrivateFuturesMessageParser initialized",
+                            exchange="gateio",
+                            api_type="futures_private")
+            
+            # Track component initialization
+            self.logger.metric("gateio_futures_private_message_parsers_initialized", 1,
+                              tags={"exchange": "gateio", "api_type": "futures_private"})
 
     async def parse_message(self, raw_message: str) -> Optional[ParsedMessage]:
         """Parse Gate.io private futures WebSocket message."""
@@ -70,7 +88,8 @@ class GateioPrivateFuturesMessageParser(MessageParser):
             # Gate.io sends order updates as array
             orders = []
             for order_data in result:
-                order = self.gateio_mapper.futures_ws_to_order(order_data)
+                from exchanges.integrations.gateio.utils import futures_ws_to_order
+                order = futures_ws_to_order(order_data)
                 if order:
                     orders.append(order)
             
@@ -99,7 +118,8 @@ class GateioPrivateFuturesMessageParser(MessageParser):
             # Parse balances using mapper
             balances = {}
             for balance_data in result:
-                balance = self.gateio_mapper.futures_ws_to_balance(balance_data)
+                from exchanges.integrations.gateio.utils import futures_ws_to_balance
+                balance = futures_ws_to_balance(balance_data)
                 if balance and balance.asset:
                     balances[balance.asset] = balance
             
@@ -128,7 +148,8 @@ class GateioPrivateFuturesMessageParser(MessageParser):
             # Parse trades using mapper
             trades = []
             for trade_data in result:
-                trade = self.gateio_mapper.futures_ws_to_trade(trade_data)
+                from exchanges.integrations.gateio.utils import futures_ws_to_trade
+                trade = futures_ws_to_trade(trade_data)
                 if trade:
                     trades.append(trade)
             
@@ -157,7 +178,8 @@ class GateioPrivateFuturesMessageParser(MessageParser):
             # Parse positions (custom message type for futures)
             positions = []
             for position_data in result:
-                symbol = self.gateio_mapper._parse_futures_symbol(position_data.get("contract", ""))
+                from exchanges.integrations.gateio.utils import to_futures_symbol
+                symbol = to_futures_symbol(position_data.get("contract", ""))
                 if symbol:
                     positions.append({
                         "symbol": symbol,

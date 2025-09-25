@@ -14,13 +14,15 @@ Message Format:
 """
 
 import time
-import logging
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 
 from infrastructure.networking.websocket.strategies.subscription import SubscriptionStrategy
 from infrastructure.networking.websocket.structs import SubscriptionAction
 from exchanges.structs.common import Symbol
-from exchanges.services import BaseExchangeMapper
+# BaseExchangeMapper dependency removed - using direct utility functions
+
+# HFT Logger Integration
+from infrastructure.logging import get_strategy_logger, HFTLoggerInterface
 
 
 class GateioPrivateSubscriptionStrategy(SubscriptionStrategy):
@@ -31,9 +33,25 @@ class GateioPrivateSubscriptionStrategy(SubscriptionStrategy):
     Format: {"time": X, "channel": Y, "event": Z, "payload": ["!all"]}
     """
 
-    def __init__(self, mapper: BaseExchangeMapper):
-        super().__init__(mapper)  # Initialize parent with mandatory mapper
-        self.logger = logging.getLogger(f"{__name__}.{self.__class__.__name__}")
+    def __init__(self, logger: Optional[HFTLoggerInterface] = None):
+        super().__init__(logger)
+        
+        # Use injected logger or create strategy-specific logger
+        if logger is None:
+            tags = ['gateio', 'spot', 'private', 'ws', 'subscription']
+            logger = get_strategy_logger('ws.subscription.gateio.spot.private', tags)
+        
+        self.logger = logger
+        
+        # Log initialization
+        if self.logger:
+            self.logger.info("GateioPrivateSubscriptionStrategy initialized",
+                            exchange="gateio",
+                            api_type="spot_private")
+            
+            # Track component initialization
+            self.logger.metric("gateio_spot_private_subscription_strategies_initialized", 1,
+                              tags={"exchange": "gateio", "api_type": "spot_private"})
 
     async def create_subscription_messages(self, action: SubscriptionAction, **kwargs) -> List[Dict[str, Any]]:
         """
@@ -48,22 +66,24 @@ class GateioPrivateSubscriptionStrategy(SubscriptionStrategy):
         Returns:
             List of messages, one per private channel type
         """
-        event = self.mapper.from_subscription_action(action)
+        # Use direct utility functions
+        from exchanges.integrations.gateio.utils import from_subscription_action, get_spot_private_channel_name, to_pair
+        event = from_subscription_action(action)
         messages = []
 
         # Private channel definitions using centralized mappings
         from infrastructure.networking.websocket.structs import PrivateWebsocketChannelType
         private_channels = [
             {
-                "channel": self.mapper.get_spot_private_channel_name(PrivateWebsocketChannelType.ORDER),
+                "channel": get_spot_private_channel_name(PrivateWebsocketChannelType.ORDER),
                 "payload": ["!all"]  # Subscribe to all order updates
             },
             {
-                "channel": self.mapper.get_spot_private_channel_name(PrivateWebsocketChannelType.TRADE),
+                "channel": get_spot_private_channel_name(PrivateWebsocketChannelType.TRADE),
                 "payload": ["!all"]  # Subscribe to all trade updates
             },
             {
-                "channel": self.mapper.get_spot_private_channel_name(PrivateWebsocketChannelType.BALANCE),
+                "channel": get_spot_private_channel_name(PrivateWebsocketChannelType.BALANCE),
             }
         ]
 
@@ -79,20 +99,33 @@ class GateioPrivateSubscriptionStrategy(SubscriptionStrategy):
 
             messages.append(message)
 
-            self.logger.debug(f"Created {event} message for {channel_config['channel']}")
+            if self.logger:
+                self.logger.debug(f"Created {event} message for {channel_config['channel']}",
+                                exchange="gateio",
+                                channel=channel_config['channel'],
+                                event=event,
+                                api_type="spot_private")
 
-        self.logger.info(f"Created {len(messages)} private {event} messages")
+        if self.logger:
+            self.logger.info(f"Created {len(messages)} private {event} messages",
+                            exchange="gateio",
+                            message_count=len(messages),
+                            event=event,
+                            api_type="spot_private")
+            
+            self.logger.metric("gateio_spot_private_subscription_messages_created", len(messages),
+                              tags={"exchange": "gateio", "event": event, "api_type": "spot_private"})
 
         return messages
     
     def _convert_symbols_to_exchange_format(self, symbols: List[Symbol]) -> List[str]:
         """Convert symbols to Gate.io private exchange format."""
-        if not self.mapper:
-            self.logger.error("No symbol mapper available for Gate.io private subscription")
-            return []
-        
         try:
-            return [self.mapper.to_pair(symbol) for symbol in symbols]
+            return [to_pair(symbol) for symbol in symbols]
         except Exception as e:
-            self.logger.error(f"Failed to convert private symbols: {e}")
+            if self.logger:
+                self.logger.error(f"Failed to convert private symbols: {e}",
+                                exchange="gateio",
+                                error=str(e),
+                                api_type="spot_private")
             return []

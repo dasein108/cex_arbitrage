@@ -21,7 +21,7 @@ from exchanges.interfaces.ws import ConnectionState
 from config.structs import ExchangeConfig
 
 
-class MexcPublicPublicExchange(CompositePublicExchange):
+class MexcPublicExchange(CompositePublicExchange):
     """
     MEXC Public Exchange - Market Data Only
     
@@ -120,7 +120,7 @@ class MexcPublicPublicExchange(CompositePublicExchange):
                 
                 # Notify arbitrage layer of reconnection for each symbol
                 for symbol, orderbook in self._orderbooks.items():
-                    await self._notify_orderbook_update(symbol, orderbook, OrderbookUpdateType.RECONNECT)
+                    await self._notify_orderbook_update(symbol, orderbook, OrderbookUpdateType.SNAPSHOT)
                 
                 self.logger.info(f"Refreshed {len(self._orderbooks)} orderbooks after reconnection")
             else:
@@ -143,7 +143,7 @@ class MexcPublicPublicExchange(CompositePublicExchange):
     @property
     def symbols_info(self) -> SymbolsInfo:
         """Get all symbol information."""
-        return self._symbols_info_dict.copy()
+        return self._symbols_info.copy()
 
 
     async def initialize(self, symbols: List[Symbol] = None) -> None:
