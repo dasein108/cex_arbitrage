@@ -82,13 +82,13 @@ class Order(Struct):
 class AssetBalance(Struct):
     """Account balance for a single asset."""
     asset: AssetName
-    free: float
+    available: float
     locked: float
     
     @property
     def total(self) -> float:
         """Total balance (free + locked)."""
-        return self.free + self.locked
+        return self.available + self.locked
 
 class Position(Struct):
     """Trading position (for margin/futures)."""

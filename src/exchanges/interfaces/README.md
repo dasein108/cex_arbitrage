@@ -460,7 +460,7 @@ async def test_end_to_end_trading():
 
     # Check initial balance
     balance = await exchange.get_asset_balance(asset)
-    initial_free = balance.free
+    initial_free = balance.available
 
     # Place order
     order = await exchange.place_order(

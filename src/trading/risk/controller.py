@@ -13,7 +13,7 @@ from typing import Dict, Optional, Any
 
 from trading.arbitrage.types import ArbitrageConfig
 from trading.arbitrage.configuration_manager import ConfigurationManager
-from trading.arbitrage.exchange_factory import ExchangeFactory
+from exchanges.interfaces.composite.unified_exchange import UnifiedExchangeFactory
 from trading.arbitrage.performance_monitor import PerformanceMonitor
 from trading.arbitrage.shutdown_manager import ShutdownManager, ShutdownReason
 from trading.arbitrage.symbol_resolver import SymbolResolver
@@ -73,7 +73,7 @@ class ArbitrageController:
         logger.info(f"Initializing exchanges with {len(arbitrage_symbols)} symbols from arbitrage configuration")
         
         # HFT OPTIMIZATION: Initialize exchanges with arbitrage symbols
-        from trading.arbitrage.exchange_factory import InitializationStrategy
+        from exchanges.interfaces.composite.unified_exchange import UnifiedExchangeFactory
         
         strategy = InitializationStrategy.CONTINUE_ON_ERROR if self.config.enable_dry_run else InitializationStrategy.RETRY_WITH_BACKOFF
         exchanges_task = self.exchange_factory.create_exchanges(

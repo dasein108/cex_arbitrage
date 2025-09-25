@@ -127,7 +127,7 @@ class AccountDataManager:
         # Handle unified AssetBalance type
         if isinstance(account_data, AssetBalance):
             asset = account_data.asset
-            free = account_data.free
+            free = account_data.available
             locked = account_data.locked
 
             if free > 0 or locked > 0:

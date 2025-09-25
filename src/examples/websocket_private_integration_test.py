@@ -60,7 +60,7 @@ class PrivateWebSocketDataCollector:
         # Store latest balance data
         if isinstance(balance_data, AssetBalance):
             self.latest_balances[balance_data.asset] = {
-                "free": balance_data.free,
+                "free": balance_data.available,
                 "locked": balance_data.locked,
                 "total": balance_data.total,
                 "timestamp": time.time()
@@ -263,7 +263,7 @@ class WebSocketPrivateIntegrationTest:
                     ])
                     quality_check["sample_data"] = {
                         "asset": data.asset,
-                        "free": data.free,
+                        "free": data.available,
                         "locked": data.locked,
                         "total": data.total
                     }

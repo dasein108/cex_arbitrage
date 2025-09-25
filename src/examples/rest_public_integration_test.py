@@ -30,7 +30,7 @@ from exchanges.structs.types import AssetName
 from config.config_manager import HftConfig
 from exchanges.structs import ExchangeEnum
 from exchanges.integrations.mexc.public_exchange import MexcPublicExchange
-from exchanges.integrations.gateio.public_exchange import GateioPublicPublicExchange
+from exchanges.integrations.gateio.public_exchange import GateioPublicExchange
 from examples.integration_test_framework import (
     IntegrationTestRunner, TestCategory, TestStatus, EXIT_CODE_SUCCESS, EXIT_CODE_FAILED_TESTS, EXIT_CODE_ERROR,
     EXIT_CODE_CONFIG_ERROR
@@ -53,7 +53,7 @@ class RestPublicIntegrationTest:
         if exchange_name.upper() == "MEXC_spt":
             return MexcPublicExchange(config=config)
         elif exchange_name.upper() == "GATEIO_spot":
-            return GateioPublicPublicExchange(config=config)
+            return GateioPublicExchange(config=config)
         else:
             raise ValueError(f"Unsupported exchange: {exchange_name}")
     

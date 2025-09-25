@@ -72,7 +72,7 @@ async with exchange.session([Symbol(base=AssetName("BTC"), quote=AssetName("USDT
     # Check account balances
     balances = await mexc.get_fresh_balances()
     btc_balance = mexc.get_asset_balance(AssetName("BTC"))
-    print(f"BTC Balance: {btc_balance.free}")
+    print(f"BTC Balance: {btc_balance.available}")
 ```
 
 #### Performance Features

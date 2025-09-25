@@ -83,7 +83,7 @@ class MexcPrivateSpotRest(PrivateSpotRest):
             if float(mexc_balance.free) > 0 or float(mexc_balance.locked) > 0:
                 balance = AssetBalance(
                     asset=AssetName(mexc_balance.asset),
-                    free=float(mexc_balance.free),
+                    available=float(mexc_balance.free),
                     locked=float(mexc_balance.locked)
                 )
                 balances.append(balance)

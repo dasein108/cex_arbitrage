@@ -35,7 +35,7 @@ sys.path.insert(0, str(src_path))
 from exchanges.structs import ExchangeEnum, Symbol, SymbolInfo
 from config.config_manager import HftConfig
 from exchanges.integrations.mexc.public_exchange import MexcPublicExchange
-from exchanges.integrations.gateio.public_exchange import GateioPublicPublicExchange
+from exchanges.integrations.gateio.public_exchange import GateioPublicExchange
 from exchanges.integrations.gateio.public_futures_exchange import GateioPublicFuturesExchange
 
 # Import existing analysis components
@@ -124,7 +124,7 @@ class SymbolDiscoveryService:
         if exchange_enum == ExchangeEnum.MEXC:
             return MexcPublicExchange(config=exchange_config)
         elif exchange_enum == ExchangeEnum.GATEIO:
-            return GateioPublicPublicExchange(config=exchange_config)
+            return GateioPublicExchange(config=exchange_config)
         elif exchange_enum == ExchangeEnum.GATEIO_FUTURES:
             return GateioPublicFuturesExchange(config=exchange_config)
         else:

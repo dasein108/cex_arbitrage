@@ -241,13 +241,263 @@ pip install pytest pytest-asyncio black ruff mypy
 # Run the architecture skeleton
 python PRD/arbitrage_engine_architecture_python_skeleton.py
 
-# Run tests (when implemented)
-pytest
+# Run tests
+pytest tests/
 
 # Code formatting
 black src/
 ruff check src/
 ```
+
+## Testing Framework
+
+### **Integration Test Suite for Exchange Validation**
+
+The system includes a comprehensive integration test framework designed for **validating existing exchanges** and **testing new exchange integrations** like Binance. The framework provides HFT-compliant performance validation, comprehensive API coverage, and AI-agent compatible reporting.
+
+#### **Test Categories**
+
+**1. REST API Integration Tests** (`tests/integration/rest/`)
+- **Public API Tests**: Market data, orderbooks, server time, exchange info
+- **Private API Tests**: Trading operations, balances, order management
+- **Performance Validation**: Sub-50ms latency requirements, HFT compliance
+- **Data Quality Validation**: Orderbook ordering, spread validation, trade data integrity
+
+**2. WebSocket Integration Tests** (`tests/integration/websocket/`)
+- **Public Streaming Tests**: Real-time orderbook updates, trade streams
+- **Private Streaming Tests**: Order updates, balance changes, execution reports
+- **Connection Stability**: Reconnection handling, message throughput validation
+- **Message Processing**: Parsing accuracy, latency measurement
+
+**3. Exchange Compliance Tests** (`tests/integration/compliance/`)
+- **Interface Compliance**: Validates adherence to unified interface standards
+- **Performance Benchmarks**: Latency, throughput, memory usage validation
+- **Error Handling**: Exception mapping, retry logic, graceful degradation
+
+#### **Running Integration Tests**
+
+```bash
+# Run all integration tests
+pytest tests/integration/ -v
+
+# Test specific exchange (MEXC example)
+pytest tests/integration/rest/test_public_api.py::test_mexc_public_api_integration -v
+
+# Test with performance benchmarks
+pytest tests/integration/ --benchmark-only
+
+# Generate detailed test reports
+pytest tests/integration/ --html=reports/integration_report.html
+
+# Run tests with HFT compliance validation
+RUN_PERFORMANCE_TESTS=1 pytest tests/integration/ -v
+
+# Parametrized testing across multiple exchanges
+pytest tests/integration/rest/test_public_api.py::test_exchange_public_api_compliance -v
+```
+
+#### **Test Configuration and Environment Variables**
+
+```bash
+# Enable integration tests (required for CI/CD)
+export RUN_INTEGRATION_TESTS=1
+
+# Enable performance tests and HFT compliance validation
+export RUN_PERFORMANCE_TESTS=1
+
+# Set timeout for long-running tests
+export TEST_TIMEOUT=60
+
+# Exchange-specific credentials (for private API tests)
+export MEXC_API_KEY="your_api_key"
+export MEXC_SECRET_KEY="your_secret_key"
+export GATEIO_API_KEY="your_api_key" 
+export GATEIO_SECRET_KEY="your_secret_key"
+```
+
+#### **Adding Tests for New Exchanges (e.g., Binance)**
+
+**Step 1: Create Exchange-Specific Test Configuration**
+
+```python
+# tests/integration/exchanges/binance/conftest.py
+import pytest
+from exchanges.integrations.binance.public_exchange import BinancePublicExchange
+from config.config_manager import HftConfig
+
+@pytest.fixture
+def binance_public_exchange():
+    """Fixture for Binance public exchange testing."""
+    config = HftConfig().get_exchange_config('binance')
+    return BinancePublicExchange(config=config)
+
+@pytest.fixture 
+def binance_test_symbols():
+    """Binance-specific test symbols."""
+    return [
+        Symbol(base=AssetName('BTC'), quote=AssetName('USDT'), is_futures=False),
+        Symbol(base=AssetName('ETH'), quote=AssetName('USDT'), is_futures=False),
+        Symbol(base=AssetName('BNB'), quote=AssetName('USDT'), is_futures=False),
+    ]
+```
+
+**Step 2: Add Exchange to Parameterized Tests**
+
+```python
+# tests/integration/rest/test_public_api.py
+@pytest.mark.parametrize("exchange", ["mexc_spot", "gateio_spot", "binance_spot"])
+async def test_exchange_public_api_compliance(exchange):
+    """Automatically tests all supported exchanges."""
+    test_suite = PublicAPIIntegrationTest(exchange)
+    await test_suite.run_all_tests(timeout_seconds=30)
+    
+    report = test_suite.test_runner.generate_report()
+    assert report.compliance_status["overall_compliant"]
+```
+
+**Step 3: Create Exchange Implementation Tests**
+
+```python
+# tests/integration/exchanges/binance/test_binance_public.py
+import pytest
+from tests.integration_test_framework import IntegrationTestRunner, TestCategory
+
+@pytest.mark.asyncio
+@pytest.mark.integration
+async def test_binance_specific_features():
+    """Test Binance-specific API features."""
+    test_runner = IntegrationTestRunner("BINANCE", "BINANCE_SPECIFIC_FEATURES")
+    
+    # Test Binance-specific endpoints
+    await test_runner.run_test_with_timeout(
+        test_binance_klines_validation,
+        "binance_klines_intervals",
+        TestCategory.REST_PUBLIC,
+        timeout_seconds=30
+    )
+    
+    report = test_runner.generate_report()
+    assert report.overall_status == TestStatus.PASSED
+```
+
+**Step 4: Update Factory Registration**
+
+```python
+# src/exchanges/integrations/binance/__init__.py
+from exchanges.structs.types import ExchangeName
+
+# Register Binance in the factory system
+EXCHANGE_NAME = ExchangeName.BINANCE
+
+def create_binance_public_exchange(config, symbols=None, logger=None):
+    from .public_exchange import BinancePublicExchange
+    return BinancePublicExchange(config=config, symbols=symbols, logger=logger)
+
+def create_binance_private_exchange(config, symbols=None, logger=None):
+    from .private_exchange import BinancePrivateExchange  
+    return BinancePrivateExchange(config=config, symbols=symbols, logger=logger)
+```
+
+#### **Test Framework Features**
+
+**1. HFT Performance Compliance Validation**
+- Automatic latency measurement and validation against HFT thresholds
+- Performance scoring system with configurable targets
+- Memory usage tracking and validation
+- Throughput measurement for high-frequency operations
+
+**2. Comprehensive Error Handling Testing**
+- Network failure simulation and recovery validation
+- Rate limiting behavior verification
+- Authentication and authorization error handling
+- Graceful degradation under adverse conditions
+
+**3. AI-Agent Compatible Reporting**
+- Structured JSON output for automated analysis
+- Performance metrics collection and aggregation
+- Compliance status tracking and validation
+- Detailed test execution reports with timing data
+
+**4. Data Quality Validation**
+- Orderbook integrity checking (proper ordering, positive prices/quantities)
+- Trade data validation (timestamp accuracy, price/quantity validation)
+- Symbol information verification (precision, trading rules)
+- Real-time data consistency validation
+
+#### **Performance Benchmarking**
+
+**Benchmark Test Execution:**
+```bash
+# Run performance benchmarks for specific exchange
+pytest tests/integration/performance/test_exchange_benchmarks.py::test_mexc_latency_benchmark -v
+
+# Generate performance comparison report
+python scripts/generate_performance_report.py --exchanges mexc,gateio,binance
+
+# Validate HFT compliance across all exchanges
+pytest tests/integration/compliance/test_hft_compliance.py -v
+```
+
+**Performance Targets for New Exchanges:**
+- **REST API Latency**: <50ms end-to-end for market data requests
+- **WebSocket Processing**: <100ms for message parsing and processing
+- **Connection Stability**: >99.5% uptime over 24-hour periods  
+- **Throughput**: Process 1000+ messages/second sustained
+- **Memory Usage**: <100MB memory footprint per exchange instance
+
+#### **Continuous Integration Integration**
+
+**GitHub Actions Configuration:**
+```yaml
+# .github/workflows/integration_tests.yml
+name: Exchange Integration Tests
+on: [push, pull_request]
+
+jobs:
+  integration-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+      - name: Run Integration Tests
+        env:
+          RUN_INTEGRATION_TESTS: 1
+          RUN_PERFORMANCE_TESTS: 1
+        run: pytest tests/integration/ --html=reports/integration.html
+      - name: Upload Test Results
+        uses: actions/upload-artifact@v3
+        with:
+          name: integration-test-results
+          path: reports/
+```
+
+#### **Debugging and Troubleshooting**
+
+**Debug Mode Testing:**
+```bash
+# Run tests with detailed logging
+pytest tests/integration/ -v -s --log-cli-level=DEBUG
+
+# Test single exchange with timeout extension
+pytest tests/integration/rest/test_public_api.py::test_mexc_public_api_integration -v -s --timeout=120
+
+# Generate detailed failure reports
+pytest tests/integration/ --tb=long --html=reports/debug_report.html
+```
+
+**Common Integration Issues:**
+1. **API Key Configuration**: Ensure environment variables are properly set
+2. **Network Timeouts**: Adjust timeout values for slower exchanges
+3. **Rate Limiting**: Implement proper backoff strategies in test execution
+4. **Symbol Mapping**: Verify symbol format conversion between unified and exchange-specific formats
+5. **WebSocket Connection**: Validate WebSocket URL endpoints and authentication
+
+See **`/tasks/INTEGRATION_TEST_FRAMEWORK_IMPLEMENTATION.md`** for complete implementation details and development guidelines.
 
 ## Configuration
 

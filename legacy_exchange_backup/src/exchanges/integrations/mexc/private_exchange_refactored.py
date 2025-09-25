@@ -261,7 +261,7 @@ class MexcPrivateCompositePrivateExchange(AbstractPrivateExchange):
         """Convert MEXC balance to unified AssetBalance."""
         return AssetBalance(
             asset=mexc_balance.get('asset', ''),
-            free=float(mexc_balance.get('free', 0)),
+            available=float(mexc_balance.get('free', 0)),
             locked=float(mexc_balance.get('locked', 0))
         )
     

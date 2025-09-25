@@ -78,7 +78,7 @@ class GateioPrivateSpotWebsocket(PrivateSpotWebsocket):
 
     async def on_balance_update(self, balances: Dict[AssetName, AssetBalance]):
         """Gate.io-specific balance update handler."""
-        non_zero_balances = [b for b in balances.values() if b.free > 0 or b.locked > 0]
+        non_zero_balances = [b for b in balances.values() if b.available > 0 or b.locked > 0]
         self.logger.info(f"Gate.io balance update: {len(non_zero_balances)} assets with non-zero balances")
 
     async def on_trade_update(self, trade: Trade):

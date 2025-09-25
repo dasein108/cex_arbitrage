@@ -331,17 +331,17 @@ class OpportunityDetector:
 ```python
 class MinimalOrderExecutor:
     """High-performance execution engine for minimal order arbitrage"""
-    
+
     def __init__(self, exchanges: Dict[str, ArbitrageExchangeInterface]):
         self.exchanges = exchanges
         self.position_reconciler = PositionReconciler(exchanges)
         self.performance_monitor = ExecutionMonitor()
-        
+
     async def execute_arbitrage(self, opportunity: SizedOpportunity) -> ExecutionResult:
         """Execute arbitrage opportunity with full reconciliation"""
         execution_id = f"arb_{int(time.time() * 1000)}"
         start_time = time.time()
-        
+
         try:
             # Phase 1: Pre-execution validation
             validation = await self._validate_execution(opportunity)
@@ -357,47 +357,47 @@ class MinimalOrderExecutor:
                     failure_reason=validation.reason,
                     timestamp=start_time
                 )
-            
+
             # Phase 2: Simultaneous order placement
             buy_exchange = self.exchanges[opportunity.buy_exchange]
             sell_exchange = self.exchanges[opportunity.sell_exchange]
-            
+
             buy_order_task = buy_exchange.place_market_order(
                 symbol=opportunity.symbol,
                 side=Side.BUY,
                 amount=opportunity.order_amount
             )
-            
+
             sell_order_task = sell_exchange.place_market_order(
                 symbol=opportunity.symbol,
                 side=Side.SELL,
                 amount=opportunity.order_amount
             )
-            
+
             # Execute simultaneously for minimal latency
             buy_order, sell_order = await asyncio.gather(
                 buy_order_task,
                 sell_order_task,
                 return_exceptions=True
             )
-            
+
             # Phase 3: Handle execution results
             if isinstance(buy_order, Exception) or isinstance(sell_order, Exception):
                 # Partial execution handling
                 return await self._handle_partial_execution(
                     execution_id, opportunity, buy_order, sell_order, start_time
                 )
-            
+
             # Phase 4: Calculate realized profit
             realized_profit = self._calculate_realized_profit(buy_order, sell_order)
-            
+
             # Phase 5: Position reconciliation
             reconciliation = await self.position_reconciler.reconcile_execution(
                 buy_order, sell_order
             )
-            
+
             execution_latency = (time.time() - start_time) * 1000  # milliseconds
-            
+
             result = ExecutionResult(
                 execution_id=execution_id,
                 opportunity=opportunity,
@@ -409,12 +409,12 @@ class MinimalOrderExecutor:
                 failure_reason=None,
                 timestamp=start_time
             )
-            
+
             # Track performance metrics
             await self.performance_monitor.track_execution(result)
-            
+
             return result
-            
+
         except Exception as e:
             return ExecutionResult(
                 execution_id=execution_id,
@@ -427,29 +427,29 @@ class MinimalOrderExecutor:
                 failure_reason=str(e),
                 timestamp=start_time
             )
-    
+
     async def _validate_execution(self, opportunity: SizedOpportunity) -> ValidationResult:
         """Pre-execution validation checks"""
         # Check available balances
         buy_exchange = self.exchanges[opportunity.buy_exchange]
         sell_exchange = self.exchanges[opportunity.sell_exchange]
-        
+
         # Need quote currency (USDT) on buy exchange
         buy_balance = await buy_exchange.get_asset_balance(opportunity.symbol.quote)
-        if not buy_balance or buy_balance.free < opportunity.quote_amount:
+        if not buy_balance or buy_balance.available < opportunity.quote_amount:
             return ValidationResult(
                 approved=False,
                 reason=f"Insufficient {opportunity.symbol.quote} balance on {opportunity.buy_exchange}"
             )
-        
+
         # Need exchanges currency on sell exchange
         sell_balance = await sell_exchange.get_asset_balance(opportunity.symbol.base)
-        if not sell_balance or sell_balance.free < opportunity.order_amount:
+        if not sell_balance or sell_balance.available < opportunity.order_amount:
             return ValidationResult(
                 approved=False,
                 reason=f"Insufficient {opportunity.symbol.base} balance on {opportunity.sell_exchange}"
             )
-        
+
         return ValidationResult(approved=True, reason=None)
 ```
 

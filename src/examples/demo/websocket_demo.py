@@ -285,10 +285,10 @@ class WebSocketDemo(ExchangeDemoBase, WebSocketDemoMixin):
             self.logger.info(f"💰 Current Balances ({len(balances)} assets)")
             for asset, balance in list(balances.items())[:5]:  # Show first 5
                 self.logger.info("Asset balance",
-                               asset=asset,
-                               free=balance.free,
-                               locked=balance.locked,
-                               total=balance.total)
+                                 asset=asset,
+                                 free=balance.available,
+                                 locked=balance.locked,
+                                 total=balance.total)
     
     async def _handle_order_update(self, order) -> None:
         """Handle private order updates."""

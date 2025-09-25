@@ -30,7 +30,7 @@ async def check_get_account_balance(exchange: PrivateSpotRest, exchange_name: st
         # Show first 5 non-zero balances
         for i, balance in enumerate(result[:5]):
             print(f"Balance {i+1}: {balance.asset}")
-            print(f"  Free: {balance.free}")
+            print(f"  Free: {balance.available}")
             print(f"  Locked: {balance.locked}")
             print(f"  Total: {balance.total}")
             
@@ -47,7 +47,7 @@ async def check_get_asset_balance(exchange: PrivateSpotRest, exchange_name: str)
         result = await exchange.get_asset_balance(asset)
         print(f"Asset: {asset}")
         if result:
-            print(f"Free: {result.free}")
+            print(f"Free: {result.available}")
             print(f"Locked: {result.locked}")
             print(f"Total: {result.total}")
         else:

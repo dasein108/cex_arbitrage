@@ -36,7 +36,7 @@ from config.config_manager import HftConfig
 from exchanges.structs import ExchangeEnum, Symbol, Kline, AssetName
 from exchanges.structs.enums import KlineInterval
 from exchanges.integrations.mexc.public_exchange import MexcPublicExchange
-from exchanges.integrations.gateio.public_exchange import GateioPublicPublicExchange
+from exchanges.integrations.gateio.public_exchange import GateioPublicExchange
 from exchanges.integrations.gateio.public_futures_exchange import GateioPublicFuturesExchange
 
 
@@ -318,7 +318,7 @@ class CandlesDownloader:
         if exchange == ExchangeEnum.MEXC:
             return MexcPublicExchange(config=config)
         elif exchange == ExchangeEnum.GATEIO:
-            return GateioPublicPublicExchange(config=config)
+            return GateioPublicExchange(config=config)
         elif exchange == ExchangeEnum.GATEIO_FUTURES:
             return GateioPublicFuturesExchange(config=config)
         else:

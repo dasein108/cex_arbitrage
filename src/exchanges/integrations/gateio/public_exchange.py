@@ -20,7 +20,7 @@ from infrastructure.networking.websocket.structs import ConnectionState
 from infrastructure.exceptions.exchange import BaseExchangeError
 from config.structs import ExchangeConfig
 
-class GateioPublicPublicExchange(CompositePublicExchange):
+class GateioPublicExchange(CompositePublicExchange):
     """
     Gate.io Public Exchange - Market Data Only
     

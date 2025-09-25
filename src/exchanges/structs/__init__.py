@@ -1,5 +1,5 @@
 from .common import Symbol, OrderBookEntry, OrderBook, Ticker, Trade, Kline, Position, Order, BookTicker, SymbolInfo, SymbolsInfo
-from .enums import ExchangeEnum, Side, OrderType, OrderStatus, WithdrawalStatus
+from .enums import ExchangeEnum, Side, OrderType, OrderStatus, WithdrawalStatus, TimeInForce
 from .types import OrderId, AssetName, ExchangeName
 
 __all__ = [
@@ -21,5 +21,6 @@ __all__ = [
     "BookTicker",
     "SymbolInfo",
     "SymbolsInfo",
-    "WithdrawalStatus"
+    "WithdrawalStatus",
+    "TimeInForce"
 ]

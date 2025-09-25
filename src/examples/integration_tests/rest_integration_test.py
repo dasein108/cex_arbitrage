@@ -227,12 +227,12 @@ class RestIntegrationTest(IntegrationTestBase, RestIntegrationTestMixin):
             non_zero_balances = [
                 {
                     "asset": balance.asset,
-                    "free": balance.free,
+                    "free": balance.available,
                     "locked": balance.locked,
                     "total": balance.total,
                     "validation": self.validate_common_fields(balance, ["asset", "free", "locked"])
                 }
-                for balance in result[:5] if balance.free > 0 or balance.locked > 0
+                for balance in result[:5] if balance.available > 0 or balance.locked > 0
             ]
             
             return {

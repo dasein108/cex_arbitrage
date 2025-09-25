@@ -274,7 +274,7 @@ class GateioPrivateCompositePrivateExchange(AbstractPrivateExchange):
         """Convert Gate.io balance to unified AssetBalance.""" 
         return AssetBalance(
             asset=gate_balance.get('currency', ''),
-            free=float(gate_balance.get('available', 0)),
+            available=float(gate_balance.get('available', 0)),
             locked=float(gate_balance.get('locked', 0))
         )
     

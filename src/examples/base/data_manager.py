@@ -100,13 +100,13 @@ class UnifiedDataManager:
         self.update_counts[asset]["balance"] += 1
         
         # Log balance changes (only non-zero balances)
-        if balance.free > 0 or balance.locked > 0:
+        if balance.available > 0 or balance.locked > 0:
             self.logger.info("💰 Balance update",
-                           exchange=self.exchange_name,
-                           asset=asset,
-                           free=balance.free,
-                           locked=balance.locked,
-                           total=balance.total)
+                             exchange=self.exchange_name,
+                             asset=asset,
+                             free=balance.available,
+                             locked=balance.locked,
+                             total=balance.total)
 
     async def handle_book_ticker_update(self, book_ticker: BookTicker) -> None:
         """Handle book ticker updates and collect metrics."""
@@ -190,7 +190,7 @@ class UnifiedDataManager:
         """Get only balances with non-zero amounts."""
         return {
             asset: balance for asset, balance in self.balances.items()
-            if balance.free > 0 or balance.locked > 0
+            if balance.available > 0 or balance.locked > 0
         }
     
     def get_recent_connection_events(self, limit: int = 10) -> List[Dict[str, Any]]:

@@ -243,7 +243,7 @@ class RestApiDemo(ExchangeDemoBase, RestDemoMixin):
             for i, balance in enumerate(result[:5]):
                 sample_balances.append({
                     "asset": balance.asset,
-                    "free": balance.free,
+                    "free": balance.available,
                     "locked": balance.locked,
                     "total": balance.total
                 })
@@ -265,7 +265,7 @@ class RestApiDemo(ExchangeDemoBase, RestDemoMixin):
             if result:
                 return {
                     "asset": asset,
-                    "free": result.free,
+                    "free": result.available,
                     "locked": result.locked,
                     "total": result.total,
                     "found": True

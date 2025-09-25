@@ -237,7 +237,7 @@ def rest_to_balance(gateio_balance_data) -> AssetBalance:
     
     return AssetBalance(
         asset=AssetName(gateio_balance_data['currency']),
-        free=float(gateio_balance_data['available']),
+        available=float(gateio_balance_data['available']),
         locked=float(gateio_balance_data['locked'])
     )
 
@@ -260,7 +260,7 @@ def rest_to_balance(gate_balance) -> AssetBalance:
     
     return AssetBalance(
         asset=AssetName(gate_balance.get('currency', '')),
-        free=float(gate_balance.get('available', '0')),  # Gate.io uses 'available' for free
+        available=float(gate_balance.get('available', '0')),  # Gate.io uses 'available' for free
         locked=float(gate_balance.get('locked', '0'))
     )
 
@@ -331,7 +331,7 @@ def ws_to_balance(gate_ws_balance) -> AssetBalance:
     
     return AssetBalance(
         asset=AssetName(gate_ws_balance.get('currency', '')),
-        free=float(gate_ws_balance.get('available', '0')),
+        available=float(gate_ws_balance.get('available', '0')),
         locked=float(gate_ws_balance.get('locked', '0'))
     )
 
@@ -570,7 +570,7 @@ def futures_ws_to_balance(gate_ws_balance) -> AssetBalance:
     
     return AssetBalance(
         asset=AssetName(gate_ws_balance.get('currency', '')),
-        free=float(gate_ws_balance.get('available', '0')),
+        available=float(gate_ws_balance.get('available', '0')),
         locked=float(gate_ws_balance.get('locked', '0'))
     )
 

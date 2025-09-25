@@ -94,10 +94,10 @@ class RestPrivateIntegrationTest:
             # Analyze balance data
             non_zero_balances = []
             for balance in result[:5]:  # Check first 5 balances
-                if balance.free > 0 or balance.locked > 0:
+                if balance.available > 0 or balance.locked > 0:
                     non_zero_balances.append({
                         "asset": balance.asset,
-                        "free": balance.free,
+                        "free": balance.available,
                         "locked": balance.locked,
                         "total": balance.total,
                         "has_required_fields": all([
@@ -139,10 +139,10 @@ class RestPrivateIntegrationTest:
             if result:
                 balance_data = {
                     "asset": result.asset,
-                    "free": result.free,
+                    "free": result.available,
                     "locked": result.locked,
                     "total": result.total,
-                    "has_balance": result.free > 0 or result.locked > 0
+                    "has_balance": result.available > 0 or result.locked > 0
                 }
             
             return {

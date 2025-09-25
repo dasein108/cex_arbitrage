@@ -60,7 +60,7 @@ class GateioPrivateFuturesRest(PrivateFuturesRest):
                 total = float(response.get("total", 0))
                 available = float(response.get("available", response.get("free", 0)))
                 locked = max(0.0, total - available)
-                balances.append(AssetBalance(asset=AssetName("USDT"), free=available, locked=locked))
+                balances.append(AssetBalance(asset=AssetName("USDT"), available=available, locked=locked))
             elif isinstance(response, list):
                 # List of assets: try parse entries
                 for item in response:
@@ -69,7 +69,7 @@ class GateioPrivateFuturesRest(PrivateFuturesRest):
                         free = float(item.get("available", item.get("free", 0)))
                         locked = float(item.get("locked", item.get("frozen", 0)))
                         if free + locked > 0:
-                            balances.append(AssetBalance(asset=asset, free=free, locked=locked))
+                            balances.append(AssetBalance(asset=asset, available=free, locked=locked))
                     except Exception:
                         continue
             else:
@@ -88,7 +88,7 @@ class GateioPrivateFuturesRest(PrivateFuturesRest):
             for b in balances:
                 if b.asset == asset:
                     return b
-            return AssetBalance(asset=asset, free=0.0, locked=0.0)
+            return AssetBalance(asset=asset, available=0.0, locked=0.0)
         except Exception as e:
             self.logger.error(f"Failed to get futures asset balance {asset}: {e}")
             raise

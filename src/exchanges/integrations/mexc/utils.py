@@ -236,7 +236,7 @@ def ws_to_balance(mexc_ws_balance) -> AssetBalance:
     
     return AssetBalance(
         asset=AssetName(mexc_ws_balance.asset),
-        free=float(mexc_ws_balance.free),
+        available=float(mexc_ws_balance.available),
         locked=float(mexc_ws_balance.locked)
     )
 
@@ -367,7 +367,7 @@ def rest_to_balance(mexc_rest_balance) -> AssetBalance:
     
     return AssetBalance(
         asset=AssetName(mexc_rest_balance.get('asset', '')),
-        free=float(mexc_rest_balance.get('free', '0')),
+        available=float(mexc_rest_balance.get('free', '0')),
         locked=float(mexc_rest_balance.get('locked', '0'))
     )
 

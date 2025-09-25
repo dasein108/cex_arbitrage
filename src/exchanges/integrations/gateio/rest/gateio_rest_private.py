@@ -151,7 +151,7 @@ class GateioPrivateSpotRest(PrivateSpotRest):
             # Return zero balance if asset not found
             return AssetBalance(
                 asset=asset,
-                free=0.0,
+                available=0.0,
                 locked=0.0
             )
             
