@@ -23,7 +23,8 @@ Performance Targets:
 import time
 import asyncio
 import logging
-from typing import Dict, List, Optional, Set, Callable, Awaitable, Any
+from contextlib import asynccontextmanager
+from typing import Dict, List, Optional, Set, Callable, Awaitable, Any, AsyncIterator
 from dataclasses import dataclass
 
 from exchanges.structs.common import Symbol, OrderBook
@@ -562,3 +563,32 @@ class OrderbookManager:
             self._global_stats['processing_errors'] += 1
             
             return False
+    
+    # Async Context Manager Support
+    
+    async def __aenter__(self) -> 'OrderbookManager':
+        """Async context manager entry - starts orderbook management."""
+        await self.start()
+        return self
+    
+    async def __aexit__(self, exc_type, exc_val, exc_tb) -> None:
+        """Async context manager exit - stops orderbook management gracefully."""
+        await self.stop()
+    
+    @asynccontextmanager
+    async def management_session(self) -> AsyncIterator['OrderbookManager']:
+        """
+        Async context manager for orderbook management sessions.
+        
+        Usage:
+            async with manager.management_session() as orderbook_mgr:
+                # Manager is running with background cleanup
+                orderbook_mgr.add_symbol(symbol)
+                await orderbook_mgr.process_update(symbol, update)
+            # Manager automatically stopped
+        """
+        try:
+            await self.start()
+            yield self
+        finally:
+            await self.stop()

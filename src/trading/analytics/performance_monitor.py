@@ -8,9 +8,10 @@ HFT COMPLIANT: Lock-free metrics collection with minimal overhead (<1μs).
 """
 
 import asyncio
+from contextlib import asynccontextmanager
 from infrastructure.logging import get_logger
 import time
-from typing import Dict, Any, Optional, Callable
+from typing import Dict, Any, Optional, Callable, AsyncIterator
 from trading.arbitrage.types import EngineStatistics, ArbitrageConfig
 
 logger = get_logger('arbitrage.performance_monitor')
@@ -243,3 +244,51 @@ class PerformanceMonitor:
             self._running and
             self.statistics.average_execution_time_ms <= self.config.target_execution_time_ms * 1.5
         )
+    
+    # Async Context Manager Support
+    
+    async def __aenter__(self) -> 'PerformanceMonitor':
+        """Async context manager entry - starts monitoring."""
+        await self.start_async()
+        return self
+    
+    async def __aexit__(self, exc_type, exc_val, exc_tb) -> None:
+        """Async context manager exit - stops monitoring gracefully."""
+        await self.stop()
+    
+    async def start_async(self, statistics_callback: Optional[Callable] = None) -> None:
+        """
+        Async version of start method for context manager usage.
+        
+        Args:
+            statistics_callback: Optional callback to get engine statistics
+        """
+        if self._running:
+            logger.warning("Performance monitor already running")
+            return
+            
+        self.start_time = time.perf_counter()
+        self._running = True
+        self._statistics_callback = statistics_callback
+        self._monitoring_task = asyncio.create_task(self._monitor_loop())
+        logger.info("Performance monitoring started (async)")
+    
+    @asynccontextmanager
+    async def monitoring_session(self, statistics_callback: Optional[Callable] = None) -> AsyncIterator['PerformanceMonitor']:
+        """
+        Async context manager for performance monitoring sessions.
+        
+        Usage:
+            async with monitor.monitoring_session(stats_callback) as perf_monitor:
+                # Monitor is running
+                await some_operations()
+            # Monitor automatically stopped
+        
+        Args:
+            statistics_callback: Optional callback to get engine statistics
+        """
+        try:
+            await self.start_async(statistics_callback)
+            yield self
+        finally:
+            await self.stop()
