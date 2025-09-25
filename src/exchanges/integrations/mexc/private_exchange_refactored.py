@@ -21,16 +21,8 @@ from infrastructure.logging import HFTLoggerInterface
 
 # MEXC specific imports
 from exchanges.integrations.mexc.rest.mexc_rest_private import MexcPrivateSpotRest
-
-
-class MexcOrderValidator:
-    """MEXC specific order validator."""
-    def __init__(self, symbols_info):
-        self.symbols_info = symbols_info
-        
-    def validate_order(self, symbol, side, quantity, price, order_type):
-        # MEXC specific validation logic
-        pass
+from exchanges.integrations.mexc.services.symbol_mapper import MexcSymbol
+from exchanges.integrations.common.validators import MexcOrderValidator
 
 
 class MexcPrivateCompositePrivateExchange(AbstractPrivateExchange):
@@ -62,7 +54,10 @@ class MexcPrivateCompositePrivateExchange(AbstractPrivateExchange):
     
     def _create_order_validator(self) -> MexcOrderValidator:
         """Create MEXC-specific order validator."""
-        return MexcOrderValidator(getattr(self, 'symbols_info', None))
+        return MexcOrderValidator(
+            symbols_info=getattr(self, 'symbols_info', None),
+            logger=self.logger.create_child("validator")
+        )
     
     # ========================================
     # MEXC-Specific Implementations  
@@ -142,8 +137,13 @@ class MexcPrivateCompositePrivateExchange(AbstractPrivateExchange):
                 orderId=str(order_id)
             )
             return True
-        except Exception:
-            # MEXC returns error if order doesn't exist or already filled
+        except (KeyError, ValueError) as e:
+            # Order not found or invalid format
+            self.logger.debug(f"Order cancellation failed - order not found: {e}")
+            return False
+        except Exception as e:
+            # MEXC API error or network issue
+            self.logger.warning(f"Order cancellation failed: {e}")
             return False
     
     async def _get_order_impl(self, order_id: OrderId, symbol: Symbol) -> Optional[Order]:
@@ -207,21 +207,14 @@ class MexcPrivateCompositePrivateExchange(AbstractPrivateExchange):
     
     def _to_mexc_symbol(self, symbol: Symbol) -> str:
         """Convert unified Symbol to MEXC symbol format."""
-        return f"{symbol.base}{symbol.quote}"
+        return MexcSymbol.to_pair(symbol)
     
     def _from_mexc_symbol(self, mexc_symbol: str) -> Optional[Symbol]:
         """Convert MEXC symbol to unified Symbol."""
-        # This would use existing MEXC symbol mapping logic if available
-        # For now, implement basic parsing (this would need proper mapping)
-        if len(mexc_symbol) >= 6:
-            # Try common patterns like BTCUSDT
-            if mexc_symbol.endswith('USDT'):
-                base = mexc_symbol[:-4]
-                return Symbol(base=base, quote='USDT')
-            elif mexc_symbol.endswith('BTC'):
-                base = mexc_symbol[:-3]
-                return Symbol(base=base, quote='BTC')
-        return None
+        try:
+            return MexcSymbol.to_symbol(mexc_symbol)
+        except ValueError:
+            return None
     
     def _to_mexc_side(self, side: Side) -> str:
         """Convert unified Side to MEXC format."""

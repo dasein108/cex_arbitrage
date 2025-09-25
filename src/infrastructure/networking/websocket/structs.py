@@ -71,6 +71,7 @@ class MessageType(IntEnum):
     HEARTBEAT = 999
     ERROR = -1
     SUBSCRIPTION_ERROR = -2
+    OTHER = 888  # For valid but specialized data types (funding rates, mark prices, etc.)
     UNKNOWN = -999
 
 

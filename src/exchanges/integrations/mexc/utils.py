@@ -12,7 +12,7 @@ from exchanges.structs.common import (
     Side, OrderStatus, OrderType, TimeInForce, AssetBalance, Order, Trade, OrderBook, BookTicker
 )
 from exchanges.structs.types import OrderId, AssetName
-from exchanges.structs.enums import KlineInterval
+from exchanges.structs.enums import KlineInterval, WithdrawalStatus
 
 # MEXC -> Unified mappings (these could be module-level constants)
 _MEXC_ORDER_STATUS_MAP = {
@@ -70,6 +70,20 @@ _WS_TYPE_MAPPING = {
     5: OrderType.FILL_OR_KILL,
     6: OrderType.STOP_LIMIT,
     7: OrderType.STOP_MARKET
+}
+
+
+_MEXC_WITHDRAW_STATUS_MAP = {
+    "APPLY": WithdrawalStatus.PENDING,
+    "AUDITING": WithdrawalStatus.PENDING,
+    "WAIT" : WithdrawalStatus.PENDING,
+    "PROCESSING": WithdrawalStatus.PROCESSING,
+    "WAIT_PACKAGING": WithdrawalStatus.PROCESSING,
+    "WAIT_CONFIRM": WithdrawalStatus.PROCESSING,
+    "SUCCESS": WithdrawalStatus.COMPLETED,
+    "FAILED": WithdrawalStatus.FAILED,
+    "CANCEL": WithdrawalStatus.CANCELED,
+    "MANUAL": WithdrawalStatus.MANUAL_REVIEW
 }
 
 # Reverse mappings for unified -> MEXC
@@ -357,6 +371,10 @@ def rest_to_balance(mexc_rest_balance) -> AssetBalance:
         locked=float(mexc_rest_balance.get('locked', '0'))
     )
 
+
+def rest_to_withdrawal_status(mexc_status: str) -> WithdrawalStatus:
+    """Convert MEXC withdrawal status to unified WithdrawalStatus."""
+    return _MEXC_WITHDRAW_STATUS_MAP.get(mexc_status.upper(), WithdrawalStatus.UNKNOWN)
 
 # All utility functions are directly available - no wrapper classes needed  
 # Use direct function calls: to_order_status(), from_side(), etc.

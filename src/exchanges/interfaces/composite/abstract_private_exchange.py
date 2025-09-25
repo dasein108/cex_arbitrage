@@ -10,7 +10,7 @@ exchange-specific customization through template methods.
 """
 
 from abc import ABC, abstractmethod
-from typing import List, Dict, Optional, Any
+from typing import List, Dict, Optional, Any, Protocol, runtime_checkable
 import asyncio
 
 from exchanges.interfaces.composite.base_private_exchange import CompositePrivateExchange
@@ -22,6 +22,14 @@ from exchanges.structs.types import OrderId
 from config.structs import ExchangeConfig
 from infrastructure.logging import HFTLoggerInterface
 from exchanges.interfaces.utils.trading_performance_tracker import TradingPerformanceTracker
+
+
+@runtime_checkable
+class OrderValidatorProtocol(Protocol):
+    """Protocol for order validators."""
+    def validate_order(self, symbol: Symbol, side: Side, quantity: float, price: Optional[float], order_type: OrderType) -> None:
+        """Validate order parameters."""
+        ...
 
 
 class AbstractPrivateExchange(CompositePrivateExchange, ABC):
@@ -114,8 +122,8 @@ class AbstractPrivateExchange(CompositePrivateExchange, ABC):
         pass
     
     @abstractmethod
-    def _create_order_validator(self) -> Any:
-        """Create exchange-specific order validator."""
+    def _create_order_validator(self) -> Optional[OrderValidatorProtocol]:
+        """Create exchange-specific order validator (can return None if not needed)."""
         pass
     
     # ========================================

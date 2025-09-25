@@ -27,10 +27,10 @@ import msgspec
 from exchanges.structs.common import (
     Symbol, Order, AssetBalance,
     AssetInfo, NetworkInfo, TradingFee,
-    WithdrawalRequest, WithdrawalResponse, WithdrawalStatus
+    WithdrawalRequest, WithdrawalResponse
 )
 from exchanges.structs.types import AssetName, OrderId
-from exchanges.structs.enums import TimeInForce
+from exchanges.structs.enums import TimeInForce, WithdrawalStatus
 from exchanges.structs import OrderType, Side
 from infrastructure.networking.http.structs import HTTPMethod
 from exchanges.interfaces.rest.spot.rest_spot_private import PrivateSpotRest
@@ -815,11 +815,6 @@ class GateioPrivateSpotRest(PrivateSpotRest):
             self.logger.error(f"Failed to get withdrawal history: {e}")
             raise BaseExchangeError(500, f"Failed to get withdrawal history: {e}")
 
-
-    def _get_current_timestamp(self) -> int:
-        """Get current timestamp in milliseconds."""
-        import time
-        return int(time.time() * 1000)
 
     async def close(self) -> None:
         """Close the REST client and clean up resources."""

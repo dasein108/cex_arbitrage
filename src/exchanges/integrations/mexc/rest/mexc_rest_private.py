@@ -26,20 +26,21 @@ import msgspec
 
 from exchanges.structs.common import (
     Symbol, Order, AssetBalance,
-    AssetInfo, NetworkInfo, WithdrawalRequest, WithdrawalResponse, WithdrawalStatus
+    AssetInfo, NetworkInfo, WithdrawalRequest, WithdrawalResponse
 )
 from exchanges.structs.types import AssetName, OrderId
-from exchanges.structs.enums import TimeInForce
+from exchanges.structs.enums import TimeInForce, WithdrawalStatus
 from exchanges.structs import OrderType, Side
 from infrastructure.networking.http.structs import HTTPMethod
 from infrastructure.exceptions.exchange import BaseExchangeError
 from exchanges.interfaces.rest.spot.rest_spot_private import PrivateSpotRest
-from exchanges.integrations.mexc.structs.exchange import MexcAccountResponse, MexcOrderResponse
+from exchanges.integrations.mexc.structs.exchange import (MexcAccountResponse, MexcOrderResponse,
+                                                          MexcCurrencyInfoResponse)
 
 # Import direct utility functions
 from exchanges.integrations.mexc.utils import (
     to_pair, from_side, from_order_type, format_quantity, format_price, 
-    from_time_in_force, to_order_status, rest_to_order
+    from_time_in_force, to_order_status, rest_to_order, rest_to_withdrawal_status
 )
 
 
@@ -526,9 +527,8 @@ class MexcPrivateSpotRest(PrivateSpotRest):
                     withdraw_fee=float(network_data.withdrawFee),
                     withdraw_min=float(network_data.withdrawMin),
                     withdraw_max=float(network_data.withdrawMax) if network_data.withdrawMax else None,
-                    confirmations=network_data.minConfirm,
                     contract_address=network_data.contract,
-                    memo_required=None  # MEXC doesn't provide this info
+                    memo=None
                 )
 
                 networks[network_data.network] = network_info
@@ -710,7 +710,7 @@ class MexcPrivateSpotRest(PrivateSpotRest):
             for withdrawal_data in response_data:
                 # Map MEXC status to our enum
                 mexc_status = withdrawal_data.get('status', 0)
-                status = map_mexc_withdrawal_status(mexc_status)
+                status = rest_to_withdrawal_status(mexc_status)
 
                 withdrawal = WithdrawalResponse(
                     withdrawal_id=str(withdrawal_data.get('id', withdrawal_data.get('withdrawOrderId', ''))),
@@ -732,9 +732,3 @@ class MexcPrivateSpotRest(PrivateSpotRest):
         except Exception as e:
             self.logger.error(f"Failed to get withdrawal history: {e}")
             raise BaseExchangeError(500, f"Failed to get withdrawal history: {e}")
-
-
-    def _get_current_timestamp(self) -> int:
-        """Get current timestamp in milliseconds."""
-        import time
-        return int(time.time() * 1000)

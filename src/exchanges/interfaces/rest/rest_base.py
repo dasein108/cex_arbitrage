@@ -1,12 +1,11 @@
 from abc import ABC
 from typing import Optional, TYPE_CHECKING
+import time
 
 from infrastructure.networking.http.utils import create_rest_transport_manager
 from infrastructure.networking.http.structs import HTTPMethod
 
-if TYPE_CHECKING:
-    from config.structs import ExchangeConfig
-# Removed BaseExchangeMapper import - using direct utility functions
+from config.structs import ExchangeConfig
 
 # HFT Logger Integration
 from infrastructure.logging import get_exchange_logger, HFTLoggerInterface, LoggingTimer
@@ -116,3 +115,7 @@ class BaseRestInterface(ABC):
     async def __aexit__(self, exc_type, exc_val, exc_tb):
         """Async context manager exit."""
         await self.close()
+
+    def _get_current_timestamp(self) -> int:
+        """Get current timestamp in milliseconds."""
+        return int(time.time() * 1000)

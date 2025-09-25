@@ -82,3 +82,14 @@ class KlineInterval(IntEnum):
     DAY_1 = 8       # 1d
     WEEK_1 = 9      # 1w/7d
     MONTH_1 = 10    # 1M/30d
+
+
+class WithdrawalStatus(IntEnum):
+    """Withdrawal status enumeration."""
+    PENDING = 1      # Awaiting processing
+    PROCESSING = 2   # Being processed
+    COMPLETED = 3    # Successfully completed
+    FAILED = 4       # Failed/rejected
+    CANCELED = 5     # User canceled
+    MANUAL_REVIEW = 6 # Under manual review
+    UNKNOWN = -1     # Unknown status

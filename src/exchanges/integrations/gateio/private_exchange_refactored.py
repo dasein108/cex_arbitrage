@@ -22,16 +22,8 @@ from infrastructure.logging import HFTLoggerInterface
 
 # Gate.io specific imports
 from exchanges.integrations.gateio.rest.gateio_rest_private import GateioRestPrivate
-
-
-class GateioOrderValidator:
-    """Gate.io specific order validator."""
-    def __init__(self, symbols_info):
-        self.symbols_info = symbols_info
-        
-    def validate_order(self, symbol, side, quantity, price, order_type):
-        # Gate.io specific validation logic
-        pass
+from exchanges.integrations.gateio.services.spot_symbol_mapper import GateioSpotSymbol
+from exchanges.integrations.common.validators import GateioOrderValidator
 
 
 class GateioPrivateCompositePrivateExchange(AbstractPrivateExchange):
@@ -64,7 +56,10 @@ class GateioPrivateCompositePrivateExchange(AbstractPrivateExchange):
     
     def _create_order_validator(self) -> GateioOrderValidator:
         """Create Gate.io-specific order validator."""
-        return GateioOrderValidator(getattr(self, 'symbols_info', None))
+        return GateioOrderValidator(
+            symbols_info=getattr(self, 'symbols_info', None),
+            logger=self.logger.create_child("validator")
+        )
     
     # ========================================
     # Gate.io-Specific Implementations
@@ -150,8 +145,13 @@ class GateioPrivateCompositePrivateExchange(AbstractPrivateExchange):
                 currency_pair=gate_symbol
             )
             return True
-        except Exception:
-            # Gate.io returns error if order doesn't exist or already filled
+        except (KeyError, ValueError) as e:
+            # Order not found or invalid format
+            self.logger.debug(f"Order cancellation failed - order not found: {e}")
+            return False
+        except Exception as e:
+            # Gate.io API error or network issue
+            self.logger.warning(f"Order cancellation failed: {e}")
             return False
     
     async def _get_order_impl(self, order_id: OrderId, symbol: Symbol) -> Optional[Order]:
@@ -218,13 +218,12 @@ class GateioPrivateCompositePrivateExchange(AbstractPrivateExchange):
     
     def _to_gate_symbol(self, symbol: Symbol) -> str:
         """Convert unified Symbol to Gate.io currency pair format."""
-        return f"{symbol.base}_{symbol.quote}"
+        return GateioSpotSymbol.to_pair(symbol)
     
     def _from_gate_symbol(self, gate_symbol: str) -> Optional[Symbol]:
         """Convert Gate.io currency pair to unified Symbol."""
         try:
-            base, quote = gate_symbol.split('_')
-            return Symbol(base=base, quote=quote)
+            return GateioSpotSymbol.to_symbol(gate_symbol)
         except ValueError:
             return None
     

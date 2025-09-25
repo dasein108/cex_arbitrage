@@ -12,6 +12,7 @@ from typing import Dict, Any, Optional, Callable, TypeVar, Awaitable, List
 import time
 from functools import wraps
 import asyncio
+from collections import deque, defaultdict
 
 from infrastructure.logging import HFTLoggerInterface
 from infrastructure.exceptions.exchange import BaseExchangeError
@@ -50,9 +51,11 @@ class TradingPerformanceTracker:
         self._successful_operations = 0
         self._failed_operations = 0
         
-        # Performance metrics storage
-        self._operation_times: Dict[str, List[float]] = {}
-        self._error_counts: Dict[str, int] = {}
+        # Performance metrics storage (using deque for O(1) operations)
+        self._operation_times: Dict[str, deque] = defaultdict(
+            lambda: deque(maxlen=self._max_stored_times)
+        )
+        self._error_counts: Dict[str, int] = defaultdict(int)
         
         # Configuration
         self._max_stored_times = 1000  # Keep recent measurements for averaging
@@ -145,34 +148,24 @@ class TradingPerformanceTracker:
                                  "error_type": type(e).__name__
                              })
             
-            # Re-raise as BaseExchangeError if requested
+            # Re-raise as BaseExchangeError if requested, otherwise re-raise original
             if raise_on_error:
                 raise BaseExchangeError(f"{operation_name} failed: {e}") from e
-            
-            raise
+            else:
+                raise
     
     def _record_operation_time(self, operation_name: str, execution_time_ms: float) -> None:
-        """Record execution time for operation."""
-        if operation_name not in self._operation_times:
-            self._operation_times[operation_name] = []
-        
-        times = self._operation_times[operation_name]
-        times.append(execution_time_ms)
-        
-        # Keep only recent measurements
-        if len(times) > self._max_stored_times:
-            times.pop(0)
+        """Record execution time for operation (O(1) with deque)."""
+        # deque with maxlen automatically handles size management
+        self._operation_times[operation_name].append(execution_time_ms)
     
     def _record_operation_error(self, operation_name: str) -> None:
         """Record error count for operation."""
-        if operation_name not in self._error_counts:
-            self._error_counts[operation_name] = 0
-        
         self._error_counts[operation_name] += 1
     
     def get_operation_stats(self, operation_name: str) -> Dict[str, Any]:
         """Get performance statistics for specific operation."""
-        times = self._operation_times.get(operation_name, [])
+        times = list(self._operation_times.get(operation_name, deque()))  # Convert deque to list for calculations
         error_count = self._error_counts.get(operation_name, 0)
         
         if not times:

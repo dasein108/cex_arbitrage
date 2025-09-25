@@ -536,7 +536,7 @@ async def test_mexc_websocket_private_integration():
 @pytest.mark.asyncio
 async def test_gateio_websocket_private_integration():
     """Test Gate.io WebSocket private API integration."""
-    test_suite = WebSocketPrivateIntegrationTest("gateio")
+    test_suite = WebSocketPrivateIntegrationTest("mexc_spot")
     try:
         await test_suite.run_all_tests(timeout_seconds=30, monitor_seconds=20)
         report = test_suite.test_runner.generate_report()

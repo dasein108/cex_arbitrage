@@ -13,11 +13,10 @@ Design Principles:
 - HFT-optimized for sub-millisecond processing
 """
 
-from enum import IntEnum
 from msgspec import Struct
 from typing import Optional, Dict, List
 
-from .enums import TimeInForce, KlineInterval, OrderStatus, OrderType, Side
+from .enums import TimeInForce, KlineInterval, OrderStatus, OrderType, Side, WithdrawalStatus
 from .types import ExchangeName, AssetName, OrderId
 
 
@@ -133,6 +132,7 @@ class NetworkInfo(Struct, frozen=True):
     deposit_desc: Optional[str] = None
     withdraw_desc: Optional[str] = None
     address: Optional[str] = None
+    contract_address: Optional[str] = None
     memo: Optional[str] = None
 
 class AssetInfo(Struct, frozen=True):
@@ -261,14 +261,6 @@ class TradingFee(Struct):
         return self.taker_rate * 100
 
 # Withdrawal structures
-
-class WithdrawalStatus(IntEnum):
-    """Withdrawal status enumeration."""
-    PENDING = 1      # Awaiting processing
-    PROCESSING = 2   # Being processed
-    COMPLETED = 3    # Successfully completed
-    FAILED = 4       # Failed/rejected
-    CANCELED = 5     # User canceled
 
 class WithdrawalRequest(Struct, frozen=True):
     """Withdrawal request parameters."""

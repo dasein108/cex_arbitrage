@@ -182,10 +182,9 @@ class PublicSpotWebsocket(ABC):
             elif message.message_type == MessageType.ERROR:
                 # Use channel from ParsedMessage for better error context
                 if message.channel:
-                    self.logger.error(f"WebSocket error on channel '{message.channel}': {message.data}")
-                    traceback.print_exc()
+                    self.logger.error(f"WebSocket error on channel '{message.channel}': {message.raw_data}")
                 else:
-                    self.logger.error(f"WebSocket error: {message.data}")
+                    self.logger.error(f"WebSocket error: {message.raw_data}")
                 
         except Exception as e:
             self.logger.error(f"Error handling parsed message: {e}")

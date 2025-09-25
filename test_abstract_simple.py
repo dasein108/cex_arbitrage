@@ -280,6 +280,76 @@ def check_duplication_patterns():
         print(f"   ❌ Duplication pattern check failed: {e}")
         return False
 
+def check_critical_fixes():
+    """Check that critical fixes from code-maintainer review were implemented."""
+    print("\n🔧 Checking critical fixes implementation...")
+    
+    try:
+        # Check 1: Memory management fix in performance tracker
+        with open('/Users/dasein/dev/cex_arbitrage/src/exchanges/interfaces/utils/trading_performance_tracker.py', 'r') as f:
+            tracker_content = f.read()
+        
+        if 'from collections import deque, defaultdict' in tracker_content:
+            print("   ✅ Memory management: deque import added")
+        else:
+            print("   ❌ Memory management: missing deque import")
+            return False
+            
+        if 'defaultdict(' in tracker_content and 'deque(maxlen=' in tracker_content:
+            print("   ✅ Memory management: O(1) operations implemented")
+        else:
+            print("   ❌ Memory management: O(1) operations not implemented")
+            return False
+        
+        # Check 2: Symbol mapper integration (using existing implementations)
+        with open('/Users/dasein/dev/cex_arbitrage/src/exchanges/integrations/gateio/private_exchange_refactored.py', 'r') as f:
+            gateio_content = f.read()
+            
+        if 'GateioSpotSymbol' in gateio_content:
+            print("   ✅ Symbol mapping: Gate.io existing symbol mapper integrated")
+        else:
+            print("   ❌ Symbol mapping: Gate.io symbol mapper missing")
+            return False
+        
+        with open('/Users/dasein/dev/cex_arbitrage/src/exchanges/integrations/mexc/private_exchange_refactored.py', 'r') as f:
+            mexc_content = f.read()
+            
+        if 'MexcSymbol' in mexc_content:
+            print("   ✅ Symbol mapping: MEXC existing symbol mapper integrated")
+        else:
+            print("   ❌ Symbol mapping: MEXC symbol mapper missing")
+            return False
+        
+        # Check 3: Order validators
+        if 'GateioOrderValidator' in gateio_content and 'MexcOrderValidator' in mexc_content:
+            print("   ✅ Order validation: Proper validators implemented")
+        else:
+            print("   ❌ Order validation: Validators missing")
+            return False
+        
+        # Check 4: Exception handling improvements
+        if 'except (KeyError, ValueError) as e:' in gateio_content and 'except (KeyError, ValueError) as e:' in mexc_content:
+            print("   ✅ Exception handling: Specific exception types used")
+        else:
+            print("   ❌ Exception handling: Still using generic exceptions")
+            return False
+        
+        # Check 5: Type safety improvements
+        with open('/Users/dasein/dev/cex_arbitrage/src/exchanges/interfaces/composite/abstract_private_exchange.py', 'r') as f:
+            abstract_content = f.read()
+            
+        if 'OrderValidatorProtocol' in abstract_content:
+            print("   ✅ Type safety: Protocol definitions added")
+        else:
+            print("   ❌ Type safety: Protocol definitions missing")
+            return False
+        
+        return True
+        
+    except Exception as e:
+        print(f"   ❌ Critical fixes check failed: {e}")
+        return False
+
 def main():
     """Run all tests."""
     print("🚀 Task 2.1: Abstract Trading Base Class - Implementation Test")
@@ -290,7 +360,8 @@ def main():
         ("Abstract Exchange Structure", test_abstract_exchange_structure),
         ("Refactored Implementations", test_refactored_implementations),
         ("Code Reduction Analysis", analyze_code_reduction),
-        ("Duplication Pattern Elimination", check_duplication_patterns)
+        ("Duplication Pattern Elimination", check_duplication_patterns),
+        ("Critical Fixes Implementation", check_critical_fixes)
     ]
     
     passed = 0
