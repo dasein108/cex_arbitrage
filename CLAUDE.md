@@ -496,7 +496,7 @@ src/exchanges/services/
 - **[Gate.io Unified Exchange](src/exchanges/integrations/gateio/gateio_unified_exchange.py)** - Complete Gate.io implementation
 
 **Usage Examples**:
-- **[Unified Arbitrage Demo](demo_unified_arbitrage.py)** - Complete arbitrage strategy showcasing market buy + limit sell with real-time event tracking
+- **[Unified Arbitrage Demo](src/examples/demo/demo_unified_arbitrage.py)** - Complete arbitrage strategy showcasing market buy + limit sell with real-time event tracking
 - **[Architecture Test](test_unified_architecture.py)** - Validation of unified exchange creation and interface compliance
 
 ### HFT Logging System Components
