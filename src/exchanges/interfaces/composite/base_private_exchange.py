@@ -11,7 +11,8 @@ from typing import Dict, List, Optional, Any
 from exchanges.structs.common import (
     Symbol, AssetBalance, Order, Position, WithdrawalRequest, WithdrawalResponse, SymbolsInfo
 )
-from exchanges.structs.types import AssetName
+from exchanges.structs.types import AssetName, OrderId
+from exchanges.structs import Side
 from config.structs import ExchangeConfig
 from .base_public_exchange import BaseCompositeExchange
 
@@ -93,7 +94,7 @@ class CompositePrivateExchange(BaseCompositeExchange):
     async def place_limit_order(
         self, 
         symbol: Symbol, 
-        side: str, 
+        side: Side, 
         quantity: float, 
         price: float, 
         **kwargs
@@ -120,7 +121,7 @@ class CompositePrivateExchange(BaseCompositeExchange):
     async def place_market_order(
         self, 
         symbol: Symbol, 
-        side: str, 
+        side: Side, 
         quantity: float, 
         **kwargs
     ) -> Order:
@@ -142,7 +143,7 @@ class CompositePrivateExchange(BaseCompositeExchange):
         pass
 
     @abstractmethod
-    async def cancel_order(self, symbol: Symbol, order_id: str) -> bool:
+    async def cancel_order(self, symbol: Symbol, order_id: OrderId) -> bool:
         """
         Cancel an existing order.
         

@@ -2,29 +2,28 @@
 Gate.io Private Exchange Implementation
 
 HFT-compliant private trading operations with authentication.
-Inherits public market data capabilities and adds trading functionality.
+Utilizes AbstractPrivateExchange for common trading patterns and performance tracking.
 
 HFT COMPLIANCE: Sub-50ms order execution, real-time balance updates.
 """
 
 import logging
-import time
-from typing import List, Dict, Optional
+from typing import List, Dict, Optional, Any
 
-from exchanges.interfaces.composite import CompositePrivateExchange
+from exchanges.interfaces.composite.abstract_private_exchange import AbstractPrivateExchange
 from exchanges.structs.common import (
-    OrderBook, Symbol, SymbolsInfo, AssetBalance, Order, Position,
-    WithdrawalRequest, WithdrawalResponse
+    Symbol, AssetBalance, Order, Position,
+    WithdrawalRequest, WithdrawalResponse, TimeInForce, OrderBook, SymbolsInfo
 )
 from exchanges.structs.types import AssetName, OrderId
 from exchanges.structs import Side
-from exchanges.structs.enums import ExchangeStatus, TimeInForce
-from exchanges.integrations.gateio.public_exchange import GateioPublicPublicExchange
+from exchanges.structs.enums import ExchangeStatus
 from infrastructure.exceptions.exchange import BaseExchangeError
 from config.structs import ExchangeConfig
+from infrastructure.logging import HFTLoggerInterface
 
 
-class GateioPrivateCompositePrivateExchange(CompositePrivateExchange):
+class GateioPrivateCompositePrivateExchange(AbstractPrivateExchange):
     """
     Gate.io Private Exchange - Full Trading Operations
     
