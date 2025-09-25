@@ -36,6 +36,7 @@ from infrastructure.networking.http.structs import HTTPMethod
 from exchanges.interfaces.rest.spot.rest_spot_private import PrivateSpotRest
 from config.structs import ExchangeConfig
 from infrastructure.exceptions.exchange import BaseExchangeError
+from infrastructure.error_handling import RestApiErrorHandler, ErrorContext
 
 # Import direct utility functions
 from exchanges.integrations.gateio.utils import (
@@ -67,6 +68,13 @@ class GateioPrivateSpotRest(PrivateSpotRest):
             from infrastructure.logging import get_exchange_logger
             logger = get_exchange_logger('gateio', 'rest.private')
         self.logger = logger
+        
+        # Initialize composition-based error handler
+        self._rest_error_handler = RestApiErrorHandler(
+            logger=self.logger,
+            max_retries=3,
+            base_delay=1.0
+        )
 
     
     def _handle_gateio_exception(self, status_code: int, message: str) -> BaseExchangeError:
@@ -185,68 +193,79 @@ class GateioPrivateSpotRest(PrivateSpotRest):
         Raises:
             ExchangeAPIError: If order placement fails
         """
-        try:
-            pair = to_pair(symbol)
-            
-            # Build order payload
-            payload = {
-                'currency_pair': pair,
-                'side': from_side(side),
-                'type': from_order_type(order_type)
+        # Use composition pattern for error handling
+        context = ErrorContext(
+            operation="place_order",
+            component="gateio_rest_private",
+            metadata={
+                "symbol": f"{symbol.base}/{symbol.quote}",
+                "side": side.name,
+                "order_type": order_type.name,
+                "amount": amount,
+                "price": price
             }
-            
-            # Set time in force
-            if time_in_force is None:
-                time_in_force = TimeInForce.GTC
-            payload['time_in_force'] = from_time_in_force(time_in_force)
-            
-            # Handle different order configurations
-            if order_type == OrderType.MARKET:
-                if side == Side.BUY:
-                    # Market buy: specify quote quantity
-                    if quote_quantity is None:
-                        if amount is None or price is None:
-                            raise ValueError("Market buy orders require quote_quantity or (amount + price)")
-                        quote_quantity = amount * price
-                    payload['amount'] = format_quantity(quote_quantity)
-                else:
-                    # Market sell: specify exchanges quantity
-                    if amount is None:
-                        raise ValueError("Market sell orders require amount")
-                    payload['amount'] = format_quantity(amount)
+        )
+        
+        async def _place_order_operation():
+            return await self._execute_place_order(symbol, side, order_type, amount, price, quote_quantity, time_in_force, new_order_resp_type)
+        
+        return await self._rest_error_handler.handle_with_retry(
+            operation=_place_order_operation,
+            context=context
+        )
+    
+    async def _execute_place_order(self, symbol: Symbol, side: Side, order_type: OrderType, amount: Optional[float], price: Optional[float], quote_quantity: Optional[float], time_in_force: Optional[TimeInForce], new_order_resp_type) -> Order:
+        """Execute place order without error handling - clean logic"""
+        pair = to_pair(symbol)
+        
+        # Build order payload
+        payload = {
+            'currency_pair': pair,
+            'side': from_side(side),
+            'type': from_order_type(order_type)
+        }
+        
+        # Set time in force
+        if time_in_force is None:
+            time_in_force = TimeInForce.GTC
+        payload['time_in_force'] = from_time_in_force(time_in_force)
+        
+        # Handle different order configurations
+        if order_type == OrderType.MARKET:
+            if side == Side.BUY:
+                # Market buy: specify quote quantity
+                if quote_quantity is None:
+                    if amount is None or price is None:
+                        raise ValueError("Market buy orders require quote_quantity or (amount + price)")
+                    quote_quantity = amount * price
+                payload['amount'] = format_quantity(quote_quantity)
             else:
-                # Limit order: require both price and amount
-                if price is None or amount is None:
-                    raise ValueError("Limit orders require both price and amount")
-                
-                payload['price'] = format_price(price)
+                # Market sell: specify exchanges quantity
+                if amount is None:
+                    raise ValueError("Market sell orders require amount")
                 payload['amount'] = format_quantity(amount)
+        else:
+            # Limit order: require both price and amount
+            if price is None or amount is None:
+                raise ValueError("Limit orders require both price and amount")
             
-            # Add special parameters for specific order types
-            # TODO: fix or remove !
-            # order_params = self._mapper.get_order_params(order_type, time_in_force)
-            # payload.update(order_params)
-            #
-            # Make authenticated request
-            endpoint = '/spot/orders'
-            
-            response_data = await self.request(
-                HTTPMethod.POST,
-                endpoint,
-                data=payload
-            )
-            
-            # Transform Gate.io response to unified Order
-            order = rest_to_order(response_data)
-            
-            self.logger.info(f"Placed {side.name} order: {order.order_id}")
-            return order
-            
-        except Exception as e:
-            import traceback
-            self.logger.error(f"Failed to place order: {e}")
-            self.logger.error(f"Full traceback: {traceback.format_exc()}")
-            raise BaseExchangeError(500, f"Order placement failed: {str(e)}")
+            payload['price'] = format_price(price)
+            payload['amount'] = format_quantity(amount)
+        
+        # Make authenticated request
+        endpoint = '/spot/orders'
+        
+        response_data = await self.request(
+            HTTPMethod.POST,
+            endpoint,
+            data=payload
+        )
+        
+        # Transform Gate.io response to unified Order
+        order = rest_to_order(response_data)
+        
+        self.logger.info(f"Placed {side.name} order: {order.order_id}")
+        return order
     
     async def cancel_order(self, symbol: Symbol, order_id: OrderId) -> Order:
         """
@@ -262,27 +281,42 @@ class GateioPrivateSpotRest(PrivateSpotRest):
         Raises:
             ExchangeAPIError: If order cancellation fails
         """
-        try:
-            pair = to_pair(symbol)
-            endpoint = f'/spot/orders/{order_id}'
-            
-            params = {'currency_pair': pair}
-            
-            response_data = await self.request(
-                HTTPMethod.DELETE,
-                endpoint,
-                params=params
-            )
-            
-            # Transform Gate.io response to unified Order
-            order = rest_to_order(response_data)
-            
-            self.logger.info(f"Cancelled order: {order_id}")
-            return order
-            
-        except Exception as e:
-            self.logger.error(f"Failed to cancel order {order_id}: {e}")
-            raise BaseExchangeError(500, f"Order cancellation failed: {str(e)}")
+        # Use composition pattern for error handling
+        context = ErrorContext(
+            operation="cancel_order",
+            component="gateio_rest_private",
+            metadata={
+                "symbol": f"{symbol.base}/{symbol.quote}",
+                "order_id": order_id
+            }
+        )
+        
+        async def _cancel_order_operation():
+            return await self._execute_cancel_order(symbol, order_id)
+        
+        return await self._rest_error_handler.handle_with_retry(
+            operation=_cancel_order_operation,
+            context=context
+        )
+    
+    async def _execute_cancel_order(self, symbol: Symbol, order_id: OrderId) -> Order:
+        """Execute cancel order without error handling - clean logic"""
+        pair = to_pair(symbol)
+        endpoint = f'/spot/orders/{order_id}'
+        
+        params = {'currency_pair': pair}
+        
+        response_data = await self.request(
+            HTTPMethod.DELETE,
+            endpoint,
+            params=params
+        )
+        
+        # Transform Gate.io response to unified Order
+        order = rest_to_order(response_data)
+        
+        self.logger.info(f"Cancelled order: {order_id}")
+        return order
     
     async def cancel_all_orders(self, symbol: Symbol) -> List[Order]:
         """

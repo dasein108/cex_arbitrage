@@ -52,10 +52,9 @@ class AbstractPrivateExchange(CompositePrivateExchange, ABC):
     
     def __init__(self, 
                  config: ExchangeConfig, 
-                 symbols: List[Symbol], 
                  logger: Optional[HFTLoggerInterface] = None):
         """Initialize abstract private exchange."""
-        super().__init__(config)
+        super().__init__(config, logger=logger)
         
         # Performance tracking
         self._performance_tracker = TradingPerformanceTracker(

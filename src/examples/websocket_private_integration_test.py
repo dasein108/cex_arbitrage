@@ -529,7 +529,7 @@ async def test_mexc_websocket_private_integration():
     try:
         await test_suite.run_all_tests(timeout_seconds=30, monitor_seconds=20)
         report = test_suite.test_runner.generate_report()
-        assert report.overall_status == TestStatus.PASSED, f"Tests failed: {report.summary}"
+        assert report.overall_status == TestStatus.PASSED, f"Tests failed: {report.summary_metrics}"
     except Exception as e:
         pytest.fail(f"MEXC WebSocket private integration test failed: {str(e)}")
 
@@ -540,7 +540,7 @@ async def test_gateio_websocket_private_integration():
     try:
         await test_suite.run_all_tests(timeout_seconds=30, monitor_seconds=20)
         report = test_suite.test_runner.generate_report()
-        assert report.overall_status == TestStatus.PASSED, f"Tests failed: {report.summary}"
+        assert report.overall_status == TestStatus.PASSED, f"Tests failed: {report.summary_metrics}"
     except Exception as e:
         pytest.fail(f"Gate.io WebSocket private integration test failed: {str(e)}")
 

@@ -50,9 +50,9 @@ class RestPublicIntegrationTest:
         
     def _create_exchange_client(self, exchange_name: str, config):
         """Create exchange client using standard constructors."""
-        if exchange_name.upper() == "MEXC":
+        if exchange_name.upper() == "MEXC_spt":
             return MexcPublicExchange(config=config)
-        elif exchange_name.upper() == "GATEIO":
+        elif exchange_name.upper() == "GATEIO_spot":
             return GateioPublicPublicExchange(config=config)
         else:
             raise ValueError(f"Unsupported exchange: {exchange_name}")
@@ -536,7 +536,7 @@ async def test_mexc_rest_public_integration():
     try:
         await test_suite.run_all_tests(timeout_seconds=30)
         report = test_suite.test_runner.generate_report()
-        assert report.overall_status == TestStatus.PASSED, f"Tests failed: {report.summary}"
+        assert report.overall_status == TestStatus.PASSED, f"Tests failed: {report.summary_metrics}"
     except Exception as e:
         pytest.fail(f"MEXC public integration test failed: {str(e)}")
 
@@ -547,7 +547,7 @@ async def test_gateio_rest_public_integration():
     try:
         await test_suite.run_all_tests(timeout_seconds=30)
         report = test_suite.test_runner.generate_report()
-        assert report.overall_status == TestStatus.PASSED, f"Tests failed: {report.summary}"
+        assert report.overall_status == TestStatus.PASSED, f"Tests failed: {report.summary_metrics}"
     except Exception as e:
         pytest.fail(f"Gate.io public integration test failed: {str(e)}")
 

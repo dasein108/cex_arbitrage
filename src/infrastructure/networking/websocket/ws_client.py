@@ -8,6 +8,7 @@ import msgspec
 from infrastructure.exceptions.exchange import BaseExchangeError
 from infrastructure.networking.websocket.structs import ConnectionState
 from config.structs import WebSocketConfig
+from infrastructure.error_handling import WebSocketErrorHandler, ErrorContext
 
 
 class WebsocketClient:
@@ -27,7 +28,7 @@ class WebsocketClient:
         '_state', '_ws', '_loop', '_connection_task', '_reader_task',
         '_reconnect_attempts', '_should_reconnect', '_last_pong', 
         'logger', 'url_name', '_cached_backoff_delays', '_message_count', 
-        '_time_cache', '_connection_handler'
+        '_time_cache', '_connection_handler', '_ws_error_handler'
     )
     
     def __init__(
@@ -64,6 +65,13 @@ class WebsocketClient:
         # Extract name from URL for logging (fallback to class name)
         self.url_name = self.config.url.split('/')[2] if self.config.url else "ws"
         self.logger = logging.getLogger(f"{__name__}.{self.url_name}")
+        
+        # Initialize composition-based error handler
+        self._ws_error_handler = WebSocketErrorHandler(
+            logger=self.logger,
+            max_retries=self.config.max_reconnect_attempts,
+            base_delay=self.config.reconnect_delay
+        )
     
     def _precompute_backoff_delays(self) -> List[float]:
         """Pre-compute exponential backoff delays to avoid power calculations in hot path"""
@@ -240,7 +248,7 @@ class WebsocketClient:
             await self._connection_handler(self._state)
     
     async def _message_reader(self) -> None:
-        """Read and process messages from WebSocket - optimized for high throughput"""
+        """Read and process messages from WebSocket - composition-based error handling"""
         # Performance optimizations: cache frequently accessed values
         message_handler = self._message_handler
         error_handler = self._error_handler
@@ -248,75 +256,80 @@ class WebsocketClient:
         if self.logger.isEnabledFor(logging.DEBUG):
             self.logger.debug("Starting message reader loop")
         
-        try:
+        # Use composition pattern - single error handling entry point
+        context = ErrorContext(
+            operation="websocket_message_reader",
+            component="ws_client",
+            metadata={"url": self.url_name}
+        )
+        
+        # Clean main loop without nested error handling
+        async def _message_reader_operation():
             while self.is_connected:
-                # This is the correct pattern from the working implementation
-                try:
-                    raw_message = await self._ws.recv()
-                    
-                    # Debug: Log message reception
-                    if self.logger.isEnabledFor(logging.DEBUG):
-                        message_preview = str(raw_message)[:100] + "..." if len(str(raw_message)) > 100 else str(raw_message)
-                        self.logger.debug(f"Received WebSocket message: {message_preview}")
+                await self._process_single_message(message_handler, error_handler)
+        
+        # Delegate all error handling to composition handler
+        await self._ws_error_handler.handle_with_retry(
+            operation=_message_reader_operation,
+            context=context,
+            cancellation_handler=self._handle_reader_cancellation
+        )
+    
+    async def _process_single_message(self, message_handler: Optional[Callable], error_handler: Optional[Callable]) -> None:
+        """Process a single WebSocket message - clean, no error handling"""
+        raw_message = await self._ws.recv()
+        
+        # Debug: Log message reception
+        if self.logger.isEnabledFor(logging.DEBUG):
+            message_preview = str(raw_message)[:100] + "..." if len(str(raw_message)) > 100 else str(raw_message)
+            self.logger.debug(f"Received WebSocket message: {message_preview}")
 
-                    # Handle message - direct call to avoid lookup overhead
-                    if message_handler:
-                        await message_handler(raw_message)
-                    else:
-                        self.logger.warning("No message handler configured - message dropped")
-                    
-                except Exception as e:
-                    # Avoid string formatting in hot path - use lazy logging
-                    if self.logger.isEnabledFor(logging.ERROR):
-                        self.logger.error("Error processing message: %s", e)
-                    
-                    if error_handler:
-                        await error_handler(e)
-                
-        except asyncio.CancelledError:
-            if self.logger.isEnabledFor(logging.INFO):
-                self.logger.info("Message reader cancelled")
-        except Exception as e:
-            if self.logger.isEnabledFor(logging.ERROR):
-                self.logger.error("Message reader error: %s", e)
-            if error_handler:
-                await error_handler(e)
+        # Handle message - direct call to avoid lookup overhead
+        if message_handler:
+            await message_handler(raw_message)
+        else:
+            self.logger.warning("No message handler configured - message dropped")
+    
+    async def _handle_reader_cancellation(self, error: asyncio.CancelledError) -> None:
+        """Handle message reader cancellation - clean separation of concerns"""
+        if self.logger.isEnabledFor(logging.INFO):
+            self.logger.info("Message reader cancelled")
     
     async def _handle_connection_error(self, error: Exception) -> None:
-        """Handle connection errors with pre-computed exponential backoff"""
+        """Handle connection errors using composition pattern"""
         await self._update_state(ConnectionState.ERROR)
-
-        # Special handling for WebSocket 1005 errors (abnormal closure)
-        error_str = str(error)
-        if "1005" in error_str or "no status received" in error_str:
-            self.logger.info("WebSocket 1005 error - connection closed abnormally, will reconnect immediately")
-            # Reset reconnect attempts for 1005 errors as they're often network-related
-            self._reconnect_attempts = 0
-
-        if self._reconnect_attempts >= self.config.max_reconnect_attempts:
-            if self.logger.isEnabledFor(logging.ERROR):
-                self.logger.error("Max reconnection attempts reached for %s", self.url_name)
+        
+        # Delegate error handling to composition handler with context
+        context = ErrorContext(
+            operation="websocket_connection_error",
+            component="ws_client",
+            metadata={
+                "url": self.url_name,
+                "reconnect_attempts": self._reconnect_attempts,
+                "max_attempts": self.config.max_reconnect_attempts
+            }
+        )
+        
+        # Use composition handler for unified error processing
+        should_continue = await self._ws_error_handler.handle_error(
+            error=error,
+            context=context,
+            additional_handlers={
+                "state_update": self._update_reconnecting_state,
+                "attempt_tracking": self._track_reconnect_attempt
+            }
+        )
+        
+        if not should_continue:
             self._should_reconnect = False
-            return
-        
-        # Use pre-computed backoff delay - no power calculation needed
-        delay = self._cached_backoff_delays[self._reconnect_attempts]
-        
-        # For 1005 errors, use shorter delay
-        if "1005" in error_str or "no status received" in error_str:
-            delay = min(delay, 2.0)  # Max 2 seconds for 1005 errors
-        
-        self._reconnect_attempts += 1
-
-        # Lazy logging with optimized formatting
-        if self.logger.isEnabledFor(logging.WARNING):
-            self.logger.warning(
-                "Connection error for %s (attempt %d): %s. Reconnecting in %.1fs",
-                self.url_name, self._reconnect_attempts, error, delay
-            )
-        
+    
+    async def _update_reconnecting_state(self) -> None:
+        """Update state to reconnecting - clean separation"""
         await self._update_state(ConnectionState.RECONNECTING)
-        await asyncio.sleep(delay)
+    
+    async def _track_reconnect_attempt(self) -> None:
+        """Track reconnection attempts - clean separation"""
+        self._reconnect_attempts += 1
     
     # Context manager support
     

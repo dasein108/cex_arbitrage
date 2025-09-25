@@ -32,12 +32,13 @@ from exchanges.structs.types import AssetName
 from exchanges.structs.enums import TimeInForce
 from exchanges.structs import OrderType, Side
 from config.config_manager import HftConfig
-from examples.utils.rest_api_factory import get_exchange_rest_instance
+from exchanges.transport_factory import create_rest_client
 from exchanges.structs import ExchangeEnum
 from examples.integration_test_framework import (
     IntegrationTestRunner, TestCategory, TestStatus, EXIT_CODE_SUCCESS, EXIT_CODE_FAILED_TESTS, EXIT_CODE_ERROR,
     EXIT_CODE_CONFIG_ERROR
 )
+from exchanges.utils.exchange_utils import get_exchange_enum
 
 
 class RestPrivateIntegrationTest:
@@ -61,7 +62,7 @@ class RestPrivateIntegrationTest:
             if not config.credentials.api_key or not config.credentials.secret_key:
                 raise ValueError(f"{self.exchange_name} API credentials are required for private API testing")
             
-            self.exchange = get_exchange_rest_instance(self.exchange_name.lower(), is_private=True, config=config)
+            self.exchange = create_rest_client(get_exchange_enum(self.exchange_name), is_private=True, config=config)
             
             return {
                 "setup_successful": True,
@@ -491,7 +492,7 @@ async def test_mexc_rest_private_integration():
     try:
         await test_suite.run_all_tests(timeout_seconds=30)
         report = test_suite.test_runner.generate_report()
-        assert report.overall_status == TestStatus.PASSED, f"Tests failed: {report.summary}"
+        assert report.overall_status == TestStatus.PASSED, f"Tests failed: {report.summary_metrics}"
     except Exception as e:
         pytest.fail(f"MEXC integration test failed: {str(e)}")
 
@@ -502,7 +503,7 @@ async def test_gateio_rest_private_integration():
     try:
         await test_suite.run_all_tests(timeout_seconds=30)
         report = test_suite.test_runner.generate_report()
-        assert report.overall_status == TestStatus.PASSED, f"Tests failed: {report.summary}"
+        assert report.overall_status == TestStatus.PASSED, f"Tests failed: {report.summary_metrics}"
     except Exception as e:
         pytest.fail(f"Gate.io integration test failed: {str(e)}")
 

@@ -44,6 +44,7 @@ from .recovery import RecoveryManager
 from .aggregator import MarketDataAggregator
 
 from exchanges.interfaces.composite.base_private_exchange import CompositePrivateExchange
+from infrastructure.error_handling import TradingErrorHandler, ErrorContext
 from infrastructure.exceptions.exchange import ArbitrageEngineError
 
 # HFT Logger Integration
@@ -131,6 +132,13 @@ class ArbitrageEngine:
         # HFT IMPROVEMENT: Initialize OpportunityProcessor for callback handling
         from .opportunity_processor import OpportunityProcessor
         self.opportunity_processor = OpportunityProcessor(self.config, self.statistics)
+        
+        # Initialize composition-based error handler for trading operations
+        self._trading_error_handler = TradingErrorHandler(
+            logger=self.logger,
+            max_retries=2,  # Conservative for trading safety
+            base_delay=0.5  # Fast recovery for HFT
+        )
         
         # Log comprehensive initialization with structured data
         self.logger.info("ArbitrageEngine initialized",
@@ -406,106 +414,90 @@ class ArbitrageEngine:
         
         logger.info(f"Executing arbitrage opportunity: {opportunity.opportunity_id}")
         
-        try:
-            # TODO: Pre-execution validation
-            # - Verify opportunity is still valid (not stale)
-            # - Check real-time prices match opportunity parameters
-            # - Validate sufficient balances on both exchanges
-            # - Perform risk management checks
-            # - Verify market depth is still adequate
-            
-            # TODO: State management
-            # - Update state controller to EXECUTING
-            # - Record execution start time and parameters
-            # - Set up execution timeout monitoring
-            # - Initialize position tracking
-            
-            # TODO: Atomic order execution
-            # - Place spot market order on buy exchange
-            # - Simultaneously place futures hedge order (if applicable)
-            # - Monitor both orders for fill confirmation
-            # - Handle partial fills and order updates
-            # - Ensure atomic completion or rollback
-            
-            # TODO: Execution monitoring
-            # - Track execution progress in real-time
-            # - Monitor for execution timeouts
-            # - Handle partial fills and slippage
-            # - Coordinate cross-exchange execution timing
-            
-            # TODO: Post-execution validation
-            # - Verify all orders filled successfully
-            # - Confirm hedge ratios are correct
-            # - Calculate actual profit vs estimated
-            # - Record positions and update tracking
-            
-            # TODO: Error handling and recovery
-            # - Detect execution failures or timeouts
-            # - Initiate recovery procedures for partial fills
-            # - Close positions if recovery fails
-            # - Alert for manual intervention if needed
-            
-            # Placeholder execution result
-            execution_time_ms = int((asyncio.get_event_loop().time() - execution_start_time) * 1000)
-            
-            # TODO: Create comprehensive ExecutionResult
-            result = ExecutionResult(
-                execution_id=f"exec_{opportunity.opportunity_id}",
-                opportunity_id=opportunity.opportunity_id,
-                final_state=ArbitrageState.COMPLETED,
-                total_execution_time_ms=execution_time_ms,
-                detection_to_execution_ms=0,  # TODO: Calculate
-                order_placement_time_ms=0,    # TODO: Calculate
-                fill_confirmation_time_ms=0,  # TODO: Calculate
-                positions_created=[],         # TODO: Populate
-                realized_profit=0.0,          # TODO: Calculate
-                total_fees_paid=0.0,          # TODO: Calculate
-                slippage_cost=0.0,            # TODO: Calculate
-                orders_placed=0,              # TODO: Track
-                orders_filled=0,              # TODO: Track
-                partial_fills=0,              # TODO: Track
-                execution_success_rate=100.0, # TODO: Calculate
-                errors_encountered=[],        # TODO: Populate
-                recovery_actions_taken=[],    # TODO: Populate
-                requires_manual_review=False, # TODO: Determine
-            )
-            
-            logger.info(f"Arbitrage opportunity executed successfully in {execution_time_ms}ms")
-            return result
-            
-        except Exception as e:
-            logger.error(f"Failed to execute arbitrage opportunity: {e}")
-            
-            # TODO: Create failure ExecutionResult
-            # - Record execution failure details
-            # - Include error information and recovery actions
-            # - Mark for manual review if positions are open
-            # - Calculate partial execution costs
-            
-            execution_time_ms = int((asyncio.get_event_loop().time() - execution_start_time) * 1000)
-            
-            result = ExecutionResult(
-                execution_id=f"exec_{opportunity.opportunity_id}",
-                opportunity_id=opportunity.opportunity_id,
-                final_state=ArbitrageState.FAILED,
-                total_execution_time_ms=execution_time_ms,
-                detection_to_execution_ms=0,
-                order_placement_time_ms=0,
-                fill_confirmation_time_ms=0,
-                positions_created=[],
-                realized_profit=0.0,
-                total_fees_paid=0.0,
-                slippage_cost=0.0,
-                orders_placed=0,
-                orders_filled=0,
-                partial_fills=0,
-                execution_success_rate=0.0,
-                errors_encountered=[str(e)],
-                recovery_actions_taken=[],
-                requires_manual_review=True,
-            )
-            
-            return result
+        # Use composition pattern for error handling
+        context = ErrorContext(
+            operation="execute_arbitrage_opportunity",
+            component="arbitrage_engine", 
+            metadata={
+                "opportunity_id": opportunity.opportunity_id,
+                "symbol": f"{opportunity.symbol.base}/{opportunity.symbol.quote}",
+                "expected_profit": opportunity.expected_profit_usd,
+                "buy_exchange": opportunity.buy_exchange,
+                "sell_exchange": opportunity.sell_exchange
+            }
+        )
+        
+        async def _execute_arbitrage_operation():
+            return await self._execute_arbitrage_core(opportunity, execution_start_time)
+        
+        return await self._trading_error_handler.handle_with_retry(
+            operation=_execute_arbitrage_operation,
+            context=context
+        )
+    
+    async def _execute_arbitrage_core(self, opportunity: ArbitrageOpportunity, execution_start_time: float) -> ExecutionResult:
+        """Execute arbitrage without error handling - clean business logic"""
+        logger = self.logger
+        
+        # TODO: Pre-execution validation
+        # - Verify opportunity is still valid (not stale)
+        # - Check real-time prices match opportunity parameters
+        # - Validate sufficient balances on both exchanges
+        # - Perform risk management checks
+        # - Verify market depth is still adequate
+        
+        # TODO: State management
+        # - Update state controller to EXECUTING
+        # - Record execution start time and parameters
+        # - Set up execution timeout monitoring
+        # - Initialize position tracking
+        
+        # TODO: Atomic order execution
+        # - Place spot market order on buy exchange
+        # - Simultaneously place futures hedge order (if applicable)
+        # - Monitor both orders for fill confirmation
+        # - Handle partial fills and order updates
+        # - Ensure atomic completion or rollback
+        
+        # TODO: Execution monitoring
+        # - Track execution progress in real-time
+        # - Monitor for execution timeouts
+        # - Handle partial fills and slippage
+        # - Coordinate cross-exchange execution timing
+        
+        # TODO: Post-execution validation
+        # - Verify all orders filled successfully
+        # - Confirm hedge ratios are correct
+        # - Calculate actual profit vs estimated
+        # - Record positions and update tracking
+        
+        # Placeholder execution result
+        execution_time_ms = int((asyncio.get_event_loop().time() - execution_start_time) * 1000)
+        
+        # TODO: Create comprehensive ExecutionResult
+        result = ExecutionResult(
+            execution_id=f"exec_{opportunity.opportunity_id}",
+            opportunity_id=opportunity.opportunity_id,
+            final_state=ArbitrageState.COMPLETED,
+            total_execution_time_ms=execution_time_ms,
+            detection_to_execution_ms=0,  # TODO: Calculate
+            order_placement_time_ms=0,    # TODO: Calculate
+            fill_confirmation_time_ms=0,  # TODO: Calculate
+            positions_created=[],         # TODO: Populate
+            realized_profit=0.0,          # TODO: Calculate
+            total_fees_paid=0.0,          # TODO: Calculate
+            slippage_cost=0.0,            # TODO: Calculate
+            orders_placed=0,              # TODO: Track
+            orders_filled=0,              # TODO: Track
+            partial_fills=0,              # TODO: Track
+            execution_success_rate=100.0, # TODO: Calculate
+            errors_encountered=[],        # TODO: Populate
+            recovery_actions_taken=[],    # TODO: Populate
+            requires_manual_review=False, # TODO: Determine
+        )
+        
+        logger.info(f"Arbitrage opportunity executed successfully in {execution_time_ms}ms")
+        return result
     
     @asynccontextmanager
     async def session(self) -> AsyncIterator[ArbitrageEngine]:
