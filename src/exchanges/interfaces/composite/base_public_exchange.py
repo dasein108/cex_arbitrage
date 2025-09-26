@@ -112,7 +112,7 @@ class CompositePublicExchange(BaseCompositeExchange):
 
     @property
     def active_symbols(self) -> Set[Symbol]:
-        """Get list of actively tracked symbols."""
+        """Get set of actively tracked symbols."""
         return self._active_symbols.copy()
 
     @property
@@ -160,7 +160,7 @@ class CompositePublicExchange(BaseCompositeExchange):
         Args:
             symbol: Symbol to stop tracking
         """
-        self.active_symbols.remove(symbol)
+        self._active_symbols.discard(symbol)  # Use discard() to avoid KeyError
 
     async def _get_orderbook_snapshot(self, symbol: Symbol) -> OrderBook:
         """Get orderbook snapshot from REST API with error handling."""
@@ -292,115 +292,6 @@ class CompositePublicExchange(BaseCompositeExchange):
             self.logger.error(f"Public exchange initialization failed: {e}")
             await self.close()  # Cleanup on failure
             raise BaseExchangeError(f"Public initialization failed: {e}") from e
-
-    # ========================================
-    # Template Method Support Methods (NEW)
-    # ========================================
-
-    async def _load_initial_orderbooks(self) -> None:
-        """Load initial orderbooks from REST API for all active symbols."""
-        if self._active_symbols:
-            await self._initialize_orderbooks_from_rest(list(self._active_symbols))
-
-    async def _initialize_best_bid_ask_from_rest(self) -> None:
-        """
-        Initialize best bid/ask state from REST orderbook snapshots.
-        
-        HFT STRATEGY: Load initial state via REST, then maintain via WebSocket book ticker.
-        This ensures arbitrage strategies have immediate access to pricing data.
-        """
-        if not self._public_rest:
-            self.logger.warning("No public REST client available for best bid/ask initialization")
-            return
-            
-        try:
-            self.logger.info("Initializing best bid/ask from REST orderbook snapshots", 
-                            symbol_count=len(self._active_symbols))
-            
-            initialization_tasks = []
-            for symbol in self._active_symbols:
-                initialization_tasks.append(self._initialize_symbol_best_bid_ask(symbol))
-                
-            # Process all symbols concurrently for speed
-            results = await asyncio.gather(*initialization_tasks, return_exceptions=True)
-            
-            successful_inits = sum(1 for r in results if not isinstance(r, Exception))
-            failed_inits = len(results) - successful_inits
-            
-            self.logger.info("Best bid/ask initialization completed",
-                            successful=successful_inits,
-                            failed=failed_inits,
-                            total_symbols=len(self._active_symbols))
-            
-        except Exception as e:
-            self.logger.error("Failed to initialize best bid/ask from REST", error=str(e))
-            # Not critical - WebSocket will populate this data
-
-    async def _initialize_symbol_best_bid_ask(self, symbol: Symbol) -> None:
-        """Initialize best bid/ask for a single symbol from REST orderbook."""
-        try:
-            # Get orderbook snapshot from REST
-            orderbook = await self._public_rest.get_orderbook(symbol, limit=1)  # Only need top level
-            
-            if orderbook and orderbook.bids and orderbook.asks:
-                # Create BookTicker from orderbook top level
-                book_ticker = BookTicker(
-                    symbol=symbol,
-                    bid_price=orderbook.bids[0].price,
-                    bid_quantity=orderbook.bids[0].quantity, 
-                    ask_price=orderbook.asks[0].price,
-                    ask_quantity=orderbook.asks[0].quantity,
-                    timestamp=int(time.time() * 1000),
-                    update_id=getattr(orderbook, 'update_id', None)
-                )
-                
-                # Initialize state
-                self._best_bid_ask[symbol] = book_ticker
-                self._best_bid_ask_last_update[symbol] = time.perf_counter()
-                
-                self.logger.debug("Initialized best bid/ask from REST",
-                                 symbol=symbol,
-                                 bid_price=book_ticker.bid_price,
-                                 ask_price=book_ticker.ask_price)
-                                 
-        except Exception as e:
-            self.logger.warning("Failed to initialize best bid/ask for symbol",
-                               symbol=symbol, error=str(e))
-            # Continue with other symbols - not critical
-
-    async def _initialize_public_websocket(self) -> None:
-        """Initialize public WebSocket with constructor injection pattern including book ticker handler."""
-        try:
-            self.logger.debug("Initializing public WebSocket client")
-            
-            # Create handler objects for constructor injection (INCLUDING book_ticker_handler)
-            public_handlers = PublicWebsocketHandlers(
-                orderbook_handler=self._handle_orderbook_event,
-                ticker_handler=self._handle_ticker_event,
-                trades_handler=self._handle_trade_event,
-                book_ticker_handler=self._handle_book_ticker_event,  # NEW: Critical for HFT
-                connection_handler=self._handle_public_connection_event,
-                error_handler=self._handle_error_event
-            )
-            
-            # Use abstract factory method to create client
-            self._public_ws = await self._create_public_ws_with_handlers(public_handlers)
-            
-            if self._public_ws:
-                await self._public_ws.connect()
-                self._public_ws_connected = self._public_ws.is_connected
-                
-            self.logger.info("Public WebSocket client initialized",
-                            connected=self._public_ws_connected,
-                            has_book_ticker_handler=True)
-                            
-        except Exception as e:
-            self.logger.error("Public WebSocket initialization failed", error=str(e))
-            raise BaseExchangeError(f"Public WebSocket initialization failed: {e}") from e
-
-    def _validate_public_connections(self) -> bool:
-        """Validate that required public connections are established."""
-        return self._public_rest_connected and self._public_ws_connected
 
     # Orderbook update handlers for arbitrage layer
 
@@ -547,6 +438,115 @@ class CompositePublicExchange(BaseCompositeExchange):
         }
 
     # ========================================
+    # Template Method Support Methods (NEW)
+    # ========================================
+
+    async def _load_initial_orderbooks(self) -> None:
+        """Load initial orderbooks from REST API for all active symbols."""
+        if self._active_symbols:
+            await self._initialize_orderbooks_from_rest(list(self._active_symbols))
+
+    async def _initialize_best_bid_ask_from_rest(self) -> None:
+        """
+        Initialize best bid/ask state from REST orderbook snapshots.
+        
+        HFT STRATEGY: Load initial state via REST, then maintain via WebSocket book ticker.
+        This ensures arbitrage strategies have immediate access to pricing data.
+        """
+        if not self._public_rest:
+            self.logger.warning("No public REST client available for best bid/ask initialization")
+            return
+            
+        try:
+            self.logger.info("Initializing best bid/ask from REST orderbook snapshots", 
+                            symbol_count=len(self._active_symbols))
+            
+            initialization_tasks = []
+            for symbol in self._active_symbols:
+                initialization_tasks.append(self._initialize_symbol_best_bid_ask(symbol))
+                
+            # Process all symbols concurrently for speed
+            results = await asyncio.gather(*initialization_tasks, return_exceptions=True)
+            
+            successful_inits = sum(1 for r in results if not isinstance(r, Exception))
+            failed_inits = len(results) - successful_inits
+            
+            self.logger.info("Best bid/ask initialization completed",
+                            successful=successful_inits,
+                            failed=failed_inits,
+                            total_symbols=len(self._active_symbols))
+            
+        except Exception as e:
+            self.logger.error("Failed to initialize best bid/ask from REST", error=str(e))
+            # Not critical - WebSocket will populate this data
+
+    async def _initialize_symbol_best_bid_ask(self, symbol: Symbol) -> None:
+        """Initialize best bid/ask for a single symbol from REST orderbook."""
+        try:
+            # Get orderbook snapshot from REST
+            orderbook = await self._public_rest.get_orderbook(symbol, limit=1)  # Only need top level
+            
+            if orderbook and orderbook.bids and orderbook.asks:
+                # Create BookTicker from orderbook top level
+                book_ticker = BookTicker(
+                    symbol=symbol,
+                    bid_price=orderbook.bids[0].price,
+                    bid_quantity=orderbook.bids[0].quantity,
+                    ask_price=orderbook.asks[0].price,
+                    ask_quantity=orderbook.asks[0].quantity,
+                    timestamp=int(time.time() * 1000),
+                    update_id=getattr(orderbook, 'update_id', None)
+                )
+                
+                # Initialize state
+                self._best_bid_ask[symbol] = book_ticker
+                self._best_bid_ask_last_update[symbol] = time.perf_counter()
+                
+                self.logger.debug("Initialized best bid/ask from REST",
+                                 symbol=symbol,
+                                 bid_price=book_ticker.bid_price,
+                                 ask_price=book_ticker.ask_price)
+                                 
+        except Exception as e:
+            self.logger.warning("Failed to initialize best bid/ask for symbol",
+                               symbol=symbol, error=str(e))
+            # Continue with other symbols - not critical
+
+    async def _initialize_public_websocket(self) -> None:
+        """Initialize public WebSocket with constructor injection pattern including book ticker handler."""
+        try:
+            self.logger.debug("Initializing public WebSocket client")
+            
+            # Create handler objects for constructor injection (INCLUDING book_ticker_handler)
+            public_handlers = PublicWebsocketHandlers(
+                orderbook_handler=self._handle_orderbook_event,
+                ticker_handler=self._handle_ticker_event,
+                trades_handler=self._handle_trade_event,
+                book_ticker_handler=self._handle_book_ticker_event,  # NEW: Critical for HFT
+                connection_handler=self._handle_public_connection_event,
+                error_handler=self._handle_error_event
+            )
+            
+            # Use abstract factory method to create client
+            self._public_ws = await self._create_public_ws_with_handlers(public_handlers)
+            
+            if self._public_ws:
+                await self._public_ws.connect()
+                self._public_ws_connected = self._public_ws.is_connected
+                
+            self.logger.info("Public WebSocket client initialized",
+                            connected=self._public_ws_connected,
+                            has_book_ticker_handler=True)
+                            
+        except Exception as e:
+            self.logger.error("Public WebSocket initialization failed", error=str(e))
+            raise BaseExchangeError(f"Public WebSocket initialization failed: {e}") from e
+
+    def _validate_public_connections(self) -> bool:
+        """Validate that required public connections are established."""
+        return self._public_rest_connected and self._public_ws_connected
+
+    # ========================================
     # Event Handler Methods with Book Ticker Support (NEW)
     # ========================================
 
@@ -644,7 +644,8 @@ class CompositePublicExchange(BaseCompositeExchange):
         return {
             "count": self._book_ticker_update_count,
             "avg_latency_us": avg_latency,
-            "total_latency_us": self._book_ticker_latency_sum
+            "total_latency_us": self._book_ticker_latency_sum,
+            "hft_compliant": avg_latency < 500.0
         }
 
     async def _handle_ticker_event(self, event: TickerUpdateEvent) -> None:

@@ -32,53 +32,6 @@ from exchanges.integrations.mexc.ws.mexc_ws_private import MexcPrivateSpotWebsoc
 from exchanges.integrations.mexc.services.symbol_mapper import MexcSymbolMapper
 
 
-class MexcClientFactory(ExchangeClientFactory):
-    """MEXC-specific client factory implementation."""
-    
-    def __init__(self, config: ExchangeConfig, logger: Optional[HFTLoggerInterface] = None):
-        self.config = config
-        self.logger = logger
-    
-    async def create_public_rest(self) -> PublicRestInterface:
-        """Create MEXC public REST client."""
-        return MexcPublicSpotRest(self.config)
-    
-    async def create_private_rest(self) -> Optional[PrivateRestInterface]:
-        """Create MEXC private REST client (None if no credentials)."""
-        if not self.config.has_credentials():
-            return None
-        return MexcPrivateSpotRest(self.config)
-    
-    async def create_public_websocket(self) -> PublicWebSocketInterface:
-        """Create MEXC public WebSocket client."""
-        return MexcPublicSpotWebsocket(
-            config=self.config,
-            handlers={}  # Handlers set by base class
-        )
-    
-    async def create_private_websocket(self) -> Optional[PrivateWebSocketInterface]:
-        """Create MEXC private WebSocket client (None if no credentials)."""
-        if not self.config.has_credentials():
-            return None
-        return MexcPrivateSpotWebsocket(
-            config=self.config,
-            handlers={}  # Handlers set by base class
-        )
-    
-    def get_supported_features(self) -> Dict[str, bool]:
-        """Get MEXC-specific feature support matrix."""
-        return {
-            'spot_trading': True,
-            'futures_trading': False,
-            'margin_trading': False,
-            'websocket_public': True,
-            'websocket_private': True,
-            'batch_orders': True,
-            'withdrawal': True,
-            'lending': False
-        }
-
-
 class MexcUnifiedExchange(UnifiedCompositeExchange):
     """
     MEXC Unified Exchange Implementation.
