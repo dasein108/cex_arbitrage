@@ -24,10 +24,11 @@ from infrastructure.networking.websocket.handlers import (
 )
 from exchanges.interfaces.rest.spot.rest_spot_private import PrivateSpotRest
 from exchanges.interfaces.ws.spot.base_ws_private import PrivateSpotWebsocket
-from exchanges.interfaces.base_events import (
-    OrderUpdateEvent, BalanceUpdateEvent, ExecutionReportEvent, 
-    ConnectionStatusEvent, ErrorEvent
-)
+# Removed unused event imports - using direct objects for better HFT performance  
+# from exchanges.interfaces.base_events import (
+#     OrderUpdateEvent, BalanceUpdateEvent, ExecutionReportEvent, 
+#     ConnectionStatusEvent, ErrorEvent
+# )
 
 
 
@@ -594,85 +595,20 @@ class CompositePrivateExchange(CompositePublicExchange):
             raise
 
     # ========================================
-    # Event Handler Methods (COPIED FROM UnifiedCompositeExchange)
+    # Event Handler Methods (DISABLED - see websocket_refactoring.md)
     # ========================================
+    
+    # TODO: These methods need to be refactored to use direct objects instead of events
+    # Currently disabled due to base_events.py removal. Will be re-implemented with 
+    # direct object signatures like base_public_exchange.py does.
+    
+    # async def _handle_order_event(self, event: OrderUpdateEvent) -> None:
+    # async def _handle_balance_event(self, event: BalanceUpdateEvent) -> None:  
+    # async def _handle_execution_event(self, event: ExecutionReportEvent) -> None:
 
-    async def _handle_order_event(self, event: OrderUpdateEvent) -> None:
-        """
-        Handle order update events from private WebSocket.
-        ENHANCED: Proper executed orders management with lifecycle tracking.
-        """
-        try:
-            # Update internal order state (includes executed orders management)
-            self._update_order(event.order)
-            
-            # Track operation with enhanced metrics
-            self._track_operation("order_update")
-            
-            # Enhanced logging with executed orders context
-            is_executed = event.order.status in ['filled', 'canceled', 'expired']
-            self.logger.debug("Order update processed",
-                             order_id=event.order.order_id,
-                             symbol=event.order.symbol,
-                             status=event.order.status.name if hasattr(event.order.status, 'name') else event.order.status,
-                             is_executed=is_executed,
-                             filled_quantity=getattr(event.order, 'filled_quantity', 0))
-                             
-        except Exception as e:
-            self.logger.error("Error handling order event", 
-                             order_id=getattr(event.order, 'order_id', 'unknown'),
-                             symbol=getattr(event.order, 'symbol', 'unknown'),
-                             error=str(e))
-
-    async def _handle_balance_event(self, event: BalanceUpdateEvent) -> None:
-        """Handle balance update events from private WebSocket."""
-        try:
-            # Update internal balance state
-            self._update_balance(event.asset, event.balance)
-            
-            self._track_operation("balance_update")
-            
-            self.logger.debug("Balance update processed",
-                             asset=event.asset,
-                             available=event.balance.available)
-                             
-        except Exception as e:
-            self.logger.error("Error handling balance event", 
-                             asset=event.asset, error=str(e))
-
-
-    async def _handle_execution_event(self, event: ExecutionReportEvent) -> None:
-        """Handle execution report events from private WebSocket."""
-        try:
-            self._track_operation("execution_report")
-            
-            self.logger.info("Execution report processed",
-                            symbol=event.symbol,
-                            execution_id=event.execution_id,
-                            price=event.execution.price,
-                            quantity=event.execution.quantity)
-                            
-        except Exception as e:
-            self.logger.error("Error handling execution event", error=str(e))
-
-    async def _handle_private_connection_event(self, event: ConnectionStatusEvent) -> None:
-        """Handle private WebSocket connection status changes."""
-        try:
-            self._private_ws_connected = event.is_connected
-            
-            self.logger.info("Private WebSocket connection status changed",
-                            connected=event.is_connected,
-                            error=event.error_message)
-                            
-        except Exception as e:
-            self.logger.error("Error handling private connection event", error=str(e))
-
-    async def _handle_error_event(self, event: ErrorEvent) -> None:
-        """Handle error events from private WebSocket."""
-        self.logger.error("Private WebSocket error event",
-                         error_type=event.error_type,
-                         error_code=event.error_code,
-                         error_message=event.error_message)
+    # All event handlers disabled pending websocket_refactoring.md completion
+    # async def _handle_private_connection_event(self, event: ConnectionStatusEvent) -> None:
+    # async def _handle_error_event(self, event: ErrorEvent) -> None:
 
     def _track_operation(self, operation_name: str) -> None:
         """Track operation for performance monitoring."""

@@ -7,11 +7,12 @@ orderbook management.
 """
 
 from abc import abstractmethod
-from typing import Dict, List
+from typing import Dict, List, Optional, Any
 from decimal import Decimal
 
 from exchanges.structs.common import Symbol
 from .base_public_exchange import CompositePublicExchange
+from infrastructure.logging import HFTLoggerInterface
 
 
 class CompositePublicFuturesExchange(CompositePublicExchange):
@@ -28,16 +29,18 @@ class CompositePublicFuturesExchange(CompositePublicExchange):
     public futures market data.
     """
 
-    def __init__(self, config):
+    def __init__(self, config, logger: Optional[HFTLoggerInterface] = None):
         """
         Initialize public futures exchange interface.
         
         Args:
             config: Exchange configuration
+            logger: Optional injected HFT logger (auto-created if not provided)
         """
-        super().__init__(config)
+        super().__init__(config, logger=logger)
         
         # Override tag to indicate futures operations
+        self._tag = f'{config.name}_public_futures'
 
         # Futures-specific data (using generic Dict structures for now)
         self._funding_rates: Dict[Symbol, Dict] = {}
@@ -188,13 +191,14 @@ class CompositePublicFuturesExchange(CompositePublicExchange):
         # Refresh composite market data
         await super()._refresh_exchange_data()
 
-        if self._active_symbols:
+        if self.active_symbols:
+            active_symbols_list = list(self.active_symbols)
             try:
                 # Refresh futures-specific data
-                await self._load_funding_rates(self._active_symbols)
-                await self._load_open_interest(self._active_symbols)
-                await self._load_mark_prices(self._active_symbols)
-                await self._load_index_prices(self._active_symbols)
+                await self._load_funding_rates(active_symbols_list)
+                await self._load_open_interest(active_symbols_list)
+                await self._load_mark_prices(active_symbols_list)
+                await self._load_index_prices(active_symbols_list)
 
                 self.logger.info(f"{self._tag} futures data refreshed")
 
@@ -250,7 +254,7 @@ class CompositePublicFuturesExchange(CompositePublicExchange):
 
     # Enhanced monitoring for futures
 
-    def get_futures_stats(self) -> Dict[str, any]:
+    def get_futures_stats(self) -> Dict[str, Any]:
         """
         Get futures-specific statistics for monitoring.
         

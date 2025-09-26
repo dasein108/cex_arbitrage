@@ -10,10 +10,11 @@ from abc import abstractmethod
 from typing import Dict, List, Optional, Any
 from decimal import Decimal
 
-from exchanges.structs.common import Symbol, Order, Position
+from exchanges.structs.common import Symbol, Order, Position, SymbolsInfo
 from .base_private_exchange import CompositePrivateExchange
 from infrastructure.logging import HFTLoggerInterface
-from exchanges.interfaces.base_events import PositionUpdateEvent
+# Removed unused event imports - using direct objects for better HFT performance
+# from exchanges.interfaces.base_events import PositionUpdateEvent
 
 
 class CompositePrivateFuturesExchange(CompositePrivateExchange):
@@ -41,6 +42,8 @@ class CompositePrivateFuturesExchange(CompositePrivateExchange):
         """
         super().__init__(config, logger=logger)
         
+        # Override tag to indicate futures operations
+        self._tag = f'{config.name}_private_futures'
 
         # Futures-specific private data (using generic Dict structures for now)
         self._leverage_settings: Dict[Symbol, Dict] = {}
@@ -258,7 +261,7 @@ class CompositePrivateFuturesExchange(CompositePrivateExchange):
             return
             
         try:
-            from infrastructure.utils.logging_timer import LoggingTimer
+            from infrastructure.logging import LoggingTimer
             
             with LoggingTimer(self.logger, "load_positions") as timer:
                 positions_data = await self._private_rest.get_positions()
@@ -273,20 +276,20 @@ class CompositePrivateFuturesExchange(CompositePrivateExchange):
                             
         except Exception as e:
             self.logger.error("Failed to load positions", error=str(e))
-            from exchanges.errors import BaseExchangeError
+            from infrastructure.exceptions.exchange import BaseExchangeError
             raise BaseExchangeError(f"Positions loading failed: {e}") from e
 
     # Enhanced initialization for futures
 
-    async def initialize(self, symbols: List[Symbol] = None) -> None:
+    async def initialize(self, symbols_info: SymbolsInfo) -> None:
         """
         Initialize futures exchange with symbols and futures-specific data.
         
         Args:
-            symbols: Optional list of symbols to track
+            symbols_info: Symbol information including trading rules
         """
         # Initialize composite private functionality
-        await super().initialize(symbols)
+        await super().initialize(symbols_info)
 
         try:
             # Load futures-specific private data
@@ -367,20 +370,9 @@ class CompositePrivateFuturesExchange(CompositePrivateExchange):
         """
         self._update_futures_position(position)
 
-    async def _handle_position_event(self, event: PositionUpdateEvent) -> None:
-        """
-        Handle position update events from private WebSocket.
-        MOVED FROM: base_private_exchange.py - futures-specific functionality
-        """
-        try:
-            # Update internal position state
-            self._update_futures_position(event.position)
-            
-            self._track_operation("position_update")
-            
-        except Exception as e:
-            self.logger.error("Error handling position event", 
-                             symbol=event.symbol, error=str(e))
+    # TODO: Refactor to use direct objects (see websocket_refactoring.md)
+    # Position event handler disabled pending event system refactoring
+    # async def _handle_position_event(self, event: PositionUpdateEvent) -> None:
 
     # Override WebSocket initialization to include position handler
     

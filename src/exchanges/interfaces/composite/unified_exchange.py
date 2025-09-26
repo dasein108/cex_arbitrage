@@ -43,11 +43,16 @@ from exchanges.interfaces.rest.spot.rest_spot_private import PrivateSpotRest
 from exchanges.interfaces.ws.spot.base_ws_public import PublicSpotWebsocket
 from exchanges.interfaces.ws.spot.base_ws_private import PrivateSpotWebsocket
 # Removed unused event imports - using direct objects for better HFT performance
-# TODO: This file contains legacy event handlers that need to be refactored 
-# to use direct objects like base_public_exchange.py does. See websocket_refactoring.md
+# Event handlers have been removed - system now uses direct objects for optimal performance
 
 # Import handler objects for constructor injection pattern
 from infrastructure.networking.websocket.handlers import PublicWebsocketHandlers, PrivateWebsocketHandlers
+
+# Import extracted utilities for code reduction
+from .unified_exchange_utils import (
+    ExchangePerformanceTracker, ExchangeConnectionValidator, 
+    ExchangeErrorHandler, create_health_status_base
+)
 
 
 class UnifiedCompositeExchange(ABC):
@@ -113,10 +118,9 @@ class UnifiedCompositeExchange(ABC):
         self._initialized = False
         self._connected = False
         
-        # Performance metrics
-        self._operation_count = 0
-        self._last_operation_time = 0.0
-        self._init_start_time = 0.0
+        # Extracted utility instances for code reduction
+        self.performance_tracker = ExchangePerformanceTracker(self.logger)
+        self.error_handler = ExchangeErrorHandler(self.logger, self.exchange_name)
         
         # Event processing locks (Thread safety)
         self._orderbook_lock = asyncio.Lock()
@@ -238,7 +242,7 @@ class UnifiedCompositeExchange(ABC):
             return
             
         try:
-            self._init_start_time = time.perf_counter()
+            init_start_time = time.perf_counter()
             self.logger.info("Starting exchange initialization", 
                            exchange=self.exchange_name)
             
@@ -258,7 +262,7 @@ class UnifiedCompositeExchange(ABC):
             self._initialized = True
             self._connected = self._validate_connections()
             
-            init_time = (time.perf_counter() - self._init_start_time) * 1000
+            init_time = (time.perf_counter() - init_start_time) * 1000
             
             self.logger.info("Exchange initialization completed",
                            exchange=self.exchange_name,
@@ -270,8 +274,8 @@ class UnifiedCompositeExchange(ABC):
                            hft_compliant=init_time < 100.0)
                            
         except Exception as e:
-            self.logger.error("Exchange initialization failed", 
-                            exchange=self.exchange_name, error=str(e))
+            # Use extracted error handler for code reduction  
+            self.error_handler.handle_initialization_error(e, "main_initialization")
             # Cleanup on failure
             await self.close()
             raise BaseExchangeError(f"Exchange initialization failed: {e}")
@@ -406,9 +410,6 @@ class UnifiedCompositeExchange(ABC):
             )
             
             self._public_ws = await self._create_public_ws_with_handlers(public_handlers)
-            if self._public_ws:
-                await self._public_ws.connect()
-                self._public_ws_connected = True
             
             # Create private WebSocket client if credentials available
             if self.config.has_credentials():
@@ -422,14 +423,11 @@ class UnifiedCompositeExchange(ABC):
                 )
                 
                 self._private_ws = await self._create_private_ws_with_handlers(private_handlers)
-                if self._private_ws:
-                    await self._private_ws.connect()
-                    self._private_ws_connected = True
             
-            self.logger.info("WebSocket clients initialized with handler objects",
+            self.logger.info("WebSocket clients created with handler objects",
                            exchange=self.exchange_name,
-                           public_connected=self._public_ws_connected,
-                           private_connected=self._private_ws_connected)
+                           has_public_ws=self._public_ws is not None,
+                           has_private_ws=self._private_ws is not None)
                            
         except Exception as e:
             self.logger.error("Failed to initialize WebSocket clients", 
@@ -437,46 +435,43 @@ class UnifiedCompositeExchange(ABC):
             raise BaseExchangeError(f"WebSocket client initialization failed: {e}")
     
     async def _start_websocket_streams(self) -> None:
-        """Start WebSocket subscriptions for active symbols."""
+        """Initialize WebSocket connections and start subscriptions for active symbols."""
         try:
-            self.logger.debug("Starting WebSocket streams", exchange=self.exchange_name)
+            self.logger.debug("Initializing WebSocket streams", exchange=self.exchange_name)
             
-            # Subscribe to public data streams
+            # Initialize public WebSocket with symbols and channels
             if self._public_ws and self.symbols:
-                subscription_tasks = []
-                for symbol in self.symbols:
-                    subscription_tasks.append(self._public_ws.subscribe_orderbook(symbol))
-                    subscription_tasks.append(self._public_ws.subscribe_ticker(symbol))
-                
-                await asyncio.gather(*subscription_tasks, return_exceptions=True)
+                from exchanges.consts import DEFAULT_PUBLIC_WEBSOCKET_CHANNELS
+                await self._public_ws.initialize(self.symbols, DEFAULT_PUBLIC_WEBSOCKET_CHANNELS)
+                self._public_ws_connected = True
             
-            # Subscribe to private data streams
+            # Initialize private WebSocket (no symbols needed for private streams)
             if self._private_ws:
-                await asyncio.gather(
-                    self._private_ws.subscribe_orders(),
-                    self._private_ws.subscribe_balances(), 
-                    self._private_ws.subscribe_executions(),
-                    return_exceptions=True
-                )
+                await self._private_ws.initialize()  # Private WS uses base initialize method
+                self._private_ws_connected = True
             
-            self.logger.info("WebSocket streams started", 
+            self.logger.info("WebSocket streams initialized and connected", 
                            exchange=self.exchange_name,
-                           symbols=len(self.symbols))
+                           symbols=len(self.symbols),
+                           public_connected=self._public_ws_connected,
+                           private_connected=self._private_ws_connected)
                            
         except Exception as e:
-            self.logger.error("Failed to start WebSocket streams", 
+            self.logger.error("Failed to initialize WebSocket streams", 
                             exchange=self.exchange_name, error=str(e))
-            raise BaseExchangeError(f"WebSocket stream startup failed: {e}")
+            raise BaseExchangeError(f"WebSocket stream initialization failed: {e}")
     
     def _validate_connections(self) -> bool:
         """Validate that required connections are established."""
-        has_public_rest = self._public_rest is not None
-        has_public_ws = self._public_ws_connected
-        
-        # Private connections are optional (depends on credentials)
-        required_connections = has_public_rest and has_public_ws
-        
-        return required_connections
+        # Use extracted connection validator for code reduction
+        return ExchangeConnectionValidator.validate_all_connections(
+            public_rest=self._public_rest is not None,
+            public_ws=self._public_ws_connected,
+            private_rest=self._private_rest is not None,
+            private_ws=self._private_ws_connected,
+            has_credentials=self.config.has_credentials(),
+            require_websocket=True
+        )
     
     async def __aenter__(self) -> 'UnifiedCompositeExchange':
         """Async context manager entry."""
@@ -505,181 +500,8 @@ class UnifiedCompositeExchange(ABC):
             await self.close()
     
     # ========================================
-    # Event-Driven Data Synchronization (CONCRETE - ELIMINATES DUPLICATION)
+    # Event-Driven Data Synchronization (Direct Objects - Post Event System Removal)
     # ========================================
-    
-    async def _handle_orderbook_event(self, event: OrderbookUpdateEvent) -> None:
-        """
-        Handle orderbook update events from public WebSocket.
-        
-        HFT CRITICAL: <1ms processing time for orderbook updates.
-        Thread-safe state synchronization with minimal locking.
-        """
-        try:
-            # TODO: Add timestamp validation for direct objects (see base_public_exchange.py)
-            # Temporarily disabled - needs refactoring to work with direct objects
-            # if not self._validate_data_timestamp(event.timestamp):
-            #     self.logger.warning("Stale orderbook event ignored", symbol=event.symbol)
-            #     return
-            
-            # Thread-safe orderbook update
-            async with self._orderbook_lock:
-                self._orderbooks[event.symbol] = event.orderbook
-            
-            # Forward to user callback if registered
-            if self._user_orderbook_callback:
-                await self._user_orderbook_callback(event.symbol, event.orderbook)
-                
-            # Performance tracking
-            self._track_operation("orderbook_update")
-            
-        except Exception as e:
-            self.logger.error("Error handling orderbook event", 
-                            symbol=event.symbol, error=str(e))
-    
-    async def _handle_ticker_event(self, event: TickerUpdateEvent) -> None:
-        """Handle ticker update events from public WebSocket.""" 
-        try:
-            # Thread-safe ticker update
-            async with self._ticker_lock:
-                self._tickers[event.symbol] = event.ticker
-            
-            # Forward to user callback if registered
-            if self._user_orderbook_callback:  # Note: may want separate ticker callback
-                # For now, forward via orderbook callback pattern
-                pass
-                
-            self._track_operation("ticker_update")
-            
-        except Exception as e:
-            self.logger.error("Error handling ticker event", 
-                            symbol=event.symbol, error=str(e))
-    
-    async def _handle_trade_event(self, event: TradeUpdateEvent) -> None:
-        """Handle trade update events from public WebSocket."""
-        try:
-            # Forward to user callback if registered
-            if self._user_trade_callback:
-                await self._user_trade_callback(event.symbol, event.trade)
-                
-            self._track_operation("trade_update")
-            
-        except Exception as e:
-            self.logger.error("Error handling trade event", 
-                            symbol=event.symbol, error=str(e))
-    
-    async def _handle_order_event(self, event: OrderUpdateEvent) -> None:
-        """
-        Handle order update events from private WebSocket.
-        
-        HFT CRITICAL: Real-time order status updates for trading strategies.
-        """
-        try:
-            # Forward to user callback if registered
-            if self._user_order_callback:
-                await self._user_order_callback(event.order)
-                
-            self._track_operation("order_update")
-            
-            self.logger.debug("Order update processed",
-                            order_id=event.order.order_id,
-                            status=event.order.status.name,
-                            symbol=event.order.symbol)
-                            
-        except Exception as e:
-            self.logger.error("Error handling order event", 
-                            order_id=getattr(event.order, 'order_id', 'unknown'),
-                            error=str(e))
-    
-    async def _handle_balance_event(self, event: BalanceUpdateEvent) -> None:
-        """Handle balance update events from private WebSocket."""
-        try:
-            # Forward to user callback if registered
-            if self._user_balance_callback:
-                await self._user_balance_callback(event.asset, event.balance)
-                
-            self._track_operation("balance_update")
-            
-            self.logger.debug("Balance update processed",
-                            asset=event.asset,
-                            available=event.balance.available)
-                            
-        except Exception as e:
-            self.logger.error("Error handling balance event", 
-                            asset=event.asset, error=str(e))
-    
-    async def _handle_position_event(self, event: PositionUpdateEvent) -> None:
-        """Handle position update events from private WebSocket (futures/margin)."""
-        try:
-            # Position updates are exchange-specific - subclasses can override
-            self._track_operation("position_update")
-            
-            self.logger.debug("Position update processed",
-                            symbol=event.symbol,
-                            quantity=event.position.quantity)
-                            
-        except Exception as e:
-            self.logger.error("Error handling position event", 
-                            symbol=event.symbol, error=str(e))
-    
-    async def _handle_execution_event(self, event: ExecutionReportEvent) -> None:
-        """Handle execution report events from private WebSocket."""
-        try:
-            # Execution reports are critical for P&L tracking
-            self._track_operation("execution_report")
-            
-            self.logger.info("Execution report processed",
-                           symbol=event.symbol,
-                           execution_id=event.execution_id,
-                           price=event.execution.price,
-                           quantity=event.execution.quantity,
-                           order_id=event.order_id)
-                           
-        except Exception as e:
-            self.logger.error("Error handling execution event", 
-                            execution_id=getattr(event, 'execution_id', 'unknown'),
-                            error=str(e))
-    
-    async def _handle_public_connection_event(self, event: ConnectionStatusEvent) -> None:
-        """Handle public WebSocket connection status changes."""
-        try:
-            self._public_ws_connected = event.is_connected
-            self._connected = self._validate_connections()
-            
-            self.logger.info("Public WebSocket connection status changed",
-                           exchange=self.exchange_name,
-                           connected=event.is_connected,
-                           error=event.error_message)
-                           
-        except Exception as e:
-            self.logger.error("Error handling public connection event", error=str(e))
-    
-    async def _handle_private_connection_event(self, event: ConnectionStatusEvent) -> None:
-        """Handle private WebSocket connection status changes."""
-        try:
-            self._private_ws_connected = event.is_connected
-            self._connected = self._validate_connections()
-            
-            self.logger.info("Private WebSocket connection status changed",
-                           exchange=self.exchange_name,
-                           connected=event.is_connected,
-                           error=event.error_message)
-                           
-        except Exception as e:
-            self.logger.error("Error handling private connection event", error=str(e))
-    
-    async def _handle_error_event(self, event: ErrorEvent) -> None:
-        """Handle error events from WebSocket clients."""
-        try:
-            self.logger.error("WebSocket error event received",
-                            exchange=self.exchange_name,
-                            error_type=event.error_type,
-                            error_code=event.error_code,
-                            error_message=event.error_message,
-                            is_recoverable=event.is_recoverable)
-                            
-        except Exception as e:
-            self.logger.error("Error handling error event", error=str(e))
     
     # ========================================
     # User Event Callback Registration
@@ -700,6 +522,130 @@ class UnifiedCompositeExchange(ABC):
     def set_balance_callback(self, callback: Callable[[AssetName, AssetBalance], None]) -> None:
         """Register callback for balance update events."""
         self._user_balance_callback = callback
+    
+    # ========================================
+    # Event Handler Stubs (Direct Objects - Post Event System Removal)
+    # ========================================
+    
+    async def _handle_orderbook_event(self, orderbook: OrderBook) -> None:
+        """Handle orderbook update with direct objects."""
+        try:
+            # Thread-safe orderbook update
+            async with self._orderbook_lock:
+                self._orderbooks[orderbook.symbol] = orderbook
+            
+            # Forward to user callback if registered
+            if self._user_orderbook_callback:
+                await self._user_orderbook_callback(orderbook.symbol, orderbook)
+                
+            # Performance tracking
+            self.performance_tracker.track_operation("orderbook_update")
+            
+        except Exception as e:
+            self.error_handler.handle_operation_error(e, "orderbook_update", symbol=str(orderbook.symbol))
+    
+    async def _handle_ticker_event(self, ticker: Ticker) -> None:
+        """Handle ticker update with direct objects."""
+        try:
+            # Thread-safe ticker update
+            async with self._ticker_lock:
+                self._tickers[ticker.symbol] = ticker
+                
+            self.performance_tracker.track_operation("ticker_update")
+            
+        except Exception as e:
+            self.error_handler.handle_operation_error(e, "ticker_update", symbol=str(ticker.symbol))
+    
+    async def _handle_trade_event(self, trade: Trade) -> None:
+        """Handle trade update with direct objects."""
+        try:
+            # Forward to user callback if registered
+            if self._user_trade_callback:
+                await self._user_trade_callback(trade.symbol, trade)
+                
+            self.performance_tracker.track_operation("trade_update")
+            
+        except Exception as e:
+            self.error_handler.handle_operation_error(e, "trade_update", symbol=str(trade.symbol))
+    
+    async def _handle_order_event(self, order: Order) -> None:
+        """Handle order update with direct objects."""
+        try:
+            # Forward to user callback if registered
+            if self._user_order_callback:
+                await self._user_order_callback(order)
+                
+            self.performance_tracker.track_operation("order_update")
+            
+        except Exception as e:
+            self.error_handler.handle_operation_error(e, "order_update", order_id=str(order.order_id))
+    
+    async def _handle_balance_event(self, balances: Dict[AssetName, AssetBalance]) -> None:
+        """Handle balance update with direct objects."""
+        try:
+            # Forward to user callback if registered
+            if self._user_balance_callback:
+                for asset, balance in balances.items():
+                    await self._user_balance_callback(asset, balance)
+                
+            self.performance_tracker.track_operation("balance_update")
+            
+        except Exception as e:
+            self.error_handler.handle_operation_error(e, "balance_update")
+    
+    async def _handle_position_event(self, position: Position) -> None:
+        """Handle position update with direct objects."""
+        try:
+            # Position updates are exchange-specific - subclasses can override
+            self.performance_tracker.track_operation("position_update")
+            
+        except Exception as e:
+            self.error_handler.handle_operation_error(e, "position_update", symbol=str(position.symbol))
+    
+    async def _handle_execution_event(self, trade: Trade) -> None:
+        """Handle execution report with direct objects."""
+        try:
+            # Execution reports are critical for P&L tracking
+            self.performance_tracker.track_operation("execution_report")
+            
+        except Exception as e:
+            self.error_handler.handle_operation_error(e, "execution_report", symbol=str(trade.symbol))
+    
+    async def _handle_public_connection_event(self, connection_type: str, connected: bool) -> None:
+        """Handle public WebSocket connection status changes."""
+        try:
+            self._public_ws_connected = connected
+            self._connected = self._validate_connections()
+            
+            self.logger.info("Public WebSocket connection status changed",
+                           exchange=self.exchange_name,
+                           connection_type=connection_type,
+                           connected=connected)
+                           
+        except Exception as e:
+            self.error_handler.handle_operation_error(e, "public_connection_update")
+    
+    async def _handle_private_connection_event(self, connection_type: str, connected: bool) -> None:
+        """Handle private WebSocket connection status changes."""
+        try:
+            self._private_ws_connected = connected
+            self._connected = self._validate_connections()
+            
+            self.logger.info("Private WebSocket connection status changed",
+                           exchange=self.exchange_name,
+                           connection_type=connection_type,
+                           connected=connected)
+                           
+        except Exception as e:
+            self.error_handler.handle_operation_error(e, "private_connection_update")
+    
+    async def _handle_error_event(self, error: Exception) -> None:
+        """Handle error events from WebSocket clients."""
+        try:
+            self.error_handler.handle_websocket_error(error, "websocket", exchange=self.exchange_name)
+                            
+        except Exception as e:
+            self.logger.error("Error handling error event", error=str(e))
     
     # ========================================
     # Market Data Operations (Public) - NOW IMPLEMENTED IN BASE CLASS
@@ -924,80 +870,36 @@ class UnifiedCompositeExchange(ABC):
     
     async def reconnect(self) -> bool:
         """
-        Attempt to reconnect all failed connections.
+        Check connection status - reconnection is handled automatically by WebSocket manager.
         
         Returns:
-            True if all required connections are restored, False otherwise.
+            True if all required connections are healthy, False otherwise.
         """
         try:
-            self.logger.info("Starting connection recovery", exchange=self.exchange_name)
+            self.logger.info("Checking connection status", exchange=self.exchange_name)
             
-            recovery_tasks = []
+            # Update connection status based on WebSocket manager state
+            if self._public_ws:
+                self._public_ws_connected = self._public_ws.is_connected()
             
-            # Reconnect WebSocket clients if needed
-            if self._public_ws and not self._public_ws_connected:
-                recovery_tasks.append(self._reconnect_public_ws())
+            if self._private_ws:
+                self._private_ws_connected = self._private_ws.is_connected()
             
-            if self._private_ws and not self._private_ws_connected:
-                recovery_tasks.append(self._reconnect_private_ws())
-            
-            # Execute recovery tasks
-            if recovery_tasks:
-                results = await asyncio.gather(*recovery_tasks, return_exceptions=True)
-                
-                # Log recovery results
-                for i, result in enumerate(results):
-                    if isinstance(result, Exception):
-                        self.logger.error("Connection recovery failed", 
-                                        task=i, error=str(result))
-            
-            # Update connection status
+            # Update overall connection status
             self._connected = self._validate_connections()
             
-            self.logger.info("Connection recovery completed", 
+            self.logger.info("Connection status updated", 
                            exchange=self.exchange_name,
-                           connected=self._connected)
+                           connected=self._connected,
+                           public_connected=self._public_ws_connected,
+                           private_connected=self._private_ws_connected)
             
             return self._connected
             
         except Exception as e:
-            self.logger.error("Connection recovery failed", 
+            self.logger.error("Connection status check failed", 
                             exchange=self.exchange_name, error=str(e))
             return False
-    
-    async def _reconnect_public_ws(self) -> None:
-        """Reconnect public WebSocket with exponential backoff."""
-        if self._public_ws:
-            try:
-                await self._public_ws.reconnect()
-                self._public_ws_connected = self._public_ws.is_connected
-                
-                # Re-subscribe to symbols if connection restored
-                if self._public_ws_connected and self.symbols:
-                    for symbol in self.symbols:
-                        await self._public_ws.subscribe_orderbook(symbol)
-                        await self._public_ws.subscribe_ticker(symbol)
-                        
-            except Exception as e:
-                self.logger.error("Public WebSocket reconnect failed", error=str(e))
-                self._public_ws_connected = False
-    
-    async def _reconnect_private_ws(self) -> None:
-        """Reconnect private WebSocket with exponential backoff.""" 
-        if self._private_ws:
-            try:
-                await self._private_ws.reconnect()
-                self._private_ws_connected = self._private_ws.is_connected
-                
-                # Re-subscribe to private streams if connection restored
-                if self._private_ws_connected:
-                    await self._private_ws.subscribe_orders()
-                    await self._private_ws.subscribe_balances()
-                    await self._private_ws.subscribe_executions()
-                    
-            except Exception as e:
-                self.logger.error("Private WebSocket reconnect failed", error=str(e))
-                self._private_ws_connected = False
     
     def get_connection_status(self) -> Dict[str, Any]:
         """
@@ -1046,31 +948,24 @@ class UnifiedCompositeExchange(ABC):
         Returns:
             Dict with operation counts, latency stats, success rates, etc.
         """
-        current_time = time.time()
-        init_time_ms = 0.0
-        if self._init_start_time > 0:
-            init_time_ms = (current_time - self._init_start_time) * 1000
+        # Use extracted performance utilities for code reduction
+        base_stats = self.performance_tracker.get_performance_summary()
         
-        return {
+        # Add exchange-specific metrics
+        base_stats.update({
             "exchange": self.exchange_name,
             "connected": self.is_connected,
             "initialized": self.is_initialized,
-            "total_operations": self._operation_count,
             "active_symbols": len(self.active_symbols),
             "has_credentials": self.config.has_credentials(),
-            "last_operation_time": self._last_operation_time,
-            "initialization_time_ms": init_time_ms,
-            "hft_compliant": {
-                "init_under_100ms": init_time_ms < 100.0 if init_time_ms > 0 else None,
-                "orderbook_count": len(self._orderbooks),
-                "ticker_count": len(self._tickers)
-            },
             "data_stats": {
                 "cached_orderbooks": len(self._orderbooks),
                 "cached_tickers": len(self._tickers),
                 "symbols_info_loaded": self._symbols_info is not None
             }
-        }
+        })
+        
+        return base_stats
     
     def get_health_status(self) -> Dict[str, Any]:
         """
@@ -1079,39 +974,28 @@ class UnifiedCompositeExchange(ABC):
         Returns comprehensive health status including connection state,
         data freshness, and component health.
         """
-        current_time = time.time()
+        # Use extracted utility for base health status
+        health_status = create_health_status_base(
+            self.exchange_name, 
+            self.is_connected,
+            self.is_initialized
+        )
         
-        # Check data freshness (basic implementation)
-        orderbook_fresh = True
-        ticker_fresh = True
-        
-        # Could be enhanced to check actual timestamps of cached data
-        if self._last_operation_time > 0:
-            time_since_last_op = current_time - self._last_operation_time
-            # Consider data stale if no updates in 30 seconds
-            orderbook_fresh = time_since_last_op < 30.0
-            ticker_fresh = time_since_last_op < 30.0
-        
-        return {
-            "healthy": self.is_connected and self.is_initialized,
-            "exchange": self.exchange_name,
-            "connections": {
-                "rest": self._rest_connected,
-                "public_websocket": self._public_ws_connected,
-                "private_websocket": self._private_ws_connected
-            },
-            "data_freshness": {
-                "orderbooks": orderbook_fresh,
-                "tickers": ticker_fresh,
-                "last_update_ago_seconds": current_time - self._last_operation_time if self._last_operation_time > 0 else None
-            },
-            "performance": {
-                "total_operations": self._operation_count,
-                "hft_ready": len(self._orderbooks) > 0  # Has cached orderbook data
-            },
-            "issues": [],  # Could be populated with detected issues
-            "timestamp": current_time
+        # Add connection details
+        health_status["connections"] = {
+            "public_rest": self._public_rest is not None,
+            "public_websocket": self._public_ws_connected,
+            "private_rest": self._private_rest is not None,
+            "private_websocket": self._private_ws_connected
         }
+        
+        # Add performance and data freshness information
+        health_status["performance"] = {
+            "total_operations": getattr(self.performance_tracker, '_operation_count', 0),
+            "hft_ready": len(self._orderbooks) > 0  # Has cached orderbook data
+        }
+        
+        return health_status
     
     async def health_check(self) -> bool:
         """
@@ -1176,11 +1060,6 @@ class UnifiedCompositeExchange(ABC):
     
     def _track_operation(self, operation_name: str) -> None:
         """Track operation for performance monitoring."""
-        import time
-        self._operation_count += 1
-        self._last_operation_time = time.time()
-        
-        self.logger.debug("Operation tracked",
-                         operation=operation_name,
-                         count=self._operation_count)
+        # Use extracted performance tracker for code reduction
+        self.performance_tracker.track_operation(operation_name)
 
