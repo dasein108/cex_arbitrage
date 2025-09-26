@@ -12,7 +12,7 @@
 6. [Implementation Standards](#implementation-standards)
 7. [Data Structure Standards](#data-structure-standards)
 8. [Quality Standards & Testing](#quality-standards--testing)
-9. [Reference Implementation: MEXC](#reference-implementation-mexc)
+9. [Reference Implementation: MEXC Spot](#reference-implementation-mexc-spot)
 10. [Templates & Code Examples](#templates--code-examples)
 
 ## Overview
@@ -224,17 +224,17 @@ class ExchangeFactory:
 ```python
 # Public exchange creation (no credentials required)
 exchange = ExchangeFactory.create_public_exchange(
-    exchange=ExchangeEnum.MEXC,
+    exchange=ExchangeEnum.MEXC_SPOT,
     symbols=[Symbol("BTC", "USDT"), Symbol("ETH", "USDT")]
 )
 
 # Private exchange creation (requires credentials)
 config = ExchangeConfig(
-    name=ExchangeName("mexc"),
+    name=ExchangeName("mexc_spot"),
     credentials=ExchangeCredentials(api_key="...", secret_key="...")
 )
 exchange = ExchangeFactory.create_private_exchange(
-    exchange=ExchangeEnum.MEXC,
+    exchange=ExchangeEnum.MEXC_SPOT,
     config=config,
     symbols=[Symbol("BTC", "USDT")]
 )
@@ -562,23 +562,23 @@ async def benchmark_order_placement():
     print(f"95th percentile: {sorted(latencies)[95]:.2f}ms")
 ```
 
-## Reference Implementation: MEXC
+## Reference Implementation: MEXC Spot
 
 ### Architecture Overview
 
-MEXC serves as the reference implementation demonstrating all architectural patterns:
+MEXC Spot serves as the reference implementation demonstrating all architectural patterns:
 
 ```
-src/cex/mexc/
-├── mexc_exchange.py              # Main implementation
+src/cex/mexc_spot/
+├── mexc_spot_exchange.py         # Main implementation
 ├── public_exchange.py            # Public operations
 ├── private_exchange.py           # Private operations  
 ├── rest/
-│   ├── mexc_rest_public.py      # Public REST client
-│   └── mexc_rest_private.py     # Private REST client
+│   ├── mexc_spot_rest_public.py  # Public REST client
+│   └── mexc_spot_rest_private.py # Private REST client
 ├── ws/
-│   ├── mexc_ws_public.py        # Public WebSocket
-│   ├── mexc_ws_private.py       # Private WebSocket
+│   ├── mexc_spot_ws_public.py    # Public WebSocket
+│   ├── mexc_spot_ws_private.py   # Private WebSocket
 │   └── protobuf_parser.py       # Protobuf message handling
 └── services/
     ├── mapper.py                # Service mappings
@@ -589,23 +589,23 @@ src/cex/mexc/
 
 **Composition over Inheritance**
 ```python
-class MexcPrivateExchange(BasePrivateExchangeInterface):
+class MexcSpotPrivateExchange(BasePrivateExchangeInterface):
     def __init__(self, config: ExchangeConfig):
         super().__init__(config)
         
         # Delegate to specialized components
-        self._rest_private = MexcRestPrivate(config)
-        self._ws_private = MexcWebSocketPrivate(config)
-        self._public = MexcPublicExchange()
-        self._symbol_mapper = MexcSymbolMapper()
+        self._rest_private = MexcSpotRestPrivate(config)
+        self._ws_private = MexcSpotWebSocketPrivate(config)
+        self._public = MexcSpotPublicExchange()
+        self._symbol_mapper = MexcSpotSymbolMapper()
 ```
 
 **Protocol Buffer Handling**
 ```python
-# MEXC uses protobuf for WebSocket messages
+# MEXC Spot uses protobuf for WebSocket messages
 from .protobuf_parser import ProtobufParser
 
-class MexcWebSocketPrivate(BaseWebSocketPrivate):
+class MexcSpotWebSocketPrivate(BaseWebSocketPrivate):
     async def _on_message(self, message):
         if isinstance(message, bytes):
             # Protobuf binary message

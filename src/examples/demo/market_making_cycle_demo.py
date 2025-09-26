@@ -1,12 +1,14 @@
 #!/usr/bin/env python3
 """
-Unified Exchange Arbitrage Demo
+Unified Exchange Arbitrage Demo - LIVE TRADING
+
+⚠️  WARNING: This demo uses REAL MONEY and places REAL ORDERS! ⚠️
 
 This demo showcases the unified exchange architecture by implementing a simple
 arbitrage strategy that:
 
-1. **Market Buy**: Execute market buy order to acquire position
-2. **Limit Sell**: Place limit sell order at top of bids (above current bid)
+1. **Market Buy**: Execute REAL market buy order to acquire position
+2. **Limit Sell**: Place REAL limit sell order at top of bids (above current bid)
 3. **Order Tracking**: Track both order IDs and monitor execution status
 4. **Event Monitoring**: Listen for order execution and balance change events via WebSocket
 5. **Performance Metrics**: Track latency and success rates
@@ -19,13 +21,16 @@ The demo demonstrates:
 - Performance tracking and health monitoring
 
 Usage:
-    python demo_unified_arbitrage.py --exchange mexc --symbol BTCUSDT --quantity 0.001
+    python market_making_cycle_demo.py --exchange mexc --symbol BTCUSDT --quantity 0.001 --confirm
 
 Safety Features:
-- Dry-run mode by default (no real orders)
+- Explicit confirmation required (--confirm flag)
+- 5-second cancellation window before execution
 - Position size limits
 - Maximum loss protection
 - Automatic order cleanup on exit
+
+⚠️  RISK WARNING: This demo will spend actual cryptocurrency funds! ⚠️
 """
 
 import asyncio
@@ -34,32 +39,16 @@ import sys
 import os
 import time
 from typing import Optional, Dict, List
-from decimal import Decimal
-from dataclasses import dataclass
 
 # Add src to path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'src'))
 
-from exchanges.interfaces.composite.unified_exchange import UnifiedExchangeFactory
+from exchanges.interfaces.composite.unified_exchange import UnifiedCompositeExchange
+from exchanges.full_exchange_factory import FullExchangeFactory
 from exchanges.structs.common import Symbol, Order, AssetBalance, OrderBook
 from exchanges.structs.types import OrderId
-from exchanges.structs import Side, OrderType, TimeInForce, OrderStatus, AssetName
+from exchanges.structs import Side, TimeInForce, OrderStatus, AssetName
 from infrastructure.logging import get_logger, LoggingTimer
-
-
-@dataclass
-class ArbitrageOrder:
-    """Track arbitrage order details."""
-    order_id: OrderId
-    order_type: str
-    symbol: Symbol
-    side: Side
-    quantity: float
-    price: Optional[float]
-    status: OrderStatus
-    timestamp: float
-    executed_quantity: float = 0.0
-    executed_price: Optional[float] = None
 
 
 class UnifiedArbitrageDemo:
@@ -75,30 +64,28 @@ class UnifiedArbitrageDemo:
     def __init__(self, 
                  exchange_name: str,
                  symbol: Symbol,
-                 quantity: float,
-                 dry_run: bool = True):
+                 quantity: float):
         """
-        Initialize arbitrage demo.
+        Initialize arbitrage demo for LIVE TRADING.
         
         Args:
             exchange_name: Exchange to use (mexc, gateio)
             symbol: Trading pair (e.g., BTCUSDT)
             quantity: Base quantity to trade
-            dry_run: If True, don't place real orders
         """
         self.exchange_name = exchange_name
         self.symbol = symbol
         self.quantity = quantity
-        self.dry_run = dry_run
         
-        # Exchange and factory
-        self.factory = UnifiedExchangeFactory()
-        self.exchange = None
+        # Exchange
+        self.exchange: Optional[UnifiedCompositeExchange] = None
         
         # Order tracking
-        self.market_buy_order: Optional[ArbitrageOrder] = None
-        self.limit_sell_order: Optional[ArbitrageOrder] = None
-        self.orders: Dict[OrderId, ArbitrageOrder] = {}
+        self.market_buy_order: Optional[Order] = None
+        self.limit_sell_order: Optional[Order] = None
+        self.orders: Dict[OrderId, Order] = {}
+        self.best_bid: Optional[float] = None
+        self.best_ask: Optional[float] = None
         
         # Balance tracking
         self.initial_balances: Dict[str, AssetBalance] = {}
@@ -107,8 +94,9 @@ class UnifiedArbitrageDemo:
         # Performance metrics
         self.start_time = 0.0
         self.order_execution_times: List[float] = []
-        self.balance_update_count = 0
+        self.is_complete = False
         self.order_update_count = 0
+        self.balance_update_count = 0
         
         # Event flags
         self.market_buy_executed = False
@@ -122,18 +110,15 @@ class UnifiedArbitrageDemo:
                         exchange=exchange_name,
                         symbol=str(symbol),
                         quantity=quantity,
-                        dry_run=dry_run)
+                        mode="LIVE_TRADING")
     
     async def run_demo(self) -> None:
         """Run the complete arbitrage demo."""
         try:
             self.start_time = time.time()
             
-            print(f"🚀 Starting Unified Exchange Arbitrage Demo")
-            print(f"Exchange: {self.exchange_name}")
-            print(f"Symbol: {self.symbol}")
-            print(f"Quantity: {self.quantity}")
-            print(f"Mode: {'DRY RUN' if self.dry_run else 'LIVE TRADING'}")
+            print(f"🚀 Starting Unified Exchange MM "
+                  f"Cycle: {self.exchange_name} | Symbol: {self.symbol} | Quantity: {self.quantity}")
             print("=" * 60)
             
             # Step 1: Initialize exchange
@@ -147,12 +132,9 @@ class UnifiedArbitrageDemo:
             
             # Step 4: Wait for market buy execution
             await self._wait_for_market_buy_execution()
-            
-            # Step 5: Place limit sell order
-            await self._place_limit_sell()
-            
+
             # Step 6: Monitor for specified duration
-            await self._monitor_orders(duration_seconds=30)
+            await self._sell_on_top()
             
             # Step 7: Show final results
             await self._show_results()
@@ -169,30 +151,26 @@ class UnifiedArbitrageDemo:
         """Initialize the unified exchange with event handlers."""
         print("\n📡 Initializing exchange connection...")
         
-        try:
-            # Create exchange using config_manager pattern
-            self.exchange = await self.factory.create_exchange(
-                exchange_name=self.exchange_name,
-                symbols=[self.symbol]
-            )
-            
-            # Override event handlers to track our demo events
-            self.exchange.on_order_update = self._handle_order_update
-            self.exchange.on_balance_update = self._handle_balance_update
-            self.exchange.on_orderbook_update = self._handle_orderbook_update
-            
-            print(f"✅ Exchange initialized successfully")
-            print(f"   - Connected: {self.exchange.is_connected}")
-            print(f"   - Private access: {self.exchange.config.has_credentials()}")
-            
-            # Get health status
-            health = self.exchange.get_health_status()
-            print(f"   - Health: {'✅ Healthy' if health['healthy'] else '❌ Unhealthy'}")
-            
-        except Exception as e:
-            self.logger.error("Failed to initialize exchange", error=str(e))
-            raise
-    
+        # Create exchange using config_manager pattern
+        factory = FullExchangeFactory()
+        self.exchange = await factory.create_exchange(
+            exchange_name=self.exchange_name,
+            symbols=[self.symbol]
+        )
+
+        # Override event handlers to track our demo events
+        self.exchange.on_order_update = self._handle_order_update
+        self.exchange.on_balance_update = self._handle_balance_update
+        self.exchange.on_orderbook_update = self._handle_orderbook_update
+
+        print(f"✅ Exchange initialized successfully")
+        print(f"   - Connected: {self.exchange.is_connected}")
+        print(f"   - Private access: {self.exchange.config.has_credentials()}")
+
+        # Get health status
+        health = self.exchange.get_health_status()
+        print(f"   - Health: {'✅ Healthy' if health['healthy'] else '❌ Unhealthy'}")
+
     async def _capture_initial_state(self) -> None:
         """Capture initial balances and market data."""
         print("\n💰 Capturing initial state...")
@@ -208,10 +186,8 @@ class UnifiedArbitrageDemo:
             base_balance = self.initial_balances.get(base_asset, AssetBalance(asset=base_asset, available=0.0, locked=0.0))
             quote_balance = self.initial_balances.get(quote_asset, AssetBalance(asset=quote_asset, available=0.0, locked=0.0))
             
-            print(f"📊 Initial Balances:")
-            print(f"   - {base_asset}: {base_balance.available:.8f} available, {base_balance.locked:.8f} locked")
-            print(f"   - {quote_asset}: {quote_balance.available:.8f} available, {quote_balance.locked:.8f} locked")
-            
+            print(f"📊 Initial Balances: {base_balance}, {quote_balance}")
+
             # Get current orderbook
             orderbook = self.exchange.get_orderbook(self.symbol)
             if orderbook and orderbook.bids and orderbook.asks:
@@ -220,11 +196,8 @@ class UnifiedArbitrageDemo:
                 spread = best_ask - best_bid
                 spread_pct = (spread / best_bid) * 100
                 
-                print(f"📈 Market Data:")
-                print(f"   - Best Bid: {best_bid:.8f}")
-                print(f"   - Best Ask: {best_ask:.8f}")
-                print(f"   - Spread: {spread:.8f} ({spread_pct:.4f}%)")
-                
+                print(f"Best Bid: {best_bid:.8f} | Best Ask: {best_ask:.8f} | Spread: {spread:.8f} ({spread_pct:.4f}%)")
+
                 # Check if we have enough quote balance for market buy
                 estimated_cost = self.quantity * best_ask
                 if quote_balance.available < estimated_cost:
@@ -240,34 +213,8 @@ class UnifiedArbitrageDemo:
     
     async def _execute_market_buy(self) -> None:
         """Execute market buy order to acquire base currency."""
-        print(f"\n🛒 Executing market buy order...")
-        
-        if self.dry_run:
-            print("   [DRY RUN] Simulating market buy order")
-            # Create dummy order for dry run
-            self.market_buy_order = ArbitrageOrder(
-                order_id="dry_run_buy_123",
-                order_type="market",
-                symbol=self.symbol,
-                side=Side.BUY,
-                quantity=self.quantity,
-                price=None,
-                status=OrderStatus.NEW,
-                timestamp=time.time()
-            )
-            self.orders[self.market_buy_order.order_id] = self.market_buy_order
-            
-            # Simulate immediate execution for dry run
-            await asyncio.sleep(0.1)
-            self.market_buy_order.status = OrderStatus.FILLED
-            self.market_buy_order.executed_quantity = self.quantity
-            self.market_buy_order.executed_price = 50000.0  # Dummy price
-            self.market_buy_executed = True
-            
-            print(f"   ✅ [DRY RUN] Market buy simulated")
-            print(f"      - Order ID: {self.market_buy_order.order_id}")
-            print(f"      - Quantity: {self.quantity}")
-            return
+        print(f"\n🛒 Executing LIVE market buy order...")
+        print(f"   ⚠️  REAL ORDER: This will spend actual funds!")
         
         try:
             with LoggingTimer(self.logger, "market_buy_execution") as timer:
@@ -312,8 +259,8 @@ class UnifiedArbitrageDemo:
         while not self.market_buy_executed and (time.time() - start_wait) < max_wait_time:
             await asyncio.sleep(0.1)
             
-            # Check order status if not dry run
-            if not self.dry_run and self.market_buy_order:
+            # Check order status
+            if self.market_buy_order:
                 try:
                     order_status = await self.exchange.get_order(
                         self.market_buy_order.order_id,
@@ -361,26 +308,7 @@ class UnifiedArbitrageDemo:
         print(f"      - Premium: {premium*100:.1f}%")
         print(f"      - Sell price: {sell_price:.8f}")
         
-        if self.dry_run:
-            print("   [DRY RUN] Simulating limit sell order")
-            # Create dummy order for dry run
-            self.limit_sell_order = ArbitrageOrder(
-                order_id="dry_run_sell_456",
-                order_type="limit",
-                symbol=self.symbol,
-                side=Side.SELL,
-                quantity=self.quantity,
-                price=sell_price,
-                status=OrderStatus.NEW,
-                timestamp=time.time()
-            )
-            self.orders[self.limit_sell_order.order_id] = self.limit_sell_order
-            self.limit_sell_placed = True
-            
-            print(f"   ✅ [DRY RUN] Limit sell simulated")
-            print(f"      - Order ID: {self.limit_sell_order.order_id}")
-            print(f"      - Price: {sell_price:.8f}")
-            return
+        print(f"   ⚠️  REAL ORDER: This will place actual limit sell order!")
         
         try:
             with LoggingTimer(self.logger, "limit_sell_placement") as timer:
@@ -419,22 +347,11 @@ class UnifiedArbitrageDemo:
             print(f"   ❌ Limit sell failed: {e}")
             raise
     
-    async def _monitor_orders(self, duration_seconds: int = 30) -> None:
+    async def _sell_on_top(self, duration_seconds: int = 30) -> None:
         """Monitor orders and events for specified duration."""
-        print(f"\n👀 Monitoring orders and events for {duration_seconds}s...")
-        
-        start_monitor = time.time()
-        last_status_update = start_monitor
-        
-        while (time.time() - start_monitor) < duration_seconds:
-            await asyncio.sleep(1.0)
-            
-            # Print status update every 5 seconds
-            if (time.time() - last_status_update) >= 5.0:
-                await self._print_status_update()
-                last_status_update = time.time()
-        
-        print(f"\n✅ Monitoring completed")
+        while not self.is_complete:
+            await self._place_limit_sell()
+
     
     async def _print_status_update(self) -> None:
         """Print current status update."""
@@ -443,7 +360,7 @@ class UnifiedArbitrageDemo:
         print(f"\n📊 Status Update (t+{elapsed:.1f}s):")
         print(f"   - Balance updates received: {self.balance_update_count}")
         print(f"   - Order updates received: {self.order_update_count}")
-        
+
         # Order status
         if self.market_buy_order:
             print(f"   - Market buy: {self.market_buy_order.status.name} (ID: {self.market_buy_order.order_id})")
@@ -490,13 +407,12 @@ class UnifiedArbitrageDemo:
         print(f"   - Order updates: {self.order_update_count}")
         print(f"   - WebSocket events: {'✅ Working' if (self.balance_update_count > 0 or self.order_update_count > 0) else '⚠️  None received'}")
         
-        # Balance changes (if not dry run)
-        if not self.dry_run:
-            try:
-                final_balances = await self.exchange.get_balances()
-                await self._show_balance_changes(final_balances)
-            except Exception as e:
-                print(f"   ❌ Could not fetch final balances: {e}")
+        # Balance changes
+        try:
+            final_balances = await self.exchange.get_balances()
+            await self._show_balance_changes(final_balances)
+        except Exception as e:
+            print(f"   ❌ Could not fetch final balances: {e}")
         
         # Exchange health
         health = self.exchange.get_health_status()
@@ -514,11 +430,10 @@ class UnifiedArbitrageDemo:
         print(f"   - ✅ Comprehensive error handling and recovery")
         print(f"   - ✅ Performance tracking and health monitoring")
         
-        if self.dry_run:
-            print(f"\n💡 This was a DRY RUN demonstration")
-            print(f"   - No real orders were placed")
-            print(f"   - No real funds were used")
-            print(f"   - Architecture and event handling validated")
+        print(f"\n💰 LIVE TRADING COMPLETED")
+        print(f"   - Real orders were placed and executed")
+        print(f"   - Actual funds were used for trading")
+        print(f"   - Production-ready architecture validated")
     
     async def _show_balance_changes(self, final_balances: Dict[str, AssetBalance]) -> None:
         """Show balance changes from start to end."""
@@ -544,8 +459,8 @@ class UnifiedArbitrageDemo:
         print(f"\n🧹 Cleaning up...")
         
         try:
-            # Cancel any open orders if not dry run
-            if not self.dry_run and self.exchange:
+            # Cancel any open orders
+            if self.exchange:
                 open_orders = await self.exchange.get_open_orders(self.symbol)
                 if open_orders.get(self.symbol):
                     print(f"   - Cancelling {len(open_orders[self.symbol])} open orders...")
@@ -574,13 +489,13 @@ class UnifiedArbitrageDemo:
         print(f"   - Order ID: {order.order_id}")
         print(f"   - Status: {order.status}")
         print(f"   - Side: {order.side}")
-        print(f"   - Executed: {order.executed_quantity or 0.0}")
+        print(f"   - Executed: {order.filled_quantity or 0.0}")
         
         # Update our tracked orders
         if order.order_id in self.orders:
             tracked_order = self.orders[order.order_id]
             tracked_order.status = order.status
-            tracked_order.executed_quantity = order.executed_quantity or 0.0
+            tracked_order.executed_quantity = order.filled_quantity or 0.0
             tracked_order.executed_price = order.average_price
             
             # Update execution flags
@@ -593,7 +508,7 @@ class UnifiedArbitrageDemo:
         self.logger.info("Order update received",
                         order_id=order.order_id,
                         status=order.status,
-                        executed_qty=order.executed_quantity or 0.0)
+                        executed_qty=order.filled_quantity or 0.0)
     
     async def _handle_balance_update(self, asset: str, balance: AssetBalance) -> None:
         """Handle balance update events from WebSocket."""
@@ -618,57 +533,49 @@ class UnifiedArbitrageDemo:
                         available_change=available_change,
                         locked_change=locked_change)
     
-    async def _handle_orderbook_update(self, symbol: Symbol, orderbook: OrderBook) -> None:
+    async def _handle_orderbook_update(self, orderbook: OrderBook) -> None:
         """Handle orderbook update events from WebSocket."""
         # Only log significant orderbook updates to avoid spam
         if orderbook.bids and orderbook.asks:
             best_bid = orderbook.bids[0].price
-            best_ask = orderbook.asks[0].price
-            
-            # Log every 100th update to show activity without spam
-            if hasattr(self, '_orderbook_update_count'):
-                self._orderbook_update_count += 1
-            else:
-                self._orderbook_update_count = 1
-                
-            if self._orderbook_update_count % 100 == 0:
-                print(f"📊 Orderbook update #{self._orderbook_update_count}: Bid={best_bid:.8f}, Ask={best_ask:.8f}")
+            best_ask = orderbook.asks[0].price            
+            print(f"📊 Orderbook update Bid={best_bid:.8f}, Ask={best_ask:.8f}")
 
 
 async def main():
     """Main entry point for the demo."""
-    parser = argparse.ArgumentParser(description="Unified Exchange Arbitrage Demo")
-    parser.add_argument("--exchange", default="mexc", choices=["mexc", "gateio"],
+    parser = argparse.ArgumentParser(description="Unified Exchange Arbitrage Demo - LIVE TRADING ONLY")
+    parser.add_argument("--exchange", default="mexc", choices=["mexc_spot", "gateio_spot", "gateio_futures"],
                        help="Exchange to use (default: mexc)")
     parser.add_argument("--symbol", default="BTCUSDT",
                        help="Trading pair symbol (default: BTCUSDT)")
     parser.add_argument("--quantity", type=float, default=0.001,
                        help="Quantity to trade (default: 0.001)")
-    parser.add_argument("--live", action="store_true",
-                       help="Enable live trading (default: dry run)")
+    parser.add_argument("--confirm", action="store_true",
+                       help="Confirm that you understand this uses REAL MONEY")
     
     args = parser.parse_args()
     
-    # Parse symbol
-    if args.symbol:
-        # Simple parsing - assumes format like BTCUSDT
-        if "USDT" in args.symbol:
-            base = args.symbol.replace("USDT", "")
-            quote = "USDT"
-        else:
-            # Default fallback
-            base = args.symbol[:3]
-            quote = args.symbol[3:]
-        symbol = Symbol(base, quote)
-    else:
-        symbol = Symbol("BTC", "USDT")
+    # Safety confirmation
+    if not args.confirm:
+        print("⚠️  WARNING: This demo uses REAL MONEY and places REAL ORDERS!")
+        print("⚠️  Use --confirm flag to acknowledge you understand the risks.")
+        print("⚠️  Example: python market_making_cycle_demo.py --confirm")
+        return
+    
+    print("🚨 LIVE TRADING CONFIRMED - Using real funds!")
+    print("Press Ctrl+C within 5 seconds to cancel...")
+    try:
+        await asyncio.sleep(5)
+    except KeyboardInterrupt:
+        print("\n❌ Demo cancelled by user")
+        return
     
     # Create and run demo
     demo = UnifiedArbitrageDemo(
         exchange_name=args.exchange,
-        symbol=symbol,
-        quantity=args.quantity,
-        dry_run=not args.live
+        symbol=args.symbol,
+        quantity=args.quantity
     )
     
     try:

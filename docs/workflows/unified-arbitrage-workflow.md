@@ -366,16 +366,16 @@ sequenceDiagram
     participant ENV as Environment
     participant CFG as Config Manager
     participant FAC as Exchange Factory
-    participant MEX as MEXC Exchange
-    participant GAT as Gate.io Exchange
+    participant MEX as MEXC Spot Exchange
+    participant GAT as Gate.io Spot Exchange
     participant LOG as HFT Logger
     
     ENV->>CFG: Load config.yaml + env vars
     CFG->>FAC: Create factory with configs
-    FAC->>MEX: Create MEXC exchange
-    FAC->>GAT: Create Gate.io exchange
+    FAC->>MEX: Create MEXC spot exchange
+    FAC->>GAT: Create Gate.io spot exchange
     
-    par Initialize MEXC
+    par Initialize MEXC Spot
         MEX->>MEX: Initialize REST client
         MEX->>MEX: Initialize WebSocket
         MEX->>LOG: Set up HFT logger
@@ -395,8 +395,8 @@ sequenceDiagram
 ```mermaid
 sequenceDiagram
     participant ARB as Arbitrage Engine
-    participant MEX as MEXC Exchange
-    participant GAT as Gate.io Exchange
+    participant MEX as MEXC Spot Exchange
+    participant GAT as Gate.io Spot Exchange
     participant LOG as HFT Logger
     
     ARB->>MEX: Get orderbook (real-time)

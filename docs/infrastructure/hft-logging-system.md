@@ -270,15 +270,19 @@ def get_logger(component_name: str) -> HFTLoggerInterface:
 
 **Exchange-Specific Routing**:
 ```python
-# MEXC exchange components
-mexc_rest_logger = get_strategy_logger('rest.auth.mexc.private', 
-                                      ['mexc', 'private', 'rest', 'auth'])
-mexc_ws_logger = get_strategy_logger('ws.connection.mexc.public',
-                                    ['mexc', 'public', 'ws', 'connection'])
+# MEXC spot exchange components
+mexc_rest_logger = get_strategy_logger('rest.auth.mexc_spot.private', 
+                                      ['mexc_spot', 'private', 'rest', 'auth'])
+mexc_ws_logger = get_strategy_logger('ws.connection.mexc_spot.public',
+                                    ['mexc_spot', 'public', 'ws', 'connection'])
 
-# Gate.io exchange components  
-gateio_ws_logger = get_strategy_logger('ws.message_parser.gateio.private',
-                                      ['gateio', 'private', 'ws', 'message_parser'])
+# Gate.io spot exchange components  
+gateio_ws_logger = get_strategy_logger('ws.message_parser.gateio_spot.private',
+                                      ['gateio_spot', 'private', 'ws', 'message_parser'])
+
+# Gate.io futures exchange components
+gateio_futures_logger = get_strategy_logger('ws.message_parser.gateio_futures.private',
+                                           ['gateio_futures', 'private', 'ws', 'message_parser'])
 ```
 
 **Benefits of Hierarchical Tagging**:

@@ -295,11 +295,11 @@ class MexcSymbolMapper(AbstractSymbolMapper):
         return f"{symbol.base}{symbol.quote}"
         
 # BETTER: Simple direct implementation
-class MexcSymbolMapper:
-    """Simple symbol format conversion for MEXC."""
+class MexcSpotSymbolMapper:
+    """Simple symbol format conversion for MEXC spot trading."""
     
     def to_exchange_format(self, symbol: Symbol) -> str:
-        """Convert Symbol to MEXC format: BTCUSDT"""
+        """Convert Symbol to MEXC spot format: BTCUSDT"""
         return f"{symbol.base}{symbol.quote}"
 ```
 

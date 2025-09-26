@@ -72,23 +72,25 @@ UnifiedCompositeExchange (single interface)
 ### **Unified Factory Pattern**
 
 **Simplified Exchange Creation with Config Manager**:
+
 ```python
-from src.exchanges.interfaces.composite.unified_exchange import UnifiedExchangeFactory
+
+from exchanges.full_exchange_factory import FullExchangeFactory
 from src.exchanges.structs.common import Symbol
 
 # Create unified factory
-factory = UnifiedExchangeFactory()
+factory = FullExchangeFactory()
 
 # Create single exchange (config loaded automatically)
 exchange = await factory.create_exchange(
-    exchange_name='mexc',
-    symbols=[Symbol('BTC', 'USDT')]
+  exchange_name='mexc_spot',
+  symbols=[Symbol('BTC', 'USDT')]
 )
 
 # Create multiple exchanges concurrently
 exchanges = await factory.create_multiple_exchanges(
-    exchange_names=['mexc', 'gateio'],
-    symbols=[Symbol('BTC', 'USDT'), Symbol('ETH', 'USDT')]
+  exchange_names=['mexc_spot', 'gateio_spot', 'gateio_futures'],
+  symbols=[Symbol('BTC', 'USDT'), Symbol('ETH', 'USDT')]
 )
 ```
 
@@ -209,8 +211,9 @@ See **[Caching Policy](docs/performance/caching-policy.md)** for complete safety
 **Core Components**:
 - **[UnifiedCompositeExchange](src/exchanges/interfaces/composite/unified_exchange.py)** - Single interface standard
 - **[UnifiedExchangeFactory](src/exchanges/interfaces/composite/unified_exchange.py)** - Simplified factory
-- **[MexcUnifiedExchange](src/exchanges/integrations/mexc/mexc_unified_exchange.py)** - Complete MEXC implementation
-- **[GateioUnifiedExchange](src/exchanges/integrations/gateio/gateio_unified_exchange.py)** - Complete Gate.io implementation
+- **[MexcSpotUnifiedExchange](src/exchanges/integrations/mexc/mexc_unified_exchange.py)** - Complete MEXC spot implementation
+- **[GateioSpotUnifiedExchange](src/exchanges/integrations/gateio/gateio_unified_exchange.py)** - Complete Gate.io spot implementation
+- **[GateioFuturesUnifiedExchange](src/exchanges/integrations/gateio/gateio_futures_unified_exchange.py)** - Complete Gate.io futures implementation
 
 **Infrastructure Foundation**:
 - **[HFT Logging System](docs/infrastructure/hft-logging-system.md)** - Sub-millisecond logging

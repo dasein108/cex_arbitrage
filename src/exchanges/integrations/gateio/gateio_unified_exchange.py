@@ -29,7 +29,7 @@ from exchanges.structs.common import (
     WithdrawalRequest, WithdrawalResponse, SymbolsInfo, SymbolInfo, OrderBookEntry
 )
 from exchanges.structs.types import AssetName, OrderId
-from exchanges.structs import Side, OrderType, TimeInForce
+from exchanges.structs import Side, OrderType, TimeInForce, ExchangeEnum
 from config.structs import ExchangeConfig
 from infrastructure.logging import HFTLoggerInterface, get_exchange_logger
 from infrastructure.exceptions.exchange import BaseExchangeError
@@ -67,7 +67,8 @@ class GateioUnifiedExchange(UnifiedCompositeExchange):
     def __init__(self, 
                  config: ExchangeConfig, 
                  symbols: Optional[List[Symbol]] = None,
-                 logger: Optional[HFTLoggerInterface] = None):
+                 logger: Optional[HFTLoggerInterface] = None,
+                 exchange_enum: Optional[ExchangeEnum] = None):
         """
         Initialize Gate.io unified exchange.
         
@@ -75,8 +76,12 @@ class GateioUnifiedExchange(UnifiedCompositeExchange):
             config: Exchange configuration with credentials and WebSocket settings
             symbols: Symbols to initialize for trading/market data  
             logger: Optional logger instance
+            exchange_enum: ExchangeEnum for type-safe internal operations
         """
         super().__init__(config, symbols, logger)
+        
+        # Store ExchangeEnum for internal type safety (default to spot)
+        self._exchange_enum = exchange_enum or ExchangeEnum.GATEIO
         
         # REST clients for API operations
         self._public_rest: Optional[GateioPublicSpotRest] = None
@@ -107,9 +112,19 @@ class GateioUnifiedExchange(UnifiedCompositeExchange):
         self._rest_initialized = False
         
         self.logger.info("Gate.io unified exchange initialized",
-                        exchange="gateio",
+                        exchange=self._exchange_enum.value,
                         symbol_count=len(self.symbols),
                         has_credentials=config.has_credentials())
+
+    @property
+    def exchange_enum(self) -> ExchangeEnum:
+        """Get the ExchangeEnum for internal type-safe operations."""
+        return self._exchange_enum
+        
+    @property 
+    def exchange_name(self) -> str:
+        """Get the semantic exchange name string."""
+        return self._exchange_enum.value
     
     # ========================================
     # Lifecycle Management

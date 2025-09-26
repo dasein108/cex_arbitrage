@@ -28,10 +28,6 @@ All exchange implementations follow the same architectural patterns:
 - Auto-registration: Services and strategies register automatically on import
 """
 
-# Import interfaces for external access
-# TODO: Fix naming
-# from .interfaces import PublicExchangeInterface, PrivateExchangeInterface, ExchangeInterface
-# Auto-import exchange modules to trigger service registration
 from .integrations import mexc
 from .integrations import gateio
 from .consts import DEFAULT_PUBLIC_WEBSOCKET_CHANNELS

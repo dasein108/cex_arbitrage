@@ -90,6 +90,10 @@ class AssetBalance(Struct):
         """Total balance (free + locked)."""
         return self.available + self.locked
 
+    @property
+    def __str__(self):
+        return f"{self.asset}: {self.total}({self.available}/{self.locked})"
+
 class Position(Struct):
     """Trading position (for margin/futures)."""
     symbol: Symbol
@@ -102,6 +106,9 @@ class Position(Struct):
     liquidation_price: Optional[float] = None
     margin: Optional[float] = None
     timestamp: Optional[int] = None
+
+    def __str__(self):
+        return f"{self.symbol} {self.side} size: {self.size} entry: {self.entry_price}"
 
 class SymbolInfo(Struct, frozen=True):
     """Symbol trading information."""

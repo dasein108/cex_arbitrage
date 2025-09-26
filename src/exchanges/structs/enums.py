@@ -5,14 +5,19 @@ from .types import ExchangeName
 
 class ExchangeEnum(Enum):
     """
-    Enumeration of supported centralized exchanges.
+    Enumeration of supported centralized exchanges using semantic naming convention.
 
     Used throughout the system for type-safe exchange identification
     and consistent naming across all components.
+    
+    Semantic Format: <exchange>_<market_type>
+    - mexc_spot: MEXC spot trading
+    - gateio_spot: Gate.io spot trading  
+    - gateio_futures: Gate.io futures trading
     """
-    MEXC = ExchangeName("MEXC_SPOT")
-    GATEIO = ExchangeName("GATEIO_SPOT")
-    GATEIO_FUTURES = ExchangeName("GATEIO_FUTURES")
+    MEXC = ExchangeName("mexc_spot")
+    GATEIO = ExchangeName("gateio_spot")
+    GATEIO_FUTURES = ExchangeName("gateio_futures")
 
 
 class ExchangeStatus(IntEnum):

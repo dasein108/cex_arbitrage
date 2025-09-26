@@ -18,7 +18,7 @@ from exchanges.structs.common import (
     WithdrawalRequest, WithdrawalResponse, SymbolsInfo
 )
 from exchanges.structs.types import AssetName, OrderId
-from exchanges.structs import Side, OrderType, TimeInForce, OrderStatus
+from exchanges.structs import Side, OrderType, TimeInForce, OrderStatus, ExchangeEnum
 from config.structs import ExchangeConfig
 from infrastructure.logging import HFTLoggerInterface
 from infrastructure.exceptions.exchange import BaseExchangeError
@@ -50,9 +50,13 @@ class MexcUnifiedExchange(UnifiedCompositeExchange):
     def __init__(self, 
                  config: ExchangeConfig, 
                  symbols: Optional[List[Symbol]] = None,
-                 logger: Optional[HFTLoggerInterface] = None):
+                 logger: Optional[HFTLoggerInterface] = None,
+                 exchange_enum: Optional[ExchangeEnum] = None):
         """Initialize MEXC unified exchange."""
         super().__init__(config, symbols, logger)
+        
+        # Store ExchangeEnum for internal type safety
+        self._exchange_enum = exchange_enum or ExchangeEnum.MEXC
         
         # REST clients
         self._public_rest: Optional[MexcPublicSpotRest] = None
@@ -75,8 +79,18 @@ class MexcUnifiedExchange(UnifiedCompositeExchange):
         self._active_symbols: List[Symbol] = self.symbols.copy()
         
         self.logger.info("MEXC unified exchange created", 
-                        exchange="mexc",
+                        exchange=self._exchange_enum.value,
                         symbol_count=len(self._active_symbols))
+
+    @property
+    def exchange_enum(self) -> ExchangeEnum:
+        """Get the ExchangeEnum for internal type-safe operations."""
+        return self._exchange_enum
+        
+    @property 
+    def exchange_name(self) -> str:
+        """Get the semantic exchange name string."""
+        return self._exchange_enum.value
     
     # ========================================
     # Lifecycle Management

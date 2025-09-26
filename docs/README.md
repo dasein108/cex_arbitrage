@@ -154,7 +154,7 @@ The CEX Arbitrage Engine follows **pragmatic architectural principles** that hav
 - **Integration**: [Exchange Integration](workflows/exchange-integration.md) → [Factory Patterns](patterns/factory-pattern.md)
 
 ### **By Component**
-- **Exchanges**: [Unified Architecture](architecture/unified-exchange-architecture.md) → [MEXC Implementation](../src/exchanges/integrations/mexc/) → [Gate.io Implementation](../src/exchanges/integrations/gateio/)
+- **Exchanges**: [Unified Architecture](architecture/unified-exchange-architecture.md) → [MEXC Spot Implementation](../src/exchanges/integrations/mexc/) → [Gate.io Spot Implementation](../src/exchanges/integrations/gateio/) → [Gate.io Futures Implementation](../src/exchanges/integrations/gateio_futures/)
 - **Logging**: [HFT Logging System](infrastructure/hft-logging-system.md)
 - **Configuration**: [Configuration System](configuration/configuration-system.md)
 - **Networking**: [Infrastructure](infrastructure/networking.md)

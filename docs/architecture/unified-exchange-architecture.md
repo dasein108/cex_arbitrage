@@ -192,8 +192,9 @@ class UnifiedExchangeFactory:
     
     def __init__(self):
         self._supported_exchanges = {
-            'mexc': 'exchanges.integrations.mexc.mexc_unified_exchange.MexcUnifiedExchange',
-            'gateio': 'exchanges.integrations.gateio.gateio_unified_exchange.GateioUnifiedExchange'
+            'mexc_spot': 'exchanges.integrations.mexc.mexc_unified_exchange.MexcSpotUnifiedExchange',
+            'gateio_spot': 'exchanges.integrations.gateio.gateio_unified_exchange.GateioSpotUnifiedExchange',
+            'gateio_futures': 'exchanges.integrations.gateio.gateio_futures_unified_exchange.GateioFuturesUnifiedExchange'
         }
         self._active_exchanges: Dict[str, UnifiedCompositeExchange] = {}
         

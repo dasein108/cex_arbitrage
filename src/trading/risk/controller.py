@@ -13,7 +13,6 @@ from typing import Dict, Optional, Any
 
 from trading.arbitrage.types import ArbitrageConfig
 from trading.arbitrage.configuration_manager import ConfigurationManager
-from exchanges.interfaces.composite.unified_exchange import UnifiedExchangeFactory
 from trading.arbitrage.performance_monitor import PerformanceMonitor
 from trading.arbitrage.shutdown_manager import ShutdownManager, ShutdownReason
 from trading.arbitrage.symbol_resolver import SymbolResolver

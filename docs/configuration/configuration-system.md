@@ -9,7 +9,7 @@ The CEX Arbitrage Engine uses a **modernized, unified configuration system** tha
 ### Legacy Configuration (Pre-Refactor)
 
 **Problems with Legacy Approach**:
-- Individual sections for each exchange (mexc:, gateio:, etc.)
+- Individual sections for each exchange (mexc_spot:, gateio_spot:, gateio_futures:, etc.)
 - Code duplication in credential management
 - Hard to add new exchanges without code changes
 - Scattered validation logic across components
@@ -17,11 +17,15 @@ The CEX Arbitrage Engine uses a **modernized, unified configuration system** tha
 
 ```yaml
 # Legacy structure (eliminated)
-mexc:
+mexc_spot:
   api_key: "key"
   secret_key: "secret"
   
-gateio:  
+gateio_spot:  
+  api_key: "key"
+  secret_key: "secret"
+  
+gateio_futures:
   api_key: "key"
   secret_key: "secret"
 ```
@@ -38,19 +42,27 @@ gateio:
 ```yaml
 # Modern unified structure
 exchanges:
-  mexc:
+  mexc_spot:
     api_key: "${MEXC_API_KEY}"
     secret_key: "${MEXC_SECRET_KEY}"
     base_url: "https://api.mexc.com"
     websocket_url: "wss://wbs-api.mexc.com/ws"
   
-  gateio:
+  gateio_spot:
     api_key: "${GATEIO_API_KEY}"
     secret_key: "${GATEIO_SECRET_KEY}"
     base_url: "https://api.gateio.ws/api/v4"
     websocket_url: "wss://api.gateio.ws/ws/v4/"
     testnet_base_url: "https://api-testnet.gateapi.io/api/v4"
     testnet_websocket_url: "wss://ws-testnet.gate.com/v4/ws/spot"
+    
+  gateio_futures:
+    api_key: "${GATEIO_API_KEY}"
+    secret_key: "${GATEIO_SECRET_KEY}"
+    base_url: "https://fx-api.gateio.ws/api/v4"
+    websocket_url: "wss://fx-ws.gateio.ws/ws/v4/"
+    testnet_base_url: "https://api-testnet.gateapi.io/api/v4"
+    testnet_websocket_url: "wss://ws-testnet.gate.com/v4/ws/futures"
 ```
 
 ## Configuration Flow Architecture
@@ -65,7 +77,9 @@ exchanges:
 ┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
 │ Environment     │    │ Credential      │    │ Exchange        │
 │ Variables       │    │ Validation      │    │ Instances       │
-│ ${VAR_NAME}     │    │ & Caching       │    │ (MEXC, Gate.io) │
+│ ${VAR_NAME}     │    │ & Caching       │    │ (MEXC Spot,     │
+│                 │    │                 │    │  Gate.io Spot,  │
+│                 │    │                 │    │  Gate.io Futures)│
 └─────────────────┘    └─────────────────┘    └─────────────────┘
 ```
 
@@ -155,7 +169,7 @@ def _validate_api_key_format(self, key_name: str, key_value: str) -> None:
 # Hard-coded credential access
 mexc_key = config.MEXC_API_KEY
 mexc_secret = config.MEXC_SECRET_KEY
-exchange = MexcExchange(api_key=mexc_key, secret_key=mexc_secret)
+exchange = MexcSpotExchange(api_key=mexc_key, secret_key=mexc_secret)
 ```
 
 **After (Unified)**:
@@ -204,19 +218,27 @@ environment:
 
 # UNIFIED EXCHANGE CONFIGURATION
 exchanges:
-  mexc:
+  mexc_spot:
     api_key: "${MEXC_API_KEY}"
     secret_key: "${MEXC_SECRET_KEY}"
     base_url: "https://api.mexc.com"
     websocket_url: "wss://wbs-api.mexc.com/ws"
     
-  gateio:
+  gateio_spot:
     api_key: "${GATEIO_API_KEY}"
     secret_key: "${GATEIO_SECRET_KEY}"
     base_url: "https://api.gateio.ws/api/v4"
     websocket_url: "wss://api.gateio.ws/ws/v4/"
     testnet_base_url: "https://api-testnet.gateapi.io/api/v4"
     testnet_websocket_url: "wss://ws-testnet.gate.com/v4/ws/spot"
+    
+  gateio_futures:
+    api_key: "${GATEIO_API_KEY}"
+    secret_key: "${GATEIO_SECRET_KEY}"
+    base_url: "https://fx-api.gateio.ws/api/v4"
+    websocket_url: "wss://fx-ws.gateio.ws/ws/v4/"
+    testnet_base_url: "https://api-testnet.gateapi.io/api/v4"
+    testnet_websocket_url: "wss://ws-testnet.gate.com/v4/ws/futures"
   
   # Future exchanges can be added here without code changes
   # binance:
@@ -233,8 +255,9 @@ network:
 
 # Rate limiting per exchange
 rate_limiting:
-  mexc_requests_per_second: 18
-  gateio_requests_per_second: 15
+  mexc_spot_requests_per_second: 18
+  gateio_spot_requests_per_second: 15
+  gateio_futures_requests_per_second: 15
 
 # WebSocket settings
 websocket:
@@ -247,8 +270,9 @@ websocket:
 arbitrage:
   engine_name: "hft_arbitrage_main"
   enabled_exchanges:
-    - "MEXC"
-    - "GATEIO"
+    - "MEXC_SPOT"
+    - "GATEIO_SPOT"
+    - "GATEIO_FUTURES"
   
   # Performance settings (HFT targets)
   target_execution_time_ms: 30
@@ -294,8 +318,9 @@ NEWEXCHANGE_SECRET_KEY=your_secret_key_here
 Add to `ExchangeFactory`:
 ```python
 EXCHANGE_CLASSES: Dict[str, Type[BaseExchangeInterface]] = {
-    'MEXC': MexcExchange,
-    'GATEIO': GateioExchange,
+    'MEXC_SPOT': MexcSpotExchange,
+    'GATEIO_SPOT': GateioSpotExchange,
+    'GATEIO_FUTURES': GateioFuturesExchange,
     'NEWEXCHANGE': NewExchangeImplementation,  # <- Add here
 }
 ```
@@ -354,7 +379,7 @@ def _get_key_preview(self, api_key: Optional[str]) -> str:
         return "***"
     return f"{api_key[:4]}...{api_key[-4:]}"
 
-# Logs show: "MEXC API Key: abc1...xyz9" instead of full key
+# Logs show: "MEXC Spot API Key: abc1...xyz9" instead of full key
 ```
 
 **Production Safeguards**:

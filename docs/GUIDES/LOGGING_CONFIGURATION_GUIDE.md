@@ -449,7 +449,7 @@ from core.logging import get_exchange_logger, get_strategy_logger
 logger = get_exchange_logger('mexc', 'ws.private')
 
 # Strategy logger with hierarchical tags
-tags = ['mexc', 'private', 'ws', 'connection']
+tags = ['mexc_spot', 'private', 'ws', 'connection']
 logger = get_strategy_logger('ws.connection.mexc.private', tags)
 ```
 
@@ -465,11 +465,11 @@ The system allows fine-grained configuration overrides for specific modules, com
 from core.logging import get_logger, LoggerFactory
 
 # Configure specific module with custom settings
-def create_mexc_websocket_logger():
+def create_mexc_spot_websocket_logger():
     config = {
         'logger_config': {
             'min_level': 'DEBUG',           # Override global log level
-            'file_path': 'logs/mexc_ws.log', # Module-specific log file
+            'file_path': 'logs/mexc_spot_ws.log', # Module-specific log file
             'include_context': True,        # Include full context
             'buffer_size': 5000,           # Custom buffer size
             'batch_size': 25               # Custom batch size
@@ -499,7 +499,7 @@ def create_trading_logger():
     return get_logger('trading.order_execution', config)
 
 # Usage
-mexc_logger = create_mexc_websocket_logger()
+mexc_logger = create_mexc_spot_websocket_logger()
 trading_logger = create_trading_logger()
 ```
 
@@ -526,13 +526,13 @@ class ExchangeLoggerConfig(ComponentLoggerConfig):
     """Configuration for exchange-related loggers."""
     
     @staticmethod
-    def mexc_websocket_config() -> Dict[str, Any]:
+    def mexc_spot_websocket_config() -> Dict[str, Any]:
         config = ComponentLoggerConfig.get_base_config()
         config.update({
             'logger_config': {
                 **config['logger_config'],
                 'min_level': 'DEBUG',
-                'file_path': 'logs/mexc_websocket.log',
+                'file_path': 'logs/mexc_spot_websocket.log',
                 'performance_tracking': True
             },
             'default_context': {
@@ -543,13 +543,13 @@ class ExchangeLoggerConfig(ComponentLoggerConfig):
         return config
     
     @staticmethod
-    def gateio_rest_config() -> Dict[str, Any]:
+    def gateio_spot_rest_config() -> Dict[str, Any]:
         config = ComponentLoggerConfig.get_base_config()
         config.update({
             'logger_config': {
                 **config['logger_config'],
                 'min_level': 'INFO',
-                'file_path': 'logs/gateio_rest.log',
+                'file_path': 'logs/gateio_spot_rest.log',
                 'correlation_tracking': True
             },
             'default_context': {
@@ -581,8 +581,8 @@ class ArbitrageLoggerConfig(ComponentLoggerConfig):
         return config
 
 # Usage
-mexc_ws_logger = get_logger('mexc.ws', ExchangeLoggerConfig.mexc_websocket_config())
-gateio_rest_logger = get_logger('gateio.rest', ExchangeLoggerConfig.gateio_rest_config())
+mexc_spot_ws_logger = get_logger('mexc.ws', ExchangeLoggerConfig.mexc_spot_websocket_config())
+gateio_spot_rest_logger = get_logger('gateio.rest', ExchangeLoggerConfig.gateio_spot_rest_config())
 arbitrage_logger = get_logger('arbitrage.detector', ArbitrageLoggerConfig.detector_config())
 ```
 
@@ -597,7 +597,7 @@ export HFT_MODULE_GATEIO_REST_LEVEL=INFO
 export HFT_MODULE_ARBITRAGE_DETECTOR_LEVEL=WARNING
 
 # Set file paths for specific modules
-export HFT_MODULE_MEXC_WEBSOCKET_FILE=logs/mexc_ws.log
+export HFT_MODULE_MEXC_WEBSOCKET_FILE=logs/mexc_spot_ws.log
 export HFT_MODULE_TRADING_FILE=logs/trading.log
 export HFT_MODULE_ARBITRAGE_FILE=logs/arbitrage.log
 
@@ -658,17 +658,17 @@ arbitrage_logger = get_module_logger('arbitrage.detector')
 config/
 ├── config.yaml                    # Base configuration
 ├── modules/
-│   ├── mexc_websocket.yaml       # MEXC WebSocket specific config
-│   ├── gateio_rest.yaml          # Gate.io REST specific config
+│   ├── mexc_spot_websocket.yaml       # MEXC WebSocket specific config
+│   ├── gateio_spot_rest.yaml          # Gate.io REST specific config
 │   ├── trading.yaml              # Trading module specific config
 │   └── arbitrage.yaml            # Arbitrage module specific config
 ```
 
-**config/modules/mexc_websocket.yaml**:
+**config/modules/mexc_spot_websocket.yaml**:
 ```yaml
 logger_config:
   min_level: DEBUG
-  file_path: logs/mexc_websocket.log
+  file_path: logs/mexc_spot_websocket.log
   buffer_size: 5000
   batch_size: 25
   performance_tracking: true
@@ -688,7 +688,7 @@ backends:
     format: json
   prometheus:
     enabled: true
-    tags: ["mexc", "ws"]
+    tags: ["mexc_spot", "ws"]
 ```
 
 **config/modules/trading.yaml**:
@@ -916,50 +916,50 @@ class ExchangeLoggerManager:
         """Setup separate log files for each exchange."""
         
         # MEXC loggers
-        mexc_ws_config = {
+        mexc_spot_ws_config = {
             'logger_config': {
-                'file_path': 'logs/mexc_websocket.log',
+                'file_path': 'logs/mexc_spot_websocket.log',
                 'min_level': 'DEBUG'
             },
             'default_context': {'exchange': 'mexc', 'transport': 'ws'}
         }
         
-        mexc_rest_config = {
+        mexc_spot_rest_config = {
             'logger_config': {
-                'file_path': 'logs/mexc_rest.log', 
+                'file_path': 'logs/mexc_spot_rest.log', 
                 'min_level': 'INFO'
             },
             'default_context': {'exchange': 'mexc', 'transport': 'rest'}
         }
         
         # Gate.io loggers
-        gateio_ws_config = {
+        gateio_spot_ws_config = {
             'logger_config': {
-                'file_path': 'logs/gateio_websocket.log',
+                'file_path': 'logs/gateio_spot_websocket.log',
                 'min_level': 'DEBUG'
             },
             'default_context': {'exchange': 'gateio', 'transport': 'ws'}
         }
         
-        gateio_rest_config = {
+        gateio_spot_rest_config = {
             'logger_config': {
-                'file_path': 'logs/gateio_rest.log',
+                'file_path': 'logs/gateio_spot_rest.log',
                 'min_level': 'INFO'
             },
             'default_context': {'exchange': 'gateio', 'transport': 'rest'}
         }
         
         return {
-            'mexc_ws': get_logger('mexc.ws', mexc_ws_config),
-            'mexc_rest': get_logger('mexc.rest', mexc_rest_config),
-            'gateio_ws': get_logger('gateio.ws', gateio_ws_config),
-            'gateio_rest': get_logger('gateio.rest', gateio_rest_config)
+            'mexc_spot_ws': get_logger('mexc.ws', mexc_spot_ws_config),
+            'mexc_spot_rest': get_logger('mexc.rest', mexc_spot_rest_config),
+            'gateio_spot_ws': get_logger('gateio.ws', gateio_spot_ws_config),
+            'gateio_spot_rest': get_logger('gateio.rest', gateio_spot_rest_config)
         }
 
 # Usage
 loggers = ExchangeLoggerManager.setup_exchange_loggers()
-mexc_ws_logger = loggers['mexc_ws']
-gateio_rest_logger = loggers['gateio_rest']
+mexc_spot_ws_logger = loggers['mexc_spot_ws']
+gateio_spot_rest_logger = loggers['gateio_spot_rest']
 ```
 
 #### Pattern 2: Component-Specific Configuration Classes
@@ -1053,8 +1053,8 @@ class SmartLoggerFactory:
         return get_logger(f'arbitrage.{strategy}', config)
 
 # Usage
-mexc_ws_logger = SmartLoggerFactory.get_websocket_logger('mexc', 'public')
-gateio_rest_logger = SmartLoggerFactory.get_rest_logger('gateio', 'private')
+mexc_spot_ws_logger = SmartLoggerFactory.get_websocket_logger('mexc', 'public')
+gateio_spot_rest_logger = SmartLoggerFactory.get_rest_logger('gateio', 'private')
 trading_logger = SmartLoggerFactory.get_trading_logger('execution')
 arbitrage_logger = SmartLoggerFactory.get_arbitrage_logger('opportunity_detector')
 ```
@@ -1164,7 +1164,7 @@ EnvironmentConfigManager.setup_logging()
 # Usage examples
 mexc_logger = EnvironmentConfigManager.get_module_logger(
     'mexc.ws',
-    {'min_level': 'DEBUG', 'file_path': 'logs/mexc_ws.log'}
+    {'min_level': 'DEBUG', 'file_path': 'logs/mexc_spot_ws.log'}
 )
 
 trading_logger = EnvironmentConfigManager.get_module_logger(
@@ -1237,12 +1237,12 @@ Configure log levels based on hierarchical tags for fine-grained control:
 from core.logging import get_strategy_logger
 
 # Create loggers with different tag combinations
-mexc_ws_logger = get_strategy_logger('ws.mexc.public', ['mexc', 'public', 'ws', 'market_data'])
-gateio_rest_logger = get_strategy_logger('rest.gateio.private', ['gateio', 'private', 'rest', 'trading'])
+mexc_spot_ws_logger = get_strategy_logger('ws.mexc.public', ['mexc_spot', 'public', 'ws', 'market_data'])
+gateio_spot_rest_logger = get_strategy_logger('rest.gateio.private', ['gateio_spot', 'private', 'rest', 'trading'])
 arbitrage_logger = get_strategy_logger('arbitrage.detector', ['core', 'arbitrage', 'engine', 'detector'])
 
 # Tags enable precise routing and filtering
-mexc_ws_logger.info("WebSocket connection established", symbol="BTC/USDT")
+mexc_spot_ws_logger.info("WebSocket connection established", symbol="BTC/USDT")
 arbitrage_logger.info("Opportunity detected", exchange_pair="mexc-gateio", spread=0.025)
 ```
 
@@ -1414,7 +1414,7 @@ logger = get_logger('trading.orders')
 
 # Counter metrics - track counts
 logger.counter('orders_placed_total', 1, 
-              exchange='mexc', 
+              exchange='mexc_spot', 
               symbol='BTC/USDT', 
               order_type='limit')
 
@@ -1424,15 +1424,15 @@ logger.counter('errors_total', 1,
 
 # Gauge metrics - track current values
 logger.gauge('account_balance_usd', 50000.0,
-            exchange='mexc',
+            exchange='mexc_spot',
             currency='USDT')
 
 logger.gauge('open_positions_count', 5,
-            exchange='gateio')
+            exchange='gateio_spot')
 
 # Histogram metrics - track distributions
 logger.histogram('order_execution_time_seconds', 0.045,
-                exchange='mexc',
+                exchange='mexc_spot',
                 order_type='market')
 
 logger.histogram('api_response_time_seconds', 0.023,
@@ -1442,7 +1442,7 @@ logger.histogram('api_response_time_seconds', 0.023,
 # Direct metric logging
 logger.metric('latency_ms', 12.5,
              operation='place_order',
-             exchange='mexc')
+             exchange='mexc_spot')
 ```
 
 #### Advanced Metrics with Tags
@@ -1451,7 +1451,7 @@ logger.metric('latency_ms', 12.5,
 from core.logging import get_strategy_logger
 
 # Create strategy logger with hierarchical tags
-tags = ['mexc', 'private', 'ws', 'trading']
+tags = ['mexc_spot', 'private', 'ws', 'trading']
 logger = get_strategy_logger('ws.trading.mexc.private', tags)
 
 # Metrics automatically include tag context
@@ -1508,7 +1508,7 @@ logger.histogram('trading_strategy_execution_seconds', duration_seconds,
 
 # High-frequency metrics (use sparingly)
 logger.metric('tick_processing_latency_us', 247,  # microseconds
-             exchange='mexc',
+             exchange='mexc_spot',
              data_type='orderbook')
 ```
 
@@ -1560,7 +1560,7 @@ logger.histogram('account_id', 12345)          # ✗ Bad - not a distribution
 ```python
 # Good: Descriptive tags that enable filtering
 logger.counter('api_requests_total', 1,
-              exchange='mexc',
+              exchange='mexc_spot',
               endpoint='/api/v3/order',
               method='POST',
               status_code='200')
@@ -1813,7 +1813,7 @@ logger.error('Error occurred')
 logger.critical('Critical issue')
 
 # With context data
-logger.info('Order placed', order_id=123, exchange='mexc')
+logger.info('Order placed', order_id=123, exchange='mexc_spot')
 ```
 
 ### Performance Metrics
@@ -1821,7 +1821,7 @@ logger.info('Order placed', order_id=123, exchange='mexc')
 ```python
 # Log metrics (sent to Prometheus if enabled)
 logger.metric('latency_ms', 1.23, operation='place_order')
-logger.counter('orders_placed', 1, exchange='mexc')
+logger.counter('orders_placed', 1, exchange='mexc_spot')
 
 # Timing operations
 with logger.timer('database_query'):
@@ -2166,7 +2166,7 @@ Always include context as keyword arguments rather than string formatting:
 logger.info('Order executed', 
            order_id=123, 
            price=50000, 
-           exchange='mexc',
+           exchange='mexc_spot',
            symbol='BTC/USDT',
            execution_time_ms=45.2)
 
@@ -2180,7 +2180,7 @@ Follow this hierarchy for consistent logging:
 
 ```python
 # CRITICAL: System failures, trading halts
-logger.critical('Exchange connection lost', exchange='mexc', retry_count=5)
+logger.critical('Exchange connection lost', exchange='mexc_spot', retry_count=5)
 
 # ERROR: Errors that need immediate attention  
 logger.error('Order placement failed', order_id=123, error_code='INSUFFICIENT_BALANCE')
@@ -2201,8 +2201,8 @@ Organize loggers in a clear hierarchy:
 
 ```python
 # Exchange components
-mexc_ws_logger = get_logger('exchanges.mexc.ws.public')
-gateio_rest_logger = get_logger('exchanges.gateio.rest.private')
+mexc_spot_ws_logger = get_logger('exchanges.mexc.ws.public')
+gateio_spot_rest_logger = get_logger('exchanges.gateio.rest.private')
 
 # Arbitrage components  
 detector_logger = get_logger('arbitrage.detector.opportunity')
@@ -2250,7 +2250,7 @@ class MexcWebSocketClient:
     def __init__(self, config, logger=None):
         # Factory injection pattern
         if logger is None:
-            tags = ['mexc', 'public', 'ws', 'connection']
+            tags = ['mexc_spot', 'public', 'ws', 'connection']
             logger = get_strategy_logger('ws.connection.mexc.public', tags)
         self.logger = logger
 
@@ -2315,7 +2315,7 @@ try:
     await exchange.place_order(order)
 except Exception as e:
     logger.error('Order placement failed',
-                exchange='mexc',
+                exchange='mexc_spot',
                 order_id=order.id,
                 symbol=order.symbol,
                 error_type=type(e).__name__,
