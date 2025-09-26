@@ -43,7 +43,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'src'))
 from exchanges.interfaces.composite.unified_exchange import UnifiedExchangeFactory
 from exchanges.structs.common import Symbol, Order, AssetBalance, OrderBook
 from exchanges.structs.types import OrderId
-from exchanges.structs import Side, OrderType, TimeInForce, OrderStatus
+from exchanges.structs import Side, OrderType, TimeInForce, OrderStatus, AssetName
 from infrastructure.logging import get_logger, LoggingTimer
 
 
@@ -205,8 +205,8 @@ class UnifiedArbitrageDemo:
             base_asset = self.symbol.base
             quote_asset = self.symbol.quote
             
-            base_balance = self.initial_balances.get(base_asset, AssetBalance(available=0.0, locked=0.0))
-            quote_balance = self.initial_balances.get(quote_asset, AssetBalance(available=0.0, locked=0.0))
+            base_balance = self.initial_balances.get(base_asset, AssetBalance(asset=base_asset, available=0.0, locked=0.0))
+            quote_balance = self.initial_balances.get(quote_asset, AssetBalance(asset=quote_asset, available=0.0, locked=0.0))
             
             print(f"📊 Initial Balances:")
             print(f"   - {base_asset}: {base_balance.available:.8f} available, {base_balance.locked:.8f} locked")
@@ -529,8 +529,8 @@ class UnifiedArbitrageDemo:
         
         # Compare balances
         for asset in [base_asset, quote_asset]:
-            initial = self.initial_balances.get(asset, AssetBalance(available=0.0, locked=0.0))
-            final = final_balances.get(asset, AssetBalance(available=0.0, locked=0.0))
+            initial = self.initial_balances.get(asset, AssetBalance(asset=asset, available=0.0, locked=0.0))
+            final = final_balances.get(asset, AssetBalance(asset=asset, available=0.0, locked=0.0))
             
             available_change = final.available - initial.available
             locked_change = final.locked - initial.locked
@@ -600,7 +600,7 @@ class UnifiedArbitrageDemo:
         self.balance_update_count += 1
         
         # Update current balances
-        old_balance = self.current_balances.get(asset, AssetBalance(available=0.0, locked=0.0))
+        old_balance = self.current_balances.get(asset, AssetBalance(asset=AssetName(asset), available=0.0, locked=0.0))
         self.current_balances[asset] = balance
         
         available_change = balance.available - old_balance.available
