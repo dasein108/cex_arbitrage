@@ -5,7 +5,7 @@ import logging
 from websockets import connect #, State
 import msgspec
 
-from infrastructure.exceptions.exchange import BaseExchangeError
+from infrastructure.exceptions.exchange import ExchangeRestError
 from infrastructure.networking.websocket.structs import ConnectionState
 from config.structs import WebSocketConfig
 from infrastructure.error_handling import WebSocketErrorHandler, ErrorContext
@@ -132,7 +132,7 @@ class WebsocketClient:
 
         except Exception as e:
             self.logger.error(f"Failed to connect to WebSocket: {e}")
-            raise BaseExchangeError(500, f"WebSocket connection failed: {str(e)}")
+            raise ExchangeRestError(500, f"WebSocket connection failed: {str(e)}")
 
 
     # Connection lifecycle management
@@ -197,14 +197,14 @@ class WebsocketClient:
         Message will be serialized appropriately for the connection.
         """
         if not self.is_connected:
-            raise BaseExchangeError(500, "WebSocket not connected")
+            raise ExchangeRestError(500, "WebSocket not connected")
         
         try:
             # Optimized serialization - avoid decode step for bytes
             msg_str = msgspec.json.encode(message).decode("utf-8")
             await self._ws.send(msg_str)
         except Exception as e:
-            raise BaseExchangeError(500, f"Failed to send message: {str(e)}")
+            raise ExchangeRestError(500, f"Failed to send message: {str(e)}")
     
     # Internal connection management
     
@@ -218,7 +218,7 @@ class WebsocketClient:
                 await self._connect()
                 
                 if self._ws is None:
-                    raise BaseExchangeError(500, "Connection failed - no WebSocket created")
+                    raise ExchangeRestError(500, "Connection failed - no WebSocket created")
 
                 await self._update_state(ConnectionState.CONNECTED)
 

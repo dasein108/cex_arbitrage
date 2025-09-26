@@ -154,5 +154,5 @@ def create_websocket_manager(
         strategies=strategy_set,
         message_handler=message_handler,
         manager_config=manager_config,
-        state_change_handler=state_change_handler
+        connection_handler=state_change_handler
     )

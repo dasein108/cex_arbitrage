@@ -31,7 +31,7 @@ class PublicSpotRest(BaseRestInterface):
         )
 
     @abstractmethod
-    async def get_exchange_info(self) -> Dict[Symbol, SymbolInfo]:
+    async def get_symbols_info(self) -> Dict[Symbol, SymbolInfo]:
         """Get exchange trading rules and symbol information"""
         pass
     

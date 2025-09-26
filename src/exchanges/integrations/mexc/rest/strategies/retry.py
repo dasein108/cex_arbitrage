@@ -1,7 +1,7 @@
 import asyncio
 from typing import Dict
 
-from infrastructure.exceptions.exchange import RateLimitErrorBase, ExchangeConnectionError
+from infrastructure.exceptions.exchange import RateLimitErrorRest, ExchangeConnectionRestError
 from infrastructure.networking.http import RetryStrategy
 from config.structs import ExchangeConfig
 
@@ -63,9 +63,9 @@ class MexcRetryStrategy(RetryStrategy):
 
         # Retry on connection errors and rate limits
         if isinstance(error, (
-            RateLimitErrorBase,
-            ExchangeConnectionError,
-            asyncio.TimeoutError
+                RateLimitErrorRest,
+                ExchangeConnectionRestError,
+                asyncio.TimeoutError
         )):
             should_retry = True
 
@@ -89,7 +89,7 @@ class MexcRetryStrategy(RetryStrategy):
         """Calculate retry delay with MEXC-specific backoff."""
         error_type = type(error).__name__
         
-        if isinstance(error, RateLimitErrorBase):
+        if isinstance(error, RateLimitErrorRest):
             # Longer delay for rate limits
             delay = min(self.base_delay * (3 ** attempt), self.max_delay)
             delay_reason = "rate_limit_backoff"

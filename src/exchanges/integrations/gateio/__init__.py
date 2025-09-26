@@ -47,13 +47,12 @@ and extensibility.
 """
 
 # Core exchange implementations
-from .public_exchange import GateioPublicExchange
-from .gateio_exchange import GateioExchange
+from .gateio_composite_private import GateioCompositePrivateExchange
+from .gateio_composite_public import GateioCompositePublicExchange
 
 # Futures exchange implementations (separate from spot)
-from .public_futures_exchange import GateioPublicFuturesExchange
-from .private_futures_exchange import GateioPrivateFuturesExchange
-from .gateio_unified_exchange import GateioUnifiedExchange
+from .gateio_futures_composite_public import GateioFuturesCompositePublicExchange
+from .gateio_futures_composite_private import GateioFuturesCompositePrivateExchange
 # Auto-register Gate.io services (symbol mapper, mappings) 
 from . import services
 
@@ -64,11 +63,9 @@ from .rest import strategies
 from .ws import strategies as ws_strategies
 
 __all__ = [
-    # Main exchange interfaces
-    'GateioPublicExchange',
-    # Futures exchange interfaces (separate exchange)
-    'GateioPublicFuturesExchange',
-    'GateioPrivateFuturesExchange',
-
-    'GateioUnifiedExchange',
+    # Core exchange implementations
+    'GateioCompositePrivateExchange',
+    'GateioCompositePublicExchange',
+    'GateioFuturesCompositePublicExchange',
+    'GateioFuturesCompositePrivateExchange',
 ]

@@ -16,7 +16,7 @@ from websockets.protocol import State as WsState
 from infrastructure.networking.websocket.strategies.strategy_set import WebSocketStrategySet
 from .structs import ParsedMessage, WebSocketManagerConfig, PerformanceMetrics, ConnectionState, SubscriptionAction, PublicWebsocketChannelType
 from config.structs import WebSocketConfig
-from infrastructure.exceptions.exchange import BaseExchangeError
+from infrastructure.exceptions.exchange import ExchangeRestError
 import msgspec
 
 # HFT Logger Integration
@@ -43,14 +43,14 @@ class WebSocketManager:
         config: WebSocketConfig,
         strategies: WebSocketStrategySet,
         message_handler: Callable[[ParsedMessage], Awaitable[None]],
-        state_change_handler: Optional[Callable[[ConnectionState], Awaitable[None]]] = None,
+        connection_handler: Optional[Callable[[ConnectionState], Awaitable[None]]] = None,
         manager_config: Optional[WebSocketManagerConfig] = None,
         logger=None
     ):
         self.config = config
         self.strategies = strategies
         self.message_handler = message_handler
-        self.state_change_handler = state_change_handler
+        self.connection_handler = connection_handler
         self.manager_config = manager_config or WebSocketManagerConfig()
         
         # Initialize HFT logger with optional injection
@@ -143,14 +143,14 @@ class WebSocketManager:
                              tags={"exchange": "ws"})
             
             await self.close()
-            raise BaseExchangeError(500, f"WebSocket initialization failed: {e}")
+            raise ExchangeRestError(500, f"WebSocket initialization failed: {e}")
     
     async def subscribe(self, symbols: List) -> None:
         """Subscribe to symbols using strategy."""
         # Import Symbol type here if needed
         from exchanges.structs.common import Symbol
         if not self.is_connected():
-            raise BaseExchangeError(503, "WebSocket not connected")
+            raise ExchangeRestError(503, "WebSocket not connected")
 
         try:
             with LoggingTimer(self.logger, "subscription_processing") as timer:
@@ -189,7 +189,7 @@ class WebSocketManager:
             self.logger.metric("ws_subscription_failures", 1,
                              tags={"exchange": "ws"})
             
-            raise BaseExchangeError(400, f"Subscription failed: {e}")
+            raise ExchangeRestError(400, f"Subscription failed: {e}")
     
     async def unsubscribe(self, symbols: List) -> None:
         """Unsubscribe from symbols using strategy."""
@@ -214,7 +214,7 @@ class WebSocketManager:
     async def send_message(self, message: Dict[str, Any]) -> None:
         """Send message through direct WebSocket connection."""
         if not self._websocket or self.connection_state != ConnectionState.CONNECTED:
-            raise BaseExchangeError(503, "WebSocket not connected")
+            raise ExchangeRestError(503, "WebSocket not connected")
         
         try:
             msg_str = msgspec.json.encode(message).decode("utf-8")
@@ -222,7 +222,7 @@ class WebSocketManager:
             
         except Exception as e:
             self.logger.error(f"Failed to send message: {e}")
-            raise BaseExchangeError(400, f"Message send failed: {e}")
+            raise ExchangeRestError(400, f"Message send failed: {e}")
     
     async def _connection_loop(self) -> None:
         """
@@ -242,7 +242,7 @@ class WebSocketManager:
                 self._websocket = await self.strategies.connection_strategy.connect()
                 
                 if not self._websocket:
-                    raise BaseExchangeError(500, "Strategy returned no WebSocket connection")
+                    raise ExchangeRestError(500, "Strategy returned no WebSocket connection")
                 
                 await self._update_state(ConnectionState.CONNECTED)
                 
@@ -360,9 +360,9 @@ class WebSocketManager:
                                    "to_state": state.name})
             
             # Notify external handler
-            if self.state_change_handler:
+            if self.connection_handler:
                 try:
-                    await self.state_change_handler(state)
+                    await self.connection_handler(state)
                 except Exception as e:
                     self.logger.error("Error in state change handler",
                                     error_type=type(e).__name__,

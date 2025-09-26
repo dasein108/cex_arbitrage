@@ -46,7 +46,7 @@ from exchanges.structs.common import (
 )
 from exchanges.interfaces.composite import CompositePublicExchange
 from exchanges.structs.types import ExchangeName
-from infrastructure.exceptions.exchange import BaseExchangeError as MarketDataError
+from infrastructure.exceptions.exchange import ExchangeRestError as MarketDataError
 
 
 logger = get_logger('arbitrage.aggregator')

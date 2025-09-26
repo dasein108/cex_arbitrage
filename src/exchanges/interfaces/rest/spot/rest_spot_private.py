@@ -6,8 +6,8 @@ withdrawal functionality.
 """
 
 from abc import ABC
-from exchanges.interfaces.rest.trading_interface import PrivateTradingInterface
-from exchanges.interfaces.rest.withdrawal_interface import WithdrawalInterface
+from exchanges.interfaces.rest.interfaces.trading_interface import PrivateTradingInterface
+from exchanges.interfaces.rest.interfaces.withdrawal_interface import WithdrawalInterface
 
 
 class PrivateSpotRest(PrivateTradingInterface, WithdrawalInterface, ABC):

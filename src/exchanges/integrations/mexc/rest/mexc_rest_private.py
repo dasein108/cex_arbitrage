@@ -34,6 +34,7 @@ from exchanges.structs import OrderType, Side
 from infrastructure.networking.http.structs import HTTPMethod
 from infrastructure.exceptions.exchange import ExchangeRestError
 from exchanges.interfaces.rest.spot.rest_spot_private import PrivateSpotRest
+from exchanges.interfaces.rest.interfaces import ListenKeyInterface
 from exchanges.integrations.mexc.structs.exchange import (MexcAccountResponse, MexcOrderResponse,
                                                           MexcCurrencyInfoResponse)
 
@@ -45,7 +46,7 @@ from exchanges.integrations.mexc.utils import (
 
 
 
-class MexcPrivateSpotRest(PrivateSpotRest):
+class MexcPrivateSpotRest(PrivateSpotRest, ListenKeyInterface):
     """
     MEXC private REST API client focused on trading operations.
     

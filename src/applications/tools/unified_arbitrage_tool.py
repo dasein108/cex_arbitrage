@@ -155,7 +155,7 @@ class SymbolDiscoveryService:
             rest_client = self._create_exchange_client(exchange_enum, exchange_config)
             
             # Get exchange info using REST client
-            symbols_info = await rest_client.get_exchange_info()
+            symbols_info = await rest_client.get_symbols_info()
             
             # Clean up
             await rest_client.close()

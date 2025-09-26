@@ -1,120 +1,33 @@
-"""
-Futures private REST interface with trading and position capabilities.
-
-This interface provides futures trading operations without withdrawal
-functionality (which is not available for futures exchanges).
-"""
+"""Private futures REST interface."""
 
 from abc import ABC, abstractmethod
-from typing import List, Optional
-from exchanges.interfaces.rest.trading_interface import PrivateTradingInterface
-from exchanges.structs.common import Symbol, Position
+from typing import List, Optional, Dict
+from decimal import Decimal
+from exchanges.structs.common import Symbol, Order, Position, AssetBalance, WithdrawalRequest, WithdrawalResponse
+from exchanges.structs.types import AssetName, OrderId
+from exchanges.structs import Side, OrderType
+from exchanges.interfaces.rest import PrivateSpotRest
 
 
-class PrivateFuturesRest(PrivateTradingInterface, ABC):
-    """
-    Futures private REST interface - Trading + Position capabilities.
-    
-    Provides:
-    - All common trading operations (from PrivateTradingInterface)
-    - Futures-specific position management
-    - Leverage and margin operations
-    
-    Does NOT provide:
-    - Withdrawal operations (not supported for futures)
-    
-    This interface is for futures exchanges that support trading
-    and position management but not cryptocurrency withdrawals.
-    """
-
-    @abstractmethod
-    async def get_positions(self) -> List[Position]:
-        """
-        Get all open positions for futures trading.
-        
-        Returns:
-            List of Position objects representing current open positions
-        """
-        pass
+class PrivateFuturesRest(PrivateSpotRest):
+    """Abstract interface for private futures REST operations."""
     
     @abstractmethod
-    async def get_position(self, symbol: Symbol) -> Optional[Position]:
-        """
-        Get position for a specific symbol.
-        
-        Args:
-            symbol: The futures symbol to get position for
-            
-        Returns:
-            Position object if exists, None otherwise
-        """
+    async def get_positions(self, symbol: Optional[Symbol] = None) -> List[Position]:
+        """Get futures positions."""
         pass
-
+    #
     # @abstractmethod
-    # async def set_leverage(self, symbol: Symbol, leverage: int) -> bool:
-    #     """
-    #     Set leverage for a symbol.
-    #
-    #     Args:
-    #         symbol: Trading symbol
-    #         leverage: Leverage multiplier to set
-    #
-    #     Returns:
-    #         True if leverage set successfully
-    #
-    #     Raises:
-    #         ExchangeAPIError: If leverage setting fails
-    #     """
+    # async def modify_leverage(self, symbol: Symbol, leverage: float) -> bool:
+    #     """Modify leverage for a symbol."""
     #     pass
     #
     # @abstractmethod
-    # async def get_leverage(self, symbol: Symbol) -> int:
-    #     """
-    #     Get current leverage for a symbol.
-    #
-    #     Args:
-    #         symbol: Trading symbol
-    #
-    #     Returns:
-    #         Current leverage multiplier
-    #
-    #     Raises:
-    #         ExchangeAPIError: If leverage query fails
-    #     """
+    # async def get_funding_rate(self, symbol: Symbol) -> Dict:
+    #     """Get funding rate information."""
     #     pass
     #
     # @abstractmethod
-    # async def set_margin_mode(self, symbol: Symbol, margin_mode: str) -> bool:
-    #     """
-    #     Set margin mode for a symbol (isolated/cross).
-    #
-    #     Args:
-    #         symbol: Trading symbol
-    #         margin_mode: Margin mode ('isolated' or 'cross')
-    #
-    #     Returns:
-    #         True if margin mode set successfully
-    #
-    #     Raises:
-    #         ExchangeAPIError: If margin mode setting fails
-    #     """
+    # async def get_mark_price(self, symbol: Symbol) -> float:
+    #     """Get mark price."""
     #     pass
-    #
-    # @abstractmethod
-    # async def add_margin(self, symbol: Symbol, amount: float) -> bool:
-    #     """
-    #     Add margin to a position.
-    #
-    #     Args:
-    #         symbol: Trading symbol
-    #         amount: Amount of margin to add
-    #
-    #     Returns:
-    #         True if margin added successfully
-    #
-    #     Raises:
-    #         ExchangeAPIError: If margin addition fails
-    #     """
-    #     pass
-    
-

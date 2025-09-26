@@ -124,7 +124,7 @@ class RestPublicIntegrationTest:
         start_time = time.time()
         
         try:
-            result = await self.exchange.get_exchange_info()
+            result = await self.exchange.get_symbols_info()
             execution_time = (time.time() - start_time) * 1000
             
             # Validate exchange info structure

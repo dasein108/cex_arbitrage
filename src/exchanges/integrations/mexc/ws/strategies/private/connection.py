@@ -7,7 +7,7 @@ from exchanges.integrations.mexc.rest import MexcPrivateSpotRest
 from exchanges.interfaces.ws import ConnectionStrategy, ConnectionContext
 from infrastructure.networking.websocket.strategies.connection import ReconnectionPolicy
 from config.structs import ExchangeConfig
-from infrastructure.exceptions.exchange import BaseExchangeError
+from infrastructure.exceptions.exchange import ExchangeRestError
 
 # HFT Logger Integration
 from infrastructure.logging import HFTLoggerInterface, get_strategy_logger
@@ -102,7 +102,7 @@ class MexcPrivateConnectionStrategy(ConnectionStrategy):
                 except Exception:
                     pass  # Ignore cleanup errors
                 self.listen_key = None
-            raise BaseExchangeError(500, f"MEXC private WebSocket connection failed: {str(e)}")
+            raise ExchangeRestError(500, f"MEXC private WebSocket connection failed: {str(e)}")
     
     def get_reconnection_policy(self) -> ReconnectionPolicy:
         """Get MEXC private-specific reconnection policy."""

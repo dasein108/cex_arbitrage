@@ -19,13 +19,13 @@ class BaseRestInterface(ABC):
     """
 
 
-    def __init__(self, config: 'ExchangeConfig', is_private: bool = False, logger: Optional[HFTLoggerInterface] = None):
+    def __init__(self, config: ExchangeConfig, is_private: bool = False, logger: Optional[HFTLoggerInterface] = None):
         self.exchange_name = config.name
         api_type = 'private' if is_private else 'public'
         self.exchange_tag = f'{self.exchange_name}_{api_type}'
 
         # Use injected logger or create exchange-specific logger
-        component_name = f'rest.composite.{api_type}'
+        component_name = f'rest.composite.{self.exchange_tag}'
         self.logger = logger or get_exchange_logger(config.name, component_name)
 
         # Initialize REST transport manager using factory

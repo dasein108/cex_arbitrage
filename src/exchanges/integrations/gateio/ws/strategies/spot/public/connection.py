@@ -5,7 +5,7 @@ from websockets.client import WebSocketClientProtocol
 from exchanges.interfaces.ws import ConnectionStrategy, ConnectionContext
 from infrastructure.networking.websocket.strategies.connection import ReconnectionPolicy
 from config.structs import ExchangeConfig
-from infrastructure.exceptions.exchange import BaseExchangeError
+from infrastructure.exceptions.exchange import ExchangeRestError
 from infrastructure.data_structures.connection import WebSocketConnectionSettings, ReconnectionSettings
 
 # HFT Logger Integration
@@ -108,7 +108,7 @@ class GateioPublicConnectionStrategy(ConnectionStrategy):
             self.logger.metric("ws_connection_failures", 1,
                               tags={"exchange": "gateio", "type": "public", "error_type": type(e).__name__})
             
-            raise BaseExchangeError(500, f"Gate.io WebSocket connection failed: {str(e)}")
+            raise ExchangeRestError(500, f"Gate.io WebSocket connection failed: {str(e)}")
     
     def get_reconnection_policy(self) -> ReconnectionPolicy:
         """Get Gate.io-specific reconnection policy."""

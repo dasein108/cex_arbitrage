@@ -172,7 +172,7 @@ class RestIntegrationTestMixin:
         start_time = time.time()
         
         try:
-            result = await self.exchange.get_exchange_info()
+            result = await self.exchange.get_symbols_info()
             performance = self.measure_performance(start_time)
             
             symbols_count = len(result)

@@ -236,7 +236,7 @@ def ws_to_balance(mexc_ws_balance) -> AssetBalance:
     
     return AssetBalance(
         asset=AssetName(mexc_ws_balance.asset),
-        available=float(mexc_ws_balance.available),
+        available=float(mexc_ws_balance.free),
         locked=float(mexc_ws_balance.locked)
     )
 
@@ -285,15 +285,12 @@ def ws_to_trade(mexc_ws_trade, symbol_str: str = None) -> Trade:
             is_maker=False
         )
     else:  # Private trade data (MexcWSPrivateTradeData)
-        side = Side.BUY if mexc_ws_trade.tradeType  == 1 else Side.SELL # Private data uses string side
-
-        
         return Trade(
             symbol=to_symbol(symbol_str if symbol_str else mexc_ws_trade.symbol),
             price=float(mexc_ws_trade.price),
             quantity=float(mexc_ws_trade.quantity),
             quote_quantity=float(mexc_ws_trade.price) * float(mexc_ws_trade.quantity),
-            side=side,
+            side=Side.BUY if mexc_ws_trade.side == 'BUY' else Side.SELL,
             timestamp=getattr(mexc_ws_trade, 'time', 0),
             trade_id="",
             is_maker=getattr(mexc_ws_trade, 'is_maker', False)
@@ -376,6 +373,3 @@ def rest_to_withdrawal_status(mexc_status: str) -> WithdrawalStatus:
     """Convert MEXC withdrawal status to unified WithdrawalStatus."""
     return _MEXC_WITHDRAW_STATUS_MAP.get(mexc_status.upper(), WithdrawalStatus.UNKNOWN)
 
-# All utility functions are directly available - no wrapper classes needed  
-# Use direct function calls: to_order_status(), from_side(), etc.
-# Use direct symbol mapping: MexcSymbol.to_pair(), MexcSymbol.to_symbol(), etc.

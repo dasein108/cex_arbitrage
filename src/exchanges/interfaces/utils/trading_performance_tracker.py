@@ -15,7 +15,7 @@ import asyncio
 from collections import deque, defaultdict
 
 from infrastructure.logging import HFTLoggerInterface
-from infrastructure.exceptions.exchange import BaseExchangeError
+from infrastructure.exceptions.exchange import ExchangeRestError
 
 T = TypeVar('T')
 
@@ -150,7 +150,7 @@ class TradingPerformanceTracker:
             
             # Re-raise as BaseExchangeError if requested, otherwise re-raise original
             if raise_on_error:
-                raise BaseExchangeError(f"{operation_name} failed: {e}") from e
+                raise ExchangeRestError(f"{operation_name} failed: {e}") from e
             else:
                 raise
     

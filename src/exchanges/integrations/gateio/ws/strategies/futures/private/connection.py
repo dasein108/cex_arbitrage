@@ -10,7 +10,6 @@ from websockets.client import WebSocketClientProtocol
 from exchanges.interfaces.ws import ConnectionStrategy, ConnectionContext
 from infrastructure.networking.websocket.strategies.connection import ReconnectionPolicy
 from config.structs import ExchangeConfig
-from infrastructure.exceptions.exchange import BaseExchangeError
 
 # HFT Logger Integration
 from infrastructure.logging import HFTLoggerInterface, get_strategy_logger, LoggingTimer

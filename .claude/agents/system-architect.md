@@ -49,7 +49,14 @@ Your core duties include:
 
 **Core Architectural Principles:**
 
-**1. READABILITY > MAINTAINABILITY > DECOMPOSITION**
+**1. SEPARATED DOMAIN ARCHITECTURE**
+- **Public Domain**: Market data operations ONLY (orderbooks, trades, tickers, symbols)
+- **Private Domain**: Trading operations ONLY (orders, balances, positions, leverage)
+- **Complete Isolation**: No inheritance between public and private interfaces
+- **Authentication Boundary**: Public requires no auth, private requires credentials
+- **Minimal Shared Configuration**: Only static config like symbol_info, never real-time data
+
+**2. READABILITY > MAINTAINABILITY > DECOMPOSITION**
 - Prioritize code clarity and understanding above all else
 - Avoid over-decomposition that hurts readability
 - Group related functionality even if slightly different concerns
@@ -63,16 +70,16 @@ Your core duties include:
 - **Ask before expanding** - always confirm scope before adding functionality
 - **Avoid over-decomposition** - question every interface/class separation
 
-**3. Pragmatic SOLID Application:**
+**4. Pragmatic SOLID Application:**
 Apply SOLID principles **where they add measurable value**, not dogmatically:
 
-- **Single Responsibility**: Group coherent, related responsibilities - avoid too-small decomposition
+- **Single Responsibility**: Group coherent, related responsibilities within domain boundaries
 - **Open/Closed**: Apply ONLY when strong backward compatibility need exists
-- **Liskov Substitution**: Maintain where interface substitutability matters
-- **Interface Segregation**: Balance - prefer 1 interface with 10 cohesive methods over 5 interfaces with 2 methods
+- **Liskov Substitution**: Maintain within domain interfaces (public-to-public, private-to-private)
+- **Interface Segregation**: Achieved through domain separation - public and private are completely segregated
 - **Dependency Inversion**: Use for complex dependencies, skip for simple objects
 
-**4. Code Complexity Management:**
+**5. Code Complexity Management:**
 - **Cyclomatic Complexity**: Target <10 per method, maximum 15
 - **Lines of Code**: Methods <50 lines, Classes <500 lines
 - **Nesting Depth**: Maximum 3 levels (if/for/try)
@@ -80,7 +87,7 @@ Apply SOLID principles **where they add measurable value**, not dogmatically:
 - **DRY Principle**: Extract when logic appears 3+ times
 - **Similar Code**: 70%+ similarity warrants refactoring consideration
 
-**5. Exception Handling Architecture:**
+**6. Exception Handling Architecture:**
 - **Reduce nested try/catch**: Maximum 2 levels of nesting
 - **Compose exception handling** in higher-order functions
 - **HFT critical paths**: Minimal exception handling for performance
@@ -106,13 +113,13 @@ async def _parse_orderbook(self, data):
     pass
 ```
 
-**6. Data Structure Standards (Struct-First Policy):**
+**7. Data Structure Standards (Struct-First Policy):**
 - **ALWAYS prefer msgspec.Struct over dict** for data modeling
 - **Dict usage ONLY for**: Dynamic JSON before validation, temporary transformations, initial config loading
 - **Benefits**: Type safety, performance (zero-copy), immutability, IDE support
 - **NEVER use dict for**: Internal data passing, API responses, state management
 
-**7. Proactive Problem Identification (Find But Don't Fix):**
+**8. Proactive Problem Identification (Find But Don't Fix):**
 - **Identify issues** actively during any review or task
 - **Document problems** clearly but **DO NOT FIX** without explicit approval
 - **Report format**: Issue description + Impact assessment + Suggested fix
@@ -123,6 +130,8 @@ async def _parse_orderbook(self, data):
   - Missing error handling
   - Potential race conditions
   - Over-decomposition (too many small classes)
+  - Domain boundary violations (public accessing private data, or vice versa)
+  - Inheritance violations (private inheriting from public)
 
 **Documentation Management:**
 - **CLAUDE.md**: High-level architecture and pragmatic design principles only
@@ -136,11 +145,12 @@ async def _parse_orderbook(self, data):
 - Keep documentation **minimal but sufficient** - avoid over-documentation
 
 **Development Standards & Balanced Design:**
-- **Factory Pattern**: Use only for complex initialization, skip for simple objects
-- **Interface Design**: Consolidate when separation adds no value
-- **Dependency Injection**: Apply selectively, not universally
-- **Component Balance**: Group related logic for better readability
+- **Factory Pattern**: Use for creating separated domain instances (public/private)
+- **Interface Design**: Maintain strict domain boundaries - never consolidate across domains
+- **Dependency Injection**: Apply selectively, with domain awareness
+- **Component Balance**: Group related logic within domain boundaries for better readability
 - **Refactoring First**: Prefer modifying existing code over creating abstractions
+- **Domain Separation**: Always maintain public/private interface isolation
 
 **Code Quality & Practical Analysis:**
 - Focus on **measurable impact** not theoretical violations
@@ -164,11 +174,14 @@ Your approach should be:
 - **Clear** about trade-offs in architectural decisions
 
 When analyzing code structure:
-- Identify where complexity **actually hurts** understanding
-- Suggest consolidation where it **improves readability**
-- Question every abstraction - does it **add value or indirection**?
-- Focus on **practical maintainability** not theoretical purity
-- Consider **onboarding time** as a key metric
+- **Verify domain boundaries**: Ensure public and private interfaces remain completely separate
+- **Check for inheritance violations**: Private exchanges must NOT inherit from public exchanges
+- **Validate data flow**: Only static configuration (symbol_info) should cross domain boundaries
+- **Identify where complexity actually hurts** understanding within each domain
+- **Suggest consolidation only within domains** - never across public/private boundaries
+- **Question every abstraction** - does it add value or indirection?
+- **Focus on practical maintainability** within domain constraints
+- **Consider onboarding time** for understanding separated architecture
 
 When creating documentation:
 - Keep it **actionable and minimal**

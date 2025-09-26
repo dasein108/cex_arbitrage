@@ -1,7 +1,7 @@
 import asyncio
 from typing import Dict
 
-from infrastructure.exceptions.exchange import RateLimitErrorBase, ExchangeConnectionError
+from infrastructure.exceptions.exchange import RateLimitErrorRest, ExchangeConnectionRestError
 from infrastructure.networking.http import RetryStrategy
 from config.structs import ExchangeConfig
 
@@ -45,9 +45,9 @@ class GateioRetryStrategy(RetryStrategy):
 
         # Retry on connection errors and rate limits
         if isinstance(error, (
-            RateLimitErrorBase,
-            ExchangeConnectionError,
-            asyncio.TimeoutError
+                RateLimitErrorRest,
+                ExchangeConnectionRestError,
+                asyncio.TimeoutError
         )):
             return True
 
@@ -68,7 +68,7 @@ class GateioRetryStrategy(RetryStrategy):
 
     async def calculate_delay(self, attempt: int, error: Exception) -> float:
         """Calculate retry delay with Gate.io-specific backoff."""
-        if isinstance(error, RateLimitErrorBase):
+        if isinstance(error, RateLimitErrorRest):
             # Longer delay for rate limits (Gate.io is stricter)
             return min(self.base_delay * (4 ** attempt), self.max_delay)
 

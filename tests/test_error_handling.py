@@ -27,7 +27,7 @@ from infrastructure.error_handling import (
     ErrorSeverity, 
     ErrorContext
 )
-from infrastructure.exceptions.exchange import BaseExchangeError
+from infrastructure.exceptions.exchange import ExchangeRestError
 
 
 class TestComposableErrorHandler:
@@ -104,10 +104,10 @@ class TestComposableErrorHandler:
         from infrastructure.error_handling import ErrorSeverity
         
         async def operation_with_fatal_error():
-            raise BaseExchangeError(400, "Invalid API key")  # Non-recoverable
+            raise ExchangeRestError(400, "Invalid API key")  # Non-recoverable
         
         # Test with critical severity to ensure it raises
-        with pytest.raises(BaseExchangeError):
+        with pytest.raises(ExchangeRestError):
             await handler.handle_with_retry(operation_with_fatal_error, error_context, ErrorSeverity.CRITICAL)
         
         # Critical errors raise immediately, so only one error call expected
@@ -225,9 +225,9 @@ class TestTradingErrorHandler:
     async def test_insufficient_funds_no_retry(self, trading_handler, trading_context):
         """Test insufficient funds errors are not retried"""
         async def operation_insufficient_funds():
-            raise BaseExchangeError(400, "Insufficient balance")
+            raise ExchangeRestError(400, "Insufficient balance")
         
-        with pytest.raises(BaseExchangeError):
+        with pytest.raises(ExchangeRestError):
             await trading_handler.handle_with_retry(operation_insufficient_funds, trading_context)
         
         # Should not retry insufficient funds errors - called once for error, once for timer
@@ -243,7 +243,7 @@ class TestTradingErrorHandler:
             nonlocal call_count
             call_count += 1
             if call_count < 2:
-                raise BaseExchangeError(429, "Rate limit exceeded")
+                raise ExchangeRestError(429, "Rate limit exceeded")
             return "order_placed"
         
         # Mock sleep to capture backoff delays
@@ -288,7 +288,7 @@ class TestRestApiErrorHandler:
             nonlocal call_count
             call_count += 1
             if call_count < 3:
-                raise BaseExchangeError(500, "Internal server error")
+                raise ExchangeRestError(500, "Internal server error")
             return {"balances": []}
         
         result = await rest_handler.handle_with_retry(operation_with_server_error, rest_context)
@@ -299,9 +299,9 @@ class TestRestApiErrorHandler:
     async def test_http_401_no_retry(self, rest_handler, rest_context):
         """Test 401 authentication errors are not retried"""
         async def operation_with_auth_error():
-            raise BaseExchangeError(401, "Invalid API key")
+            raise ExchangeRestError(401, "Invalid API key")
         
-        with pytest.raises(BaseExchangeError, match="Invalid API key"):
+        with pytest.raises(ExchangeRestError, match="Invalid API key"):
             await rest_handler.handle_with_retry(operation_with_auth_error, rest_context)
         
         # Should not retry auth errors - error called for handling + timer
@@ -316,8 +316,8 @@ class TestErrorSeverityClassification:
         handler = ComposableErrorHandler(Mock(), max_retries=1, base_delay=0.1)
         
         critical_errors = [
-            BaseExchangeError(400, "Invalid API key"),
-            BaseExchangeError(403, "Insufficient permissions"),
+            ExchangeRestError(400, "Invalid API key"),
+            ExchangeRestError(403, "Insufficient permissions"),
             ValueError("Invalid order parameters")
         ]
         
@@ -330,8 +330,8 @@ class TestErrorSeverityClassification:
         handler = ComposableErrorHandler(Mock(), max_retries=1, base_delay=0.1)
         
         high_errors = [
-            BaseExchangeError(429, "Rate limit exceeded"),
-            BaseExchangeError(500, "Internal server error")
+            ExchangeRestError(429, "Rate limit exceeded"),
+            ExchangeRestError(500, "Internal server error")
         ]
         
         for error in high_errors:

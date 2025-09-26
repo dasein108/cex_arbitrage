@@ -36,7 +36,7 @@ from exchanges.structs import Symbol, SymbolInfo, ExchangeEnum, ExchangeName, As
 from exchanges.integrations.mexc.rest.mexc_rest_public import MexcPublicSpotRest
 from exchanges.integrations.gateio.rest.gateio_rest_public import GateioPublicSpotRest
 from exchanges.integrations.gateio.rest.gateio_futures_public import GateioPublicFuturesRest
-from infrastructure.exceptions.exchange import BaseExchangeError
+from infrastructure.exceptions.exchange import ExchangeRestError
 
 
 async def fetch_mexc_futures_symbols() -> Dict[Symbol, SymbolInfo]:
@@ -57,16 +57,16 @@ async def fetch_mexc_futures_symbols() -> Dict[Symbol, SymbolInfo]:
         async with aiohttp.ClientSession(timeout=timeout) as session:
             async with session.get(url, headers=headers) as response:
                 if response.status != 200:
-                    raise BaseExchangeError(response.status, f"MEXC Futures API error: {response.status}")
+                    raise ExchangeRestError(response.status, f"MEXC Futures API error: {response.status}")
                 
                 data = await response.json()
                 
                 if not isinstance(data, dict) or 'data' not in data:
-                    raise BaseExchangeError(500, "Invalid MEXC futures response format")
+                    raise ExchangeRestError(500, "Invalid MEXC futures response format")
                 
                 contracts = data['data']
                 if not isinstance(contracts, list):
-                    raise BaseExchangeError(500, "Expected list of contracts in MEXC futures response")
+                    raise ExchangeRestError(500, "Expected list of contracts in MEXC futures response")
                 
                 # Convert to unified format
                 symbol_info_map = {}
@@ -124,9 +124,9 @@ async def fetch_mexc_futures_symbols() -> Dict[Symbol, SymbolInfo]:
                 return symbol_info_map
                 
     except aiohttp.ClientError as e:
-        raise BaseExchangeError(500, f"Network error fetching MEXC futures: {str(e)}")
+        raise ExchangeRestError(500, f"Network error fetching MEXC futures: {str(e)}")
     except Exception as e:
-        raise BaseExchangeError(500, f"Error parsing MEXC futures data: {str(e)}")
+        raise ExchangeRestError(500, f"Error parsing MEXC futures data: {str(e)}")
 
 
 class MarketType(IntEnum):
@@ -250,14 +250,14 @@ class SymbolDiscoveryEngine:
             start_time = time.perf_counter()
             
             # Fetch exchange info (fresh call per HFT compliance)
-            info = await client.get_exchange_info()
+            info = await client.get_symbols_info()
             
             elapsed = time.perf_counter() - start_time
             self.logger.info(f"Fetched {len(info)} symbols from {exchange_market} in {elapsed:.2f}s")
             
             return info
             
-        except BaseExchangeError as e:
+        except ExchangeRestError as e:
             self.logger.error(f"Failed to fetch from {exchange_market}: {e}")
             return {}
         except Exception as e:

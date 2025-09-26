@@ -9,7 +9,7 @@ HFT COMPLIANT: <10μs error processing overhead.
 
 from abc import ABC, abstractmethod
 
-from ....exceptions.exchange import BaseExchangeError
+from ....exceptions.exchange import ExchangeRestError
 
 
 class ExceptionHandlerStrategy(ABC):
@@ -21,7 +21,7 @@ class ExceptionHandlerStrategy(ABC):
     """
     
     @abstractmethod
-    def handle_error(self, status_code: int, response_text: str) -> BaseExchangeError:
+    def handle_error(self, status_code: int, response_text: str) -> ExchangeRestError:
         """
         Handle exchange-specific API error.
         

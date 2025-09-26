@@ -1,7 +1,7 @@
 from typing import Optional
 
 
-class BaseExchangeError(Exception):
+class ExchangeRestError(Exception):
     def __init__(self, code: int, message: str, api_code: int | None = None) -> None:
         self.api_code = api_code
         self.message = message
@@ -9,13 +9,13 @@ class BaseExchangeError(Exception):
     """Default exception."""
 
 
-class ExchangeConnectionError(BaseExchangeError):
+class ExchangeConnectionRestError(ExchangeRestError):
    pass
 
-class ExchangeOrderCancelledOrNotExist(BaseExchangeError):
+class ExchangeRestOrderCancelledOrNotExist(ExchangeRestError):
    pass
 
-class RateLimitErrorBase(BaseExchangeError):
+class RateLimitErrorRest(ExchangeRestError):
     def __init__(self, code: int, message: str, api_code: int | None = None, retry_after: int | None = None) -> None:
         super().__init__(code, message, api_code)
         self.retry_after = retry_after
@@ -25,16 +25,16 @@ class RateLimitErrorBase(BaseExchangeError):
 
 
 
-class TradingDisabled(BaseExchangeError):
+class TradingDisabled(ExchangeRestError):
     pass
 
-class InsufficientPosition(BaseExchangeError):
+class InsufficientPosition(ExchangeRestError):
     pass
 
-class OversoldException(BaseExchangeError):
+class OversoldException(ExchangeRestError):
     pass
 
-class UnknownException(BaseExchangeError):
+class UnknownException(ExchangeRestError):
     pass
 
 class ArbitrageEngineError(Exception):

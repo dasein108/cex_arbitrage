@@ -15,9 +15,9 @@ class ExchangeEnum(Enum):
     - gateio_spot: Gate.io spot trading  
     - gateio_futures: Gate.io futures trading
     """
-    MEXC = ExchangeName("mexc_spot")
-    GATEIO = ExchangeName("gateio_spot")
-    GATEIO_FUTURES = ExchangeName("gateio_futures")
+    MEXC = ExchangeName("MEXC_SPOT")
+    GATEIO = ExchangeName("GATEIO_SPOT")
+    GATEIO_FUTURES = ExchangeName("GATEIO_FUTURES")
 
 
 class ExchangeStatus(IntEnum):

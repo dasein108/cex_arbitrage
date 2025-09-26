@@ -43,7 +43,7 @@ from .balance import BalanceMonitor
 from .recovery import RecoveryManager
 from .aggregator import MarketDataAggregator
 
-from exchanges.interfaces.composite.unified_exchange import UnifiedCompositeExchange
+from exchanges.interfaces.composite.spot.base_private_spot_composite import CompositePrivateExchange
 from infrastructure.error_handling import TradingErrorHandler, ErrorContext
 from infrastructure.exceptions.exchange import ArbitrageEngineError
 

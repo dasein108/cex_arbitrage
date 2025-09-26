@@ -9,7 +9,7 @@ from exchanges.structs.types import AssetName, OrderId
 from exchanges.structs.enums import TimeInForce
 from exchanges.structs import OrderType, Side
 from infrastructure.networking.http.structs import HTTPMethod
-from infrastructure.exceptions.exchange import BaseExchangeError
+from infrastructure.exceptions.exchange import ExchangeRestError
 # Removed BaseExchangeMapper import - using direct utility functions
 from config.structs import ExchangeConfig
 
@@ -38,8 +38,8 @@ class GateioPrivateFuturesRest(PrivateFuturesRest):
         self.logger = logger
         self._logger = logger  # For backward compatibility
 
-    def _handle_gateio_exception(self, status_code: int, message: str) -> BaseExchangeError:
-        return BaseExchangeError(f"Gate.io futures error {status_code}: {message}")
+    def _handle_gateio_exception(self, status_code: int, message: str) -> ExchangeRestError:
+        return ExchangeRestError(f"Gate.io futures error {status_code}: {message}")
 
     # ---------- Account / Balances ----------
 
@@ -73,14 +73,14 @@ class GateioPrivateFuturesRest(PrivateFuturesRest):
                     except Exception:
                         continue
             else:
-                raise BaseExchangeError(500, "Invalid futures accounts response format")
+                raise ExchangeRestError(500, "Invalid futures accounts response format")
 
             self.logger.debug(f"Retrieved futures balances: {balances}")
             return balances
 
         except Exception as e:
             self.logger.error(f"Failed to get futures account balance: {e}")
-            raise BaseExchangeError(500, f"Futures balance fetch failed: {str(e)}")
+            raise ExchangeRestError(500, f"Futures balance fetch failed: {str(e)}")
 
     async def get_asset_balance(self, asset: AssetName) -> Optional[AssetBalance]:
         try:
@@ -175,7 +175,7 @@ class GateioPrivateFuturesRest(PrivateFuturesRest):
 
         except Exception as e:
             self.logger.error(f"Failed to place futures order: {e}")
-            raise BaseExchangeError(500, f"Futures order placement failed: {str(e)}")
+            raise ExchangeRestError(500, f"Futures order placement failed: {str(e)}")
 
     async def cancel_order(self, symbol: Symbol, order_id: OrderId) -> Order:
         """
@@ -205,7 +205,7 @@ class GateioPrivateFuturesRest(PrivateFuturesRest):
 
         except Exception as e:
             self.logger.error(f"Failed to cancel futures order {order_id}: {e}")
-            raise BaseExchangeError(500, f"Futures order cancellation failed: {str(e)}")
+            raise ExchangeRestError(500, f"Futures order cancellation failed: {str(e)}")
 
     async def cancel_all_orders(self, symbol: Symbol) -> List[Order]:
         """
@@ -258,7 +258,7 @@ class GateioPrivateFuturesRest(PrivateFuturesRest):
 
         except Exception as e:
             self.logger.error(f"Failed to cancel all futures orders for {symbol}: {e}")
-            raise BaseExchangeError(500, f"Futures mass cancellation failed: {str(e)}")
+            raise ExchangeRestError(500, f"Futures mass cancellation failed: {str(e)}")
 
     async def get_order(self, symbol: Symbol, order_id: OrderId) -> Order:
         """
@@ -287,7 +287,7 @@ class GateioPrivateFuturesRest(PrivateFuturesRest):
 
         except Exception as e:
             self.logger.error(f"Failed to get futures order {order_id}: {e}")
-            raise BaseExchangeError(500, f"Futures order query failed: {str(e)}")
+            raise ExchangeRestError(500, f"Futures order query failed: {str(e)}")
 
     async def get_open_orders(self, symbol: Optional[Symbol] = None) -> List[Order]:
         """
@@ -305,7 +305,7 @@ class GateioPrivateFuturesRest(PrivateFuturesRest):
             response = await self.request(HTTPMethod.GET, endpoint, params=params)
 
             if not isinstance(response, list):
-                raise BaseExchangeError(500, "Invalid open orders response format")
+                raise ExchangeRestError(500, "Invalid open orders response format")
 
             open_orders: List[Order] = []
             for item in response:
@@ -329,7 +329,7 @@ class GateioPrivateFuturesRest(PrivateFuturesRest):
 
         except Exception as e:
             self.logger.error(f"Failed to get open futures orders for {symbol}: {e}")
-            raise BaseExchangeError(500, f"Futures open orders fetch failed: {str(e)}")
+            raise ExchangeRestError(500, f"Futures open orders fetch failed: {str(e)}")
 
     async def modify_order(
         self,
@@ -373,7 +373,7 @@ class GateioPrivateFuturesRest(PrivateFuturesRest):
 
         except Exception as e:
             self.logger.error(f"Failed to modify futures order {order_id}: {e}")
-            raise BaseExchangeError(500, f"Futures modify order failed: {str(e)}")
+            raise ExchangeRestError(500, f"Futures modify order failed: {str(e)}")
 
     # ---------- Position Management ----------
     async def get_positions(self) -> List[Position]:
@@ -426,7 +426,7 @@ class GateioPrivateFuturesRest(PrivateFuturesRest):
 
         except Exception as e:
             self.logger.error(f"Failed to get positions: {e}")
-            raise BaseExchangeError(500, f"Positions fetch failed: {str(e)}")
+            raise ExchangeRestError(500, f"Positions fetch failed: {str(e)}")
 
     async def get_position(self, symbol: Symbol) -> Optional[Position]:
         """
@@ -442,21 +442,6 @@ class GateioPrivateFuturesRest(PrivateFuturesRest):
             self.logger.error(f"Failed to get position for {symbol}: {e}")
             raise
 
-    # TODO: this MEXC specific endpoint may not exist on Gate.io futures, need exclude from global interface
-    # ---------- Listen key helpers (public-only / simple defaults) ----------
-    async def create_listen_key(self) -> str:
-        """If Gate.io futures private stream not used, return empty string for compatibility."""
-        return ""
-
-    async def get_all_listen_keys(self) -> Dict:
-        return {}
-
-    async def keep_alive_listen_key(self, listen_key: str) -> None:
-        pass
-
-    async def delete_listen_key(self, listen_key: str) -> None:
-        pass
-
     # ---------- Fees ----------
     async def get_trading_fees(self, symbol: Optional[Symbol] = None) -> TradingFee:
         """
@@ -471,7 +456,7 @@ class GateioPrivateFuturesRest(PrivateFuturesRest):
                 response = await self.request(HTTPMethod.GET, "/spot/fee")
 
             if not isinstance(response, dict):
-                raise BaseExchangeError(500, "Invalid fee response format")
+                raise ExchangeRestError(500, "Invalid fee response format")
 
             maker_rate = float(response.get("maker_fee", response.get("futures_maker", 0.0)))
             taker_rate = float(response.get("taker_fee", response.get("futures_taker", 0.0)))
@@ -489,7 +474,7 @@ class GateioPrivateFuturesRest(PrivateFuturesRest):
 
         except Exception as e:
             self.logger.error(f"Failed to fetch futures trading fees: {e}")
-            raise BaseExchangeError(500, f"Futures trading fees fetch failed: {str(e)}")
+            raise ExchangeRestError(500, f"Futures trading fees fetch failed: {str(e)}")
 
     # ---------- Lifecycle ----------
     async def close(self) -> None:

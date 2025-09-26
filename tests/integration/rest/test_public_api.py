@@ -116,7 +116,7 @@ class PublicAPIIntegrationTest:
         start_time = time.perf_counter()
         
         try:
-            result = await self.exchange.get_exchange_info()
+            result = await self.exchange.get_symbols_info()
             execution_time = (time.perf_counter() - start_time) * 1000
             
             symbols_count = len(result)

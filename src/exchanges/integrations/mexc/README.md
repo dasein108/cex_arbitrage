@@ -110,7 +110,7 @@ from exchanges.mexc.rest.mexc_rest_public import MexcPublicSpotRest
 public = MexcPublicSpotRest()
 
 # Get exchange information with caching
-exchange_info = await public.get_exchange_info()
+exchange_info = await public.get_symbols_info()
 btc_usdt_info = exchange_info[Symbol(base=AssetName("BTC"), quote=AssetName("USDT"))]
 
 # Get real-time orderbook

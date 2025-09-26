@@ -35,7 +35,7 @@ from exchanges.interfaces.rest.spot import PublicSpotRest
 # Removed BaseExchangeMapper import - using direct utility functions
 from infrastructure.networking.http.structs import HTTPMethod
 from config.structs import ExchangeConfig
-from infrastructure.exceptions.exchange import BaseExchangeError
+from infrastructure.exceptions.exchange import ExchangeRestError
 from common.iterators import time_range_iterator, get_interval_seconds
 
 # Import direct utility functions
@@ -105,7 +105,7 @@ class GateioPublicSpotRest(PublicSpotRest):
         
         return base_precision, quote_precision, min_quote_amount, min_base_amount
     
-    async def get_exchange_info(self) -> Dict[Symbol, SymbolInfo]:
+    async def get_symbols_info(self) -> Dict[Symbol, SymbolInfo]:
         """
         Get Gate.io trading rules and symbol information.
         
@@ -134,7 +134,7 @@ class GateioPublicSpotRest(PublicSpotRest):
             
             # Gate.io returns list of currency pairs directly
             if not isinstance(response_data, list):
-                raise BaseExchangeError(500, "Invalid exchange info response format")
+                raise ExchangeRestError(500, "Invalid exchange info response format")
             
             # Transform to unified format
             symbol_info_map: Dict[Symbol, SymbolInfo] = {}
@@ -186,7 +186,7 @@ class GateioPublicSpotRest(PublicSpotRest):
             
         except Exception as e:
             self.logger.error(f"Failed to get exchange info: {e}")
-            raise BaseExchangeError(500, f"Exchange info fetch failed: {str(e)}")
+            raise ExchangeRestError(500, f"Exchange info fetch failed: {str(e)}")
     
     async def get_orderbook(self, symbol: Symbol, limit: int = 100) -> OrderBook:
         """
@@ -255,7 +255,7 @@ class GateioPublicSpotRest(PublicSpotRest):
             
         except Exception as e:
             self.logger.error(f"Failed to get orderbook for {symbol}: {e}")
-            raise BaseExchangeError(500, f"Orderbook fetch failed: {str(e)}")
+            raise ExchangeRestError(500, f"Orderbook fetch failed: {str(e)}")
     
     async def get_recent_trades(self, symbol: Symbol, limit: int = 500) -> List[Trade]:
         """
@@ -302,7 +302,7 @@ class GateioPublicSpotRest(PublicSpotRest):
             # ]
             
             if not isinstance(response_data, list):
-                raise BaseExchangeError(500, "Invalid trades response format")
+                raise ExchangeRestError(500, "Invalid trades response format")
             
             trades = []
             for trade_data in response_data:
@@ -323,7 +323,7 @@ class GateioPublicSpotRest(PublicSpotRest):
             
         except Exception as e:
             self.logger.error(f"Failed to get recent trades for {symbol}: {e}")
-            raise BaseExchangeError(500, f"Recent trades fetch failed: {str(e)}")
+            raise ExchangeRestError(500, f"Recent trades fetch failed: {str(e)}")
     
     async def get_historical_trades(self, symbol: Symbol, limit: int = 500,
                                     timestamp_from: Optional[int] = None,
@@ -382,7 +382,7 @@ class GateioPublicSpotRest(PublicSpotRest):
             # ]
             
             if not isinstance(response_data, list):
-                raise BaseExchangeError(500, "Invalid historical trades response format")
+                raise ExchangeRestError(500, "Invalid historical trades response format")
             
             trades = []
             for trade_data in response_data:
@@ -411,7 +411,7 @@ class GateioPublicSpotRest(PublicSpotRest):
             
         except Exception as e:
             self.logger.error(f"Failed to get historical trades for {symbol}: {e}")
-            raise BaseExchangeError(500, f"Historical trades fetch failed: {str(e)}")
+            raise ExchangeRestError(500, f"Historical trades fetch failed: {str(e)}")
     
     async def get_ticker_info(self, symbol: Optional[Symbol] = None) -> Dict[Symbol, Ticker]:
         """
@@ -539,7 +539,7 @@ class GateioPublicSpotRest(PublicSpotRest):
             
         except Exception as e:
             self.logger.error(f"Failed to get ticker info: {e}")
-            raise BaseExchangeError(500, f"Ticker info fetch failed: {str(e)}")
+            raise ExchangeRestError(500, f"Ticker info fetch failed: {str(e)}")
     
     async def get_server_time(self) -> int:
         """
@@ -569,7 +569,7 @@ class GateioPublicSpotRest(PublicSpotRest):
             
         except Exception as e:
             self.logger.error(f"Failed to get server time: {e}")
-            raise BaseExchangeError(500, f"Server time fetch failed: {str(e)}")
+            raise ExchangeRestError(500, f"Server time fetch failed: {str(e)}")
     
     async def ping(self) -> bool:
         """
@@ -639,7 +639,7 @@ class GateioPublicSpotRest(PublicSpotRest):
             # Each kline: [timestamp, volume, close, high, low, open, previous_close]
             # Note: Gate.io format is: [time, volume, close, high, low, open, previous_close]
             if not isinstance(response_data, list):
-                raise BaseExchangeError(500, "Invalid candlesticks response format")
+                raise ExchangeRestError(500, "Invalid candlesticks response format")
             
             klines = []
             for kline_data in response_data:
@@ -679,7 +679,7 @@ class GateioPublicSpotRest(PublicSpotRest):
             
         except Exception as e:
             self.logger.error(f"Failed to get klines for {symbol}: {e}")
-            raise BaseExchangeError(500, f"Klines fetch failed: {str(e)}")
+            raise ExchangeRestError(500, f"Klines fetch failed: {str(e)}")
 
     async def get_klines_batch(self, symbol: Symbol, timeframe: KlineInterval,
                               date_from: Optional[datetime], date_to: Optional[datetime]) -> List[Kline]:

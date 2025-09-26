@@ -43,8 +43,8 @@ from typing import Optional, Dict, List
 # Add src to path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'src'))
 
-from exchanges.interfaces.composite.unified_exchange import UnifiedCompositeExchange
-from exchanges.full_exchange_factory import FullExchangeFactory
+from exchanges.interfaces.composite.spot.base_public_spot_composite import CompositePublicExchange
+from exchanges.interfaces.composite.spot.base_private_spot_composite import CompositePrivateExchange
 from exchanges.structs.common import Symbol, Order, AssetBalance, OrderBook
 from exchanges.structs.types import OrderId
 from exchanges.structs import Side, TimeInForce, OrderStatus, AssetName
@@ -78,7 +78,8 @@ class UnifiedArbitrageDemo:
         self.quantity = quantity
         
         # Exchange
-        self.exchange: Optional[UnifiedCompositeExchange] = None
+        self.public_exchange: Optional[CompositePublicExchange] = None
+        self.private_exchange: Optional[CompositePrivateExchange] = None
         
         # Order tracking
         self.market_buy_order: Optional[Order] = None

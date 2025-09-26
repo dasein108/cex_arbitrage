@@ -104,7 +104,7 @@ class MexcPublicSpotRest(PublicSpotRest):
         
         return base_precision, quote_precision, min_quote_amount, min_base_amount
     
-    async def get_exchange_info(self) -> Dict[Symbol, SymbolInfo]:
+    async def get_symbols_info(self) -> Dict[Symbol, SymbolInfo]:
         """
         Get MEXC trading rules and symbol information.
         

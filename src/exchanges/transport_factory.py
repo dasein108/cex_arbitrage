@@ -212,7 +212,7 @@ def create_public_handlers(
         PublicWebsocketHandlers object
     """
     return PublicWebsocketHandlers(
-        orderbook_diff_handler=orderbook_diff_handler,
+        orderbook_handler=orderbook_diff_handler,
         trades_handler=trades_handler,
         book_ticker_handler=book_ticker_handler
     )
@@ -237,7 +237,7 @@ def create_private_handlers(
     return PrivateWebsocketHandlers(
         order_handler=order_handler,
         balance_handler=balance_handler,
-        trade_handler=trade_handler
+        execution_handler=trade_handler
     )
 
 

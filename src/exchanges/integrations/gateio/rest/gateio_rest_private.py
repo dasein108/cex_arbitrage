@@ -35,7 +35,7 @@ from exchanges.structs import OrderType, Side
 from infrastructure.networking.http.structs import HTTPMethod
 from exchanges.interfaces.rest.spot.rest_spot_private import PrivateSpotRest
 from config.structs import ExchangeConfig
-from infrastructure.exceptions.exchange import BaseExchangeError
+from infrastructure.exceptions.exchange import ExchangeRestError
 from infrastructure.error_handling import RestApiErrorHandler, ErrorContext
 
 # Import direct utility functions
@@ -77,9 +77,9 @@ class GateioPrivateSpotRest(PrivateSpotRest):
         )
 
     
-    def _handle_gateio_exception(self, status_code: int, message: str) -> BaseExchangeError:
+    def _handle_gateio_exception(self, status_code: int, message: str) -> ExchangeRestError:
         """Handle Gate.io specific exceptions."""
-        return BaseExchangeError(f"Gate.io error {status_code}: {message}")
+        return ExchangeRestError(f"Gate.io error {status_code}: {message}")
 
     # Authentication is now handled automatically by the transport system
 
@@ -113,7 +113,7 @@ class GateioPrivateSpotRest(PrivateSpotRest):
             # ]
             
             if not isinstance(response_data, list):
-                raise BaseExchangeError(500, "Invalid balance response format")
+                raise ExchangeRestError(500, "Invalid balance response format")
             
             balances = []
             for balance_data in response_data:
@@ -127,7 +127,7 @@ class GateioPrivateSpotRest(PrivateSpotRest):
             
         except Exception as e:
             self.logger.error(f"Failed to get account balance: {e}")
-            raise BaseExchangeError(500, f"Balance fetch failed: {str(e)}")
+            raise ExchangeRestError(500, f"Balance fetch failed: {str(e)}")
     
     async def get_asset_balance(self, asset: AssetName) -> Optional[AssetBalance]:
         """
@@ -345,7 +345,7 @@ class GateioPrivateSpotRest(PrivateSpotRest):
             
             # Gate.io returns list of cancelled orders
             if not isinstance(response_data, list):
-                raise BaseExchangeError(500, "Invalid cancel all orders response format")
+                raise ExchangeRestError(500, "Invalid cancel all orders response format")
             
             cancelled_orders = []
             for order_data in response_data:
@@ -357,7 +357,7 @@ class GateioPrivateSpotRest(PrivateSpotRest):
             
         except Exception as e:
             self.logger.error(f"Failed to cancel all orders for {symbol}: {e}")
-            raise BaseExchangeError(500, f"Mass order cancellation failed: {str(e)}")
+            raise ExchangeRestError(500, f"Mass order cancellation failed: {str(e)}")
     
     async def get_order(self, symbol: Symbol, order_id: OrderId) -> Order:
         """
@@ -395,7 +395,7 @@ class GateioPrivateSpotRest(PrivateSpotRest):
             
         except Exception as e:
             self.logger.error(f"Failed to get order {order_id}: {e}")
-            raise BaseExchangeError(500, f"Order query failed: {str(e)}")
+            raise ExchangeRestError(500, f"Order query failed: {str(e)}")
     
     async def get_open_orders(self, symbol: Optional[Symbol] = None) -> List[Order]:
         """
@@ -435,7 +435,7 @@ class GateioPrivateSpotRest(PrivateSpotRest):
             
             # Gate.io returns list of orders
             if not isinstance(response_data, list):
-                raise BaseExchangeError(500, "Invalid open orders response format")
+                raise ExchangeRestError(500, "Invalid open orders response format")
             
             open_orders = []
             for order_data in response_data:
@@ -449,7 +449,7 @@ class GateioPrivateSpotRest(PrivateSpotRest):
         except Exception as e:
             symbol_str = f" for {symbol}" if symbol else ""
             self.logger.error(f"Failed to get open orders{symbol_str}: {e}")
-            raise BaseExchangeError(500, f"Open orders retrieval failed: {str(e)}")
+            raise ExchangeRestError(500, f"Open orders retrieval failed: {str(e)}")
     
     async def modify_order(
         self,
@@ -484,25 +484,6 @@ class GateioPrivateSpotRest(PrivateSpotRest):
         """
         # TODO: implement modify order with single call
         # https://www.gate.com/docs/developers/apiv4/en/#amend-single-order
-
-    # Gate.io doesn't have listen key endpoints like Binance
-    # These methods are required by exchanges but not applicable
-    
-    async def create_listen_key(self) -> str:
-        """Gate.io doesn't use listen keys - returns empty string."""
-        return ""
-    
-    async def get_all_listen_keys(self) -> Dict:
-        """Gate.io doesn't use listen keys - returns empty dict.""" 
-        return {}
-    
-    async def keep_alive_listen_key(self, listen_key: str) -> None:
-        """Gate.io doesn't use listen keys - no-op."""
-        pass
-    
-    async def delete_listen_key(self, listen_key: str) -> None:
-        """Gate.io doesn't use listen keys - no-op."""
-        pass
 
     async def get_currency_info(self) -> Dict[AssetName, AssetInfo]:
         """
@@ -573,7 +554,7 @@ class GateioPrivateSpotRest(PrivateSpotRest):
 
         except Exception as e:
             self.logger.error(f"Failed to get currency information: {e}")
-            raise BaseExchangeError(500, f"Currency info fetch failed: {str(e)}")
+            raise ExchangeRestError(500, f"Currency info fetch failed: {str(e)}")
 
     
     async def get_trading_fees(self, symbol: Optional[Symbol] = None) -> TradingFee:
@@ -626,7 +607,7 @@ class GateioPrivateSpotRest(PrivateSpotRest):
             # }
             
             if not isinstance(response_data, dict):
-                raise BaseExchangeError(500, "Invalid trading fees response format")
+                raise ExchangeRestError(500, "Invalid trading fees response format")
             
             # Extract fee rates - Gate.io returns string values
             maker_rate = float(response_data.get('maker_fee', '0.002'))
@@ -654,7 +635,7 @@ class GateioPrivateSpotRest(PrivateSpotRest):
             
         except Exception as e:
             self.logger.error(f"Failed to get trading fees: {e}")
-            raise BaseExchangeError(500, f"Trading fees fetch failed: {str(e)}")
+            raise ExchangeRestError(500, f"Trading fees fetch failed: {str(e)}")
 
     # Withdrawal operations
 
@@ -700,7 +681,7 @@ class GateioPrivateSpotRest(PrivateSpotRest):
             withdrawal_id = response_data.get('id', '')
 
             if not withdrawal_id:
-                raise BaseExchangeError(500, "No withdrawal ID returned from Gate.io")
+                raise ExchangeRestError(500, "No withdrawal ID returned from Gate.io")
 
             # Get fee from currency info
             currency_info = await self.get_currency_info()
@@ -730,7 +711,7 @@ class GateioPrivateSpotRest(PrivateSpotRest):
 
         except Exception as e:
             self.logger.error(f"Failed to submit withdrawal: {e}")
-            raise BaseExchangeError(500, f"Withdrawal submission failed: {e}")
+            raise ExchangeRestError(500, f"Withdrawal submission failed: {e}")
 
     async def cancel_withdrawal(self, withdrawal_id: str) -> bool:
         """
@@ -761,7 +742,7 @@ class GateioPrivateSpotRest(PrivateSpotRest):
             # Check if it's a 404 (withdrawal not found) or other error
             if "404" in str(e) or "not found" in str(e).lower():
                 return False
-            raise BaseExchangeError(500, f"Withdrawal cancellation failed: {e}")
+            raise ExchangeRestError(500, f"Withdrawal cancellation failed: {e}")
 
     async def get_withdrawal_status(self, withdrawal_id: str) -> WithdrawalResponse:
         """
@@ -784,11 +765,11 @@ class GateioPrivateSpotRest(PrivateSpotRest):
                 if withdrawal.withdrawal_id == withdrawal_id:
                     return withdrawal
 
-            raise BaseExchangeError(404, f"Withdrawal {withdrawal_id} not found")
+            raise ExchangeRestError(404, f"Withdrawal {withdrawal_id} not found")
 
         except Exception as e:
             self.logger.error(f"Failed to get withdrawal status: {e}")
-            raise BaseExchangeError(500, f"Failed to get withdrawal status: {e}")
+            raise ExchangeRestError(500, f"Failed to get withdrawal status: {e}")
 
     async def get_withdrawal_history(
         self,
@@ -847,7 +828,7 @@ class GateioPrivateSpotRest(PrivateSpotRest):
 
         except Exception as e:
             self.logger.error(f"Failed to get withdrawal history: {e}")
-            raise BaseExchangeError(500, f"Failed to get withdrawal history: {e}")
+            raise ExchangeRestError(500, f"Failed to get withdrawal history: {e}")
 
 
     async def close(self) -> None:

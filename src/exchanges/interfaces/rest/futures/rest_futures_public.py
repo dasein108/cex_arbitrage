@@ -1,22 +1,20 @@
-from abc import ABC
-from exchanges.interfaces.rest.rest_base import BaseRestInterface
-# BaseExchangeMapper dependency removed - using direct utility functions
-from config.structs import ExchangeConfig
-from exchanges.structs import Symbol
+"""Public futures REST interface."""
+
+from abc import ABC, abstractmethod
+from typing import List, Optional, Dict
+from exchanges.structs.common import Symbol, OrderBook, Ticker, SymbolsInfo
+from exchanges.interfaces.rest import PublicSpotRest
 
 
-class PublicFuturesRest(BaseRestInterface, ABC):
-    """Abstract interface for public futures exchange operations (market data)"""
+class PublicFuturesRest(PublicSpotRest):
+    """Abstract interface for public futures REST operations."""
     
-    def __init__(self, config: ExchangeConfig):
-        """Initialize public futures interface with transport manager."""
-        super().__init__(
-            config=config,
-            is_private=False  # Public API operations
-        )
+    @abstractmethod
+    async def get_funding_rate(self, symbol: Symbol) -> Dict:
+        """Get current funding rate."""
+        pass
     
-    # TODO: add extended futures-specific methods later
-
-    async def get_funding_rate(self, symbol: Symbol):
-        """Get the current funding rate for a futures symbol."""
-        raise NotImplementedError("Funding rate retrieval not implemented yet")
+    @abstractmethod
+    async def get_mark_price(self, symbol: Symbol) -> float:
+        """Get current mark price."""
+        pass

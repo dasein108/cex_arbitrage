@@ -228,7 +228,7 @@ class RestDemoMixin:
     
     async def test_exchange_info(self) -> Dict[str, Any]:
         """Test exchange info retrieval."""
-        result = await self.safe_execute("exchange_info", self.rest_client.get_exchange_info)
+        result = await self.safe_execute("exchange_info", self.rest_client.get_symbols_info)
         if result["status"] == "success":
             # Structure result for display
             exchange_info = result["result"]

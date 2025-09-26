@@ -14,7 +14,7 @@ from contextlib import asynccontextmanager
 
 from infrastructure.logging.interfaces import HFTLoggerInterface
 from infrastructure.logging import LoggingTimer
-from infrastructure.exceptions.exchange import BaseExchangeError
+from infrastructure.exceptions.exchange import ExchangeRestError
 
 T = TypeVar('T')
 R = TypeVar('R')
@@ -242,7 +242,7 @@ class ComposableErrorHandler:
         if isinstance(exception, (ValueError, TypeError)):
             return ErrorSeverity.CRITICAL
             
-        if isinstance(exception, BaseExchangeError):
+        if isinstance(exception, ExchangeRestError):
             # Check status codes for criticality
             if hasattr(exception, 'status_code'):
                 if exception.status_code in [400, 401, 403, 404]:

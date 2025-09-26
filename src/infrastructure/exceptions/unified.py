@@ -12,7 +12,7 @@ import uuid
 from typing import Optional, Dict, Any
 from enum import Enum
 
-from .exchange import BaseExchangeError
+from .exchange import ExchangeRestError
 
 
 class ErrorType(Enum):
@@ -26,7 +26,7 @@ class ErrorType(Enum):
     UNKNOWN = "unknown"
 
 
-class UnifiedExchangeError(BaseExchangeError):
+class UnifiedExchangeRestError(ExchangeRestError):
     """
     Unified exchange error with correlation tracking and structured context.
     
@@ -92,35 +92,35 @@ class UnifiedExchangeError(BaseExchangeError):
         return f"[{self.correlation_id}] {self.exchange}/{self.error_type.value}: {self.message}"
 
 
-class UnifiedParsingError(UnifiedExchangeError):
+class UnifiedParsingError(UnifiedExchangeRestError):
     """Error during message parsing operations."""
     
     def __init__(self, exchange: str, message: str, **kwargs):
         super().__init__(exchange, ErrorType.PARSING, message, **kwargs)
 
 
-class UnifiedSubscriptionError(UnifiedExchangeError):
+class UnifiedSubscriptionError(UnifiedExchangeRestError):
     """Error during subscription operations."""
     
     def __init__(self, exchange: str, message: str, **kwargs):
         super().__init__(exchange, ErrorType.SUBSCRIPTION, message, **kwargs)
 
 
-class UnifiedConnectionError(UnifiedExchangeError):
+class UnifiedConnectionError(UnifiedExchangeRestError):
     """Error during connection operations."""
     
     def __init__(self, exchange: str, message: str, **kwargs):
         super().__init__(exchange, ErrorType.CONNECTION, message, **kwargs)
 
 
-class UnifiedValidationError(UnifiedExchangeError):
+class UnifiedValidationError(UnifiedExchangeRestError):
     """Error during validation operations."""
     
     def __init__(self, exchange: str, message: str, **kwargs):
         super().__init__(exchange, ErrorType.VALIDATION, message, **kwargs)
 
 
-class UnifiedRateLimitError(UnifiedExchangeError):
+class UnifiedRateLimitError(UnifiedExchangeRestError):
     """Error due to rate limiting."""
     
     def __init__(self, exchange: str, message: str, retry_after: Optional[int] = None, **kwargs):

@@ -19,7 +19,7 @@ from infrastructure.networking.websocket.handlers import PublicWebsocketHandlers
 
 from .ws_base import BaseWebsocketInterface
 from .spot import PrivateSpotWebsocket, PublicSpotWebsocket
-from .futures import PublicFuturesWebsocket
+from .futures import PublicFuturesWebsocket, PrivateFuturesWebsocket
 __all__ = [
     'WebSocketManager',
 # Factory removed
@@ -39,5 +39,6 @@ __all__ = [
     'PublicSpotWebsocket',
     'PublicFuturesWebsocket',
     'PublicWebsocketHandlers',
-    'PrivateWebsocketHandlers'
+    'PrivateWebsocketHandlers',
+    'PrivateFuturesWebsocket'
 ]

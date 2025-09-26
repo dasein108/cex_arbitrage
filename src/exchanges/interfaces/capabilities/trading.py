@@ -91,7 +91,7 @@ class TradingCapability(ABC):
         pass
     
     @abstractmethod
-    async def get_order_status(self, symbol: Symbol, order_id: str) -> Order:
+    async def get_order(self, symbol: Symbol, order_id: str) -> Order:
         """
         Get current status of an order.
         
@@ -107,20 +107,20 @@ class TradingCapability(ABC):
         """
         pass
     
-    @abstractmethod
-    async def get_order_history(
-        self,
-        symbol: Optional[Symbol] = None,
-        limit: int = 100
-    ) -> List[Order]:
-        """
-        Get order history.
-
-        Args:
-            symbol: Optional symbol filter
-            limit: Maximum number of orders to return
-
-        Returns:
-            List of historical orders
-        """
-        pass
+    # @abstractmethod
+    # async def get_order_history(
+    #     self,
+    #     symbol: Optional[Symbol] = None,
+    #     limit: int = 100
+    # ) -> List[Order]:
+    #     """
+    #     Get order history.
+    #
+    #     Args:
+    #         symbol: Optional symbol filter
+    #         limit: Maximum number of orders to return
+    #
+    #     Returns:
+    #         List of historical orders
+    #     """
+    #     pass

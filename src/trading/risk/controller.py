@@ -72,7 +72,7 @@ class ArbitrageController:
         logger.info(f"Initializing exchanges with {len(arbitrage_symbols)} symbols from arbitrage configuration")
         
         # HFT OPTIMIZATION: Initialize exchanges with arbitrage symbols
-        from exchanges.interfaces.composite.unified_exchange import UnifiedExchangeFactory
+        from exchanges.full_exchange_factory import FullExchangeFactory
         
         strategy = InitializationStrategy.CONTINUE_ON_ERROR if self.config.enable_dry_run else InitializationStrategy.RETRY_WITH_BACKOFF
         exchanges_task = self.exchange_factory.create_exchanges(

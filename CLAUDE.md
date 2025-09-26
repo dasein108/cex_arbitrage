@@ -8,16 +8,17 @@ High-level architectural overview for the ultra-high-performance CEX arbitrage e
 
 ## System Overview
 
-This is a **high-frequency trading (HFT) arbitrage engine** built for professional cryptocurrency trading across multiple exchanges, featuring a **unified architecture** that consolidates exchange functionality into single, coherent interfaces.
+This is a **high-frequency trading (HFT) arbitrage engine** built for professional cryptocurrency trading across multiple exchanges, featuring a **separated domain architecture** where public and private interfaces are completely isolated with no overlap.
 
-### **Unified Exchange Architecture (Current)**
+### **Separated Domain Architecture (Current)**
 
-**Major Consolidation Completed**:
-- **UnifiedCompositeExchange** - Single interface combining public + private exchange functionality  
-- **UnifiedExchangeFactory** - Simplified factory using config_manager pattern
-- **Two Complete Implementations** - MexcUnifiedExchange and GateioUnifiedExchange
-- **Legacy Interface Removal** - Eliminated AbstractPrivateExchange vs CompositePrivateExchange redundancy
-- **HFT Safety Compliance** - Removed all dangerous caching of real-time trading data
+**Complete Domain Separation Achieved**:
+- **CompositePublicExchange** - ONLY market data operations (orderbooks, trades, tickers, symbols)
+- **CompositePrivateExchange** - ONLY trading operations (orders, balances, positions, leverage)
+- **FullExchangeFactory** - Factory for creating separate public and private exchange instances
+- **No Inheritance** - Private exchanges do NOT inherit from public exchanges
+- **Minimal Shared Configuration** - Only static config like symbol_info, never real-time data
+- **HFT Safety Compliance** - No caching of real-time trading data across all interfaces
 
 ### **Key Performance Achievements**
 
@@ -40,65 +41,90 @@ The system follows **balanced architectural principles** detailed in specialized
 4. **[Struct-First Data Policy](docs/data/struct-first-policy.md)** - msgspec.Struct over dict for all modeling
 5. **[HFT Performance Requirements](docs/performance/hft-requirements-compliance.md)** - Sub-millisecond targets throughout
 
-### **Unified Exchange Architecture**
+### **Separated Domain Architecture**
 
-The system has evolved from legacy multiple-interface complexity to a **single unified interface** per exchange:
+The system uses **complete domain separation** between public and private exchange operations:
 
-**UnifiedExchangeFactory** → **UnifiedCompositeExchange** → **Exchange Implementations** → **Common Data Structures**
+**FullExchangeFactory** → **CompositePublicExchange** (parallel to) **CompositePrivateExchange** → **Exchange Implementations** → **Domain-Specific Data Structures**
 
 **Core Components:**
-- **[UnifiedCompositeExchange](docs/architecture/unified-exchange-architecture.md)** - Single interface combining public + private operations
-- **[UnifiedExchangeFactory](docs/architecture/unified-exchange-architecture.md)** - Simplified factory with config_manager pattern
-- **[Infrastructure Foundation](docs/infrastructure/)** - Networking, logging, and configuration systems
-- **[Common Data Structures](docs/data/struct-first-policy.md)** - Unified msgspec.Struct types across all exchanges
+- **[CompositePublicExchange](docs/architecture/composite-exchange-architecture.md)** - Pure market data interface
+- **[CompositePrivateExchange](docs/architecture/composite-exchange-architecture.md)** - Pure trading operations interface
+- **[FullExchangeFactory](docs/architecture/composite-exchange-architecture.md)** - Factory for creating separate domain instances
+- **[Infrastructure Foundation](docs/infrastructure/)** - Shared networking, logging, and configuration systems
+- **[Domain Data Structures](docs/data/struct-first-policy.md)** - msgspec.Struct types specific to each domain
 
-### **Unified Interface Hierarchy**
+### **Separated Domain Interface Hierarchy**
 
 ```
-UnifiedCompositeExchange (single interface)
-├── Market Data Operations (public - no authentication required)
-├── Trading Operations (private - credentials required)
-├── Resource Management (lifecycle and connections)
-└── Performance Monitoring (health and metrics)
+CompositePublicExchange (market data domain - NO authentication)
+├── Orderbook Operations (real-time orderbook streaming)
+├── Market Data (tickers, trades, klines)
+├── Symbol Information (trading rules, precision)
+└── Connection Management (public WebSocket lifecycle)
+
+CompositePrivateExchange (trading domain - requires authentication)
+├── Trading Operations (orders, positions, balances)
+├── Account Management (portfolio tracking)
+├── Trade Execution (spot and futures support)
+└── Connection Management (private WebSocket lifecycle)
 ```
 
-**Unified Design Benefits**:
-- **Single Integration Point**: One interface per exchange eliminates complexity
-- **Combined Functionality**: Market data + trading operations for arbitrage strategies
-- **HFT Optimized**: Sub-50ms execution targets throughout
-- **Resource Management**: Proper async context manager support
-- **Clear Purpose**: Optimized specifically for arbitrage trading operations
+**Separated Domain Benefits**:
+- **Complete Isolation**: Public and private domains have no overlap
+- **No Inheritance**: Private exchanges are independent of public exchanges
+- **Authentication Boundary**: Clear separation of authenticated vs non-authenticated operations
+- **Independent Scaling**: Each domain can scale and optimize independently
+- **Security**: Trading operations completely isolated from market data
+- **HFT Optimized**: Sub-50ms execution targets in both domains
 
-### **Unified Factory Pattern**
+### **Separated Domain Factory Pattern**
 
-**Simplified Exchange Creation with Config Manager**:
+**Independent Exchange Creation with Domain Separation**:
 
 ```python
-
 from exchanges.full_exchange_factory import FullExchangeFactory
-from src.exchanges.structs.common import Symbol
+from exchanges.structs.common import Symbol
 
-# Create unified factory
+# Create factory
 factory = FullExchangeFactory()
 
-# Create single exchange (config loaded automatically)
-exchange = await factory.create_exchange(
-  exchange_name='mexc_spot',
-  symbols=[Symbol('BTC', 'USDT')]
+# Create public exchange (market data domain only)
+public_exchange = await factory.create_public_exchange(
+    exchange_name='mexc_spot',
+    symbols=[Symbol('BTC', 'USDT')]
 )
+# public_exchange provides: orderbooks, trades, tickers, symbol_info
+# public_exchange does NOT provide: balances, orders, positions
 
-# Create multiple exchanges concurrently
-exchanges = await factory.create_multiple_exchanges(
-  exchange_names=['mexc_spot', 'gateio_spot', 'gateio_futures'],
-  symbols=[Symbol('BTC', 'USDT'), Symbol('ETH', 'USDT')]
+# Create private exchange (trading domain only)  
+private_exchange = await factory.create_private_exchange(
+    exchange_name='mexc_spot'
+)
+# private_exchange provides: orders, balances, positions, leverage
+# private_exchange does NOT provide: orderbooks, trades, market data
+
+# Create both domains separately (NO inheritance relationship)
+public, private = await factory.create_exchange_pair(
+    exchange_name='mexc_spot',
+    symbols=[Symbol('BTC', 'USDT')]
+)
+# public and private are completely independent instances
+# Only symbol_info configuration is shared, never real-time data
+
+# Create multiple separated domain pairs
+exchanges = await factory.create_multiple_exchange_pairs(
+    exchange_names=['mexc_spot', 'gateio_spot'],
+    symbols=[Symbol('BTC', 'USDT'), Symbol('ETH', 'USDT')]
 )
 ```
 
-**Unified Factory Benefits**:
-- **Simplified API**: Single method for exchange creation
-- **Config Manager Integration**: Automatic configuration loading
-- **Concurrent Creation**: Multiple exchanges created in parallel
-- **Error Resilience**: Graceful handling of individual exchange failures
+**Separated Domain Factory Benefits**:
+- **Pure Domain Creation**: Each interface handles only its domain
+- **No Cross-Domain Dependencies**: Public and private are completely independent
+- **Configuration Isolation**: Only static config (symbol_info) shared
+- **Authentication Boundary**: Credentials only needed for private domain
+- **Independent Optimization**: Each domain optimized for its specific operations
 
 ### **HFT Logging System**
 
@@ -125,7 +151,7 @@ Comprehensive high-performance logging architecture designed for sub-millisecond
 The architecture is fully documented across specialized files:
 
 #### **Core Architecture**
-- **[Unified Exchange Architecture](docs/architecture/unified-exchange-architecture.md)** - Complete unified interface design
+- **[Composite Exchange Architecture](docs/architecture/composite-exchange-architecture.md)** - Complete composite interface design
 - **[System Architecture](docs/architecture/system-architecture.md)** - High-level system design and component relationships  
 - **[Component Architecture](docs/architecture/component-architecture.md)** - Individual component designs
 
@@ -153,7 +179,7 @@ The architecture is fully documented across specialized files:
 
 ### **Getting Started**
 1. Read **[PROJECT_GUIDES.md](PROJECT_GUIDES.md)** - Mandatory development rules
-2. Review **[Unified Exchange Architecture](docs/architecture/unified-exchange-architecture.md)** - Core system design
+2. Review **[Composite Exchange Architecture](docs/architecture/composite-exchange-architecture.md)** - Core system design
 3. Check **[HFT Requirements Compliance](docs/performance/hft-requirements-compliance.md)** - Performance targets
 4. Follow **[LEAN Development Methodology](docs/development/lean-development-methodology.md)** - Development approach
 
@@ -164,9 +190,12 @@ The architecture is fully documented across specialized files:
 - **Debugging Issues**: [Exception Handling Patterns](docs/patterns/exception-handling-patterns.md)
 
 ### **Key Implementation Rules**
-- **UnifiedCompositeExchange**: Single interface per exchange (no separate public/private)
-- **HFT Caching Policy**: NEVER cache real-time trading data (balances, orders, positions)
-- **Struct-First Policy**: msgspec.Struct over dict for all data modeling  
+- **Separated Domain Architecture**: Public (market data) and private (trading) are completely isolated
+- **No Inheritance**: Private exchanges do NOT inherit from public exchanges
+- **Authentication Boundary**: Public operations require no auth, private operations require credentials
+- **Minimal Configuration Sharing**: Only static config like symbol_info, never real-time data
+- **HFT Caching Policy**: NEVER cache real-time trading data (balances, orders, positions, orderbooks)
+- **Struct-First Policy**: msgspec.Struct over dict for all data modeling
 - **LEAN Development**: Implement necessity, avoid speculation
 - **Pragmatic SOLID**: Apply principles where they add value
 
@@ -189,14 +218,21 @@ See **[Caching Policy](docs/performance/caching-policy.md)** for complete safety
 
 ## Component Reference
 
-### **Unified Exchange Implementations**
+### **Separated Domain Exchange Implementations**
 
-**Core Components**:
-- **[UnifiedCompositeExchange](src/exchanges/interfaces/composite/unified_exchange.py)** - Single interface standard
-- **[UnifiedExchangeFactory](src/exchanges/interfaces/composite/unified_exchange.py)** - Simplified factory
-- **[MexcSpotUnifiedExchange](src/exchanges/integrations/mexc/mexc_unified_exchange.py)** - Complete MEXC spot implementation
-- **[GateioSpotUnifiedExchange](src/exchanges/integrations/gateio/gateio_unified_exchange.py)** - Complete Gate.io spot implementation
-- **[GateioFuturesUnifiedExchange](src/exchanges/integrations/gateio/gateio_futures_unified_exchange.py)** - Complete Gate.io futures implementation
+**Core Domain Interfaces**:
+- **[CompositePublicExchange](src/exchanges/interfaces/composite/spot/base_public_spot_composite.py)** - Pure market data interface
+- **[CompositePrivateExchange](src/exchanges/interfaces/composite/spot/base_private_spot_composite.py)** - Pure trading operations interface
+- **[FullExchangeFactory](src/exchanges/full_exchange_factory.py)** - Factory for creating separated domain instances
+
+**Public Domain Implementations (Market Data Only)**:
+- **[MexcPublicExchange](src/exchanges/integrations/mexc/public_exchange.py)** - MEXC market data (orderbooks, trades, tickers)
+- **[GateioPublicExchange](src/exchanges/integrations/gateio/public_exchange.py)** - Gate.io spot market data
+- **[GateioFuturesPublicExchange](src/exchanges/integrations/gateio/public_futures_exchange.py)** - Gate.io futures market data
+
+**Private Domain Implementations (Trading Operations Only)**:
+- Private exchange implementations for orders, balances, positions, and leverage management
+- Completely separate from public implementations with no inheritance
 
 **Infrastructure Foundation**:
 - **[HFT Logging System](docs/infrastructure/hft-logging-system.md)** - Sub-millisecond logging
@@ -207,7 +243,7 @@ See **[Caching Policy](docs/performance/caching-policy.md)** for complete safety
 
 **By User Type**:
 - **Developers**: [System Architecture](docs/architecture/system-architecture.md) → [Integration Workflows](docs/workflows/exchange-integration.md)
-- **Architects**: [Unified Architecture](docs/architecture/unified-exchange-architecture.md) → [SOLID Principles](docs/patterns/pragmatic-solid-principles.md)
+- **Architects**: [Separated Domain Architecture](docs/architecture/composite-exchange-architecture.md) → [SOLID Principles](docs/patterns/pragmatic-solid-principles.md)
 - **DevOps**: [Configuration System](docs/configuration/configuration-system.md) → [Performance Monitoring](docs/performance/benchmarks.md)
 
 **By Topic**:
@@ -217,6 +253,6 @@ See **[Caching Policy](docs/performance/caching-policy.md)** for complete safety
 
 ---
 
-*This architectural overview reflects the current unified exchange architecture with completed consolidation and HFT compliance achievements. For detailed implementation guidance, see the comprehensive documentation suite in the [docs/](docs/) directory.*
+*This architectural overview reflects the current separated domain architecture where public and private interfaces are completely isolated with no inheritance or overlap. For detailed implementation guidance, see the comprehensive documentation suite in the [docs/](docs/) directory.*
 
-**Last Updated**: September 2025 - Post-Unified Architecture Consolidation
+**Last Updated**: September 2025 - Post-Separated Domain Architecture Implementation

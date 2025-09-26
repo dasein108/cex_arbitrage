@@ -10,7 +10,7 @@ HFT COMPLIANT: Minimal overhead engine creation.
 from infrastructure.logging import get_logger
 from typing import Dict, Union
 from trading.arbitrage.types import ArbitrageConfig
-from exchanges.interfaces.composite.unified_exchange import UnifiedCompositeExchange
+from exchanges.interfaces.composite.spot.base_private_spot_composite import CompositePrivateExchange
 
 logger = get_logger('arbitrage.engine_utils')
 

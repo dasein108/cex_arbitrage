@@ -13,7 +13,7 @@ from exchanges.interfaces.rest.spot import PublicSpotRest
 # Removed BaseExchangeMapper import - using direct utility functions
 from infrastructure.networking.http.structs import HTTPMethod
 from config.structs import ExchangeConfig
-from infrastructure.exceptions.exchange import BaseExchangeError
+from infrastructure.exceptions.exchange import ExchangeRestError
 
 # Import direct utility functions
 from exchanges.integrations.gateio.utils import from_futures_symbol
@@ -77,7 +77,7 @@ class GateioPublicFuturesRest(PublicSpotRest):
 
         return base_prec, quote_prec, min_quote, min_base
 
-    async def get_exchange_info(self) -> Dict[Symbol, SymbolInfo]:
+    async def get_symbols_info(self) -> Dict[Symbol, SymbolInfo]:
         """
         Get futures contract information and map to SymbolInfo.
         Cached for _cache_ttl seconds.
@@ -93,7 +93,7 @@ class GateioPublicFuturesRest(PublicSpotRest):
             )
 
             if not isinstance(response_data, list):
-                raise BaseExchangeError(500, "Invalid contracts response format")
+                raise ExchangeRestError(500, "Invalid contracts response format")
 
             symbol_info_map: Dict[Symbol, SymbolInfo] = {}
             filtered_count = 0
@@ -142,7 +142,7 @@ class GateioPublicFuturesRest(PublicSpotRest):
 
         except Exception as e:
             self.logger.error(f"Failed to get futures exchange info: {e}")
-            raise BaseExchangeError(500, f"Futures exchange info fetch failed: {str(e)}")
+            raise ExchangeRestError(500, f"Futures exchange info fetch failed: {str(e)}")
 
     async def get_orderbook(self, symbol: Symbol, limit: int = 100) -> OrderBook:
         """
@@ -195,7 +195,7 @@ class GateioPublicFuturesRest(PublicSpotRest):
 
         except Exception as e:
             self.logger.error(f"Failed to get futures orderbook for {symbol}: {e}")
-            raise BaseExchangeError(500, f"Futures orderbook fetch failed: {str(e)}")
+            raise ExchangeRestError(500, f"Futures orderbook fetch failed: {str(e)}")
 
     async def get_recent_trades(self, symbol: Symbol, limit: int = 500) -> List[Trade]:
         """
@@ -214,7 +214,7 @@ class GateioPublicFuturesRest(PublicSpotRest):
             )
 
             if not isinstance(response_data, list):
-                raise BaseExchangeError(500, "Invalid futures trades response format")
+                raise ExchangeRestError(500, "Invalid futures trades response format")
 
             trades: List[Trade] = []
             for td in response_data:
@@ -247,7 +247,7 @@ class GateioPublicFuturesRest(PublicSpotRest):
 
         except Exception as e:
             self.logger.error(f"Failed to get futures recent trades for {symbol}: {e}")
-            raise BaseExchangeError(500, f"Futures recent trades fetch failed: {str(e)}")
+            raise ExchangeRestError(500, f"Futures recent trades fetch failed: {str(e)}")
 
     async def get_historical_trades(self, symbol: Symbol, limit: int = 500,
                                     timestamp_from: Optional[int] = None,
@@ -272,7 +272,7 @@ class GateioPublicFuturesRest(PublicSpotRest):
             )
 
             if not isinstance(response_data, list):
-                raise BaseExchangeError(500, "Invalid futures historical trades format")
+                raise ExchangeRestError(500, "Invalid futures historical trades format")
 
             trades: List[Trade] = []
             for td in response_data:
@@ -303,7 +303,7 @@ class GateioPublicFuturesRest(PublicSpotRest):
 
         except Exception as e:
             self.logger.error(f"Failed to get futures historical trades for {symbol}: {e}")
-            raise BaseExchangeError(500, f"Futures historical trades fetch failed: {str(e)}")
+            raise ExchangeRestError(500, f"Futures historical trades fetch failed: {str(e)}")
 
     async def get_ticker_info(self, symbol: Optional[Symbol] = None) -> Dict[Symbol, Ticker]:
         """
@@ -375,7 +375,7 @@ class GateioPublicFuturesRest(PublicSpotRest):
 
         except Exception as e:
             self.logger.error(f"Failed to get futures ticker info: {e}")
-            raise BaseExchangeError(500, f"Futures ticker info fetch failed: {str(e)}")
+            raise ExchangeRestError(500, f"Futures ticker info fetch failed: {str(e)}")
 
     async def get_funding_rate(self, symbol: Symbol) -> Dict[str, Any]:
         """
@@ -397,7 +397,7 @@ class GateioPublicFuturesRest(PublicSpotRest):
 
         except Exception as e:
             self.logger.error(f"Failed to get funding rate for {symbol}: {e}")
-            raise BaseExchangeError(500, f"Futures funding rate fetch failed: {str(e)}")
+            raise ExchangeRestError(500, f"Futures funding rate fetch failed: {str(e)}")
 
     async def get_klines(self, symbol: Symbol, timeframe: KlineInterval, date_from: Optional[datetime],
         date_to: Optional[datetime] ) -> List[Kline]:
@@ -424,7 +424,7 @@ class GateioPublicFuturesRest(PublicSpotRest):
             )
 
             if not isinstance(response_data, list):
-                raise BaseExchangeError(500, "Invalid futures candlesticks response format")
+                raise ExchangeRestError(500, "Invalid futures candlesticks response format")
 
             klines: List[Kline] = []
             for k in response_data:
@@ -461,7 +461,7 @@ class GateioPublicFuturesRest(PublicSpotRest):
 
         except Exception as e:
             self.logger.error(f"Failed to get futures klines for {symbol}: {e}")
-            raise BaseExchangeError(500, f"Futures klines fetch failed: {str(e)}")
+            raise ExchangeRestError(500, f"Futures klines fetch failed: {str(e)}")
 
     async def get_klines_batch(self, symbol: Symbol, timeframe: KlineInterval,
                                date_from: Optional[datetime], date_to: Optional[datetime]) -> List[Kline]:

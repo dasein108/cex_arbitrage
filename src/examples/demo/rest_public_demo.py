@@ -37,7 +37,7 @@ async def check_get_server_time(exchange, exchange_name: str):
 @rest_api_test("exchange_info")
 async def check_get_exchange_info(exchange, exchange_name: str):
     """Check get_exchange_info method."""
-    result = await exchange.get_exchange_info()
+    result = await exchange.get_symbols_info()
     
     # Prepare structured result with sample symbols
     sample_symbols = []
