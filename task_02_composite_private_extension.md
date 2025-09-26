@@ -17,20 +17,134 @@ UnifiedCompositeExchange already demonstrates the complete implementation patter
 
 ## Current State Analysis
 
-**File**: `src/exchanges/interfaces/composite/base_private_exchange.py` (442 lines)
+**File**: `src/exchanges/interfaces/composite/base_private_exchange.py` (996 lines)
 
-**Current Architecture**:
+**Current Architecture** (Updated September 2025):
 - ✅ Complete abstract interface for private trading operations
-- ✅ Proper state management for `_balances`, `_open_orders`, `_positions`
-- ✅ HFT-compliant approach (no caching of real-time trading data)
+- ✅ Executed orders state management ALREADY IMPLEMENTED (lines 68-71)
+- ✅ Abstract factory methods ALREADY IMPLEMENTED (lines 349-372)
+- ✅ Concrete orchestration methods ALREADY IMPLEMENTED (lines 375+)
+- ✅ WebSocket handler injection patterns ALREADY IMPLEMENTED
+- ✅ HFT-compliant approach with executed orders caching
 - ✅ Comprehensive trading and withdrawal operations
-- ✅ Good orchestration patterns BUT still abstract
 
-**Critical Gaps Identified**:
-- ❌ Abstract factory methods missing (need to copy from UnifiedCompositeExchange)
-- ❌ All orchestration methods are abstract (need concrete implementations)
-- ❌ No WebSocket handler injection (need constructor injection pattern)
-- ❌ No connection recovery implementations (need recovery logic)
+**Current Implementation Status**:
+- ✅ `_executed_orders` state management exists (line 69)
+- ✅ Factory methods `_create_private_rest` and `_create_private_ws_with_handlers` implemented
+- ✅ Concrete `_load_balances()` method implemented (line 379)
+- ✅ Enhanced `_update_order()` with lifecycle management implemented
+- ✅ `get_active_order()` method with 3-tier lookup ALREADY IMPLEMENTED
+
+**CRITICAL ARCHITECTURAL ISSUE - Futures-Specific Code in Spot Base Class**:
+- ❌ **Position state and handling** incorrectly placed in base_private_exchange.py (should be futures-only)
+- ❌ `self._positions: Dict[Symbol, Position] = {}` at line 66 - belongs in futures subclass
+- ❌ `async def _load_positions()` at line 433 - futures-specific logic with spot NotImplementedError
+- ❌ `async def _handle_position_event()` at line 683 - position WebSocket handling for futures only
+- ❌ `def _update_position()` at line 916 - position state management for futures only
+- ❌ Position metrics in `get_trading_stats()` at line 943 - futures-specific monitoring
+
+**Remaining Gaps** (Architectural Cleanup Required):
+- ⚠️ May need optimization for HFT performance requirements
+- ⚠️ Cache size management could be enhanced  
+- ⚠️ Error handling patterns could be standardized
+- ⚠️ Race condition protection needed for order state transitions
+- 🚨 **CRITICAL**: Position-related code must be moved to base_private_futures_exchange.py
+
+## Critical Race Condition Fix Required
+
+**Issue**: The current `_update_order()` implementation may have race conditions when WebSocket updates and REST fallbacks modify order state simultaneously.
+
+**Solution**: Add per-symbol async locking for atomic order state operations:
+
+```python
+# Add to constructor:
+self._order_state_locks: Dict[Symbol, asyncio.Lock] = {}
+
+async def _get_symbol_lock(self, symbol: Symbol) -> asyncio.Lock:
+    """Get or create atomic lock for symbol-specific operations."""
+    if symbol not in self._order_state_locks:
+        self._order_state_locks[symbol] = asyncio.Lock()
+    return self._order_state_locks[symbol]
+
+# Enhanced get_active_order with atomic operations:
+async def get_active_order(self, symbol: Symbol, order_id: OrderId) -> Optional[Order]:
+    """Get order with atomic state management."""
+    async with await self._get_symbol_lock(symbol):
+        # All existing logic here - now protected from race conditions
+        # ... existing implementation
+        pass
+
+# Enhanced _update_order with atomic operations:
+async def _update_order(self, order: Order) -> None:
+    """Update order state atomically."""
+    async with await self._get_symbol_lock(order.symbol):
+        # All existing logic here - now race condition safe
+        # ... existing implementation  
+        pass
+
+# Enhanced cache management with LRU eviction:
+async def _cleanup_executed_orders_cache(self, symbol: Symbol) -> None:
+    """Clean up executed orders cache when it exceeds limits."""
+    if symbol not in self._executed_orders:
+        return
+        
+    cache = self._executed_orders[symbol]
+    if len(cache) > self._max_executed_orders_per_symbol:
+        # Simple LRU: remove oldest 20% when limit exceeded
+        removal_count = int(len(cache) * 0.2)
+        oldest_orders = sorted(cache.values(), key=lambda o: o.timestamp)[:removal_count]
+        
+        for order in oldest_orders:
+            del cache[order.order_id]
+            
+        self.logger.info("Executed orders cache cleaned",
+                        symbol=symbol,
+                        removed=removal_count, 
+                        remaining=len(cache))
+
+## Partial Failure Recovery Enhancement
+
+**Issue**: Connection recovery doesn't handle partial failures (e.g., REST success but WebSocket failure).
+
+**Solution**: Add state validation and rollback mechanisms:
+
+```python
+async def _validate_connection_state(self) -> Dict[str, bool]:
+    """Validate connection state and detect partial failures."""
+    return {
+        "private_rest": self._private_rest_connected and self._private_rest is not None,
+        "private_ws": self._private_ws_connected and self._private_ws is not None,
+        "public_rest": self._public_rest_connected and self._public_rest is not None,
+        "public_ws": self._public_ws_connected and self._public_ws is not None,
+    }
+
+async def _recover_from_partial_failure(self) -> None:
+    """Recover from partial connection failures with state validation."""
+    connection_state = await self._validate_connection_state()
+    
+    # If any private connections failed but others succeeded, reset all private state
+    if connection_state["private_rest"] != connection_state["private_ws"]:
+        self.logger.warning("Partial private connection failure detected - resetting private state")
+        
+        # Clear potentially inconsistent state
+        self._balances.clear()
+        self._open_orders.clear() 
+        
+        # Attempt full private reconnection
+        try:
+            if not connection_state["private_rest"]:
+                await self._initialize_private_rest()
+            if not connection_state["private_ws"]: 
+                await self._initialize_private_websocket()
+                
+            # Reload private data if both connections restored
+            if self._private_rest_connected and self._private_ws_connected:
+                await self._load_private_data()
+                
+        except Exception as e:
+            self.logger.error("Failed to recover from partial failure", error=str(e))
+            raise BaseExchangeError(f"Partial failure recovery failed: {e}") from e
+```
 
 ## New Requirements Integration
 
@@ -65,11 +179,77 @@ async def get_active_order(self, symbol: Symbol, order_id: OrderId) -> Optional[
     pass
 ```
 
-## Implementation Plan
+## Implementation Plan (Updated - Most Work Already Complete)
 
-### Phase 1: Add State Management for Executed Orders
+Since the base class already contains 80%+ of the required functionality, the implementation plan is now focused on **architectural cleanup (positions migration)** and refinements rather than new development.
 
-**FIRST**: Add executed orders state management to constructor and state properties:
+## PRIORITY PHASE 0: Futures-Specific Code Migration (CRITICAL)
+
+**Issue**: Position-related functionality is incorrectly implemented in the general spot base class. This violates architectural separation and causes confusion.
+
+### Step 1: Remove Position Code from base_private_exchange.py
+
+**Code to Remove** (7 locations):
+```python
+# Constructor (line 66)
+self._positions: Dict[Symbol, Position] = {}
+
+# Abstract Property (lines 110-117)  
+@property
+@abstractmethod
+def positions(self) -> Dict[Symbol, Position]:
+    """Get current positions (for margin/futures trading)."""
+    pass
+
+# Loading Method (lines 433-458)
+async def _load_positions(self) -> None:
+    """Load positions from REST API (for margin/futures)."""
+    # ... complete method implementation
+
+# Event Handler (lines 683-693)
+async def _handle_position_event(self, event: PositionUpdateEvent) -> None:
+    """Handle position update events from private WebSocket."""
+    # ... complete implementation
+
+# Update Method (lines 916-924)  
+def _update_position(self, position: Position) -> None:
+    """Update internal position state."""
+    # ... complete implementation
+
+# Initialization Reference (line 551)
+self._load_positions(),
+
+# WebSocket Handler Registration (line 596)
+position_handler=self._handle_position_event,
+
+# Data Refresh Reference (line 748)
+await self._load_positions()
+
+# Monitoring Integration (line 943)
+'active_positions': len(self._positions),
+```
+
+### Step 2: Add Position Code to base_private_futures_exchange.py
+
+**Code to Add** (ensure futures subclass contains all position functionality):
+- Move all 7 code sections from Step 1 into the futures subclass
+- Override `initialize()` to include position loading
+- Override `_refresh_exchange_data()` to include position refresh  
+- Extend `get_futures_trading_stats()` with position metrics
+- Ensure WebSocket handlers include position_handler
+
+### Step 3: Update Architecture
+
+**After Migration**:
+- **Spot exchanges** (base_private_exchange): balances + orders only
+- **Futures exchanges** (base_private_futures_exchange): balances + orders + positions  
+- **Clear separation**: Position functionality only available where needed
+
+This migration fixes the architectural violation and provides proper separation of concerns.
+
+### Phase 1: Validate Executed Orders State Management ✅ COMPLETED
+
+**ALREADY IMPLEMENTED**: Executed orders state management exists in constructor and properties:
 
 ```python
 def __init__(self, config: ExchangeConfig):
@@ -101,9 +281,9 @@ def executed_orders(self) -> Dict[Symbol, Dict[OrderId, Order]]:
     return self._executed_orders.copy()
 ```
 
-### Phase 2: Add Abstract Factory Methods (FROM UnifiedCompositeExchange)
+### Phase 2: Validate Abstract Factory Methods ✅ COMPLETED
 
-**Copy these EXACT patterns from UnifiedCompositeExchange (lines 200-220)**:
+**ALREADY IMPLEMENTED**: These factory methods exist in base_private_exchange.py (lines 349-372):
 
 ```python
 @abstractmethod
@@ -135,11 +315,11 @@ async def _create_public_ws_with_handlers(self, handlers: PublicWebsocketHandler
     pass
 ```
 
-### Phase 3: Add Concrete Orchestration Logic (FROM UnifiedCompositeExchange)
+### Phase 3: Validate Concrete Orchestration Logic ✅ COMPLETED  
 
-**Copy EXACT orchestration patterns from UnifiedCompositeExchange (lines 300-450)**:
+**ALREADY IMPLEMENTED**: Concrete orchestration methods exist (lines 375+):
 
-Transform abstract data loading methods into concrete template methods:
+The template methods are already implemented including:
 
 ```python
 async def _load_balances(self) -> None:
@@ -626,21 +806,33 @@ def get_trading_stats(self) -> Dict[str, Any]:
 cp src/exchanges/interfaces/composite/base_private_exchange.py src/exchanges/interfaces/composite/base_private_exchange.py.backup
 ```
 
-### Step 2: Gradual Extension
-1. Add abstract factory methods first
-2. Add concrete orchestration methods one by one
-3. Add event handlers
-4. Add connection management
-5. Test with existing exchange implementations
+### Step 2: Architectural Cleanup Implementation
+1. **PRIORITY**: Remove position code from base_private_exchange.py (7 locations)
+2. **PRIORITY**: Move position code to base_private_futures_exchange.py  
+3. Update any existing futures exchange implementations to use the new architecture
+4. Test spot exchanges work without position functionality
+5. Test futures exchanges have complete position functionality
 
-### Step 3: Update Exchange Implementations
-After extending CompositePrivateExchange, update exchange implementations to:
-1. Remove duplicated orchestration logic
-2. Implement abstract factory methods
-3. Remove manual event handler setup
-4. Rely on parent class initialization
+### Step 3: Exchange Implementation Updates
+After completing architectural cleanup:
+1. Verify spot exchange implementations work without position references
+2. Verify futures exchange implementations inherit proper position functionality
+3. Update any direct position references in concrete exchange classes
+4. Test the clear separation between spot and futures functionality
 
 ## Acceptance Criteria
+
+### PRIORITY: Architectural Cleanup Requirements (CRITICAL)
+- [ ] **Position State Removal**: `self._positions` removed from base_private_exchange.py constructor
+- [ ] **Position Property Removal**: Abstract `positions` property removed from base class
+- [ ] **Position Loading Removal**: `_load_positions()` method removed from base class  
+- [ ] **Position Event Handler Removal**: `_handle_position_event()` removed from base class
+- [ ] **Position Update Removal**: `_update_position()` method removed from base class
+- [ ] **Position Initialization Removal**: Position loading removed from initialization flow
+- [ ] **Position WebSocket Handler Removal**: Position handler removed from WebSocket setup
+- [ ] **Position Monitoring Removal**: Position metrics removed from get_trading_stats()
+- [ ] **Futures Migration**: All position functionality properly implemented in base_private_futures_exchange.py
+- [ ] **Clean Separation**: Spot exchanges have no position references, futures exchanges have complete position functionality
 
 ### Functional Requirements (BASED ON UNIFIED PATTERNS + EXECUTED ORDERS)
 - [ ] All existing abstract methods remain functional (no breaking changes)

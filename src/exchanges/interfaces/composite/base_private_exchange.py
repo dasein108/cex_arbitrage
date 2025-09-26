@@ -23,13 +23,12 @@ from infrastructure.networking.websocket.handlers import (
     PrivateWebsocketHandlers, PublicWebsocketHandlers
 )
 from exchanges.interfaces.rest.spot.rest_spot_private import PrivateSpotRest
-from exchanges.interfaces.rest.spot.rest_spot_public import PublicSpotRest
 from exchanges.interfaces.ws.spot.base_ws_private import PrivateSpotWebsocket
-from exchanges.interfaces.ws.spot.base_ws_public import PublicSpotWebsocket
 from exchanges.interfaces.base_events import (
-    OrderUpdateEvent, BalanceUpdateEvent, PositionUpdateEvent,
-    ExecutionReportEvent, ConnectionStatusEvent, ErrorEvent
+    OrderUpdateEvent, BalanceUpdateEvent, ExecutionReportEvent, 
+    ConnectionStatusEvent, ErrorEvent
 )
+
 
 
 class CompositePrivateExchange(CompositePublicExchange):
@@ -55,7 +54,7 @@ class CompositePrivateExchange(CompositePublicExchange):
             config: Exchange configuration with API credentials
             logger: Optional injected HFT logger (auto-created if not provided)
         """
-        super().__init__(config=config, is_private=True, logger=logger)
+        super().__init__(config=config, logger=logger)
         
         # Override tag to indicate private operations
         self._tag = f'{config.name}_private'
@@ -63,7 +62,6 @@ class CompositePrivateExchange(CompositePublicExchange):
         # Private data state (HFT COMPLIANT - no caching of real-time data)
         self._balances: Dict[Symbol, AssetBalance] = {}
         self._open_orders: Dict[Symbol, List[Order]] = {}
-        self._positions: Dict[Symbol, Position] = {}
         
         # NEW: Executed orders state management (HFT-safe caching of completed orders only)
         self._executed_orders: Dict[Symbol, Dict[OrderId, Order]] = {}
@@ -105,16 +103,6 @@ class CompositePrivateExchange(CompositePublicExchange):
         """
         pass
 
-    @property
-    @abstractmethod
-    def positions(self) -> Dict[Symbol, Position]:
-        """
-        Get current positions (for margin/futures trading).
-        
-        Returns:
-            Dictionary mapping symbols to position information
-        """
-        pass
 
     @property
     def executed_orders(self) -> Dict[Symbol, Dict[OrderId, Order]]:
@@ -430,32 +418,6 @@ class CompositePrivateExchange(CompositePublicExchange):
             self.logger.error("Failed to load open orders", error=str(e))
             raise BaseExchangeError(f"Open orders loading failed: {e}") from e
 
-    async def _load_positions(self) -> None:
-        """
-        Load positions from REST API (for margin/futures).
-        PATTERN: Copied from UnifiedCompositeExchange implementation
-        """
-        if not self._private_rest:
-            return
-            
-        try:
-            with LoggingTimer(self.logger, "load_positions") as timer:
-                positions_data = await self._private_rest.get_positions()
-                
-                # Update internal state
-                for symbol, position in positions_data.items():
-                    self._positions[symbol] = position
-                    
-            self.logger.info("Positions loaded successfully",
-                            position_count=len(positions_data),
-                            load_time_ms=timer.elapsed_ms)
-                            
-        except NotImplementedError:
-            # Positions not supported on this exchange (spot-only)
-            self.logger.debug("Positions not supported on this exchange")
-        except Exception as e:
-            self.logger.error("Failed to load positions", error=str(e))
-            raise BaseExchangeError(f"Positions loading failed: {e}") from e
 
     # ========================================
     # Enhanced Order Lifecycle Management (NEW FUNCTIONALITY)
@@ -548,14 +510,12 @@ class CompositePrivateExchange(CompositePublicExchange):
             await asyncio.gather(
                 self._load_balances(),
                 self._load_open_orders(),
-                self._load_positions(),
                 return_exceptions=True
             )
             
             # Step 3: Create WebSocket clients with handler injection
-            if self.config.enable_websocket:
-                self.logger.info(f"{self._tag} Creating WebSocket clients...")
-                await self._initialize_private_websocket()
+            self.logger.info(f"{self._tag} Creating WebSocket clients...")
+            await self._initialize_private_websocket()
             
             # Step 4: Start private streaming if WebSocket enabled
             if self._private_ws:
@@ -593,7 +553,7 @@ class CompositePrivateExchange(CompositePublicExchange):
             private_handlers = PrivateWebsocketHandlers(
                 order_handler=self._handle_order_event,
                 balance_handler=self._handle_balance_event,
-                position_handler=self._handle_position_event,
+                position_handler=None,  # Position handling removed from base class
                 execution_handler=self._handle_execution_event,
                 connection_handler=self._handle_private_connection_event,
                 error_handler=self._handle_error_event
@@ -680,17 +640,6 @@ class CompositePrivateExchange(CompositePublicExchange):
             self.logger.error("Error handling balance event", 
                              asset=event.asset, error=str(e))
 
-    async def _handle_position_event(self, event: PositionUpdateEvent) -> None:
-        """Handle position update events from private WebSocket."""
-        try:
-            # Update internal position state
-            self._update_position(event.position)
-            
-            self._track_operation("position_update")
-            
-        except Exception as e:
-            self.logger.error("Error handling position event", 
-                             symbol=event.symbol, error=str(e))
 
     async def _handle_execution_event(self, event: ExecutionReportEvent) -> None:
         """Handle execution report events from private WebSocket."""
@@ -743,11 +692,6 @@ class CompositePrivateExchange(CompositePublicExchange):
             # Refresh private data
             await self._load_balances()
             await self._load_open_orders()
-            
-            try:
-                await self._load_positions()
-            except NotImplementedError:
-                pass
 
             self.logger.info(f"{self._tag} all data refreshed after reconnection")
 
@@ -913,15 +857,6 @@ class CompositePrivateExchange(CompositePublicExchange):
                          removed=orders_to_remove,
                          remaining=len(executed_orders))
 
-    def _update_position(self, position: Position) -> None:
-        """
-        Update internal position state.
-        
-        Args:
-            position: Updated position information
-        """
-        self._positions[position.symbol] = position
-        self.logger.debug(f"Updated position for {position.symbol}: {position}")
 
     # Monitoring and diagnostics
 
@@ -940,7 +875,6 @@ class CompositePrivateExchange(CompositePublicExchange):
             'total_balances': len(self._balances),
             'open_orders_count': sum(len(orders) for orders in self._open_orders.values()),
             'executed_orders_count': executed_orders_count,  # NEW: executed orders tracking
-            'active_positions': len(self._positions),
             'has_credentials': self._config.has_credentials(),
             'symbols_with_executed_orders': len([s for s, orders in self._executed_orders.items() if orders]),  # NEW
             'connection_status': {  # Enhanced connection tracking

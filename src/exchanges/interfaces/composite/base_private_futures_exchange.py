@@ -12,6 +12,8 @@ from decimal import Decimal
 
 from exchanges.structs.common import Symbol, Order, Position
 from .base_private_exchange import CompositePrivateExchange
+from infrastructure.logging import HFTLoggerInterface
+from exchanges.interfaces.base_events import PositionUpdateEvent
 
 
 class CompositePrivateFuturesExchange(CompositePrivateExchange):
@@ -29,20 +31,24 @@ class CompositePrivateFuturesExchange(CompositePrivateExchange):
     trading functionality.
     """
 
-    def __init__(self, config):
+    def __init__(self, config, logger: Optional[HFTLoggerInterface] = None):
         """
         Initialize private futures exchange interface.
         
         Args:
             config: Exchange configuration with API credentials
+            logger: Optional injected HFT logger (auto-created if not provided)
         """
-        super().__init__(config)
+        super().__init__(config, logger=logger)
         
 
         # Futures-specific private data (using generic Dict structures for now)
         self._leverage_settings: Dict[Symbol, Dict] = {}
         self._margin_info: Dict[Symbol, Dict] = {}
         self._futures_positions: Dict[Symbol, Position] = {}
+        
+        # Alias for backward compatibility - map to futures_positions
+        self._positions: Dict[Symbol, Position] = self._futures_positions
 
     # Abstract properties for futures private data
 
@@ -78,6 +84,16 @@ class CompositePrivateFuturesExchange(CompositePrivateExchange):
             Dictionary mapping symbols to position information
         """
         pass
+
+    @property
+    def positions(self) -> Dict[Symbol, Position]:
+        """
+        Get current positions (alias for futures_positions).
+        
+        Returns:
+            Dictionary mapping symbols to position information
+        """
+        return self._futures_positions.copy()
 
     # Abstract futures trading operations
 
@@ -233,6 +249,33 @@ class CompositePrivateFuturesExchange(CompositePrivateExchange):
         """Load futures positions from REST API."""
         pass
 
+    async def _load_positions(self) -> None:
+        """
+        Load positions from REST API (for margin/futures).
+        MOVED FROM: base_private_exchange.py - futures-specific functionality
+        """
+        if not self._private_rest:
+            return
+            
+        try:
+            from infrastructure.utils.logging_timer import LoggingTimer
+            
+            with LoggingTimer(self.logger, "load_positions") as timer:
+                positions_data = await self._private_rest.get_positions()
+                
+                # Update internal state
+                for symbol, position in positions_data.items():
+                    self._futures_positions[symbol] = position
+                    
+            self.logger.info("Positions loaded successfully",
+                            position_count=len(positions_data),
+                            load_time_ms=timer.elapsed_ms)
+                            
+        except Exception as e:
+            self.logger.error("Failed to load positions", error=str(e))
+            from exchanges.errors import BaseExchangeError
+            raise BaseExchangeError(f"Positions loading failed: {e}") from e
+
     # Enhanced initialization for futures
 
     async def initialize(self, symbols: List[Symbol] = None) -> None:
@@ -314,6 +357,71 @@ class CompositePrivateFuturesExchange(CompositePrivateExchange):
         self._futures_positions[position.symbol] = position
         self.logger.debug(f"Updated futures position for {position.symbol}: {position}")
 
+    def _update_position(self, position: Position) -> None:
+        """
+        Update internal position state (alias for _update_futures_position).
+        MOVED FROM: base_private_exchange.py - futures-specific functionality
+        
+        Args:
+            position: Updated position information
+        """
+        self._update_futures_position(position)
+
+    async def _handle_position_event(self, event: PositionUpdateEvent) -> None:
+        """
+        Handle position update events from private WebSocket.
+        MOVED FROM: base_private_exchange.py - futures-specific functionality
+        """
+        try:
+            # Update internal position state
+            self._update_futures_position(event.position)
+            
+            self._track_operation("position_update")
+            
+        except Exception as e:
+            self.logger.error("Error handling position event", 
+                             symbol=event.symbol, error=str(e))
+
+    # Override WebSocket initialization to include position handler
+    
+    async def _initialize_private_websocket(self) -> None:
+        """
+        Initialize private WebSocket with constructor injection including position handler.
+        OVERRIDDEN: To include position_handler for futures trading
+        """
+        if not self.config.has_credentials():
+            self.logger.info("No credentials - skipping private WebSocket")
+            return
+            
+        try:
+            from infrastructure.networking.websocket.handlers import PrivateWebsocketHandlers
+            
+            # Create handler objects for constructor injection with position handler
+            private_handlers = PrivateWebsocketHandlers(
+                order_handler=self._handle_order_event,
+                balance_handler=self._handle_balance_event,
+                position_handler=self._handle_position_event,  # Futures-specific position handling
+                execution_handler=self._handle_execution_event,
+                connection_handler=self._handle_private_connection_event,
+                error_handler=self._handle_error_event
+            )
+            
+            # Use abstract factory method to create client with handlers
+            self._private_ws = await self._create_private_ws_with_handlers(private_handlers)
+            
+            if self._private_ws:
+                # Connect and start event processing
+                await self._private_ws.connect()
+                self._private_ws_connected = self._private_ws.is_connected
+                
+                self.logger.info("Private WebSocket initialized with position handler",
+                                connected=self._private_ws_connected,
+                                has_position_handler=private_handlers.position_handler is not None)
+                
+        except Exception as e:
+            self.logger.error("Private WebSocket initialization failed", error=str(e))
+            raise
+
     # Enhanced monitoring for futures
 
     def get_futures_trading_stats(self) -> Dict[str, Any]:
@@ -336,6 +444,22 @@ class CompositePrivateFuturesExchange(CompositePrivateExchange):
         }
         
         return {**base_stats, **futures_stats}
+
+    def get_trading_stats(self) -> Dict[str, Any]:
+        """
+        Get enhanced trading statistics for monitoring including positions.
+        OVERRIDDEN: To include position metrics for futures exchanges
+        
+        Returns:
+            Dictionary with trading and account statistics including positions
+        """
+        # Get base stats from parent
+        base_stats = super().get_trading_stats()
+        
+        # Add position metrics for backward compatibility
+        base_stats['active_positions'] = len(self._futures_positions)
+        
+        return base_stats
 
     # Risk management utilities
 
