@@ -32,7 +32,7 @@ from exchanges.structs.types import AssetName, OrderId
 from exchanges.structs.enums import TimeInForce, WithdrawalStatus
 from exchanges.structs import OrderType, Side
 from infrastructure.networking.http.structs import HTTPMethod
-from infrastructure.exceptions.exchange import BaseExchangeError
+from infrastructure.exceptions.exchange import ExchangeRestError
 from exchanges.interfaces.rest.spot.rest_spot_private import PrivateSpotRest
 from exchanges.integrations.mexc.structs.exchange import (MexcAccountResponse, MexcOrderResponse,
                                                           MexcCurrencyInfoResponse)
@@ -430,7 +430,7 @@ class MexcPrivateSpotRest(PrivateSpotRest):
 
         listen_key = response_data.get('listenKey')
         if not listen_key:
-            raise BaseExchangeError(500, "Failed to create listen key - no key in response")
+            raise ExchangeRestError(500, "Failed to create listen key - no key in response")
 
         self.logger.debug("Created new listen key")
         return listen_key
@@ -599,7 +599,7 @@ class MexcPrivateSpotRest(PrivateSpotRest):
             withdrawal_id = response_data.get('id', response_data.get('withdrawOrderId', ''))
 
             if not withdrawal_id:
-                raise BaseExchangeError(500, "No withdrawal ID returned from MEXC")
+                raise ExchangeRestError(500, "No withdrawal ID returned from MEXC")
 
             # Get fee from currency info
             currency_info = await self.get_currency_info()
@@ -629,7 +629,7 @@ class MexcPrivateSpotRest(PrivateSpotRest):
 
         except Exception as e:
             self.logger.error(f"Failed to submit withdrawal: {e}")
-            raise BaseExchangeError(500, f"Withdrawal submission failed: {e}")
+            raise ExchangeRestError(500, f"Withdrawal submission failed: {e}")
 
     async def cancel_withdrawal(self, withdrawal_id: str) -> bool:
         """
@@ -668,11 +668,11 @@ class MexcPrivateSpotRest(PrivateSpotRest):
                 if withdrawal.withdrawal_id == withdrawal_id:
                     return withdrawal
 
-            raise BaseExchangeError(404, f"Withdrawal {withdrawal_id} not found")
+            raise ExchangeRestError(404, f"Withdrawal {withdrawal_id} not found")
 
         except Exception as e:
             self.logger.error(f"Failed to get withdrawal status: {e}")
-            raise BaseExchangeError(500, f"Failed to get withdrawal status: {e}")
+            raise ExchangeRestError(500, f"Failed to get withdrawal status: {e}")
 
     async def get_withdrawal_history(
         self,
@@ -731,4 +731,4 @@ class MexcPrivateSpotRest(PrivateSpotRest):
 
         except Exception as e:
             self.logger.error(f"Failed to get withdrawal history: {e}")
-            raise BaseExchangeError(500, f"Failed to get withdrawal history: {e}")
+            raise ExchangeRestError(500, f"Failed to get withdrawal history: {e}")

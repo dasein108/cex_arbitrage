@@ -1,20 +1,20 @@
 from infrastructure.exceptions.exchange import (
-    BaseExchangeError, RateLimitErrorBase, TradingDisabled,
-    InsufficientPosition, OversoldException, ExchangeOrderCancelledOrNotExist
+    ExchangeRestError, RateLimitErrorRest, TradingDisabled,
+    InsufficientPosition, OversoldException, ExchangeRestOrderCancelledOrNotExist
 )
 import msgspec
 from exchanges.integrations.mexc.structs.exchange import MexcErrorResponse
 from infrastructure.networking.http.strategies.exception_handler import ExceptionHandlerStrategy
 
 ERROR_CODE_MAPPING = {
-    -2011: ExchangeOrderCancelledOrNotExist,  # Order cancelled
-    -2013: ExchangeOrderCancelledOrNotExist,  # Order not exist
-    429: RateLimitErrorBase,  # Too many requests
-    418: RateLimitErrorBase,  # I'm a teapot (rate limit)
+    -2011: ExchangeRestOrderCancelledOrNotExist,  # Order cancelled
+    -2013: ExchangeRestOrderCancelledOrNotExist,  # Order not exist
+    429: RateLimitErrorRest,  # Too many requests
+    418: RateLimitErrorRest,  # I'm a teapot (rate limit)
     10007: TradingDisabled,  # Symbol not support API
-    700003: BaseExchangeError,  # Timestamp outside recvWindow
+    700003: ExchangeRestError,  # Timestamp outside recvWindow
     30016: TradingDisabled,  # Trading disabled
-    10203: BaseExchangeError,  # Order processing error
+    10203: ExchangeRestError,  # Order processing error
     30004: InsufficientPosition,  # Insufficient balance
     30005: OversoldException,  # Oversold
     30002: OversoldException,  # Minimum transaction volume
@@ -41,7 +41,7 @@ class MexcExceptionHandlerStrategy(ExceptionHandlerStrategy):
             logger = get_strategy_logger('rest.exception_handler.mexc', tags)
         self.logger = logger
 
-    def handle_error(self, status_code: int, response_text: str) -> BaseExchangeError:
+    def handle_error(self, status_code: int, response_text: str) -> ExchangeRestError:
         """
         Handle MEXC-specific API errors and convert to unified exceptions.
 
@@ -65,10 +65,10 @@ class MexcExceptionHandlerStrategy(ExceptionHandlerStrategy):
                 unified_error = ERROR_CODE_MAPPING[error_code]
                 return unified_error(status_code, f"MEXC Error {error_code}: {error_msg}", mexc_error.code)
             else:
-                return BaseExchangeError(status_code, f"MEXC Error {error_code}: {error_msg}")
+                return ExchangeRestError(status_code, f"MEXC Error {error_code}: {error_msg}")
         except Exception as e:
             # Fallback if error parsing fails
-            return BaseExchangeError(status_code, f"MEXC API Error(Handler fallback): {response_text} reason: {e}")
+            return ExchangeRestError(status_code, f"MEXC API Error(Handler fallback): {response_text} reason: {e}")
 
     def should_handle_error(self, status_code: int, response_text: str) -> bool:
         """Always handle errors for MEXC (strategy will decide internally)."""

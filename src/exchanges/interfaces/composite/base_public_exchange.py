@@ -10,15 +10,16 @@ import time
 from abc import abstractmethod
 from typing import Dict, List, Optional, Callable, Awaitable, Set
 
-from exchanges.structs.common import (Symbol, SymbolsInfo, OrderBook, OrderBookEntry, Side, BookTicker, Ticker, Trade)
+from exchanges.structs.common import (Symbol, SymbolsInfo, OrderBook, BookTicker, Ticker, Trade)
 from exchanges.structs.enums import OrderbookUpdateType
+from infrastructure.exceptions.system import InitializationError
 from .base_exchange import BaseCompositeExchange
-from infrastructure.exceptions.exchange import BaseExchangeError
+from infrastructure.exceptions.exchange import ExchangeRestError
+from infrastructure.networking.websocket.structs import PublicWebsocketChannelType
 from infrastructure.logging import LoggingTimer, HFTLoggerInterface
 from infrastructure.networking.websocket.handlers import PublicWebsocketHandlers
 from exchanges.interfaces.rest.spot.rest_spot_public import PublicSpotRest
 from exchanges.interfaces.ws.spot.base_ws_public import PublicSpotWebsocket
-# Removed unused event imports - using direct objects for better HFT performance
 
 
 class CompositePublicExchange(BaseCompositeExchange):
@@ -135,12 +136,12 @@ class CompositePublicExchange(BaseCompositeExchange):
                 self._symbols_info = await self._public_rest.get_exchange_info()
 
             self.logger.info("Symbols info loaded successfully",
-                            symbol_count=len(self._symbols_info.symbols) if self._symbols_info else 0,
+                            symbol_count=len(self._symbols_info) if self._symbols_info else 0,
                             load_time_ms=timer.elapsed_ms)
                             
         except Exception as e:
             self.logger.error("Failed to load symbols info", error=str(e))
-            raise BaseExchangeError(f"Symbols info loading failed: {e}") from e
+            raise InitializationError(f"Symbols info loading failed: {e}")
 
     async def add_symbol(self, symbol: Symbol) -> None:
         """
@@ -162,50 +163,17 @@ class CompositePublicExchange(BaseCompositeExchange):
 
     async def _get_orderbook_snapshot(self, symbol: Symbol) -> OrderBook:
         """Get orderbook snapshot from REST API with error handling."""
-        if not self._public_rest:
-            raise BaseExchangeError("No public REST client available")
-            
-        try:
-            with LoggingTimer(self.logger, "get_orderbook_snapshot") as timer:
-                orderbook = await self._public_rest.get_orderbook(symbol)
-                
-            # Track performance for HFT compliance
-            if timer.elapsed_ms > 50:
-                self.logger.warning("Orderbook snapshot slow", 
-                                  symbol=symbol, 
-                                  time_ms=timer.elapsed_ms)
-                                  
-            return orderbook
-            
-        except Exception as e:
-            self.logger.error("Failed to get orderbook snapshot", 
-                             symbol=symbol, error=str(e))
-            raise BaseExchangeError(f"Orderbook snapshot failed for {symbol}: {e}") from e
+        with LoggingTimer(self.logger, "get_orderbook_snapshot") as timer:
+            orderbook = await self._public_rest.get_orderbook(symbol)
 
-    async def _start_real_time_streaming_with_book_ticker(self, symbols: List[Symbol]) -> None:
-        """Start real-time WebSocket streaming with book ticker support for HFT."""
-        if not self._public_ws:
-            self.logger.warning("No public WebSocket client available for streaming")
-            return
+        # Track performance for HFT compliance
+        if timer.elapsed_ms > 50:
+            self.logger.warning("Orderbook snapshot slow",
+                              symbol=symbol,
+                              time_ms=timer.elapsed_ms)
+
+        return orderbook
             
-        try:
-            self.logger.info("Starting real-time streaming with book ticker", symbol_count=len(symbols))
-            
-            # Use modern initialize pattern instead of individual subscriptions
-            # Channels include: orderbook, ticker, book_ticker (HFT CRITICAL)
-            channels = ['orderbook', 'ticker', 'book_ticker']
-            
-            # Initialize WebSocket with bulk subscription pattern
-            await self._public_ws.initialize(symbols=symbols, channels=channels)
-            
-            self.logger.info("Real-time streaming started with initialize pattern",
-                            symbols=len(symbols),
-                            channels=channels,
-                            has_book_ticker=True)
-                            
-        except Exception as e:
-            self.logger.error("Failed to start real-time streaming", error=str(e))
-            raise BaseExchangeError(f"Streaming startup failed: {e}") from e
 
     async def _stop_real_time_streaming(self) -> None:
         """Stop real-time WebSocket streaming."""
@@ -254,20 +222,12 @@ class CompositePublicExchange(BaseCompositeExchange):
                 return_exceptions=True
             )
             
-            # Step 3: Create WebSocket client with handler injection (line 80)
-            if self.config.enable_websocket:
-                self.logger.info(f"{self._tag} Creating public WebSocket client...")
-                await self._initialize_public_websocket()
-            
-            # Step 4: Start real-time streaming including book ticker (line 90)
-            if self._public_ws:
-                self.logger.info(f"{self._tag} Starting real-time streaming...")
-                await self._start_real_time_streaming_with_book_ticker(list(self._active_symbols))
-            
-            # Mark as initialized (line 100)
+            self.logger.info(f"{self._tag} Creating public WebSocket client...")
+
+            await self._initialize_public_websocket()
+
             self._initialized = True
-            self._connection_healthy = self._validate_public_connections()
-            
+
             init_time = (time.perf_counter() - init_start) * 1000
             
             self.logger.info(f"{self._tag} public initialization completed",
@@ -281,7 +241,7 @@ class CompositePublicExchange(BaseCompositeExchange):
         except Exception as e:
             self.logger.error(f"Public exchange initialization failed: {e}")
             await self.close()  # Cleanup on failure
-            raise BaseExchangeError(f"Public initialization failed: {e}") from e
+            raise InitializationError(f"Public initialization failed: {e}")
 
     # Orderbook update handlers for arbitrage layer
 
@@ -515,30 +475,23 @@ class CompositePublicExchange(BaseCompositeExchange):
                 ticker_handler=self._handle_ticker_direct,
                 trades_handler=self._handle_trade_direct,
                 book_ticker_handler=self._handle_book_ticker_event,  # This one already matches signature
-                connection_handler=self._handle_connection_direct,
-                error_handler=self._handle_error_direct
             )
             
             # Use abstract factory method to create client
             self._public_ws = await self._create_public_ws_with_handlers(public_handlers)
             
-            if self._public_ws:
-                # Connect WebSocket but don't initialize subscriptions yet 
-                # (initialize will be called later with symbols/channels)
-                await self._public_ws.connect()
-                self._public_ws_connected = self._public_ws.is_connected
-                
+            self._public_ws_connected = self._public_ws.is_connected
+
+            await self._public_ws.initialize(symbols=list(self.active_symbols),
+                                             channels=[PublicWebsocketChannelType.BOOK_TICKER])
+
             self.logger.info("Public WebSocket client initialized",
                             connected=self._public_ws_connected,
                             has_book_ticker_handler=True)
                             
         except Exception as e:
             self.logger.error("Public WebSocket initialization failed", error=str(e))
-            raise BaseExchangeError(f"Public WebSocket initialization failed: {e}") from e
-
-    def _validate_public_connections(self) -> bool:
-        """Validate that required public connections are established."""
-        return self._public_rest_connected and self._public_ws_connected
+            raise InitializationError(f"Public WebSocket initialization failed: {e}")
 
     # ========================================
     # Event Handler Methods with Book Ticker Support (NEW)
@@ -548,14 +501,8 @@ class CompositePublicExchange(BaseCompositeExchange):
     async def _handle_orderbook_direct(self, orderbook: OrderBook) -> None:
         """Handle orderbook updates from WebSocket (direct data object)."""
         try:
-            # Determine symbol from orderbook (assuming symbol is available in OrderBook)
-            # This will be properly handled in websocket_refactoring.md
-            symbol = getattr(orderbook, 'symbol', None)
-            if symbol:
-                self._update_orderbook(symbol, orderbook, OrderbookUpdateType.DIFF)
-                self._track_operation("orderbook_update")
-            else:
-                self.logger.warning("Received orderbook without symbol information")
+            self._update_orderbook(orderbook.symbol, orderbook, OrderbookUpdateType.DIFF)
+            self._track_operation("orderbook_update")
         except Exception as e:
             self.logger.error("Error handling direct orderbook", error=str(e))
 
@@ -563,13 +510,9 @@ class CompositePublicExchange(BaseCompositeExchange):
         """Handle ticker updates from WebSocket (direct data object).""" 
         try:
             # Update internal ticker state
-            symbol = getattr(ticker, 'symbol', None)
-            if symbol:
-                self._tickers[symbol] = ticker
-                self._last_update_time = time.perf_counter()
-                self._track_operation("ticker_update")
-            else:
-                self.logger.warning("Received ticker without symbol information")
+            self._tickers[ticker.symbol] = ticker
+            self._last_update_time = time.perf_counter()
+            self._track_operation("ticker_update")
         except Exception as e:
             self.logger.error("Error handling direct ticker", error=str(e))
 
@@ -578,38 +521,9 @@ class CompositePublicExchange(BaseCompositeExchange):
         try:
             # Trade events are typically forwarded to arbitrage layer
             self._track_operation("trade_update")
-            symbol = getattr(trade, 'symbol', None)
-            if symbol:
-                self.logger.debug("Trade event processed", symbol=symbol)
-            else:
-                self.logger.warning("Received trade without symbol information")
+            self.logger.debug("Trade event processed", symbol=trade.symbol)
         except Exception as e:
             self.logger.error("Error handling direct trade", error=str(e))
-
-    async def _handle_connection_direct(self, connection_type: str, is_connected: bool) -> None:
-        """Handle connection status changes (direct parameters)."""
-        try:
-            if connection_type == "public_ws":
-                self._public_ws_connected = is_connected
-                self._connection_healthy = self._validate_public_connections()
-                
-            self.logger.info("WebSocket connection status changed",
-                            connection_type=connection_type,
-                            connected=is_connected)
-                            
-            # If reconnected, refresh market data
-            if is_connected and connection_type == "public_ws":
-                await self._refresh_market_data_after_reconnection()
-                
-        except Exception as e:
-            self.logger.error("Error handling connection status", error=str(e))
-
-    async def _handle_error_direct(self, error: Exception) -> None:
-        """Handle error events (direct exception object)."""
-        self.logger.error("WebSocket error occurred", error=str(error), error_type=type(error).__name__)
-
-# Removed legacy event handlers - websocket_refactoring.md completed
-# All handlers now use direct objects for optimal HFT performance
 
     async def _handle_book_ticker_event(self, book_ticker: BookTicker) -> None:
         """
@@ -682,14 +596,6 @@ class CompositePublicExchange(BaseCompositeExchange):
             "total_latency_us": self._book_ticker_latency_sum,
             "hft_compliant": avg_latency < 500.0
         }
-
-# Removed - ticker_direct handler provides this functionality
-
-# Removed - trade_direct handler provides this functionality
-
-# Removed - connection_direct handler provides this functionality
-
-# Removed - error_direct handler provides this functionality
 
     # ========================================
     # Connection Management and Recovery (NEW)

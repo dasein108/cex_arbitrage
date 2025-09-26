@@ -44,13 +44,13 @@ class BaseCompositeExchange(ABC):
         self._tag = f"{config.name}_{'private' if is_private else 'public'}"
         self._config = config
         self._initialized = False
+        self._connection_state = ConnectionState.DISCONNECTED
         
         # Use injected logger or create exchange-specific logger
         self.logger = logger or get_exchange_logger(config.name, self._tag)
         
         # Connection and state management
         self._symbols_info: Optional[SymbolsInfo] = None
-        self._connection_healthy = False
         self._last_update_time = 0.0
 
         # Log interface initialization
@@ -102,10 +102,8 @@ class BaseCompositeExchange(ABC):
         Returns:
             True if exchange has healthy connection, False otherwise
         """
-        # Delegate to WebSocket client if available, otherwise use internal state
-        if hasattr(self, '_websocket_client') and self._websocket_client:
-            return self._websocket_client.is_connected
-        return self._connection_healthy
+        return self._connection_state == ConnectionState.CONNECTED
+
     
     @property
     def connection_state(self) -> ConnectionState:
@@ -115,9 +113,7 @@ class BaseCompositeExchange(ABC):
         Returns:
             Current connection state enum value
         """
-        if hasattr(self, '_websocket_client') and self._websocket_client:
-            return self._websocket_client.state
-        return ConnectionState.DISCONNECTED if not self._connection_healthy else ConnectionState.CONNECTED
+        return self._connection_state
 
     @property
     def config(self) -> ExchangeConfig:
@@ -136,7 +132,7 @@ class BaseCompositeExchange(ABC):
 
     # Connection event handling
 
-    async def _handle_connection_state_change(self, state: ConnectionState) -> None:
+    async def _handle_connection_state(self, state: ConnectionState) -> None:
         """
         React to WebSocket connection state changes.
         
@@ -147,6 +143,7 @@ class BaseCompositeExchange(ABC):
             state: New connection state
         """
         try:
+            self._connection_state = state
             self.logger.debug("Connection state change",
                              tag=self._tag,
                              exchange=self._config.name,
@@ -221,19 +218,19 @@ class BaseCompositeExchange(ABC):
         # Track reconnection attempts
         self.logger.metric("websocket_reconnections", 1,
                           tags={"exchange": self._config.name})
-    
+
     async def _on_websocket_error(self) -> None:
         """Handle WebSocket error state."""
         self._connection_healthy = False
-        
+
         self.logger.error("WebSocket error state",
                          tag=self._tag,
                          exchange=self._config.name)
-        
+
         # Track errors
         self.logger.metric("websocket_errors", 1,
                           tags={"exchange": self._config.name})
-    
+
     @abstractmethod
     async def _refresh_exchange_data(self) -> None:
         """

@@ -14,25 +14,21 @@ from exchanges.structs.common import (
     Symbol, AssetBalance, Order, Position, WithdrawalRequest, WithdrawalResponse, SymbolsInfo
 )
 from exchanges.structs.types import AssetName, OrderId
-from exchanges.structs import Side
+from exchanges.structs import Side, OrderStatus, Trade
 from config.structs import ExchangeConfig
-from .base_public_exchange import CompositePublicExchange
-from infrastructure.exceptions.exchange import BaseExchangeError
+from infrastructure.exceptions.system import InitializationError
+from .base_public_exchange import BaseCompositeExchange
+from infrastructure.exceptions.exchange import ExchangeRestError
 from infrastructure.logging import LoggingTimer, HFTLoggerInterface
 from infrastructure.networking.websocket.handlers import (
     PrivateWebsocketHandlers, PublicWebsocketHandlers
 )
 from exchanges.interfaces.rest.spot.rest_spot_private import PrivateSpotRest
 from exchanges.interfaces.ws.spot.base_ws_private import PrivateSpotWebsocket
-# Removed unused event imports - using direct objects for better HFT performance  
-# from exchanges.interfaces.base_events import (
-#     OrderUpdateEvent, BalanceUpdateEvent, ExecutionReportEvent, 
-#     ConnectionStatusEvent, ErrorEvent
-# )
+from exchanges.utils.exchange_utils import is_order_done
 
 
-
-class CompositePrivateExchange(CompositePublicExchange):
+class CompositePrivateExchange(BaseCompositeExchange):
     """
     Base interface for private exchange operations (trading + market data).
     
@@ -55,14 +51,14 @@ class CompositePrivateExchange(CompositePublicExchange):
             config: Exchange configuration with API credentials
             logger: Optional injected HFT logger (auto-created if not provided)
         """
-        super().__init__(config=config, logger=logger)
+        super().__init__(config=config, is_private=True, logger=logger)
         
         # Override tag to indicate private operations
         self._tag = f'{config.name}_private'
         
         # Private data state (HFT COMPLIANT - no caching of real-time data)
-        self._balances: Dict[Symbol, AssetBalance] = {}
-        self._open_orders: Dict[Symbol, List[Order]] = {}
+        self._balances: Dict[AssetName, AssetBalance] = {}
+        self._open_orders: Dict[Symbol, Dict[OrderId, Order]] = {}
         
         # NEW: Executed orders state management (HFT-safe caching of completed orders only)
         self._executed_orders: Dict[Symbol, Dict[OrderId, Order]] = {}
@@ -78,7 +74,7 @@ class CompositePrivateExchange(CompositePublicExchange):
 
         # Authentication validation
         if not config.has_credentials():
-            self.logger.warning("No API credentials provided - trading operations will fail")
+            self.logger.error("No API credentials provided - trading operations will fail")
 
     # Abstract properties for private data
 
@@ -244,22 +240,6 @@ class CompositePrivateExchange(CompositePublicExchange):
         pass
 
     @abstractmethod
-    async def cancel_withdrawal(self, withdrawal_id: str) -> bool:
-        """
-        Cancel a pending withdrawal.
-
-        Args:
-            withdrawal_id: Exchange withdrawal ID to cancel
-
-        Returns:
-            True if cancellation successful, False otherwise
-
-        Raises:
-            ExchangeError: If cancellation fails
-        """
-        pass
-
-    @abstractmethod
     async def get_withdrawal_status(self, withdrawal_id: str) -> WithdrawalResponse:
         """
         Get current status of a withdrawal.
@@ -293,48 +273,6 @@ class CompositePrivateExchange(CompositePublicExchange):
         """
         pass
 
-    @abstractmethod
-    async def validate_withdrawal_address(
-        self,
-        asset: AssetName,
-        address: str,
-        network: Optional[str] = None
-    ) -> bool:
-        """
-        Validate withdrawal address format.
-
-        Args:
-            asset: Asset name
-            address: Destination address
-            network: Network/chain name
-
-        Returns:
-            True if address is valid, False otherwise
-        """
-        pass
-
-    @abstractmethod
-    async def get_withdrawal_limits(
-        self,
-        asset: AssetName,
-        network: Optional[str] = None
-    ) -> Dict[str, float]:
-        """
-        Get withdrawal limits for an asset.
-
-        Args:
-            asset: Asset name
-            network: Network/chain name
-
-        Returns:
-            Dictionary with 'min', 'max', and 'fee' limits
-        """
-        pass
-
-    # ========================================
-    # Abstract Factory Methods (COPIED FROM UnifiedCompositeExchange)
-    # ========================================
-    
     @abstractmethod
     async def _create_private_rest(self) -> PrivateSpotRest:
         """
@@ -376,11 +314,9 @@ class CompositePrivateExchange(CompositePublicExchange):
             
         try:
             with LoggingTimer(self.logger, "load_balances") as timer:
-                balances_data = await self._private_rest.get_balances()
+                balances_data = await self._private_rest.get_account_balance()
                 
-                # Update internal state (pattern from line 360)
-                for asset, balance in balances_data.items():
-                    self._balances[asset] = balance
+                self._balances = balances_data
                     
             self.logger.info("Balances loaded successfully",
                             balance_count=len(balances_data),
@@ -388,7 +324,7 @@ class CompositePrivateExchange(CompositePublicExchange):
                             
         except Exception as e:
             self.logger.error("Failed to load balances", error=str(e))
-            raise BaseExchangeError(f"Balance loading failed: {e}") from e
+            raise InitializationError(f"Balance loading failed: {e}")
 
     async def _load_open_orders(self) -> None:
         """
@@ -402,40 +338,64 @@ class CompositePrivateExchange(CompositePublicExchange):
         try:
             with LoggingTimer(self.logger, "load_open_orders") as timer:
                 # Load orders for each active symbol
-                for symbol in self.active_symbols:
-                    orders = await self._private_rest.get_open_orders(symbol=symbol)
-                    self._open_orders[symbol] = orders
-                    
-                    # NEW: Initialize executed orders cache for symbol
-                    if symbol not in self._executed_orders:
-                        self._executed_orders[symbol] = {}
-                    
+                    orders = await self._private_rest.get_open_orders()
+                    for o in orders:
+                        self._update_open_order(o)
+
             self.logger.info("Open orders loaded",
-                            symbol_count=len(self.active_symbols),
                             open_orders_count=sum(len(orders) for orders in self._open_orders.values()),
                             load_time_ms=timer.elapsed_ms)
                             
         except Exception as e:
             self.logger.error("Failed to load open orders", error=str(e))
-            raise BaseExchangeError(f"Open orders loading failed: {e}") from e
+            raise InitializationError(f"Open orders loading failed: {e}")
 
 
     # ========================================
     # Enhanced Order Lifecycle Management (NEW FUNCTIONALITY)
     # ========================================
 
+    def _update_executed_order(self, order: Order):
+        if order.symbol not in self._executed_orders:
+            self._executed_orders[order.symbol] = {}
+
+        self._executed_orders[order.symbol][order.order_id] = order
+        self.logger.info("Order cached in executed orders",
+                         order_id=order.order_id, status=order.status)
+
+    def _update_open_order(self, order: Order):
+        if order.symbol not in self._open_orders:
+            self._open_orders[order.symbol] = {}
+
+        self._open_orders[order.symbol][order.order_id] = order
+        self.logger.debug("Open order updated",
+                         order_id=order.order_id,
+                         status=order.status)
+
+    def _get_open_order(self, symbol: Symbol, order_id: OrderId):
+        return self._open_orders[symbol][order_id]
+
+    def _get_executed_order(self, symbol: Symbol, order_id: OrderId):
+        if symbol in self._executed_orders and order_id in self._executed_orders[symbol]:
+            return self._executed_orders[symbol][order_id]
+
+    def _remove_open_order(self, order: Order):
+        if self._get_open_order(order.symbol, order.order_id):
+            del self._open_orders[order.symbol][order.order_id]
+            self.logger.debug("Open order removed",
+                             order_id=order.order_id,
+                             status=order.status)
+
+    def _update_order(self, order: Order):
+        if is_order_done(order):
+            self._remove_open_order(order)
+            self._update_executed_order(order)
+        else:
+            self._update_open_order(order)
+
     async def get_active_order(self, symbol: Symbol, order_id: OrderId) -> Optional[Order]:
         """
-        NEW METHOD: Get order with smart lookup priority and HFT-safe caching.
-        
-        Lookup Priority:
-        1. Check _open_orders[symbol] first (real-time, no caching)  
-        2. Check _executed_orders[symbol][order_id] (cached executed orders)
-        3. Fallback to REST API and cache result in _executed_orders
-        
-        HFT COMPLIANCE: Only executed orders cached (static completed data).
-        Open orders remain real-time to avoid stale price execution.
-        
+        Get order with smart lookup priority and HFT-safe caching.
         Args:
             symbol: Trading symbol
             order_id: Order identifier
@@ -444,40 +404,22 @@ class CompositePrivateExchange(CompositePublicExchange):
             Order object if found, None otherwise
         """
         # Step 1: Check open orders first (real-time lookup)
-        if symbol in self._open_orders:
-            for order in self._open_orders[symbol]:
-                if order.order_id == order_id:
-                    self.logger.debug("Order found in open orders cache", 
-                                    order_id=order_id, status=order.status)
-                    return order
+        order = self._get_open_order(symbol, order_id)
+        if order:
+            self.logger.debug("Order found in open orders cache", order_id=order_id, status=order.status)
+            return order
         
         # Step 2: Check executed orders cache
-        if symbol in self._executed_orders and order_id in self._executed_orders[symbol]:
-            cached_order = self._executed_orders[symbol][order_id]
-            self.logger.debug("Order found in executed orders cache", 
-                            order_id=order_id, status=cached_order.status)
-            return cached_order
-        
-        # Step 3: Fallback to REST API call
-        if not self._private_rest:
-            self.logger.warning("No private REST client available for order lookup", 
-                              order_id=order_id)
-            return None
+        order = self._get_executed_order(symbol, order_id)
+        if order:
+            self.logger.debug("Order found in executed orders cache",
+                            order_id=order_id, status=order.status)
+            return order
         
         try:
             with LoggingTimer(self.logger, f"get_order_fallback_{symbol}") as timer:
                 order = await self._private_rest.get_order(symbol, order_id)
-                
-                if order and order.status in ['filled', 'canceled', 'expired']:
-                    # Cache executed orders (HFT-safe - completed orders are static)
-                    if symbol not in self._executed_orders:
-                        self._executed_orders[symbol] = {}
-                    self._executed_orders[symbol][order_id] = order
-                    
-                    self.logger.info("Order cached in executed orders",
-                                   order_id=order_id, status=order.status, 
-                                   lookup_time_ms=timer.elapsed_ms)
-                
+                self._update_order(order)
                 return order
                 
         except Exception as e:
@@ -491,14 +433,12 @@ class CompositePrivateExchange(CompositePublicExchange):
 
     async def initialize(self, symbols_info: SymbolsInfo) -> None:
         """
-        Initialize private exchange with template method orchestration.
-        PATTERN: Copied from UnifiedCompositeExchange line 45-100
-        
-        ELIMINATES DUPLICATION: This orchestration logic was previously 
-        duplicated across ALL exchange implementations (80%+ code reduction).
+        symbols_info: SymbolsInfo object with all exchange symbols details
         """
         # Initialize public functionality first (parent class)
-        await super().initialize(symbols_info)
+        await super().initialize()
+
+        self._symbols_info = symbols_info
         
         try:
             # Step 1: Create REST clients using abstract factory
@@ -518,11 +458,6 @@ class CompositePrivateExchange(CompositePublicExchange):
             self.logger.info(f"{self._tag} Creating WebSocket clients...")
             await self._initialize_private_websocket()
             
-            # Step 4: Start private streaming if WebSocket enabled
-            if self._private_ws:
-                self.logger.info(f"{self._tag} Starting private streaming...")
-                await self._start_private_streaming()
-            
             self.logger.info(f"{self._tag} private initialization completed",
                             has_rest=self._private_rest is not None,
                             has_ws=self._private_ws is not None,
@@ -541,74 +476,38 @@ class CompositePrivateExchange(CompositePublicExchange):
     async def _initialize_private_websocket(self) -> None:
         """
         Initialize private WebSocket with constructor injection.
-        PATTERN: Copied from UnifiedCompositeExchange line 600-650
-        
-        KEY INSIGHT: This pattern eliminates manual handler setup in each exchange.
+
         """
         if not self.config.has_credentials():
             self.logger.info("No credentials - skipping private WebSocket")
             return
             
         try:
-            # Create handler objects for constructor injection (line 610)
             private_handlers = PrivateWebsocketHandlers(
-                order_handler=self._handle_order_event,
-                balance_handler=self._handle_balance_event,
-                position_handler=None,  # Position handling removed from base class
-                execution_handler=self._handle_execution_event,
-                connection_handler=self._handle_private_connection_event,
-                error_handler=self._handle_error_event
+                order_handler=self._order_event_handler,
+                balance_handler=self._balance_event_handler,
+                execution_handler=self._execution_event_handler,
             )
             
             # Use abstract factory method to create client with handlers (line 620)
             self._private_ws = await self._create_private_ws_with_handlers(private_handlers)
-            
-            if self._private_ws:
-                # Connect and start event processing (line 630)
-                await self._private_ws.connect()
-                self._private_ws_connected = self._private_ws.is_connected
-                
-                self.logger.info("Private WebSocket initialized",
-                                connected=self._private_ws_connected,
-                                has_order_handler=private_handlers.order_handler is not None,
-                                has_balance_handler=private_handlers.balance_handler is not None)
-                
+            await self._private_ws.initialize()
+
         except Exception as e:
             self.logger.error("Private WebSocket initialization failed", error=str(e))
-            raise
+            raise InitializationError(f"Private WebSocket initialization failed: {e}")
 
-    async def _start_private_streaming(self) -> None:
-        """Start private WebSocket subscriptions."""
-        try:
-            if self._private_ws:
-                await asyncio.gather(
-                    self._private_ws.subscribe_orders(),
-                    self._private_ws.subscribe_balances(), 
-                    self._private_ws.subscribe_executions(),
-                    return_exceptions=True
-                )
-                
-                self.logger.info("Private WebSocket streams started")
-                
-        except Exception as e:
-            self.logger.error("Failed to start private WebSocket streams", error=str(e))
-            raise
+    async def _order_event_handler(self, order: Order) -> None:
+        """Handle order update event."""
+        self._update_order(order)
 
-    # ========================================
-    # Event Handler Methods (DISABLED - see websocket_refactoring.md)
-    # ========================================
-    
-    # TODO: These methods need to be refactored to use direct objects instead of events
-    # Currently disabled due to base_events.py removal. Will be re-implemented with 
-    # direct object signatures like base_public_exchange.py does.
-    
-    # async def _handle_order_event(self, event: OrderUpdateEvent) -> None:
-    # async def _handle_balance_event(self, event: BalanceUpdateEvent) -> None:  
-    # async def _handle_execution_event(self, event: ExecutionReportEvent) -> None:
+    async def _balance_event_handler(self, balances: Dict[AssetName, AssetBalance]) -> None:
+        """Handle balance update event."""
+        self._balances.update(balances)
 
-    # All event handlers disabled pending websocket_refactoring.md completion
-    # async def _handle_private_connection_event(self, event: ConnectionStatusEvent) -> None:
-    # async def _handle_error_event(self, event: ErrorEvent) -> None:
+    async def _execution_event_handler(self, trade: Trade) -> None:
+        """Handle execution report/trade event."""
+        pass
 
     def _track_operation(self, operation_name: str) -> None:
         """Track operation for performance monitoring."""
@@ -637,7 +536,7 @@ class CompositePrivateExchange(CompositePublicExchange):
 
     # Utility methods for private data management
 
-    def _update_balance(self, asset: Symbol, balance: AssetBalance) -> None:
+    def _update_balance(self, asset: AssetName, balance: AssetBalance) -> None:
         """
         Update internal balance state.
         
@@ -648,119 +547,7 @@ class CompositePrivateExchange(CompositePublicExchange):
         self._balances[asset] = balance
         self.logger.debug(f"Updated balance for {asset}: {balance}")
 
-    def _update_order(self, order: Order) -> None:
-        """
-        Update internal order state with enhanced lifecycle management.
-        ENHANCED: Proper transitions between open → executed order states.
-        
-        Args:
-            order: Updated order information
-        """
-        symbol = order.symbol
-        self._ensure_order_containers_exist(symbol)
-        
-        # Try to update existing order
-        if self._update_existing_order(order):
-            return
-            
-        # Handle new order
-        self._handle_new_order(order)
-
-    def _ensure_order_containers_exist(self, symbol: Symbol) -> None:
-        """Ensure order storage containers exist for the symbol."""
-        if symbol not in self._open_orders:
-            self._open_orders[symbol] = []
-        if symbol not in self._executed_orders:
-            self._executed_orders[symbol] = {}
-
-    def _update_existing_order(self, order: Order) -> bool:
-        """
-        Update existing order if found.
-        
-        Args:
-            order: Order to update
-            
-        Returns:
-            True if existing order was found and updated, False otherwise
-        """
-        symbol = order.symbol
-        existing_orders = self._open_orders[symbol]
-        
-        for i, existing_order in enumerate(existing_orders):
-            if existing_order.order_id == order.order_id:
-                if self._is_order_executed(order):
-                    self._move_to_executed_orders(symbol, order, i)
-                else:
-                    self._update_open_order(order, i)
-                return True
-        return False
-
-    def _is_order_executed(self, order: Order) -> bool:
-        """Check if order is in an executed state."""
-        return order.status in ['filled', 'canceled', 'expired']
-
-    def _move_to_executed_orders(self, symbol: Symbol, order: Order, index: int) -> None:
-        """Move order from open orders to executed orders cache."""
-        # Remove from open orders
-        self._open_orders[symbol].pop(index)
-        
-        # Add to executed orders cache with memory management
-        self._add_to_executed_orders_cache(symbol, order)
-        
-        self.logger.info("Order moved to executed orders",
-                        order_id=order.order_id,
-                        symbol=symbol,
-                        status=order.status,
-                        executed_quantity=getattr(order, 'filled_quantity', 0))
-
-    def _update_open_order(self, order: Order, index: int) -> None:
-        """Update existing open order in place."""
-        symbol = order.symbol
-        self._open_orders[symbol][index] = order
-        
-        self.logger.debug("Open order updated",
-                         order_id=order.order_id, 
-                         status=order.status)
-
-    def _handle_new_order(self, order: Order) -> None:
-        """Handle new order that doesn't exist in current tracking."""
-        symbol = order.symbol
-        
-        if self._is_order_executed(order):
-            # Add directly to executed orders if already completed
-            self._add_to_executed_orders_cache(symbol, order)
-            self.logger.info("New executed order cached",
-                           order_id=order.order_id,
-                           symbol=symbol, 
-                           status=order.status)
-        else:
-            # Add to open orders
-            self._open_orders[symbol].append(order)
-            self.logger.debug("New open order added",
-                            order_id=order.order_id, 
-                            symbol=symbol)
-
-    def _add_to_executed_orders_cache(self, symbol: Symbol, order: Order) -> None:
-        """
-        Add order to executed orders cache with memory management.
-        
-        Implements LRU-style cleanup when cache exceeds size limits to prevent
-        memory leaks in long-running HFT systems.
-        
-        Args:
-            symbol: Trading symbol
-            order: Executed order to cache
-        """
-        executed_orders = self._executed_orders[symbol]
-        
-        # Add the new order
-        executed_orders[order.order_id] = order
-        
-        # Check if cleanup is needed
-        if len(executed_orders) > self._max_executed_orders_per_symbol:
-            self._cleanup_executed_orders_cache(symbol)
-
-    def _cleanup_executed_orders_cache(self, symbol: Symbol) -> None:
+    def _cleanup_executed_orders(self, symbol: Symbol) -> None:
         """
         Cleanup executed orders cache for a symbol to prevent memory leaks.
         
@@ -820,27 +607,6 @@ class CompositePrivateExchange(CompositePublicExchange):
         }
         
         return {**trading_stats}
-
-    # ========================================
-    # Connection Management & Recovery (COPIED FROM UnifiedCompositeExchange)
-    # ========================================
-
-    async def _reconnect_private_ws(self) -> None:
-        """Reconnect private WebSocket with exponential backoff."""
-        if self._private_ws:
-            try:
-                await self._private_ws.reconnect()
-                self._private_ws_connected = self._private_ws.is_connected
-                
-                # Re-subscribe to private streams if connection restored
-                if self._private_ws_connected:
-                    await self._private_ws.subscribe_orders()
-                    await self._private_ws.subscribe_balances()
-                    await self._private_ws.subscribe_executions()
-                    
-            except Exception as e:
-                self.logger.error("Private WebSocket reconnect failed", error=str(e))
-                self._private_ws_connected = False
 
     async def close(self) -> None:
         """Close private exchange connections."""
