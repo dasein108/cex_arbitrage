@@ -3,6 +3,7 @@ import time
 from typing import Dict, List, Optional, Any
 from datetime import datetime
 
+from exchanges.interfaces import PublicFuturesRest
 from exchanges.structs.common import (
     Symbol, SymbolInfo, OrderBook, OrderBookEntry, Trade, Kline,
     Ticker
@@ -24,7 +25,7 @@ from exchanges.integrations.gateio.services.futures_symbol_mapper import GateioF
 from exchanges.integrations.gateio.services.spot_symbol_mapper import get_exchange_interval
 
 
-class GateioPublicFuturesRest(PublicSpotRest):
+class GateioPublicFuturesRest(PublicFuturesRest):
     """
     Gate.io public REST client for futures (USDT-settled) — rewritten in the same
     architecture/style as GateioPublicSpotRest.

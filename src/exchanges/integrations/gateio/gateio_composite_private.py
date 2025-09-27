@@ -35,18 +35,18 @@ class GateioCompositePrivateExchange(CompositePrivateExchange):
         """Create Gate.io private REST client."""
         return GateioPrivateSpotRest(self.config, self.logger)
     
-    async def _create_private_ws_with_handlers(self, handlers: PrivateWebsocketHandlers) -> Optional[PrivateSpotWebsocket]:
+    async def _create_private_websocket(self) -> Optional[PrivateSpotWebsocket]:
         """Create Gate.io private WebSocket client with handlers."""
 
         return GateioPrivateSpotWebsocket(
             config=self.config,
-            handlers=handlers,
+            handlers=self._create_inner_websocket_handlers(),
             logger=self.logger
         )
 
     # WebSocket Handler Implementation
     
-    def _get_websocket_handlers(self) -> PrivateWebsocketHandlers:
+    def _create_inner_websocket_handlers(self) -> PrivateWebsocketHandlers:
         """Get private WebSocket handlers for Gate.io."""
         return PrivateWebsocketHandlers(
             order_handler=self._order_handler,

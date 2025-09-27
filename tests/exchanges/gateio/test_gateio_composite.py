@@ -50,14 +50,14 @@ class TestGateioCompositePublicExchange:
 
         # Test WebSocket factory with mock handlers
         mock_handlers = Mock()
-        public_ws = await exchange._create_public_ws_with_handlers(mock_handlers)
+        public_ws = await exchange._create_public_websocket(mock_handlers)
         assert public_ws is not None
         assert hasattr(public_ws, 'initialize')
 
     @pytest.mark.asyncio
     async def test_websocket_handler_creation(self, exchange):
         """Test WebSocket handler creation and configuration."""
-        handlers = exchange._get_websocket_handlers()
+        handlers = exchange._create_inner_websocket_handlers()
         
         assert handlers is not None
         assert handlers.orderbook_handler is not None
@@ -159,16 +159,15 @@ class TestGateioCompositePrivateExchange:
         assert hasattr(private_rest, 'cancel_order')
         assert hasattr(private_rest, 'get_balance')
 
-        # Test WebSocket factory with mock handlers
-        mock_handlers = Mock()
-        private_ws = await exchange._create_private_ws_with_handlers(mock_handlers)
+        # Test WebSocket factory
+        private_ws = await exchange._create_private_websocket()
         assert private_ws is not None
         assert hasattr(private_ws, 'initialize')
 
     @pytest.mark.asyncio
     async def test_websocket_handler_creation(self, exchange):
         """Test private WebSocket handler creation."""
-        handlers = exchange._get_websocket_handlers()
+        handlers = exchange._create_inner_websocket_handlers()
         
         assert handlers is not None
         assert handlers.order_handler is not None

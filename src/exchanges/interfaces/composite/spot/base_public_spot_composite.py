@@ -188,13 +188,9 @@ class CompositePublicExchange(BaseCompositeExchange):
         pass
 
     @abstractmethod
-    async def _create_public_ws_with_handlers(self, handlers: PublicWebsocketHandlers) -> Optional[PublicSpotWebsocket]:
+    async def _create_public_websocket(self) -> Optional[PublicSpotWebsocket]:
         """
-        Create exchange-specific public WebSocket client with handler objects.
-        PATTERN: Copied from composite exchange line 130
-        
-        KEY INSIGHT: Handler injection eliminates manual setup in each exchange.
-        
+        Handlers to connect websocket events to internal methods.
         Args:
             handlers: PublicWebsocketHandlers object with event handlers
             
@@ -491,7 +487,11 @@ class CompositePublicExchange(BaseCompositeExchange):
             'best_bid_ask_count': len(self._book_ticker),  # NEW
         }
 
-    def _get_websocket_handlers(self) -> PublicWebsocketHandlers:
+    def _create_inner_websocket_handlers(self) -> PublicWebsocketHandlers:
+        """
+        Handlers to connect websocket events to internal methods.
+        :return:
+        """
         return PublicWebsocketHandlers(
                 orderbook_handler=self._handle_orderbook,
                 ticker_handler=self._handle_ticker,
@@ -507,10 +507,9 @@ class CompositePublicExchange(BaseCompositeExchange):
             # Create handler objects for constructor injection using actual handler signatures
             # NOTE: Handler signatures expect direct data objects (OrderBook, BookTicker, etc.), not events
             # TODO: This will be refactored in websocket_refactoring.md to align properly
-            public_handlers = self._get_websocket_handlers()
-            
+
             # Use abstract factory method to create client
-            self._public_ws = await self._create_public_ws_with_handlers(public_handlers)
+            self._public_ws = await self._create_public_websocket()
             
             self._public_ws_connected = self._public_ws.is_connected
 

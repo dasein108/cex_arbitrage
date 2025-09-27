@@ -47,7 +47,7 @@ class TestMexcCompositePublic:
                 trade_handler=AsyncMock(),
                 book_ticker_handler=AsyncMock()
             )
-            ws_client = await public_exchange._create_public_ws_with_handlers(handlers)
+            ws_client = await public_exchange._create_public_websocket(handlers)
             mock_ws.assert_called_once_with(
                 config=public_exchange.config,
                 handlers=handlers,
@@ -67,12 +67,12 @@ class TestMexcCompositePublic:
             book_ticker_handler=AsyncMock()
         )
         
-        ws_client = await exchange._create_public_ws_with_handlers(handlers)
+        ws_client = await exchange._create_public_websocket(handlers)
         assert ws_client is None
 
     async def test_websocket_handlers(self, public_exchange):
         """Test WebSocket handlers creation."""
-        handlers = public_exchange._get_websocket_handlers()
+        handlers = public_exchange._create_inner_websocket_handlers()
         
         assert isinstance(handlers, PublicWebsocketHandlers)
         assert handlers.orderbook_handler == public_exchange._handle_orderbook
@@ -125,22 +125,17 @@ class TestMexcCompositePrivate:
             assert rest_client == mock_rest.return_value
             
             # Test WebSocket client creation
-            handlers = PrivateWebsocketHandlers(
-                order_handler=AsyncMock(),
-                balance_handler=AsyncMock(),
-                execution_handler=AsyncMock()
-            )
-            ws_client = await private_exchange._create_private_ws_with_handlers(handlers)
+            ws_client = await private_exchange._create_private_websocket()
             mock_ws.assert_called_once_with(
                 config=private_exchange.config,
-                handlers=handlers,
+                handlers=private_exchange.handlers,
                 logger=private_exchange.logger
             )
             assert ws_client == mock_ws.return_value
 
     async def test_websocket_handlers(self, private_exchange):
         """Test private WebSocket handlers creation."""
-        handlers = private_exchange._get_websocket_handlers()
+        handlers = private_exchange._create_inner_websocket_handlers()
         
         assert isinstance(handlers, PrivateWebsocketHandlers)
         assert handlers.order_handler == private_exchange._order_handler

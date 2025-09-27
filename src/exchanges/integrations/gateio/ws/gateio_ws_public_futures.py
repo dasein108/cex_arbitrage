@@ -36,7 +36,7 @@ from config.structs import ExchangeConfig
 from exchanges.interfaces.ws import PublicFuturesWebsocket
 from infrastructure.networking.websocket.structs import ConnectionState, PublicWebsocketChannelType
 from infrastructure.networking.websocket.handlers import PublicWebsocketHandlers
-
+from infrastructure.logging import HFTLogger
 
 class GateioPublicFuturesWebsocket(PublicFuturesWebsocket):
     """Gate.io public futures WebSocket client using dependency injection pattern."""
@@ -45,6 +45,7 @@ class GateioPublicFuturesWebsocket(PublicFuturesWebsocket):
         self,
         config: ExchangeConfig,
         handlers: PublicWebsocketHandlers,
+        logger: HFTLogger,
         **kwargs
     ):
         """
@@ -59,9 +60,7 @@ class GateioPublicFuturesWebsocket(PublicFuturesWebsocket):
         and performance targets. Completely independent from Gate.io spot operations.
         """
         # Validate Gate.io futures-specific requirements
-        if not config.websocket:
-            raise ValueError("Gate.io futures exchange configuration missing WebSocket settings")
-        
+
         # Store the actual futures URL (config is immutable)
         self._futures_websocket_url = config.websocket_url
         
@@ -69,6 +68,7 @@ class GateioPublicFuturesWebsocket(PublicFuturesWebsocket):
         super().__init__(
             config=config,
             handlers=handlers,
+            logger=logger,
             **kwargs
         )
         

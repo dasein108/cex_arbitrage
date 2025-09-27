@@ -33,18 +33,18 @@ class GateioCompositePublicExchange(CompositePublicExchange):
         """Create Gate.io public REST client."""
         return GateioPublicSpotRest(self.config, self.logger)
     
-    async def _create_public_ws_with_handlers(self, handlers: PublicWebsocketHandlers) -> Optional[PublicSpotWebsocket]:
+    async def _create_public_websocket(self) -> Optional[PublicSpotWebsocket]:
         """Create Gate.io public WebSocket client with handlers."""
 
         return GateioPublicSpotWebsocket(
             config=self.config,
-            handlers=handlers,
+            handlers=self._create_inner_websocket_handlers(),
             logger=self.logger
         )
 
     # WebSocket Handler Implementation
     
-    def _get_websocket_handlers(self) -> PublicWebsocketHandlers:
+    def _create_inner_websocket_handlers(self) -> PublicWebsocketHandlers:
         """Get public WebSocket handlers for Gate.io."""
         return PublicWebsocketHandlers(
             orderbook_handler=self._handle_orderbook,

@@ -53,6 +53,8 @@ class CompositePrivateExchange(BaseCompositeExchange):
 
         if not handlers:
             self.handlers = PrivateWebsocketHandlers()
+        else:
+            self.handlers = handlers
 
         self._tag = f'{config.name}_private'
         self._assets_info: Dict[AssetName, AssetInfo] = {}
@@ -255,13 +257,10 @@ class CompositePrivateExchange(BaseCompositeExchange):
         pass
 
     @abstractmethod
-    async def _create_private_ws_with_handlers(self, handlers: PrivateWebsocketHandlers) -> Optional[PrivateSpotWebsocket]:
+    async def _create_private_websocket(self) -> Optional[PrivateSpotWebsocket]:
         """
         Create exchange-specific private WebSocket client with handler objects.
         PATTERN: Copied from composite exchange line 210
-        
-        Args:
-            handlers: PrivateWebsocketHandlers object with event handlers
         
         Returns:
             PrivateSpotWebsocket implementation or None
@@ -479,7 +478,11 @@ class CompositePrivateExchange(BaseCompositeExchange):
             await self.close()  # Cleanup on failure
             raise
 
-    def _get_websocket_handlers(self) ->PrivateWebsocketHandlers:
+    def _create_inner_websocket_handlers(self) ->PrivateWebsocketHandlers:
+        """
+           Handlers to connect websocket events to internal methods.
+           :return:
+        """
         return PrivateWebsocketHandlers(
                 order_handler=self._order_handler,
                 balance_handler=self._balance_handler,
@@ -496,10 +499,8 @@ class CompositePrivateExchange(BaseCompositeExchange):
             return
 
         try:
-            private_handlers = self._get_websocket_handlers()
-
             # Use abstract factory method to create client with handlers (line 620)
-            self._private_ws = await self._create_private_ws_with_handlers(private_handlers)
+            self._private_ws = await self._create_private_websocket()
             await self._private_ws.initialize()
 
         except Exception as e:

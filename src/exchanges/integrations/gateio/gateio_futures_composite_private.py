@@ -11,9 +11,12 @@ from decimal import Decimal
 from exchanges.interfaces.composite.futures.base_private_futures_composite import CompositePrivateFuturesExchange
 from exchanges.interfaces.rest.futures.rest_futures_private import PrivateFuturesRest
 from exchanges.interfaces.ws.futures.ws_private_futures import PrivateFuturesWebsocket
-from exchanges.structs.common import Symbol, Order, Position
+from exchanges.structs import AssetName
+from exchanges.structs.common import Symbol, Order, Position, WithdrawalRequest, WithdrawalResponse
 from infrastructure.logging import HFTLoggerInterface
 from infrastructure.networking.websocket.handlers import PrivateWebsocketHandlers
+from exchanges.integrations.gateio.rest.gateio_rest_futures_private import GateioPrivateFuturesRest
+from exchanges.integrations.gateio.ws.gateio_ws_private_futures import GateioPrivateFuturesWebsocket
 
 
 class GateioFuturesCompositePrivateExchange(CompositePrivateFuturesExchange):
@@ -31,7 +34,17 @@ class GateioFuturesCompositePrivateExchange(CompositePrivateFuturesExchange):
     for futures trading and position management.
     """
 
-    def __init__(self, config, logger: Optional[HFTLoggerInterface] = None, 
+    async def get_withdrawal_history(self, asset: Optional[AssetName] = None, limit: int = 100) -> List[
+        WithdrawalResponse]:
+        raise NotImplemented("Not exist, separate interface")
+
+    async def get_withdrawal_status(self, withdrawal_id: str) -> WithdrawalResponse:
+        raise NotImplemented("Not exist, separate interface")
+
+    async def withdraw(self, request: WithdrawalRequest) -> WithdrawalResponse:
+        raise NotImplemented("Not exist, separate interface")
+
+    def __init__(self, config, logger: Optional[HFTLoggerInterface] = None,
                  handlers: Optional[PrivateWebsocketHandlers] = None):
         """Initialize Gate.io futures private composite exchange."""
         super().__init__(config, logger=logger, handlers=handlers)
@@ -43,91 +56,50 @@ class GateioFuturesCompositePrivateExchange(CompositePrivateFuturesExchange):
 
     async def _create_private_rest(self) -> PrivateFuturesRest:
         """Create Gate.io futures private REST client."""
-        from exchanges.integrations.gateio.rest.gateio_rest_futures_private import GateioPrivateFuturesRest
         return GateioPrivateFuturesRest(self.config, self.logger)
 
-    async def _create_private_ws_with_handlers(self, handlers: PrivateWebsocketHandlers) -> PrivateFuturesWebsocket:
+    async def _create_private_websocket(self) -> PrivateFuturesWebsocket:
         """Create Gate.io futures private WebSocket client with handlers."""
-        from exchanges.integrations.gateio.ws.gateio_ws_private_futures import GateioPrivateFuturesWebsocket
-        return GateioPrivateFuturesWebsocket(self.config, handlers)
+        return GateioPrivateFuturesWebsocket(self.config, self._create_inner_websocket_handlers())
 
     # Futures-specific abstract method implementations
 
-    async def set_leverage(self, symbol: Symbol, leverage: int) -> bool:
-        """Set leverage for a Gate.io futures symbol."""
-        try:
-            result = await self._private_rest.modify_leverage(symbol, float(leverage))
-            
-            # Update internal leverage settings cache
-            if result:
-                if symbol not in self._leverage_settings:
-                    self._leverage_settings[symbol] = {}
-                self._leverage_settings[symbol]['leverage'] = leverage
-                self.logger.info(f"Set leverage for {symbol} to {leverage}x")
-            
-            return result
-            
-        except Exception as e:
-            self.logger.error(f"Failed to set leverage for {symbol}: {e}")
-            return False
-
-    async def get_leverage(self, symbol: Symbol) -> Dict:
-        """Get current leverage for a Gate.io futures symbol."""
-        try:
-            # Try cached first
-            if symbol in self._leverage_settings:
-                return self._leverage_settings[symbol]
-            
-            # Fetch from REST API
-            leverage_info = await self._private_rest.get_leverage(symbol)
-            
-            # Cache the result
-            self._leverage_settings[symbol] = leverage_info
-            
-            return leverage_info
-            
-        except Exception as e:
-            self.logger.error(f"Failed to get leverage for {symbol}: {e}")
-            return {}
-
-    async def place_futures_order(
-        self,
-        symbol: Symbol,
-        side: str,
-        order_type: str,
-        quantity: Decimal,
-        price: Optional[Decimal] = None,
-        reduce_only: bool = False,
-        close_position: bool = False,
-        **kwargs
-    ) -> Order:
-        """Place a futures order with Gate.io-specific parameters."""
-        try:
-            # Add futures-specific parameters
-            futures_params = {
-                'reduce_only': reduce_only,
-                'close_position': close_position,
-                **kwargs
-            }
-            
-            order = await self._private_rest.place_order(
-                symbol=symbol,
-                side=side,
-                order_type=order_type,
-                quantity=float(quantity),
-                price=float(price) if price else None,
-                **futures_params
-            )
-            
-            # Update internal order tracking
-            self._orders[order.order_id] = order
-            
-            self.logger.info(f"Placed futures order: {order.order_id} for {symbol}")
-            return order
-            
-        except Exception as e:
-            self.logger.error(f"Failed to place futures order for {symbol}: {e}")
-            raise
+    # async def set_leverage(self, symbol: Symbol, leverage: int) -> bool:
+    #     """Set leverage for a Gate.io futures symbol."""
+    #     try:
+    #         result = await self._private_rest.modify_leverage(symbol, float(leverage))
+    #
+    #         # Update internal leverage settings cache
+    #         if result:
+    #             if symbol not in self._leverage_settings:
+    #                 self._leverage_settings[symbol] = {}
+    #             self._leverage_settings[symbol]['leverage'] = leverage
+    #             self.logger.info(f"Set leverage for {symbol} to {leverage}x")
+    #
+    #         return result
+    #
+    #     except Exception as e:
+    #         self.logger.error(f"Failed to set leverage for {symbol}: {e}")
+    #         return False
+    #
+    # async def get_leverage(self, symbol: Symbol) -> Dict:
+    #     """Get current leverage for a Gate.io futures symbol."""
+    #     try:
+    #         # Try cached first
+    #         if symbol in self._leverage_settings:
+    #             return self._leverage_settings[symbol]
+    #
+    #         # Fetch from REST API
+    #         leverage_info = await self._private_rest.get_leverage(symbol)
+    #
+    #         # Cache the result
+    #         self._leverage_settings[symbol] = leverage_info
+    #
+    #         return leverage_info
+    #
+    #     except Exception as e:
+    #         self.logger.error(f"Failed to get leverage for {symbol}: {e}")
+    #         return {}
 
     async def close_position(
         self, 

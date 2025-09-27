@@ -20,7 +20,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'src'))
 from exchanges.interfaces.composite.spot.base_public_spot_composite import CompositePublicExchange
 from exchanges.interfaces.composite.spot.base_private_spot_composite import CompositePrivateExchange
 from exchanges.structs import (Side, TimeInForce, OrderStatus, AssetName, OrderId, Symbol, Order,
-                               AssetBalance, OrderBook, BookTicker, SymbolInfo)
+                               AssetBalance, OrderBook, BookTicker, SymbolInfo, ExchangeEnum)
 from infrastructure.logging import get_logger, LoggingTimer
 from exchanges.factory import create_exchange_component, get_symbol_mapper
 from infrastructure.networking.websocket.handlers import PublicWebsocketHandlers, PrivateWebsocketHandlers
@@ -53,7 +53,12 @@ class UnifiedArbitrageDemo:
 
         config = get_exchange_config(exchange_name)
         exchange_enum = get_exchange_enum(exchange_name)
-        self.symbol = get_symbol_mapper(exchange_enum).to_symbol(symbol_str)
+        # since BTCUSDT is mexc native format, lil hack
+        mexc_symbol = get_symbol_mapper(ExchangeEnum.MEXC).to_symbol(symbol_str)
+
+        symbol = Symbol(base=mexc_symbol.base, quote=mexc_symbol.quote,
+                        is_futures='_futures'in symbol_str.lower())
+        self.symbol = symbol
 
         # Exchange
         private_handlers = PrivateWebsocketHandlers(
@@ -350,11 +355,11 @@ class UnifiedArbitrageDemo:
 async def main():
     """Main entry point for the demo."""
     parser = argparse.ArgumentParser(description="Unified Exchange Arbitrage Demo - LIVE TRADING")
-    parser.add_argument("--exchange", default="mexc_spot", choices=["mexc_spot", "gateio_spot", "gateio_futures"],
+    parser.add_argument("--exchange", default="gateio_futures", choices=["mexc_spot", "gateio_futures", "gateio_futures"],
                         help="Exchange to use (default: mexc_spot)")
     parser.add_argument("--symbol", default="ADAUSDT",
                         help="Trading pair symbol (default: ADAUSDT)")
-    parser.add_argument("--quantity", type=float, default=1.5,
+    parser.add_argument("--quantity", type=float, default=3,
                         help="Quantity to trade in USDT (default: 1.5)")
 
     args = parser.parse_args()

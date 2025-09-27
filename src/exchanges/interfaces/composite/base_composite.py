@@ -133,7 +133,7 @@ class BaseCompositeExchange(ABC):
         return self._symbols_info
 
     @abstractmethod
-    def _get_websocket_handlers(self) -> Union[PrivateWebsocketHandlers, PublicWebsocketHandlers]:
+    def _create_inner_websocket_handlers(self) -> Union[PrivateWebsocketHandlers, PublicWebsocketHandlers]:
         """
         Get WebSocket event handlers for this exchange.
 

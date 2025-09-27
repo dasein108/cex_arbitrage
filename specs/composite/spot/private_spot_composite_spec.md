@@ -245,18 +245,19 @@ async def initialize(self, symbols_info: SymbolsInfo) -> None:
 ```
 
 ### Private WebSocket Initialization
+
 ```python
 async def _initialize_private_websocket(self) -> None:
     """Initialize with handler injection"""
     if not self.config.has_credentials():
         return
-    
+
     # Create handlers
-    handlers = await self._get_websocket_handlers()
-    
+    handlers = await self._create_inner_websocket_handlers()
+
     # Create WebSocket with handlers
-    self._private_ws = await self._create_private_ws_with_handlers(handlers)
-    
+    self._private_ws = await self._create_private_websocket(handlers)
+
     if self._private_ws:
         await self._private_ws.initialize()
         self._private_ws_connected = True

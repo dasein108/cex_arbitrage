@@ -62,7 +62,7 @@ class ExchangeCompositePrivateExchange(CompositePrivateExchange):
         """Create exchange-specific private REST client."""
         raise NotImplementedError
     
-    async def _create_private_ws_with_handlers(self, handlers: PrivateWebsocketHandlers) -> PrivateSpotWebsocket:
+    async def _create_private_ws_with_handlers(self) -> PrivateSpotWebsocket:
         """Create exchange-specific private WebSocket client."""
         raise NotImplementedError
     

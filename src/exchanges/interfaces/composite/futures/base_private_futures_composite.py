@@ -29,9 +29,10 @@ class CompositePrivateFuturesExchange(CompositePrivateExchange):
     Reuses most functionality from CompositePrivateExchange for efficiency.
     """
 
-    def __init__(self, config, logger: Optional[HFTLoggerInterface] = None):
+    def __init__(self, config, logger: Optional[HFTLoggerInterface] = None,
+                 handlers: Optional[PrivateWebsocketHandlers] = None):
         """Initialize private futures exchange interface."""
-        super().__init__(config, logger=logger)
+        super().__init__(config, logger=logger, handlers=handlers)
         
         # Override tag to indicate futures operations
         self._tag = f'{config.name}_private_futures'
@@ -46,20 +47,20 @@ class CompositePrivateFuturesExchange(CompositePrivateExchange):
 
     # Properties for futures private data (reuse parent implementation pattern)
     
-    @property
-    def leverage_settings(self) -> Dict[Symbol, Dict]:
-        """Get current leverage settings for all symbols."""
-        return self._leverage_settings.copy()
-
-    @property
-    def margin_info(self) -> Dict[Symbol, Dict]:
-        """Get current margin information for all symbols."""
-        return self._margin_info.copy()
-
-    @property
-    def futures_positions(self) -> Dict[Symbol, Position]:
-        """Get current futures positions."""
-        return self._futures_positions.copy()
+    # @property
+    # def leverage_settings(self) -> Dict[Symbol, Dict]:
+    #     """Get current leverage settings for all symbols."""
+    #     return self._leverage_settings.copy()
+    #
+    # @property
+    # def margin_info(self) -> Dict[Symbol, Dict]:
+    #     """Get current margin information for all symbols."""
+    #     return self._margin_info.copy()
+    #
+    # @property
+    # def futures_positions(self) -> Dict[Symbol, Position]:
+    #     """Get current futures positions."""
+    #     return self._futures_positions.copy()
 
     @property
     def positions(self) -> Dict[Symbol, Position]:
@@ -68,30 +69,17 @@ class CompositePrivateFuturesExchange(CompositePrivateExchange):
 
     # Futures-specific abstract methods (must be implemented by concrete classes)
 
-    @abstractmethod
-    async def set_leverage(self, symbol: Symbol, leverage: int) -> bool:
-        """Set leverage for a symbol."""
-        pass
+    # @abstractmethod
+    # async def set_leverage(self, symbol: Symbol, leverage: int) -> bool:
+    #     """Set leverage for a symbol."""
+    #     pass
+    #
+    # @abstractmethod
+    # async def get_leverage(self, symbol: Symbol) -> Dict:
+    #     """Get current leverage for a symbol."""
+    #     pass
 
-    @abstractmethod
-    async def get_leverage(self, symbol: Symbol) -> Dict:
-        """Get current leverage for a symbol."""
-        pass
 
-    @abstractmethod
-    async def place_futures_order(
-        self,
-        symbol: Symbol,
-        side: str,
-        order_type: str,
-        quantity: Decimal,
-        price: Optional[Decimal] = None,
-        reduce_only: bool = False,
-        close_position: bool = False,
-        **kwargs
-    ) -> Order:
-        """Place a futures order with advanced options."""
-        pass
 
     @abstractmethod
     async def close_position(
@@ -104,20 +92,20 @@ class CompositePrivateFuturesExchange(CompositePrivateExchange):
 
     # Abstract futures data loading methods
 
-    @abstractmethod
-    async def _load_leverage_settings(self) -> None:
-        """Load leverage settings from REST API."""
-        pass
-
-    @abstractmethod
-    async def _load_margin_info(self) -> None:
-        """Load margin information from REST API."""
-        pass
-
-    @abstractmethod
-    async def _load_futures_positions(self) -> None:
-        """Load futures positions from REST API."""
-        pass
+    # @abstractmethod
+    # async def _load_leverage_settings(self) -> None:
+    #     """Load leverage settings from REST API."""
+    #     pass
+    #
+    # @abstractmethod
+    # async def _load_margin_info(self) -> None:
+    #     """Load margin information from REST API."""
+    #     pass
+    #
+    # @abstractmethod
+    # async def _load_futures_positions(self) -> None:
+    #     """Load futures positions from REST API."""
+    #     pass
 
     # Key futures extensions - leverage initialization and WebSocket handlers
     
@@ -138,7 +126,7 @@ class CompositePrivateFuturesExchange(CompositePrivateExchange):
             self.logger.error(f"Failed to initialize futures private data for {self._tag}: {e}")
             raise
 
-    def _get_websocket_handlers(self) -> PrivateWebsocketHandlers:
+    def _create_inner_websocket_handlers(self) -> PrivateWebsocketHandlers:
         """
         Extend WebSocket handlers to include position handler for futures.
         

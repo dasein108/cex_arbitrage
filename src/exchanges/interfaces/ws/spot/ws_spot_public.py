@@ -34,7 +34,7 @@ class PublicSpotWebsocket(ABC):
         config: ExchangeConfig,
         handlers: PublicWebsocketHandlers,
         logger: HFTLogger,
-        state_change_handler: Optional[Callable[[ConnectionState], Awaitable[None]]] = None,
+        connection_handler: Optional[Callable[[ConnectionState], Awaitable[None]]] = None,
     ):
         """
         Initialize composite public WebSocket with handler object.
@@ -43,14 +43,14 @@ class PublicSpotWebsocket(ABC):
             config: Exchange configuration
             handlers: PublicWebsocketHandlers object containing all message handlers
             logger: HFT logger instance
-            state_change_handler: Callback for connection state changes
+            connection_handler: Callback for connection state changes
         """
         self.config = config
         self.exchange_name = config.name.lower()
         
         # Store handler object and state change handler
         self.handlers = handlers
-        self._state_change_handler = state_change_handler
+        self._state_change_handler = connection_handler
         
         # Logger
         self.logger = logger
