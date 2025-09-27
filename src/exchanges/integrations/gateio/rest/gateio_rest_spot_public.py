@@ -182,7 +182,7 @@ class GateioPublicSpotRest(PublicSpotRest):
             self._exchange_info = symbol_info_map
             self._cache_timestamp = current_time
             
-            self.logger.info(f"Retrieved exchange info for {len(symbol_info_map)} symbols, filtered {filtered_count} unsupported pairs")
+            self.logger.debug(f"Retrieved exchange info for {len(symbol_info_map)} symbols, filtered {filtered_count} unsupported pairs")
             if filtered_count > 0:
                 self.logger.debug(f"Filtered {filtered_count} pairs with unsupported quote assets or formats")
             
@@ -740,13 +740,13 @@ class GateioPublicSpotRest(PublicSpotRest):
         
         sorted_klines = sorted(unique_klines.values(), key=lambda k: k.open_time)
         
-        self.logger.info(f"Retrieved {len(sorted_klines)} klines in batch for {symbol.base}/{symbol.quote}")
+        self.logger.debug(f"Retrieved {len(sorted_klines)} klines in batch for {symbol.base}/{symbol.quote}")
         return sorted_klines
     
     async def close(self) -> None:
         """Close the REST client and clean up resources."""
         try:
             # Transport manager handles cleanup automatically
-            self.logger.info("Closed Gate.io public REST client")
+            self.logger.debug("Closed Gate.io public REST client")
         except Exception as e:
             self.logger.error(f"Error closing public REST client: {e}")

@@ -212,13 +212,17 @@ class MexcPrivateSpotRest(PrivateSpotRest, ListenKeyInterface):
         order_response = msgspec.convert(response_data, MexcOrderResponse)
 
         # Transform to unified format
-        unified_order = rest_to_order(order_response)
+        o = rest_to_order(order_response)
 
         # Log order placement with relevant details
         amount_str = f"{quantity} {symbol.base}" if quantity else f"{quote_quantity} {symbol.quote}"
         price_str = f"at {price}" if price else "market price"
         self.logger.info(f"Placed {side.name} {order_type.name} order for {amount_str} {price_str}")
-        return unified_order
+
+        # TODO: to fetch price for maret order, reduce latency x2
+        if o.order_type == OrderType.MARKET:
+            return await self.get_order(o.symbol, o.order_id)
+        return o
 
     async def cancel_order(self, symbol: Symbol, order_id: OrderId) -> Order:
         """

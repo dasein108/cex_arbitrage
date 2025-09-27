@@ -24,7 +24,7 @@ class GateioPrivateMessageParser(MessageParser):
         
         # Log initialization
         if self.logger:
-            self.logger.info("GateioPrivateMessageParser initialized",
+            self.logger.debug("GateioPrivateMessageParser initialized",
                             exchange="gateio",
                             api_type="spot_private")
             

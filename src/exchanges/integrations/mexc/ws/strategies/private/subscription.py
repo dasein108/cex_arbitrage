@@ -43,7 +43,7 @@ class MexcPrivateSubscriptionStrategy(SubscriptionStrategy):
         
         # Log initialization
         if self.logger:
-            self.logger.info("MexcPrivateSubscriptionStrategy initialized",
+            self.logger.debug("MexcPrivateSubscriptionStrategy initialized",
                             exchange="mexc",
                             api_type="private")
             
@@ -84,7 +84,7 @@ class MexcPrivateSubscriptionStrategy(SubscriptionStrategy):
         }
         
         if self.logger:
-            self.logger.info(f"Created {method} message with {len(params)} private channels",
+            self.logger.debug(f"Created {method} message with {len(params)} private channels",
                             method=method,
                             channel_count=len(params),
                             exchange="mexc")

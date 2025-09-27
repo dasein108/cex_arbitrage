@@ -30,7 +30,7 @@ class MexcPrivateMessageParser(MessageParser):
         
         # Log initialization
         if self.logger:
-            self.logger.info("MexcPrivateMessageParser initialized",
+            self.logger.debug("MexcPrivateMessageParser initialized",
                             exchange="mexc",
                             api_type="private")
             

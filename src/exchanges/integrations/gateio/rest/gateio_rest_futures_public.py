@@ -142,7 +142,7 @@ class GateioPublicFuturesRest(PublicSpotRest):
             self._exchange_info = symbol_info_map
             self._cache_timestamp = current_time
 
-            self.logger.info(f"Retrieved futures contract info for {len(symbol_info_map)} contracts, filtered {filtered_count}")
+            self.logger.debug(f"Retrieved futures contract info for {len(symbol_info_map)} contracts, filtered {filtered_count}")
             return symbol_info_map
 
         except Exception as e:
@@ -513,7 +513,7 @@ class GateioPublicFuturesRest(PublicSpotRest):
         # Remove duplicates and sort oldest first
         unique = {k.open_time: k for k in all_klines}
         sorted_klines = sorted(unique.values(), key=lambda k: k.open_time)
-        self.logger.info(f"Retrieved {len(sorted_klines)} futures klines in batch for {symbol}")
+        self.logger.debug(f"Retrieved {len(sorted_klines)} futures klines in batch for {symbol}")
         return sorted_klines
 
     async def get_server_time(self) -> int:
@@ -544,14 +544,14 @@ class GateioPublicFuturesRest(PublicSpotRest):
 
     # Lifecycle & helpers (initialize / start / stop similar to spot)
     async def init(self, symbols: List[Symbol]) -> None:
-        self.logger.info(f"Initializing Gate.io Futures client with {len(symbols)} symbols")
+        self.logger.debug(f"Initializing Gate.io Futures client with {len(symbols)} symbols")
         for s in symbols:
             # prime mapper conversions / validation
             try:
                 GateioFuturesSymbol.to_pair(s)
             except Exception as e:
                 self.logger.debug(f"Failed to pre-cache symbol {s}: {e}")
-        self.logger.info("Gate.io Futures initialization complete")
+        self.logger.debug("Gate.io Futures initialization complete")
 
     async def start_symbol(self, symbol: Symbol) -> None:
         contract = GateioFuturesSymbol.to_pair(symbol)
@@ -582,7 +582,7 @@ class GateioPublicFuturesRest(PublicSpotRest):
         return self._get_interval_seconds(interval) * 1000
 
     async def close(self):
-        self.logger.info("Closed Gate.io futures public client")
+        self.logger.debug("Closed Gate.io futures public client")
 
     def __repr__(self) -> str:
         return f"GateioPublicFuturesRest(base_url={self.base_url})"

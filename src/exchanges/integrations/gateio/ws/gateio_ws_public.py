@@ -65,7 +65,7 @@ class GateioPublicSpotWebsocket(PublicSpotWebsocket):
         # State management for symbols (moved from WebSocket manager)
         self._active_symbols: Set[Symbol] = set()
 
-        self.logger.info("Gate.io public WebSocket initialized with handler objects")
+        self.logger.debug("Gate.io public WebSocket initialized with handler objects")
 
     # Gate.io-specific message handling can be added here if needed
     # Base class handles all common WebSocket operations:
@@ -86,7 +86,7 @@ class GateioPublicSpotWebsocket(PublicSpotWebsocket):
         # Move from pending to active on successful subscription
         self._active_symbols.update(symbols)
 
-        self.logger.info(f"Added {len(symbols)} symbols: {[str(s) for s in symbols]}")
+        self.logger.debug(f"Added {len(symbols)} symbols: {[str(s) for s in symbols]}")
     
     async def unsubscribe(self, symbols: List[Symbol]) -> None:
         """Remove symbols from subscription using enhanced symbol-channel mapping."""
@@ -104,7 +104,7 @@ class GateioPublicSpotWebsocket(PublicSpotWebsocket):
         # Remove from active state
         self._active_symbols.difference_update(symbols_to_remove)
         
-        self.logger.info(f"Removed {len(symbols_to_remove)} symbols: {[str(s) for s in symbols_to_remove]}")
+        self.logger.debug(f"Removed {len(symbols_to_remove)} symbols: {[str(s) for s in symbols_to_remove]}")
     
 
     def get_active_symbols(self) -> Set[Symbol]:
@@ -114,8 +114,8 @@ class GateioPublicSpotWebsocket(PublicSpotWebsocket):
     # Override default handlers if Gate.io needs specific behavior
     async def on_orderbook_update(self, symbol: Symbol, orderbook: OrderBook):
         """Gate.io-specific orderbook update handler."""
-        self.logger.info(f"Gate.io orderbook update for {symbol}: {len(orderbook.bids)} bids, {len(orderbook.asks)} asks")
+        self.logger.debug(f"Gate.io orderbook update for {symbol}: {len(orderbook.bids)} bids, {len(orderbook.asks)} asks")
 
     async def on_trades_update(self, symbol: Symbol, trades: List[Trade]):
         """Gate.io-specific trade update handler."""
-        self.logger.info(f"Gate.io trades update for {symbol}: {len(trades)} trades")
+        self.logger.debug(f"Gate.io trades update for {symbol}: {len(trades)} trades")

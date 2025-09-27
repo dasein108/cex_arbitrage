@@ -27,7 +27,7 @@ class GateioCompositePrivateExchange(CompositePrivateExchange):
     def __init__(self, config: ExchangeConfig, logger: Optional[HFTLoggerInterface] = None,
                  handlers: Optional[PrivateWebsocketHandlers] = None):
         """Initialize Gate.io private exchange."""
-        super().__init__(config, logger, handlers)
+        super().__init__(config, logger=logger, handlers=handlers)
 
     # Factory Methods - Return Existing Gate.io Clients
     
@@ -46,13 +46,6 @@ class GateioCompositePrivateExchange(CompositePrivateExchange):
 
     # WebSocket Handler Implementation
     
-    def _get_websocket_handlers(self) -> PrivateWebsocketHandlers:
-        """Get private WebSocket handlers for Gate.io."""
-        return PrivateWebsocketHandlers(
-            order_handler=self._order_handler,
-            balance_handler=self._balance_handler,
-            execution_handler=self._execution_handler,
-        )
 
     async def withdraw(self, request: WithdrawalRequest) -> WithdrawalResponse:
         """Submit a withdrawal request via Gate.io REST API."""

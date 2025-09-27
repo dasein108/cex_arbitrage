@@ -63,7 +63,7 @@ class GateioPrivateSpotWebsocket(PrivateSpotWebsocket):
             **kwargs
         )
         
-        self.logger.info("Gate.io private WebSocket initialized with handler objects")
+        self.logger.debug("Gate.io private WebSocket initialized with handler objects")
 
     # Gate.io-specific message handling can be added here if needed
     # Base class handles all common WebSocket operations:

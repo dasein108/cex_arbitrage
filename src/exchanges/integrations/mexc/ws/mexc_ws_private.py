@@ -72,7 +72,7 @@ class MexcPrivateSpotWebsocket(PrivateSpotWebsocket):
             **kwargs
         )
         
-        self.logger.info("MEXC private WebSocket initialized with handler objects")
+        self.logger.debug("MEXC private WebSocket initialized with handler objects")
 
 
     # Override default handlers if MEXC needs specific behavior

@@ -74,7 +74,7 @@ class GateioPrivateFuturesWebsocket(PrivateFuturesWebsocket):
                               "wss://fx-ws.gateio.ws/v4/ws/delivery/")
         }
         
-        self.logger.info(f"Gate.io private futures WebSocket initialized as separate exchange with endpoint: {self._futures_websocket_url}")
+        self.logger.debug(f"Gate.io private futures WebSocket initialized as separate exchange with endpoint: {self._futures_websocket_url}")
 
     # Gate.io futures-specific message handling can be added here if needed
     # Base class handles all common WebSocket operations:

@@ -213,10 +213,14 @@ class GateioPrivateSpotRest(PrivateSpotRest):
         async def _place_order_operation():
             return await self._execute_place_order(symbol, side, order_type, quantity, price, quote_quantity, time_in_force, new_order_resp_type)
         
-        return await self._rest_error_handler.handle_with_retry(
+        o = await self._rest_error_handler.handle_with_retry(
             operation=_place_order_operation,
             context=context
         )
+
+        # TODO: to fetch price for maret order, reduce latency x2
+        if o.order_type == OrderType.MARKET:
+            return await self.get_order(o.symbol, o.order_id)
     
     async def _execute_place_order(self, symbol: Symbol, side: Side, order_type: OrderType, amount: Optional[float], price: Optional[float], quote_quantity: Optional[float], time_in_force: Optional[TimeInForce], new_order_resp_type) -> Order:
         """Execute place order without error handling - clean logic"""

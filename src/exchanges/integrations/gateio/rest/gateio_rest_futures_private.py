@@ -409,7 +409,12 @@ class GateioPrivateFuturesRest(PrivateFuturesRest):
     async def get_positions(self) -> List[Position]:
         """
         Get all open positions for futures trading.
-        Endpoint: /futures/usdt/positions
+        Endpoint: GET /futures/usdt/positions
+        
+        Gate.io API Reference:
+        - Returns list of position objects with contract, size, entry_price, etc.
+        - Size can be positive (long) or negative (short)
+        - Supports additional fields: pnl_pnl, pnl_fund, pnl_fee, update_id
         """
         try:
             endpoint = "/futures/usdt/positions"
@@ -422,6 +427,7 @@ class GateioPrivateFuturesRest(PrivateFuturesRest):
                         # Parse contract identifier
                         contract_name = pos.get("contract", "")
                         if not contract_name:
+                            self.logger.debug(f"Skipping position with missing contract name")
                             continue
 
                         # Convert to unified symbol
@@ -430,33 +436,54 @@ class GateioPrivateFuturesRest(PrivateFuturesRest):
                         # Parse position size (positive for long, negative for short)
                         size_val = float(pos.get("size", 0))
                         if size_val == 0:
+                            self.logger.debug(f"Skipping zero-size position for {contract_name}")
                             continue  # Skip empty positions
 
                         side = Side.LONG if size_val > 0 else Side.SHORT
+
+                        # Parse Gate.io-specific fields with fallbacks
+                        entry_price = float(pos.get("entry_price", 0))
+                        mark_price = float(pos.get("mark_price", 0)) if pos.get("mark_price") else None
+                        
+                        # Parse PnL fields (Gate.io v4.70.0+ features)
+                        unrealized_pnl = float(pos.get("unrealised_pnl", pos.get("unrealized_pnl", 0)))
+                        realized_pnl = float(pos.get("realised_pnl", pos.get("realized_pnl", 0)))
+                        
+                        # Parse optional fields
+                        liq_price = pos.get("liq_price")
+                        liquidation_price = float(liq_price) if liq_price and liq_price != "0" else None
+                        
+                        margin_val = pos.get("margin")
+                        margin = float(margin_val) if margin_val else None
+                        
+                        # Parse timestamp (update_time or current time)
+                        update_time = pos.get("update_time", time.time())
+                        timestamp = int(float(update_time) * 1000) if update_time else int(time.time() * 1000)
 
                         position = Position(
                             symbol=symbol,
                             side=side,
                             size=abs(size_val),
-                            entry_price=float(pos.get("entry_price", 0)),
-                            mark_price=float(pos.get("mark_price", 0)),
-                            unrealized_pnl=float(pos.get("unrealized_pnl", 0)),
-                            realized_pnl=float(pos.get("realized_pnl", 0)),
-                            liquidation_price=float(pos.get("liq_price", 0)) if pos.get("liq_price") else None,
-                            margin=float(pos.get("margin", 0)) if pos.get("margin") else None,
-                            timestamp=int(float(pos.get("update_time", time.time())) * 1000)
+                            entry_price=entry_price,
+                            mark_price=mark_price,
+                            unrealized_pnl=unrealized_pnl,
+                            realized_pnl=realized_pnl,
+                            liquidation_price=liquidation_price,
+                            margin=margin,
+                            timestamp=timestamp
                         )
                         positions.append(position)
+                        
                     except Exception as e:
-                        self.logger.debug(f"Failed to parse position: {e}")
+                        self.logger.debug(f"Failed to parse position {pos.get('contract', 'unknown')}: {e}")
                         continue
 
             self.logger.debug(f"Retrieved {len(positions)} futures positions")
             return positions
 
         except Exception as e:
-            self.logger.error(f"Failed to get positions: {e}")
-            raise ExchangeRestError(500, f"Positions fetch failed: {str(e)}")
+            self.logger.error(f"Failed to get futures positions: {e}")
+            raise ExchangeRestError(500, f"Futures positions fetch failed: {str(e)}")
 
     async def get_position(self, symbol: Symbol) -> Optional[Position]:
         """

@@ -82,7 +82,7 @@ class GateioPublicFuturesWebsocket(PublicFuturesWebsocket):
                               "wss://fx-ws.gateio.ws/v4/ws/delivery/")
         }
 
-        self.logger.info(f"Gate.io futures WebSocket initialized with handler objects as separate exchange with endpoint: {self._futures_websocket_url}")
+        self.logger.debug(f"Gate.io futures WebSocket initialized with handler objects as separate exchange with endpoint: {self._futures_websocket_url}")
 
     # Gate.io futures-specific message handling can be added here if needed
     # Base class handles all common WebSocket operations:
@@ -106,7 +106,7 @@ class GateioPublicFuturesWebsocket(PublicFuturesWebsocket):
         # Move from pending to active on successful subscription
         self._active_symbols.update(symbols)
 
-        self.logger.info(f"Added {len(symbols)} futures symbols: {[str(s) for s in symbols]}")
+        self.logger.debug(f"Added {len(symbols)} futures symbols: {[str(s) for s in symbols]}")
     
     async def unsubscribe(self, symbols: List[Symbol]) -> None:
         """Remove futures symbols from subscription using enhanced symbol-channel mapping."""
@@ -124,7 +124,7 @@ class GateioPublicFuturesWebsocket(PublicFuturesWebsocket):
         # Remove from active state
         self._active_symbols.difference_update(symbols_to_remove)
         
-        self.logger.info(f"Removed {len(symbols_to_remove)} futures symbols: {[str(s) for s in symbols_to_remove]}")
+        self.logger.debug(f"Removed {len(symbols_to_remove)} futures symbols: {[str(s) for s in symbols_to_remove]}")
     
 
     def get_active_symbols(self) -> Set[Symbol]:
@@ -134,23 +134,23 @@ class GateioPublicFuturesWebsocket(PublicFuturesWebsocket):
     # Override default handlers if Gate.io futures needs specific behavior
     async def on_orderbook_update(self, symbol: Symbol, orderbook: OrderBook):
         """Gate.io futures-specific orderbook update handler."""
-        self.logger.info(f"Gate.io futures orderbook update for {symbol}: {len(orderbook.bids)} bids, {len(orderbook.asks)} asks")
+        self.logger.debug(f"Gate.io futures orderbook update for {symbol}: {len(orderbook.bids)} bids, {len(orderbook.asks)} asks")
 
     async def on_trades_update(self, symbol: Symbol, trades: List[Trade]):
         """Gate.io futures-specific trade update handler."""
-        self.logger.info(f"Gate.io futures trades update for {symbol}: {len(trades)} trades")
+        self.logger.debug(f"Gate.io futures trades update for {symbol}: {len(trades)} trades")
 
     async def on_funding_rate_update(self, symbol: Symbol, funding_data: Dict):
         """Gate.io futures-specific funding rate update handler."""
         funding_rate = funding_data.get("funding_rate", 0)
         timestamp = funding_data.get("timestamp", 0)
-        self.logger.info(f"Gate.io futures funding rate update for {symbol}: {funding_rate} at {timestamp}")
+        self.logger.debug(f"Gate.io futures funding rate update for {symbol}: {funding_rate} at {timestamp}")
 
     async def on_mark_price_update(self, symbol: Symbol, mark_price_data: Dict):
         """Gate.io futures-specific mark price update handler."""
         mark_price = mark_price_data.get("mark_price", 0)
         timestamp = mark_price_data.get("timestamp", 0)
-        self.logger.info(f"Gate.io futures mark price update for {symbol}: {mark_price} at {timestamp}")
+        self.logger.debug(f"Gate.io futures mark price update for {symbol}: {mark_price} at {timestamp}")
 
     # Futures-specific utility methods
     def is_futures_symbol(self, symbol: Symbol) -> bool:

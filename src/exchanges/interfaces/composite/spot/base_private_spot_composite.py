@@ -41,16 +41,18 @@ class CompositePrivateExchange(BaseCompositeExchange):
     """
 
     def __init__(self, config: ExchangeConfig, logger: Optional[HFTLoggerInterface] = None,
-                 handlers: Optional[PrivateWebsocketHandlers] = PrivateWebsocketHandlers()) -> None:
+                 handlers: Optional[PrivateWebsocketHandlers] = None) -> None:
         """
         Initialize private exchange interface.
         
         Args:
             config: Exchange configuration with API credentials
             logger: Optional injected HFT logger (auto-created if not provided)
+            handlers: Optional WebSocket handlers (auto-created if not provided)
         """
-        super().__init__(config=config, is_private=True, logger=logger)
-        self.handlers = handlers
+        if handlers is None:
+            handlers = PrivateWebsocketHandlers()
+        super().__init__(config=config, is_private=True, logger=logger, handlers=handlers)
         self._tag = f'{config.name}_private'
         self._assets_info: Dict[AssetName, AssetInfo] = {}
 
@@ -108,6 +110,7 @@ class CompositePrivateExchange(BaseCompositeExchange):
 
         Args:
             symbol: Optional symbol filter
+            force: If True, bypass cache and fetch from REST
 
         Returns:
             List of open orders (all symbols or filtered by symbol)
@@ -476,12 +479,6 @@ class CompositePrivateExchange(BaseCompositeExchange):
             await self.close()  # Cleanup on failure
             raise
 
-    def _get_websocket_handlers(self) ->PrivateWebsocketHandlers:
-        return PrivateWebsocketHandlers(
-                order_handler=self._order_handler,
-                balance_handler=self._balance_handler,
-                execution_handler=self._execution_handler,
-            )
 
     async def _initialize_private_websocket(self) -> None:
         """
@@ -493,10 +490,8 @@ class CompositePrivateExchange(BaseCompositeExchange):
             return
 
         try:
-            private_handlers = self._get_websocket_handlers()
 
-            # Use abstract factory method to create client with handlers (line 620)
-            self._private_ws = await self._create_private_ws_with_handlers(private_handlers)
+            self._private_ws = await self._create_private_ws_with_handlers(self.handlers)
             await self._private_ws.initialize()
 
         except Exception as e:

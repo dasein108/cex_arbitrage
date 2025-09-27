@@ -410,5 +410,5 @@ class RestManager:
         if self._connector:
             await self._connector.close()
         
-        self.logger.info("RestTransportManager closed successfully")
+        self.logger.debug("RestTransportManager closed successfully")
 

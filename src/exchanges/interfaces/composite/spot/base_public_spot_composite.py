@@ -142,9 +142,11 @@ class CompositePublicExchange(BaseCompositeExchange):
         Args:
             config: Exchange configuration (credentials not required)
             logger: Optional injected HFT logger (auto-created if not provided)
+            handlers: Optional WebSocket handlers for WebSocket events
         """
-        super().__init__(config, is_private=False, logger=logger)
-        self.handlers = handlers  # Optional custom handlers for WebSocket events
+        if handlers is None:
+            handlers = PublicWebsocketHandlers()
+        super().__init__(config, is_private=False, logger=logger, handlers=handlers)
         # Market data state (existing + enhanced)
         self._orderbooks: Dict[Symbol, OrderBook] = {}
         self._tickers: Dict[Symbol, Ticker] = {}
@@ -491,26 +493,14 @@ class CompositePublicExchange(BaseCompositeExchange):
             'best_bid_ask_count': len(self._book_ticker),  # NEW
         }
 
-    def _get_websocket_handlers(self) -> PublicWebsocketHandlers:
-        return PublicWebsocketHandlers(
-                orderbook_handler=self._handle_orderbook,
-                ticker_handler=self._handle_ticker,
-                trade_handler=self._handle_trade,
-                book_ticker_handler=self._handle_book_ticker,  # This one already matches signature
-            )
 
     async def _initialize_public_websocket(self) -> None:
         """Initialize public WebSocket with constructor injection pattern including book ticker handler."""
         try:
             self.logger.debug("Initializing public WebSocket client")
             
-            # Create handler objects for constructor injection using actual handler signatures
-            # NOTE: Handler signatures expect direct data objects (OrderBook, BookTicker, etc.), not events
-            # TODO: This will be refactored in websocket_refactoring.md to align properly
-            public_handlers = self._get_websocket_handlers()
-            
-            # Use abstract factory method to create client
-            self._public_ws = await self._create_public_ws_with_handlers(public_handlers)
+            # Use abstract factory method to create client with injected handlers
+            self._public_ws = await self._create_public_ws_with_handlers(self.handlers)
             
             self._public_ws_connected = self._public_ws.is_connected
 

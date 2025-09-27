@@ -25,7 +25,7 @@ class GateioCompositePublicExchange(CompositePublicExchange):
     def __init__(self, config: ExchangeConfig, logger: Optional[HFTLoggerInterface] = None,
                  handlers: Optional[PublicWebsocketHandlers] = None):
         """Initialize Gate.io public exchange."""
-        super().__init__(config, logger, handlers)
+        super().__init__(config, logger=logger, handlers=handlers)
 
     # Factory Methods - Return Existing Gate.io Clients
     
@@ -44,14 +44,6 @@ class GateioCompositePublicExchange(CompositePublicExchange):
 
     # WebSocket Handler Implementation
     
-    def _get_websocket_handlers(self) -> PublicWebsocketHandlers:
-        """Get public WebSocket handlers for Gate.io."""
-        return PublicWebsocketHandlers(
-            orderbook_handler=self._handle_orderbook,
-            ticker_handler=self._handle_ticker,
-            trade_handler=self._handle_trade,
-            book_ticker_handler=self._handle_book_ticker,
-        )
 
     # Handler method implementations - inherit base behavior but add Gate.io-specific logging
     

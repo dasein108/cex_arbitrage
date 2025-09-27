@@ -32,13 +32,16 @@ class BaseCompositeExchange(ABC):
     establishing common patterns for connection management and state tracking.
     """
 
-    def __init__(self, config: ExchangeConfig, is_private: bool, logger: Optional[HFTLoggerInterface] = None):
+    def __init__(self, config: ExchangeConfig, is_private: bool, 
+                 handlers: Optional[Union[PrivateWebsocketHandlers, PublicWebsocketHandlers]] = None,
+                 logger: Optional[HFTLoggerInterface] = None):
         """
         Initialize composite exchange interface.
         
         Args:
-            tag: Unique identifier for this exchange instance
             config: Exchange configuration containing credentials and settings
+            is_private: Whether this is a private (authenticated) exchange interface
+            handlers: WebSocket event handlers for this exchange
             logger: Optional injected HFT logger (auto-created if not provided)
         """
         self._is_private = is_private
@@ -47,6 +50,9 @@ class BaseCompositeExchange(ABC):
         self._config = config
         self._initialized = False
         self._connection_state = ConnectionState.DISCONNECTED
+        
+        # Store websocket handlers
+        self._handlers = handlers
         
         # Use injected logger or create exchange-specific logger
         self.logger = logger or get_exchange_logger(config.name, self._tag)
@@ -132,15 +138,10 @@ class BaseCompositeExchange(ABC):
         """Get symbol information."""
         return self._symbols_info
 
-    @abstractmethod
-    def _get_websocket_handlers(self) -> Union[PrivateWebsocketHandlers, PublicWebsocketHandlers]:
-        """
-        Get WebSocket event handlers for this exchange.
-
-        Returns:
-            Instance of PrivateWebsocketHandlers or PublicWebsocketHandlers
-        """
-        pass
+    @property
+    def handlers(self) -> Optional[Union[PrivateWebsocketHandlers, PublicWebsocketHandlers]]:
+        """Get WebSocket event handlers for this exchange."""
+        return self._handlers
 
     async def _handle_connection_state(self, state: ConnectionState) -> None:
         """

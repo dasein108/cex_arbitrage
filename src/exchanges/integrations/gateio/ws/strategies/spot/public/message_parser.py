@@ -47,9 +47,9 @@ class GateioPublicMessageParser(MessageParser):
             self.symbol_extractor, self.error_handler, self.logger
         )
         
-        # Log initialization
+        # Log initialization (at DEBUG per logging spec)
         if self.logger:
-            self.logger.info("GateioPublicMessageParser initialized with common utilities",
+            self.logger.debug("GateioPublicMessageParser initialized with common utilities",
                             exchange="gateio",
                             api_type="spot_public")
             

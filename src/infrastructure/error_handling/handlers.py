@@ -305,7 +305,7 @@ class ComposableErrorHandler:
         elif severity == ErrorSeverity.MEDIUM:
             self.logger.warning(f"MEDIUM: Operation failed: {context.operation}", **error_data)
         else:  # LOW
-            self.logger.info(f"LOW: Operation failed: {context.operation}", **error_data)
+            self.logger.debug(f"LOW: Operation failed: {context.operation}", **error_data)
 
 
 # Context manager for guaranteed resource cleanup

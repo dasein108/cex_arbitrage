@@ -131,7 +131,7 @@ class MexcPublicSubscriptionStrategy(SubscriptionStrategy):
         
 
         if self.logger:
-            self.logger.info(f"Created {method} {len(messages)} messages",
+            self.logger.debug(f"Created {method} {len(messages)} messages",
                             method=method,
                             message_count=len(messages),
                             exchange="mexc")

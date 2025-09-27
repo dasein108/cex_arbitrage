@@ -45,7 +45,7 @@ class GateioPrivateSubscriptionStrategy(SubscriptionStrategy):
         
         # Log initialization
         if self.logger:
-            self.logger.info("GateioPrivateSubscriptionStrategy initialized",
+            self.logger.debug("GateioPrivateSubscriptionStrategy initialized",
                             exchange="gateio",
                             api_type="spot_private")
             
@@ -107,7 +107,7 @@ class GateioPrivateSubscriptionStrategy(SubscriptionStrategy):
                                 api_type="spot_private")
 
         if self.logger:
-            self.logger.info(f"Created {len(messages)} private {event} messages",
+            self.logger.debug(f"Created {len(messages)} private {event} messages",
                             exchange="gateio",
                             message_count=len(messages),
                             event=event,

@@ -83,7 +83,7 @@ class WebSocketManager:
             maxsize=self.manager_config.max_pending_messages
         )
         
-        self.logger.info("WebSocket manager V3 initialized with strategy-driven architecture",
+        self.logger.debug("WebSocket manager V3 initialized with strategy-driven architecture",
                         websocket_url=config.url,
                         max_pending=self.manager_config.max_pending_messages)
     
@@ -107,7 +107,7 @@ class WebSocketManager:
 
         try:
             with LoggingTimer(self.logger, "ws_manager_initialization") as timer:
-                self.logger.info("Initializing WebSocket manager with direct strategy connection",
+                self.logger.debug("Initializing WebSocket manager with direct strategy connection",
                                  symbols_count=len(symbols) if symbols else 0,
                                  channels_count=len(default_channels) if default_channels else 0)
                 
@@ -122,11 +122,11 @@ class WebSocketManager:
                 # Note: This heartbeat supplements built-in ping/pong for exchanges requiring custom ping
                 if self.config.heartbeat_interval and self.config.heartbeat_interval > 0:
                     self._heartbeat_task = asyncio.create_task(self._heartbeat_loop())
-                    self.logger.info("Started custom heartbeat",
+                    self.logger.debug("Started custom heartbeat",
                                    heartbeat_interval=self.config.heartbeat_interval,
                                    note="supplements built-in ping/pong")
             
-            self.logger.info("WebSocket manager V3 initialized successfully",
+            self.logger.debug("WebSocket manager V3 initialized successfully",
                            initialization_time_ms=timer.elapsed_ms)
             
             # Track initialization metrics
@@ -165,7 +165,7 @@ class WebSocketManager:
                                       channels_count=len(self._ws_channels))
                     return
                 
-                self.logger.info("Sending subscription messages",
+                self.logger.debug("Sending subscription messages",
                                messages_count=len(messages),
                                symbols_count=len(symbols))
                 
@@ -271,7 +271,7 @@ class WebSocketManager:
                 # Start message reader
                 self._reader_task = asyncio.create_task(self._message_reader())
                 
-                self.logger.info("Strategy-driven WebSocket connection established successfully",
+                self.logger.debug("Strategy-driven WebSocket connection established successfully",
                                active_symbols_count=len(self._active_symbols))
                 
                 # Wait for connection to close
@@ -356,7 +356,7 @@ class WebSocketManager:
         self.connection_state = state
         
         if previous_state != state:
-            self.logger.info("Connection state changed",
+            self.logger.debug("Connection state changed",
                            previous_state=previous_state.name,
                            new_state=state.name)
             
@@ -559,7 +559,7 @@ class WebSocketManager:
     
     async def close(self) -> None:
         """Close WebSocket manager and cleanup resources."""
-        self.logger.info("Closing WebSocket manager V3...",
+        self.logger.debug("Closing WebSocket manager V3...",
                         active_symbols_count=len(self._active_symbols))
         
         try:
@@ -598,7 +598,7 @@ class WebSocketManager:
                 
                 self.connection_state = ConnectionState.DISCONNECTED
             
-            self.logger.info("WebSocket manager V3 closed",
+            self.logger.debug("WebSocket manager V3 closed",
                            close_time_ms=timer.elapsed_ms)
             
             # Track close metrics
