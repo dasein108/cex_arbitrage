@@ -109,16 +109,16 @@ class LoggerFactory:
         if 'console' in backends and backends['console'].get('enabled', False):
             struct_data['console'] = ConsoleBackendConfig(
                 enabled=True,
-                min_level=backends['console'].get('level', 'DEBUG'),
-                color=backends['console'].get('colored_output', True),
-                include_context=True
+                min_level=backends['console'].get('min_level', 'DEBUG'),
+                color=backends['console'].get('color', True),
+                include_context=backends['console'].get('include_context', True)
             )
         
         if 'file' in backends and backends['file'].get('enabled', False):
             struct_data['file'] = FileBackendConfig(
                 enabled=True,
-                min_level=backends['file'].get('level', 'INFO'),
-                path=backends['file'].get('file_path', 'logs/hft.log'),
+                min_level=backends['file'].get('min_level', 'INFO'),
+                path=backends['file'].get('path', 'logs/hft.log'),
                 format='text'
             )
         

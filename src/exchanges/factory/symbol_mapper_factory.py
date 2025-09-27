@@ -3,7 +3,6 @@ from exchanges.structs.common import Symbol
 from exchanges.structs.types import ExchangeName
 from exchanges.services import SymbolMapperInterface
 
-
 def get_symbol_mapper(exchange: ExchangeEnum) -> SymbolMapperInterface:
     """Factory function to get the appropriate SymbolMapper class based on the exchange name."""
     if exchange == ExchangeEnum.MEXC:

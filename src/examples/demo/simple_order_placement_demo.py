@@ -27,17 +27,18 @@ TestCase = Literal["limit_ioc", "limit_gtc", "market_quote_qty"]
 async def main():
     """Simple order placement demonstration."""
     logger = get_logger("order_demo")
-    
+
     # Configuration
-    exchange_name = "gateio_spot"  # Change to desired exchange
-    symbol = Symbol(base=AssetName("ADA"), quote=AssetName("USDT"), is_futures=False)
+    exchange_name = "gateio_futures"  # Change to desired exchange
     test_cases: List[TestCase] = ["limit_ioc", "limit_gtc", "market_quote_qty"] #
     try:
         # Get exchange configuration and enum
         config = get_exchange_config(exchange_name)
         exchange_enum = get_exchange_enum(exchange_name)
-        
-        logger.info("Starting order placement demo", 
+        symbol = Symbol(base=AssetName("ADA"), quote=AssetName("USDT"),
+                        is_futures='_futures' in exchange_name.lower())
+
+        logger.info("Starting order placement demo",
                    exchange=exchange_name, 
                    symbol=f"{symbol.base}/{symbol.quote}")
         
@@ -138,18 +139,19 @@ async def main():
 
             await asyncio.sleep(0.1)  # Brief pause between orders
         
-        # Demo 3: Market order using quote quantity
+        # Demo 3: Market order using quantity (contracts)
         if 'market_quote_qty' in test_cases:
-            logger.info("=== Demo 3: Market Order (Quote Quantity) ===")
+            logger.info("=== Demo 3: Market Order (Contracts) ===")
             try:
-                # Use minimum quote quantity for market order
-                quote_quantity = float(symbol_info.min_quote_quantity)
+                # For futures market orders, use quantity (number of contracts) directly
+                # This is more straightforward than converting from quote quantity
+                market_quantity = max(symbol_info.min_base_quantity, 1.0)
 
                 market_order = await private_rest.place_order(
                     symbol=symbol,
                     side=Side.BUY,
                     order_type=OrderType.MARKET,
-                    quote_quantity=quote_quantity  # Use quote_quantity for market orders
+                    quantity=market_quantity  # Use quantity for futures market orders
                 )
                 logger.info("Market order placed", order_id=market_order.order_id)
             except Exception as e:

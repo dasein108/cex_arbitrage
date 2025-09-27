@@ -115,8 +115,13 @@ class ConsoleBackend(LogBackend):
 
     def _ensure_python_logging_configured(self) -> None:
         """Ensure Python logging is configured for console output."""
-        # Check if root logger has any handlers
         root_logger = logging.getLogger()
+        
+        # Always set the root logger level to ensure HFT compliance
+        py_level = self._convert_level(self.min_level)
+        root_logger.setLevel(py_level)
+        
+        # Only add handler if none exists
         if not root_logger.handlers:
             # Configure basic console output
             console_handler = logging.StreamHandler()
@@ -131,11 +136,7 @@ class ConsoleBackend(LogBackend):
                     '%(levelname)s - %(name)s - %(message)s'
                 )
             console_handler.setFormatter(formatter)
-            
-            # Set level based on min_level config
-            py_level = self._convert_level(self.min_level)
             console_handler.setLevel(py_level)
-            root_logger.setLevel(py_level)
             
             # Add handler to root logger
             root_logger.addHandler(console_handler)

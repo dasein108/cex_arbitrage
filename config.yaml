@@ -4,8 +4,8 @@
 # Environment settings
 environment:
   name: dev  # dev, prod, test
-  debug: true
-  log_level: INFO  # CRITICAL, ERROR, WARNING, INFO, DEBUG
+#  debug: true
+#  log_level: INFO  # CRITICAL, ERROR, WARNING, INFO, DEBUG
 
 # Logging configuration
 logging:

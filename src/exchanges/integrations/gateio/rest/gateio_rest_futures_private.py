@@ -94,7 +94,16 @@ class GateioPrivateFuturesRest(PrivateFuturesRest):
     #         raise
 
     # ---------- Order placement / management ----------
-
+    async def get_asset_balance(self, asset: AssetName) -> Optional[AssetBalance]:
+        try:
+            balances = await self.get_balances()
+            for b in balances:
+                if b.asset == asset:
+                    return b
+            return AssetBalance(asset=asset, available=0.0, locked=0.0)
+        except Exception as e:
+            self.logger.error(f"Failed to get futures asset balance {asset}: {e}")
+            raise
     async def place_order(
         self,
         symbol: Symbol,
@@ -119,20 +128,41 @@ class GateioPrivateFuturesRest(PrivateFuturesRest):
             contract = from_futures_symbol(symbol)
             payload: Dict[str, Any] = {"contract": contract, "side": from_side(side)}
 
-            # Map order type/time-in-force to exchange values
+            # Map order type to exchange values
             payload["type"] = from_order_type(order_type)
-            if time_in_force is not None:
-                payload["time_in_force"] = from_time_in_force(time_in_force)
+            
+            # Set time in force based on order type (following Gate.io API requirements)
+            # Note: Futures API uses 'tif' field, not 'time_in_force'
+            if order_type == OrderType.LIMIT:
+                # Limit orders: default to GTC if not specified
+                if time_in_force is None:
+                    time_in_force = TimeInForce.GTC
+                payload["tif"] = from_time_in_force(time_in_force)
+            elif order_type == OrderType.MARKET:
+                # Market orders: price of 0 with tif set to ioc represents market order
+                # Only IOC and FOK are supported for market orders
+                if time_in_force is None:
+                    time_in_force = TimeInForce.IOC
+                
+                if time_in_force in [TimeInForce.IOC, TimeInForce.FOK]:
+                    payload["tif"] = from_time_in_force(time_in_force)
 
             # Amount handling: futures commonly use 'size' field for composite quantity
             if order_type == OrderType.MARKET:
-                # Market order: size required (composite units)
+                # Market order: size required (composite units), price of 0
                 if quantity is None:
-                    if quote_quantity is not None and price:
-                        quantity = quote_quantity / price
+                    if quote_quantity is not None:
+                        if price:
+                            # Use provided price
+                            quantity = quote_quantity / price
+                        else:
+                            # For market orders without price, we need current market price
+                            # This is a limitation - market orders should ideally provide quantity directly
+                            raise ValueError("Futures market orders with quote_quantity require current price. Use quantity parameter instead.")
                     else:
-                        raise ValueError("Futures market orders require amount or (quote_quantity + price)")
+                        raise ValueError("Futures market orders require either quantity or quote_quantity with price")
                 payload["size"] = format_quantity(quantity)
+                payload["price"] = "0"  # Market orders use price of 0 with tif=ioc
             else:
                 # Limit-like orders: require amount and price
                 if quantity is None or price is None:
