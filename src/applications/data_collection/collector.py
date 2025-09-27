@@ -10,9 +10,8 @@ from datetime import datetime
 from typing import Dict, List, Optional, Set, Callable, Awaitable
 from dataclasses import dataclass
 
-from config.config_manager import get_data_collector_config
 from exchanges.structs import Symbol, BookTicker, Trade, ExchangeEnum
-from exchanges.transport_factory import create_websocket_client, PublicWebsocketHandlers
+from exchanges.factory import create_websocket_client, PublicWebsocketHandlers
 from db import BookTickerSnapshot
 from db.models import TradeSnapshot
 from .analytics import RealTimeAnalytics
@@ -359,7 +358,7 @@ class UnifiedWebSocketManager:
         try:
             for exchange, client in self._exchange_clients.items():
                 if self._connected[exchange]:
-                    await client.add_symbols(symbols)
+                    await client.subscribe(symbols)
                     self._active_symbols[exchange].update(symbols)
 
             self.logger.info(f"Added {len(symbols)} symbols to all exchanges")
@@ -381,7 +380,7 @@ class UnifiedWebSocketManager:
         try:
             for exchange, client in self._exchange_clients.items():
                 if self._connected[exchange]:
-                    await client.remove_symbols(symbols)
+                    await client.unsubscribe(symbols)
                     self._active_symbols[exchange].difference_update(symbols)
 
             # Remove from cache

@@ -166,7 +166,7 @@ from exchanges.mexc.rest.mexc_private import MexcPrivateSpotRest
 private = MexcPrivateSpotRest(api_key="key", secret_key="secret")
 
 # Get account balances
-balances = await private.get_account_balance()
+balances = await private.get_balances()
 btc_balance = await private.get_asset_balance(AssetName("BTC"))
 
 # Place limit order
@@ -174,7 +174,7 @@ order = await private.place_order(
     symbol=Symbol(base=AssetName("BTC"), quote=AssetName("USDT")),
     side=Side.BUY,
     order_type=OrderType.LIMIT,
-    amount=0.001,
+    quantity=0.001,
     price=50000.0,
     time_in_force=TimeInForce.GTC
 )

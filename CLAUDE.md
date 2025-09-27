@@ -35,11 +35,11 @@ This is a **high-frequency trading (HFT) arbitrage engine** built for profession
 
 The system follows **balanced architectural principles** detailed in specialized documentation:
 
-1. **[Pragmatic SOLID Principles](docs/patterns/pragmatic-solid-principles.md)** - Balanced application prioritizing value over dogma
-2. **[LEAN Development Methodology](docs/development/lean-development-methodology.md)** - Implement necessity, avoid speculation
-3. **[Exception Handling Patterns](docs/patterns/exception-handling-patterns.md)** - Simplified, composed error handling
-4. **[Struct-First Data Policy](docs/data/struct-first-policy.md)** - msgspec.Struct over dict for all modeling
-5. **[HFT Performance Requirements](docs/performance/hft-requirements-compliance.md)** - Sub-millisecond targets throughout
+1. **[Pragmatic SOLID Principles](specs/patterns/pragmatic-solid-principles.md)** - Balanced application prioritizing value over dogma
+2. **[LEAN Development Methodology](specs/patterns/lean-development-methodology.md)** - Implement necessity, avoid speculation
+3. **[Exception Handling Patterns](specs/patterns/exception-handling-patterns.md)** - Simplified, composed error handling
+4. **[Struct-First Data Policy](specs/data/struct-first-policy.md)** - msgspec.Struct over dict for all modeling
+5. **[HFT Performance Requirements](specs/performance/hft-requirements-compliance.md)** - Sub-millisecond targets throughout
 
 ### **Separated Domain Architecture**
 
@@ -48,11 +48,11 @@ The system uses **complete domain separation** between public and private exchan
 **FullExchangeFactory** → **CompositePublicExchange** (parallel to) **CompositePrivateExchange** → **Exchange Implementations** → **Domain-Specific Data Structures**
 
 **Core Components:**
-- **[CompositePublicExchange](docs/architecture/composite-exchange-architecture.md)** - Pure market data interface
-- **[CompositePrivateExchange](docs/architecture/composite-exchange-architecture.md)** - Pure trading operations interface
-- **[FullExchangeFactory](docs/architecture/composite-exchange-architecture.md)** - Factory for creating separate domain instances
-- **[Infrastructure Foundation](docs/infrastructure/)** - Shared networking, logging, and configuration systems
-- **[Domain Data Structures](docs/data/struct-first-policy.md)** - msgspec.Struct types specific to each domain
+- **[CompositePublicExchange](specs/architecture/unified-exchange-architecture.md)** - Pure market data interface
+- **[CompositePrivateExchange](specs/architecture/unified-exchange-architecture.md)** - Pure trading operations interface
+- **[Unified Exchange Factory](docs/factory/unified-exchange-factory.md)** - Single entry point for all exchange components
+- **[Networking Infrastructure](specs/networking/)** - High-performance REST and WebSocket systems
+- **[Domain Data Structures](specs/data/struct-first-policy.md)** - msgspec.Struct types specific to each domain
 
 ### **Separated Domain Interface Hierarchy**
 
@@ -78,57 +78,63 @@ CompositePrivateExchange (trading domain - requires authentication)
 - **Security**: Trading operations completely isolated from market data
 - **HFT Optimized**: Sub-50ms execution targets in both domains
 
-### **Separated Domain Factory Pattern**
+### **Unified Exchange Factory Pattern**
 
-**Independent Exchange Creation with Domain Separation**:
+**Single Entry Point for All Exchange Components**:
 
 ```python
-from exchanges.full_exchange_factory import FullExchangeFactory
+from exchanges.factory import create_exchange_component
 from exchanges.structs.common import Symbol
+from exchanges.structs.enums import ExchangeEnum
 
-# Create factory
-factory = FullExchangeFactory()
-
-# Create public exchange (market data domain only)
-public_exchange = await factory.create_public_exchange(
-    exchange_name='mexc_spot',
-    symbols=[Symbol('BTC', 'USDT')]
+# Unified factory with explicit component selection
+# REST client for direct API integration
+rest_client = create_exchange_component(
+    exchange=ExchangeEnum.MEXC,
+    config=mexc_config,
+    component_type='rest',
+    is_private=False
 )
-# public_exchange provides: orderbooks, trades, tickers, symbol_info
-# public_exchange does NOT provide: balances, orders, positions
 
-# Create private exchange (trading domain only)  
-private_exchange = await factory.create_private_exchange(
-    exchange_name='mexc_spot'
+# WebSocket client for real-time streaming  
+ws_client = create_exchange_component(
+    exchange=ExchangeEnum.MEXC,
+    config=mexc_config,
+    component_type='websocket',
+    is_private=False,
+    handlers=public_handlers
 )
-# private_exchange provides: orders, balances, positions, leverage
-# private_exchange does NOT provide: orderbooks, trades, market data
 
-# Create both domains separately (NO inheritance relationship)
-public, private = await factory.create_exchange_pair(
-    exchange_name='mexc_spot',
-    symbols=[Symbol('BTC', 'USDT')]
+# Full composite exchange for trading operations
+trading_exchange = create_exchange_component(
+    exchange=ExchangeEnum.MEXC,
+    config=mexc_config,
+    component_type='composite',
+    is_private=True  # Requires credentials
 )
-# public and private are completely independent instances
-# Only symbol_info configuration is shared, never real-time data
 
-# Create multiple separated domain pairs
-exchanges = await factory.create_multiple_exchange_pairs(
-    exchange_names=['mexc_spot', 'gateio_spot'],
-    symbols=[Symbol('BTC', 'USDT'), Symbol('ETH', 'USDT')]
+# Separated domain pair for HFT systems
+public_exchange, private_exchange = create_exchange_component(
+    exchange=ExchangeEnum.MEXC,
+    config=mexc_config,
+    component_type='pair'  # Returns both domains separately
 )
+# public_exchange: market data only (orderbooks, trades, tickers)
+# private_exchange: trading operations only (orders, balances, positions)
+# Complete isolation with no inheritance relationship
 ```
 
-**Separated Domain Factory Benefits**:
-- **Pure Domain Creation**: Each interface handles only its domain
-- **No Cross-Domain Dependencies**: Public and private are completely independent
-- **Configuration Isolation**: Only static config (symbol_info) shared
-- **Authentication Boundary**: Credentials only needed for private domain
-- **Independent Optimization**: Each domain optimized for its specific operations
+**Unified Factory Benefits**:
+- **Single Entry Point**: One factory for all exchange components eliminates confusion
+- **Explicit Component Selection**: Clear `component_type` parameter ('rest', 'websocket', 'composite', 'pair')
+- **Type Safety**: Comprehensive validation prevents runtime errors
+- **Performance Optimized**: <1ms component creation with intelligent caching
+- **Separated Domain Support**: Complete isolation between public/private domains
+- **Backward Compatible**: Existing code continues to work via convenience functions
 
 ### **HFT Logging System**
 
-Comprehensive high-performance logging architecture designed for sub-millisecond trading operations. Full details in **[HFT Logging System](docs/infrastructure/hft-logging-system.md)**.
+Comprehensive high-performance logging architecture designed for sub-millisecond trading operations. Full details in **[Configuration Integration](specs/configuration/hft-logging-integration-spec.md)**.
 
 **Performance Specifications Achieved**:
 - **Latency**: 1.16μs average (target: <1ms) ✅
@@ -144,6 +150,50 @@ Comprehensive high-performance logging architecture designed for sub-millisecond
 - **Performance tracking** with LoggingTimer context manager
 - **Multi-backend system** supporting console, file, Prometheus, audit trails
 
+## Exchange Integration Architecture
+
+### **Production Exchange Integrations**
+
+The system provides comprehensive integrations for major cryptocurrency exchanges with separated domain architecture:
+
+#### **MEXC Exchange Integration**
+- **Type**: Spot trading with Protocol Buffer optimization
+- **Performance**: <50ms latency, extensive protobuf message support
+- **Features**: Binary message parsing, object pooling (75% allocation reduction), high-frequency optimizations
+- **Documentation**: [MEXC Integration Specification](specs/integrations/mexc/mexc-integration-specification.md)
+
+**Key MEXC Capabilities**:
+- **Protocol Buffer Support**: 15+ protobuf message types for ultra-fast parsing
+- **Dual Format Handling**: Automatic JSON/protobuf detection and processing
+- **HFT Optimizations**: Symbol conversion caching (90% performance improvement), connection pooling
+- **Custom Connection Strategy**: Minimal headers to avoid blocking, 30s ping intervals
+- **Error Recovery**: Specialized 1005 error handling, exponential backoff
+
+#### **Gate.io Exchange Integration**
+- **Type**: Spot + Futures trading with comprehensive market support
+- **Performance**: <50ms latency, >99% connection stability
+- **Features**: Dual market support, leverage management, funding rate tracking
+- **Documentation**: [Gate.io Integration Specification](specs/integrations/gateio/gateio-integration-specification.md)
+
+**Key Gate.io Capabilities**:
+- **Dual Market Support**: Complete spot and futures implementations
+- **Futures Features**: Position management, leverage control (up to 100x), funding rate tracking
+- **Advanced Data**: Mark prices, index prices, open interest, liquidation feeds
+- **Stable Connectivity**: Custom ping/pong, compression support, fewer 1005 errors
+- **Risk Management**: Position limits, margin tracking, reduce-only orders
+
+#### **Common Integration Patterns**
+- **Documentation**: [Integration Patterns Specification](specs/integrations/common/integration-patterns-specification.md)
+- **Strategy Patterns**: Connection, retry, message parsing, authentication strategies
+- **Performance Patterns**: Object pooling, caching, connection management
+- **Testing Patterns**: Integration tests, performance benchmarks, health monitoring
+
+**Integration Architecture Benefits**:
+- **Consistent API**: Unified interface across all exchanges
+- **Exchange-Specific Optimizations**: Tailored for each exchange's characteristics
+- **Performance Compliance**: HFT-optimized with sub-millisecond targets
+- **Extensibility**: Standardized patterns for adding new exchanges
+
 ## Architecture Documentation Structure
 
 ### **Comprehensive Documentation Suite**
@@ -151,43 +201,51 @@ Comprehensive high-performance logging architecture designed for sub-millisecond
 The architecture is fully documented across specialized files:
 
 #### **Core Architecture**
-- **[Composite Exchange Architecture](docs/architecture/composite-exchange-architecture.md)** - Complete composite interface design
-- **[System Architecture](docs/architecture/system-architecture.md)** - High-level system design and component relationships  
-- **[Component Architecture](docs/architecture/component-architecture.md)** - Individual component designs
+- **[System Architecture](specs/architecture/system-architecture.md)** - High-level system design and component relationships  
+- **[Unified Exchange Architecture](specs/architecture/unified-exchange-architecture.md)** - Complete separated domain interface design
+
+#### **Configuration Management**
+- **[Configuration System Overview](specs/configuration/README.md)** - Complete configuration management system
+- **[Core Configuration Manager](specs/configuration/core-configuration-manager-spec.md)** - Primary configuration orchestrator
+- **[Exchange Configuration](specs/configuration/exchange-configuration-spec.md)** - Exchange-specific settings
+- **[Database Configuration](specs/configuration/database-configuration-spec.md)** - Database and data collection
+- **[Network Configuration](specs/configuration/network-configuration-spec.md)** - Network and transport layer
+- **[HFT Logging Integration](specs/configuration/hft-logging-integration-spec.md)** - High-performance logging
 
 #### **Development Patterns**
-- **[Pragmatic SOLID Principles](docs/patterns/pragmatic-solid-principles.md)** - Balanced SOLID implementation
-- **[Factory Pattern Implementation](docs/patterns/factory-pattern.md)** - Unified factory design
-- **[Exception Handling Patterns](docs/patterns/exception-handling-patterns.md)** - Simplified error handling
+- **[Pragmatic SOLID Principles](specs/patterns/pragmatic-solid-principles.md)** - Balanced SOLID implementation
+- **[Factory Pattern Implementation](specs/patterns/factory-pattern.md)** - Unified factory design
+- **[Exception Handling Patterns](specs/patterns/exception-handling-patterns.md)** - Simplified error handling
+- **[LEAN Development Methodology](specs/patterns/lean-development-methodology.md)** - Development approach
 
 #### **Performance & HFT**  
-- **[HFT Requirements Compliance](docs/performance/hft-requirements-compliance.md)** - Complete performance specifications
-- **[Performance Benchmarks](docs/performance/benchmarks.md)** - Achieved performance metrics
-- **[Caching Policy](docs/performance/caching-policy.md)** - Critical trading safety rules
+- **[HFT Requirements Compliance](specs/performance/hft-requirements-compliance.md)** - Complete performance specifications
+- **[Caching Policy](specs/performance/caching-policy.md)** - Critical trading safety rules
+- **[HFT Compliance](specs/performance/hft-compliance.md)** - Performance validation
 
-#### **Infrastructure**
-- **[HFT Logging System](docs/infrastructure/hft-logging-system.md)** - High-performance logging architecture
-- **[Configuration System](docs/configuration/configuration-system.md)** - Unified configuration management
-- **[Networking Infrastructure](docs/infrastructure/networking.md)** - REST and WebSocket foundations
-
-#### **Data & Development**
-- **[Struct-First Data Policy](docs/data/struct-first-policy.md)** - msgspec.Struct standards
-- **[LEAN Development Methodology](docs/development/lean-development-methodology.md)** - Development approach
-- **[Integration Workflows](docs/workflows/)** - Step-by-step integration processes
+#### **Data & Workflows**
+- **[Struct-First Data Policy](specs/data/struct-first-policy.md)** - msgspec.Struct standards
+- **[Integration Workflows](specs/workflows/)** - Step-by-step integration processes
 
 ## Quick Reference
 
 ### **Getting Started**
 1. Read **[PROJECT_GUIDES.md](PROJECT_GUIDES.md)** - Mandatory development rules
-2. Review **[Composite Exchange Architecture](docs/architecture/composite-exchange-architecture.md)** - Core system design
-3. Check **[HFT Requirements Compliance](docs/performance/hft-requirements-compliance.md)** - Performance targets
-4. Follow **[LEAN Development Methodology](docs/development/lean-development-methodology.md)** - Development approach
+2. Review **[Unified Exchange Architecture](specs/architecture/unified-exchange-architecture.md)** - Core system design
+3. Check **[HFT Requirements Compliance](specs/performance/hft-requirements-compliance.md)** - Performance targets
+4. Follow **[LEAN Development Methodology](specs/patterns/lean-development-methodology.md)** - Development approach
 
 ### **Common Tasks**
-- **Adding New Exchange**: [Exchange Integration Workflow](docs/workflows/exchange-integration.md)
-- **Performance Optimization**: [HFT Compliance Guide](docs/performance/hft-requirements-compliance.md)
-- **Configuration Changes**: [Configuration System](docs/configuration/configuration-system.md)
-- **Debugging Issues**: [Exception Handling Patterns](docs/patterns/exception-handling-patterns.md)
+- **Adding New Exchange**: [Exchange Integration Workflow](specs/workflows/exchange-integration.md)
+- **Performance Optimization**: [HFT Compliance Guide](specs/performance/hft-requirements-compliance.md)
+- **Configuration Changes**: [Configuration System](specs/configuration/README.md)
+- **Debugging Issues**: [Exception Handling Patterns](specs/patterns/exception-handling-patterns.md)
+
+### **Exchange Integration References**
+- **MEXC Integration**: [Complete MEXC Specification](specs/integrations/mexc/mexc-integration-specification.md)
+- **Gate.io Integration**: [Complete Gate.io Specification](specs/integrations/gateio/gateio-integration-specification.md)
+- **Integration Patterns**: [Common Patterns & Strategies](specs/integrations/common/integration-patterns-specification.md)
+- **Adding New Exchanges**: Follow common patterns specification for consistency
 
 ### **Key Implementation Rules**
 - **Separated Domain Architecture**: Public (market data) and private (trading) are completely isolated
@@ -214,7 +272,7 @@ The architecture is fully documented across specialized files:
 
 **RATIONALE**: Caching real-time data causes stale price execution, failed arbitrage, phantom liquidity, and compliance violations. This rule supersedes ALL performance considerations.
 
-See **[Caching Policy](docs/performance/caching-policy.md)** for complete safety guidelines.
+See **[Caching Policy](specs/performance/caching-policy.md)** for complete safety guidelines.
 
 ## Component Reference
 
@@ -235,24 +293,24 @@ See **[Caching Policy](docs/performance/caching-policy.md)** for complete safety
 - Completely separate from public implementations with no inheritance
 
 **Infrastructure Foundation**:
-- **[HFT Logging System](docs/infrastructure/hft-logging-system.md)** - Sub-millisecond logging
-- **[Networking Infrastructure](docs/infrastructure/networking.md)** - REST/WebSocket foundations
-- **[Configuration System](docs/configuration/configuration-system.md)** - Unified config management
+- **[HFT Logging Integration](specs/configuration/hft-logging-integration-spec.md)** - Sub-millisecond logging
+- **[Network Configuration](specs/configuration/network-configuration-spec.md)** - REST/WebSocket foundations
+- **[Configuration System](specs/configuration/README.md)** - Unified config management
 
 ### **Documentation Navigation**
 
 **By User Type**:
-- **Developers**: [System Architecture](docs/architecture/system-architecture.md) → [Integration Workflows](docs/workflows/exchange-integration.md)
-- **Architects**: [Separated Domain Architecture](docs/architecture/composite-exchange-architecture.md) → [SOLID Principles](docs/patterns/pragmatic-solid-principles.md)
-- **DevOps**: [Configuration System](docs/configuration/configuration-system.md) → [Performance Monitoring](docs/performance/benchmarks.md)
+- **Developers**: [System Architecture](specs/architecture/system-architecture.md) → [Integration Workflows](specs/workflows/exchange-integration.md)
+- **Architects**: [Separated Domain Architecture](specs/architecture/unified-exchange-architecture.md) → [SOLID Principles](specs/patterns/pragmatic-solid-principles.md)
+- **DevOps**: [Configuration System](specs/configuration/README.md) → [Performance Monitoring](specs/performance/hft-requirements-compliance.md)
 
 **By Topic**:
-- **Performance**: [HFT Compliance](docs/performance/hft-requirements-compliance.md) → [Benchmarks](docs/performance/benchmarks.md)
-- **Integration**: [Exchange Integration](docs/workflows/exchange-integration.md) → [Factory Patterns](docs/patterns/factory-pattern.md)
-- **Development**: [LEAN Methodology](docs/development/lean-development-methodology.md) → [Exception Handling](docs/patterns/exception-handling-patterns.md)
+- **Performance**: [HFT Compliance](specs/performance/hft-requirements-compliance.md) → [Caching Policy](specs/performance/caching-policy.md)
+- **Integration**: [Exchange Integration](specs/workflows/exchange-integration.md) → [Factory Patterns](specs/patterns/factory-pattern.md)
+- **Development**: [LEAN Methodology](specs/patterns/lean-development-methodology.md) → [Exception Handling](specs/patterns/exception-handling-patterns.md)
 
 ---
 
-*This architectural overview reflects the current separated domain architecture where public and private interfaces are completely isolated with no inheritance or overlap. For detailed implementation guidance, see the comprehensive documentation suite in the [docs/](docs/) directory.*
+*This architectural overview reflects the current separated domain architecture where public and private interfaces are completely isolated with no inheritance or overlap. For detailed implementation guidance, see the comprehensive specification suite in the [specs/](specs/) directory.*
 
 **Last Updated**: September 2025 - Post-Separated Domain Architecture Implementation

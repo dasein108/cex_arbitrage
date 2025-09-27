@@ -1,5 +1,5 @@
 from typing import TYPE_CHECKING
-from .rest_transport_manager import RestTransportManager
+from .rest_manager import RestManager
 from .strategies.strategy_set import RestStrategySet
 from infrastructure.utils.exchange_utils import exchange_name_to_enum
 from exchanges.structs.enums import ExchangeEnum
@@ -12,7 +12,7 @@ def create_rest_transport_manager(
         exchange_config: 'ExchangeConfig',
         is_private: bool = False,
         **kwargs
-) -> RestTransportManager:
+) -> RestManager:
     """
     Factory function to create RestTransportManager with direct strategy instantiation.
 
@@ -114,4 +114,4 @@ def create_rest_transport_manager(
     )
 
     # Create and return transport manager
-    return RestTransportManager(strategy_set)
+    return RestManager(strategy_set)

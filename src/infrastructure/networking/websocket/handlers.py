@@ -29,7 +29,7 @@ class PublicWebsocketHandlers:
     # Market data handlers
     orderbook_handler: Optional[Callable[[OrderBook], Awaitable[None]]] = None
     ticker_handler: Optional[Callable[[Ticker], Awaitable[None]]] = None
-    trades_handler: Optional[Callable[[Trade], Awaitable[None]]] = None  
+    trade_handler: Optional[Callable[[Trade], Awaitable[None]]] = None
     kline_handler: Optional[Callable[[Kline], Awaitable[None]]] = None
     book_ticker_handler: Optional[Callable[[BookTicker], Awaitable[None]]] = None
     
@@ -57,8 +57,8 @@ class PublicWebsocketHandlers:
     
     async def handle_trades(self, trade: Trade) -> None:
         """Handle trade data."""
-        if self.trades_handler:
-            await self.trades_handler(trade)
+        if self.trade_handler:
+            await self.trade_handler(trade)
     
     async def handle_klines(self, kline: Kline) -> None:
         """Handle kline data."""

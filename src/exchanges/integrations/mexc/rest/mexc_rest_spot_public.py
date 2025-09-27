@@ -44,7 +44,9 @@ from exchanges.integrations.mexc.services.symbol_mapper import MexcSymbol
 from config.structs import ExchangeConfig
 from infrastructure.networking.http.structs import HTTPMethod
 from common.iterators import time_range_iterator
-
+# Inline utility function to avoid import issues
+def get_minimal_step(precision: int) -> float:
+    return 10**-precision
 
 class MexcPublicSpotRest(PublicSpotRest):
     """
@@ -135,24 +137,20 @@ class MexcPublicSpotRest(PublicSpotRest):
                 is_futures=False
             )
             
-            # Filter out unsupported symbols (quote assets not supported)
-            from exchanges.integrations.mexc.services.symbol_mapper import is_supported_symbol
-            if not is_supported_symbol(symbol):
-                filtered_count += 1
-                continue
-            
             base_prec, quote_prec, min_quote, min_base = self._extract_symbol_precision(mexc_symbol)
             
             symbol_info = SymbolInfo(
                 symbol=symbol,
                 base_precision=base_prec,
                 quote_precision=quote_prec,
-                min_base_amount=min_base,
-                min_quote_amount=min_quote,
+                min_base_quantity=min_base,
+                min_quote_quantity=min_quote,
                 is_futures=False,
                 maker_commission=float(mexc_symbol.makerCommission),
                 taker_commission=float(mexc_symbol.takerCommission),
-                inactive=mexc_symbol.status != '1'
+                inactive=mexc_symbol.status != '1',
+                step=get_minimal_step(mexc_symbol.baseAssetPrecision),
+                tick=get_minimal_step(mexc_symbol.quoteAssetPrecision)
             )
             
             symbol_info_map[symbol] = symbol_info

@@ -24,7 +24,7 @@ class WithdrawalInterface(ABC):
     """
 
     @abstractmethod
-    async def get_currency_info(self) -> Dict[AssetName, AssetInfo]:
+    async def get_assets_info(self) -> Dict[AssetName, AssetInfo]:
         """
         Get currency information including deposit/withdrawal status and network details.
 
@@ -115,7 +115,7 @@ class WithdrawalInterface(ABC):
             ValueError: If validation fails
         """
         # Get currency info for validation
-        currency_info = await self.get_currency_info()
+        currency_info = await self.get_assets_info()
         asset_info = currency_info.get(request.asset)
 
         if not asset_info:
@@ -166,7 +166,7 @@ class WithdrawalInterface(ABC):
         Returns:
             Dictionary with 'min', 'max', and 'fee' limits
         """
-        currency_info = await self.get_currency_info()
+        currency_info = await self.get_assets_info()
         asset_info = currency_info.get(asset)
 
         if not asset_info:

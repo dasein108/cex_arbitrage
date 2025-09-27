@@ -95,7 +95,7 @@ class GateioPublicFuturesWebsocket(PublicFuturesWebsocket):
         await super().initialize(symbols, channels)
 
     # Enhanced symbol management using symbol-channel mapping
-    async def add_symbols(self, symbols: List[Symbol]) -> None:
+    async def subscribe(self, symbols: List[Symbol]) -> None:
         """Add futures symbols for subscription using enhanced symbol-channel mapping."""
         if not symbols:
             return
@@ -108,7 +108,7 @@ class GateioPublicFuturesWebsocket(PublicFuturesWebsocket):
 
         self.logger.info(f"Added {len(symbols)} futures symbols: {[str(s) for s in symbols]}")
     
-    async def remove_symbols(self, symbols: List[Symbol]) -> None:
+    async def unsubscribe(self, symbols: List[Symbol]) -> None:
         """Remove futures symbols from subscription using enhanced symbol-channel mapping."""
         if not symbols:
             return

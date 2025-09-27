@@ -375,6 +375,7 @@ All exchange implementations MUST:
 ### Exchange Implementation Pattern
 
 #### 1. Data Structure Mapping
+
 ```python
 # Map exchange-specific data to unified structures
 def transform_exchange_order_to_unified(exchange_order) -> Order:
@@ -383,7 +384,7 @@ def transform_exchange_order_to_unified(exchange_order) -> Order:
         side=map_exchange_side(exchange_order.side),
         order_type=map_exchange_order_type(exchange_order.type),
         price=float(exchange_order.price),
-        amount=float(exchange_order.quantity),
+        amount=float(exchange_order.quantity_usdt),
         # ... other fields
     )
 ```
@@ -467,7 +468,7 @@ async def test_end_to_end_trading():
         symbol=symbol,
         side=Side.BUY,
         order_type=OrderType.LIMIT,
-        amount=0.001,
+        quantity=0.001,
         price=50000.0
     )
     assert order.status == OrderStatus.NEW

@@ -43,7 +43,7 @@ from exchanges.integrations.gateio.utils import (
     to_pair, from_side, from_order_type, format_quantity, format_price, 
     from_time_in_force, to_order_status, rest_to_order, rest_to_balance
 )
-
+from exchanges.integrations.gateio.structs.exchange import GateioCurrencyResponse
 
 class GateioPrivateSpotRest(PrivateSpotRest):
     """
@@ -52,6 +52,10 @@ class GateioPrivateSpotRest(PrivateSpotRest):
     Provides access to authenticated trading endpoints without WebSocket features.
     Optimized for high-frequency trading operations with minimal overhead.
     """
+
+    async def get_assets_info(self) -> Dict[AssetName, AssetInfo]:
+        # TODO: Implement asset info retrieval
+        return {}
 
     def __init__(self, config: ExchangeConfig, logger=None):
         """
@@ -83,7 +87,7 @@ class GateioPrivateSpotRest(PrivateSpotRest):
 
     # Authentication is now handled automatically by the transport system
 
-    async def get_account_balance(self) -> List[AssetBalance]:
+    async def get_balances(self) -> List[AssetBalance]:
         """
         Get account balance for all assets.
         
@@ -142,7 +146,7 @@ class GateioPrivateSpotRest(PrivateSpotRest):
             AssetBalance object or None if asset not found
         """
         try:
-            balances = await self.get_account_balance()
+            balances = await self.get_balances()
             
             for balance in balances:
                 if balance.asset == asset:
@@ -164,7 +168,7 @@ class GateioPrivateSpotRest(PrivateSpotRest):
         symbol: Symbol,
         side: Side,
         order_type: OrderType,
-        amount: Optional[float] = None,
+        quantity: Optional[float] = None,
         price: Optional[float] = None,
         quote_quantity: Optional[float] = None,
         time_in_force: Optional[TimeInForce] = None,
@@ -179,7 +183,7 @@ class GateioPrivateSpotRest(PrivateSpotRest):
             symbol: Trading symbol
             side: Order side (BUY/SELL)
             order_type: Order type (LIMIT/MARKET)
-            amount: Order quantity in exchanges asset
+            quantity: Order quantity in exchanges asset
             price: Order price (required for limit orders)
             quote_quantity: Order quantity in quote asset (for market buys)
             time_in_force: Time in force (GTC/IOC/FOK)
@@ -201,13 +205,13 @@ class GateioPrivateSpotRest(PrivateSpotRest):
                 "symbol": f"{symbol.base}/{symbol.quote}",
                 "side": side.name,
                 "order_type": order_type.name,
-                "amount": amount,
+                "qunatity": quantity,
                 "price": price
             }
         )
         
         async def _place_order_operation():
-            return await self._execute_place_order(symbol, side, order_type, amount, price, quote_quantity, time_in_force, new_order_resp_type)
+            return await self._execute_place_order(symbol, side, order_type, quantity, price, quote_quantity, time_in_force, new_order_resp_type)
         
         return await self._rest_error_handler.handle_with_retry(
             operation=_place_order_operation,
@@ -225,11 +229,19 @@ class GateioPrivateSpotRest(PrivateSpotRest):
             'type': from_order_type(order_type)
         }
         
-        # Set time in force
-        if time_in_force is None:
-            time_in_force = TimeInForce.GTC
-        payload['time_in_force'] = from_time_in_force(time_in_force)
-        
+        # Set time in force (only for limit orders - Gate.io market orders don't support time_in_force)
+        if order_type == OrderType.LIMIT:
+            if time_in_force is None:
+                time_in_force = TimeInForce.GTC
+            payload['time_in_force'] = from_time_in_force(time_in_force)
+        elif order_type == OrderType.MARKET:
+            # Market orders only support IOC and FOK, and only when explicitly specified
+            if time_in_force is None:
+                time_in_force = TimeInForce.IOC
+
+            if time_in_force in [TimeInForce.IOC, TimeInForce.FOK]:
+                payload['time_in_force'] = from_time_in_force(time_in_force)
+
         # Handle different order configurations
         if order_type == OrderType.MARKET:
             if side == Side.BUY:
@@ -455,7 +467,7 @@ class GateioPrivateSpotRest(PrivateSpotRest):
         self,
         symbol: Symbol,
         order_id: OrderId,
-        amount: Optional[float] = None,
+        qunatity: Optional[float] = None,
         price: Optional[float] = None,
         quote_quantity: Optional[float] = None,
         time_in_force: Optional[TimeInForce] = None,
@@ -470,7 +482,7 @@ class GateioPrivateSpotRest(PrivateSpotRest):
         Args:
             symbol: Trading symbol
             order_id: Order ID to modify
-            amount: New order amount
+            qunatity: New order amount
             price: New order price
             quote_quantity: New quote quantity
             time_in_force: New time in force
@@ -618,7 +630,6 @@ class GateioPrivateSpotRest(PrivateSpotRest):
             # Could be fetched separately if needed
             
             trading_fee = TradingFee(
-                exchange=self.exchange,
                 maker_rate=maker_rate,
                 taker_rate=taker_rate,
                 spot_maker=maker_rate,
@@ -838,6 +849,3 @@ class GateioPrivateSpotRest(PrivateSpotRest):
             self.logger.info("Closed Gate.io private REST client")
         except Exception as e:
             self.logger.error(f"Error closing private REST client: {e}")
-
-    def __repr__(self) -> str:
-        return f"GateioPrivateExchange(base_url={self.base_url})"

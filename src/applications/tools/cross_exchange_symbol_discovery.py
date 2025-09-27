@@ -33,9 +33,9 @@ sys.path.insert(0, str(project_root))
 
 # Direct imports from src directory
 from exchanges.structs import Symbol, SymbolInfo, ExchangeEnum, ExchangeName, AssetName
-from exchanges.integrations.mexc.rest.mexc_rest_public import MexcPublicSpotRest
-from exchanges.integrations.gateio.rest.gateio_rest_public import GateioPublicSpotRest
-from exchanges.integrations.gateio.rest.gateio_futures_public import GateioPublicFuturesRest
+from exchanges.integrations.mexc.rest.mexc_rest_spot_public import MexcPublicSpotRest
+from exchanges.integrations.gateio.rest.gateio_rest_spot_public import GateioPublicSpotRest
+from exchanges.integrations.gateio.rest.gateio_rest_futures_public import GateioPublicFuturesRest
 from infrastructure.exceptions.exchange import ExchangeRestError
 
 
@@ -107,8 +107,8 @@ async def fetch_mexc_futures_symbols() -> Dict[Symbol, SymbolInfo]:
                             symbol=symbol,
                             base_precision=amount_scale,
                             quote_precision=price_scale,
-                            min_quote_amount=min_quote_amount,
-                            min_base_amount=min_vol,
+                            min_quote_quantity=min_quote_amount,
+                            min_base_quantity=min_vol,
                             is_futures=True,
                             maker_commission=maker_fee,
                             taker_commission=taker_fee,
@@ -504,13 +504,13 @@ class SymbolDiscoveryEngine:
                     exchanges_info[str(exchange_market)] = {
                         'base_precision': info.base_precision,
                         'quote_precision': info.quote_precision,
-                        'min_quote_amount': info.min_quote_amount,
-                        'min_base_amount': info.min_base_amount,
+                        'min_quote_amount': info.min_quote_quantity,
+                        'min_base_amount': info.min_base_quantity,
                         'maker_fee': info.maker_commission,
                         'taker_fee': info.taker_commission,
                         'inactive': info.inactive
                     }
-                    min_quotes.append(info.min_quote_amount)
+                    min_quotes.append(info.min_quote_quantity)
                     # Ensure precisions are integers, handle decimal precision values
                     try:
                         if isinstance(info.base_precision, str) and '.' in info.base_precision:

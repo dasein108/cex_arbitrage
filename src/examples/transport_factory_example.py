@@ -8,7 +8,7 @@ for creating WebSocket and REST clients.
 import asyncio
 from exchanges.structs import ExchangeEnum
 from config.structs import ExchangeConfig, ExchangeCredentials
-from exchanges.transport_factory import (
+from exchanges.factory import (
     create_rest_client,
     create_public_handlers,
     create_private_handlers
@@ -124,7 +124,7 @@ async def main():
     
     # Direct handler creation
     public_handlers_direct = PublicWebsocketHandlers(
-        trades_handler=example_handler_trades,
+        trade_handler=example_handler_trades,
         book_ticker_handler=None  # Optional handlers
     )
     

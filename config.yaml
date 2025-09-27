@@ -5,7 +5,7 @@
 environment:
   name: dev  # dev, prod, test
   debug: true
-  log_level: DEBUG  # CRITICAL, ERROR, WARNING, INFO, DEBUG
+  log_level: INFO  # CRITICAL, ERROR, WARNING, INFO, DEBUG
 
 # Logging configuration
 logging:

@@ -4,7 +4,7 @@ from typing import Optional, List
 from exchanges.interfaces.composite.spot.base_private_spot_composite import CompositePrivateExchange
 from exchanges.interfaces.rest.spot.rest_spot_private import PrivateSpotRest
 from exchanges.interfaces.ws.spot.ws_spot_private import PrivateSpotWebsocket
-from exchanges.integrations.mexc.rest.mexc_rest_private import MexcPrivateSpotRest
+from exchanges.integrations.mexc.rest.mexc_rest_spot_private import MexcPrivateSpotRest
 from exchanges.integrations.mexc.ws.mexc_ws_private import MexcPrivateSpotWebsocket
 from exchanges.structs.common import Symbol, Order, WithdrawalRequest, WithdrawalResponse
 from exchanges.structs.types import AssetName
@@ -45,7 +45,7 @@ class MexcCompositePrivateExchange(CompositePrivateExchange):
 
     # WebSocket Handler Implementation
     
-    async def _get_websocket_handlers(self) -> PrivateWebsocketHandlers:
+    def _get_websocket_handlers(self) -> PrivateWebsocketHandlers:
         """Get private WebSocket handlers for MEXC."""
         return PrivateWebsocketHandlers(
             order_handler=self._order_handler,
@@ -57,9 +57,10 @@ class MexcCompositePrivateExchange(CompositePrivateExchange):
         """Place a limit order via MEXC REST API."""
         return await self._private_rest.place_order(symbol, side, OrderType.LIMIT, quantity, price, **kwargs)
 
-    async def place_market_order(self, symbol: Symbol, side: Side, quantity: float, **kwargs) -> Order:
+    async def place_market_order(self, symbol: Symbol, side: Side, quote_quantity: float, **kwargs) -> Order:
         """Place a market order via MEXC REST API."""
-        return await self._private_rest.place_order(symbol, side, OrderType.MARKET, quantity, **kwargs)
+        return await self._private_rest.place_order(symbol, side, OrderType.MARKET,
+                                                    quote_quantity=quote_quantity, **kwargs)
 
     async def withdraw(self, request: WithdrawalRequest) -> WithdrawalResponse:
         """Submit a withdrawal request via MEXC REST API."""

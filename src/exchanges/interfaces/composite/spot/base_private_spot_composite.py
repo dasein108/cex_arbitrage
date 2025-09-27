@@ -11,7 +11,7 @@ import asyncio
 from abc import abstractmethod
 from typing import Dict, List, Optional, Any, Callable, Awaitable, Union
 from exchanges.structs.common import (
-    Symbol, AssetBalance, Order, Position, WithdrawalRequest, WithdrawalResponse, SymbolsInfo
+    Symbol, AssetBalance, Order, AssetInfo, WithdrawalRequest, WithdrawalResponse, SymbolsInfo
 )
 from exchanges.structs.types import AssetName, OrderId
 from exchanges.structs import Side, OrderStatus, Trade
@@ -40,7 +40,8 @@ class CompositePrivateExchange(BaseCompositeExchange):
     functionality on top of market data operations.
     """
 
-    def __init__(self, config: ExchangeConfig, logger: Optional[HFTLoggerInterface] = None):
+    def __init__(self, config: ExchangeConfig, logger: Optional[HFTLoggerInterface] = None,
+                 handlers: Optional[PrivateWebsocketHandlers] = PrivateWebsocketHandlers()) -> None:
         """
         Initialize private exchange interface.
         
@@ -49,8 +50,9 @@ class CompositePrivateExchange(BaseCompositeExchange):
             logger: Optional injected HFT logger (auto-created if not provided)
         """
         super().__init__(config=config, is_private=True, logger=logger)
-
+        self.handlers = handlers
         self._tag = f'{config.name}_private'
+        self._assets_info: Dict[AssetName, AssetInfo] = {}
 
         # Private data state (HFT COMPLIANT - no caching of real-time data)
         self._balances: Dict[AssetName, AssetBalance] = {}
@@ -100,6 +102,25 @@ class CompositePrivateExchange(BaseCompositeExchange):
 
     # Abstract trading operations
 
+    async def get_open_orders(self, symbol: Optional[Symbol] = None, force=False) -> List[Order]:
+        """
+        Get current open orders.
+
+        Args:
+            symbol: Optional symbol filter
+
+        Returns:
+            List of open orders (all symbols or filtered by symbol)
+
+        Raises:
+            ExchangeError: If query fails
+        """
+        if force:
+            await self._load_open_orders(symbol)
+        if symbol:
+            return list(self._open_orders.get(symbol, {}).values())
+        else:
+            return [order for orders in self._open_orders.values() for order in orders.values()]
     @abstractmethod
     async def place_limit_order(
         self,
@@ -132,7 +153,7 @@ class CompositePrivateExchange(BaseCompositeExchange):
         self,
         symbol: Symbol,
         side: Side,
-        quantity: float,
+        quote_quantity: float,
         **kwargs
     ) -> Order:
         """
@@ -141,7 +162,7 @@ class CompositePrivateExchange(BaseCompositeExchange):
         Args:
             symbol: Trading symbol
             side: Order side ('buy' or 'sell')
-            quantity: Order quantity
+            quote_quantity: Order quantity
             **kwargs: Exchange-specific parameters
             
         Returns:
@@ -152,7 +173,6 @@ class CompositePrivateExchange(BaseCompositeExchange):
         """
         pass
 
-    @abstractmethod
     async def cancel_order(self, symbol: Symbol, order_id: OrderId) -> Order:
         """
         Cancel an existing order.
@@ -169,7 +189,6 @@ class CompositePrivateExchange(BaseCompositeExchange):
         """
         return await self._private_rest.cancel_order(symbol, order_id)
 
-    @abstractmethod
     async def get_order(self, symbol: Symbol, order_id: OrderId) -> Order:
         """
         Get current status of an order.
@@ -283,11 +302,23 @@ class CompositePrivateExchange(BaseCompositeExchange):
         """
         pass
 
+    async def _load_assets_info(self) -> None:
+        """
+        Load asset information from REST API with error handling.
+        PATTERN: Copied from composite exchange line 320
+        """
+        try:
+            with LoggingTimer(self.logger, "load_assets_info") as timer:
+                assets_info_data = await self._private_rest.get_assets_info()
+                self._assets_info = assets_info_data
 
-    # ========================================
-    # Concrete Private Data Loading (COPIED FROM composite exchange)
-    # ========================================
+            self.logger.info("Assets info loaded successfully",
+                            asset_count=len(assets_info_data),
+                            load_time_ms=timer.elapsed_ms)
 
+        except Exception as e:
+            self.logger.error("Failed to load assets info", error=str(e))
+            raise InitializationError(f"Assets info loading failed: {e}")
     async def _load_balances(self) -> None:
         """
         Load account balances from REST API with error handling and metrics.
@@ -299,9 +330,9 @@ class CompositePrivateExchange(BaseCompositeExchange):
 
         try:
             with LoggingTimer(self.logger, "load_balances") as timer:
-                balances_data = await self._private_rest.get_account_balance()
+                balances_data = await self._private_rest.get_balances()
 
-                self._balances = balances_data
+                self._balances = {b.asset: b for b in balances_data}
 
             self.logger.info("Balances loaded successfully",
                             balance_count=len(balances_data),
@@ -311,7 +342,7 @@ class CompositePrivateExchange(BaseCompositeExchange):
             self.logger.error("Failed to load balances", error=str(e))
             raise InitializationError(f"Balance loading failed: {e}")
 
-    async def _load_open_orders(self) -> None:
+    async def _load_open_orders(self, symbol: Optional[Symbol] = None) -> None:
         """
         Load open orders from REST API with error handling.
         PATTERN: Copied from composite exchange line 380
@@ -323,7 +354,7 @@ class CompositePrivateExchange(BaseCompositeExchange):
         try:
             with LoggingTimer(self.logger, "load_open_orders") as timer:
                 # Load orders for each active symbol
-                    orders = await self._private_rest.get_open_orders()
+                    orders = await self._private_rest.get_open_orders(symbol)
                     for o in orders:
                         self._update_open_order(o)
 
@@ -412,9 +443,37 @@ class CompositePrivateExchange(BaseCompositeExchange):
                             order_id=order_id, error=str(e))
             return None
 
-    # ========================================
-    # Template Method Initialization (COPIED FROM composite exchange)
-    # ========================================
+    async def get_asset_balance(self, asset: AssetName, force= False) -> Optional[AssetBalance]:
+        """
+        Get balance for a specific asset with fallback to REST if not cached.
+
+        Args:
+            asset: Asset symbol
+            force: If True, bypass cache and fetch from REST
+
+        Returns:
+            AssetBalance object if found, None otherwise
+        """
+        # Step 1: Check local cache first
+        if asset in self._balances:
+            return self._balances[asset]
+
+        if force:
+            # Step 2: Fallback to REST API
+            try:
+                with LoggingTimer(self.logger, f"get_asset_balance_{asset}") as timer:
+                    balance = await self._private_rest.get_asset_balance(asset)
+                    if balance:
+                        self._update_balance(asset, balance)
+                    return balance
+
+            except Exception as e:
+                self.logger.error("Failed to get asset balance via REST fallback",
+                                asset=asset, error=str(e))
+                return None
+
+        return AssetBalance(asset=asset, available=0.0, locked=0.0)
+
 
     async def initialize(self, symbols_info: SymbolsInfo) -> None:
         """
@@ -433,11 +492,8 @@ class CompositePrivateExchange(BaseCompositeExchange):
 
             # Step 2: Load private data via REST (parallel loading)
             self.logger.info(f"{self._tag} Loading private data...")
-            await asyncio.gather(
-                self._load_balances(),
-                self._load_open_orders(),
-                return_exceptions=True
-            )
+            await self._load_assets_info()
+            await self._refresh_exchange_data()
 
             # Step 3: Create WebSocket clients with handler injection
             self.logger.info(f"{self._tag} Creating WebSocket clients...")
@@ -454,10 +510,7 @@ class CompositePrivateExchange(BaseCompositeExchange):
             await self.close()  # Cleanup on failure
             raise
 
-    # ========================================
-    # WebSocket Handler Constructor Injection (COPIED FROM composite exchange)
-    # ========================================
-    async def _get_websocket_handlers(self) ->PrivateWebsocketHandlers:
+    def _get_websocket_handlers(self) ->PrivateWebsocketHandlers:
         return PrivateWebsocketHandlers(
                 order_handler=self._order_handler,
                 balance_handler=self._balance_handler,
@@ -494,6 +547,8 @@ class CompositePrivateExchange(BaseCompositeExchange):
                          status=order.status.name,
                          filled=f"{order.filled_quantity}/{order.quantity}")
 
+        await self.handlers.order_handler(order)
+
     async def _balance_handler(self, balances: Dict[AssetName, AssetBalance]) -> None:
         """Handle balance update event."""
         self._balances.update(balances)
@@ -502,6 +557,8 @@ class CompositePrivateExchange(BaseCompositeExchange):
                          exchange=self._exchange_name,
                          updated_assets=len(balances),
                          non_zero_balances=len(non_zero_balances))
+
+        await self.handlers.balance_handler(balances)
 
     async def _execution_handler(self, trade: Trade) -> None:
         """Handle execution report/trade event."""
@@ -512,6 +569,7 @@ class CompositePrivateExchange(BaseCompositeExchange):
                          quantity=trade.quantity,
                          price=trade.price,
                          is_maker=trade.is_maker)
+        await self.handlers.execution_handler(trade)
 
     def _track_operation(self, operation_name: str) -> None:
         """Track operation for performance monitoring."""
@@ -527,16 +585,11 @@ class CompositePrivateExchange(BaseCompositeExchange):
         Refreshes both public data (orderbooks, symbols) and private data
         (balances, orders, positions).
         """
-        try:
-            # Refresh private data
-            await self._load_balances()
-            await self._load_open_orders()
-
-            self.logger.info(f"{self._tag} all data refreshed after reconnection")
-
-        except Exception as e:
-            self.logger.error(f"Failed to refresh data for {self._tag}: {e}")
-            raise
+        await asyncio.gather(
+            self._load_balances(),
+            self._load_open_orders(),
+            return_exceptions=True
+        )
 
     # Utility methods for private data management
 

@@ -4,20 +4,15 @@ from exchanges.consts import DEFAULT_PUBLIC_WEBSOCKET_CHANNELS
 from exchanges.interfaces.ws.spot.ws_spot_public import PublicSpotWebsocket
 from exchanges.structs.common import Symbol
 from infrastructure.networking.websocket.structs import PublicWebsocketChannelType
-
+from exchanges.utils.exchange_utils import fix_futures_symbols
 
 class PublicFuturesWebsocket(PublicSpotWebsocket):
     async def initialize(self, symbols: List[Symbol],
                          channels: List[PublicWebsocketChannelType]=DEFAULT_PUBLIC_WEBSOCKET_CHANNELS) -> None:
-        await super().initialize(self._fix_futures_symbols(symbols), channels)
+        await super().initialize(fix_futures_symbols(symbols), channels)
 
-    async def add_symbols(self, symbols: List[Symbol]) -> None:
-        await super().add_symbols(self._fix_futures_symbols(symbols))
+    async def subscribe(self, symbols: List[Symbol]) -> None:
+        await super().subscribe(fix_futures_symbols(symbols))
 
-    async def remove_symbols(self, symbols: List[Symbol]) -> None:
-        await super().remove_symbols(self._fix_futures_symbols(symbols))
-
-    @staticmethod
-    def _fix_futures_symbols(self, symbols: List[Symbol]) -> List[Symbol]:
-        """Fix symbols for futures format if needed."""
-        return [Symbol(s.base,s.quote, is_futures=True) for s in symbols]
+    async def unsubscribe(self, symbols: List[Symbol]) -> None:
+        await super().unsubscribe(fix_futures_symbols(symbols))

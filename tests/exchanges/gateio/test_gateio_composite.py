@@ -14,7 +14,7 @@ from exchanges.structs.common import Symbol, OrderBook, Order, AssetBalance, Boo
 from exchanges.structs.types import AssetName, OrderId
 from exchanges.structs import Side, OrderType, OrderStatus
 from config.structs import ExchangeConfig
-from infrastructure.logging import HFTLoggerFactory
+from infrastructure.logging import get_logger
 
 
 class TestGateioCompositePublicExchange:
@@ -32,7 +32,7 @@ class TestGateioCompositePublicExchange:
     @pytest.fixture
     def logger(self):
         """Create test logger."""
-        return HFTLoggerFactory.create_logger("test_gateio", "DEBUG")
+        return get_logger("test_gateio")
 
     @pytest.fixture
     def exchange(self, config, logger):
@@ -57,12 +57,12 @@ class TestGateioCompositePublicExchange:
     @pytest.mark.asyncio
     async def test_websocket_handler_creation(self, exchange):
         """Test WebSocket handler creation and configuration."""
-        handlers = await exchange._get_websocket_handlers()
+        handlers = exchange._get_websocket_handlers()
         
         assert handlers is not None
         assert handlers.orderbook_handler is not None
         assert handlers.ticker_handler is not None
-        assert handlers.trades_handler is not None
+        assert handlers.trade_handler is not None
         assert handlers.book_ticker_handler is not None
 
     @pytest.mark.asyncio
@@ -142,7 +142,7 @@ class TestGateioCompositePrivateExchange:
     @pytest.fixture
     def logger(self):
         """Create test logger."""
-        return HFTLoggerFactory.create_logger("test_gateio_private", "DEBUG")
+        return get_logger("test_gateio_private")
 
     @pytest.fixture
     def exchange(self, config, logger):
@@ -168,7 +168,7 @@ class TestGateioCompositePrivateExchange:
     @pytest.mark.asyncio
     async def test_websocket_handler_creation(self, exchange):
         """Test private WebSocket handler creation."""
-        handlers = await exchange._get_websocket_handlers()
+        handlers = exchange._get_websocket_handlers()
         
         assert handlers is not None
         assert handlers.order_handler is not None

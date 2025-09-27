@@ -17,9 +17,9 @@ import logging
 import sys
 from typing import List, Dict
 
-from exchanges.structs.common import Symbol, Order, AssetBalance, Trade
+from exchanges.structs.common import Order, AssetBalance, Trade
 from config.config_manager import HftConfig
-from exchanges.transport_factory import create_websocket_client, create_private_handlers
+from exchanges.factory import create_websocket_client, create_private_handlers
 from exchanges.utils.exchange_utils import get_exchange_enum
 
 # Set up logging
@@ -161,9 +161,9 @@ class AccountDataManager:
 
         # Handle unified Order type
         if isinstance(order_data, Order):
-            logger.info(f"   Order {order_data.order_id}: {order_data.side.name} {order_data.amount}")
+            logger.info(f"   Order {order_data.order_id}: {order_data.side.name} {order_data.quantity}")
             logger.info(f"   Symbol: {order_data.symbol.base}/{order_data.symbol.quote}")
-            logger.info(f"   Price: {order_data.price}, Filled: {order_data.amount_filled}")
+            logger.info(f"   Price: {order_data.price}, Filled: {order_data.filled_quantity}")
             logger.info(f"   Status: {order_data.status.name}")
         else:
             # Handle other data formats (dict, etc.)

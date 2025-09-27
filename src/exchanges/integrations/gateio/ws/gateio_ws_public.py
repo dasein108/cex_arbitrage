@@ -74,7 +74,7 @@ class GateioPublicSpotWebsocket(PublicSpotWebsocket):
     # - Default event handlers with dependency injection support
     
     # Enhanced symbol management using symbol-channel mapping
-    async def add_symbols(self, symbols: List[Symbol]) -> None:
+    async def subscribe(self, symbols: List[Symbol]) -> None:
         """Add symbols for subscription using enhanced symbol-channel mapping."""
         if not symbols:
             return
@@ -88,7 +88,7 @@ class GateioPublicSpotWebsocket(PublicSpotWebsocket):
 
         self.logger.info(f"Added {len(symbols)} symbols: {[str(s) for s in symbols]}")
     
-    async def remove_symbols(self, symbols: List[Symbol]) -> None:
+    async def unsubscribe(self, symbols: List[Symbol]) -> None:
         """Remove symbols from subscription using enhanced symbol-channel mapping."""
         if not symbols:
             return

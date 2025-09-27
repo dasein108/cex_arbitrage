@@ -40,7 +40,7 @@ class GateioFuturesCompositePublicExchange(CompositePublicExchange):
 
     async def _create_public_rest(self) -> PublicFuturesRest:
         """Create Gate.io futures public REST client."""
-        from exchanges.integrations.gateio.rest.gateio_futures_public import GateioPublicFuturesRest
+        from exchanges.integrations.gateio.rest.gateio_rest_futures_public import GateioPublicFuturesRest
         return GateioPublicFuturesRest(self.config, self.logger)
 
     async def _create_public_websocket(self) -> PublicFuturesWebsocket:

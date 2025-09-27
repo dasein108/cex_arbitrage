@@ -183,7 +183,7 @@ def get_target_files() -> List[Path]:
     # Files mentioned in TASK_3_1 for refactoring
     specific_files = [
         "infrastructure/networking/websocket/ws_client.py",
-        "exchanges/integrations/gateio/rest/gateio_rest_private.py", 
+        "exchanges/integrations/gateio/rest/gateio_rest_spot_private.py",
         "trading/arbitrage/engine.py",
         "exchanges/integrations/mexc/ws/mexc_ws_public.py"
     ]
@@ -231,8 +231,8 @@ def simulate_before_refactoring_metrics() -> Dict[str, ComplexityMetrics]:
             duplicated_patterns=2
         ),
         
-        "exchanges/integrations/gateio/rest/gateio_rest_private.py": ComplexityMetrics(
-            file_path="exchanges/integrations/gateio/rest/gateio_rest_private.py", 
+        "exchanges/integrations/gateio/rest/gateio_rest_spot_private.py": ComplexityMetrics(
+            file_path="exchanges/integrations/gateio/rest/gateio_rest_spot_private.py",
             try_catch_blocks=12,  # Multiple try/catch blocks per method
             max_nesting_depth=2,
             avg_nesting_depth=1.8,

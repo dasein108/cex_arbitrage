@@ -5,7 +5,7 @@ from .strategies import (
     RestStrategySet,
     RequestContext, RateLimitContext, PerformanceTargets, RequestMetrics, AuthenticationData
 )
-from .rest_transport_manager import RestTransportManager
+from .rest_manager import RestManager
 # Exchange-specific strategies are now registered in their respective exchange modules
 # This keeps the core transport module free of exchange-specific code
 
@@ -18,6 +18,6 @@ __all__ = [
     # Data structures
     "RequestContext", "RateLimitContext", "PerformanceTargets", "RequestMetrics", "AuthenticationData",
     # Transport manager
-    "RestTransportManager"
+    "RestManager"
     # Exchange-specific strategies are now exported from their respective exchange modules
 ]

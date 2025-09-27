@@ -2,7 +2,6 @@ from typing import Optional, List
 
 import msgspec
 
-
 # Gate.io REST API structures
 
 class GateioSymbolResponse(msgspec.Struct):

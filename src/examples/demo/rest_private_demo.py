@@ -14,17 +14,17 @@ import sys
 from exchanges.structs.common import Symbol
 from exchanges.structs.types import AssetName
 from exchanges.structs.enums import TimeInForce
-from exchanges.structs import OrderType, Side, ExchangeEnum
+from exchanges.structs import OrderType, Side
 from exchanges.interfaces.rest.spot.rest_spot_private import PrivateSpotRest
 from config.config_manager import HftConfig
-from exchanges.transport_factory import create_rest_client
+from exchanges.factory import create_rest_client
 
 
 async def check_get_account_balance(exchange: PrivateSpotRest, exchange_name: str):
     """Check get_account_balance method."""
     print(f"\n=== {exchange_name.upper()} GET ACCOUNT BALANCE CHECK ===")
     try:
-        result = await exchange.get_account_balance()
+        result = await exchange.get_balances()
         print(f"Total balances: {len(result)}")
         
         # Show first 5 non-zero balances
@@ -68,7 +68,7 @@ async def check_place_order(exchange: PrivateSpotRest, exchange_name: str):
             symbol=symbol,
             side=Side.BUY,
             order_type=OrderType.LIMIT,
-            amount=0.01,
+            quantity=0.01,
             price=3000.0,
             time_in_force=TimeInForce.GTC
         )
@@ -77,7 +77,7 @@ async def check_place_order(exchange: PrivateSpotRest, exchange_name: str):
         print(f"  Symbol: {result.symbol}")
         print(f"  Side: {result.side}")
         print(f"  Order type: {result.order_type}")
-        print(f"  Amount: {result.amount}")
+        print(f"  Amount: {result.quantity}")
         print(f"  Price: {result.price}")
         print(f"  Status: {result.status}")
         print(f"  Timestamp: {result.timestamp}")
@@ -123,10 +123,10 @@ async def check_get_order(exchange: PrivateSpotRest, exchange_name: str):
         print(f"  Symbol: {result.symbol}")
         print(f"  Side: {result.side}")
         print(f"  Order type: {result.order_type}")
-        print(f"  Amount: {result.amount}")
+        print(f"  Amount: {result.quantity}")
         print(f"  Price: {result.price}")
         print(f"  Status: {result.status}")
-        print(f"  Filled: {result.amount_filled}")
+        print(f"  Filled: {result.filled_quantity}")
         print(f"  Timestamp: {result.timestamp}")
         
     except Exception as e:
@@ -209,7 +209,7 @@ async def main(exchange_name: str):
 
 
 if __name__ == "__main__":
-    exchange_name = sys.argv[1] if len(sys.argv) > 1 else "gateio_futures"
+    exchange_name = sys.argv[1] if len(sys.argv) > 1 else "gateio_spot"
 
     try:
         asyncio.run(main(exchange_name))

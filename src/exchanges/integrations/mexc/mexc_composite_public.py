@@ -4,7 +4,7 @@ from typing import Optional
 from exchanges.interfaces.composite.spot.base_public_spot_composite import CompositePublicExchange
 from exchanges.interfaces.rest.spot.rest_spot_public import PublicSpotRest
 from exchanges.interfaces.ws.spot.ws_spot_public import PublicSpotWebsocket
-from exchanges.integrations.mexc.rest.mexc_rest_public import MexcPublicSpotRest
+from exchanges.integrations.mexc.rest.mexc_rest_spot_public import MexcPublicSpotRest
 from exchanges.integrations.mexc.ws.mexc_ws_public import MexcPublicSpotWebsocket
 from infrastructure.networking.websocket.handlers import PublicWebsocketHandlers
 from infrastructure.logging import HFTLoggerInterface
@@ -42,11 +42,11 @@ class MexcCompositePublicExchange(CompositePublicExchange):
 
     # WebSocket Handler Implementation
     
-    async def _get_websocket_handlers(self) -> PublicWebsocketHandlers:
+    def _get_websocket_handlers(self) -> PublicWebsocketHandlers:
         """Get public WebSocket handlers for MEXC."""
         return PublicWebsocketHandlers(
             orderbook_handler=self._handle_orderbook,
             ticker_handler=self._handle_ticker,
-            trades_handler=self._handle_trade,
+            trade_handler=self._handle_trade,
             book_ticker_handler=self._handle_book_ticker,
         )

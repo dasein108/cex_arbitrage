@@ -96,7 +96,7 @@ class RestApiDemo(ExchangeDemoBase, RestDemoMixin):
             for trade in result:
                 trades_data.append({
                     "price": trade.price,
-                    "quantity": trade.quantity,
+                    "quantity": trade.quantity_usdt,
                     "side": trade.side.name,
                     "timestamp": trade.timestamp,
                     "is_maker": trade.is_maker
@@ -131,7 +131,7 @@ class RestApiDemo(ExchangeDemoBase, RestDemoMixin):
             for trade in result[:5]:  # Show first 5 trades
                 trades_data.append({
                     "price": trade.price,
-                    "quantity": trade.quantity,
+                    "quantity": trade.quantity_usdt,
                     "side": trade.side.name,
                     "timestamp": trade.timestamp,
                     "trade_id": trade.trade_id,
@@ -236,7 +236,7 @@ class RestApiDemo(ExchangeDemoBase, RestDemoMixin):
     async def test_account_balance(self) -> Dict[str, Any]:
         """Test account balance retrieval."""
         async def get_account_balance():
-            result = await self.rest_client.get_account_balance()
+            result = await self.rest_client.get_balances()
             
             # Show first 5 non-zero balances
             sample_balances = []
@@ -291,7 +291,7 @@ class RestApiDemo(ExchangeDemoBase, RestDemoMixin):
                     "symbol": f"{order.symbol.base}/{order.symbol.quote}",
                     "side": order.side.name,
                     "order_type": order.order_type.name,
-                    "quantity": order.quantity,
+                    "quantity": order.quantity_usdt,
                     "price": order.price,
                     "status": order.status.name,
                     "filled": order.filled_quantity
@@ -336,7 +336,7 @@ class RestApiDemo(ExchangeDemoBase, RestDemoMixin):
                     symbol=symbol,
                     side=Side.BUY,
                     order_type=OrderType.LIMIT,
-                    amount=0.01,
+                    quantity=0.01,
                     price=3000.0,  # Unrealistic price to avoid accidental execution
                     time_in_force=TimeInForce.GTC
                 )

@@ -268,13 +268,13 @@ class MexcOrderbookDiffProcessor(OrderbookDiffProcessor):
                 bid_updates = []
                 for bid_item in depth_data.bids:
                     price = float(bid_item.price)
-                    size = float(bid_item.quantity)
+                    size = float(bid_item.quantity_usdt)
                     bid_updates.append((price, size))
                 
                 ask_updates = []
                 for ask_item in depth_data.asks:
                     price = float(ask_item.price)
-                    size = float(ask_item.quantity)
+                    size = float(ask_item.quantity_usdt)
                     ask_updates.append((price, size))
                 
                 return ParsedOrderbookUpdate(

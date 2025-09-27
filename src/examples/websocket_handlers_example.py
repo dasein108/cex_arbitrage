@@ -99,7 +99,7 @@ async def public_websocket_example():
     # Create handler object with optional callbacks
     public_handlers = PublicWebsocketHandlers(
         orderbook_diff_handler=trader.handle_orderbook_update,
-        trades_handler=trader.handle_trade_data,
+        trade_handler=trader.handle_trade_data,
         book_ticker_handler=trader.handle_book_ticker
     )
     
@@ -107,7 +107,7 @@ async def public_websocket_example():
     
     # You can also create with only some handlers
     minimal_handlers = PublicWebsocketHandlers(
-        trades_handler=trader.handle_trade_data  # Only handle trades
+        trade_handler=trader.handle_trade_data  # Only handle trades
     )
     
     print("✅ PublicWebsocketHandlers created with minimal handlers")
@@ -181,7 +181,7 @@ async def websocket_interface_usage_example():
     
     # Create handler objects
     public_handlers = PublicWebsocketHandlers(
-        trades_handler=trader.handle_trade_data,
+        trade_handler=trader.handle_trade_data,
         book_ticker_handler=trader.handle_book_ticker
     )
     

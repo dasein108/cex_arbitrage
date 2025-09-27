@@ -14,7 +14,7 @@ from exchanges.services.symbol_mapper.base_symbol_mapper import SymbolMapperInte
 from exchanges.structs import Symbol, AssetName
 
 
-class GateioSymbolMapperInterface(SymbolMapperInterface):
+class GateioSymbolMapper(SymbolMapperInterface):
     """
     Gate.io-specific symbol mapper implementation.
     
@@ -82,7 +82,7 @@ class GateioSymbolMapperInterface(SymbolMapperInterface):
 
 
 # Global singleton instance for direct usage - use GateioSpotSymbol.method() directly
-GateioSpotSymbol = GateioSymbolMapperInterface()
+GateioSpotSymbol = GateioSymbolMapper()
 
 # Convenience functions remain for non-symbol operations
 def get_exchange_interval(interval) -> str:

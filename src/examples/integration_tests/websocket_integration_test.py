@@ -14,11 +14,9 @@ import asyncio
 import sys
 import argparse
 import time
-from typing import Dict, Any, List
+from typing import Dict, Any
 
-from exchanges.structs.common import Symbol
-from exchanges.structs.types import AssetName
-from exchanges.transport_factory import create_websocket_client, create_public_handlers, create_private_handlers
+from exchanges.factory import create_websocket_client, create_public_handlers
 from exchanges.utils.exchange_utils import get_exchange_enum
 
 from ..base.integration_test_base import IntegrationTestBase, WebSocketIntegrationTestMixin
@@ -42,7 +40,7 @@ class WebSocketIntegrationTest(IntegrationTestBase, WebSocketIntegrationTestMixi
             if not self.config.credentials.api_key or not self.config.credentials.secret_key:
                 raise ValueError(f"{self.exchange_name} API credentials are required for private WebSocket testing")
             
-            from exchanges.transport_factory import create_websocket_client, create_private_handlers
+            from exchanges.factory import create_websocket_client, create_private_handlers
             from exchanges.utils.exchange_utils import get_exchange_enum
             
             exchange_enum = get_exchange_enum(self.exchange_name)

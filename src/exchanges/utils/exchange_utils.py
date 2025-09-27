@@ -1,6 +1,5 @@
-from exchanges.structs import Order, OrderStatus
-
-from exchanges.structs import ExchangeEnum
+from exchanges.structs import Order, OrderStatus, Symbol, ExchangeEnum
+from typing import List
 
 
 def get_exchange_enum(exchange_name: str) -> ExchangeEnum:
@@ -35,6 +34,10 @@ def get_exchange_enum(exchange_name: str) -> ExchangeEnum:
         supported = [e.value for e in ExchangeEnum]
         raise ValueError(f"Exchange '{exchange_name}' is not supported. Supported exchanges: {supported}")
 
+def fix_futures_symbols(symbols: List[Symbol]) -> List[Symbol]:
+        """Fix symbols for futures format if needed."""
+        return [Symbol(s.base,s.quote, is_futures=True) for s in symbols]
+
 def is_order_done(order: Order) -> bool:
     """Check if order is done (filled or cancelled)."""
     return order.status in {OrderStatus.FILLED,
@@ -42,3 +45,7 @@ def is_order_done(order: Order) -> bool:
                             OrderStatus.REJECTED,
                             OrderStatus.EXPIRED,
                             OrderStatus.PARTIALLY_CANCELED}
+
+def is_order_filled(order: Order) -> bool:
+    """Check if order is completely filled."""
+    return order.status in [OrderStatus.FILLED, OrderStatus.PARTIALLY_FILLED, OrderStatus.PARTIALLY_CANCELED]

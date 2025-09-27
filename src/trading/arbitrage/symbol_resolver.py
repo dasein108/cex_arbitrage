@@ -40,9 +40,9 @@ class SymbolMatch:
             
             configs[exchange_name] = ExchangePairConfig(
                 symbol=symbol_str,
-                min_amount=Decimal(str(symbol_info.min_base_amount)) if symbol_info.min_base_amount else Decimal('0.0001'),
+                min_amount=Decimal(str(symbol_info.min_base_quantity)) if symbol_info.min_base_quantity else Decimal('0.0001'),
                 max_amount=Decimal('1000000'),  # Default max, exchanges rarely provide this
-                min_notional=Decimal(str(symbol_info.min_quote_amount)) if symbol_info.min_quote_amount else None,
+                min_notional=Decimal(str(symbol_info.min_quote_quantity)) if symbol_info.min_quote_quantity else None,
                 price_precision=symbol_info.quote_precision,
                 amount_precision=symbol_info.base_precision,
                 maker_fee_bps=int(symbol_info.maker_commission * 10000) if symbol_info.maker_commission else 20,

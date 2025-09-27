@@ -27,7 +27,7 @@ from typing import Dict, Optional
 
 from exchanges.structs.common import Order, AssetBalance, Trade
 from exchanges.structs.types import AssetName
-from exchanges.integrations.mexc.rest.mexc_rest_private import MexcPrivateSpotRest
+from exchanges.integrations.mexc.rest.mexc_rest_spot_private import MexcPrivateSpotRest
 from config.structs import ExchangeConfig
 from exchanges.interfaces.ws import PrivateSpotWebsocket
 from infrastructure.networking.websocket.handlers import PrivateWebsocketHandlers

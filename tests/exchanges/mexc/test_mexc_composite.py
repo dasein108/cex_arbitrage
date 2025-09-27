@@ -44,7 +44,7 @@ class TestMexcCompositePublic:
             handlers = PublicWebsocketHandlers(
                 orderbook_handler=AsyncMock(),
                 ticker_handler=AsyncMock(),
-                trades_handler=AsyncMock(),
+                trade_handler=AsyncMock(),
                 book_ticker_handler=AsyncMock()
             )
             ws_client = await public_exchange._create_public_ws_with_handlers(handlers)
@@ -63,7 +63,7 @@ class TestMexcCompositePublic:
         handlers = PublicWebsocketHandlers(
             orderbook_handler=AsyncMock(),
             ticker_handler=AsyncMock(),
-            trades_handler=AsyncMock(),
+            trade_handler=AsyncMock(),
             book_ticker_handler=AsyncMock()
         )
         
@@ -72,12 +72,12 @@ class TestMexcCompositePublic:
 
     async def test_websocket_handlers(self, public_exchange):
         """Test WebSocket handlers creation."""
-        handlers = await public_exchange._get_websocket_handlers()
+        handlers = public_exchange._get_websocket_handlers()
         
         assert isinstance(handlers, PublicWebsocketHandlers)
         assert handlers.orderbook_handler == public_exchange._handle_orderbook
         assert handlers.ticker_handler == public_exchange._handle_ticker
-        assert handlers.trades_handler == public_exchange._handle_trade
+        assert handlers.trade_handler == public_exchange._handle_trade
         assert handlers.book_ticker_handler == public_exchange._handle_book_ticker
 
     async def test_orderbooks_property(self, public_exchange):
@@ -140,7 +140,7 @@ class TestMexcCompositePrivate:
 
     async def test_websocket_handlers(self, private_exchange):
         """Test private WebSocket handlers creation."""
-        handlers = await private_exchange._get_websocket_handlers()
+        handlers = private_exchange._get_websocket_handlers()
         
         assert isinstance(handlers, PrivateWebsocketHandlers)
         assert handlers.order_handler == private_exchange._order_handler

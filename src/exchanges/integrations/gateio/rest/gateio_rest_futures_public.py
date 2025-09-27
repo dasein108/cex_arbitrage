@@ -14,6 +14,9 @@ from exchanges.interfaces.rest.spot import PublicSpotRest
 from infrastructure.networking.http.structs import HTTPMethod
 from config.structs import ExchangeConfig
 from infrastructure.exceptions.exchange import ExchangeRestError
+# Inline utility function to avoid import issues
+def get_minimal_step(precision: int) -> float:
+    return 10**-precision
 
 # Import direct utility functions
 from exchanges.integrations.gateio.utils import from_futures_symbol
@@ -125,12 +128,14 @@ class GateioPublicFuturesRest(PublicSpotRest):
                     symbol=symbol,
                     base_precision=base_prec,
                     quote_precision=quote_prec,
-                    min_base_amount=min_base,
-                    min_quote_amount=min_quote,
+                    min_base_quantity=min_base,
+                    min_quote_quantity=min_quote,
                     is_futures=True,
                     maker_commission=float(c.get('maker_fee', 0)) if c.get('maker_fee') else 0.0,
                     taker_commission=float(c.get('taker_fee', 0)) if c.get('taker_fee') else 0.0,
-                    inactive=is_inactive
+                    inactive=is_inactive,
+                    tick=get_minimal_step(quote_prec),
+                    step=get_minimal_step(base_prec),
                 )
                 symbol_info_map[symbol] = symbol_info
 

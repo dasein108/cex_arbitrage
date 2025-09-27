@@ -43,7 +43,7 @@ class GateioPrivateFuturesRest(PrivateFuturesRest):
 
     # ---------- Account / Balances ----------
 
-    async def get_account_balance(self) -> List[AssetBalance]:
+    async def get_balances(self) -> List[AssetBalance]:
         """
         Get futures (margin) account balance. Returns list (usually single USDT entry).
         Endpoint (typical): /futures/usdt/accounts
@@ -82,16 +82,16 @@ class GateioPrivateFuturesRest(PrivateFuturesRest):
             self.logger.error(f"Failed to get futures account balance: {e}")
             raise ExchangeRestError(500, f"Futures balance fetch failed: {str(e)}")
 
-    async def get_asset_balance(self, asset: AssetName) -> Optional[AssetBalance]:
-        try:
-            balances = await self.get_account_balance()
-            for b in balances:
-                if b.asset == asset:
-                    return b
-            return AssetBalance(asset=asset, available=0.0, locked=0.0)
-        except Exception as e:
-            self.logger.error(f"Failed to get futures asset balance {asset}: {e}")
-            raise
+    # async def get_asset_balance(self, asset: AssetName) -> Optional[AssetBalance]:
+    #     try:
+    #         balances = await self.get_balances()
+    #         for b in balances:
+    #             if b.asset == asset:
+    #                 return b
+    #         return AssetBalance(asset=asset, available=0.0, locked=0.0)
+    #     except Exception as e:
+    #         self.logger.error(f"Failed to get futures asset balance {asset}: {e}")
+    #         raise
 
     # ---------- Order placement / management ----------
 
@@ -100,7 +100,7 @@ class GateioPrivateFuturesRest(PrivateFuturesRest):
         symbol: Symbol,
         side: Side,
         order_type: OrderType,
-        amount: Optional[float] = None,
+        quantity: Optional[float] = None,
         price: Optional[float] = None,
         quote_quantity: Optional[float] = None,
         time_in_force: Optional[TimeInForce] = None,
@@ -127,17 +127,17 @@ class GateioPrivateFuturesRest(PrivateFuturesRest):
             # Amount handling: futures commonly use 'size' field for composite quantity
             if order_type == OrderType.MARKET:
                 # Market order: size required (composite units)
-                if amount is None:
+                if quantity is None:
                     if quote_quantity is not None and price:
-                        amount = quote_quantity / price
+                        quantity = quote_quantity / price
                     else:
                         raise ValueError("Futures market orders require amount or (quote_quantity + price)")
-                payload["size"] = format_quantity(amount)
+                payload["size"] = format_quantity(quantity)
             else:
                 # Limit-like orders: require amount and price
-                if amount is None or price is None:
+                if quantity is None or price is None:
                     raise ValueError("Futures limit orders require both amount and price")
-                payload["size"] = format_quantity(amount)
+                payload["size"] = format_quantity(quantity)
                 payload["price"] = format_price(price)
 
             # Optional flags
@@ -164,7 +164,7 @@ class GateioPrivateFuturesRest(PrivateFuturesRest):
                     symbol=symbol,
                     side=side,
                     order_type=order_type,
-                    quantity=float(response.get("size", amount or 0)),
+                    quantity=float(response.get("size", quantity or 0)),
                     client_order_id=response.get("client_oid"),
                     price=float(response.get("price")) if response.get("price") else None,
                     filled_quantity=float(response.get("filled_size", response.get("filled", 0))),
@@ -335,7 +335,7 @@ class GateioPrivateFuturesRest(PrivateFuturesRest):
         self,
         symbol: Symbol,
         order_id: OrderId,
-        amount: Optional[float] = None,
+        qunatity: Optional[float] = None,
         price: Optional[float] = None,
         quote_quantity: Optional[float] = None,
         time_in_force: Optional[TimeInForce] = None,
@@ -353,7 +353,7 @@ class GateioPrivateFuturesRest(PrivateFuturesRest):
             await self.cancel_order(symbol, order_id)
 
             # Build new order parameters: prefer caller-provided, otherwise reuse existing
-            new_amount = amount if amount is not None else existing.quantity
+            new_amount = qunatity if qunatity is not None else existing.quantity
             new_price = price if price is not None else existing.price
             new_tif = time_in_force if time_in_force is not None else existing.time_in_force
 
@@ -361,7 +361,7 @@ class GateioPrivateFuturesRest(PrivateFuturesRest):
                 symbol=symbol,
                 side=existing.side,
                 order_type=existing.order_type,
-                amount=new_amount,
+                quantity=new_amount,
                 price=new_price,
                 quote_quantity=quote_quantity,
                 time_in_force=new_tif,
@@ -463,7 +463,6 @@ class GateioPrivateFuturesRest(PrivateFuturesRest):
             point_type = response.get("point_type", response.get("tier", None))
 
             return TradingFee(
-                exchange=self.exchange,
                 maker_rate=maker_rate,
                 taker_rate=taker_rate,
                 futures_maker=maker_rate,

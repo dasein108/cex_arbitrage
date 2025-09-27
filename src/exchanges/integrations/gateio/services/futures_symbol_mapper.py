@@ -2,7 +2,7 @@ from exchanges.services.symbol_mapper.base_symbol_mapper import SymbolMapperInte
 from exchanges.structs import Symbol, AssetName
 
 
-class GateioFuturesSymbolMapperInterface(SymbolMapperInterface):
+class GateioFuturesSymbolMapper(SymbolMapperInterface):
     """
     Gate.io futures-specific symbol mapper implementation.
 
@@ -64,4 +64,4 @@ class GateioFuturesSymbolMapperInterface(SymbolMapperInterface):
 
 
 # Global singleton instance for direct usage - use GateioFuturesSymbol.method() directly
-GateioFuturesSymbol = GateioFuturesSymbolMapperInterface()
+GateioFuturesSymbol = GateioFuturesSymbolMapper()

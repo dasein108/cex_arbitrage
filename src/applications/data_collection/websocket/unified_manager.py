@@ -5,20 +5,19 @@ Manages WebSocket connections to multiple exchanges with minimal complexity.
 Focuses on connection management and message routing without caching responsibilities.
 """
 
-import asyncio
 import time
-from typing import Dict, List, Optional, Callable, Any
+from typing import Dict, List, Optional, Any
 from dataclasses import dataclass
 
 from exchanges.structs import Symbol, BookTicker, Trade, ExchangeEnum
-from exchanges.transport_factory import create_websocket_client, PublicWebsocketHandlers
+from exchanges.factory import create_websocket_client, PublicWebsocketHandlers
 from config.config_manager import get_exchange_config
 from infrastructure.logging import get_logger, LoggingTimer
 from applications.data_collection.consts import WEBSOCKET_CHANNELS
 
 
 @dataclass
-class ConnectionState:
+class UnifiedWebSocketConnectionState:
     """Simple connection state tracking."""
     exchange: ExchangeEnum
     connected: bool = False
@@ -46,7 +45,7 @@ class UnifiedWebSocketManager:
 
         # Connection management
         self._exchange_clients: Dict[ExchangeEnum, Any] = {}
-        self._connections: Dict[ExchangeEnum, ConnectionState] = {}
+        self._connections: Dict[ExchangeEnum, UnifiedWebSocketConnectionState] = {}
         self._active_symbols: Dict[ExchangeEnum, set] = {}
 
         # Performance tracking
@@ -74,7 +73,7 @@ class UnifiedWebSocketManager:
         """Initialize WebSocket client for specific exchange."""
         try:
             # Create connection state
-            self._connections[exchange] = ConnectionState(exchange=exchange)
+            self._connections[exchange] = UnifiedWebSocketConnectionState(exchange=exchange)
             self._active_symbols[exchange] = set()
 
             # Get exchange configuration
@@ -173,7 +172,7 @@ class UnifiedWebSocketManager:
         try:
             for exchange, client in self._exchange_clients.items():
                 if self._connections[exchange].connected:
-                    await client.add_symbols(symbols)
+                    await client.subscribe(symbols)
                     self._active_symbols[exchange].update(symbols)
 
             self.logger.info(f"Added {len(symbols)} symbols to all exchanges")

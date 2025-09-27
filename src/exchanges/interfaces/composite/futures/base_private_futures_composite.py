@@ -138,7 +138,7 @@ class CompositePrivateFuturesExchange(CompositePrivateExchange):
             self.logger.error(f"Failed to initialize futures private data for {self._tag}: {e}")
             raise
 
-    async def _get_websocket_handlers(self) -> PrivateWebsocketHandlers:
+    def _get_websocket_handlers(self) -> PrivateWebsocketHandlers:
         """
         Extend WebSocket handlers to include position handler for futures.
         

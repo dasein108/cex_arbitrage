@@ -54,14 +54,14 @@ class MexcPrivateSpotRest(PrivateSpotRest, ListenKeyInterface):
     Optimized for high-frequency trading operations with minimal overhead.
     """
 
-    async def modify_order(self, symbol: Symbol, order_id: OrderId, amount: Optional[float] = None,
+    async def modify_order(self, symbol: Symbol, order_id: OrderId, qunatity: Optional[float] = None,
                            price: Optional[float] = None, quote_quantity: Optional[float] = None,
                            time_in_force: Optional[TimeInForce] = None, stop_price: Optional[float] = None) -> Order:
         raise NotImplementedError("MEXC does not support direct order modification via API")
 
     # Authentication is now handled automatically by the transport system
 
-    async def get_account_balance(self) -> List[AssetBalance]:
+    async def get_balances(self) -> List[AssetBalance]:
         """
         Get account balance for all assets.
         
@@ -105,7 +105,7 @@ class MexcPrivateSpotRest(PrivateSpotRest, ListenKeyInterface):
         Raises:
             ExchangeAPIError: If unable to fetch account balance
         """
-        all_balances = await self.get_account_balance()
+        all_balances = await self.get_balances()
 
         # Find the specific asset balance
         for balance in all_balances:
@@ -120,7 +120,7 @@ class MexcPrivateSpotRest(PrivateSpotRest, ListenKeyInterface):
             symbol: Symbol,
             side: Side,
             order_type: OrderType,
-            amount: Optional[float] = None,
+            quantity: Optional[float] = None,
             price: Optional[float] = None,
             quote_quantity: Optional[float] = None,
             time_in_force: Optional[TimeInForce] = None,
@@ -135,7 +135,7 @@ class MexcPrivateSpotRest(PrivateSpotRest, ListenKeyInterface):
             symbol: Symbol to trade
             side: Order side (BUY/SELL)
             order_type: Order type (MARKET/LIMIT/etc)
-            amount: Base asset quantity (optional for MARKET buy orders)
+            quantity: Base asset quantity (optional for MARKET buy orders)
             price: Order price (required for LIMIT orders)
             quote_quantity: Quote asset quantity (for MARKET buy orders)
             time_in_force: Time in force (GTC/IOC/FOK/GTD)
@@ -163,9 +163,9 @@ class MexcPrivateSpotRest(PrivateSpotRest, ListenKeyInterface):
 
         # For MARKET buy orders, either amount or quote_quantity is required
         if order_type == OrderType.MARKET and side == Side.BUY:
-            if amount is None and quote_quantity is None:
+            if quantity is None and quote_quantity is None:
                 raise ValueError("Either amount or quote_quantity is required for MARKET buy orders")
-        elif amount is None:
+        elif quantity is None:
             raise ValueError("Amount is required for this order type")
 
         # Prepare exchanges order parameters
@@ -176,8 +176,8 @@ class MexcPrivateSpotRest(PrivateSpotRest, ListenKeyInterface):
         }
 
         # Add quantity parameters
-        if amount is not None:
-            params['quantity'] = format_quantity(amount)
+        if quantity is not None:
+            params['quantity'] = format_quantity(quantity)
 
         if quote_quantity is not None:
             params['quoteOrderQty'] = format_quantity(quote_quantity)
@@ -215,7 +215,7 @@ class MexcPrivateSpotRest(PrivateSpotRest, ListenKeyInterface):
         unified_order = rest_to_order(order_response)
 
         # Log order placement with relevant details
-        amount_str = f"{amount} {symbol.base}" if amount else f"{quote_quantity} {symbol.quote}"
+        amount_str = f"{quantity} {symbol.base}" if quantity else f"{quote_quantity} {symbol.quote}"
         price_str = f"at {price}" if price else "market price"
         self.logger.info(f"Placed {side.name} {order_type.name} order for {amount_str} {price_str}")
         return unified_order
@@ -494,7 +494,7 @@ class MexcPrivateSpotRest(PrivateSpotRest, ListenKeyInterface):
 
         self.logger.debug(f"Deleted listen key: {listen_key[:8]}...")
 
-    async def get_currency_info(self) -> Dict[AssetName, AssetInfo]:
+    async def get_assets_info(self) -> Dict[AssetName, AssetInfo]:
         """
         Get currency information including deposit/withdrawal status and network details.
 
@@ -603,7 +603,7 @@ class MexcPrivateSpotRest(PrivateSpotRest, ListenKeyInterface):
                 raise ExchangeRestError(500, "No withdrawal ID returned from MEXC")
 
             # Get fee from currency info
-            currency_info = await self.get_currency_info()
+            currency_info = await self.get_assets_info()
             asset_info = currency_info.get(request.asset)
             fee = 0.0
 

@@ -34,18 +34,17 @@ from typing import Dict, Optional, Callable, Awaitable
 from exchanges.structs.common import Order, AssetBalance, Trade
 from exchanges.structs.types import AssetName
 from config.structs import ExchangeConfig
-from exchanges.interfaces.ws import PrivateSpotWebsocket
+from exchanges.interfaces.ws.futures.ws_private_futures import PrivateFuturesWebsocket
+from infrastructure.networking.websocket.handlers import PrivateWebsocketHandlers
 
 
-class GateioPrivateFuturesWebsocket(PrivateSpotWebsocket):
+class GateioPrivateFuturesWebsocket(PrivateFuturesWebsocket):
     """Gate.io private futures WebSocket client using dependency injection pattern."""
 
     def __init__(
         self,
         config: ExchangeConfig,
-        order_handler: Optional[Callable[[Order], Awaitable[None]]] = None,
-        balance_handler: Optional[Callable[[Dict[AssetName, AssetBalance]], Awaitable[None]]] = None,
-        trade_handler: Optional[Callable[[Trade], Awaitable[None]]] = None,
+        handlers: PrivateWebsocketHandlers,
         **kwargs
     ):
         """
@@ -64,9 +63,7 @@ class GateioPrivateFuturesWebsocket(PrivateSpotWebsocket):
         # Initialize via composite class dependency injection (like REST pattern)
         super().__init__(
             config=config,
-            order_handler=order_handler,
-            balance_handler=balance_handler,
-            trade_handler=trade_handler,
+            handlers=handlers,
             **kwargs
         )
         

@@ -21,7 +21,7 @@ from .strategies import RestStrategySet, RequestMetrics, PerformanceTargets, Aut
 from .structs import HTTPMethod
 
 
-class RestTransportManager:
+class RestManager:
     """
     High-performance REST transport manager with strategy composition.
     
@@ -264,7 +264,9 @@ class RestTransportManager:
                         if self.strategy_set.exception_handler_strategy:
                             raise self.strategy_set.exception_handler_strategy.handle_error(response.status, response_text)
                         else:
-                            raise ExchangeRestError(response.status, f"HTTP {response.status}: {response_text}")
+                            raise ExchangeRestError(response.status, f"HTTP {response.status}: {response_text}"
+                                                                     f"\nparams:{request_params.get('params', {})},"
+                                                                     f"data: {request_params.get('data', {})}")
                     
                     # Parse and return successful response
                     return self._parse_response(response_text)

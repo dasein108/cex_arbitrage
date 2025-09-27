@@ -30,7 +30,7 @@ from typing import Dict, Any
 from exchanges.structs.common import Order, AssetBalance
 from exchanges.structs import ExchangeEnum
 from config.config_manager import HftConfig
-from exchanges.transport_factory import create_websocket_client, create_private_handlers
+from exchanges.factory import create_websocket_client, create_private_handlers
 from examples.integration_test_framework import (
     IntegrationTestRunner, TestCategory, TestStatus, EXIT_CODE_SUCCESS, EXIT_CODE_FAILED_TESTS, EXIT_CODE_ERROR,
     EXIT_CODE_CONFIG_ERROR
@@ -39,7 +39,7 @@ from examples.integration_test_framework import (
 
 class PrivateWebSocketDataCollector:
     """Collects and validates private WebSocket data for testing."""
-    
+
     def __init__(self, exchange_name: str):
         self.exchange_name = exchange_name.upper()
         self.balance_updates = []
@@ -48,7 +48,7 @@ class PrivateWebSocketDataCollector:
         self.connection_events = []
         self.error_count = 0
         self.latest_balances = {}
-        
+
     async def handle_balance_update(self, balance_data) -> None:
         """Handle balance updates and collect metrics."""
         self.balance_updates.append({
@@ -56,7 +56,7 @@ class PrivateWebSocketDataCollector:
             "data": balance_data,
             "data_type": type(balance_data).__name__
         })
-        
+
         # Store latest balance data
         if isinstance(balance_data, AssetBalance):
             self.latest_balances[balance_data.asset] = {
@@ -76,7 +76,7 @@ class PrivateWebSocketDataCollector:
                         "total": float(balance.get('free', 0)) + float(balance.get('locked', 0)),
                         "timestamp": time.time()
                     }
-    
+
     async def handle_order_update(self, order_data) -> None:
         """Handle order updates and collect metrics."""
         self.order_updates.append({
@@ -84,7 +84,7 @@ class PrivateWebSocketDataCollector:
             "data": order_data,
             "data_type": type(order_data).__name__
         })
-    
+
     async def handle_trade_update(self, trade_data) -> None:
         """Handle trade updates and collect metrics."""
         self.trade_updates.append({
@@ -92,7 +92,7 @@ class PrivateWebSocketDataCollector:
             "data": trade_data,
             "data_type": type(trade_data).__name__
         })
-    
+
     def handle_state_change(self, state: str) -> None:
         """Handle WebSocket state changes."""
         self.connection_events.append({
@@ -100,7 +100,7 @@ class PrivateWebSocketDataCollector:
             "event": "state_change",
             "state": state
         })
-    
+
     def get_summary(self) -> Dict[str, Any]:
         """Get summary of collected private data."""
         return {
@@ -115,7 +115,7 @@ class PrivateWebSocketDataCollector:
 
 class WebSocketPrivateIntegrationTest:
     """WebSocket Private API integration test suite for AI agents."""
-    
+
     def __init__(self, exchange_name: str):
         self.exchange_name = exchange_name.upper()
         self.websocket = None
@@ -124,27 +124,27 @@ class WebSocketPrivateIntegrationTest:
             exchange=self.exchange_name,
             test_suite="WEBSOCKET_PRIVATE_API"
         )
-        
+
     async def setup(self) -> Dict[str, Any]:
         """Setup private WebSocket connection with authentication."""
         try:
             config_manager = HftConfig()
             config = config_manager.get_exchange_config(self.exchange_name.lower())
-            
+
             # Verify credentials are available
             if not config.credentials.api_key or not config.credentials.secret_key:
                 raise ValueError(f"{self.exchange_name} API credentials are required for private WebSocket testing")
-            
+
             # Get exchange enum for factory
             exchange_enum = ExchangeEnum(self.exchange_name)
-            
+
             # Create handler object using factory
             handlers = create_private_handlers(
                 balance_handler=self.data_collector.handle_balance_update,
                 order_handler=self.data_collector.handle_order_update,
                 trade_handler=self.data_collector.handle_trade_update
             )
-            
+
             # Create WebSocket instance using factory
             self.websocket = create_websocket_client(
                 exchange=exchange_enum,
@@ -152,7 +152,7 @@ class WebSocketPrivateIntegrationTest:
                 handlers=handlers,
                 is_private=True
             )
-            
+
             return {
                 "setup_successful": True,
                 "websocket_class": type(self.websocket).__name__,
@@ -164,27 +164,27 @@ class WebSocketPrivateIntegrationTest:
             }
         except Exception as e:
             raise ConnectionError(f"Failed to setup {self.exchange_name} private WebSocket: {str(e)}")
-    
+
     async def teardown(self) -> None:
         """Clean up WebSocket resources."""
         if self.websocket:
             await self.websocket.close()
-    
+
     async def test_authentication_and_connection(self) -> Dict[str, Any]:
         """Test WebSocket authentication and connection establishment."""
         start_time = time.time()
-        
+
         try:
             # Initialize private WebSocket connection
             await self.websocket.initialize([])  # Empty list for private channels
             execution_time = (time.time() - start_time) * 1000
-            
+
             # Wait a moment for connection to stabilize
             await asyncio.sleep(3)
-            
+
             # Check connection status
             is_connected = self.websocket.is_connected()
-            
+
             return {
                 "authentication_successful": is_connected,
                 "connection_established": is_connected,
@@ -196,26 +196,26 @@ class WebSocketPrivateIntegrationTest:
             if "authentication" in str(e).lower() or "unauthorized" in str(e).lower():
                 raise PermissionError(f"Authentication failed: {str(e)}")
             raise ConnectionError(f"Private WebSocket connection failed: {str(e)}")
-    
+
     async def test_private_data_monitoring(self, monitor_seconds: int = 20) -> Dict[str, Any]:
         """Test private data reception monitoring."""
         start_time = time.time()
-        
+
         try:
             # Monitor WebSocket for private data
             await asyncio.sleep(monitor_seconds)
-            
+
             execution_time = (time.time() - start_time) * 1000
-            
+
             # Get data summary
             summary = self.data_collector.get_summary()
-            
+
             # Analyze data reception
             has_balance_updates = summary["balance_updates"] > 0
             has_order_updates = summary["order_updates"] > 0
             has_trade_updates = summary["trade_updates"] > 0
             has_any_private_data = has_balance_updates or has_order_updates or has_trade_updates
-            
+
             return {
                 "monitor_duration_seconds": monitor_seconds,
                 "has_balance_updates": has_balance_updates,
@@ -227,21 +227,22 @@ class WebSocketPrivateIntegrationTest:
                 "trade_updates_count": summary["trade_updates"],
                 "assets_with_balance_data": summary["assets_with_balance_data"],
                 "execution_time_ms": execution_time,
-                "data_points_received": summary["balance_updates"] + summary["order_updates"] + summary["trade_updates"],
+                "data_points_received": summary["balance_updates"] + summary["order_updates"] + summary[
+                    "trade_updates"],
                 "error_count": summary["error_count"],
                 "note": "Private data only appears during account activity (trading, deposits, withdrawals, etc.)"
             }
         except Exception as e:
             raise ValueError(f"Private data monitoring failed: {str(e)}")
-    
+
     async def test_balance_data_quality(self) -> Dict[str, Any]:
         """Test balance data quality and structure."""
         start_time = time.time()
-        
+
         try:
             # Analyze collected balance data
             balance_quality_results = []
-            
+
             for update in self.data_collector.balance_updates[-5:]:  # Last 5 updates
                 data = update["data"]
                 quality_check = {
@@ -252,7 +253,7 @@ class WebSocketPrivateIntegrationTest:
                     "has_required_fields": False,
                     "sample_data": None
                 }
-                
+
                 # Check data structure
                 if isinstance(data, AssetBalance):
                     quality_check["has_required_fields"] = all([
@@ -272,16 +273,16 @@ class WebSocketPrivateIntegrationTest:
                         key in data for key in ['asset', 'free', 'locked']
                     ])
                     quality_check["sample_data"] = str(data)[:200]  # First 200 chars
-                
+
                 balance_quality_results.append(quality_check)
-            
+
             execution_time = (time.time() - start_time) * 1000
-            
+
             # Calculate quality metrics
             updates_analyzed = len(balance_quality_results)
             structured_updates = sum(1 for r in balance_quality_results if r["is_structured_type"])
             valid_updates = sum(1 for r in balance_quality_results if r["has_required_fields"])
-            
+
             return {
                 "updates_analyzed": updates_analyzed,
                 "structured_updates": structured_updates,
@@ -294,15 +295,15 @@ class WebSocketPrivateIntegrationTest:
             }
         except Exception as e:
             raise ValueError(f"Balance data quality analysis failed: {str(e)}")
-    
+
     async def test_order_data_quality(self) -> Dict[str, Any]:
         """Test order data quality and structure."""
         start_time = time.time()
-        
+
         try:
             # Analyze collected order data
             order_quality_results = []
-            
+
             for update in self.data_collector.order_updates[-5:]:  # Last 5 updates
                 data = update["data"]
                 quality_check = {
@@ -313,7 +314,7 @@ class WebSocketPrivateIntegrationTest:
                     "has_required_fields": False,
                     "sample_data": None
                 }
-                
+
                 # Check data structure
                 if isinstance(data, Order):
                     quality_check["has_required_fields"] = all([
@@ -334,16 +335,16 @@ class WebSocketPrivateIntegrationTest:
                     order_fields = ['orderId', 'order_id', 'symbol', 'side', 'status']
                     quality_check["has_required_fields"] = any(field in data for field in order_fields)
                     quality_check["sample_data"] = str(data)[:200]  # First 200 chars
-                
+
                 order_quality_results.append(quality_check)
-            
+
             execution_time = (time.time() - start_time) * 1000
-            
+
             # Calculate quality metrics
             updates_analyzed = len(order_quality_results)
             structured_updates = sum(1 for r in order_quality_results if r["is_structured_type"])
             valid_updates = sum(1 for r in order_quality_results if r["has_required_fields"])
-            
+
             return {
                 "updates_analyzed": updates_analyzed,
                 "structured_updates": structured_updates,
@@ -356,28 +357,28 @@ class WebSocketPrivateIntegrationTest:
             }
         except Exception as e:
             raise ValueError(f"Order data quality analysis failed: {str(e)}")
-    
+
     async def test_connection_stability(self) -> Dict[str, Any]:
         """Test WebSocket connection stability and performance."""
         start_time = time.time()
-        
+
         try:
             # Get WebSocket performance metrics
             metrics = self.websocket.get_performance_metrics()
             execution_time = (time.time() - start_time) * 1000
-            
+
             # Analyze connection stability
             connection_uptime = metrics.get("connection_uptime_seconds", 0)
             messages_processed = metrics.get("messages_processed", 0)
             error_count = metrics.get("error_count", 0)
             connection_state = metrics.get("connection_state", "Unknown")
-            
+
             # Calculate stability indicators
             uptime_acceptable = connection_uptime >= 15  # At least 15 seconds
             error_rate = error_count / max(messages_processed, 1)
             low_error_rate = error_rate <= 0.1  # Less than 10% error rate for private
             stable_connection = connection_state == "connected"
-            
+
             return {
                 "connection_state": connection_state,
                 "connection_uptime_seconds": connection_uptime,
@@ -392,7 +393,7 @@ class WebSocketPrivateIntegrationTest:
             }
         except Exception as e:
             raise ValueError(f"Connection stability analysis failed: {str(e)}")
-    
+
     async def run_all_tests(self, timeout_seconds: int = 30, monitor_seconds: int = 20) -> None:
         """Run complete WebSocket private API test suite."""
         try:
@@ -404,7 +405,7 @@ class WebSocketPrivateIntegrationTest:
                 timeout_seconds=15,
                 expected_behavior="Private WebSocket configuration loaded with valid credentials and client initialized"
             )
-            
+
             # Test authentication and connection
             await self.test_runner.run_test_with_timeout(
                 self.test_authentication_and_connection,
@@ -413,7 +414,7 @@ class WebSocketPrivateIntegrationTest:
                 timeout_seconds=timeout_seconds,
                 expected_behavior="Private WebSocket authentication successful and connection established"
             )
-            
+
             # Test private data monitoring
             await self.test_runner.run_test_with_timeout(
                 self.test_private_data_monitoring,
@@ -423,7 +424,7 @@ class WebSocketPrivateIntegrationTest:
                 expected_behavior="Private WebSocket monitors for account data (may be empty if no account activity)",
                 monitor_seconds=monitor_seconds
             )
-            
+
             # Test balance data quality
             await self.test_runner.run_test_with_timeout(
                 self.test_balance_data_quality,
@@ -432,7 +433,7 @@ class WebSocketPrivateIntegrationTest:
                 timeout_seconds=timeout_seconds,
                 expected_behavior="Balance data (if received) has valid structure with required fields"
             )
-            
+
             # Test order data quality
             await self.test_runner.run_test_with_timeout(
                 self.test_order_data_quality,
@@ -441,7 +442,7 @@ class WebSocketPrivateIntegrationTest:
                 timeout_seconds=timeout_seconds,
                 expected_behavior="Order data (if received) has valid structure with required fields"
             )
-            
+
             # Test connection stability
             await self.test_runner.run_test_with_timeout(
                 self.test_connection_stability,
@@ -450,7 +451,7 @@ class WebSocketPrivateIntegrationTest:
                 timeout_seconds=timeout_seconds,
                 expected_behavior="Private WebSocket maintains stable connection with low error rate"
             )
-            
+
         finally:
             # Always cleanup
             await self.teardown()
@@ -462,31 +463,32 @@ async def main():
     parser.add_argument("exchange", nargs="?", default="mexc", help="Exchange name (mexc, gateio) - defaults to mexc")
     parser.add_argument("--output", "-o", help="Output JSON file path")
     parser.add_argument("--timeout", "-t", type=int, default=30, help="Test timeout in seconds")
-    parser.add_argument("--monitor-time", "-m", type=int, default=20, help="Private data monitoring duration in seconds")
+    parser.add_argument("--monitor-time", "-m", type=int, default=20,
+                        help="Private data monitoring duration in seconds")
     parser.add_argument("--verbose", "-v", action="store_true", help="Enable verbose output")
-    
+
     args = parser.parse_args()
-    
+
     # Validate exchange
     supported_exchanges = ["mexc", "gateio"]
     if args.exchange.lower() not in supported_exchanges:
         print(f"Error: Unsupported exchange '{args.exchange}'. Supported: {supported_exchanges}")
         sys.exit(EXIT_CODE_CONFIG_ERROR)
-    
+
     # Convert to ExchangeEnum
     from exchanges.utils.exchange_utils import get_exchange_enum
     exchange_enum = get_exchange_enum(args.exchange)
-    
+
     # Create test suite
     test_suite = WebSocketPrivateIntegrationTest(exchange_enum.value)
-    
+
     try:
         # Run tests
         await test_suite.run_all_tests(
             timeout_seconds=args.timeout,
             monitor_seconds=args.monitor_time
         )
-        
+
         # Generate and output results
         if args.output:
             json_result = test_suite.test_runner.output_json_result(args.output)
@@ -496,10 +498,10 @@ async def main():
             json_result = test_suite.test_runner.output_json_result()
             if args.verbose:
                 print(json_result)
-        
+
         # Print summary for AI agent
         test_suite.test_runner.print_summary_for_agent()
-        
+
         # Determine exit code
         report = test_suite.test_runner.generate_report()
         if report.overall_status == TestStatus.PASSED:
@@ -510,7 +512,7 @@ async def main():
             sys.exit(EXIT_CODE_ERROR)
         else:
             sys.exit(EXIT_CODE_ERROR)
-            
+
     except KeyboardInterrupt:
         print("Test interrupted by user")
         sys.exit(EXIT_CODE_ERROR)
@@ -521,6 +523,7 @@ async def main():
 
 # Pytest test functions
 import pytest
+
 
 @pytest.mark.asyncio
 async def test_mexc_websocket_private_integration():
@@ -533,6 +536,7 @@ async def test_mexc_websocket_private_integration():
     except Exception as e:
         pytest.fail(f"MEXC WebSocket private integration test failed: {str(e)}")
 
+
 @pytest.mark.asyncio
 async def test_gateio_websocket_private_integration():
     """Test Gate.io WebSocket private API integration."""
@@ -543,6 +547,7 @@ async def test_gateio_websocket_private_integration():
         assert report.overall_status == TestStatus.PASSED, f"Tests failed: {report.summary_metrics}"
     except Exception as e:
         pytest.fail(f"Gate.io WebSocket private integration test failed: {str(e)}")
+
 
 if __name__ == "__main__":
     asyncio.run(main())

@@ -6,13 +6,13 @@ and standardize test patterns across REST and WebSocket integration tests.
 """
 
 import time
-from typing import Dict, Any, Optional, List
+from typing import Dict, Any, List
 from abc import ABC, abstractmethod
 
 from config.config_manager import HftConfig
 from exchanges.utils.exchange_utils import get_exchange_enum
-from exchanges.transport_factory import create_rest_client, create_websocket_client
-from ..integration_test_framework import IntegrationTestRunner, TestCategory, TestStatus
+from exchanges.factory import create_rest_client, create_websocket_client
+from ..integration_test_framework import IntegrationTestRunner, TestCategory
 from ..utils.constants import TEST_SYMBOLS, DEFAULT_TEST_TIMEOUT
 
 
@@ -227,14 +227,14 @@ class WebSocketIntegrationTestMixin:
             exchange_enum = get_exchange_enum(self.exchange_name)
             
             if is_private:
-                from exchanges.transport_factory import create_private_handlers
+                from exchanges.factory import create_private_handlers
                 handlers = create_private_handlers(
                     order_handler=self.data_collector.handle_order_update if hasattr(self.data_collector, 'handle_order_update') else None,
                     balance_handler=self.data_collector.handle_balance_update,
                     trade_handler=self.data_collector.handle_trade_update
                 )
             else:
-                from exchanges.transport_factory import create_public_handlers
+                from exchanges.factory import create_public_handlers
                 handlers = create_public_handlers(
                     orderbook_diff_handler=self.data_collector.handle_orderbook_update,
                     trades_handler=self.data_collector.handle_trade_update,

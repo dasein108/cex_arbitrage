@@ -9,6 +9,7 @@ HFT COMPLIANCE: Sub-millisecond message processing, <100ms reconnection.
 
 import asyncio
 import time
+from symtable import Symbol
 from typing import List, Dict, Optional, Callable, Any, Awaitable, Set
 from websockets.client import WebSocketClientProtocol
 from websockets.protocol import State as WsState
@@ -86,13 +87,14 @@ class WebSocketManager:
                         websocket_url=config.url,
                         max_pending=self.manager_config.max_pending_messages)
     
-    async def initialize(self, symbols: Optional[List] = None,
-                         channels: Optional[List[PublicWebsocketChannelType]] = None) -> None:
+    async def initialize(self, symbols: Optional[List[Symbol]] = None,
+                         default_channels: Optional[List[PublicWebsocketChannelType]] = None) -> None:
         """
         Initialize WebSocket connection using strategy.connect() directly.
         
         Args:
-            symbols: Optional list of Symbol instances for initial subscription
+            :param symbols: Optional list of Symbol instances for initial subscription
+            :param default_channels: Optional list of channels for initial subscription
         """
         # Import Symbol type here if needed for type checking
         from exchanges.structs.common import Symbol
@@ -100,14 +102,14 @@ class WebSocketManager:
         if symbols:
             self._active_symbols.update(symbols)
 
-        if channels:
-            self._ws_channels = channels
+        if default_channels:
+            self._ws_channels = default_channels
 
         try:
             with LoggingTimer(self.logger, "ws_manager_initialization") as timer:
                 self.logger.info("Initializing WebSocket manager with direct strategy connection",
-                               symbols_count=len(symbols) if symbols else 0,
-                               channels_count=len(channels) if channels else 0)
+                                 symbols_count=len(symbols) if symbols else 0,
+                                 channels_count=len(default_channels) if default_channels else 0)
                 
                 # Start connection loop (handles reconnection with strategy policies)
                 self._should_reconnect = True
@@ -145,7 +147,7 @@ class WebSocketManager:
             await self.close()
             raise ExchangeRestError(500, f"WebSocket initialization failed: {e}")
     
-    async def subscribe(self, symbols: List) -> None:
+    async def subscribe(self, symbols: List[Symbol]) -> None:
         """Subscribe to symbols using strategy."""
         # Import Symbol type here if needed
         from exchanges.structs.common import Symbol
@@ -191,7 +193,7 @@ class WebSocketManager:
             
             raise ExchangeRestError(400, f"Subscription failed: {e}")
     
-    async def unsubscribe(self, symbols: List) -> None:
+    async def unsubscribe(self, symbols: List[Symbol]) -> None:
         """Unsubscribe from symbols using strategy."""
         if not self.is_connected():
             return

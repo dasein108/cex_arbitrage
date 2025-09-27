@@ -32,8 +32,7 @@ from exchanges.structs.types import AssetName
 from exchanges.structs.enums import TimeInForce
 from exchanges.structs import OrderType, Side
 from config.config_manager import HftConfig
-from exchanges.transport_factory import create_rest_client
-from exchanges.structs import ExchangeEnum
+from exchanges.factory import create_rest_client
 from examples.integration_test_framework import (
     IntegrationTestRunner, TestCategory, TestStatus, EXIT_CODE_SUCCESS, EXIT_CODE_FAILED_TESTS, EXIT_CODE_ERROR,
     EXIT_CODE_CONFIG_ERROR
@@ -84,7 +83,7 @@ class RestPrivateIntegrationTest:
         start_time = time.time()
         
         try:
-            result = await self.exchange.get_account_balance()
+            result = await self.exchange.get_balances()
             execution_time = (time.time() - start_time) * 1000
             
             # Validate balance structure
@@ -176,7 +175,7 @@ class RestPrivateIntegrationTest:
                     "symbol": f"{order.symbol.base}/{order.symbol.quote}",
                     "side": order.side.name,
                     "order_type": order.order_type.name,
-                    "quantity": order.quantity,
+                    "quantity": order.quantity_usdt,
                     "price": order.price,
                     "status": order.status.name,
                     "filled_quantity": order.filled_quantity,
@@ -259,7 +258,7 @@ class RestPrivateIntegrationTest:
                 symbol=symbol,
                 side=Side.BUY,
                 order_type=OrderType.LIMIT,
-                amount=0.01,  # Very small amount
+                quantity=0.01,  # Very small amount
                 price=0.00001,  # Unrealistically low price
                 time_in_force=TimeInForce.GTC
             )

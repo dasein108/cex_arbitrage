@@ -109,7 +109,7 @@ async def test_trade_data_model():
         # Verify data integrity
         assert reconstructed_trade.symbol == trade.symbol
         assert reconstructed_trade.side == trade.side
-        assert reconstructed_trade.quantity == trade.quantity
+        assert reconstructed_trade.quantity_usdt == trade.quantity
         assert reconstructed_trade.price == trade.price
         print("✅ Data integrity verified")
         

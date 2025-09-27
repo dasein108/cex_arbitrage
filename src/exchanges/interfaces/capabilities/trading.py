@@ -1,10 +1,34 @@
 """
-Trading capability interface for exchange operations.
+Trading capability interface for high-frequency exchange operations.
 
-Universal capability available for both spot and futures exchanges.
-Provides core order management functionality.
+This module defines the core trading capability that provides order management
+functionality for both spot and futures exchanges. All implementations must
+meet strict HFT performance requirements for professional trading operations.
 
-HFT COMPLIANT: Sub-50ms order execution requirements.
+## Performance Requirements
+
+- **Order Placement**: <50ms end-to-end execution
+- **Order Cancellation**: <30ms confirmation
+- **Status Queries**: <20ms response time
+- **WebSocket Priority**: Real-time updates for order status changes
+
+## Design Principles
+
+1. **Async-First**: All operations are async for non-blocking execution
+2. **Error Recovery**: Automatic retry with exponential backoff
+3. **Precision Handling**: Decimal precision for all price/quantity values
+4. **State Tracking**: Local order state synchronized with WebSocket updates
+
+## Integration Notes
+
+This capability is typically composed with BalanceCapability for complete
+trading functionality. For futures exchanges, it's also composed with
+PositionCapability and LeverageCapability.
+
+See also:
+- capabilities-architecture.md for complete protocol design
+- hft-requirements-compliance.md for performance specifications
+- separated-domain-pattern.md for architectural context
 """
 
 from abc import ABC, abstractmethod
@@ -15,10 +39,43 @@ from exchanges.structs.enums import OrderSide
 
 class TradingCapability(ABC):
     """
-    Core trading operations capability.
+    Core trading operations capability for HFT systems.
     
-    Available for both spot and futures exchanges.
-    Provides order placement, cancellation, and status tracking.
+    Provides high-performance order management operations that are universal
+    across both spot and futures exchanges. All methods follow strict latency
+    requirements for professional trading operations.
+    
+    ## Capability Scope
+    
+    This capability provides:
+    - Limit and market order placement
+    - Order cancellation and modification
+    - Order status tracking and history
+    - Real-time order updates via WebSocket
+    
+    ## Implementation Requirements
+    
+    1. **Latency Targets**: All operations must meet HFT latency requirements
+    2. **Error Handling**: Comprehensive error handling with typed exceptions
+    3. **State Management**: Maintain local order cache synchronized with exchange
+    4. **Logging**: Performance metrics logging for all operations
+    
+    ## Business Context
+    
+    In HFT arbitrage systems, order execution speed is critical:
+    - Arbitrage opportunities exist for milliseconds
+    - Slower execution means missed profits
+    - Order cancellation speed prevents adverse selection
+    - Status tracking enables risk management
+    
+    Example:
+        ```python
+        class MyExchange(CompositePrivateExchange, TradingCapability):
+            async def place_limit_order(self, symbol, side, quantity, price, **kwargs):
+                # Implementation with <50ms execution
+                with LoggingTimer(self.logger, "place_limit_order"):
+                    return await self._rest_client.create_order(...)
+        ```
     """
     
     @abstractmethod

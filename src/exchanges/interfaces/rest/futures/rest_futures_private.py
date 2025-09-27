@@ -6,10 +6,10 @@ from decimal import Decimal
 from exchanges.structs.common import Symbol, Order, Position, AssetBalance, WithdrawalRequest, WithdrawalResponse
 from exchanges.structs.types import AssetName, OrderId
 from exchanges.structs import Side, OrderType
-from exchanges.interfaces.rest import PrivateSpotRest
+from exchanges.interfaces.rest.interfaces import PrivateTradingInterface
 
 
-class PrivateFuturesRest(PrivateSpotRest):
+class PrivateFuturesRest(PrivateTradingInterface, ABC):
     """Abstract interface for private futures REST operations."""
     
     @abstractmethod

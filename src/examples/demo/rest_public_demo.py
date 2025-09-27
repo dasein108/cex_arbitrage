@@ -16,7 +16,7 @@ import time
 from exchanges.structs.common import Symbol
 from exchanges.structs.types import AssetName
 from config.config_manager import HftConfig
-from exchanges.transport_factory import create_rest_client
+from exchanges.factory import create_rest_client
 from examples.utils.decorators import rest_api_test
 from exchanges.utils.exchange_utils import get_exchange_enum
 
@@ -48,8 +48,8 @@ async def check_get_exchange_info(exchange, exchange_name: str):
             "symbol": str(symbol),
             "base_precision": info.base_precision,
             "quote_precision": info.quote_precision, 
-            "min_base_amount": info.min_base_amount,
-            "min_quote_amount": info.min_quote_amount,
+            "min_base_amount": info.min_base_quantity,
+            "min_quote_amount": info.min_quote_quantity,
             "maker_commission": info.maker_commission,
             "taker_commission": info.taker_commission,
             "inactive": info.inactive
@@ -92,7 +92,7 @@ async def check_get_recent_trades(exchange, exchange_name: str):
     for trade in result:
         trades_data.append({
             "price": trade.price,
-            "quantity": trade.quantity,
+            "quantity": trade.quantity_usdt,
             "side": trade.side.name,
             "timestamp": trade.timestamp,
             "is_maker": trade.is_maker
@@ -126,7 +126,7 @@ async def check_get_historical_trades(exchange, exchange_name: str):
     for trade in result[:5]:  # Show first 5 trades
         trades_data.append({
             "price": trade.price,
-            "quantity": trade.quantity,
+            "quantity": trade.quantity_usdt,
             "side": trade.side.name,
             "timestamp": trade.timestamp,
             "trade_id": trade.trade_id,
@@ -234,7 +234,7 @@ async def main(exchange_name: str):
 
 
 if __name__ == "__main__":
-    exchange_name = sys.argv[1] if len(sys.argv) > 1 else "gateio_futures"
+    exchange_name = sys.argv[1] if len(sys.argv) > 1 else "gateio_spot"
 
     try:
         asyncio.run(main(exchange_name))

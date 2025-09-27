@@ -22,7 +22,7 @@ from common.orderbook_diff_processor import ParsedOrderbookUpdate
 
 # HFT Logger Integration
 from infrastructure.logging import get_logger
-from exchanges.transport_factory import create_websocket_client, create_public_handlers
+from exchanges.factory import create_websocket_client, create_public_handlers
 
 # Set up HFT logging
 logger = get_logger('websocket_public_demo')
@@ -69,7 +69,7 @@ class PublicWebSocketClient:
         """Add symbols for real-time subscription (only after connection established)."""
         if not self.is_connected():
             raise ValueError("WebSocket not connected - use initialize() with symbols instead")
-        await self.websocket.add_symbols(symbols)
+        await self.websocket.subscribe(symbols)
         logger.info("Added symbols to subscription",
                     symbol_count=len(symbols))
 

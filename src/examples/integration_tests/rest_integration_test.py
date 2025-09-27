@@ -18,8 +18,6 @@ from typing import Dict, Any
 
 from exchanges.structs.common import Symbol
 from exchanges.structs.types import AssetName
-from exchanges.structs.enums import TimeInForce
-from exchanges.structs import OrderType, Side
 
 from ..base.integration_test_base import IntegrationTestBase, RestIntegrationTestMixin
 from ..integration_test_framework import TestCategory, TestStatus, EXIT_CODE_SUCCESS, EXIT_CODE_FAILED_TESTS, EXIT_CODE_ERROR, EXIT_CODE_CONFIG_ERROR
@@ -41,7 +39,7 @@ class RestIntegrationTest(IntegrationTestBase, RestIntegrationTestMixin):
             if not self.config.credentials.api_key or not self.config.credentials.secret_key:
                 raise ValueError(f"{self.exchange_name} API credentials are required for private testing")
             
-            from exchanges.transport_factory import create_rest_client
+            from exchanges.factory import create_rest_client
             from exchanges.utils.exchange_utils import get_exchange_enum
             
             exchange_enum = get_exchange_enum(self.exchange_name)
@@ -217,7 +215,7 @@ class RestIntegrationTest(IntegrationTestBase, RestIntegrationTestMixin):
         start_time = time.time()
         
         try:
-            result = await self.private_exchange.get_account_balance()
+            result = await self.private_exchange.get_balances()
             performance = self.measure_performance(start_time)
             
             balances_count = len(result)

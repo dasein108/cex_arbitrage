@@ -28,7 +28,7 @@ from typing import Dict, Any, List
 from exchanges.structs.common import Symbol, OrderBook, Trade
 from exchanges.structs.types import AssetName
 from config.config_manager import HftConfig
-from exchanges.transport_factory import create_websocket_client, create_public_handlers
+from exchanges.factory import create_websocket_client, create_public_handlers
 from exchanges.structs import ExchangeEnum
 from examples.integration_test_framework import (
     IntegrationTestRunner, TestCategory, TestStatus, EXIT_CODE_SUCCESS, EXIT_CODE_FAILED_TESTS, EXIT_CODE_ERROR,

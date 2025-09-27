@@ -13,6 +13,7 @@ from exchanges.interfaces.rest.futures.rest_futures_private import PrivateFuture
 from exchanges.interfaces.ws.futures.ws_private_futures import PrivateFuturesWebsocket
 from exchanges.structs.common import Symbol, Order, Position
 from infrastructure.logging import HFTLoggerInterface
+from infrastructure.networking.websocket.handlers import PrivateWebsocketHandlers
 
 
 class GateioFuturesCompositePrivateExchange(CompositePrivateFuturesExchange):
@@ -30,9 +31,10 @@ class GateioFuturesCompositePrivateExchange(CompositePrivateFuturesExchange):
     for futures trading and position management.
     """
 
-    def __init__(self, config, logger: Optional[HFTLoggerInterface] = None):
+    def __init__(self, config, logger: Optional[HFTLoggerInterface] = None, 
+                 handlers: Optional[PrivateWebsocketHandlers] = None):
         """Initialize Gate.io futures private composite exchange."""
-        super().__init__(config, logger=logger)
+        super().__init__(config, logger=logger, handlers=handlers)
         
         # Override tag for Gate.io futures identification
         self._tag = f'{config.name}_futures_private'
@@ -41,13 +43,13 @@ class GateioFuturesCompositePrivateExchange(CompositePrivateFuturesExchange):
 
     async def _create_private_rest(self) -> PrivateFuturesRest:
         """Create Gate.io futures private REST client."""
-        from exchanges.integrations.gateio.rest.gateio_futures_private import GateioPrivateFuturesRest
+        from exchanges.integrations.gateio.rest.gateio_rest_futures_private import GateioPrivateFuturesRest
         return GateioPrivateFuturesRest(self.config, self.logger)
 
-    async def _create_private_websocket(self) -> PrivateFuturesWebsocket:
-        """Create Gate.io futures private WebSocket client."""
-        from exchanges.integrations.gateio.ws.gateio_futures_private_websocket import GateioFuturesPrivateWebsocket
-        return GateioFuturesPrivateWebsocket(self.config, self.logger)
+    async def _create_private_ws_with_handlers(self, handlers: PrivateWebsocketHandlers) -> PrivateFuturesWebsocket:
+        """Create Gate.io futures private WebSocket client with handlers."""
+        from exchanges.integrations.gateio.ws.gateio_ws_private_futures import GateioPrivateFuturesWebsocket
+        return GateioPrivateFuturesWebsocket(self.config, handlers)
 
     # Futures-specific abstract method implementations
 
@@ -142,14 +144,14 @@ class GateioFuturesCompositePrivateExchange(CompositePrivateFuturesExchange):
             
             orders = []
             for position in positions:
-                if position.quantity == 0:
+                if position.quantity_usdt == 0:
                     continue
                 
                 # Determine close quantity
-                close_qty = quantity if quantity else abs(position.quantity)
+                close_qty = quantity if quantity else abs(position.quantity_usdt)
                 
                 # Determine side (opposite of position)
-                close_side = 'sell' if position.quantity > 0 else 'buy'
+                close_side = 'sell' if position.quantity_usdt > 0 else 'buy'
                 
                 # Place market order to close position
                 order = await self.place_futures_order(
@@ -189,7 +191,7 @@ class GateioFuturesCompositePrivateExchange(CompositePrivateFuturesExchange):
         """Load margin information from Gate.io futures REST API."""
         try:
             # Gate.io futures margin info is typically included in account balance
-            balance = await self._private_rest.get_account_balance()
+            balance = await self._private_rest.get_balances()
             
             # Extract margin info for each symbol
             for symbol in self._symbols:
@@ -213,7 +215,7 @@ class GateioFuturesCompositePrivateExchange(CompositePrivateFuturesExchange):
             
             # Update internal position tracking
             for position in positions:
-                if position.quantity != 0:  # Only track active positions
+                if position.quantity_usdt != 0:  # Only track active positions
                     self._futures_positions[position.symbol] = position
             
             self.logger.info(f"Loaded {len(self._futures_positions)} active positions")

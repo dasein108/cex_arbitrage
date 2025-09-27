@@ -19,10 +19,10 @@ from collections import defaultdict
 from exchanges.structs.common import Symbol, OrderBook, Trade
 from exchanges.structs.types import AssetName
 from config.config_manager import HftConfig
-from exchanges.transport_factory import create_websocket_client, PublicWebsocketHandlers
+from exchanges.factory import create_websocket_client, create_public_handlers
 from exchanges.structs import ExchangeEnum
 from tests.integration_test_framework import (
-    IntegrationTestRunner, TestCategory, TestStatus, TestMetrics
+    IntegrationTestRunner, TestCategory, TestStatus
 )
 
 
@@ -196,7 +196,7 @@ class WebSocketPublicIntegrationTest:
                 raise ValueError(f"Unsupported exchange: {self.exchange_name}")
             
             # Create handlers
-            handlers = PublicWebsocketHandlers(
+            handlers = create_public_handlers(
                 book_ticker_handler=self._handle_book_ticker,
                 orderbook_handler=self.data_collector.handle_orderbook_update,
                 trades_handler=self.data_collector.handle_trades_update

@@ -82,14 +82,14 @@ class PublicSpotWebsocket(ABC):
         """
         try:
             # Initialize manager with symbols
-            await self._ws_manager.initialize(symbols=symbols, channels=channels)
+            await self._ws_manager.initialize(symbols=symbols, default_channels=channels)
             self.logger.info(f"WebSocket initialized for {self.exchange_name} with {len(symbols)} symbols")
             
         except Exception as e:
             self.logger.error(f"Failed to initialize WebSocket: {e}")
             raise
     
-    async def add_symbols(self, symbols: List[Symbol]) -> None:
+    async def subscribe(self, symbols: List[Symbol]) -> None:
         """
         Add symbols to subscription.
         
@@ -111,7 +111,7 @@ class PublicSpotWebsocket(ABC):
             self.logger.error(f"Failed to add symbols: {e}")
             raise
 
-    async def remove_symbols(self, symbols: List[Symbol]) -> None:
+    async def unsubscribe(self, symbols: List[Symbol]) -> None:
         """Remove symbols from subscription using enhanced symbol-channel mapping."""
         if not symbols:
             return

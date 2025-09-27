@@ -31,7 +31,7 @@ class Symbol(Struct, frozen=True):
     
     def __str__(self) -> str:
         """String representation for compatibility."""
-        return f"{self.base}{self.quote}"
+        return f"{self.base}/{self.quote}"
 
 # Core enums used across the system
 
@@ -67,18 +67,10 @@ class Order(Struct):
     fee: Optional[float] = None
     fee_asset: Optional[AssetName] = None
     time_in_force: TimeInForce = TimeInForce.GTC
-    
-    # Backward compatibility aliases
-    @property
-    def amount(self) -> float:
-        """Alias for quantity for backward compatibility."""
-        return self.quantity
-    
-    @property 
-    def amount_filled(self) -> float:
-        """Alias for filled_quantity for backward compatibility."""
-        return self.filled_quantity
 
+    def __str__(self):
+        return f"{self.symbol} {self.side} {self.order_type.name} {self.quantity}@{self.price} status: {self.status.name}"
+    
 class AssetBalance(Struct):
     """Account balance for a single asset."""
     asset: AssetName
@@ -90,7 +82,6 @@ class AssetBalance(Struct):
         """Total balance (free + locked)."""
         return self.available + self.locked
 
-    @property
     def __str__(self):
         return f"{self.asset}: {self.total}({self.available}/{self.locked})"
 
@@ -115,12 +106,22 @@ class SymbolInfo(Struct, frozen=True):
     symbol: Symbol
     base_precision: int
     quote_precision: int
-    min_base_amount: float
-    min_quote_amount: float
+    min_base_quantity: float
+    min_quote_quantity: float
     is_futures: bool = False
     maker_commission: float = 0.0
     taker_commission: float = 0.0
     inactive: bool = False
+    tick: float = 0.0  # Minimum price increment
+    step: float = 0.0  # Minimum quantity increment
+
+    def round_quote(self, amount: float) -> float:
+        """Round price to the symbol's price/quote precision."""
+        return round(amount, self.quote_precision)
+
+    def round_base(self, quantity: float) -> float:
+        """Round quantity to the symbol's base precision."""
+        return round(quantity, self.base_precision)
 
 # Type alias for collections
 SymbolsInfo = Dict[Symbol, SymbolInfo]
@@ -220,6 +221,19 @@ class BookTicker(Struct):
     timestamp: int
     update_id: Optional[int] = None  # Gate.io provides this, MEXC doesn't
 
+    @property
+    def spread(self) -> float:
+        """Calculate the bid-ask spread."""
+        return self.ask_price - self.bid_price
+
+    def spread_percentage(self) -> float:
+        """Calculate the spread as a percentage """
+        return (self.spread / self.bid_price) * 100 if self.bid_price != 0 else 0.0
+
+    def __str__(self):
+        return (f"{self.symbol} Bid: {self.bid_price}@{self.bid_quantity} / Ask: {self.ask_price}@{self.ask_quantity} "
+                f"spread: {self.spread} ({self.spread_percentage():.4f}%)")
+
 class FuturesTicker(Struct):
     """Futures ticker with comprehensive market data including funding rates."""
     symbol: Symbol
@@ -246,7 +260,6 @@ class FuturesTicker(Struct):
 
 class TradingFee(Struct):
     """Trading fee information for a user."""
-    exchange: ExchangeName
     maker_rate: float = 0.0  # Maker fee rate (e.g., 0.001 for 0.1%)
     taker_rate: float = 0.0  # Taker fee rate (e.g., 0.001 for 0.1%)
     spot_maker: Optional[float] = None  # Spot maker fee (if different)

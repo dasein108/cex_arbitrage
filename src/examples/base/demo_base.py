@@ -11,9 +11,8 @@ from typing import List, Optional, Any, Dict
 from abc import ABC, abstractmethod
 
 from exchanges.structs.common import Symbol
-from exchanges.structs.types import AssetName, ExchangeName
 from config.config_manager import HftConfig
-from exchanges.transport_factory import create_rest_client, create_websocket_client
+from exchanges.factory import create_rest_client
 from exchanges.utils.exchange_utils import get_exchange_enum
 from infrastructure.logging import HFTLoggerInterface, get_logger
 from ..utils.constants import TEST_SYMBOLS, DEMO_SEPARATOR
@@ -240,8 +239,8 @@ class RestDemoMixin:
                     "symbol": str(symbol),
                     "base_precision": info.base_precision,
                     "quote_precision": info.quote_precision,
-                    "min_base_amount": info.min_base_amount,
-                    "min_quote_amount": info.min_quote_amount
+                    "min_base_amount": info.min_base_quantity,
+                    "min_quote_amount": info.min_quote_quantity
                 })
             
             result["result"] = {

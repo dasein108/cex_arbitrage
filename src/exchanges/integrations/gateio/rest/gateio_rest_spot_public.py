@@ -25,7 +25,9 @@ import asyncio
 import time
 from typing import Dict, List, Optional, Any
 from datetime import datetime
-
+# Inline utility function to avoid import issues
+def get_minimal_step(precision: int) -> float:
+    return 10**-precision
 from exchanges.structs.common import (
     Symbol, SymbolInfo, OrderBook, OrderBookEntry, Trade, Kline,
     Ticker
@@ -164,12 +166,14 @@ class GateioPublicSpotRest(PublicSpotRest):
                     symbol=symbol,
                     base_precision=base_prec,
                     quote_precision=quote_prec,
-                    min_base_amount=min_base,
-                    min_quote_amount=min_quote,
+                    min_base_quantity=min_base,
+                    min_quote_quantity=min_quote,
                     is_futures=False,
                     maker_commission=fee_rate,
                     taker_commission=fee_rate,
-                    inactive=is_inactive
+                    inactive=is_inactive,
+                    step=get_minimal_step(base_prec),
+                    tick=get_minimal_step(quote_prec)
                 )
                 
                 symbol_info_map[symbol] = symbol_info
@@ -245,6 +249,7 @@ class GateioPublicSpotRest(PublicSpotRest):
             ]
             
             orderbook = OrderBook(
+                symbol=symbol,
                 bids=bids,
                 asks=asks,
                 timestamp=timestamp
