@@ -77,26 +77,26 @@ def create_rest_client(
     # Direct instantiation based on exchange
     if exchange == ExchangeEnum.MEXC:
         if is_private:
-            from exchanges.integrations.mexc.rest.mexc_rest_private import MexcPrivateSpotRest
+            from exchanges.integrations.mexc.rest.mexc_rest_spot_private import MexcPrivateSpotRest
             instance = MexcPrivateSpotRest(config=config, logger=logger_override)
         else:
-            from exchanges.integrations.mexc.rest.mexc_rest_public import MexcPublicSpotRest
+            from exchanges.integrations.mexc.rest.mexc_rest_spot_public import MexcPublicSpotRest
             instance = MexcPublicSpotRest(config=config, logger=logger_override)
             
     elif exchange == ExchangeEnum.GATEIO:
         if is_private:
-            from exchanges.integrations.gateio.rest.gateio_rest_private import GateioPrivateSpotRest
+            from exchanges.integrations.gateio.rest.gateio_rest_spot_private import GateioPrivateSpotRest
             instance = GateioPrivateSpotRest(config=config, logger=logger_override)
         else:
-            from exchanges.integrations.gateio.rest.gateio_rest_public import GateioPublicSpotRest
+            from exchanges.integrations.gateio.rest.gateio_rest_spot_public import GateioPublicSpotRest
             instance = GateioPublicSpotRest(config=config, logger=logger_override)
             
     elif exchange == ExchangeEnum.GATEIO_FUTURES:
         if is_private:
-            from exchanges.integrations.gateio.rest.gateio_futures_private import GateioPrivateFuturesRest
+            from exchanges.integrations.gateio.rest.gateio_rest_futures_private import GateioPrivateFuturesRest
             instance = GateioPrivateFuturesRest(config=config, logger=logger_override)
         else:
-            from exchanges.integrations.gateio.rest.gateio_futures_public import GateioPublicFuturesRest
+            from exchanges.integrations.gateio.rest.gateio_rest_futures_public import GateioPublicFuturesRest
             instance = GateioPublicFuturesRest(config=config, logger=logger_override)
             
     else:
@@ -166,7 +166,7 @@ def create_websocket_client(
         else:
             from exchanges.integrations.mexc.ws import MexcPublicSpotWebsocket
             instance = MexcPublicSpotWebsocket(config=config, handlers=handlers, logger=logger_override)
-            
+
     elif exchange == ExchangeEnum.GATEIO:
         if is_private:
             from exchanges.integrations.gateio.ws import GateioPrivateSpotWebsocket
