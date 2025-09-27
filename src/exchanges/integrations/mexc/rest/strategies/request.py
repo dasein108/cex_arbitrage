@@ -28,10 +28,10 @@ class MexcRequestStrategy(RequestStrategy):
         self.logger = logger
         self.exchange_config = exchange_config
         
-        # Log strategy initialization
-        self.logger.info("MEXC request strategy initialized",
-                        base_url=exchange_config.base_url,
-                        has_network_config=exchange_config.network is not None)
+        # Log strategy initialization (move to DEBUG per logging spec)
+        self.logger.debug("MEXC request strategy initialized",
+                         base_url=exchange_config.base_url,
+                         has_network_config=exchange_config.network is not None)
         
         self.logger.metric("rest_request_strategies_created", 1,
                           tags={"exchange": "mexc"})

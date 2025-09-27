@@ -561,7 +561,7 @@ class GateioPrivateSpotRest(PrivateSpotRest):
 
                 currency_info_map[asset_name] = asset_info
 
-            self.logger.info(f"Retrieved currency info for {len(currency_info_map)} assets")
+            self.logger.debug(f"Retrieved currency info for {len(currency_info_map)} assets")
             return currency_info_map
 
         except Exception as e:

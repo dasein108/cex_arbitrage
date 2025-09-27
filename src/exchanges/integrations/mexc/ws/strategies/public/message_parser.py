@@ -65,11 +65,11 @@ class MexcPublicMessageParser(MessageParser):
             self.symbol_extractor, self.error_handler, self.logger
         )
         
-        # Log MEXC-specific initialization
+        # Log MEXC-specific initialization (move to DEBUG per logging spec)
         if self.logger:
-            self.logger.info("MexcPublicMessageParser initialized with common utilities",
-                            entry_pool_initial_size=200,
-                            entry_pool_max_size=500)
+            self.logger.debug("MexcPublicMessageParser initialized with common utilities",
+                             entry_pool_initial_size=200,
+                             entry_pool_max_size=500)
             
             # Track component initialization
             self.logger.metric("mexc_public_message_parsers_initialized", 1,

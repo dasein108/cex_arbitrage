@@ -25,9 +25,9 @@ class GateioPrivateFuturesSubscriptionStrategy(SubscriptionStrategy):
         
         # Log initialization
         if self.logger:
-            self.logger.info("GateioPrivateFuturesSubscriptionStrategy initialized",
-                            exchange="gateio",
-                            api_type="futures_private")
+            self.logger.debug("GateioPrivateFuturesSubscriptionStrategy initialized",
+                             exchange="gateio",
+                             api_type="futures_private")
             
             # Track component initialization
             self.logger.metric("gateio_futures_private_subscription_strategies_initialized", 1,
@@ -102,7 +102,7 @@ class GateioPrivateFuturesSubscriptionStrategy(SubscriptionStrategy):
 
             self.logger.debug(f"Created {event} message for {channel_config['channel']} (auth required)")
 
-        self.logger.info(f"Created {len(messages)} authenticated private futures {event} messages")
+        self.logger.debug(f"Created {len(messages)} authenticated private futures {event} messages")
 
         return messages
     
@@ -126,7 +126,7 @@ class GateioPrivateFuturesSubscriptionStrategy(SubscriptionStrategy):
                 subscription_msg = self._create_subscription_message(channel_id, "subscribe")
                 subscription_messages.append(subscription_msg)
                 self._active_subscriptions.add(channel_id)
-                self.logger.info(f"Subscribing to Gate.io private futures channel: {channel_name}")
+                self.logger.debug(f"Subscribing to Gate.io private futures channel: {channel_name}")
         
         return subscription_messages
 
@@ -140,7 +140,7 @@ class GateioPrivateFuturesSubscriptionStrategy(SubscriptionStrategy):
         
         # For private futures, we typically don't unsubscribe individual channels
         # unless specifically requested. This is a placeholder for completeness.
-        self.logger.info(f"Gate.io private futures unsubscribe requested for {len(symbols)} symbols")
+        self.logger.debug(f"Gate.io private futures unsubscribe requested for {len(symbols)} symbols")
         
         return unsubscription_messages
 
@@ -154,7 +154,7 @@ class GateioPrivateFuturesSubscriptionStrategy(SubscriptionStrategy):
                     subscription_msg = self._create_subscription_message(channel, "subscribe")
                     subscription_messages.append(subscription_msg)
                     self._active_subscriptions.add(channel)
-                    self.logger.info(f"Subscribing to Gate.io private futures channel: {channel}")
+                    self.logger.debug(f"Subscribing to Gate.io private futures channel: {channel}")
             else:
                 self.logger.warning(f"Unknown Gate.io private futures channel: {channel}")
         
@@ -169,7 +169,7 @@ class GateioPrivateFuturesSubscriptionStrategy(SubscriptionStrategy):
                 unsubscription_msg = self._create_subscription_message(channel, "unsubscribe")
                 unsubscription_messages.append(unsubscription_msg)
                 self._active_subscriptions.remove(channel)
-                self.logger.info(f"Unsubscribing from Gate.io private futures channel: {channel}")
+                self.logger.debug(f"Unsubscribing from Gate.io private futures channel: {channel}")
         
         return unsubscription_messages
 

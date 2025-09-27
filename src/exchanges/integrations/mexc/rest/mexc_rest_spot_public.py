@@ -158,7 +158,7 @@ class MexcPublicSpotRest(PublicSpotRest):
         # Update cache
         self._symbols_info = symbol_info_map
 
-        self.logger.info(f"Retrieved exchange info for {len(symbol_info_map)} symbols, filtered {filtered_count} unsupported pairs")
+        self.logger.debug(f"Retrieved exchange info for {len(symbol_info_map)} symbols, filtered {filtered_count} unsupported pairs")
         if filtered_count > 0:
             self.logger.debug(f"Filtered {filtered_count} pairs with unsupported quote assets")
         
@@ -597,6 +597,6 @@ class MexcPublicSpotRest(PublicSpotRest):
         
         sorted_klines = sorted(unique_klines.values(), key=lambda k: k.open_time)
         
-        self.logger.info(f"Retrieved {len(sorted_klines)} klines in batch for {symbol.base}/{symbol.quote}")
+        self.logger.debug(f"Retrieved {len(sorted_klines)} klines in batch for {symbol.base}/{symbol.quote}")
         return sorted_klines
     

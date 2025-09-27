@@ -49,9 +49,9 @@ class GateioPublicSubscriptionStrategy(SubscriptionStrategy):
         
         # Log initialization
         if self.logger:
-            self.logger.info("GateioPublicSubscriptionStrategy initialized",
-                            exchange="gateio",
-                            api_type="spot_public")
+            self.logger.debug("GateioPublicSubscriptionStrategy initialized",
+                             exchange="gateio",
+                             api_type="spot_public")
             
             # Track component initialization
             self.logger.metric("gateio_spot_public_subscription_strategies_initialized", 1,
@@ -131,11 +131,11 @@ class GateioPublicSubscriptionStrategy(SubscriptionStrategy):
             self._active_symbols.difference_update(symbols)
         
         if self.logger:
-            self.logger.info(f"Created {len(messages)} {event} messages for {len(symbols)} symbols",
-                            exchange="gateio",
-                            message_count=len(messages),
-                            event=event,
-                            symbol_count=len(symbols))
+            self.logger.debug(f"Created {len(messages)} {event} messages for {len(symbols)} symbols",
+                             exchange="gateio",
+                             message_count=len(messages),
+                             event=event,
+                             symbol_count=len(symbols))
             
             self.logger.metric("gateio_spot_public_subscription_messages_created", len(messages),
                               tags={"exchange": "gateio", "event": event, "api_type": "spot_public"})
@@ -151,16 +151,16 @@ class GateioPublicSubscriptionStrategy(SubscriptionStrategy):
         """
         if not self._active_symbols:
             if self.logger:
-                self.logger.info("No active symbols to resubscribe to",
-                                exchange="gateio",
-                                api_type="spot_public")
+                self.logger.debug("No active symbols to resubscribe to",
+                                 exchange="gateio",
+                                 api_type="spot_public")
             return []
         
         if self.logger:
-            self.logger.info(f"Creating resubscription messages for {len(self._active_symbols)} symbols",
-                            exchange="gateio",
-                            active_symbol_count=len(self._active_symbols),
-                            api_type="spot_public")
+            self.logger.debug(f"Creating resubscription messages for {len(self._active_symbols)} symbols",
+                             exchange="gateio",
+                             active_symbol_count=len(self._active_symbols),
+                             api_type="spot_public")
         return await self.create_subscription_messages(
             action=SubscriptionAction.SUBSCRIBE,
             symbols=list(self._active_symbols),

@@ -671,6 +671,48 @@ class MexcWebSocketRecovery:
                 await asyncio.sleep(delay)
 ```
 
+## Logging Configuration
+
+### **MEXC Logging Level Guidelines**
+
+**Production Logging Levels**:
+```python
+# Essential INFO level events (KEEP at INFO):
+- Order placement/cancellation results: logger.info(f"Order {order_id} placed successfully")
+- Authentication failures: logger.error("MEXC authentication failed")
+- Trading balance changes: logger.info(f"Balance updated: {asset} = {amount}")
+- Exchange connection failures: logger.error("MEXC WebSocket connection failed")
+- Performance violations: logger.warning(f"Latency exceeded: {latency}ms > 50ms")
+- Rate limiting: logger.warning(f"MEXC rate limit reached: {used_weight}/1200")
+
+# Verbose operations (MOVE to DEBUG):
+- Connection establishment: logger.debug("MEXC WebSocket connection established")
+- Message parsing details: logger.debug(f"Parsed protobuf message type: {msg_type}")
+- Symbol resolution: logger.debug(f"Converted {symbol} to MEXC pair: {pair}")
+- Subscription confirmations: logger.debug(f"Subscribed to channel: {channel}")
+- Protocol Buffer detection: logger.debug("Message format detected: protobuf")
+- Object pooling stats: logger.debug(f"Object pool hit rate: {hit_rate}%")
+- 1005 reconnections: logger.debug("1005 error - reconnecting (normal MEXC behavior)")
+```
+
+**Environment-Specific Configuration**:
+```yaml
+# Production
+mexc_logging:
+  level: WARNING  # Only warnings and errors in production
+  handlers:
+    console: false  # Disable console logging
+    file: WARNING
+    audit: INFO     # Keep audit trail for compliance
+    
+# Development  
+mexc_logging:
+  level: DEBUG    # Show all debug info in development
+  handlers:
+    console: DEBUG
+    file: INFO
+```
+
 ## Configuration Management
 
 ### **MEXC-Specific Configuration**

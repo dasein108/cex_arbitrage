@@ -549,7 +549,7 @@ class MexcPrivateSpotRest(PrivateSpotRest, ListenKeyInterface):
 
             currency_info_map[asset_name] = asset_info
 
-        self.logger.info(f"Retrieved currency info for {len(currency_info_map)} assets")
+        self.logger.debug(f"Retrieved currency info for {len(currency_info_map)} assets")
         return currency_info_map
 
     # Withdrawal operations
@@ -727,7 +727,7 @@ class MexcPrivateSpotRest(PrivateSpotRest, ListenKeyInterface):
                 )
                 withdrawals.append(withdrawal)
 
-            self.logger.info(f"Retrieved {len(withdrawals)} withdrawal records")
+            self.logger.debug(f"Retrieved {len(withdrawals)} withdrawal records")
             return withdrawals
 
         except Exception as e:

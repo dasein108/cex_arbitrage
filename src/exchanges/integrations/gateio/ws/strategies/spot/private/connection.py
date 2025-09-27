@@ -41,12 +41,12 @@ class GateioPrivateConnectionStrategy(ConnectionStrategy):
         self.max_queue_size = 512
         self.max_message_size = 1024 * 1024  # 1MB
         
-        # Log strategy initialization
-        self.logger.info("Gate.io private connection strategy initialized",
-                        websocket_url=self.websocket_url,
-                        ping_interval=self.ping_interval,
-                        ping_timeout=self.ping_timeout,
-                        max_queue_size=self.max_queue_size)
+        # Log strategy initialization (move to DEBUG per logging spec)
+        self.logger.debug("Gate.io private connection strategy initialized",
+                         websocket_url=self.websocket_url,
+                         ping_interval=self.ping_interval,
+                         ping_timeout=self.ping_timeout,
+                         max_queue_size=self.max_queue_size)
         
         self.logger.metric("ws_connection_strategies_created", 1,
                           tags={"exchange": "gateio", "type": "private"})
@@ -65,8 +65,8 @@ class GateioPrivateConnectionStrategy(ConnectionStrategy):
         """
         try:
             with LoggingTimer(self.logger, "gateio_private_ws_connection") as timer:
-                self.logger.info("Connecting to Gate.io private WebSocket",
-                               websocket_url=self.websocket_url)
+                self.logger.debug("Connecting to Gate.io private WebSocket",
+                                websocket_url=self.websocket_url)
             
             # Gate.io private connection (similar to public but for private endpoint)
             # IMPORTANT: Disable built-in ping since we use custom ping messages
@@ -87,8 +87,8 @@ class GateioPrivateConnectionStrategy(ConnectionStrategy):
             )
             
             # Track successful connection
-            self.logger.info("Gate.io private WebSocket connected successfully",
-                           connection_time_ms=timer.elapsed_ms)
+            self.logger.debug("Gate.io private WebSocket connected successfully",
+                            connection_time_ms=timer.elapsed_ms)
             
             self.logger.metric("ws_connections_established", 1,
                               tags={"exchange": "gateio", "type": "private"})
@@ -201,7 +201,7 @@ class GateioPrivateConnectionStrategy(ConnectionStrategy):
                 # Send authentication message directly to WebSocket
                 await self._websocket.send(auth_message)
                 await asyncio.sleep(1)  # Wait a moment for auth to process *MANDATORY*
-                self.logger.info("Sent authentication message to Gate.io private WebSocket")
+                self.logger.debug("Sent authentication message to Gate.io private WebSocket")
                 return True
             return False
         except Exception as e:

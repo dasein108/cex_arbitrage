@@ -1,6 +1,7 @@
 from infrastructure.exceptions.exchange import (
     ExchangeRestError, RateLimitErrorRest, TradingDisabled,
-    InsufficientPosition, OversoldException, ExchangeRestOrderCancelledOrNotExist
+    InsufficientPosition, OversoldException, ExchangeRestOrderCancelledOrNotExist,
+    RecvWindowError
 )
 import msgspec
 from exchanges.integrations.mexc.structs.exchange import MexcErrorResponse
@@ -12,7 +13,7 @@ ERROR_CODE_MAPPING = {
     429: RateLimitErrorRest,  # Too many requests
     418: RateLimitErrorRest,  # I'm a teapot (rate limit)
     10007: TradingDisabled,  # Symbol not support API
-    700003: ExchangeRestError,  # Timestamp outside recvWindow
+    700003: RecvWindowError,  # Timestamp outside recvWindow
     30016: TradingDisabled,  # Trading disabled
     10203: ExchangeRestError,  # Order processing error
     30004: InsufficientPosition,  # Insufficient balance

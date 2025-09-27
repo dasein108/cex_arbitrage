@@ -352,7 +352,10 @@ class CompositePrivateExchange(BaseCompositeExchange):
                          status=order.status)
 
     def _get_open_order(self, symbol: Symbol, order_id: OrderId):
-        return self._open_orders[symbol][order_id]
+        if symbol in self._open_orders and order_id in self._open_orders[symbol]:
+            return self._open_orders[symbol][order_id]
+
+        return None
 
     def _get_executed_order(self, symbol: Symbol, order_id: OrderId):
         if symbol in self._executed_orders and order_id in self._executed_orders[symbol]:
@@ -512,16 +515,15 @@ class CompositePrivateExchange(BaseCompositeExchange):
 
         await self.handlers.order_handler(order)
 
-    async def _balance_handler(self, balances: Dict[AssetName, AssetBalance]) -> None:
+    async def _balance_handler(self, balance: AssetBalance) -> None:
         """Handle balance update event."""
-        self._balances.update(balances)
-        non_zero_balances = [b for b in balances.values() if b.available > 0 or b.locked > 0]
+        self._balances[balance.asset] =balance
+        # non_zero_balances = [b for b in balances.values() if b.available > 0 or b.locked > 0]
         self.logger.info("balance update processed",
                          exchange=self._exchange_name,
-                         updated_assets=len(balances),
-                         non_zero_balances=len(non_zero_balances))
+                         asset_balance=balance.asset)
 
-        await self.handlers.balance_handler(balances)
+        await self.handlers.balance_handler(balance)
 
     async def _execution_handler(self, trade: Trade) -> None:
         """Handle execution report/trade event."""

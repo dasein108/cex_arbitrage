@@ -570,7 +570,7 @@ class GateioSpotConnectionStrategy(ConnectionStrategy):
         
         # Gate.io has fewer 1005 errors
         if error_type == "abnormal_closure":
-            self.logger.info("Gate.io 1005 error - less common than MEXC")
+            self.logger.debug("Gate.io 1005 error - less common than MEXC")
             return True
         
         elif error_type in ["connection_refused", "timeout"]:
@@ -818,6 +818,78 @@ class GateioRecoveryManager:
             # Spot WebSocket recovery
             await self._reconnect_spot_websocket()
             await self._resubscribe_spot_channels()
+```
+
+## Logging Configuration
+
+### **Gate.io Logging Level Guidelines**
+
+**Production Logging Levels**:
+```python
+# Essential INFO level events (KEEP at INFO):
+- Order placement/cancellation results: logger.info(f"Futures order {order_id} placed successfully")
+- Authentication failures: logger.error("Gate.io authentication failed")
+- Trading balance changes: logger.info(f"Futures balance updated: {asset} = {amount}")
+- Position changes: logger.info(f"Position updated: {symbol} size={size} pnl={pnl}")
+- Exchange connection failures: logger.error("Gate.io WebSocket connection failed")
+- Performance violations: logger.warning(f"Latency exceeded: {latency}ms > 50ms")
+- Rate limiting: logger.warning(f"Gate.io rate limit reached: {used_weight}/6000")
+- Leverage changes: logger.info(f"Leverage set to {leverage}x for {symbol}")
+
+# Verbose operations (MOVE to DEBUG):
+- Connection establishment: logger.debug("Gate.io WebSocket connection established")
+- Custom ping/pong messages: logger.debug(f"Sent custom ping: {ping_msg}")
+- Subscription confirmations: logger.debug(f"Subscribed to futures channel: {channel}")
+- Symbol resolution: logger.debug(f"Converted {symbol} to Gate.io pair: {pair}")
+- Settlement currency detection: logger.debug(f"Using settlement: {settle}")
+- Compression handling: logger.debug("Compression enabled for Gate.io WebSocket")
+- Channel parsing: logger.debug(f"Processing {channel} message for {symbol}")
+- Reconnection attempts: logger.debug("Gate.io 1005 error - less common than MEXC")
+```
+
+**Spot vs Futures Logging**:
+```python
+# Spot logging (standard patterns):
+- Spot market data: logger.debug("Received spot orderbook update")
+- Spot order status: logger.info("Spot order filled")
+
+# Futures logging (enhanced for complexity):
+- Funding rate updates: logger.debug(f"Funding rate update: {rate}% for {symbol}")
+- Mark price updates: logger.debug(f"Mark price: {mark_price} for {symbol}")
+- Position updates: logger.info(f"Position change: {side} {size} at {price}")
+- Liquidation feeds: logger.debug(f"Liquidation: {size} {symbol} at {price}")
+- Margin changes: logger.info(f"Available margin: {available}/{total}")
+```
+
+**Environment-Specific Configuration**:
+```yaml
+# Production
+gateio_logging:
+  spot:
+    level: WARNING  # Only warnings and errors
+    handlers:
+      console: false  
+      file: WARNING
+      audit: INFO
+  futures:
+    level: WARNING  # Critical for futures trading
+    handlers:
+      console: false
+      file: WARNING  
+      audit: INFO     # Enhanced audit for futures compliance
+      
+# Development  
+gateio_logging:
+  spot:
+    level: DEBUG    # Show all debug info
+    handlers:
+      console: DEBUG
+      file: INFO
+  futures:
+    level: DEBUG    # Full debugging for futures
+    handlers:
+      console: DEBUG
+      file: INFO
 ```
 
 ## Configuration Management

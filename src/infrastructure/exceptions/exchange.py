@@ -24,6 +24,11 @@ class RateLimitErrorRest(ExchangeRestError):
         return f"RateLimitError: {self.status_code} - {self.message} - {self.api_code} - {self.retry_after}"
 
 
+class RecvWindowError(ExchangeRestError):
+    """Exception for timestamp/recvWindow validation errors."""
+    pass
+
+
 
 class TradingDisabled(ExchangeRestError):
     pass

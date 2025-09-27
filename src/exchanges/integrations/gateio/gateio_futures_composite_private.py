@@ -218,7 +218,7 @@ class GateioFuturesCompositePrivateExchange(CompositePrivateFuturesExchange):
                 if position.quantity_usdt != 0:  # Only track active positions
                     self._futures_positions[position.symbol] = position
             
-            self.logger.info(f"Loaded {len(self._futures_positions)} active positions")
+            self.logger.debug(f"Loaded {len(self._futures_positions)} active positions")
             
         except Exception as e:
             self.logger.error(f"Failed to load futures positions: {e}")

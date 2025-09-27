@@ -46,11 +46,11 @@ class MexcPublicSubscriptionStrategy(SubscriptionStrategy):
         # Track active subscriptions for reconnection
         self._active_symbols: Set[Symbol] = set()
         
-        # Log initialization
+        # Log initialization (move to DEBUG per logging spec)
         if self.logger:
-            self.logger.info("MexcPublicSubscriptionStrategy initialized",
-                            exchange="mexc",
-                            api_type="public")
+            self.logger.debug("MexcPublicSubscriptionStrategy initialized",
+                             exchange="mexc",
+                             api_type="public")
             
             # Track component initialization
             self.logger.metric("mexc_public_subscription_strategies_initialized", 1,

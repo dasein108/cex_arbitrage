@@ -40,12 +40,12 @@ class GateioPublicConnectionStrategy(ConnectionStrategy):
         self.max_message_size = ws_settings.max_message_size
         self.write_limit = ws_settings.write_limit
         
-        # Log strategy initialization
-        self.logger.info("Gate.io public connection strategy initialized",
-                        websocket_url=self.websocket_url,
-                        ping_interval=self.ping_interval,
-                        ping_timeout=self.ping_timeout,
-                        max_queue_size=self.max_queue_size)
+        # Log strategy initialization (move to DEBUG per logging spec)
+        self.logger.debug("Gate.io public connection strategy initialized",
+                         websocket_url=self.websocket_url,
+                         ping_interval=self.ping_interval,
+                         ping_timeout=self.ping_timeout,
+                         max_queue_size=self.max_queue_size)
         
         self.logger.metric("ws_connection_strategies_created", 1,
                           tags={"exchange": "gateio", "type": "public"})
@@ -65,8 +65,8 @@ class GateioPublicConnectionStrategy(ConnectionStrategy):
         """
         try:
             with LoggingTimer(self.logger, "gateio_ws_connection") as timer:
-                self.logger.info("Connecting to Gate.io WebSocket",
-                               websocket_url=self.websocket_url)
+                self.logger.debug("Connecting to Gate.io WebSocket",
+                                websocket_url=self.websocket_url)
             
             # Gate.io-specific connection with custom headers
             # IMPORTANT: Disable built-in ping since we use custom ping messages
@@ -86,9 +86,9 @@ class GateioPublicConnectionStrategy(ConnectionStrategy):
                 write_limit=self.write_limit
             )
             
-            # Track successful connection
-            self.logger.info("Gate.io WebSocket connected successfully",
-                           connection_time_ms=timer.elapsed_ms)
+            # Track successful connection (move to DEBUG per logging spec)
+            self.logger.debug("Gate.io WebSocket connected successfully",
+                            connection_time_ms=timer.elapsed_ms)
             
             self.logger.metric("ws_connections_established", 1,
                               tags={"exchange": "gateio", "type": "public"})
@@ -192,7 +192,7 @@ class GateioPublicConnectionStrategy(ConnectionStrategy):
         should_reconnect = False
         
         if error_type == "abnormal_closure":
-            self.logger.info("Gate.io 1005 error detected - will reconnect (less common than MEXC)")
+            self.logger.debug("Gate.io 1005 error detected - will reconnect (less common than MEXC)")
             should_reconnect = True
         
         # Reconnect on network and timeout errors

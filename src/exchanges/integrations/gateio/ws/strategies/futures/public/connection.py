@@ -31,11 +31,11 @@ class GateioPublicFuturesConnectionStrategy(ConnectionStrategy):
         self.max_message_size = 1024 * 1024  # 1MB
         
         # Log strategy initialization
-        self.logger.info("Gate.io futures public connection strategy initialized",
-                        websocket_url=self.websocket_url,
-                        ping_interval=self.ping_interval,
-                        ping_timeout=self.ping_timeout,
-                        max_queue_size=self.max_queue_size)
+        self.logger.debug("Gate.io futures public connection strategy initialized",
+                         websocket_url=self.websocket_url,
+                         ping_interval=self.ping_interval,
+                         ping_timeout=self.ping_timeout,
+                         max_queue_size=self.max_queue_size)
         
         self.logger.metric("ws_connection_strategies_created", 1,
                           tags={"exchange": "gateio", "type": "public_futures"})
@@ -63,8 +63,8 @@ class GateioPublicFuturesConnectionStrategy(ConnectionStrategy):
         """
         try:
             with LoggingTimer(self.logger, "gateio_futures_ws_connection") as timer:
-                self.logger.info("Connecting to Gate.io Futures WebSocket",
-                               websocket_url=self.websocket_url)
+                self.logger.debug("Connecting to Gate.io Futures WebSocket",
+                                websocket_url=self.websocket_url)
             
             # Gate.io futures connection with same optimizations as spot
             self._websocket = await connect(
@@ -78,8 +78,8 @@ class GateioPublicFuturesConnectionStrategy(ConnectionStrategy):
             )
             
             # Track successful connection
-            self.logger.info("Gate.io Futures WebSocket connected successfully",
-                           connection_time_ms=timer.elapsed_ms)
+            self.logger.debug("Gate.io Futures WebSocket connected successfully",
+                            connection_time_ms=timer.elapsed_ms)
             
             self.logger.metric("ws_connections_established", 1,
                               tags={"exchange": "gateio", "type": "public_futures"})
@@ -173,7 +173,7 @@ class GateioPublicFuturesConnectionStrategy(ConnectionStrategy):
         
         # Gate.io futures 1005 errors are less common but still reconnectable
         if error_type == "abnormal_closure":
-            self.logger.info("Gate.io Futures 1005 error detected - will reconnect")
+            self.logger.debug("Gate.io Futures 1005 error detected - will reconnect")
             should_reconnect = True
         
         # Reconnect on network and timeout errors

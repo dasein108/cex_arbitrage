@@ -26,9 +26,9 @@ class GateioPrivateFuturesMessageParser(MessageParser):
         
         # Log initialization
         if self.logger:
-            self.logger.info("GateioPrivateFuturesMessageParser initialized",
-                            exchange="gateio",
-                            api_type="futures_private")
+            self.logger.debug("GateioPrivateFuturesMessageParser initialized",
+                             exchange="gateio",
+                             api_type="futures_private")
             
             # Track component initialization
             self.logger.metric("gateio_futures_private_message_parsers_initialized", 1,

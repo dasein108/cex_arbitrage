@@ -1214,6 +1214,189 @@ class ExchangeIntegrationWorkflow:
         pass
 ```
 
+## Logging Patterns
+
+### **Unified Logging Level Guidelines**
+
+All exchange integrations must follow consistent logging patterns to maintain clean production logs while preserving essential operational visibility.
+
+#### **Production Logging Standards**
+
+**Essential INFO Level Events (KEEP at INFO)**:
+```python
+# Trading Operations (Critical for HFT compliance)
+- Order placement/cancellation results: logger.info(f"Order {order_id} placed successfully")
+- Trading balance changes: logger.info(f"Balance updated: {asset} = {amount}")
+- Position changes (futures): logger.info(f"Position updated: {symbol} size={size}")
+- Authentication failures: logger.error("Exchange authentication failed")
+- Performance violations: logger.warning(f"Latency exceeded: {latency}ms > 50ms target")
+- Rate limiting events: logger.warning(f"Rate limit reached: {used}/{limit}")
+- Exchange connection failures: logger.error("Exchange WebSocket connection failed")
+
+# System Health (Essential for monitoring)
+- System initialization/shutdown: logger.info("Exchange integration initialized")
+- Critical configuration errors: logger.error("Invalid exchange configuration")
+- Compliance/audit events: logger.info("Trading event logged for compliance")
+```
+
+**Verbose Operations (MOVE to DEBUG)**:
+```python
+# Connection Management Details
+- Connection establishment: logger.debug("WebSocket connection established")
+- Ping/pong messages: logger.debug(f"Sent ping: {ping_msg}")
+- Subscription confirmations: logger.debug(f"Subscribed to channel: {channel}")
+- Reconnection attempts: logger.debug("Reconnecting after 1005 error")
+
+# Message Processing Details  
+- Message parsing: logger.debug(f"Parsed {msg_type} message for {symbol}")
+- Protocol detection: logger.debug("Message format detected: protobuf")
+- Symbol resolution: logger.debug(f"Converted {symbol} to exchange pair: {pair}")
+- Cache operations: logger.debug(f"Cache hit for {key}")
+
+# Performance Statistics
+- Object pooling stats: logger.debug(f"Pool hit rate: {hit_rate}%")
+- Connection reuse: logger.debug(f"Reusing connection for {endpoint}")
+- Compression details: logger.debug("Compression enabled for WebSocket")
+```
+
+#### **Exchange-Specific Logging Variations**
+
+**MEXC Logging Specifics**:
+```python
+# DEBUG level (reduce noise):
+- Protocol Buffer detection: logger.debug("Message format: protobuf")
+- Object pooling statistics: logger.debug(f"Entry pool hit rate: {rate}%")
+- 1005 error handling: logger.debug("1005 error - normal MEXC behavior")
+
+# INFO level (keep essential):
+- Protocol Buffer parsing failures: logger.warning("Protobuf parsing failed")
+- Rate limit warnings: logger.warning(f"MEXC rate limit: {used}/1200")
+```
+
+**Gate.io Logging Specifics**:
+```python
+# DEBUG level (reduce noise):
+- Custom ping/pong: logger.debug(f"Custom ping sent: {ping_msg}")
+- Compression handling: logger.debug("Deflate compression enabled")
+- Settlement detection: logger.debug(f"Using settlement: {settle}")
+
+# INFO level (keep essential):
+- Futures position changes: logger.info(f"Position: {side} {size} at {price}")
+- Leverage changes: logger.info(f"Leverage set to {leverage}x")
+- Funding rate warnings: logger.warning("Funding rate outside normal range")
+```
+
+#### **Environment-Specific Configuration**
+
+**Production Environment**:
+```yaml
+logging:
+  level: WARNING  # Only warnings and errors in production
+  handlers:
+    console: false  # Disable console logging
+    file: 
+      level: WARNING
+      format: structured  # Structured logs for parsing
+    audit:
+      level: INFO  # Enhanced audit trail for compliance
+    metrics:
+      level: INFO  # Performance metrics collection
+
+# Rate-limited verbose logging (emergency debugging)
+debug_mode:
+  enabled: false
+  max_debug_messages_per_minute: 100
+```
+
+**Development Environment**:
+```yaml
+logging:
+  level: DEBUG  # Show all debug information
+  handlers:
+    console: 
+      level: DEBUG
+      format: human_readable  # Easy to read during development
+    file:
+      level: INFO
+      rotation: daily
+
+# Unlimited verbose logging in development
+debug_mode:
+  enabled: true
+  max_debug_messages_per_minute: unlimited
+```
+
+#### **HFT Logging Performance Requirements**
+
+**Logging Performance Constraints**:
+```python
+# Maximum logging latency (HFT requirement)
+MAX_LOGGING_LATENCY_US = 1000  # 1ms maximum per log call
+
+# Structured logging for performance
+@performance_critical
+def log_trading_event(event_type: str, symbol: Symbol, details: Dict):
+    """High-performance logging for trading events."""
+    if logger.isEnabledFor(logging.INFO):
+        # Pre-format message to avoid string operations in hot path
+        message = f"{event_type}:{symbol.base}/{symbol.quote}:{details['order_id']}"
+        logger.info(message, extra={
+            'event_type': event_type,
+            'symbol': str(symbol),
+            'details': details,
+            'timestamp_us': time.time_ns() // 1000
+        })
+
+# Async logging to avoid blocking trading operations
+@async_logger
+def log_debug_async(message: str, **kwargs):
+    """Non-blocking debug logging."""
+    if logger.isEnabledFor(logging.DEBUG):
+        asyncio.create_task(_log_message_async(logging.DEBUG, message, kwargs))
+```
+
+#### **Logging Consistency Validation**
+
+**Cross-Exchange Consistency Check**:
+```python
+class LoggingConsistencyValidator:
+    """Validate logging consistency across exchange integrations."""
+    
+    REQUIRED_INFO_PATTERNS = [
+        "Order .* placed successfully",
+        "Balance updated: .* = .*",
+        "Authentication failed",
+        "Connection failed",
+        "Rate limit reached"
+    ]
+    
+    PROHIBITED_INFO_PATTERNS = [
+        "Connection established",
+        "Subscribed to channel",
+        "Message parsed",
+        "Cache hit",
+        "Ping sent"
+    ]
+    
+    def validate_exchange_logging(self, exchange_name: str) -> Dict[str, bool]:
+        """Validate exchange follows logging guidelines."""
+        results = {}
+        
+        # Check for required INFO level patterns
+        for pattern in self.REQUIRED_INFO_PATTERNS:
+            results[f"has_info_{pattern}"] = self._check_pattern_exists(
+                exchange_name, pattern, logging.INFO
+            )
+        
+        # Check prohibited INFO level patterns are moved to DEBUG
+        for pattern in self.PROHIBITED_INFO_PATTERNS:
+            results[f"debug_only_{pattern}"] = not self._check_pattern_exists(
+                exchange_name, pattern, logging.INFO
+            )
+        
+        return results
+```
+
 ## Best Practices Summary
 
 ### **Architectural Guidelines**
@@ -1226,6 +1409,7 @@ class ExchangeIntegrationWorkflow:
 6. **Configuration Management**: Use structured configuration with exchange-specific extensions
 7. **Testing Coverage**: Implement comprehensive integration tests and performance benchmarks
 8. **Monitoring**: Collect standardized metrics for observability and debugging
+9. **Logging Consistency**: Follow unified logging levels - INFO for trading/errors, DEBUG for verbose operations
 
 ### **Implementation Guidelines**
 
@@ -1236,6 +1420,8 @@ class ExchangeIntegrationWorkflow:
 5. **Retry Logic**: Implement exchange-specific retry strategies
 6. **Resource Management**: Use connection pooling and proper cleanup
 7. **Documentation**: Maintain comprehensive specifications for each integration
+8. **Logging Implementation**: Move verbose operations to DEBUG, keep trading events at INFO
+9. **Performance Logging**: Use async logging for DEBUG messages in HFT hot paths
 
 ### **Performance Targets**
 

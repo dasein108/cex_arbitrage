@@ -94,7 +94,7 @@ class PrivateWebsocketHandlers:
     
     # Trading data handlers
     order_handler: Optional[Callable[[Order], Awaitable[None]]] = None
-    balance_handler: Optional[Callable[[Dict[AssetName, AssetBalance]], Awaitable[None]]] = None
+    balance_handler: Optional[Callable[[AssetBalance], Awaitable[None]]] = None # Dict[AssetName, AssetBalance]
     position_handler: Optional[Callable[[Position], Awaitable[None]]] = None
     execution_handler: Optional[Callable[[Trade], Awaitable[None]]] = None
     
@@ -108,10 +108,10 @@ class PrivateWebsocketHandlers:
         if self.order_handler:
             await self.order_handler(order)
     
-    async def handle_balance(self, balances: Dict[AssetName, AssetBalance]) -> None:
+    async def handle_balance(self, balance: AssetBalance) -> None:
         """Handle balance update."""
         if self.balance_handler:
-            await self.balance_handler(balances)
+            await self.balance_handler(balance)
     
     async def handle_position(self, position: Position) -> None:
         """Handle position update."""

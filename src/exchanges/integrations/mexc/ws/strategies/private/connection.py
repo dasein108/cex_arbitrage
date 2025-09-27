@@ -69,12 +69,12 @@ class MexcPrivateConnectionStrategy(ConnectionStrategy):
         try:
             # Create listen key via REST API
             self.listen_key = await self.rest_client.create_listen_key()
-            self.logger.info(f"Created MEXC listen key: {self.listen_key[:8]}...")
+            self.logger.debug(f"Created MEXC listen key: {self.listen_key[:8]}...")
 
             # Build WebSocket URL with listen key
             ws_url = f"{self.base_url}?listenKey={self.listen_key}"
             
-            self.logger.info(f"Connecting to MEXC private WebSocket: {ws_url[:50]}...")
+            self.logger.debug(f"Connecting to MEXC private WebSocket: {ws_url[:50]}...")
             
             # MEXC private connection with minimal headers (same as public)
             self._websocket = await connect(
@@ -90,7 +90,7 @@ class MexcPrivateConnectionStrategy(ConnectionStrategy):
                 write_limit=2 ** 20,  # 1MB write buffer
             )
             
-            self.logger.info("MEXC private WebSocket connected successfully")
+            self.logger.debug("MEXC private WebSocket connected successfully")
             return self._websocket
             
         except Exception as e:
@@ -149,7 +149,7 @@ class MexcPrivateConnectionStrategy(ConnectionStrategy):
         # Start keep-alive task to maintain listen key
         if self.keep_alive_task is None or self.keep_alive_task.done():
             self.keep_alive_task = asyncio.create_task(self._keep_alive_loop())
-            self.logger.info("Started MEXC listen key keep-alive task")
+            self.logger.debug("Started MEXC listen key keep-alive task")
 
         return True
 
@@ -172,7 +172,7 @@ class MexcPrivateConnectionStrategy(ConnectionStrategy):
         
         # Always reconnect for WebSocket 1005 errors (common with MEXC private)
         if error_type == "abnormal_closure":
-            self.logger.info("MEXC private 1005 error detected - will reconnect and regenerate listen key")
+            self.logger.debug("MEXC private 1005 error detected - will reconnect and regenerate listen key")
             # Trigger listen key regeneration on reconnect
             asyncio.create_task(self._regenerate_listen_key())
             return True
@@ -205,7 +205,7 @@ class MexcPrivateConnectionStrategy(ConnectionStrategy):
                     self.logger.debug(f"Listen key kept alive: {self.listen_key[:8]}...")
 
             except asyncio.CancelledError:
-                self.logger.info("Keep-alive task cancelled")
+                self.logger.debug("Keep-alive task cancelled")
                 break
             except Exception as e:
                 self.logger.error(f"Failed to keep listen key alive: {e}")
@@ -219,13 +219,13 @@ class MexcPrivateConnectionStrategy(ConnectionStrategy):
             if self.listen_key:
                 try:
                     await self.rest_client.delete_listen_key(self.listen_key)
-                    self.logger.info(f"Deleted old listen key: {self.listen_key[:8]}...")
+                    self.logger.debug(f"Deleted old listen key: {self.listen_key[:8]}...")
                 except Exception:
                     pass  # Ignore delete errors
 
             # Create new listen key
             self.listen_key = await self.rest_client.create_listen_key()
-            self.logger.info(f"Regenerated listen key: {self.listen_key[:8]}...")
+            self.logger.debug(f"Regenerated listen key: {self.listen_key[:8]}...")
 
         except Exception as e:
             self.logger.error(f"Failed to regenerate listen key: {e}")
@@ -241,13 +241,13 @@ class MexcPrivateConnectionStrategy(ConnectionStrategy):
                     await self.keep_alive_task
                 except asyncio.CancelledError:
                     pass
-                self.logger.info("Cancelled keep-alive task")
+                self.logger.debug("Cancelled keep-alive task")
 
             # Delete listen key
             if self.listen_key and self.rest_client:
                 try:
                     await self.rest_client.delete_listen_key(self.listen_key)
-                    self.logger.info(f"Deleted listen key: {self.listen_key[:8]}...")
+                    self.logger.debug(f"Deleted listen key: {self.listen_key[:8]}...")
                 except Exception as e:
                     self.logger.error(f"Failed to delete listen key: {e}")
                 finally:

@@ -42,11 +42,11 @@ class GateioPrivateFuturesConnectionStrategy(ConnectionStrategy):
         self.max_message_size = 1024 * 1024  # 1MB
         
         # Log strategy initialization
-        self.logger.info("Gate.io private futures connection strategy initialized",
-                        websocket_url=self.websocket_url,
-                        ping_interval=self.ping_interval,
-                        ping_timeout=self.ping_timeout,
-                        max_queue_size=self.max_queue_size)
+        self.logger.debug("Gate.io private futures connection strategy initialized",
+                         websocket_url=self.websocket_url,
+                         ping_interval=self.ping_interval,
+                         ping_timeout=self.ping_timeout,
+                         max_queue_size=self.max_queue_size)
         
         self.logger.metric("ws_connection_strategies_created", 1,
                           tags={"exchange": "gateio", "type": "private_futures"})
@@ -74,8 +74,8 @@ class GateioPrivateFuturesConnectionStrategy(ConnectionStrategy):
         """
         try:
             with LoggingTimer(self.logger, "gateio_private_futures_ws_connection") as timer:
-                self.logger.info("Connecting to Gate.io private futures WebSocket",
-                               websocket_url=self.websocket_url)
+                self.logger.debug("Connecting to Gate.io private futures WebSocket",
+                                websocket_url=self.websocket_url)
             
             # Gate.io private futures connection with same optimizations as spot
             self._websocket = await connect(
@@ -89,8 +89,8 @@ class GateioPrivateFuturesConnectionStrategy(ConnectionStrategy):
             )
             
             # Track successful connection
-            self.logger.info("Gate.io private futures WebSocket connected, authenticating...",
-                           connection_time_ms=timer.elapsed_ms)
+            self.logger.debug("Gate.io private futures WebSocket connected, authenticating...",
+                            connection_time_ms=timer.elapsed_ms)
             
             # Authenticate after connection
             auth_success = await self.authenticate()
@@ -98,7 +98,7 @@ class GateioPrivateFuturesConnectionStrategy(ConnectionStrategy):
                 await self._websocket.close()
                 raise BaseExchangeError(401, "Gate.io private futures authentication failed")
             
-            self.logger.info("Gate.io private futures WebSocket authenticated successfully")
+            self.logger.debug("Gate.io private futures WebSocket authenticated successfully")
             
             self.logger.metric("ws_connections_established", 1,
                               tags={"exchange": "gateio", "type": "private_futures"})
@@ -190,7 +190,7 @@ class GateioPrivateFuturesConnectionStrategy(ConnectionStrategy):
                 error = auth_response.get("error")
                 if error is None:
                     # Success if no error is returned
-                    self.logger.info("Gate.io private futures authentication successful")
+                    self.logger.debug("Gate.io private futures authentication successful")
                     return True
                 else:
                     error_code = error.get("code", "unknown")
@@ -317,7 +317,7 @@ class GateioPrivateFuturesConnectionStrategy(ConnectionStrategy):
         
         # Gate.io private futures 1005 errors need re-authentication
         elif error_type == "abnormal_closure":
-            self.logger.info("Gate.io private futures 1005 error detected - will reconnect with re-auth")
+            self.logger.debug("Gate.io private futures 1005 error detected - will reconnect with re-auth")
             should_reconnect = True
         
         # Reconnect on network and timeout errors

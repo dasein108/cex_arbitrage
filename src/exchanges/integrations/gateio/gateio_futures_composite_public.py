@@ -101,7 +101,7 @@ class GateioFuturesCompositePublicExchange(CompositePublicExchange):
             futures_channels = self.get_supported_futures_channels()
             await self._public_websocket.initialize(symbols_info.symbols, futures_channels)
             
-        self.logger.info(f"{self._tag} futures public exchange initialized with {len(symbols_info.symbols)} symbols")
+        self.logger.debug(f"{self._tag} futures public exchange initialized with {len(symbols_info.symbols)} symbols")
 
     # Futures-specific trading stats
 

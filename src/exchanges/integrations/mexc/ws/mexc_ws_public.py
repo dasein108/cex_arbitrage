@@ -67,7 +67,7 @@ class MexcPublicSpotWebsocket(PublicSpotWebsocket):
             **kwargs
         )
 
-        self.logger.info("MEXC public WebSocket initialized with handler objects")
+        self.logger.debug("MEXC public WebSocket initialized with handler objects")
 
     # MEXC-specific message handling can be added here if needed
     # Base class handles all common WebSocket operations:
@@ -78,8 +78,8 @@ class MexcPublicSpotWebsocket(PublicSpotWebsocket):
     # Override default handlers if MEXC needs specific behavior
     async def on_orderbook_update(self, symbol: Symbol, orderbook: OrderBook):
         """MEXC-specific orderbook update handler."""
-        self.logger.info(f"MEXC orderbook update for {symbol}: {len(orderbook.bids)} bids, {len(orderbook.asks)} asks")
+        self.logger.debug(f"MEXC orderbook update for {symbol}: {len(orderbook.bids)} bids, {len(orderbook.asks)} asks")
 
     async def on_trades_update(self, symbol: Symbol, trades: List[Trade]):
         """MEXC-specific trade update handler."""
-        self.logger.info(f"MEXC trades update for {symbol}: {len(trades)} trades")
+        self.logger.debug(f"MEXC trades update for {symbol}: {len(trades)} trades")

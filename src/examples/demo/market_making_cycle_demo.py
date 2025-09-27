@@ -86,8 +86,8 @@ class UnifiedArbitrageDemo:
         self.market_buy_order: Optional[Order] = None
         self.limit_sell_order: Optional[Order] = None
         self.orders: Dict[OrderId, Order] = {}
-        self.best_bid: Optional[float] = None
-        self.best_ask: Optional[float] = None
+        self.book_ticker: BookTicker = BookTicker(symbol=self.symbol, bid_price=0.0, bid_quantity=0.0,
+                                                    ask_price=0.0, ask_quantity=0.0, timestamp=0.0)
 
         # Balance tracking
         self.initial_balances: Dict[str, AssetBalance] = {}
@@ -208,8 +208,9 @@ class UnifiedArbitrageDemo:
             o = self.market_buy_order
 
             executed_order = await self.private_exchange.get_active_order(o.symbol, o.order_id)
-            self.market_buy_order = executed_order
-            if is_order_done(executed_order):
+            if executed_order and is_order_done(executed_order):
+                self.market_buy_order = executed_order
+
                 elapsed = time.perf_counter() - start_time
                 print(f"   ✅ Market buy executed successfully {o} vs {executed_order} TIME: {elapsed:.2f}s")
                 break
@@ -248,11 +249,8 @@ class UnifiedArbitrageDemo:
                             # trigger, replace at new top price
                             self.limit_sell_order = None
 
-
             except Exception as e:
-                self.logger.error("Failed to place limit sell", error=str(e))
                 print(f"   ❌ Limit sell failed: {e}")
-                raise
 
     async def _show_results(self) -> None:
         """Show final demo results and statistics."""
@@ -295,12 +293,15 @@ class UnifiedArbitrageDemo:
 
     async def _handle_private_trade(self, trade) -> None:
         """Handle trade execution events from WebSocket."""
+        if trade.symbol == self.symbol:
+            return
         print(f"📢 Private Trade: {trade}")
 
     async def _handle_order_update(self, order: Order) -> None:
         """Handle order update events from WebSocket."""
         self.order_update_count += 1
-
+        if order.symbol != self.symbol:
+            return
         print(f"📢 Order Update Event: {order}")
         if self.market_buy_order and order.order_id == self.market_buy_order.order_id:
             self.market_buy_order = order
@@ -314,27 +315,31 @@ class UnifiedArbitrageDemo:
             if is_order_filled(self.limit_sell_order):
                 print(f"   ✅✅ Websocket Limit buy executed: {order}")
 
-    async def _handle_balance_update(self, balance: Dict[AssetName, AssetBalance]) -> None:
+    async def _handle_balance_update(self, balance: AssetBalance) -> None:
         """Handle balance update events from WebSocket."""
-
+        if balance.asset not in [self.symbol.base, self.symbol.quote]:
+            return
         # Update current balances
-        old_balance = self.current_balances.copy()
-        self.current_balances.update(balance)
-        print(f"\n💰 Balance Update Event:")
-        for b in balance.values():
-            asset = b.asset
-            old_balance = old_balance.get(asset, AssetBalance(asset=asset, available=0.0, locked=0.0))
-            available_change = old_balance.available - b.available
+        old_balance = self.current_balances.get(balance.asset,
+                                                AssetBalance(asset=balance.asset, available=0.0, locked=0.0))
+        self.current_balances[balance.asset] = balance
+        available_change = old_balance.available - balance.available
 
-            print(f"   - Asset: {asset} change: {available_change:+.8f} = {b}")
+        print(f" 💰 Balance Update Event:: {balance.asset} change: {available_change:+.8f} = {balance}")
 
     async def _handle_orderbook_update(self, book_ticker: BookTicker) -> None:
         """Handle orderbook update events from WebSocket."""
         # Only log significant orderbook updates to avoid spam
-        print(f"    - orderbook update {book_ticker}")
+        if book_ticker.symbol != self.symbol:
+            return
+        if self.book_ticker.ask_price != book_ticker.ask_price or self.book_ticker.bid_price != book_ticker.bid_price:
+            self.book_ticker = book_ticker
+            print(f"    - orderbook update {book_ticker}")
 
     async def _handle_trade(self, trade) -> None:
         """Handle trade execution events from WebSocket."""
+        if trade.symbol != self.symbol:
+            return
         print(f"    - public trade: {trade}")
 
 async def main():

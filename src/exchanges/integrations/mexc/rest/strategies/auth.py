@@ -35,10 +35,10 @@ class MexcAuthStrategy(AuthStrategy):
         self.secret_key = exchange_config.credentials.secret_key.encode('utf-8')
         self.exchange_config = exchange_config
         
-        # Log strategy initialization
-        self.logger.info("MEXC auth strategy initialized",
-                        api_key_configured=bool(self.api_key),
-                        recv_window=5000)
+        # Log strategy initialization (move to DEBUG per logging spec)
+        self.logger.debug("MEXC auth strategy initialized",
+                         api_key_configured=bool(self.api_key),
+                         recv_window=5000)
         
         self.logger.metric("rest_auth_strategies_created", 1,
                           tags={"exchange": "mexc", "type": "private"})

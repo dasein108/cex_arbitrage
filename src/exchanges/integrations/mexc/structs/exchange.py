@@ -91,7 +91,7 @@ class MexcOrderResponse(msgspec.Struct):
     symbol: str
     orderId: str
     orderListId: int = -1
-    clientOrderId: str = ""
+    clientOrderId: Optional[str] = ""
     transactTime: int = 0
     price: str = "0"
     origQty: str = "0"

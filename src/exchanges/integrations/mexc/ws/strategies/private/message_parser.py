@@ -125,6 +125,7 @@ class MexcPrivateMessageParser(MessageParser):
                 if wrapper.HasField('privateOrders'):
                     order_data = wrapper.privateOrders
                     # Create MEXC-specific order data struct
+                    # TODO: investigate quantity_usdt for futures
                     mexc_order = MexcWSPrivateOrderData(
                         order_id=order_data.id if hasattr(order_data, 'id') else "",
                         symbol=symbol,
@@ -132,7 +133,7 @@ class MexcPrivateMessageParser(MessageParser):
                         status=getattr(order_data, 'status', 0),
                         orderType=1,  # Default to LIMIT if not available
                         price=str(order_data.price) if hasattr(order_data, 'price') else "0.0",
-                        quantity=str(order_data.quantity_usdt) if hasattr(order_data, 'quantity') else "0.0",
+                        quantity=str(order_data.quantity) if hasattr(order_data, 'quantity') else "0.0",
                         filled_qty=str(order_data.cumulativeQuantity) if hasattr(order_data, 'cumulativeQuantity') else "0.0",
                         updateTime=int(getattr(order_data, 'time', 0))
                     )
