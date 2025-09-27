@@ -175,7 +175,7 @@ class RestPrivateIntegrationTest:
                     "symbol": f"{order.symbol.base}/{order.symbol.quote}",
                     "side": order.side.name,
                     "order_type": order.order_type.name,
-                    "quantity": order.quantity_usdt,
+                    "quantity": order.quantity,
                     "price": order.price,
                     "status": order.status.name,
                     "filled_quantity": order.filled_quantity,

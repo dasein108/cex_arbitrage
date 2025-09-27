@@ -92,7 +92,7 @@ async def check_get_recent_trades(exchange, exchange_name: str):
     for trade in result:
         trades_data.append({
             "price": trade.price,
-            "quantity": trade.quantity_usdt,
+            "quantity": trade.quantity,
             "side": trade.side.name,
             "timestamp": trade.timestamp,
             "is_maker": trade.is_maker
@@ -126,7 +126,7 @@ async def check_get_historical_trades(exchange, exchange_name: str):
     for trade in result[:5]:  # Show first 5 trades
         trades_data.append({
             "price": trade.price,
-            "quantity": trade.quantity_usdt,
+            "quantity": trade.quantity,
             "side": trade.side.name,
             "timestamp": trade.timestamp,
             "trade_id": trade.trade_id,

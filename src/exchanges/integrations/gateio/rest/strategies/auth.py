@@ -1,5 +1,6 @@
 import hashlib
 import hmac
+import time
 from typing import Dict, Any
 from urllib.parse import urlencode
 
@@ -26,6 +27,9 @@ class GateioAuthStrategy(AuthStrategy):
         self.secret_key = exchange_config.credentials.secret_key.encode('utf-8')
         self.exchange_config = exchange_config
         
+        # Timestamp synchronization for RecvWindow errors
+        self._time_offset = 0.0  # Offset to add to local timestamp (in seconds)
+        
         # Initialize HFT logger with hierarchical tags
         if logger is None:
             from infrastructure.logging import get_strategy_logger
@@ -43,8 +47,8 @@ class GateioAuthStrategy(AuthStrategy):
     ) -> AuthenticationData:
         """Generate Gate.io authentication data with HMAC-SHA512 signature."""
         # Use current time.time() as float, following official example
-        import time
-        current_time = time.time()
+        # Apply time offset for timestamp synchronization
+        current_time = time.time() + self._time_offset
         timestamp_str = str(current_time)
         
         # Prepare request body and query string according to Gate.io format
@@ -120,3 +124,20 @@ class GateioAuthStrategy(AuthStrategy):
         ]
 
         return any(endpoint.startswith(private_ep) for private_ep in private_endpoints)
+    
+    async def refresh_timestamp(self) -> None:
+        """
+        Refresh timestamp synchronization for Gate.io timestamp errors.
+        
+        Adjusts local time offset to sync with server time.
+        Uses a small forward adjustment to account for network latency.
+        """
+        # Add a small forward offset (0.5 seconds) to account for network latency
+        # This helps prevent timestamp errors on subsequent requests
+        self._time_offset = 0.5  # 500ms forward adjustment
+        
+        self.logger.info("Gate.io timestamp synchronized for timestamp error",
+                        time_offset_seconds=self._time_offset)
+        
+        self.logger.metric("rest_auth_timestamp_syncs", 1,
+                          tags={"exchange": "gateio", "reason": "timestamp_error"})

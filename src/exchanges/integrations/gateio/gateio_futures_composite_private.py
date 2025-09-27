@@ -144,14 +144,14 @@ class GateioFuturesCompositePrivateExchange(CompositePrivateFuturesExchange):
             
             orders = []
             for position in positions:
-                if position.quantity_usdt == 0:
+                if position.quantity == 0:
                     continue
                 
                 # Determine close quantity
-                close_qty = quantity if quantity else abs(position.quantity_usdt)
+                close_qty = quantity if quantity else abs(position.quantity)
                 
                 # Determine side (opposite of position)
-                close_side = 'sell' if position.quantity_usdt > 0 else 'buy'
+                close_side = 'sell' if position.quantity > 0 else 'buy'
                 
                 # Place market order to close position
                 order = await self.place_futures_order(
@@ -215,7 +215,7 @@ class GateioFuturesCompositePrivateExchange(CompositePrivateFuturesExchange):
             
             # Update internal position tracking
             for position in positions:
-                if position.quantity_usdt != 0:  # Only track active positions
+                if position.quantity != 0:  # Only track active positions
                     self._futures_positions[position.symbol] = position
             
             self.logger.debug(f"Loaded {len(self._futures_positions)} active positions")

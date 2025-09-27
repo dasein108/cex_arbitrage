@@ -1,6 +1,7 @@
 from infrastructure.exceptions.exchange import (
     ExchangeRestError, RateLimitErrorRest, TradingDisabled,
-    InsufficientPosition, OversoldException, ExchangeRestOrderCancelledOrNotExist,
+    InsufficientPosition, OversoldException, ExchangeRestOrderCancelledFilledOrNotExist,
+    RecvWindowError
 )
 import msgspec
 from infrastructure.networking.http.strategies.exception_handler import ExceptionHandlerStrategy
@@ -15,11 +16,11 @@ ERROR_CODE_MAPPING = {
     2: ExchangeRestError,  # Service temporarily unavailable
     3: ExchangeRestError,  # Invalid signature
     4: ExchangeRestError,  # Invalid key
-    5: ExchangeRestError,  # Invalid timestamp
+    5: RecvWindowError,  # Invalid timestamp
     6: ExchangeRestError,  # Invalid nonce
     
     # Order errors
-    1001: ExchangeRestOrderCancelledOrNotExist,  # Order not found
+    1001: ExchangeRestOrderCancelledFilledOrNotExist,  # Order not found
     1002: ExchangeRestError,  # Invalid order id
     1003: ExchangeRestError,  # Invalid order status
     1004: ExchangeRestError,  # Order already cancelled
@@ -87,10 +88,12 @@ class GateioExceptionHandlerStrategy(ExceptionHandlerStrategy):
                     # Check for specific error labels
                     if "INVALID_KEY" in error_label:
                         return ExchangeRestError(status_code, f"Gate.io Authentication Error: {error_message}")
+                    elif "INVALID_TIMESTAMP" in error_label or "TIMESTAMP" in error_label:
+                        return RecvWindowError(status_code, f"Gate.io Timestamp Error: {error_message}")
                     elif "INSUFFICIENT_BALANCE" in error_label:
                         return InsufficientPosition(status_code, f"Gate.io Balance Error: {error_message}")
                     elif "ORDER_NOT_FOUND" in error_label:
-                        return ExchangeRestOrderCancelledOrNotExist(status_code, f"Gate.io Order Error: {error_message}")
+                        return ExchangeRestOrderCancelledFilledOrNotExist(status_code, f"Gate.io Order Error: {error_message}")
                     elif "RATE_LIMIT" in error_label or "TOO_MANY_REQUESTS" in error_label:
                         return RateLimitErrorRest(status_code, f"Gate.io Rate Limit: {error_message}")
                     elif "TRADING_DISABLED" in error_label or "MARKET_CLOSED" in error_label:

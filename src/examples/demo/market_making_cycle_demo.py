@@ -234,6 +234,7 @@ class UnifiedArbitrageDemo:
                         time_in_force=TimeInForce.GTC
                     )
                     print(f"   ✅ Limit sell order placed: {order}")
+                    self.limit_sell_order = order
                 else:
                     o = self.limit_sell_order
                     if is_order_filled(o):
@@ -241,6 +242,7 @@ class UnifiedArbitrageDemo:
                         break
                     if o.price >  self.book_ticker.ask_price:
                         o = await self.private_exchange.cancel_order(o.symbol, o.order_id)
+                        self.limit_sell_order = o
                         print(f"   ⚠️  Limit sell price not on top, cancelled: {o}"'')
                         if is_order_filled(o):
                             print(f"   ✅ Limit sell executed during cancel: {o}")
@@ -251,6 +253,9 @@ class UnifiedArbitrageDemo:
 
             except Exception as e:
                 print(f"   ❌ Limit sell failed: {e}")
+            finally:
+                await asyncio.sleep(0.1)
+
 
     async def _show_results(self) -> None:
         """Show final demo results and statistics."""

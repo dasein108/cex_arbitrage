@@ -332,13 +332,13 @@ class MexcPublicMessageParser(MessageParser):
                 bid_updates = []
                 for bid_item in depth_data.bids:
                     price = float(bid_item.price)
-                    size = float(bid_item.quantity_usdt)
+                    size = float(bid_item.quantity)
                     bid_updates.append((price, size))
 
                 ask_updates = []
                 for ask_item in depth_data.asks:
                     price = float(ask_item.price)
-                    size = float(ask_item.quantity_usdt)
+                    size = float(ask_item.quantity)
                     ask_updates.append((price, size))
 
                 return ParsedOrderbookUpdate(
@@ -496,13 +496,13 @@ class MexcPublicMessageParser(MessageParser):
                 for bid_item in depth_data.bids:
                     bids.append(self.entry_pool.get_entry(
                         price=float(bid_item.price),
-                        size=float(bid_item.quantity_usdt)
+                        size=float(bid_item.quantity)
                     ))
 
                 for ask_item in depth_data.asks:
                     asks.append(self.entry_pool.get_entry(
                         price=float(ask_item.price),
-                        size=float(ask_item.quantity_usdt)
+                        size=float(ask_item.quantity)
                     ))
 
                 return OrderBook(

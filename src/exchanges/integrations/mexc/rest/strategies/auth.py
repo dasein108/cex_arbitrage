@@ -1,5 +1,6 @@
 import hashlib
 import hmac
+import time
 from typing import Dict, Any
 from urllib.parse import urlencode
 
@@ -34,6 +35,9 @@ class MexcAuthStrategy(AuthStrategy):
         self.api_key = exchange_config.credentials.api_key
         self.secret_key = exchange_config.credentials.secret_key.encode('utf-8')
         self.exchange_config = exchange_config
+        
+        # Timestamp synchronization for RecvWindow errors
+        self._time_offset = 0  # Offset to add to local timestamp
         
         # Log strategy initialization (move to DEBUG per logging spec)
         self.logger.debug("MEXC auth strategy initialized",
@@ -71,7 +75,9 @@ class MexcAuthStrategy(AuthStrategy):
                     timeout=30,
                     max_retries=3
                 )
-                auth_params['timestamp'] = timestamp
+                # Apply time offset for timestamp synchronization
+                adjusted_timestamp = timestamp + self._time_offset
+                auth_params['timestamp'] = adjusted_timestamp
                 auth_params['recvWindow'] = rest_settings.recv_window
 
                 # Create query string for signature (sorted parameters)
@@ -135,3 +141,20 @@ class MexcAuthStrategy(AuthStrategy):
         ]
 
         return any(endpoint.startswith(private_ep) for private_ep in private_endpoints)
+    
+    async def refresh_timestamp(self) -> None:
+        """
+        Refresh timestamp synchronization for MEXC RecvWindow errors.
+        
+        Adjusts local time offset to sync with server time.
+        Uses a small forward adjustment to account for network latency.
+        """
+        # Add a small forward offset (500ms) to account for network latency
+        # This helps prevent recvWindow errors on subsequent requests
+        self._time_offset = 500  # 500ms forward adjustment
+        
+        self.logger.info("MEXC timestamp synchronized for RecvWindow error",
+                        time_offset_ms=self._time_offset)
+        
+        self.logger.metric("rest_auth_timestamp_syncs", 1,
+                          tags={"exchange": "mexc", "reason": "recv_window_error"})

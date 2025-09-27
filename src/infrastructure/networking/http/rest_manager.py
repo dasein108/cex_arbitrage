@@ -16,7 +16,7 @@ from collections import deque
 import aiohttp
 import msgspec
 
-from ...exceptions.exchange import ExchangeRestError, RateLimitErrorRest, ExchangeConnectionRestError
+from ...exceptions.exchange import ExchangeRestError, RateLimitErrorRest, ExchangeConnectionRestError, RecvWindowError
 from .strategies import RestStrategySet, RequestMetrics, PerformanceTargets, AuthenticationData
 from .structs import HTTPMethod
 
@@ -289,8 +289,22 @@ class RestManager:
                 delay = await retry_strategy.calculate_delay(attempt, e)
                 await asyncio.sleep(delay)
             
+            except RecvWindowError as e:
+                if not retry_strategy.should_retry(attempt, e) or attempt == max_attempts:
+                    raise
+                
+                # Handle timestamp synchronization for recvWindow errors
+                self.logger.warning(f"RecvWindow error on attempt {attempt}, synchronizing timestamp")
+                
+                # Force timestamp refresh for next auth attempt
+                if self.strategy_set.auth_strategy:
+                    await self.strategy_set.auth_strategy.refresh_timestamp()
+                
+                # Short delay before retry (timestamp sync errors should retry quickly)
+                await asyncio.sleep(0.1)  # 100ms delay for timestamp sync
+            
             except ExchangeRestError:
-                # Don't retry on application-level errors
+                # Don't retry on other application-level errors
                 raise
             
             except Exception as e:

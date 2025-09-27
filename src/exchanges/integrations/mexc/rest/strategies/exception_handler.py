@@ -1,6 +1,6 @@
 from infrastructure.exceptions.exchange import (
     ExchangeRestError, RateLimitErrorRest, TradingDisabled,
-    InsufficientPosition, OversoldException, ExchangeRestOrderCancelledOrNotExist,
+    InsufficientPosition, OversoldException, ExchangeRestOrderCancelledFilledOrNotExist,
     RecvWindowError
 )
 import msgspec
@@ -8,8 +8,8 @@ from exchanges.integrations.mexc.structs.exchange import MexcErrorResponse
 from infrastructure.networking.http.strategies.exception_handler import ExceptionHandlerStrategy
 
 ERROR_CODE_MAPPING = {
-    -2011: ExchangeRestOrderCancelledOrNotExist,  # Order cancelled
-    -2013: ExchangeRestOrderCancelledOrNotExist,  # Order not exist
+    -2011: ExchangeRestOrderCancelledFilledOrNotExist,  # Order cancelled
+    -2013: ExchangeRestOrderCancelledFilledOrNotExist,  # Order not exist
     429: RateLimitErrorRest,  # Too many requests
     418: RateLimitErrorRest,  # I'm a teapot (rate limit)
     10007: TradingDisabled,  # Symbol not support API

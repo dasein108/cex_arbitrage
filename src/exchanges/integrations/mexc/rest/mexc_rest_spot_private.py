@@ -32,7 +32,7 @@ from exchanges.structs.types import AssetName, OrderId
 from exchanges.structs.enums import TimeInForce, WithdrawalStatus
 from exchanges.structs import OrderType, Side
 from infrastructure.networking.http.structs import HTTPMethod
-from infrastructure.exceptions.exchange import ExchangeRestError
+from infrastructure.exceptions.exchange import ExchangeRestError, ExchangeRestOrderCancelledFilledOrNotExist
 from exchanges.interfaces.rest.spot.rest_spot_private import PrivateSpotRest
 from exchanges.interfaces.rest.interfaces import ListenKeyInterface
 from exchanges.integrations.mexc.structs.exchange import (MexcAccountResponse, MexcOrderResponse,
@@ -240,12 +240,16 @@ class MexcPrivateSpotRest(PrivateSpotRest, ListenKeyInterface):
             'symbol': pair,
             'orderId': str(order_id)
         }
-
-        response_data = await self.request(
-            HTTPMethod.DELETE,
-            '/api/v3/order',
-            params=params
-        )
+        try:
+            response_data = await self.request(
+                HTTPMethod.DELETE,
+                '/api/v3/order',
+                params=params
+            )
+        except ExchangeRestOrderCancelledFilledOrNotExist as e:
+            self.logger.warning(f"Order {order_id} for {symbol.base}/{symbol.quote} already cancelled/filled or does not exist")
+            # TODO: warning x2 latency costs
+            return await self.get_order(symbol, order_id)
 
         order_response = msgspec.convert(response_data, MexcOrderResponse)
 

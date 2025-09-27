@@ -408,9 +408,9 @@ class RiskManager:
             
             # Calculate exposure based on position side and current market value
             if position.side.name == "BUY":
-                exposure = position.quantity_usdt * current_price
+                exposure = position.quantity * current_price
             else:  # SELL
-                exposure = position.quantity_usdt * current_price
+                exposure = position.quantity * current_price
             
             # Update position exposure tracking
             self._position_exposures[position.position_id] = exposure

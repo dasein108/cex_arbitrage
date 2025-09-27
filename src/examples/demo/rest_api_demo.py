@@ -96,7 +96,7 @@ class RestApiDemo(ExchangeDemoBase, RestDemoMixin):
             for trade in result:
                 trades_data.append({
                     "price": trade.price,
-                    "quantity": trade.quantity_usdt,
+                    "quantity": trade.quantity,
                     "side": trade.side.name,
                     "timestamp": trade.timestamp,
                     "is_maker": trade.is_maker
@@ -131,7 +131,7 @@ class RestApiDemo(ExchangeDemoBase, RestDemoMixin):
             for trade in result[:5]:  # Show first 5 trades
                 trades_data.append({
                     "price": trade.price,
-                    "quantity": trade.quantity_usdt,
+                    "quantity": trade.quantity,
                     "side": trade.side.name,
                     "timestamp": trade.timestamp,
                     "trade_id": trade.trade_id,
@@ -291,7 +291,7 @@ class RestApiDemo(ExchangeDemoBase, RestDemoMixin):
                     "symbol": f"{order.symbol.base}/{order.symbol.quote}",
                     "side": order.side.name,
                     "order_type": order.order_type.name,
-                    "quantity": order.quantity_usdt,
+                    "quantity": order.quantity,
                     "price": order.price,
                     "status": order.status.name,
                     "filled": order.filled_quantity

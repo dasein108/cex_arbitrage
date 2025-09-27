@@ -117,7 +117,7 @@ class WebSocketManager:
                 
                 # Start message processing
                 self._processing_task = asyncio.create_task(self._process_messages())
-                
+
                 # Start strategy-managed heartbeat if needed
                 # Note: This heartbeat supplements built-in ping/pong for exchanges requiring custom ping
                 if self.config.heartbeat_interval and self.config.heartbeat_interval > 0:
@@ -292,7 +292,10 @@ class WebSocketManager:
         Direct WebSocket message reading without ws_client layer.
         """
         try:
-            while self.is_connected():
+            while True:
+                if not self.is_connected():
+                    await asyncio.sleep(0.1)
+                    continue
                 try:
                     raw_message = await self._websocket.recv()
                     await self._on_raw_message(raw_message)
@@ -304,6 +307,8 @@ class WebSocketManager:
         except Exception as e:
             self.logger.error(f"Message reader error: {e}")
             await self._on_error(e)
+        pass
+
     
     async def _handle_connection_error(self, error: Exception, policy, attempt: int) -> None:
         """Handle connection errors using strategy-specific policies."""
@@ -480,11 +485,11 @@ class WebSocketManager:
         max_failures = 3
         
         try:
-            while self.is_connected():
+            while True:
                 await asyncio.sleep(self.config.heartbeat_interval)
                 
                 # Use strategy for heartbeat (custom ping messages for exchanges that need them)
-                if self.config.has_heartbeat:
+                if self.config.has_heartbeat and self.is_connected():
                     try:
                         await self.strategies.connection_strategy.handle_heartbeat()
                         consecutive_failures = 0  # Reset on success

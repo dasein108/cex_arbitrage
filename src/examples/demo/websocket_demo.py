@@ -254,7 +254,7 @@ class WebSocketDemo(ExchangeDemoBase, WebSocketDemoMixin):
                 self.logger.info("Recent trade",
                                  trade_number=i,
                                  side=trade.side.name,
-                                 quantity=trade.quantity_usdt,
+                                 quantity=trade.quantity,
                                  price=trade.price)
         
         # Show latest book ticker

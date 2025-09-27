@@ -12,8 +12,12 @@ class ExchangeRestError(Exception):
 class ExchangeConnectionRestError(ExchangeRestError):
    pass
 
-class ExchangeRestOrderCancelledOrNotExist(ExchangeRestError):
-   pass
+class ExchangeRestOrderCancelledFilledOrNotExist(ExchangeRestError):
+    def __init__(self, code: int, message: str, api_code: int | None = None) -> None:
+        super().__init__(code, message, api_code)
+        self.is_filled = "filled" in message.lower()
+        self.is_cancelled = "cancelled" in message.lower()
+        self.is_not_exist = "not exist" in message.lower()
 
 class RateLimitErrorRest(ExchangeRestError):
     def __init__(self, code: int, message: str, api_code: int | None = None, retry_after: int | None = None) -> None:

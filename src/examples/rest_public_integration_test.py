@@ -236,13 +236,13 @@ class RestPublicIntegrationTest:
             for i, trade in enumerate(result[:3]):  # Check first 3 trades
                 trade_samples.append({
                     "price": trade.price,
-                    "quantity": trade.quantity_usdt,
+                    "quantity": trade.quantity,
                     "side": trade.side.name,
                     "timestamp": trade.timestamp,
                     "is_maker": trade.is_maker,
                     "has_required_fields": all([
                         trade.price > 0,
-                        trade.quantity_usdt > 0,
+                        trade.quantity > 0,
                         trade.timestamp > 0,
                         hasattr(trade, 'side'),
                         hasattr(trade, 'is_maker')
@@ -293,14 +293,14 @@ class RestPublicIntegrationTest:
                 
                 trade_samples.append({
                     "price": trade.price,
-                    "quantity": trade.quantity_usdt,
+                    "quantity": trade.quantity,
                     "side": trade.side.name,
                     "timestamp": trade.timestamp,
                     "trade_id": trade.trade_id,
                     "timestamp_in_range": in_range,
                     "has_required_fields": all([
                         trade.price > 0,
-                        trade.quantity_usdt > 0,
+                        trade.quantity > 0,
                         trade.timestamp > 0,
                         hasattr(trade, 'side'),
                         hasattr(trade, 'timestamp')

@@ -179,8 +179,8 @@ class PublicAPIIntegrationTest:
             has_timestamp = result.timestamp > 0
             
             # Price and quantity validation
-            valid_bids = all(bid.price > 0 and bid.quantity_usdt > 0 for bid in result.bids)
-            valid_asks = all(ask.price > 0 and ask.quantity_usdt > 0 for ask in result.asks)
+            valid_bids = all(bid.price > 0 and bid.quantity > 0 for bid in result.bids)
+            valid_asks = all(ask.price > 0 and ask.quantity > 0 for ask in result.asks)
             
             # Order validation (bids descending, asks ascending)
             bids_ordered = True
@@ -255,7 +255,7 @@ class PublicAPIIntegrationTest:
             for i, trade in enumerate(result[:5]):  # Check first 5 trades
                 is_valid = all([
                     trade.price > 0,
-                    trade.quantity_usdt > 0,
+                    trade.quantity > 0,
                     trade.timestamp > 0,
                     hasattr(trade, 'side'),
                     hasattr(trade, 'is_maker')
@@ -266,7 +266,7 @@ class PublicAPIIntegrationTest:
                 
                 trade_samples.append({
                     "price": trade.price,
-                    "quantity": trade.quantity_usdt,
+                    "quantity": trade.quantity,
                     "side": trade.side.name,
                     "timestamp": trade.timestamp,
                     "is_maker": trade.is_maker,

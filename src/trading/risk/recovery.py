@@ -379,7 +379,7 @@ class RecoveryManager:
         # Simple placeholder calculation
         for position in affected_positions:
             # Assume 0.1% loss per position for recovery
-            position_value = position.quantity_usdt * position.entry_price
+            position_value = position.quantity * position.entry_price
             estimated_loss += position_value * Decimal("0.001")
         
         return estimated_loss

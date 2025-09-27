@@ -157,7 +157,7 @@ class MexcPrivateMessageParser(MessageParser):
                         symbol=symbol,
                         side="BUY" if getattr(deal_data, 'tradeType', 0) == 1 else "SELL",
                         price=str(deal_data.price) if hasattr(deal_data, 'price') else "0.0",
-                        quantity=str(deal_data.quantity_usdt) if hasattr(deal_data, 'quantity') else "0.0",
+                        quantity=str(deal_data.quantity) if hasattr(deal_data, 'quantity') else "0.0",
                         timestamp=int(getattr(deal_data, 'time', 0)),
                         is_maker=getattr(deal_data, 'isMaker', False)
                     )

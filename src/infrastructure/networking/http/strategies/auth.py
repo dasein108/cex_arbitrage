@@ -58,3 +58,12 @@ class AuthStrategy(ABC):
             True if authentication required
         """
         pass
+    
+    async def refresh_timestamp(self) -> None:
+        """
+        Refresh timestamp synchronization for RecvWindow errors.
+        
+        Default implementation does nothing.
+        Exchange-specific implementations can override for timestamp sync.
+        """
+        pass

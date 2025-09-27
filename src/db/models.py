@@ -168,7 +168,7 @@ class TradeSnapshot(msgspec.Struct):
             symbol_base=str(trade.symbol.base),
             symbol_quote=str(trade.symbol.quote),
             price=trade.price,
-            quantity=trade.quantity_usdt,
+            quantity=trade.quantity,
             side='buy' if trade.side == Side.BUY else 'sell',
             trade_id=trade.trade_id,
             timestamp=datetime.fromtimestamp(trade.timestamp / 1000) if trade.timestamp else datetime.now(),

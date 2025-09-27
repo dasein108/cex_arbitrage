@@ -51,6 +51,11 @@ def create_rest_transport_manager(
         retry_logger = get_strategy_logger('rest.retry', base_tags + ['retry'])
         retry_strategy = MexcRetryStrategy(exchange_config, retry_logger)
         
+        # Exception handler is available for both public and private APIs
+        from exchanges.integrations.mexc.rest.strategies import MexcExceptionHandlerStrategy
+        exception_logger = get_strategy_logger('rest.exception', base_tags + ['exception'])
+        exception_handler_strategy = MexcExceptionHandlerStrategy(exception_logger)
+        
         auth_strategy = None
         if is_private:
             from exchanges.integrations.mexc.rest.strategies import MexcAuthStrategy
@@ -72,6 +77,10 @@ def create_rest_transport_manager(
         
         retry_logger = get_strategy_logger('rest.retry', base_tags + ['retry'])
         retry_strategy = GateioRetryStrategy(exchange_config, retry_logger)
+        
+        # Exception handler is available for both public and private APIs
+        from exchanges.integrations.gateio.rest.strategies import GateioExceptionHandlerStrategy
+        exception_handler_strategy = GateioExceptionHandlerStrategy()
         
         auth_strategy = None
         if is_private:
@@ -95,6 +104,10 @@ def create_rest_transport_manager(
         retry_logger = get_strategy_logger('rest.retry', base_tags + ['retry'])
         retry_strategy = GateioRetryStrategy(exchange_config, retry_logger)
         
+        # Exception handler is available for both public and private APIs (same as regular Gate.io)
+        from exchanges.integrations.gateio.rest.strategies import GateioExceptionHandlerStrategy
+        exception_handler_strategy = GateioExceptionHandlerStrategy()
+        
         auth_strategy = None
         if is_private:
             from exchanges.integrations.gateio.rest.strategies import GateioAuthStrategy
@@ -109,7 +122,7 @@ def create_rest_transport_manager(
         rate_limit_strategy=rate_limit_strategy,
         retry_strategy=retry_strategy,
         auth_strategy=auth_strategy,
-        exception_handler_strategy=None,  # Optional
+        exception_handler_strategy=exception_handler_strategy,  # Use exchange-specific handler
         logger=strategy_set_logger
     )
 
