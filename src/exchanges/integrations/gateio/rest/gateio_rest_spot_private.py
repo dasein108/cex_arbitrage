@@ -43,7 +43,7 @@ from exchanges.integrations.gateio.utils import (
     to_pair, from_side, from_order_type, format_quantity, format_price, 
     from_time_in_force, to_order_status, rest_to_order, rest_to_balance
 )
-from exchanges.integrations.gateio.structs.exchange import GateioCurrencyResponse
+from exchanges.integrations.gateio.structs.exchange import GateioCurrencyResponse, GateioWithdrawStatusResponse
 
 class GateioPrivateSpotRest(PrivateSpotRest):
     """
@@ -54,8 +54,19 @@ class GateioPrivateSpotRest(PrivateSpotRest):
     """
 
     async def get_assets_info(self) -> Dict[AssetName, AssetInfo]:
-        # TODO: Implement asset info retrieval
-        return {}
+        """
+        Get currency information including deposit/withdrawal status and network details.
+
+        For Gate.io, this method delegates to get_currency_info() which already
+        implements the same functionality.
+
+        Returns:
+            Dictionary mapping AssetName to AssetInfo with network configurations
+
+        Raises:
+            ExchangeAPIError: If unable to fetch currency information
+        """
+        return await self.get_currency_info()
 
     def __init__(self, config: ExchangeConfig, logger=None):
         """
@@ -501,15 +512,26 @@ class GateioPrivateSpotRest(PrivateSpotRest):
         """
         Get currency information including deposit/withdrawal status and network details.
 
-        Uses only Gate.io's `/spot/currencies` endpoint.
+        Combines data from Gate.io's `/spot/currencies` and `/wallet/withdraw_status` endpoints
+        to provide complete asset information including withdrawal fees and minimums.
         """
         try:
-
+            # Fetch currency information (network details, deposit/withdraw status)
             currencies_response = await self.request(
                 HTTPMethod.GET,
                 "/spot/currencies"
             )
             currencies_data = msgspec.convert(currencies_response, list[GateioCurrencyResponse])
+
+            # Fetch withdrawal status (fees and limits)
+            withdraw_status_response = await self.request(
+                HTTPMethod.GET,
+                "/wallet/withdraw_status"
+            )
+            withdraw_status_data = msgspec.convert(withdraw_status_response, list[GateioWithdrawStatusResponse])
+
+            # Create lookup map for withdrawal status
+            withdraw_status_map = {item.currency: item for item in withdraw_status_data}
 
             currency_info_map: Dict[AssetName, AssetInfo] = {}
 
@@ -519,33 +541,77 @@ class GateioPrivateSpotRest(PrivateSpotRest):
                 if currency_data.delisted:
                     continue
 
+                # Get withdrawal status for this currency
+                withdraw_status = withdraw_status_map.get(currency_data.currency)
+
                 networks: Dict[str, NetworkInfo] = {}
                 overall_deposit_enable = False
                 overall_withdraw_enable = False
 
-                
-                for chain in currency_data.chains:
-                    network_info = NetworkInfo(
-                        network=chain.chain,
-                        deposit_enable=chain.deposit,
-                        withdraw_enable=chain.withdraw,
-                        withdraw_fee=float(chain.withdraw_fee or 0),
-                        withdraw_min=float(chain.min_withdraw or 0),
-                        withdraw_max=float(chain.max_withdraw) if chain.max_withdraw else None,
-                        min_confirmations=chain.confirmation,
-                        address=None,
-                        memo=None
-                    )
+                # Check if chains data exists
+                if currency_data.chains:
+                    for chain in currency_data.chains:
+                        # Determine deposit/withdraw status based on disabled flags
+                        deposit_enable = not chain.deposit_disabled if chain.deposit_disabled is not None else True
+                        withdraw_enable = not chain.withdraw_disabled if chain.withdraw_disabled is not None else True
+                        
+                        # Consider withdraw_delayed as disabling withdrawals if needed
+                        if chain.withdraw_delayed:
+                            withdraw_enable = False
 
-                    networks[chain.chain] = network_info
+                        # Get withdrawal fee for this specific chain
+                        withdraw_fee = 0.0
+                        withdraw_min = 0.0
+                        withdraw_max = None
 
-                    
-                    if chain.deposit:
-                        overall_deposit_enable = True
-                    if chain.withdraw:
-                        overall_withdraw_enable = True
+                        if withdraw_status:
+                            # Try to get chain-specific fee first
+                            if withdraw_status.withdraw_fix_on_chains and chain.name in withdraw_status.withdraw_fix_on_chains:
+                                try:
+                                    withdraw_fee = float(withdraw_status.withdraw_fix_on_chains[chain.name])
+                                except (ValueError, TypeError):
+                                    withdraw_fee = 0.0
+                            # Fallback to default fee
+                            elif withdraw_status.withdraw_fix:
+                                try:
+                                    withdraw_fee = float(withdraw_status.withdraw_fix)
+                                except (ValueError, TypeError):
+                                    withdraw_fee = 0.0
 
-                
+                            # Get minimum withdrawal amount
+                            if withdraw_status.withdraw_amount_mini:
+                                try:
+                                    withdraw_min = float(withdraw_status.withdraw_amount_mini)
+                                except (ValueError, TypeError):
+                                    withdraw_min = 0.0
+
+                            # Get maximum withdrawal amount
+                            if withdraw_status.withdraw_eachtime_limit:
+                                try:
+                                    withdraw_max = float(withdraw_status.withdraw_eachtime_limit)
+                                except (ValueError, TypeError):
+                                    withdraw_max = None
+                            
+                        network_info = NetworkInfo(
+                            network=chain.name,  # Use name as the network identifier
+                            deposit_enable=deposit_enable,
+                            withdraw_enable=withdraw_enable,
+                            withdraw_fee=withdraw_fee,
+                            withdraw_min=withdraw_min,
+                            withdraw_max=withdraw_max,
+                            min_confirmations=None,  # Not available in /spot/currencies
+                            address=chain.addr,  # Store contract address
+                            memo=None
+                        )
+
+                        networks[chain.name] = network_info
+
+                        if deposit_enable:
+                            overall_deposit_enable = True
+                        if withdraw_enable:
+                            overall_withdraw_enable = True
+
+                # Check global deposit/withdrawal disable flags
                 if currency_data.deposit_disabled:
                     overall_deposit_enable = False
                 if currency_data.withdraw_disabled or currency_data.withdraw_delayed:

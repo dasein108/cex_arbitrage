@@ -146,15 +146,40 @@ class GateioWSSubscriptionMessage(msgspec.Struct):
     payload: List[str]
     auth: Optional[dict] = None
 
+class GateioCurrencyChain(msgspec.Struct):
+    """Gate.io currency chain details from /spot/currencies endpoint."""
+    name: str  # Chain name like "ETH", "BSC", etc.
+    addr: Optional[str] = None  # Contract address
+    withdraw_disabled: Optional[bool] = None
+    withdraw_delayed: Optional[bool] = None
+    deposit_disabled: Optional[bool] = None
+
 
 class GateioCurrencyResponse(msgspec.Struct):
-    """Gate.io currency information response structure."""
+    """Gate.io currency information response structure from /spot/currencies."""
     currency: str
     delisted: bool
     withdraw_disabled: bool
     withdraw_delayed: bool
     deposit_disabled: bool
     trade_disabled: bool
+    chains: Optional[List['GateioCurrencyChain']] = None
+
+
+class GateioWithdrawStatusResponse(msgspec.Struct):
+    """Gate.io withdrawal status response structure from /wallet/withdraw_status."""
+    currency: str
+    name: str
+    name_cn: str
+    deposit: str
+    withdraw_percent: str
+    withdraw_fix: str
+    withdraw_day_limit: str
+    withdraw_day_limit_remain: str
+    withdraw_amount_mini: str
+    withdraw_eachtime_limit: str
+    withdraw_fix_on_chains: Optional[dict] = None  # Chain name -> fee amount
+    withdraw_percent_on_chains: Optional[dict] = None  # Chain name -> percentage
 
 
 class GateioChainResponse(msgspec.Struct):

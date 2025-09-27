@@ -41,7 +41,7 @@ class CompositePrivateExchange(BaseCompositeExchange):
     """
 
     def __init__(self, config: ExchangeConfig, logger: Optional[HFTLoggerInterface] = None,
-                 handlers: Optional[PrivateWebsocketHandlers] = PrivateWebsocketHandlers()) -> None:
+                 handlers: Optional[PrivateWebsocketHandlers] = None) -> None:
         """
         Initialize private exchange interface.
         
@@ -50,7 +50,10 @@ class CompositePrivateExchange(BaseCompositeExchange):
             logger: Optional injected HFT logger (auto-created if not provided)
         """
         super().__init__(config=config, is_private=True, logger=logger)
-        self.handlers = handlers
+
+        if not handlers:
+            self.handlers = PrivateWebsocketHandlers()
+
         self._tag = f'{config.name}_private'
         self._assets_info: Dict[AssetName, AssetInfo] = {}
 
@@ -513,7 +516,7 @@ class CompositePrivateExchange(BaseCompositeExchange):
                          status=order.status.name,
                          filled=f"{order.filled_quantity}/{order.quantity}")
 
-        await self.handlers.order_handler(order)
+        await self.handlers.handle_order(order)
 
     async def _balance_handler(self, balance: AssetBalance) -> None:
         """Handle balance update event."""
@@ -523,7 +526,7 @@ class CompositePrivateExchange(BaseCompositeExchange):
                          exchange=self._exchange_name,
                          asset_balance=balance.asset)
 
-        await self.handlers.balance_handler(balance)
+        await self.handlers.handle_balance(balance)
 
     async def _execution_handler(self, trade: Trade) -> None:
         """Handle execution report/trade event."""
@@ -534,7 +537,7 @@ class CompositePrivateExchange(BaseCompositeExchange):
                          quantity=trade.quantity,
                          price=trade.price,
                          is_maker=trade.is_maker)
-        await self.handlers.execution_handler(trade)
+        await self.handlers.handle_execution(trade)
 
     def _track_operation(self, operation_name: str) -> None:
         """Track operation for performance monitoring."""
@@ -629,6 +632,9 @@ class CompositePrivateExchange(BaseCompositeExchange):
         }
 
         return {**trading_stats}
+
+    async def get_assets_info(self) -> Optional[Dict[AssetName,AssetInfo]]:
+        return self._assets_info
 
     async def close(self) -> None:
         """Close private exchange connections."""

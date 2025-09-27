@@ -120,6 +120,7 @@ class GateioAuthStrategy(AuthStrategy):
             '/spot/my_trades',
             '/spot/batch_orders',
             '/margin/accounts',
+            '/wallet/withdraw_status',
             '/futures'  # All futures endpoints require auth
         ]
 
