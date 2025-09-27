@@ -130,7 +130,8 @@ class MexcAuthStrategy(AuthStrategy):
             '/api/v3/openOrders',
             '/api/v3/allOrders',
             '/api/v3/myTrades',
-            '/api/v3/userDataStream'
+            '/api/v3/userDataStream',
+            '/api/v3/capital/config/getall'
         ]
 
         return any(endpoint.startswith(private_ep) for private_ep in private_endpoints)

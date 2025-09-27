@@ -146,6 +146,7 @@ class PublicSpotWebsocket(ABC):
                 if message.data:
                     # Convert message data to ParsedOrderbookUpdate format
                     from common.orderbook_diff_processor import ParsedOrderbookUpdate
+                    # TODO:Incorrect
                     if isinstance(message.data, dict):
                         orderbook_update = ParsedOrderbookUpdate(
                             orderbook=message.data.get('orderbook'),
@@ -164,9 +165,9 @@ class PublicSpotWebsocket(ABC):
                     # Handle both single trade and list of trades
                     if isinstance(message.data, list):
                         for trade in message.data:
-                            await self.handlers.handle_trades(trade)
+                            await self.handlers.handle_trade(trade)
                     else:
-                        await self.handlers.handle_trades(message.data)
+                        await self.handlers.handle_trade(message.data)
                         
             elif message.message_type == MessageType.BOOK_TICKER:
                 if message.data:

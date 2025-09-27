@@ -55,7 +55,7 @@ class PublicWebsocketHandlers:
         if self.ticker_handler:
             await self.ticker_handler(ticker)
     
-    async def handle_trades(self, trade: Trade) -> None:
+    async def handle_trade(self, trade: Trade) -> None:
         """Handle trade data."""
         if self.trade_handler:
             await self.trade_handler(trade)

@@ -22,9 +22,10 @@ class GateioCompositePublicExchange(CompositePublicExchange):
     - Inherits orchestration logic from CompositePublicExchange
     """
 
-    def __init__(self, config: ExchangeConfig, logger: Optional[HFTLoggerInterface] = None):
+    def __init__(self, config: ExchangeConfig, logger: Optional[HFTLoggerInterface] = None,
+                 handlers: Optional[PublicWebsocketHandlers] = None):
         """Initialize Gate.io public exchange."""
-        super().__init__(config, logger)
+        super().__init__(config, logger, handlers)
 
     # Factory Methods - Return Existing Gate.io Clients
     

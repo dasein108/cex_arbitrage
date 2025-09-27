@@ -117,6 +117,7 @@ def __init__(
 ## Message Routing Implementation
 
 ### Internal Message Handler
+
 ```python
 async def _handle_parsed_message(self, message: ParsedMessage) -> None:
     """Route parsed messages to appropriate handlers"""
@@ -128,24 +129,24 @@ async def _handle_parsed_message(self, message: ParsedMessage) -> None:
                 symbol=message.symbol
             )
             await self.handlers.handle_orderbook_diff(orderbook_update)
-            
+
         elif message.message_type == MessageType.TRADE:
             # Handle single or multiple trades
             if isinstance(message.data, list):
                 for trade in message.data:
-                    await self.handlers.handle_trades(trade)
+                    await self.handlers.handle_trade(trade)
             else:
-                await self.handlers.handle_trades(message.data)
-                
+                await self.handlers.handle_trade(message.data)
+
         elif message.message_type == MessageType.BOOK_TICKER:
             await self.handlers.handle_book_ticker(message.data)
-            
+
         elif message.message_type == MessageType.SUBSCRIPTION_CONFIRM:
             self.logger.debug(f"Subscription confirmed: {message.channel}")
-            
+
         elif message.message_type == MessageType.ERROR:
             self.logger.error(f"WebSocket error: {message.raw_data}")
-            
+
     except Exception as e:
         self.logger.error(f"Error handling message: {e}")
 ```

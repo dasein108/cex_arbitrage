@@ -41,7 +41,7 @@ class MexcRetryStrategy(RetryStrategy):
         self.exchange_config = exchange_config
         
         # Log strategy initialization
-        self.logger.info("MEXC retry strategy initialized",
+        self.logger.debug("MEXC retry strategy initialized",
                         max_attempts=self.max_attempts,
                         base_delay=self.base_delay,
                         max_delay=self.max_delay)

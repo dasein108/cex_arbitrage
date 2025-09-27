@@ -12,6 +12,7 @@ from exchanges.interfaces.ws.futures.ws_public_futures import PublicFuturesWebso
 from exchanges.structs.common import Symbol, SymbolsInfo
 from infrastructure.logging import HFTLoggerInterface
 from infrastructure.networking.websocket.structs import PublicWebsocketChannelType
+from infrastructure.networking.websocket.handlers import PublicWebsocketHandlers
 
 
 class GateioFuturesCompositePublicExchange(CompositePublicExchange):
@@ -29,9 +30,10 @@ class GateioFuturesCompositePublicExchange(CompositePublicExchange):
     and REST endpoints optimized for futures trading.
     """
 
-    def __init__(self, config, logger: Optional[HFTLoggerInterface] = None):
+    def __init__(self, config, logger: Optional[HFTLoggerInterface] = None,
+                 handlers: Optional[PublicWebsocketHandlers] = None):
         """Initialize Gate.io futures public composite exchange."""
-        super().__init__(config, logger=logger)
+        super().__init__(config, logger=logger, handlers=handlers)
         
         # Override tag for futures identification
         self._tag = f'{config.name}_futures_public'

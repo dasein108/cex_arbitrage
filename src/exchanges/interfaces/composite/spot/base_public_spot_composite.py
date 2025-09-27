@@ -535,7 +535,7 @@ class CompositePublicExchange(BaseCompositeExchange):
         try:
             self._update_orderbook(orderbook.symbol, orderbook, OrderbookUpdateType.DIFF)
             self._track_operation("orderbook_update")
-            await self.handlers.orderbook_handler(orderbook)
+            await self.handlers.handle_orderbook(orderbook)
         except Exception as e:
             self.logger.error("Error handling direct orderbook", error=str(e))
 
@@ -546,7 +546,7 @@ class CompositePublicExchange(BaseCompositeExchange):
             self._tickers[ticker.symbol] = ticker
             self._last_update_time = time.perf_counter()
             self._track_operation("ticker_update")
-            await self.handlers.ticker_handler(ticker)
+            await self.handlers.handle_ticker(ticker)
         except Exception as e:
             self.logger.error("Error handling direct ticker", error=str(e))
 
@@ -556,7 +556,7 @@ class CompositePublicExchange(BaseCompositeExchange):
             # Trade events are typically forwarded to arbitrage layer
             self._track_operation("trade_update")
             self.logger.debug(f"Trade event processed", symbol=trade.symbol, exchange=self._exchange_name)
-            await self.handlers.trade_handler(trade)
+            await self.handlers.handle_trade(trade)
         except Exception as e:
             self.logger.error("Error handling direct trade", error=str(e))
 
@@ -598,7 +598,7 @@ class CompositePublicExchange(BaseCompositeExchange):
                              ask_price=book_ticker.ask_price,
                              processing_time_us=processing_time)
 
-            await self.handlers.book_ticker_handler(book_ticker)
+            await self.handlers.handle_book_ticker(book_ticker)
         except Exception as e:
             self.logger.error("Error handling book ticker event", 
                              symbol=book_ticker.symbol, error=str(e))

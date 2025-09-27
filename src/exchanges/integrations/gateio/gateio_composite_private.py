@@ -24,9 +24,10 @@ class GateioCompositePrivateExchange(CompositePrivateExchange):
     - Inherits trading logic from CompositePrivateExchange
     """
 
-    def __init__(self, config: ExchangeConfig, logger: Optional[HFTLoggerInterface] = None):
+    def __init__(self, config: ExchangeConfig, logger: Optional[HFTLoggerInterface] = None,
+                 handlers: Optional[PrivateWebsocketHandlers] = None):
         """Initialize Gate.io private exchange."""
-        super().__init__(config, logger)
+        super().__init__(config, logger, handlers)
 
     # Factory Methods - Return Existing Gate.io Clients
     
@@ -52,14 +53,6 @@ class GateioCompositePrivateExchange(CompositePrivateExchange):
             balance_handler=self._balance_handler,
             execution_handler=self._execution_handler,
         )
-
-    async def place_limit_order(self, symbol: Symbol, side: Side, quantity: float, price: float, **kwargs) -> Order:
-        """Place a limit order via Gate.io REST API."""
-        return await self._private_rest.place_order(symbol, side, OrderType.LIMIT, quantity, price, **kwargs)
-
-    async def place_market_order(self, symbol: Symbol, side: Side, quote_quantity: float, **kwargs) -> Order:
-        """Place a market order via Gate.io REST API."""
-        return await self._private_rest.place_order(symbol, side, OrderType.MARKET, quote_quantity=quote_quantity, **kwargs)
 
     async def withdraw(self, request: WithdrawalRequest) -> WithdrawalResponse:
         """Submit a withdrawal request via Gate.io REST API."""

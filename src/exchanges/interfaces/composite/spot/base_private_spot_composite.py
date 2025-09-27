@@ -14,7 +14,7 @@ from exchanges.structs.common import (
     Symbol, AssetBalance, Order, AssetInfo, WithdrawalRequest, WithdrawalResponse, SymbolsInfo
 )
 from exchanges.structs.types import AssetName, OrderId
-from exchanges.structs import Side, OrderStatus, Trade
+from exchanges.structs import Side, OrderStatus, Trade, OrderType
 from config.structs import ExchangeConfig
 from infrastructure.exceptions.system import InitializationError
 from .base_public_spot_composite import BaseCompositeExchange
@@ -121,57 +121,20 @@ class CompositePrivateExchange(BaseCompositeExchange):
             return list(self._open_orders.get(symbol, {}).values())
         else:
             return [order for orders in self._open_orders.values() for order in orders.values()]
-    @abstractmethod
-    async def place_limit_order(
-        self,
-        symbol: Symbol,
-        side: Side,
-        quantity: float,
-        price: float,
-        **kwargs
-    ) -> Order:
-        """
-        Place a limit order.
-        
-        Args:
-            symbol: Trading symbol
-            side: Order side ('buy' or 'sell')
-            quantity: Order quantity
-            price: Limit price
-            **kwargs: Exchange-specific parameters
-            
-        Returns:
-            Order object with order details
-            
-        Raises:
-            ExchangeError: If order placement fails
-        """
-        pass
 
-    @abstractmethod
-    async def place_market_order(
-        self,
-        symbol: Symbol,
-        side: Side,
-        quote_quantity: float,
-        **kwargs
-    ) -> Order:
-        """
-        Place a market order.
-        
-        Args:
-            symbol: Trading symbol
-            side: Order side ('buy' or 'sell')
-            quote_quantity: Order quantity
-            **kwargs: Exchange-specific parameters
-            
-        Returns:
-            Order object with order details
-            
-        Raises:
-            ExchangeError: If order placement fails
-        """
-        pass
+    async def place_limit_order(self, symbol: Symbol, side: Side, quantity: float, price: float, **kwargs) -> Order:
+        """Place a limit order via MEXC REST API."""
+        si = self.symbols_info.get(symbol)
+        quantity_ = si.round_base(quantity)
+        price_ = si.round_quote(price)
+        return await self._private_rest.place_order(symbol, side, OrderType.LIMIT, quantity_, price_, **kwargs)
+
+    async def place_market_order(self, symbol: Symbol, side: Side, quote_quantity: float, **kwargs) -> Order:
+        """Place a market order via MEXC REST API."""
+        quote_quantity_ = self.symbols_info.get(symbol).round_quote(quote_quantity)
+        return await self._private_rest.place_order(symbol, side, OrderType.MARKET,
+                                                    quote_quantity=quote_quantity_, **kwargs)
+
 
     async def cancel_order(self, symbol: Symbol, order_id: OrderId) -> Order:
         """

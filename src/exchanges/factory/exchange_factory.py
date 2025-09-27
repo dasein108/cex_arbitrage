@@ -73,6 +73,15 @@ def create_exchange_component(
         exchange = create_exchange_component(
             ExchangeEnum.MEXC, config, 'composite', is_private=True
         )
+        
+        # Composite exchange with custom handlers
+        public_handlers = create_public_handlers(
+            orderbook_handler=my_orderbook_handler
+        )
+        exchange_with_handlers = create_exchange_component(
+            ExchangeEnum.MEXC, config, 'composite', 
+            is_private=False, handlers=public_handlers
+        )
 
     """
     # Validate inputs
@@ -98,7 +107,7 @@ def create_exchange_component(
     elif component_type == 'websocket':
         instance = _create_websocket_component(exchange, config, is_private, handlers, logger_override)
     elif component_type == 'composite':
-        instance = _create_composite_component(exchange, config, is_private, logger_override)
+        instance = _create_composite_component(exchange, config, is_private, handlers, logger_override)
     else:
         raise ValueError(f"Unsupported component_type: {component_type}")
     
@@ -126,16 +135,17 @@ def _validate_component_request(
     if is_private and not config.credentials.has_private_api:
         raise ValueError(f"Private component requires valid credentials for {exchange.value}")
     
-    # Check handlers for websocket components
-    if component_type == 'websocket':
-        if handlers is None:
-            raise ValueError("WebSocket component requires handlers parameter")
-        
-        # Validate handler type matches component privacy
+    # Check handlers for websocket and composite components
+    if component_type in ['websocket', 'composite'] and handlers is not None:
+        # Validate handler type matches component privacy when handlers are provided
         if is_private and not isinstance(handlers, PrivateWebsocketHandlers):
-            raise ValueError(f"Private WebSocket requires PrivateWebsocketHandlers, got {type(handlers).__name__}")
+            raise ValueError(f"Private {component_type} requires PrivateWebsocketHandlers, got {type(handlers).__name__}")
         elif not is_private and not isinstance(handlers, PublicWebsocketHandlers):
-            raise ValueError(f"Public WebSocket requires PublicWebsocketHandlers, got {type(handlers).__name__}")
+            raise ValueError(f"Public {component_type} requires PublicWebsocketHandlers, got {type(handlers).__name__}")
+    
+    # WebSocket components require handlers
+    if component_type == 'websocket' and handlers is None:
+        raise ValueError("WebSocket component requires handlers parameter")
 
 
 def _create_rest_component(
@@ -211,32 +221,33 @@ def _create_composite_component(
     exchange: ExchangeEnum,
     config: ExchangeConfig,
     is_private: bool,
+    handlers: Optional[Union[PublicWebsocketHandlers, PrivateWebsocketHandlers]],
     logger: HFTLoggerInterface
 ) -> Any:
     """Create composite exchange component."""
     if exchange == ExchangeEnum.MEXC:
         if is_private:
             from exchanges.integrations.mexc.mexc_composite_private import MexcCompositePrivateExchange
-            return MexcCompositePrivateExchange(config=config, logger=logger)
+            return MexcCompositePrivateExchange(config=config, logger=logger, handlers=handlers)
         else:
             from exchanges.integrations.mexc.mexc_composite_public import MexcCompositePublicExchange
-            return MexcCompositePublicExchange(config=config, logger=logger)
+            return MexcCompositePublicExchange(config=config, logger=logger, handlers=handlers)
             
     elif exchange == ExchangeEnum.GATEIO:
         if is_private:
             from exchanges.integrations.gateio.gateio_composite_private import GateioCompositePrivateExchange
-            return GateioCompositePrivateExchange(config=config, logger=logger)
+            return GateioCompositePrivateExchange(config=config, logger=logger, handlers=handlers)
         else:
             from exchanges.integrations.gateio.gateio_composite_public import GateioCompositePublicExchange
-            return GateioCompositePublicExchange(config=config, logger=logger)
+            return GateioCompositePublicExchange(config=config, logger=logger, handlers=handlers)
             
     elif exchange == ExchangeEnum.GATEIO_FUTURES:
         if is_private:
             from exchanges.integrations.gateio.gateio_futures_composite_private import GateioFuturesCompositePrivateExchange
-            return GateioFuturesCompositePrivateExchange(config=config, logger=logger)
+            return GateioFuturesCompositePrivateExchange(config=config, logger=logger, handlers=handlers)
         else:
             from exchanges.integrations.gateio.gateio_futures_composite_public import GateioFuturesCompositePublicExchange
-            return GateioFuturesCompositePublicExchange(config=config, logger=logger)
+            return GateioFuturesCompositePublicExchange(config=config, logger=logger, handlers=handlers)
     else:
         raise ValueError(f"Composite component not implemented for {exchange.value}")
 
@@ -293,11 +304,23 @@ def create_composite_exchange(
     exchange: ExchangeEnum,
     config: ExchangeConfig,
     is_private: bool = False,
+    handlers: Optional[Union[PublicWebsocketHandlers, PrivateWebsocketHandlers]] = None,
     use_cache: bool = True,
     logger_override: Optional[HFTLoggerInterface] = None
 ) -> Any:
     """
     Convenience function for creating composite exchanges.
+    
+    Args:
+        exchange: Exchange to create composite for
+        config: Exchange configuration
+        is_private: Whether to create private or public composite
+        handlers: Optional WebSocket handlers for custom event handling
+        use_cache: Whether to use component caching
+        logger_override: Custom logger injection
+    
+    Returns:
+        Composite exchange instance with optional custom handlers
     
     Equivalent to: create_exchange_component(..., component_type='composite')
     """
@@ -306,6 +329,7 @@ def create_composite_exchange(
         config=config,
         component_type='composite',
         is_private=is_private,
+        handlers=handlers,
         use_cache=use_cache,
         logger_override=logger_override
     )
@@ -438,6 +462,11 @@ def get_component_decision_matrix() -> Dict[str, Dict[str, str]]:
             "component_type": "composite",
             "description": "Full market data interface",
             "use_case": "Market analysis, price monitoring"
+        },
+        "custom_event_handling": {
+            "component_type": "composite",
+            "description": "Composite exchange with custom WebSocket handlers",
+            "use_case": "Custom orderbook processing, specialized event handling"
         },
         "separated_domain_trading": {
             "component_type": "pair",

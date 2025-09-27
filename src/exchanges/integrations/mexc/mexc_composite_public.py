@@ -21,9 +21,10 @@ class MexcCompositePublicExchange(CompositePublicExchange):
     - Inherits orchestration logic from CompositePublicExchange
     """
 
-    def __init__(self, config: ExchangeConfig, logger: Optional[HFTLoggerInterface] = None):
+    def __init__(self, config: ExchangeConfig, logger: Optional[HFTLoggerInterface] = None,
+                 handlers: Optional[PublicWebsocketHandlers] = None):
         """Initialize MEXC public exchange."""
-        super().__init__(config, logger)
+        super().__init__(config, logger, handlers)
 
     # Factory Methods - Return Existing MEXC Clients
     

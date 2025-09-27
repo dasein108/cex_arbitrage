@@ -129,7 +129,7 @@ async def public_websocket_example():
     )
     
     # Call handler directly
-    await public_handlers.handle_trades(test_trade)
+    await public_handlers.handle_trade(test_trade)
     print(f"📊 Processed {len(trader.received_trades)} trades")
 
 

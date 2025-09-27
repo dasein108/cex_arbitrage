@@ -197,11 +197,11 @@ class MexcPrivateSpotRest(PrivateSpotRest, ListenKeyInterface):
             params['timeInForce'] = from_time_in_force(time_in_force)
 
         # Add optional parameters
-        if iceberg_qty is not None:
-            params['icebergQty'] = format_quantity(iceberg_qty)
-
-        if new_order_resp_type is not None:
-            params['newOrderRespType'] = new_order_resp_type
+        # if iceberg_qty is not None:
+        #     params['icebergQty'] = format_quantity(iceberg_qty)
+        #
+        # if new_order_resp_type is not None:
+        #     params['newOrderRespType'] = new_order_resp_type
 
         response_data = await self.request(
             HTTPMethod.POST,
