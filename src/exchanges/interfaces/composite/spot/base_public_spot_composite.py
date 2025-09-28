@@ -704,3 +704,18 @@ class CompositePublicSpotExchange(BaseCompositeExchange[PublicRestType, PublicWe
         ts = timestamp / 1000 if timestamp > 1e10 else timestamp
         event_age = time.time() - ts
         return event_age <= max_age_seconds
+    
+    async def is_tradable(self, symbol: Symbol) -> bool:
+        """
+        Check if a symbol is tradable on this exchange.
+        
+        Args:
+            symbol: Symbol to check
+            
+        Returns:
+            True if symbol is tradable, False otherwise
+        """
+        if not self._rest:
+            return False
+        
+        return await self._rest.is_tradable(symbol)

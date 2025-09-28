@@ -598,7 +598,7 @@ class MexcPublicSpotRest(PublicSpotRest):
         self.logger.debug(f"Retrieved {len(sorted_klines)} klines in batch for {symbol.base}/{symbol.quote}")
         return sorted_klines
     
-    async def is_tradable(self, symbol: Symbol, is_futures: bool = False) -> bool:
+    async def is_tradable(self, symbol: Symbol) -> bool:
         """
         Check if a symbol is tradable on MEXC.
         

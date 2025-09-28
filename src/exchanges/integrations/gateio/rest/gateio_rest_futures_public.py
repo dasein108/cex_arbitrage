@@ -581,14 +581,13 @@ class GateioPublicFuturesRest(PublicFuturesRest):
         """Get interval duration in milliseconds for close time calculation."""
         return self._get_interval_seconds(interval) * 1000
 
-    async def is_tradable(self, symbol: Symbol, is_futures: bool = True) -> bool:
+    async def is_tradable(self, symbol: Symbol) -> bool:
         """
         Check if a symbol is tradable on Gate.io futures.
         
         Args:
             symbol: Symbol to check
-            is_futures: Always True for futures trading
-            
+
         Returns:
             True if symbol is tradable, False otherwise
         """

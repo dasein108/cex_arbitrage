@@ -79,4 +79,19 @@ class CompositePublicFuturesExchange(CompositePublicSpotExchange):
             except Exception as e:
                 self.logger.error(f"Failed to refresh futures data for {self._tag}: {e}")
                 raise
+    
+    async def is_tradable(self, symbol: Symbol) -> bool:
+        """
+        Check if a symbol is tradable on this futures exchange.
+        
+        Args:
+            symbol: Symbol to check
+            
+        Returns:
+            True if symbol is tradable for futures, False otherwise
+        """
+        if not self._rest:
+            return False
+        
+        return await self._rest.is_tradable(symbol)
 

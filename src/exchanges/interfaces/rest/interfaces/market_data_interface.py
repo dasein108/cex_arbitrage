@@ -23,7 +23,7 @@ class MarketDataInterface(ABC):
         pass
 
     @abstractmethod
-    async def is_tradable(self, symbol: Symbol, is_futures: bool = False) -> bool:
+    async def is_tradable(self, symbol: Symbol) -> bool:
         """Check if a symbol is tradable on this exchange
 
         Args:

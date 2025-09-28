@@ -18,8 +18,8 @@ import argparse
 # Add src to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
-from core.config.config_manager import HftConfig
-from db.structs import DatabaseConfig
+from config.config_manager import HftConfig
+from config.structs import DatabaseConfig
 
 
 class MigrationRunner:
@@ -315,14 +315,7 @@ async def main():
     try:
         # Load database configuration
         config = HftConfig()
-        db_config_data = config.get_database_config()
-        db_config = DatabaseConfig(
-            host=db_config_data.get("host", "localhost"),
-            port=int(db_config_data.get("port", 5432)),
-            database=db_config_data.get("database", "cex_arbitrage"),
-            username=db_config_data.get("username", "arbitrage_user"),
-            password=db_config_data.get("password", "")
-        )
+        db_config = config.get_database_config()
         
         # Create migration runner
         runner = MigrationRunner(db_config)
