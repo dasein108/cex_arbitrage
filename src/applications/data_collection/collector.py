@@ -11,10 +11,11 @@ from typing import Dict, List, Optional, Set, Callable, Awaitable
 from dataclasses import dataclass
 
 from exchanges.structs import Symbol, BookTicker, Trade, ExchangeEnum
-from exchanges.factory import create_websocket_client, PublicWebsocketHandlers
+from exchanges.factory import create_websocket_client
+from infrastructure.networking.websocket.handlers import PublicWebsocketHandlers
 from db import BookTickerSnapshot
 from db.models import TradeSnapshot
-from .analytics import RealTimeAnalytics
+from .analytics import RealTimeAnalytics, ArbitrageOpportunity
 from .consts import WEBSOCKET_CHANNELS
 from config.config_manager import get_exchange_config
 # HFT Logger Integration
@@ -80,7 +81,7 @@ class UnifiedWebSocketManager:
         self.logger.info("UnifiedWebSocketManager initialized",
                          exchanges=[e.value for e in exchanges],
                          has_book_ticker_handler=self.handlers.book_ticker_handler is not None,
-                         has_trade_handler=self.handlers.trades_handler is not None)
+                         has_trade_handler=self.handlers.trade_handler is not None)
 
         # Trade cache: {exchange_symbol: List[TradeCache]} (keep recent trades)
         self._trade_cache: Dict[str, List[TradeCache]] = {}
@@ -124,12 +125,28 @@ class UnifiedWebSocketManager:
         try:
             # Create exchange configuration
             config = get_exchange_config(exchange.value)
+            
+            # Filter symbols to only tradable ones before subscription
+            from exchanges.utils.symbol_validator import get_symbol_validator
+            validator = get_symbol_validator()
+            is_futures = 'futures' in exchange.value.lower()
+            valid_symbols = validator.filter_tradable_symbols(exchange.value, symbols, is_futures=is_futures)
+            
+            if not valid_symbols:
+                self.logger.warning(f"No valid symbols to subscribe for {exchange.value} after filtering {len(symbols)} symbols")
+                return
+                
+            if len(valid_symbols) < len(symbols):
+                excluded_count = len(symbols) - len(valid_symbols)
+                self.logger.info(f"Filtered out {excluded_count} non-tradable symbols for {exchange.value}")
 
             # Create WebSocket client using configured handlers
             # Note: PublicWebsocketHandlers expects handlers with single parameter (data only)
             exchange_handlers = PublicWebsocketHandlers(
-                book_ticker_handler=lambda ticker: self._handle_book_ticker_update_adapter(exchange, ticker),
-                trades_handler=lambda trade: self._handle_trades_update_adapter(exchange, trade)
+                book_ticker_handler=lambda book_ticker: self._handle_book_ticker_update(exchange,
+                                                                                        book_ticker.symbol,
+                                                                                        book_ticker),
+                trade_handler=lambda trade: self._handle_trades_update(exchange, trade.symbol, [trade])
             )
 
             client = create_websocket_client(
@@ -144,10 +161,10 @@ class UnifiedWebSocketManager:
             self._active_symbols[exchange] = set()
             self._connected[exchange] = False
 
-            # Initialize connection and subscribe to symbols with performance tracking
+            # Initialize connection and subscribe to valid symbols only
             with LoggingTimer(self.logger, "websocket_initialization") as timer:
-                await client.initialize(symbols, WEBSOCKET_CHANNELS)
-                self._active_symbols[exchange].update(symbols)
+                await client.initialize(valid_symbols, WEBSOCKET_CHANNELS)
+                self._active_symbols[exchange].update(valid_symbols)
                 self._connected[exchange] = True
 
             self.logger.info("WebSocket initialized successfully",
@@ -265,49 +282,8 @@ class UnifiedWebSocketManager:
         This is a bridge method that passes context directly as parameters.
         """
         # Call the handler with exchange, symbol, and trade data
-        await self.handlers.trades_handler(exchange, symbol, trade)
+        await self.handlers.trade_handler(exchange, symbol, trade)
 
-    async def _handle_book_ticker_update_adapter(self, exchange: ExchangeEnum, book_ticker: BookTicker) -> None:
-        """
-        Adapter method to handle book ticker updates from WebSocket infrastructure.
-        
-        The WebSocket infrastructure calls handlers with just the data (book_ticker),
-        but our internal handler needs exchange and symbol context. This adapter
-        extracts the symbol from the book_ticker and calls the internal handler.
-        """
-        try:
-            # Extract symbol from book_ticker - this assumes book_ticker has symbol info
-            # If not available, we'll need to get it from the WebSocket context
-            symbol = getattr(book_ticker, 'symbol', None)
-            if symbol is None:
-                # Try to get symbol from WebSocket infrastructure context
-                # This would need to be implemented in the WebSocket base classes
-                self.logger.warning("Book ticker received without symbol information")
-                return
-                
-            await self._handle_book_ticker_update(exchange, symbol, book_ticker)
-        except Exception as e:
-            self.logger.error(f"Error in book ticker adapter: {e}")
-
-    async def _handle_trades_update_adapter(self, exchange: ExchangeEnum, trade: Trade) -> None:
-        """
-        Adapter method to handle individual trade updates from WebSocket infrastructure.
-        
-        The WebSocket infrastructure calls handlers with just the trade data,
-        but our internal handler expects a list of trades. This adapter wraps
-        the single trade in a list and extracts symbol information.
-        """
-        try:
-            # Extract symbol from trade
-            symbol = getattr(trade, 'symbol', None)
-            if symbol is None:
-                self.logger.warning("Trade received without symbol information")
-                return
-                
-            # Convert single trade to list for internal handler
-            await self._handle_trades_update(exchange, symbol, [trade])
-        except Exception as e:
-            self.logger.error(f"Error in trades adapter: {e}")
 
     async def _handle_trades_update(self, exchange: ExchangeEnum, symbol: Symbol, trades: List[Trade]) -> None:
         """
@@ -339,7 +315,7 @@ class UnifiedWebSocketManager:
                 self._trade_cache[cache_key] = self._trade_cache[cache_key][-100:]
 
             # Call registered handler for each trade if available
-            if self.handlers.trades_handler:
+            if self.handlers.trade_handler:
                 for trade in trades:
                     await self._call_external_trades_handler(exchange, symbol, trade)
         except Exception as e:
@@ -747,9 +723,6 @@ class DataCollector:
     def __init__(self):
         """
         Initialize data collector.
-        
-        Args:
-            config_path: Path to configuration file
         """
         # Load configuration
         from config.config_manager import get_data_collector_config
@@ -801,8 +774,9 @@ class DataCollector:
             # Initialize WebSocket manager with analytics handler
             handlers = PublicWebsocketHandlers(
                 book_ticker_handler=self._handle_external_book_ticker,
-                trades_handler=self._handle_external_trade
+                trade_handler=self._handle_external_trade
             )
+
             self.ws_manager = UnifiedWebSocketManager(
                 exchanges=self.config.exchanges,
                 handlers=handlers
@@ -1070,7 +1044,7 @@ class DataCollector:
                     self.config.symbols.remove(symbol)
             self.logger.info(f"Removed {len(symbols)} symbols from data collection")
 
-    async def get_recent_opportunities(self, minutes: int = 5) -> List['ArbitrageOpportunity']:
+    async def get_recent_opportunities(self, minutes: int = 5) -> List[ArbitrageOpportunity]:
         """
         Get recent arbitrage opportunities.
         

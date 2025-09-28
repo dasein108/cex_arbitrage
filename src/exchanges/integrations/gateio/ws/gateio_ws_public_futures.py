@@ -37,6 +37,7 @@ from exchanges.interfaces.ws import PublicFuturesWebsocket
 from infrastructure.networking.websocket.structs import ConnectionState, PublicWebsocketChannelType
 from infrastructure.networking.websocket.handlers import PublicWebsocketHandlers
 from infrastructure.logging import HFTLogger
+from exchanges.utils.symbol_validator import get_symbol_validator
 
 class GateioPublicFuturesWebsocket(PublicFuturesWebsocket):
     """Gate.io public futures WebSocket client using dependency injection pattern."""
@@ -92,19 +93,30 @@ class GateioPublicFuturesWebsocket(PublicFuturesWebsocket):
 
     async def initialize(self, symbols: List[Symbol],
                          channels: List[PublicWebsocketChannelType]=DEFAULT_PUBLIC_WEBSOCKET_CHANNELS) -> None:
+        # First, we need to load and cache symbol info for validation
+        # This would normally be done by the composite exchange during initialization
+        # For now, we'll assume symbol info is already cached by the time we get here
         await super().initialize(symbols, channels)
 
     # Enhanced symbol management using symbol-channel mapping
     async def subscribe(self, symbols: List[Symbol]) -> None:
         """Add futures symbols for subscription using enhanced symbol-channel mapping."""
-        if not symbols:
+        # Filter symbols to only tradable ones
+        validator = get_symbol_validator()
+        valid_symbols = validator.filter_tradable_symbols('gateio_futures', symbols, is_futures=True)
+        
+        if not valid_symbols:
+            self.logger.warning(f"No valid symbols to subscribe after filtering {len(symbols)} symbols")
             return
             
-        # Use unified subscription method with symbols parameter
-        await self._ws_manager.subscribe(symbols=symbols)
+        if len(valid_symbols) < len(symbols):
+            self.logger.info(f"Filtered {len(symbols)} symbols to {len(valid_symbols)} valid tradable symbols")
+            
+        # Use unified subscription method with valid symbols only
+        await self._ws_manager.subscribe(symbols=valid_symbols)
         
         # Move from pending to active on successful subscription
-        self._active_symbols.update(symbols)
+        self._active_symbols.update(valid_symbols)
 
         self.logger.info(f"Added {len(symbols)} futures symbols: {[str(s) for s in symbols]}")
     

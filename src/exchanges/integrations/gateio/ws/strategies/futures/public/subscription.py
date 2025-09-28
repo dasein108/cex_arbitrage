@@ -21,10 +21,11 @@ from infrastructure.networking.websocket.structs import SubscriptionAction, Publ
 from exchanges.structs.common import Symbol
 # BaseExchangeMapper dependency removed - using direct utility functions
 from exchanges.consts import DEFAULT_PUBLIC_WEBSOCKET_CHANNELS
+from exchanges.integrations.gateio.services.futures_symbol_mapper import GateioFuturesSymbol
 
 # HFT Logger Integration
 from infrastructure.logging import get_strategy_logger, HFTLoggerInterface
-
+from exchanges.integrations.gateio.utils import from_subscription_action, get_futures_channel_name, EventType
 
 class GateioPublicFuturesSubscriptionStrategy(SubscriptionStrategy):
     """
@@ -58,7 +59,7 @@ class GateioPublicFuturesSubscriptionStrategy(SubscriptionStrategy):
                               tags={"exchange": "gateio", "api_type": "futures_public"})
     
     async def create_subscription_messages(self, action: SubscriptionAction,
-                                           symbols: List[Symbol],
+                                           symbols: List[Symbol]=None,
                                            channels: List[PublicWebsocketChannelType] = DEFAULT_PUBLIC_WEBSOCKET_CHANNELS) -> List[Dict[str, Any]]:
         """
         Create Gate.io futures subscription messages.
@@ -79,7 +80,6 @@ class GateioPublicFuturesSubscriptionStrategy(SubscriptionStrategy):
         
         current_time = int(time.time())
         # Use direct utility functions
-        from exchanges.integrations.gateio.utils import from_subscription_action, get_futures_channel_name, to_pair, to_symbol, EventType
         event = from_subscription_action(action)
         messages = []
         
@@ -88,7 +88,7 @@ class GateioPublicFuturesSubscriptionStrategy(SubscriptionStrategy):
             symbol_pairs = []
             for symbol in symbols:
                 # For futures, we might need to handle contract symbols differently
-                exchange_symbol = to_pair(symbol)
+                exchange_symbol = GateioFuturesSymbol.to_pair(symbol)
                 symbol_pairs.append(exchange_symbol)
                 if self.logger:
                     self.logger.debug(f"Converted futures symbol {symbol} to {exchange_symbol}",
@@ -195,7 +195,7 @@ class GateioPublicFuturesSubscriptionStrategy(SubscriptionStrategy):
             if isinstance(result, dict):
                 symbol_str = result.get("s")
                 if symbol_str:
-                    return to_symbol(symbol_str)
+                    return GateioFuturesSymbol.to_symbol(symbol_str)
             
             # Fallback: try to extract from channel
             channel = message.get("channel", "")
@@ -203,7 +203,7 @@ class GateioPublicFuturesSubscriptionStrategy(SubscriptionStrategy):
                 parts = channel.split(".")
                 if len(parts) > 2:
                     symbol_str = parts[-1]
-                    return to_symbol(symbol_str)
+                    return GateioFuturesSymbol.to_symbol(symbol_str)
             
             return None
         except Exception as e:
@@ -254,7 +254,7 @@ class GateioPublicFuturesSubscriptionStrategy(SubscriptionStrategy):
             return None
         
         try:
-            exchange_symbol = to_pair(symbol)
+            exchange_symbol = GateioFuturesSymbol.to_pair(symbol)
             event = from_subscription_action(action)
             
             message = {
@@ -274,15 +274,3 @@ class GateioPublicFuturesSubscriptionStrategy(SubscriptionStrategy):
             
         except Exception:
             return None
-    
-    def _convert_symbols_to_exchange_format(self, symbols: List[Symbol]) -> List[str]:
-        """Convert symbols to Gate.io futures exchange format."""
-        try:
-            return [to_pair(symbol) for symbol in symbols]
-        except Exception as e:
-            if self.logger:
-                self.logger.error(f"Failed to convert futures symbols: {e}",
-                                exchange="gateio",
-                                error=str(e),
-                                api_type="futures_public")
-            return []

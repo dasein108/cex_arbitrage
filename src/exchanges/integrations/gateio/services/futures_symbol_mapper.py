@@ -24,8 +24,8 @@ class GateioFuturesSymbolMapper(SymbolMapperInterface):
         Symbol -> строка Gate.io futures.
         """
         pair = f"{symbol.base}_{symbol.quote}"
-        if getattr(symbol, "expiry", None):
-            return f"{pair}_{symbol.expiry}"
+        # if getattr(symbol, "expiry", None):
+        #     return f"{pair}_{symbol.expiry}"
         return pair
     
     def _string_to_symbol(self, contract: str) -> Symbol:

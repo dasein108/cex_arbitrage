@@ -68,16 +68,22 @@ CREATE TABLE IF NOT EXISTS trades (
     id BIGSERIAL,
     timestamp TIMESTAMPTZ NOT NULL,
     exchange VARCHAR(20) NOT NULL,
-    symbol VARCHAR(30) NOT NULL,
+    symbol_base VARCHAR(20) NOT NULL,
+    symbol_quote VARCHAR(20) NOT NULL,
     
     price NUMERIC(20,8) NOT NULL,
     quantity NUMERIC(20,8) NOT NULL,
-    side VARCHAR(4) NOT NULL CHECK (side IN ('buy', 'sell')),
+    side VARCHAR(10) NOT NULL CHECK (side IN ('buy', 'sell')),
     trade_id TEXT,
+    
+    -- Additional fields for complete trade data
+    quote_quantity NUMERIC(20,8),
+    is_buyer BOOLEAN,
+    is_maker BOOLEAN,
     
     created_at TIMESTAMPTZ DEFAULT NOW(),
     
-    PRIMARY KEY (timestamp, exchange, symbol, trade_id)
+    PRIMARY KEY (timestamp, exchange, symbol_base, symbol_quote, id)
 );
 
 -- Convert to hypertable (optimized)  
@@ -184,6 +190,16 @@ CREATE INDEX IF NOT EXISTS idx_collector_status_timestamp_exchange
 
 CREATE INDEX IF NOT EXISTS idx_collector_status_status 
     ON collector_status(status);
+
+-- Create indexes for trades table
+CREATE INDEX IF NOT EXISTS idx_trades_exchange_symbol_time 
+    ON trades(exchange, symbol_base, symbol_quote, timestamp DESC);
+
+CREATE INDEX IF NOT EXISTS idx_trades_symbol_time 
+    ON trades(symbol_base, symbol_quote, timestamp DESC);
+
+CREATE INDEX IF NOT EXISTS idx_trades_side_time 
+    ON trades(side, timestamp DESC);
 
 -- Continuous aggregates for performance (TimescaleDB feature)
 CREATE MATERIALIZED VIEW IF NOT EXISTS book_ticker_1min

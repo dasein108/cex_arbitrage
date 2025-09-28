@@ -1,6 +1,8 @@
 from typing import Optional, Dict, Any, List, TYPE_CHECKING
 from msgspec import Struct
 import msgspec
+
+from exchanges.structs import ExchangeEnum, Symbol
 from exchanges.structs.types import ExchangeName
 
 
@@ -465,9 +467,9 @@ class DataCollectorConfig(Struct, frozen=True):
     snapshot_interval: float  # seconds
     analytics_interval: float  # seconds
     database: DatabaseConfig
-    exchanges: List['ExchangeName']
+    exchanges: List[ExchangeEnum]
     analytics: AnalyticsConfig
-    symbols: List['Symbol']  # Forward reference to avoid circular import
+    symbols: List[Symbol]  # Forward reference to avoid circular import
     collect_trades: bool = True
     trade_snapshot_interval: float = 1.0
     

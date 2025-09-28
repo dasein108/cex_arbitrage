@@ -4,7 +4,7 @@ from .ws import (PublicSpotWebsocket, PrivateSpotWebsocket,
                  PublicFuturesWebsocket, BaseWebsocketInterface)
 
 from .composite import (BaseCompositeExchange, CompositePrivateSpotExchange, CompositePublicSpotExchange,
-                        CompositePublicFuturesSpotExchange, CompositePrivateFuturesExchange)
+                        CompositePublicFuturesExchange, CompositePrivateFuturesExchange)
 __all__ = [
     # common
     "BaseRestInterface",
@@ -26,6 +26,6 @@ __all__ = [
     'BaseCompositeExchange',
     'CompositePrivateSpotExchange',
     'CompositePublicSpotExchange',
-    'CompositePublicFuturesSpotExchange',
+    'CompositePublicFuturesExchange',
     'CompositePrivateFuturesExchange'
 ]

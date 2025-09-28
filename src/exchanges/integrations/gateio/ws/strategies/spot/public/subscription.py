@@ -120,7 +120,7 @@ class GateioPublicSubscriptionStrategy(SubscriptionStrategy):
                     "time": current_time + i,  # Slightly different timestamps
                     "channel": orderbook_channel,
                     "event": event,
-                    "payload": [pair, "100ms", "5"]
+                    "payload": [pair, "5", "100ms"]
                 }
                 i += 1
                 messages.append(message)

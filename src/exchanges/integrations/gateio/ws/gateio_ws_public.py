@@ -79,14 +79,25 @@ class GateioPublicSpotWebsocket(PublicSpotWebsocket):
         if not symbols:
             return
             
+        # Filter symbols to only tradable ones before subscription
+        from exchanges.utils.symbol_validator import get_symbol_validator
+        validator = get_symbol_validator()
+        valid_symbols = validator.filter_tradable_symbols('gateio_spot', symbols, is_futures=False)
+        
+        if not valid_symbols:
+            self.logger.warning(f"No valid symbols to subscribe after filtering {len(symbols)} symbols")
+            return
+            
+        if len(valid_symbols) < len(symbols):
+            self.logger.info(f"Filtered {len(symbols)} symbols to {len(valid_symbols)} valid tradable symbols")
 
         # Use unified subscription method with symbols parameter
-        await self._ws_manager.subscribe(symbols=symbols)
+        await self._ws_manager.subscribe(symbols=valid_symbols)
         
         # Move from pending to active on successful subscription
-        self._active_symbols.update(symbols)
+        self._active_symbols.update(valid_symbols)
 
-        self.logger.info(f"Added {len(symbols)} symbols: {[str(s) for s in symbols]}")
+        self.logger.info(f"Added {len(valid_symbols)} symbols: {[str(s) for s in valid_symbols]}")
     
     async def unsubscribe(self, symbols: List[Symbol]) -> None:
         """Remove symbols from subscription using enhanced symbol-channel mapping."""

@@ -17,14 +17,15 @@ HFT COMPLIANCE: Sub-millisecond message processing, <100ms reconnection.
 
 import asyncio
 import time
-from symtable import Symbol
 from typing import List, Dict, Optional, Callable, Any, Awaitable, Set
 from websockets.client import WebSocketClientProtocol
 from websockets.protocol import State as WsState
 
 from infrastructure.networking.websocket.strategies.strategy_set import WebSocketStrategySet
-from .structs import ParsedMessage, WebSocketManagerConfig, PerformanceMetrics, ConnectionState, SubscriptionAction, PublicWebsocketChannelType
+from .structs import (ParsedMessage, WebSocketManagerConfig, PerformanceMetrics, ConnectionState,
+                      SubscriptionAction, PublicWebsocketChannelType)
 from config.structs import WebSocketConfig
+from exchanges.structs import Symbol
 from infrastructure.exceptions.exchange import ExchangeRestError
 import msgspec
 
@@ -69,10 +70,6 @@ class WebSocketManager:
         connection_handler: Optional[Callable[[ConnectionState], Awaitable[None]]] = None,
         manager_config: Optional[WebSocketManagerConfig] = None,
         logger=None,
-        # New direct handling parameters
-        direct_handler: Optional[Any] = None,  # Any handler with _handle_message method
-        use_direct_handling: bool = False,
-        # adapter_config: Optional[AdapterConfig] = None  # TODO: Fix after adapter refactoring
     ):
         self.config = config
         self.strategies = strategies
@@ -82,44 +79,6 @@ class WebSocketManager:
         
         # Initialize HFT logger with optional injection
         self.logger = logger or get_logger('ws.manager')
-        
-        # Dual-path architecture support
-        self.use_direct_handling = use_direct_handling
-        self.direct_handler = direct_handler
-        # self.adapter_config = adapter_config or AdapterConfig()  # TODO: Fix after adapter refactoring
-        
-        # Initialize handler adapter if using new architecture
-        self.handler_adapter = None
-        # TODO: Fix after adapter refactoring
-        # if self.direct_handler:
-        #     self.handler_adapter = create_handler_adapter(self.direct_handler, self.adapter_config)
-        #     self.logger.info("Direct handler adapter initialized", 
-        #                    handler_type=type(self.direct_handler).__name__)
-        
-        # Initialize strategy adapter if using legacy with new interface
-        self.strategy_adapter = None
-        if not self.use_direct_handling and self.strategies and not self.direct_handler:
-            # Legacy mode - no adapter needed
-            pass
-        elif not self.use_direct_handling and self.strategies and self.direct_handler:
-            # Hybrid mode - create strategy adapter for compatibility
-            self.strategy_adapter = create_strategy_adapter(
-                config.url.split('/')[-1],  # Extract exchange name from URL
-                self.strategies,
-                self.message_handler
-            )
-            self.logger.info("Strategy adapter initialized for hybrid mode")
-        
-        # Architecture validation
-        if self.use_direct_handling and not self.direct_handler:
-            raise ValueError("Direct handling enabled but no direct_handler provided")
-        if not self.use_direct_handling and not self.strategies:
-            raise ValueError("Legacy mode enabled but no strategies provided")
-        
-        # Performance tracking for dual paths
-        self.legacy_metrics = {'messages': 0, 'errors': 0, 'total_time_ms': 0.0}
-        self.direct_metrics = {'messages': 0, 'errors': 0, 'total_time_ms': 0.0}
-        self.architecture_switches = 0
         
         # Direct WebSocket connection management
         self._websocket: Optional[WebSocketClientProtocol] = None
@@ -134,7 +93,6 @@ class WebSocketManager:
         # Control flags
         self._should_reconnect = True
         # Delayed import to avoid circular dependency
-        from exchanges.structs.common import Symbol
         self._active_symbols: Set[Symbol] = set()
         self._ws_channels: List[PublicWebsocketChannelType] = []
         
@@ -146,14 +104,7 @@ class WebSocketManager:
         self._message_queue: asyncio.Queue = asyncio.Queue(
             maxsize=self.manager_config.max_pending_messages
         )
-        
-        self.logger.info("WebSocket manager V4 initialized with dual-path architecture",
-                        websocket_url=config.url,
-                        max_pending=self.manager_config.max_pending_messages,
-                        use_direct_handling=self.use_direct_handling,
-                        has_direct_handler=self.direct_handler is not None,
-                        has_strategies=self.strategies is not None)
-    
+
     async def initialize(self, symbols: Optional[List[Symbol]] = None,
                          default_channels: Optional[List[PublicWebsocketChannelType]] = None) -> None:
         """
@@ -482,19 +433,9 @@ class WebSocketManager:
             try:
                 raw_message, queue_time = await self._message_queue.get()
                 processing_start = time.perf_counter()
-                
+
                 try:
-                    # Dual-path routing based on configuration
-                    if self.use_direct_handling and self.direct_handler:
-                        # New architecture: Direct _handle_message()
-                        await self._process_direct_message(raw_message, processing_start)
-                    elif self.strategies:
-                        # Legacy fallback handler
-                        await self._process_legacy_message(raw_message, processing_start)
-                    else:
-                        self.logger.error("No valid message processing path available")
-                        self.metrics.error_count += 1
-                
+                    await self._process_raw_message(raw_message, processing_start)
                 except Exception as e:
                     await self._handle_processing_error(e, raw_message)
                 
@@ -514,31 +455,7 @@ class WebSocketManager:
                 
                 await asyncio.sleep(0.1)
     
-    async def _process_direct_message(self, raw_message: Any, processing_start: float) -> None:
-        """Process message using new direct handling architecture."""
-        try:
-            # Direct handling - mixin-based message routing
-            await self.direct_handler.process_message(raw_message)
-            
-            processing_time_ms = (time.perf_counter() - processing_start) * 1000
-            self.metrics.update_processing_time(processing_time_ms)
-            self.metrics.messages_processed += 1
-            
-            # Update direct path metrics
-            self.direct_metrics['messages'] += 1
-            self.direct_metrics['total_time_ms'] += processing_time_ms
-            
-            # Track message processing metrics with path identification
-            self.logger.metric("ws_messages_processed", 1,
-                             tags={"exchange": "ws", "path": "direct"})
-            self.logger.metric("ws_message_processing_time_ms", processing_time_ms,
-                             tags={"exchange": "ws", "path": "direct"})
-            
-        except Exception as e:
-            self.direct_metrics['errors'] += 1
-            self._try_fallback_to_legacy(raw_message, e)
-    
-    async def _process_legacy_message(self, raw_message: Any, processing_start: float) -> None:
+    async def _process_raw_message(self, raw_message: Any, processing_start: float) -> None:
         """Process message using legacy architecture for fallback compatibility."""
         try:
             parsed_message = await self.strategies.message_parser.parse_message(raw_message)
@@ -548,52 +465,15 @@ class WebSocketManager:
                 
                 processing_time_ms = (time.perf_counter() - processing_start) * 1000
                 self.metrics.update_processing_time(processing_time_ms)
-                self.metrics.messages_processed += 1
-                
-                # Update legacy path metrics
-                self.legacy_metrics['messages'] += 1
-                self.legacy_metrics['total_time_ms'] += processing_time_ms
-                
-                # Track message processing metrics with path identification
-                self.logger.metric("ws_messages_processed", 1,
-                                 tags={"exchange": "ws", "path": "legacy"})
-                self.logger.metric("ws_message_processing_time_ms", processing_time_ms,
-                                 tags={"exchange": "ws", "path": "legacy"})
+
+                self.logger.metric("ws_message_processing_time_ms", processing_time_ms)
             else:
                 self.logger.warning("Failed to parse message or no message handler available")
                 
         except Exception as e:
-            self.legacy_metrics['errors'] += 1
             raise  # Re-raise for handling in parent method
     
-    async def _try_fallback_to_legacy(self, raw_message: Any, error: Exception) -> None:
-        """Attempt fallback to legacy architecture on direct handling error."""
-        if not self.adapter_config.fallback_on_error or not self.strategies:
-            raise error
-        
-        try:
-            self.logger.warning("Direct handling failed, attempting legacy fallback",
-                              error_type=type(error).__name__,
-                              error_message=str(error))
-            
-            processing_start = time.perf_counter()
-            await self._process_legacy_message(raw_message, processing_start)
-            
-            # Track fallback success
-            self.logger.metric("ws_fallback_success", 1,
-                             tags={"exchange": "ws"})
-            
-        except Exception as fallback_error:
-            self.logger.error("Legacy fallback also failed",
-                            original_error=str(error),
-                            fallback_error=str(fallback_error))
-            
-            # Track fallback failure
-            self.logger.metric("ws_fallback_failures", 1,
-                             tags={"exchange": "ws"})
-            
-            raise error  # Raise original error
-    
+
     async def _handle_processing_error(self, error: Exception, raw_message: Any) -> None:
         """Handle errors during message processing with path-specific logic."""
         self.metrics.error_count += 1
@@ -697,17 +577,6 @@ class WebSocketManager:
         """Get comprehensive performance metrics for dual-path architecture."""
         uptime = time.perf_counter() - self.start_time if self.start_time > 0 else 0
         
-        # Calculate path-specific performance
-        legacy_avg_time = (
-            self.legacy_metrics['total_time_ms'] / max(1, self.legacy_metrics['messages'])
-            if self.legacy_metrics['messages'] > 0 else 0
-        )
-        
-        direct_avg_time = (
-            self.direct_metrics['total_time_ms'] / max(1, self.direct_metrics['messages'])
-            if self.direct_metrics['messages'] > 0 else 0
-        )
-        
         return {
             # Overall metrics
             'messages_processed': self.metrics.messages_processed,
@@ -718,86 +587,9 @@ class WebSocketManager:
             'reconnection_count': self.metrics.reconnection_count,
             'error_count': self.metrics.error_count,
             'connection_state': self.connection_state.name,
-            
-            # Architecture-specific metrics
-            'architecture': {
-                'current': 'direct' if self.use_direct_handling else 'legacy',
-                'switches': self.architecture_switches,
-                'legacy_path': {
-                    'messages': self.legacy_metrics['messages'],
-                    'errors': self.legacy_metrics['errors'],
-                    'avg_time_ms': legacy_avg_time,
-                    'error_rate': self.legacy_metrics['errors'] / max(1, self.legacy_metrics['messages'])
-                },
-                'direct_path': {
-                    'messages': self.direct_metrics['messages'],
-                    'errors': self.direct_metrics['errors'],
-                    'avg_time_ms': direct_avg_time,
-                    'error_rate': self.direct_metrics['errors'] / max(1, self.direct_metrics['messages'])
-                }
-            },
-            
-            # Adapter status if available
-            'adapters': {
-                'handler_adapter': self.handler_adapter.get_status() if self.handler_adapter else None,
-                'strategy_adapter': self.strategy_adapter.get_health_status() if self.strategy_adapter else None
-            }
         }
     
-    def switch_architecture(self, use_direct: bool) -> None:
-        """Hot-swap between architectures without reconnection."""
-        if use_direct == self.use_direct_handling:
-            self.logger.info("Architecture switch requested but already using target architecture",
-                           current_architecture='direct' if self.use_direct_handling else 'legacy',
-                           requested_architecture='direct' if use_direct else 'legacy')
-            return
-        
-        if use_direct and not self.direct_handler:
-            raise ValueError("Cannot switch to direct handling: no direct_handler available")
-        
-        if not use_direct and not self.strategies:
-            raise ValueError("Cannot switch to legacy: no strategies available")
-        
-        previous_arch = 'direct' if self.use_direct_handling else 'legacy'
-        self.use_direct_handling = use_direct
-        new_arch = 'direct' if use_direct else 'legacy'
-        self.architecture_switches += 1
-        
-        self.logger.info("Architecture switched successfully",
-                        previous_architecture=previous_arch,
-                        new_architecture=new_arch,
-                        total_switches=self.architecture_switches)
-        
-        # Track architecture switch metrics
-        self.logger.metric("ws_architecture_switches", 1,
-                         tags={"exchange": "ws", 
-                               "from": previous_arch, 
-                               "to": new_arch})
-    
-    def get_architecture_status(self) -> Dict[str, Any]:
-        """Get current architecture configuration and capabilities."""
-        return {
-            'current_architecture': 'direct' if self.use_direct_handling else 'legacy',
-            'capabilities': {
-                'can_use_direct': self.direct_handler is not None,
-                'can_use_legacy': self.strategies is not None,
-                'hot_swap_enabled': True,
-                'fallback_enabled': self.adapter_config.fallback_on_error
-            },
-            'components': {
-                'direct_handler_type': type(self.direct_handler).__name__ if self.direct_handler else None,
-                'strategy_set_available': self.strategies is not None,
-                'handler_adapter_active': self.handler_adapter is not None,
-                'strategy_adapter_active': self.strategy_adapter is not None
-            },
-            'configuration': {
-                'use_direct_handling': self.use_direct_handling,
-                'fallback_on_error': self.adapter_config.fallback_on_error,
-                'performance_monitoring': self.adapter_config.enable_performance_monitoring,
-                'max_error_count': self.adapter_config.max_error_count
-            }
-        }
-    
+
     async def close(self) -> None:
         """Close WebSocket manager and cleanup resources."""
         self.logger.info("Closing WebSocket manager V4...",

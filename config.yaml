@@ -403,7 +403,7 @@ data_collector:
   enabled: true
   snapshot_interval: 0.5  # seconds
   analytics_interval: 10  # seconds for summary logging
-  exchanges: ["mexc_spot", "gateio_spot", "gateio_futures"]
+  exchanges: ["gateio_futures"] # "mexc_spot", "gateio_spot",
   
   # Analytics configuration
   analytics:

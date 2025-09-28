@@ -122,11 +122,11 @@ class GateioPublicMessageParser(MessageParser):
                 ["channel", "result"], message, "Gate.io update message"
             )
         
-        if "order_book_update" in channel or "orderbook" in channel:
+        if channel in ["spot.order_book_update", "spot.order_book", "spot.obu"]:
             return await self._parse_orderbook_update(result_data, channel)
-        elif "trades" in channel:
+        elif channel in ["spot.trades", "spot.trades_v2"]:
             return await self._parse_trades_update(result_data, channel)
-        elif "book_ticker" in channel:
+        elif channel == "spot.book_ticker":
             return await self._parse_book_ticker_update(result_data, channel)
         else:
             return self.error_handler.handle_unknown_message_type(
@@ -296,11 +296,11 @@ class GateioPublicMessageParser(MessageParser):
         elif event == "update":
             # Check channel for specific type
             channel = message.get("channel", "")
-            if "order_book" in channel:
+            if channel in ["spot.order_book_update", "spot.order_book", "spot.obu"]:
                 return MessageType.ORDERBOOK
-            elif "trades" in channel:
+            elif channel in ["spot.trades", "spot.trades_v2"]:
                 return MessageType.TRADE
-            elif "book_ticker" in channel:
+            elif channel == "spot.book_ticker":
                 return MessageType.BOOK_TICKER
             return MessageType.UNKNOWN
         else:

@@ -239,6 +239,12 @@ class CompositePublicSpotExchange(BaseCompositeExchange[PublicRestType, PublicWe
         try:
             with LoggingTimer(self.logger, "load_symbols_info") as timer:
                 self._symbols_info = await self._rest.get_symbols_info()
+                
+                # Cache symbol info for validation
+                if self._symbols_info:
+                    from exchanges.utils.symbol_validator import get_symbol_validator
+                    validator = get_symbol_validator()
+                    validator.cache_symbol_info(self._tag, self._symbols_info)
 
             self.logger.info("Symbols info loaded successfully",
                             symbol_count=len(self._symbols_info) if self._symbols_info else 0,
