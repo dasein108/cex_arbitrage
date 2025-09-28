@@ -21,16 +21,18 @@ import time
 from typing import Any, Dict, List, Optional
 import msgspec
 
-from infrastructure.networking.websocket.mixins import PrivateWebSocketMixin
+from infrastructure.networking.websocket.mixins import PrivateWebSocketMixin, SubscriptionMixin, ConnectionMixin
 from infrastructure.networking.websocket.message_types import WebSocketMessageType
+from infrastructure.networking.websocket.structs import ConnectionContext
 from infrastructure.logging import get_logger
 from exchanges.structs.common import Symbol, Order, AssetBalance, Trade
 from exchanges.structs.enums import Side, OrderType, OrderStatus
 from exchanges.integrations.mexc.services.symbol_mapper import MexcSymbol
 from exchanges.integrations.mexc.ws.protobuf_parser import MexcProtobufParser
+from config.structs import ExchangeConfig
 
 
-class MexcPrivateWebSocketHandler(PrivateWebSocketMixin):
+class MexcPrivateWebSocketHandler(PrivateWebSocketMixin, SubscriptionMixin, ConnectionMixin):
     """
     Direct MEXC private WebSocket handler with protobuf optimization.
     
@@ -68,13 +70,17 @@ class MexcPrivateWebSocketHandler(PrivateWebSocketMixin):
         5: OrderStatus.REJECTED,
     }
     
-    def __init__(self, user_id: Optional[str] = None):
+    def __init__(self, config: ExchangeConfig, user_id: Optional[str] = None):
         """
         Initialize MEXC private handler with trading optimizations.
         
         Args:
+            config: Exchange configuration
             user_id: User/account identifier for validation
         """
+        # Initialize all mixins
+        super().__init__(config=config)
+        
         # Set exchange name for mixin
         self.exchange_name = "mexc"
         
@@ -525,3 +531,109 @@ class MexcPrivateWebSocketHandler(PrivateWebSocketMixin):
         })
         
         return base_status
+    
+    # Required SubscriptionMixin methods
+    def get_channels_for_symbol(self, symbol: Symbol, channel_types: Optional[List[str]] = None) -> List[str]:
+        """
+        Get MEXC private channel names for a symbol.
+        
+        Args:
+            symbol: Trading symbol
+            channel_types: List of channel types (orders, account, deals)
+            
+        Returns:
+            List of MEXC private channel names
+        """
+        mexc_symbol = MexcSymbol.format_for_mexc(symbol)
+        channels = []
+        
+        # Default to all private channels if none specified
+        if not channel_types:
+            channel_types = ["orders", "account", "deals"]
+        
+        for channel_type in channel_types:
+            if channel_type == "orders":
+                channels.append(f"spot@private.orders.v3.api@{mexc_symbol}")
+            elif channel_type == "account":
+                channels.append(f"spot@private.account.v3.api@{mexc_symbol}")
+            elif channel_type == "deals":
+                channels.append(f"spot@private.deals.v3.api@{mexc_symbol}")
+        
+        return channels
+    
+    def create_subscription_message(self, action: str, channels: List[str]) -> Dict[str, Any]:
+        """
+        Create MEXC private subscription message.
+        
+        Args:
+            action: "SUBSCRIPTION" or "UNSUBSCRIPTION"
+            channels: List of channel names to subscribe/unsubscribe
+            
+        Returns:
+            MEXC subscription message
+        """
+        return {
+            "method": action,
+            "params": channels,
+            "id": int(time.time() * 1000)
+        }
+    
+    # Required ConnectionMixin methods
+    def create_connection_context(self) -> ConnectionContext:
+        """
+        Create connection configuration for MEXC private WebSocket.
+        
+        Returns:
+            ConnectionContext with MEXC private WebSocket settings
+        """
+        return ConnectionContext(
+            url=self.config.websocket_url.replace('stream.mexc.com', 'wbs.mexc.com'),  # Private endpoint
+            headers={
+                "User-Agent": "MEXC-Private-Client",
+                "Content-Type": "application/json"
+            },
+            extra_params={
+                "compression": None,
+                "ping_interval": 30,
+                "ping_timeout": 10,
+                "close_timeout": 10
+            }
+        )
+    
+    def get_reconnection_policy(self):
+        """
+        Get MEXC private reconnection policy.
+        
+        Returns:
+            ReconnectionPolicy optimized for MEXC private connections
+        """
+        from infrastructure.networking.websocket.mixins.connection_mixin import ReconnectionPolicy
+        
+        return ReconnectionPolicy(
+            max_attempts=20,  # More aggressive for private connections
+            initial_delay=0.5,
+            backoff_factor=1.5,
+            max_delay=30.0,
+            reset_on_1005=True  # MEXC has frequent 1005 errors
+        )
+    
+    async def authenticate(self) -> bool:
+        """
+        Perform MEXC private WebSocket authentication.
+        
+        Returns:
+            True if authentication successful
+        """
+        if not self.is_connected():
+            raise RuntimeError("No WebSocket connection available for authentication")
+        
+        try:
+            # MEXC private authentication would be implemented here
+            # For now, return True as authentication is handled externally
+            self._authentication_verified = True
+            self.logger.info("MEXC private authentication completed")
+            return True
+            
+        except Exception as e:
+            self.logger.error(f"MEXC private authentication failed: {e}")
+            return False

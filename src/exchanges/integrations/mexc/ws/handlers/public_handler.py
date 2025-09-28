@@ -1,10 +1,11 @@
 """
-MEXC Public WebSocket Handler - Direct Message Processing
+MEXC Public WebSocket Handler - New Architecture with Protobuf Optimization
 
-High-performance MEXC public WebSocket handler implementing direct message
-processing with protobuf optimization for maximum HFT performance.
+High-performance MEXC public WebSocket handler using the new message handler
+architecture while maintaining all protobuf optimizations for maximum HFT performance.
 
 Key Features:
+- New PublicMessageHandler architecture with template method pattern
 - Direct protobuf field parsing (no utility function overhead)
 - Zero-copy message processing with memoryview operations  
 - Binary message type detection (<10μs)
@@ -12,9 +13,11 @@ Key Features:
 - Performance targets: <50μs orderbook, <30μs trades, <20μs ticker
 
 Architecture Benefits:
-- 15-25μs latency improvement over strategy pattern
+- Template method pattern with exchange-specific optimizations
+- 15-25μs latency improvement over old strategy pattern
 - 73% reduction in function call overhead
 - Zero allocation in hot paths
+- Clean separation between infrastructure and MEXC-specific logic
 """
 
 import asyncio
@@ -22,7 +25,8 @@ import time
 from typing import Any, Dict, List, Optional, Set
 import msgspec
 
-from infrastructure.networking.websocket.mixins import PublicWebSocketMixin
+from infrastructure.networking.websocket.handlers import PublicMessageHandler
+from infrastructure.networking.websocket.mixins import SubscriptionMixin, MexcConnectionMixin, NoAuthMixin
 from infrastructure.networking.websocket.message_types import WebSocketMessageType
 from infrastructure.logging import get_logger
 from exchanges.structs.common import Symbol, OrderBook, Trade, BookTicker
@@ -33,7 +37,12 @@ from common.orderbook_entry_pool import OrderBookEntryPool
 from exchanges.structs.common import OrderBookEntry
 
 
-class MexcPublicWebSocketHandler(PublicWebSocketMixin):
+class MexcPublicWebSocketHandler(
+    PublicMessageHandler,  # New base handler with template method pattern
+    SubscriptionMixin,     # Subscription management
+    MexcConnectionMixin,   # MEXC-specific connection behavior
+    NoAuthMixin           # Public endpoints don't require auth
+):
     """
     Direct MEXC public WebSocket handler with protobuf optimization.
     
@@ -70,31 +79,48 @@ class MexcPublicWebSocketHandler(PublicWebSocketMixin):
         'book_ticker': WebSocketMessageType.TICKER,
     }
     
-    def __init__(self, subscribed_symbols: Optional[Set[Symbol]] = None):
+    def __init__(self, config=None, subscribed_symbols: Optional[Set[Symbol]] = None):
         """
         Initialize MEXC public handler with HFT optimizations.
         
         Args:
+            config: Exchange configuration (required for ConnectionMixin)
             subscribed_symbols: Set of symbols to subscribe to
         """
-        # Set exchange name for mixin
-        self.exchange_name = "mexc"
+        # Create default config if not provided
+        if config is None:
+            from config.structs import ExchangeConfig
+            config = ExchangeConfig(
+                name="mexc",
+                base_url="https://api.mexc.com",
+                websocket_url="wss://stream.mexc.com/ws"
+            )
         
-        # Initialize mixin functionality
-        self.setup_public_websocket(subscribed_symbols)
+        # Initialize all parent classes with proper order
+        PublicMessageHandler.__init__(self, "mexc")
+        SubscriptionMixin.__init__(self, subscribed_symbols)
+        MexcConnectionMixin.__init__(self, config)
+        NoAuthMixin.__init__(self, config)
+        
+        # Set exchange name for logger
+        self.exchange_name = "mexc"
         
         # Object pooling for performance (75% allocation reduction)
         self.entry_pool = OrderBookEntryPool(initial_size=200, max_size=500)
+        
+        # Protobuf parser for binary message optimization
+        self.protobuf_parser = MexcProtobufParser()
         
         # Performance tracking
         self._protobuf_messages = 0
         self._json_messages = 0
         self._parsing_times = []
         
-        self.logger.info("MEXC public handler initialized with protobuf optimization",
+        self.logger.info("MEXC public handler initialized with new architecture",
                         initial_pool_size=200,
                         max_pool_size=500,
-                        subscribed_symbols_count=len(self.subscribed_symbols))
+                        subscribed_symbols_count=len(subscribed_symbols) if subscribed_symbols else 0,
+                        architecture="template_method_pattern")
     
     async def _detect_message_type(self, raw_message: Any) -> WebSocketMessageType:
         """
@@ -589,3 +615,257 @@ class MexcPublicWebSocketHandler(PublicWebSocketMixin):
         })
         
         return base_status
+    
+    # SubscriptionMixin implementation
+    
+    def get_channels_for_symbol(self, symbol: Symbol, 
+                              channel_types: Optional[List] = None) -> List[str]:
+        """
+        Get MEXC-specific channel names for a symbol.
+        
+        Args:
+            symbol: Symbol to get channels for
+            channel_types: Optional filter for specific channel types
+            
+        Returns:
+            List of MEXC-specific channel names
+        """
+        mexc_symbol = MexcSymbol.format_for_mexc(symbol)
+        channels = []
+        
+        # Default channels if none specified
+        if not channel_types:
+            channel_types = ["orderbook", "trades", "ticker"]
+        
+        for channel_type in channel_types:
+            if channel_type == "orderbook" or str(channel_type) == "ORDERBOOK":
+                channels.append(f"spot@public.book.{mexc_symbol}")
+            elif channel_type == "trades" or str(channel_type) == "TRADE":
+                channels.append(f"spot@public.deals.{mexc_symbol}")
+            elif channel_type == "ticker" or str(channel_type) == "TICKER":
+                channels.append(f"spot@public.book_ticker.{mexc_symbol}")
+        
+        return channels
+    
+    def create_subscription_message(self, action, channels: List[str]) -> Dict[str, Any]:
+        """
+        Create MEXC-specific subscription message.
+        
+        Args:
+            action: SUBSCRIBE or UNSUBSCRIBE (SubscriptionAction enum)
+            channels: List of channel names to subscribe/unsubscribe
+            
+        Returns:
+            Complete WebSocket message ready for sending
+        """
+        # MEXC uses simple subscription format
+        method = "SUBSCRIPTION" if str(action) == "SUBSCRIBE" else "UNSUBSCRIPTION"
+        
+        return {
+            "method": method,
+            "params": channels,
+            "id": int(time.time() * 1000)  # Unique ID for tracking
+        }
+    
+    # ConnectionMixin implementation
+    
+    def create_connection_context(self):
+        """
+        Create MEXC-specific connection configuration.
+        
+        Returns:
+            ConnectionContext with MEXC WebSocket settings
+        """
+        from infrastructure.networking.websocket.structs import ConnectionContext
+        
+        return ConnectionContext(
+            url="wss://stream.mexc.com/ws",
+            headers={
+                "User-Agent": "MEXC-HFT-Client/1.0"
+            },
+            extra_params={
+                "ping_interval": 30,
+                "ping_timeout": 10,
+                "close_timeout": 10
+            }
+        )
+    
+    def get_reconnection_policy(self):
+        """
+        Get MEXC-specific reconnection policy.
+        
+        MEXC has frequent 1005 errors, so use aggressive reconnection.
+        
+        Returns:
+            ReconnectionPolicy optimized for MEXC
+        """
+        from infrastructure.networking.websocket.mixins.connection_mixin import ReconnectionPolicy
+        
+        return ReconnectionPolicy(
+            max_attempts=15,
+            initial_delay=0.5,
+            backoff_factor=1.5,
+            max_delay=30.0,
+            reset_on_1005=True  # MEXC frequently sends 1005 errors
+        )
+    
+    # New PublicMessageHandler interface methods
+    
+    async def _parse_orderbook_update(self, raw_message: Any) -> Optional[OrderBook]:
+        """
+        Parse orderbook update from raw message - PublicMessageHandler interface.
+        
+        Delegates to existing optimized parsing logic based on message format.
+        
+        Args:
+            raw_message: Raw orderbook message (bytes or str)
+            
+        Returns:
+            OrderBook instance or None if parsing failed
+        """
+        parsing_start = time.perf_counter()
+        
+        try:
+            # Determine message format and delegate to optimized parser
+            if isinstance(raw_message, bytes):
+                result = await self._parse_orderbook_protobuf(raw_message)
+                self._protobuf_messages += 1
+            elif isinstance(raw_message, str):
+                result = await self._parse_orderbook_json(raw_message)
+                self._json_messages += 1
+            else:
+                self.logger.warning("Unknown orderbook message format",
+                                  message_type=type(raw_message).__name__)
+                return None
+            
+            # Track performance
+            parsing_time = (time.perf_counter() - parsing_start) * 1_000_000  # μs
+            self._parsing_times.append(parsing_time)
+            
+            if parsing_time > 50:  # Alert if exceeding target
+                self.logger.warning("Orderbook parsing exceeded target",
+                                  parsing_time_us=parsing_time,
+                                  target_us=50)
+            
+            return result
+            
+        except Exception as e:
+            self.logger.error("Error parsing orderbook update",
+                            error_type=type(e).__name__,
+                            error_message=str(e))
+            return None
+    
+    async def _parse_trade_message(self, raw_message: Any) -> Optional[List[Trade]]:
+        """
+        Parse trade data from raw message - PublicMessageHandler interface.
+        
+        Delegates to existing optimized parsing logic based on message format.
+        
+        Args:
+            raw_message: Raw trade message (bytes or str)
+            
+        Returns:
+            List of Trade instances or None if parsing failed
+        """
+        parsing_start = time.perf_counter()
+        
+        try:
+            # Determine message format and delegate to optimized parser
+            if isinstance(raw_message, bytes):
+                result = await self._parse_trades_protobuf(raw_message)
+                self._protobuf_messages += 1
+            elif isinstance(raw_message, str):
+                result = await self._parse_trades_json(raw_message)
+                self._json_messages += 1
+            else:
+                self.logger.warning("Unknown trade message format",
+                                  message_type=type(raw_message).__name__)
+                return None
+            
+            # Track performance
+            parsing_time = (time.perf_counter() - parsing_start) * 1_000_000  # μs
+            self._parsing_times.append(parsing_time)
+            
+            if parsing_time > 30:  # Alert if exceeding target
+                self.logger.warning("Trade parsing exceeded target",
+                                  parsing_time_us=parsing_time,
+                                  target_us=30)
+            
+            # Return as list for consistency
+            if result and not isinstance(result, list):
+                return [result]
+            return result
+            
+        except Exception as e:
+            self.logger.error("Error parsing trade message",
+                            error_type=type(e).__name__,
+                            error_message=str(e))
+            return None
+    
+    async def _parse_ticker_update(self, raw_message: Any) -> Optional[BookTicker]:
+        """
+        Parse ticker data from raw message - PublicMessageHandler interface.
+        
+        Delegates to existing optimized parsing logic based on message format.
+        
+        Args:
+            raw_message: Raw ticker message (bytes or str)
+            
+        Returns:
+            BookTicker instance or None if parsing failed
+        """
+        parsing_start = time.perf_counter()
+        
+        try:
+            # Determine message format and delegate to optimized parser
+            if isinstance(raw_message, bytes):
+                result = await self._parse_ticker_protobuf(raw_message)
+                self._protobuf_messages += 1
+            elif isinstance(raw_message, str):
+                result = await self._parse_ticker_json(raw_message)
+                self._json_messages += 1
+            else:
+                self.logger.warning("Unknown ticker message format",
+                                  message_type=type(raw_message).__name__)
+                return None
+            
+            # Track performance
+            parsing_time = (time.perf_counter() - parsing_start) * 1_000_000  # μs
+            self._parsing_times.append(parsing_time)
+            
+            if parsing_time > 20:  # Alert if exceeding target
+                self.logger.warning("Ticker parsing exceeded target",
+                                  parsing_time_us=parsing_time,
+                                  target_us=20)
+            
+            return result
+            
+        except Exception as e:
+            self.logger.error("Error parsing ticker update",
+                            error_type=type(e).__name__,
+                            error_message=str(e))
+            return None
+    
+    async def _handle_subscription_confirmation(self, raw_message: Any) -> None:
+        """
+        Handle subscription confirmation messages.
+        
+        Args:
+            raw_message: Raw subscription confirmation message
+        """
+        try:
+            if isinstance(raw_message, str):
+                message = msgspec.json.decode(raw_message)
+                if 'result' in message and message.get('result') is None:
+                    # MEXC subscription success
+                    self.logger.debug("MEXC subscription confirmed",
+                                    id=message.get('id'))
+                elif 'error' in message:
+                    # MEXC subscription error
+                    self.logger.warning("MEXC subscription error",
+                                      error=message.get('error'),
+                                      id=message.get('id'))
+        except Exception as e:
+            self.logger.warning("Error handling subscription confirmation",
+                              error_type=type(e).__name__,
+                              error_message=str(e))

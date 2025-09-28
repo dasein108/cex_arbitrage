@@ -1,27 +1,29 @@
 """
-WebSocket Manager V6 - Simplified Mixin-Based Architecture
+BaseWebSocketInterface - Core WebSocket Infrastructure
 
-WebSocket manager with simplified mixin-based direct message handling architecture
-for optimal HFT performance. Focuses on connection management and direct message
-routing to exchange-specific handlers.
+Core WebSocket business logic extracted from WebSocketManager to enable clean
+mixin-based architecture. Provides connection lifecycle management, message
+processing pipeline, and performance monitoring while delegating exchange-specific
+behavior to handler mixins.
 
 Key Features:
-- Direct message routing to mixin-based handlers
-- Performance monitoring with sub-millisecond targets
-- Unified subscription management
-- Circuit breaker patterns for error recovery
-- Simplified single-path message processing
+- Core WebSocket connection state management
+- Message queuing and processing pipeline
+- Connection lifecycle (connect, disconnect, reconnect)
+- Performance metrics and health monitoring
+- Task management (connection, reader, processing, heartbeat tasks)
+- Delegation to handler mixins for exchange-specific behavior
 
 HFT COMPLIANCE: Sub-millisecond message processing, <100ms reconnection.
 """
 
 import asyncio
 import time
+from abc import ABC, abstractmethod
 from typing import List, Dict, Optional, Callable, Any, Awaitable, Set
 from websockets.client import WebSocketClientProtocol
 from websockets.protocol import State as WsState
 
-# Removed WebSocketStrategySet - using mixin-based direct handlers
 from .structs import WebSocketManagerConfig, PerformanceMetrics, ConnectionState, SubscriptionAction, PublicWebsocketChannelType
 from config.structs import WebSocketConfig
 from infrastructure.exceptions.exchange import ExchangeRestError
@@ -30,56 +32,39 @@ import msgspec
 # HFT Logger Integration
 from infrastructure.logging import get_logger, LoggingTimer
 
-# Mixin-based direct handling infrastructure
-# Direct message routing to exchange-specific handlers
 
-
-class WebSocketManager:
+class BaseWebSocketInterface(ABC):
     """
-    Simplified WebSocket manager with mixin-based direct message handling.
+    Core WebSocket infrastructure interface with mixin delegation.
     
-    Focuses on connection management and direct message routing to exchange-specific
-    handlers. Eliminates complexity of dual-path architecture for better
-    maintainability and performance.
+    Extracted from WebSocketManager to provide clean separation between
+    infrastructure concerns and exchange-specific business logic. Manages
+    WebSocket connection state and delegates exchange-specific behavior to
+    handler mixins.
     
     Key features:
-    - Direct message routing to mixin handlers
-    - Unified connection and subscription management
+    - Connection lifecycle management with delegated policies
+    - Message processing pipeline with handler delegation
     - Performance monitoring with HFT compliance
-    - Circuit breaker patterns for error recovery
-    - Single-path message processing for simplicity
+    - Task management for connection, reading, processing, heartbeat
+    - Error handling with exchange-specific classification
     """
     
     def __init__(
         self,
         config: WebSocketConfig,
-        direct_handler: Any,  # Handler with _handle_message and mixin capabilities
         connection_handler: Optional[Callable[[ConnectionState], Awaitable[None]]] = None,
         manager_config: Optional[WebSocketManagerConfig] = None,
         logger=None
     ):
         self.config = config
-        self.direct_handler = direct_handler
         self.connection_handler = connection_handler
         self.manager_config = manager_config or WebSocketManagerConfig()
         
         # Initialize HFT logger with optional injection
-        self.logger = logger or get_logger('ws.manager')
+        self.logger = logger or get_logger('ws.base_interface')
         
-        # Validate required components
-        if not self.direct_handler:
-            raise ValueError("Direct handler is required")
-        if not hasattr(self.direct_handler, '_handle_message'):
-            raise ValueError("Direct handler must have _handle_message method")
-        
-        # Validate mixin capabilities
-        from infrastructure.networking.websocket.mixins import SubscriptionMixin, ConnectionMixin
-        if not isinstance(self.direct_handler, SubscriptionMixin):
-            raise ValueError("Direct handler must implement SubscriptionMixin")
-        if not isinstance(self.direct_handler, ConnectionMixin):
-            raise ValueError("Direct handler must implement ConnectionMixin")
-        
-        # Direct WebSocket connection management
+        # Core WebSocket connection management
         self._websocket: Optional[WebSocketClientProtocol] = None
         self.connection_state = ConnectionState.DISCONNECTED
         
@@ -91,6 +76,7 @@ class WebSocketManager:
         
         # Control flags
         self._should_reconnect = True
+        
         # Delayed import to avoid circular dependency
         try:
             from exchanges.structs.common import Symbol
@@ -98,6 +84,7 @@ class WebSocketManager:
         except ImportError as e:
             self.logger.error("Failed to import Symbol type", error=str(e))
             self._active_symbols: Set[Any] = set()  # Fallback to Any type
+        
         self._ws_channels: List[PublicWebsocketChannelType] = []
         
         # Performance tracking
@@ -109,89 +96,233 @@ class WebSocketManager:
             maxsize=self.manager_config.max_pending_messages
         )
         
-        self.logger.info("WebSocket manager V6 initialized with mixin-based direct handlers",
+        self.logger.info("BaseWebSocketInterface initialized",
                         websocket_url=config.url,
-                        max_pending=self.manager_config.max_pending_messages,
-                        handler_type=type(self.direct_handler).__name__)
+                        max_pending=self.manager_config.max_pending_messages)
     
-    async def initialize(self, symbols: Optional[List["Symbol"]] = None,
-                         default_channels: Optional[List[PublicWebsocketChannelType]] = None) -> None:
+    # Abstract methods that handlers must implement
+    
+    @abstractmethod
+    async def _handle_message(self, raw_message: Any) -> None:
         """
-        Initialize WebSocket connection using handler's connection mixin.
+        Process raw WebSocket message.
+        
+        Handler must implement exchange-specific message processing.
+        This is the core message processing entry point that replaces
+        the strategy pattern with direct delegation.
         
         Args:
-            :param symbols: Optional list of Symbol instances for initial subscription
-            :param default_channels: Optional list of channels for initial subscription
+            raw_message: Raw message from WebSocket (bytes, str, or dict)
         """
-        # Import Symbol type here if needed for type checking
+        pass
+    
+    @abstractmethod
+    async def connect(self) -> WebSocketClientProtocol:
+        """
+        Establish WebSocket connection using handler's connection configuration.
+        
+        Handler must implement exchange-specific connection logic using
+        ConnectionMixin.
+        
+        Returns:
+            WebSocketClientProtocol instance
+        """
+        pass
+    
+    @abstractmethod
+    async def authenticate(self) -> bool:
+        """
+        Perform authentication if required by the exchange.
+        
+        Handler must implement exchange-specific authentication using
+        AuthMixin or return True for no authentication required.
+        
+        Returns:
+            True if authentication successful or not required
+        """
+        pass
+    
+    @abstractmethod
+    def get_reconnection_policy(self):
+        """
+        Get exchange-specific reconnection policy.
+        
+        Handler must provide reconnection configuration for the exchange.
+        
+        Returns:
+            ReconnectionPolicy with exchange-optimized settings
+        """
+        pass
+    
+    @abstractmethod
+    def should_reconnect(self, error: Exception) -> bool:
+        """
+        Determine if reconnection should be attempted based on error.
+        
+        Handler must implement exchange-specific error classification.
+        
+        Args:
+            error: Exception that caused disconnection
+            
+        Returns:
+            True if reconnection should be attempted
+        """
+        pass
+    
+    @abstractmethod
+    def classify_error(self, error: Exception) -> str:
+        """
+        Classify error for logging and metrics purposes.
+        
+        Handler must implement exchange-specific error classification.
+        
+        Args:
+            error: Exception to classify
+            
+        Returns:
+            String classification of error type
+        """
+        pass
+    
+    @abstractmethod
+    async def subscribe_to_symbols(self, symbols: List["Symbol"], channel_types: List[PublicWebsocketChannelType]) -> List[Dict[str, Any]]:
+        """
+        Create subscription messages for symbols.
+        
+        Handler must implement exchange-specific subscription message creation.
+        
+        Args:
+            symbols: List of symbols to subscribe to
+            channel_types: List of channel types to subscribe to
+            
+        Returns:
+            List of subscription messages to send
+        """
+        pass
+    
+    @abstractmethod
+    async def unsubscribe_from_symbols(self, symbols: List["Symbol"]) -> List[Dict[str, Any]]:
+        """
+        Create unsubscription messages for symbols.
+        
+        Handler must implement exchange-specific unsubscription message creation.
+        
+        Args:
+            symbols: List of symbols to unsubscribe from
+            
+        Returns:
+            List of unsubscription messages to send
+        """
+        pass
+    
+    @abstractmethod
+    async def get_resubscription_messages(self) -> List[Dict[str, Any]]:
+        """
+        Get resubscription messages for active symbols.
+        
+        Handler must implement exchange-specific resubscription message creation.
+        
+        Returns:
+            List of resubscription messages for current active symbols
+        """
+        pass
+    
+    @abstractmethod
+    async def handle_heartbeat(self) -> None:
+        """
+        Handle exchange-specific heartbeat/ping operations.
+        
+        Handler must implement exchange-specific heartbeat logic or
+        do nothing if built-in ping/pong is sufficient.
+        """
+        pass
+    
+    @abstractmethod
+    async def cleanup(self) -> None:
+        """
+        Clean up handler-specific resources.
+        
+        Handler must implement any cleanup required when closing.
+        """
+        pass
+    
+    # Core infrastructure methods
+    
+    async def initialize(self, symbols: Optional[List["Symbol"]] = None,
+                        default_channels: Optional[List[PublicWebsocketChannelType]] = None) -> None:
+        """
+        Initialize WebSocket connection using handler delegation.
+        
+        Args:
+            symbols: Optional list of Symbol instances for initial subscription
+            default_channels: Optional list of channels for initial subscription
+        """
         try:
             from exchanges.structs.common import Symbol
         except ImportError as e:
             self.logger.error("Failed to import Symbol type in initialize", error=str(e))
-            # Symbol type should be available from constructor, continue without reimport
+        
         self.start_time = time.perf_counter()
+        
         if symbols:
             self._active_symbols.update(symbols)
-
+        
         if default_channels:
             self._ws_channels = default_channels
-
+        
         try:
-            with LoggingTimer(self.logger, "ws_manager_initialization") as timer:
-                self.logger.info("Initializing WebSocket manager with direct strategy connection",
-                                 symbols_count=len(symbols) if symbols else 0,
-                                 channels_count=len(default_channels) if default_channels else 0)
+            with LoggingTimer(self.logger, "ws_interface_initialization") as timer:
+                self.logger.info("Initializing BaseWebSocketInterface",
+                               symbols_count=len(symbols) if symbols else 0,
+                               channels_count=len(default_channels) if default_channels else 0)
                 
-                # Start connection loop (handles reconnection with strategy policies)
+                # Start connection loop (handles reconnection with handler policies)
                 self._should_reconnect = True
                 self._connection_task = asyncio.create_task(self._connection_loop())
                 
                 # Start message processing
                 self._processing_task = asyncio.create_task(self._process_messages())
-
-                # Start strategy-managed heartbeat if needed
-                # Note: This heartbeat supplements built-in ping/pong for exchanges requiring custom ping
+                
+                # Start handler-managed heartbeat if needed
                 if self.config.heartbeat_interval and self.config.heartbeat_interval > 0:
                     self._heartbeat_task = asyncio.create_task(self._heartbeat_loop())
                     self.logger.info("Started custom heartbeat",
-                                   heartbeat_interval=self.config.heartbeat_interval,
-                                   note="supplements built-in ping/pong")
+                                   heartbeat_interval=self.config.heartbeat_interval)
             
-            self.logger.info("WebSocket manager V6 initialized successfully",
+            self.logger.info("BaseWebSocketInterface initialized successfully",
                            initialization_time_ms=timer.elapsed_ms)
             
             # Track initialization metrics
-            self.logger.metric("ws_manager_initializations", 1,
+            self.logger.metric("ws_interface_initializations", 1,
                              tags={"exchange": "ws"})
-            self.logger.metric("ws_initialization_time_ms", timer.elapsed_ms,
+            self.logger.metric("ws_interface_initialization_time_ms", timer.elapsed_ms,
                              tags={"exchange": "ws"})
             
         except Exception as e:
-            self.logger.error("Failed to initialize WebSocket manager V6",
+            self.logger.error("Failed to initialize BaseWebSocketInterface",
                             error_type=type(e).__name__,
                             error_message=str(e))
             
             # Track initialization failure metrics
-            self.logger.metric("ws_initialization_failures", 1,
+            self.logger.metric("ws_interface_initialization_failures", 1,
                              tags={"exchange": "ws"})
             
             await self.close()
-            raise ExchangeRestError(500, f"WebSocket initialization failed: {e}")
+            raise ExchangeRestError(500, f"WebSocket interface initialization failed: {e}")
     
     async def subscribe(self, symbols: List["Symbol"]) -> None:
-        """Subscribe to symbols using handler's subscription mixin."""
-        # Import Symbol type here if needed
+        """Subscribe to symbols using handler delegation."""
         try:
             from exchanges.structs.common import Symbol
         except ImportError as e:
             self.logger.error("Failed to import Symbol type in subscribe", error=str(e))
-            # Symbol type should be available from constructor, continue without reimport
+        
         if not self.is_connected():
             raise ExchangeRestError(503, "WebSocket not connected")
-
+        
         try:
             with LoggingTimer(self.logger, "subscription_processing") as timer:
-                messages = await self.direct_handler.subscribe_to_symbols(
+                messages = await self.subscribe_to_symbols(
                     symbols=symbols, channel_types=self._ws_channels)
                 
                 if not messages:
@@ -211,9 +342,9 @@ class WebSocketManager:
                 self._active_symbols.update(symbols)
             
             # Track subscription metrics
-            self.logger.metric("ws_subscriptions", len(symbols),
+            self.logger.metric("ws_interface_subscriptions", len(symbols),
                              tags={"exchange": "ws"})
-            self.logger.metric("subscription_time_ms", timer.elapsed_ms,
+            self.logger.metric("ws_interface_subscription_time_ms", timer.elapsed_ms,
                              tags={"exchange": "ws"})
             
         except Exception as e:
@@ -223,18 +354,18 @@ class WebSocketManager:
                             error_message=str(e))
             
             # Track subscription failure metrics
-            self.logger.metric("ws_subscription_failures", 1,
+            self.logger.metric("ws_interface_subscription_failures", 1,
                              tags={"exchange": "ws"})
             
             raise ExchangeRestError(400, f"Subscription failed: {e}")
     
     async def unsubscribe(self, symbols: List["Symbol"]) -> None:
-        """Unsubscribe from symbols using handler's subscription mixin."""
+        """Unsubscribe from symbols using handler delegation."""
         if not self.is_connected():
             return
         
         try:
-            messages = await self.direct_handler.unsubscribe_from_symbols(symbols)
+            messages = await self.unsubscribe_from_symbols(symbols)
             
             if not messages:
                 return
@@ -243,12 +374,12 @@ class WebSocketManager:
                 await self.send_message(message)
             
             self._active_symbols.difference_update(symbols)
-
+            
         except Exception as e:
             self.logger.error(f"Unsubscription failed: {e}")
     
     async def send_message(self, message: Dict[str, Any]) -> None:
-        """Send message through direct WebSocket connection."""
+        """Send message through WebSocket connection."""
         if not self._websocket or self.connection_state != ConnectionState.CONNECTED:
             raise ExchangeRestError(503, "WebSocket not connected")
         
@@ -262,20 +393,20 @@ class WebSocketManager:
     
     async def _connection_loop(self) -> None:
         """
-        Main connection loop with mixin-based reconnection.
+        Main connection loop with handler-based reconnection.
         
-        Uses handler's connection mixin directly and implements reconnection 
-        using handler-provided policies.
+        Uses handler delegation for connection establishment and reconnection
+        policies. Implements the connection lifecycle management.
         """
-        reconnection_policy = self.direct_handler.get_reconnection_policy()
+        reconnection_policy = self.get_reconnection_policy()
         reconnect_attempts = 0
         
         while self._should_reconnect:
             try:
                 await self._update_state(ConnectionState.CONNECTING)
                 
-                # Use handler's connection mixin to establish connection
-                self._websocket = await self.direct_handler.connect()
+                # Use handler delegation to establish connection
+                self._websocket = await self.connect()
                 
                 if not self._websocket:
                     raise ExchangeRestError(500, "Handler returned no WebSocket connection")
@@ -285,22 +416,22 @@ class WebSocketManager:
                 # Reset reconnection attempts on successful connection
                 reconnect_attempts = 0
                 
-                # Authenticate if required
-                auth_success = await self.direct_handler.authenticate()
+                # Authenticate using handler delegation
+                auth_success = await self.authenticate()
                 if not auth_success:
                     self.logger.error("Authentication failed")
-                    self.logger.metric("ws_auth_failures", 1,
+                    self.logger.metric("ws_interface_auth_failures", 1,
                                      tags={"exchange": "ws"})
                     await self._websocket.close()
                     continue
                 
                 # Track successful connection
-                self.logger.metric("ws_connections", 1,
+                self.logger.metric("ws_interface_connections", 1,
                                  tags={"exchange": "ws"})
                 
-                # Resubscribe to active symbols using handler's subscription mixin
+                # Resubscribe to active symbols using handler delegation
                 if self._active_symbols:
-                    resubscription_messages = await self.direct_handler.get_resubscription_messages()
+                    resubscription_messages = await self.get_resubscription_messages()
                     for message in resubscription_messages:
                         await self.send_message(message)
                     self.logger.info(f"Resubscribed to {len(self._active_symbols)} symbols")
@@ -308,7 +439,7 @@ class WebSocketManager:
                 # Start message reader
                 self._reader_task = asyncio.create_task(self._message_reader())
                 
-                self.logger.info("Strategy-driven WebSocket connection established successfully",
+                self.logger.info("WebSocket connection established successfully",
                                active_symbols_count=len(self._active_symbols))
                 
                 # Wait for connection to close
@@ -326,12 +457,11 @@ class WebSocketManager:
         """
         Read messages from WebSocket and queue for processing.
         
-        Direct WebSocket message reading without ws_client layer.
+        Direct WebSocket message reading with high-performance queuing.
         """
         try:
             while True:
                 if not self.is_connected():
-                    # Exit immediately on disconnection - event-driven approach
                     self.logger.debug("WebSocket disconnected, exiting message reader")
                     break
                 try:
@@ -345,16 +475,14 @@ class WebSocketManager:
         except Exception as e:
             self.logger.error(f"Message reader error: {e}")
             await self._on_error(e)
-        pass
-
     
     async def _handle_connection_error(self, error: Exception, policy, attempt: int) -> None:
         """Handle connection errors using handler-specific policies."""
         await self._update_state(ConnectionState.ERROR)
         
         # Let handler decide if we should reconnect
-        if not self.direct_handler.should_reconnect(error):
-            error_type = self.direct_handler.classify_error(error)
+        if not self.should_reconnect(error):
+            error_type = self.classify_error(error)
             self.logger.error(f"Handler decided not to reconnect after {error_type} error: {error}")
             self._should_reconnect = False
             return
@@ -366,7 +494,7 @@ class WebSocketManager:
             return
         
         # Calculate delay with handler policy
-        error_type = self.direct_handler.classify_error(error)
+        error_type = self.classify_error(error)
         if policy.reset_on_1005 and error_type == "abnormal_closure":
             delay = policy.initial_delay  # Reset delay for 1005 errors
         else:
@@ -382,7 +510,7 @@ class WebSocketManager:
                            error_message=str(error))
         
         # Track reconnection metrics
-        self.logger.metric("ws_reconnection_attempts", 1,
+        self.logger.metric("ws_interface_reconnection_attempts", 1,
                          tags={"exchange": "ws", "error_type": error_type})
         
         await self._update_state(ConnectionState.RECONNECTING)
@@ -399,7 +527,7 @@ class WebSocketManager:
                            new_state=state.name)
             
             # Track state change metrics
-            self.logger.metric("ws_state_changes", 1,
+            self.logger.metric("ws_interface_state_changes", 1,
                              tags={"exchange": "ws",
                                    "from_state": previous_state.name,
                                    "to_state": state.name})
@@ -423,7 +551,7 @@ class WebSocketManager:
                                   max_size=self.manager_config.max_pending_messages)
                 
                 # Track queue overflow metrics
-                self.logger.metric("ws_queue_overflows", 1,
+                self.logger.metric("ws_interface_queue_overflows", 1,
                                  tags={"exchange": "ws"})
                 
                 try:
@@ -434,7 +562,7 @@ class WebSocketManager:
             await self._message_queue.put((raw_message, start_time))
             
             # Track message queuing metrics
-            self.logger.metric("ws_messages_queued", 1,
+            self.logger.metric("ws_interface_messages_queued", 1,
                              tags={"exchange": "ws"})
             
         except Exception as e:
@@ -444,28 +572,28 @@ class WebSocketManager:
                             error_message=str(e))
             
             # Track queuing error metrics
-            self.logger.metric("ws_queuing_errors", 1,
+            self.logger.metric("ws_interface_queuing_errors", 1,
                              tags={"exchange": "ws"})
     
     async def _process_messages(self) -> None:
-        """Process queued messages using direct mixin-based handling."""
+        """Process queued messages using handler delegation."""
         while True:
             try:
                 raw_message, queue_time = await self._message_queue.get()
                 processing_start = time.perf_counter()
                 
                 try:
-                    # Direct mixin-based message routing
-                    await self.direct_handler._handle_message(raw_message)
+                    # Direct handler delegation for message processing
+                    await self._handle_message(raw_message)
                     
                     processing_time_ms = (time.perf_counter() - processing_start) * 1000
                     self.metrics.update_processing_time(processing_time_ms)
                     self.metrics.messages_processed += 1
                     
                     # Track message processing metrics
-                    self.logger.metric("ws_messages_processed", 1,
+                    self.logger.metric("ws_interface_messages_processed", 1,
                                      tags={"exchange": "ws"})
-                    self.logger.metric("ws_message_processing_time_ms", processing_time_ms,
+                    self.logger.metric("ws_interface_message_processing_time_ms", processing_time_ms,
                                      tags={"exchange": "ws"})
                 
                 except Exception as e:
@@ -482,10 +610,8 @@ class WebSocketManager:
                                 error_message=str(e))
                 
                 # Track processing loop error metrics
-                self.logger.metric("ws_processing_loop_errors", 1,
+                self.logger.metric("ws_interface_processing_loop_errors", 1,
                                  tags={"exchange": "ws"})
-                
-                # Continue immediately without delay - HFT compliant error handling
     
     async def _handle_processing_error(self, error: Exception, raw_message: Any) -> None:
         """Handle errors during message processing."""
@@ -496,14 +622,14 @@ class WebSocketManager:
                         error_message=str(error))
         
         # Track message processing error metrics
-        self.logger.metric("ws_message_processing_errors", 1,
+        self.logger.metric("ws_interface_message_processing_errors", 1,
                          tags={"exchange": "ws"})
     
     async def _on_error(self, error: Exception) -> None:
         """Handle WebSocket errors using handler classification."""
         self.metrics.error_count += 1
         
-        error_type = self.direct_handler.classify_error(error)
+        error_type = self.classify_error(error)
         
         if error_type == "abnormal_closure":
             self.logger.warning("WebSocket error",
@@ -515,10 +641,8 @@ class WebSocketManager:
                             error_message=str(error))
         
         # Track WebSocket error metrics
-        self.logger.metric("ws_errors", 1,
+        self.logger.metric("ws_interface_errors", 1,
                          tags={"exchange": "ws", "error_type": error_type})
-        
-        # Handler decides on reconnection in _connection_loop
     
     async def _heartbeat_loop(self) -> None:
         """Handler-managed heartbeat loop."""
@@ -529,15 +653,15 @@ class WebSocketManager:
             while True:
                 await asyncio.sleep(self.config.heartbeat_interval)
                 
-                # Use handler for heartbeat (custom ping messages for exchanges that need them)
+                # Use handler delegation for heartbeat
                 if self.config.has_heartbeat and self.is_connected():
                     try:
-                        await self.direct_handler.handle_heartbeat()
+                        await self.handle_heartbeat()
                         consecutive_failures = 0  # Reset on success
                         self.logger.debug("Handler heartbeat sent successfully")
                         
                         # Track successful heartbeat
-                        self.logger.metric("ws_heartbeats_sent", 1,
+                        self.logger.metric("ws_interface_heartbeats_sent", 1,
                                          tags={"exchange": "ws"})
                         
                     except Exception as e:
@@ -548,28 +672,27 @@ class WebSocketManager:
                                           error_message=str(e))
                         
                         # Track heartbeat failures
-                        self.logger.metric("ws_heartbeat_failures", 1,
+                        self.logger.metric("ws_interface_heartbeat_failures", 1,
                                          tags={"exchange": "ws"})
                         
-                        # If too many consecutive failures, stop heartbeat (built-in ping/pong will handle)
                         if consecutive_failures >= max_failures:
-                            self.logger.error("Too many consecutive heartbeat failures, stopping custom heartbeat",
+                            self.logger.error("Too many consecutive heartbeat failures",
                                             max_failures=max_failures)
                             
                             # Track heartbeat loop failure
-                            self.logger.metric("ws_heartbeat_loop_failures", 1,
+                            self.logger.metric("ws_interface_heartbeat_loop_failures", 1,
                                              tags={"exchange": "ws"})
                             break
                         
         except asyncio.CancelledError:
-            self.logger.debug("Strategy heartbeat loop cancelled")
+            self.logger.debug("Heartbeat loop cancelled")
         except Exception as e:
-            self.logger.error("Strategy heartbeat loop error",
+            self.logger.error("Heartbeat loop error",
                             error_type=type(e).__name__,
                             error_message=str(e))
             
             # Track heartbeat loop error metrics
-            self.logger.metric("ws_heartbeat_loop_errors", 1,
+            self.logger.metric("ws_interface_heartbeat_loop_errors", 1,
                              tags={"exchange": "ws"})
     
     def is_connected(self) -> bool:
@@ -584,7 +707,7 @@ class WebSocketManager:
             return False
     
     def get_performance_metrics(self) -> Dict[str, Any]:
-        """Get performance metrics for WebSocket manager."""
+        """Get performance metrics for WebSocket interface."""
         uptime = time.perf_counter() - self.start_time if self.start_time > 0 else 0
         
         return {
@@ -596,16 +719,16 @@ class WebSocketManager:
             'reconnection_count': self.metrics.reconnection_count,
             'error_count': self.metrics.error_count,
             'connection_state': self.connection_state.name,
-            'handler_type': type(self.direct_handler).__name__
+            'interface_type': 'BaseWebSocketInterface'
         }
     
     async def close(self) -> None:
-        """Close WebSocket manager and cleanup resources."""
-        self.logger.info("Closing WebSocket manager V6...",
+        """Close WebSocket interface and cleanup resources."""
+        self.logger.info("Closing BaseWebSocketInterface...",
                         active_symbols_count=len(self._active_symbols))
         
         try:
-            with LoggingTimer(self.logger, "ws_manager_close") as timer:
+            with LoggingTimer(self.logger, "ws_interface_close") as timer:
                 self._should_reconnect = False
                 
                 # Cancel all tasks
@@ -635,25 +758,24 @@ class WebSocketManager:
                     self._websocket = None
                 
                 # Handler cleanup
-                if self.direct_handler:
-                    await self.direct_handler.cleanup()
+                await self.cleanup()
                 
                 self.connection_state = ConnectionState.DISCONNECTED
             
-            self.logger.info("WebSocket manager V6 closed",
+            self.logger.info("BaseWebSocketInterface closed",
                            close_time_ms=timer.elapsed_ms)
             
             # Track close metrics
-            self.logger.metric("ws_manager_closes", 1,
+            self.logger.metric("ws_interface_closes", 1,
                              tags={"exchange": "ws"})
-            self.logger.metric("ws_close_time_ms", timer.elapsed_ms,
+            self.logger.metric("ws_interface_close_time_ms", timer.elapsed_ms,
                              tags={"exchange": "ws"})
             
         except Exception as e:
-            self.logger.error("Error closing WebSocket manager V6",
+            self.logger.error("Error closing BaseWebSocketInterface",
                             error_type=type(e).__name__,
                             error_message=str(e))
             
             # Track close error metrics
-            self.logger.metric("ws_close_errors", 1,
+            self.logger.metric("ws_interface_close_errors", 1,
                              tags={"exchange": "ws"})

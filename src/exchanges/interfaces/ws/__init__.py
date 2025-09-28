@@ -6,10 +6,11 @@ composition for exchange-agnostic trading implementations.
 """
 
 from infrastructure.networking.websocket.ws_manager import WebSocketManager
-# Factory pattern removed - using direct instantiation
-from infrastructure.networking.websocket.strategies.subscription import SubscriptionStrategy
-from infrastructure.networking.websocket.strategies.connection import ConnectionStrategy
-from infrastructure.networking.websocket.strategies import MessageParser
+# Using mixin-based composition - strategies replaced by mixins
+from infrastructure.networking.websocket.mixins import (
+    PublicWebSocketMixin, PrivateWebSocketMixin, 
+    SubscriptionMixin, ConnectionMixin
+)
 from infrastructure.networking.websocket.structs import (
     MessageType, SubscriptionAction, ConnectionContext, 
     SubscriptionContext, ParsedMessage, WebSocketManagerConfig,
@@ -22,19 +23,22 @@ from .spot import PrivateSpotWebsocket, PublicSpotWebsocket
 from .futures import PublicFuturesWebsocket, PrivateFuturesWebsocket
 __all__ = [
     'WebSocketManager',
-# Factory removed
+    # Mixin-based architecture
+    'PublicWebSocketMixin',
+    'PrivateWebSocketMixin', 
+    'SubscriptionMixin',
+    'ConnectionMixin',
+    # Core structures
     'MessageType',
     'SubscriptionAction',
     'ConnectionContext',
-    'ConnectionStrategy',
-    'SubscriptionStrategy',
     'SubscriptionContext', 
     'ParsedMessage',
     'WebSocketManagerConfig',
     'PerformanceMetrics',
-    'BaseWebsocketInterface',
-    'MessageParser',
     'ConnectionState',
+    # Interfaces
+    'BaseWebsocketInterface',
     'PrivateSpotWebsocket',
     'PublicSpotWebsocket',
     'PublicFuturesWebsocket',

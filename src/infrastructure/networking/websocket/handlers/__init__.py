@@ -5,13 +5,16 @@ This module provides the foundational components for the mixin-based message han
 architecture that uses composition over inheritance for optimal HFT performance.
 
 Key Components:
+- BaseMessageHandler: Template method pattern for message processing
+- PublicMessageHandler: Specialized handler for public market data
+- PrivateMessageHandler: Specialized handler for private trading operations
 - PublicWebsocketHandlers: Dataclass for public market data callbacks
 - PrivateWebsocketHandlers: Dataclass for private trading operation callbacks
 - WebSocketMessageType: Standard message type enumeration
-- Legacy stub classes for backward compatibility
 
 Architecture Benefits:
 - 73% reduction in function call overhead (130ns → 35ns per message)
+- Template method pattern with exchange-specific customization
 - Composition-based design with mixins for flexibility
 - Clear separation between public and private operations
 - Direct message routing without inheritance overhead
@@ -20,42 +23,41 @@ Architecture Benefits:
 Usage:
     ```python
     from infrastructure.networking.websocket.handlers import (
-        PublicWebsocketHandlers,
-        PrivateWebsocketHandlers,
+        BaseMessageHandler,
+        PublicMessageHandler,
+        PrivateMessageHandler,
         WebSocketMessageType
     )
-    from infrastructure.networking.websocket.mixins import PublicWebSocketMixin
     
-    class MexcPublicHandler(PublicWebSocketMixin):
-        def __init__(self):
-            self.exchange_name = "mexc"
-            self.setup_public_websocket()
+    class MexcPublicHandler(PublicMessageHandler, MexcConnectionMixin):
+        async def _detect_message_type(self, raw_message):
+            # Exchange-specific type detection
+            pass
+            
+        async def _parse_orderbook_update(self, raw_message):
+            # Exchange-specific orderbook parsing
+            pass
     ```
 """
 
 from ..message_types import WebSocketMessageType
 from .handler_dataclasses import PublicWebsocketHandlers, PrivateWebsocketHandlers
-
-# TODO: Remove these stub classes after refactoring legacy handler code
-class PublicWebSocketHandler:
-    """Stub base class for backward compatibility."""
-    pass
-
-class PrivateWebSocketHandler:
-    """Stub base class for backward compatibility."""
-    pass
+from .base_message_handler import BaseMessageHandler
+from .public_message_handler import PublicMessageHandler
+from .private_message_handler import PrivateMessageHandler
 
 __all__ = [
     # Message types
     "WebSocketMessageType",
     
+    # Handler base classes
+    "BaseMessageHandler",
+    "PublicMessageHandler", 
+    "PrivateMessageHandler",
+    
     # Handler dataclasses for structured callbacks
     "PublicWebsocketHandlers",
     "PrivateWebsocketHandlers",
-    
-    # Stub base classes for backward compatibility (TODO: Remove)
-    "PublicWebSocketHandler",
-    "PrivateWebSocketHandler",
 ]
 
 # Module metadata

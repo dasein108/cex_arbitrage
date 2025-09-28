@@ -52,8 +52,7 @@ from . import services
 # Auto-register MEXC REST strategies
 from .rest import strategies
 
-# Auto-register MEXC WebSocket strategies (triggers registration)
-from .ws import strategies as ws_strategies
+# WebSocket strategies removed - using mixin-based handlers
 
 __all__ = [
     # Direct client access

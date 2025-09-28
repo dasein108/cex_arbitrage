@@ -22,15 +22,17 @@ import time
 from typing import Any, Dict, List, Optional
 import msgspec
 
-from infrastructure.networking.websocket.mixins import PublicWebSocketMixin
+from infrastructure.networking.websocket.mixins import PublicWebSocketMixin, SubscriptionMixin, ConnectionMixin
 from infrastructure.networking.websocket.message_types import WebSocketMessageType
+from infrastructure.networking.websocket.structs import ConnectionContext
 from infrastructure.logging import get_logger, HFTLoggerInterface
 from exchanges.structs.common import Symbol, OrderBook, OrderBookEntry, Trade, BookTicker
 from exchanges.structs.enums import Side
 from exchanges.integrations.gateio.services.futures_symbol_mapper import GateioFuturesSymbol
+from config.structs import ExchangeConfig
 
 
-class GateioFuturesPublicWebSocketHandler(PublicWebSocketMixin):
+class GateioFuturesPublicWebSocketHandler(PublicWebSocketMixin, SubscriptionMixin, ConnectionMixin):
     """
     Direct Gate.io futures public WebSocket handler with performance optimization.
     
@@ -66,10 +68,17 @@ class GateioFuturesPublicWebSocketHandler(PublicWebSocketMixin):
     }
 
     logger: HFTLoggerInterface
-    def __init__(self):
+    def __init__(self, config: ExchangeConfig, subscribed_symbols: Optional[List[Symbol]] = None):
         """
         Initialize Gate.io futures public handler with HFT optimizations.
+        
+        Args:
+            config: Exchange configuration
+            subscribed_symbols: List of symbols to subscribe to initially
         """
+        # Initialize all mixins
+        super().__init__(config=config, subscribed_symbols=subscribed_symbols)
+        
         # Set exchange name for mixin
         self.exchange_name = "gateio"
         
@@ -88,7 +97,8 @@ class GateioFuturesPublicWebSocketHandler(PublicWebSocketMixin):
         self.logger.info("Gate.io futures public handler initialized with performance optimization",
                         exchange="gateio",
                         market_type="futures",
-                        api_type="public")
+                        api_type="public",
+                        subscribed_symbols_count=len(subscribed_symbols) if subscribed_symbols else 0)
     
     async def _detect_message_type(self, raw_message: Any) -> WebSocketMessageType:
         """
@@ -604,3 +614,88 @@ class GateioFuturesPublicWebSocketHandler(PublicWebSocketMixin):
         })
         
         return base_status
+    
+    # Required SubscriptionMixin methods
+    def get_channels_for_symbol(self, symbol: Symbol, channel_types: Optional[List[str]] = None) -> List[str]:
+        """
+        Get Gate.io futures channel names for a symbol.
+        
+        Args:
+            symbol: Trading symbol
+            channel_types: List of channel types (orderbook, trades, ticker)
+            
+        Returns:
+            List of Gate.io futures channel names
+        """
+        gateio_symbol = GateioFuturesSymbol.format_for_gateio(symbol)
+        channels = []
+        
+        # Default to orderbook and trades if none specified
+        if not channel_types:
+            channel_types = ["orderbook", "trades"]
+        
+        for channel_type in channel_types:
+            if channel_type == "orderbook":
+                channels.append(f"futures.order_book_update.{gateio_symbol}")
+            elif channel_type == "trades":
+                channels.append(f"futures.trades.{gateio_symbol}")
+            elif channel_type == "ticker":
+                channels.append(f"futures.book_ticker.{gateio_symbol}")
+        
+        return channels
+    
+    def create_subscription_message(self, action: str, channels: List[str]) -> Dict[str, Any]:
+        """
+        Create Gate.io futures subscription message.
+        
+        Args:
+            action: "subscribe" or "unsubscribe"
+            channels: List of channel names to subscribe/unsubscribe
+            
+        Returns:
+            Gate.io subscription message
+        """
+        return {
+            "method": action,
+            "params": channels,
+            "id": int(time.time() * 1000)
+        }
+    
+    # Required ConnectionMixin methods
+    def create_connection_context(self) -> ConnectionContext:
+        """
+        Create connection configuration for Gate.io futures public WebSocket.
+        
+        Returns:
+            ConnectionContext with Gate.io futures public WebSocket settings
+        """
+        return ConnectionContext(
+            url=self.config.websocket_url.replace('stream.', 'stream-futures.'),  # Futures endpoint
+            headers={
+                "User-Agent": "GateIO-Futures-Public-Client",
+                "Accept": "application/json"
+            },
+            extra_params={
+                "compression": None,
+                "ping_interval": 30,
+                "ping_timeout": 10,
+                "close_timeout": 10
+            }
+        )
+    
+    def get_reconnection_policy(self):
+        """
+        Get Gate.io futures reconnection policy.
+        
+        Returns:
+            ReconnectionPolicy optimized for Gate.io futures connections
+        """
+        from infrastructure.networking.websocket.mixins.connection_mixin import ReconnectionPolicy
+        
+        return ReconnectionPolicy(
+            max_attempts=15,  # Gate.io has good stability
+            initial_delay=1.0,
+            backoff_factor=1.8,
+            max_delay=60.0,
+            reset_on_1005=True  # Standard WebSocket error handling
+        )

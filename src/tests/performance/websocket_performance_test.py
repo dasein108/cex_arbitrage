@@ -24,7 +24,7 @@ import pytest
 
 from infrastructure.networking.websocket.ws_manager import WebSocketManager
 from infrastructure.networking.websocket.message_types import WebSocketMessageType
-from infrastructure.networking.websocket.adapters import AdapterConfig
+# AdapterConfig removed - simplified architecture uses only mixin-based direct handling
 from infrastructure.networking.websocket.strategies.strategy_set import WebSocketStrategySet
 from config.structs import WebSocketConfig
 from infrastructure.logging import get_logger
@@ -186,7 +186,7 @@ class WebSocketPerformanceTester:
         
         # Create WebSocket Manager with direct handling configuration
         ws_config = WebSocketConfig(url="ws://test", heartbeat_interval=30)
-        adapter_config = AdapterConfig(use_direct_handling=True)
+        # AdapterConfig removed - simplified architecture
         
         manager = WebSocketManager(
             config=ws_config,

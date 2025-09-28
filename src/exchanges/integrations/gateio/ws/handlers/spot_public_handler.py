@@ -1,19 +1,22 @@
 """
-Gate.io Spot Public WebSocket Handler - Direct Message Processing
+Gate.io Spot Public WebSocket Handler - New Architecture
 
-High-performance Gate.io spot public WebSocket handler implementing direct message
-processing for market data operations including orderbooks, trades, and tickers.
+High-performance Gate.io spot public WebSocket handler using the new message handler
+architecture for market data operations including orderbooks, trades, and tickers.
 
 Key Features:
+- New PublicMessageHandler architecture with template method pattern
 - Direct JSON field parsing for optimal HFT performance
 - Support for Gate.io's event-driven message format
 - Zero-copy message processing with minimal allocations
 - Performance targets: <50μs orderbooks, <30μs trades, <20μs tickers
 
 Architecture Benefits:
-- 15-25μs latency improvement over strategy pattern
+- Template method pattern with exchange-specific optimizations
+- 15-25μs latency improvement over old strategy pattern
 - 73% reduction in function call overhead
 - Enhanced stability with Gate.io WebSocket infrastructure
+- Clean separation between infrastructure and Gate.io-specific logic
 """
 
 import asyncio
@@ -21,15 +24,23 @@ import time
 from typing import Any, Dict, List, Optional
 import msgspec
 
-from infrastructure.networking.websocket.mixins import PublicWebSocketMixin
+from infrastructure.networking.websocket.handlers import PublicMessageHandler
+from infrastructure.networking.websocket.mixins import SubscriptionMixin, GateioConnectionMixin, NoAuthMixin
 from infrastructure.networking.websocket.message_types import WebSocketMessageType
+from infrastructure.networking.websocket.structs import ConnectionContext
 from infrastructure.logging import get_logger
 from exchanges.structs.common import Symbol, OrderBook, OrderBookEntry, Trade, BookTicker
 from exchanges.structs.enums import Side
 from exchanges.integrations.gateio.services.spot_symbol_mapper import GateioSpotSymbol
+from config.structs import ExchangeConfig
 
 
-class GateioSpotPublicWebSocketHandler(PublicWebSocketMixin):
+class GateioSpotPublicWebSocketHandler(
+    PublicMessageHandler,    # New base handler with template method pattern
+    SubscriptionMixin,       # Subscription management
+    GateioConnectionMixin,   # Gate.io-specific connection behavior
+    NoAuthMixin             # Public endpoints don't require auth
+):
     """
     Direct Gate.io spot public WebSocket handler with performance optimization.
     
@@ -60,15 +71,22 @@ class GateioSpotPublicWebSocketHandler(PublicWebSocketMixin):
         'pong': 'heartbeat',
     }
     
-    def __init__(self):
+    def __init__(self, config: ExchangeConfig, subscribed_symbols: Optional[List[Symbol]] = None):
         """
         Initialize Gate.io spot public handler with HFT optimizations.
-        """
-        # Set exchange name for mixin
-        self.exchange_name = "gateio"
         
-        # Initialize mixin functionality  
-        self.setup_public_websocket()
+        Args:
+            config: Exchange configuration
+            subscribed_symbols: List of symbols to subscribe to initially
+        """
+        # Initialize all parent classes with proper order
+        PublicMessageHandler.__init__(self, "gateio")
+        SubscriptionMixin.__init__(self, subscribed_symbols)
+        GateioConnectionMixin.__init__(self, config)
+        NoAuthMixin.__init__(self, config)
+        
+        # Set exchange name for logger
+        self.exchange_name = "gateio"
         
         # Performance tracking
         self._orderbook_updates = 0
@@ -77,10 +95,12 @@ class GateioSpotPublicWebSocketHandler(PublicWebSocketMixin):
         self._parsing_times = []
         self._connection_stable = False
         
-        self.logger.info("Gate.io spot public handler initialized with performance optimization",
+        self.logger.info("Gate.io spot public handler initialized with new architecture",
                         exchange="gateio",
                         market_type="spot",
-                        api_type="public")
+                        api_type="public",
+                        subscribed_symbols_count=len(subscribed_symbols) if subscribed_symbols else 0,
+                        architecture="template_method_pattern")
     
     async def _detect_message_type(self, raw_message: Any) -> WebSocketMessageType:
         """
@@ -443,3 +463,327 @@ class GateioSpotPublicWebSocketHandler(PublicWebSocketMixin):
         })
         
         return base_status
+    
+    # Required SubscriptionMixin methods
+    def get_channels_for_symbol(self, symbol: Symbol, channel_types: Optional[List[str]] = None) -> List[str]:
+        """
+        Get Gate.io spot channel names for a symbol.
+        
+        Args:
+            symbol: Trading symbol
+            channel_types: List of channel types (orderbook, trades, ticker)
+            
+        Returns:
+            List of Gate.io spot channel names
+        """
+        gateio_symbol = GateioSpotSymbol.format_for_gateio(symbol)
+        channels = []
+        
+        # Default to orderbook and trades if none specified
+        if not channel_types:
+            channel_types = ["orderbook", "trades"]
+        
+        for channel_type in channel_types:
+            if channel_type == "orderbook":
+                channels.append(f"spot.order_book_update.{gateio_symbol}")
+            elif channel_type == "trades":
+                channels.append(f"spot.trades.{gateio_symbol}")
+            elif channel_type == "ticker":
+                channels.append(f"spot.book_ticker.{gateio_symbol}")
+        
+        return channels
+    
+    def create_subscription_message(self, action: str, channels: List[str]) -> Dict[str, Any]:
+        """
+        Create Gate.io subscription message.
+        
+        Args:
+            action: "subscribe" or "unsubscribe"
+            channels: List of channel names to subscribe/unsubscribe
+            
+        Returns:
+            Gate.io subscription message
+        """
+        return {
+            "method": action,
+            "params": channels,
+            "id": int(time.time() * 1000)
+        }
+    
+    # Required ConnectionMixin methods
+    def create_connection_context(self) -> ConnectionContext:
+        """
+        Create connection configuration for Gate.io spot public WebSocket.
+        
+        Returns:
+            ConnectionContext with Gate.io spot public WebSocket settings
+        """
+        return ConnectionContext(
+            url=self.config.websocket_url,
+            headers={
+                "User-Agent": "GateIO-Spot-Public-Client",
+                "Accept": "application/json"
+            },
+            extra_params={
+                "compression": None,
+                "ping_interval": 30,
+                "ping_timeout": 10,
+                "close_timeout": 10
+            }
+        )
+    
+    def get_reconnection_policy(self):
+        """
+        Get Gate.io spot reconnection policy.
+        
+        Returns:
+            ReconnectionPolicy optimized for Gate.io spot connections
+        """
+        from infrastructure.networking.websocket.mixins.connection_mixin import ReconnectionPolicy
+        
+        return ReconnectionPolicy(
+            max_attempts=15,  # Gate.io has good stability
+            initial_delay=1.0,
+            backoff_factor=1.8,
+            max_delay=60.0,
+            reset_on_1005=True  # Standard WebSocket error handling
+        )
+    
+    # New PublicMessageHandler interface methods
+    
+    async def _parse_orderbook_update(self, raw_message: Any) -> Optional[OrderBook]:
+        """
+        Parse orderbook update from raw message - PublicMessageHandler interface.
+        
+        Args:
+            raw_message: Raw orderbook message from Gate.io
+            
+        Returns:
+            OrderBook instance or None if parsing failed
+        """
+        parsing_start = time.perf_counter()
+        
+        try:
+            if not isinstance(raw_message, str):
+                return None
+            
+            message = msgspec.json.decode(raw_message)
+            
+            # Check if this is an orderbook update
+            if 'channel' not in message or 'order_book' not in message['channel']:
+                return None
+            
+            event = message.get('event', '')
+            result = message.get('result', {})
+            
+            if event != 'update' or not result:
+                return None
+            
+            # Extract symbol from channel
+            channel = message['channel']
+            symbol_str = self._extract_symbol_from_channel(channel)
+            if not symbol_str:
+                return None
+            
+            symbol = GateioSpotSymbol.to_symbol(symbol_str)
+            
+            # Parse bids and asks
+            bids = []
+            asks = []
+            
+            for bid_data in result.get('bids', []):
+                if len(bid_data) >= 2:
+                    price = float(bid_data[0])
+                    size = float(bid_data[1])
+                    if size > 0:  # Gate.io sends 0 size for removed levels
+                        bids.append(OrderBookEntry(price=price, size=size))
+            
+            for ask_data in result.get('asks', []):
+                if len(ask_data) >= 2:
+                    price = float(ask_data[0])
+                    size = float(ask_data[1])
+                    if size > 0:  # Gate.io sends 0 size for removed levels
+                        asks.append(OrderBookEntry(price=price, size=size))
+            
+            # Track performance
+            parsing_time = (time.perf_counter() - parsing_start) * 1_000_000  # μs
+            self._parsing_times.append(parsing_time)
+            self._orderbook_updates += 1
+            
+            if parsing_time > 50:  # Alert if exceeding target
+                self.logger.warning("Orderbook parsing exceeded target",
+                                  parsing_time_us=parsing_time,
+                                  target_us=50,
+                                  exchange="gateio")
+            
+            return OrderBook(
+                symbol=symbol,
+                bids=bids,
+                asks=asks,
+                timestamp=result.get('t', int(time.time() * 1000))
+            )
+            
+        except Exception as e:
+            self.logger.error("Error parsing Gate.io orderbook update",
+                            error_type=type(e).__name__,
+                            error_message=str(e))
+            return None
+    
+    async def _parse_trade_message(self, raw_message: Any) -> Optional[List[Trade]]:
+        """
+        Parse trade data from raw message - PublicMessageHandler interface.
+        
+        Args:
+            raw_message: Raw trade message from Gate.io
+            
+        Returns:
+            List of Trade instances or None if parsing failed
+        """
+        parsing_start = time.perf_counter()
+        
+        try:
+            if not isinstance(raw_message, str):
+                return None
+            
+            message = msgspec.json.decode(raw_message)
+            
+            # Check if this is a trade message
+            if 'channel' not in message or 'trades' not in message['channel']:
+                return None
+            
+            event = message.get('event', '')
+            result = message.get('result', [])
+            
+            if event != 'update' or not result:
+                return None
+            
+            # Extract symbol from channel
+            channel = message['channel']
+            symbol_str = self._extract_symbol_from_channel(channel)
+            if not symbol_str:
+                return None
+            
+            symbol = GateioSpotSymbol.to_symbol(symbol_str)
+            
+            # Parse trades
+            trades = []
+            for trade_data in result:
+                if isinstance(trade_data, dict):
+                    side = Side.BUY if trade_data.get('side') == 'buy' else Side.SELL
+                    
+                    trade = Trade(
+                        symbol=symbol,
+                        trade_id=str(trade_data.get('id', '')),
+                        price=float(trade_data.get('price', 0)),
+                        quantity=float(trade_data.get('amount', 0)),
+                        side=side,
+                        timestamp=int(trade_data.get('create_time_ms', time.time() * 1000))
+                    )
+                    trades.append(trade)
+            
+            # Track performance
+            parsing_time = (time.perf_counter() - parsing_start) * 1_000_000  # μs
+            self._parsing_times.append(parsing_time)
+            self._trade_messages += 1
+            
+            if parsing_time > 30:  # Alert if exceeding target
+                self.logger.warning("Trade parsing exceeded target",
+                                  parsing_time_us=parsing_time,
+                                  target_us=30,
+                                  exchange="gateio")
+            
+            return trades if trades else None
+            
+        except Exception as e:
+            self.logger.error("Error parsing Gate.io trade message",
+                            error_type=type(e).__name__,
+                            error_message=str(e))
+            return None
+    
+    async def _parse_ticker_update(self, raw_message: Any) -> Optional[BookTicker]:
+        """
+        Parse ticker data from raw message - PublicMessageHandler interface.
+        
+        Args:
+            raw_message: Raw ticker message from Gate.io
+            
+        Returns:
+            BookTicker instance or None if parsing failed
+        """
+        parsing_start = time.perf_counter()
+        
+        try:
+            if not isinstance(raw_message, str):
+                return None
+            
+            message = msgspec.json.decode(raw_message)
+            
+            # Check if this is a ticker message
+            if 'channel' not in message or 'book_ticker' not in message['channel']:
+                return None
+            
+            event = message.get('event', '')
+            result = message.get('result', {})
+            
+            if event != 'update' or not result:
+                return None
+            
+            # Extract symbol from channel
+            channel = message['channel']
+            symbol_str = self._extract_symbol_from_channel(channel)
+            if not symbol_str:
+                return None
+            
+            symbol = GateioSpotSymbol.to_symbol(symbol_str)
+            
+            # Track performance
+            parsing_time = (time.perf_counter() - parsing_start) * 1_000_000  # μs
+            self._parsing_times.append(parsing_time)
+            self._ticker_updates += 1
+            
+            if parsing_time > 20:  # Alert if exceeding target
+                self.logger.warning("Ticker parsing exceeded target",
+                                  parsing_time_us=parsing_time,
+                                  target_us=20,
+                                  exchange="gateio")
+            
+            return BookTicker(
+                symbol=symbol,
+                bid_price=float(result.get('best_bid', 0)),
+                bid_quantity=float(result.get('best_bid_size', 0)),
+                ask_price=float(result.get('best_ask', 0)),
+                ask_quantity=float(result.get('best_ask_size', 0)),
+                timestamp=result.get('t', int(time.time() * 1000)),
+                update_id=result.get('u')
+            )
+            
+        except Exception as e:
+            self.logger.error("Error parsing Gate.io ticker update",
+                            error_type=type(e).__name__,
+                            error_message=str(e))
+            return None
+    
+    async def _handle_subscription_confirmation(self, raw_message: Any) -> None:
+        """
+        Handle subscription confirmation messages.
+        
+        Args:
+            raw_message: Raw subscription confirmation message
+        """
+        try:
+            if isinstance(raw_message, str):
+                message = msgspec.json.decode(raw_message)
+                if message.get('event') == 'subscribe':
+                    # Gate.io subscription success
+                    self.logger.debug("Gate.io subscription confirmed",
+                                    channel=message.get('channel'),
+                                    time=message.get('time'))
+                elif message.get('error'):
+                    # Gate.io subscription error
+                    self.logger.warning("Gate.io subscription error",
+                                      error=message.get('error'),
+                                      channel=message.get('channel'))
+        except Exception as e:
+            self.logger.warning("Error handling subscription confirmation",
+                              error_type=type(e).__name__,
+                              error_message=str(e))
