@@ -36,7 +36,7 @@ from config.structs import ExchangeConfig
 from exchanges.interfaces.ws import PublicFuturesWebsocket
 from infrastructure.networking.websocket.structs import ConnectionState, PublicWebsocketChannelType
 from infrastructure.networking.websocket.handlers import PublicWebsocketHandlers
-from infrastructure.logging import HFTLogger
+from infrastructure.logging import HFTLoggerInterface
 
 class GateioPublicFuturesWebsocket(PublicFuturesWebsocket):
     """Gate.io public futures WebSocket client using dependency injection pattern."""
@@ -45,7 +45,7 @@ class GateioPublicFuturesWebsocket(PublicFuturesWebsocket):
         self,
         config: ExchangeConfig,
         handlers: PublicWebsocketHandlers,
-        logger: HFTLogger,
+        logger: HFTLoggerInterface,
         **kwargs
     ):
         """

@@ -48,26 +48,11 @@ See also:
 - hft-requirements-compliance.md for performance specs
 """
 
-from typing import Optional
 from abc import ABC
 from exchanges.interfaces.composite.base_public_composite import BasePublicComposite
-from exchanges.structs import ExchangeType
-from infrastructure.logging import HFTLoggerInterface
-from infrastructure.networking.websocket.handlers import PublicWebsocketHandlers
-from exchanges.interfaces import PublicSpotRest
+from exchanges.interfaces.rest import PublicSpotRest
 from exchanges.interfaces.ws.spot.ws_spot_public import PublicSpotWebsocket
 
 
 class CompositePublicSpotExchange(BasePublicComposite[PublicSpotRest, PublicSpotWebsocket], ABC):
-
-    def __init__(self, config, logger: Optional[HFTLoggerInterface] = None,
-                 handlers: Optional[PublicWebsocketHandlers] = None):
-        """
-        Initialize public spot exchange interface.
-
-        Args:
-            config: Exchange configuration
-            logger: Optional injected HFT logger (auto-created if not provided)
-            handlers: Optional PublicWebsocketHandlers for custom event handling
-        """
-        super().__init__(config, ExchangeType.SPOT, logger=logger, handlers=handlers)
+    pass

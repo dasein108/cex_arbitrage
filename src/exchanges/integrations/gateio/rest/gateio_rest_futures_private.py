@@ -20,26 +20,26 @@ from exchanges.integrations.gateio.utils import (
     reverse_lookup_order_type, to_side
 )
 from exchanges.integrations.gateio.services.futures_symbol_mapper import GateioFuturesSymbol
+from exchanges.integrations.gateio.rest.rest_factory import create_private_rest_manager
 
 
 class GateioPrivateFuturesRest(PrivateFuturesRest):
     def __init__(self, config: ExchangeConfig, logger=None):
         """
+        Initialize Gate.io private futures REST client.
+        
         Args:
             config: ExchangeConfig containing credentials & transport config.
             logger: Optional HFT logger injection
         """
-        super().__init__(config, is_private=True)
+        # Create REST manager immediately
+        rest_manager = create_private_rest_manager(config, logger)
         
-        # Initialize HFT logger
-        if logger is None:
-            from infrastructure.logging import get_exchange_logger
-            logger = get_exchange_logger('gateio_futures', 'rest.private')
-        self.logger = logger
-        self._logger = logger  # For backward compatibility
-
-    def _handle_gateio_exception(self, status_code: int, message: str) -> ExchangeRestError:
-        return ExchangeRestError(f"Gate.io futures error {status_code}: {message}")
+        # Call parent with injected REST manager
+        super().__init__(rest_manager, config, logger=logger)
+        
+        # For backward compatibility
+        self._logger = self.logger
 
     # ---------- Account / Balances ----------
 
@@ -365,7 +365,7 @@ class GateioPrivateFuturesRest(PrivateFuturesRest):
         self,
         symbol: Symbol,
         order_id: OrderId,
-        qunatity: Optional[float] = None,
+        quantity: Optional[float] = None,
         price: Optional[float] = None,
         quote_quantity: Optional[float] = None,
         time_in_force: Optional[TimeInForce] = None,
@@ -383,7 +383,7 @@ class GateioPrivateFuturesRest(PrivateFuturesRest):
             await self.cancel_order(symbol, order_id)
 
             # Build new order parameters: prefer caller-provided, otherwise reuse existing
-            new_amount = qunatity if qunatity is not None else existing.quantity
+            new_amount = quantity if quantity is not None else existing.quantity
             new_price = price if price is not None else existing.price
             new_tif = time_in_force if time_in_force is not None else existing.time_in_force
 

@@ -34,26 +34,43 @@ class CompositePublicFuturesExchange(BasePublicComposite[PublicFuturesRest, Publ
     
     ## Implementation Requirements
     
-    Concrete futures exchanges must implement:
-    1. `_create_public_rest()`: Factory for PublicFuturesRest client
-    2. `_create_public_websocket()`: Factory for PublicFuturesWebsocket client
+    Concrete futures exchanges must provide REST and WebSocket clients during construction:
+    1. REST client: PublicFuturesRest implementation
+    2. WebSocket client: PublicFuturesWebsocket implementation
     3. All futures-specific abstract methods for funding rates, open interest, etc.
     """
 
     def __init__(self, config, logger: Optional[HFTLoggerInterface] = None,
-                 handlers: Optional[PublicWebsocketHandlers] = None):
+                 handlers: Optional[PublicWebsocketHandlers] = None,
+                 rest_client: Optional[PublicFuturesRest] = None,
+                 websocket_client: Optional[PublicFuturesWebsocket] = None):
         """
-        Initialize public futures exchange interface.
+        Initialize public futures exchange interface with direct client injection.
         
         Args:
             config: Exchange configuration
             logger: Optional injected HFT logger (auto-created if not provided)
             handlers: Optional PublicWebsocketHandlers for custom event handling
+            rest_client: Pre-constructed public futures REST client
+            websocket_client: Pre-constructed public futures WebSocket client
         """
-        super().__init__(config, ExchangeType.FUTURES, logger=logger, handlers=handlers)
+        super().__init__(config, ExchangeType.FUTURES, logger=logger, handlers=handlers,
+                         rest_client=rest_client, websocket_client=websocket_client)
 
         # Futures-specific data (using generic Dict structures for now)
         self._funding_rates: Dict[Symbol, Dict] = {}
+
+
+    def _get_inner_websocket_handlers(self) -> PublicWebsocketHandlers:
+        """
+        Get handlers for websocket events, extending base implementation.
+        
+        Currently inherits all public handlers from base class.
+        Can be extended for futures-specific channels if needed.
+        """
+        handlers = super()._get_inner_websocket_handlers()
+        # Add futures-specific channel handlers if needed
+        return handlers
 
     # Abstract properties for futures data
 
@@ -118,9 +135,6 @@ class CompositePublicFuturesExchange(BasePublicComposite[PublicFuturesRest, Publ
         # Refresh composite market data
         await super()._refresh_exchange_data()
 
-        if self.active_symbols:
-            active_symbols_list = list(self.active_symbols)
-
 
     # Futures data update methods
 
@@ -134,18 +148,3 @@ class CompositePublicFuturesExchange(BasePublicComposite[PublicFuturesRest, Publ
         """
         self._funding_rates[symbol] = funding_rate
         self.logger.debug(f"Updated funding rate for {symbol}: {funding_rate}")
-
-    def get_futures_stats(self) -> Dict[str, Any]:
-        """
-        Get futures-specific statistics for monitoring.
-        
-        Returns:
-            Dictionary with futures market data statistics
-        """
-        base_stats = self.get_orderbook_stats()
-        
-        futures_stats = {
-            'tracked_funding_rates': len(self._funding_rates),
-        }
-        
-        return {**base_stats, **futures_stats}

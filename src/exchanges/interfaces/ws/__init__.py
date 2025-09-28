@@ -2,7 +2,7 @@
 WebSocket components for HFT trading systems.
 
 This module provides high-performance WebSocket infrastructure using strategy pattern
-composition for exchange-agnostic trading implementations.
+composition for exchange-agnostic trading implementations with separated domain architecture.
 """
 
 from infrastructure.networking.websocket.ws_manager import WebSocketManager
@@ -17,12 +17,27 @@ from infrastructure.networking.websocket.structs import (
 )
 from infrastructure.networking.websocket.handlers import PublicWebsocketHandlers, PrivateWebsocketHandlers
 
+# New separated domain base interfaces
+from .base_public_websocket import BasePublicWebsocket
+from .base_private_websocket import BasePrivateWebsocket
+
+# Legacy base interface (to be deprecated)
 from .ws_base import BaseWebsocketInterface
+
+# Concrete implementations with separated domain architecture
 from .spot import PrivateSpotWebsocket, PublicSpotWebsocket
-from .futures import PublicFuturesWebsocket, PrivateFuturesWebsocket
+from .futures import PrivateFuturesWebsocket, PublicFuturesWebsocket
+
+# Shared utilities for performance and configuration
+from .performance_tracker import (
+    WebSocketPerformanceTracker,
+    PublicWebSocketPerformanceTracker,
+    PrivateWebSocketPerformanceTracker
+)
+from .constants import HFTConstants, PerformanceConstants, ConnectionConstants
 __all__ = [
+    # Infrastructure components
     'WebSocketManager',
-# Factory removed
     'MessageType',
     'SubscriptionAction',
     'ConnectionContext',
@@ -32,13 +47,29 @@ __all__ = [
     'ParsedMessage',
     'WebSocketManagerConfig',
     'PerformanceMetrics',
-    'BaseWebsocketInterface',
     'MessageParser',
     'ConnectionState',
-    'PrivateSpotWebsocket',
-    'PublicSpotWebsocket',
-    'PublicFuturesWebsocket',
     'PublicWebsocketHandlers',
     'PrivateWebsocketHandlers',
-    'PrivateFuturesWebsocket'
+    
+    # New separated domain base interfaces (preferred)
+    'BasePublicWebsocket',
+    'BasePrivateWebsocket',
+    
+    # Concrete implementations with separated domain architecture
+    'PrivateSpotWebsocket',
+    'PublicSpotWebsocket',
+    'PrivateFuturesWebsocket',
+    'PublicFuturesWebsocket',
+    
+    # Shared utilities for performance and configuration
+    'WebSocketPerformanceTracker',
+    'PublicWebSocketPerformanceTracker',
+    'PrivateWebSocketPerformanceTracker',
+    'HFTConstants',
+    'PerformanceConstants',
+    'ConnectionConstants',
+    
+    # Legacy base interface (to be deprecated)
+    'BaseWebsocketInterface'
 ]

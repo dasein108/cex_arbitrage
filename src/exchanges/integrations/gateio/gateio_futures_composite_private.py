@@ -16,6 +16,7 @@ from infrastructure.logging import HFTLoggerInterface
 from infrastructure.networking.websocket.handlers import PrivateWebsocketHandlers
 from exchanges.integrations.gateio.rest.gateio_rest_futures_private import GateioPrivateFuturesRest
 from exchanges.integrations.gateio.ws.gateio_ws_private_futures import GateioPrivateFuturesWebsocket
+from infrastructure.exceptions.system import InitializationError
 
 
 class GateioFuturesCompositePrivateExchange(CompositePrivateFuturesExchange):
@@ -37,21 +38,15 @@ class GateioFuturesCompositePrivateExchange(CompositePrivateFuturesExchange):
 
     def __init__(self, config, logger: Optional[HFTLoggerInterface] = None,
                  handlers: Optional[PrivateWebsocketHandlers] = None):
-        """Initialize Gate.io futures private composite exchange."""
-        super().__init__(config, logger=logger, handlers=handlers)
-        
-        # Override tag for Gate.io futures identification
-        self._tag = f'{config.name}_futures_private'
+        """Initialize Gate.io futures private composite exchange with direct client injection."""
+        # Create clients directly with proper error context
+        rest_client = GateioPrivateFuturesRest(config, logger)
+        websocket_client = GateioPrivateFuturesWebsocket(config,
+                                                         handlers=self.ws_handlers)
 
-    # Composite pattern implementation - create futures-specific components
+        super().__init__(config, logger=logger, handlers=handlers,
+                         rest_client=rest_client, websocket_client=websocket_client)
 
-    async def _create_private_rest(self) -> PrivateFuturesRest:
-        """Create Gate.io futures private REST client."""
-        return GateioPrivateFuturesRest(self.config, self.logger)
-
-    async def _create_private_websocket(self) -> PrivateFuturesWebsocket:
-        """Create Gate.io futures private WebSocket client with handlers."""
-        return GateioPrivateFuturesWebsocket(self.config, self._create_inner_websocket_handlers())
 
     # Futures-specific abstract method implementations
 
@@ -107,20 +102,19 @@ class GateioFuturesCompositePrivateExchange(CompositePrivateFuturesExchange):
             
             orders = []
             for position in positions:
-                if position.quantity == 0:
+                if position.side == 0:
                     continue
                 
                 # Determine close quantity
-                close_qty = quantity if quantity else abs(position.quantity)
+                close_qty = quantity if quantity else abs(position.size)
                 
                 # Determine side (opposite of position)
-                close_side = 'sell' if position.quantity > 0 else 'buy'
+                close_side = 'sell' if position.side > 0 else 'buy'
                 
                 # Place market order to close position
-                order = await self.place_futures_order(
+                order = await self.place_market_order(
                     symbol=symbol,
                     side=close_side,
-                    order_type='market',
                     quantity=close_qty,
                     reduce_only=True,
                     close_position=(quantity is None)  # Full close if no quantity specified
@@ -137,48 +131,15 @@ class GateioFuturesCompositePrivateExchange(CompositePrivateFuturesExchange):
 
     # Futures data loading implementations
 
-    async def _load_leverage_settings(self) -> None:
-        """Load leverage settings from Gate.io futures REST API."""
-        try:
-            for symbol in self._symbols:
-                leverage_info = await self._private_rest.get_leverage(symbol)
-                self._leverage_settings[symbol] = leverage_info
-            
-            self.logger.info(f"Loaded leverage settings for {len(self._leverage_settings)} symbols")
-            
-        except Exception as e:
-            self.logger.error(f"Failed to load leverage settings: {e}")
-            # Don't raise - this is not critical for basic operation
 
-    async def _load_margin_info(self) -> None:
-        """Load margin information from Gate.io futures REST API."""
-        try:
-            # Gate.io futures margin info is typically included in account balance
-            balance = await self._private_rest.get_balances()
-            
-            # Extract margin info for each symbol
-            for symbol in self._symbols:
-                if symbol in balance:
-                    self._margin_info[symbol] = {
-                        'available_margin': balance[symbol].available,
-                        'used_margin': balance[symbol].locked,
-                        'total_margin': balance[symbol].total
-                    }
-            
-            self.logger.info(f"Loaded margin info for {len(self._margin_info)} symbols")
-            
-        except Exception as e:
-            self.logger.error(f"Failed to load margin info: {e}")
-            # Don't raise - this is not critical for basic operation
-
-    async def _load_futures_positions(self) -> None:
+    async def _load_positions(self) -> None:
         """Load futures positions from Gate.io futures REST API."""
         try:
             positions = await self._private_rest.get_positions()
             
             # Update internal position tracking
             for position in positions:
-                if position.quantity != 0:  # Only track active positions
+                if position.size != 0:  # Only track active positions
                     self._positions[position.symbol] = position
             
             self.logger.debug(f"Loaded {len(self._positions)} active positions")
@@ -193,13 +154,7 @@ class GateioFuturesCompositePrivateExchange(CompositePrivateFuturesExchange):
         """Handle position updates from Gate.io futures WebSocket."""
         try:
             # Update internal position state
-            self._update_position(position)
-            
-            # Log significant position changes
-            if abs(position.quantity) > 0:
-                self.logger.info(f"Position update for {position.symbol}: {position.quantity} @ {position.entry_price}")
-            else:
-                self.logger.info(f"Position closed for {position.symbol}")
+            self._positions[position.symbol] = position
             
         except Exception as e:
             self.logger.error(f"Error handling position update: {e}")
@@ -214,7 +169,7 @@ class GateioFuturesCompositePrivateExchange(CompositePrivateFuturesExchange):
             'exchange_name': 'gateio',
             'leverage_symbols': len(self._leverage_settings),
             'margin_symbols': len(self._margin_info),
-            'long_positions': len([p for p in self._positions.values() if p.quantity > 0]),
-            'short_positions': len([p for p in self._positions.values() if p.quantity < 0])
+            'long_positions': len([p for p in self._positions.values() if p.size > 0]),
+            'short_positions': len([p for p in self._positions.values() if p.size < 0])
         })
         return base_stats

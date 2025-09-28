@@ -8,6 +8,7 @@ from exchanges.integrations.mexc.rest.mexc_rest_spot_public import MexcPublicSpo
 from exchanges.integrations.mexc.ws.mexc_ws_public import MexcPublicSpotWebsocket
 from infrastructure.networking.websocket.handlers import PublicWebsocketHandlers
 from infrastructure.logging import HFTLoggerInterface
+from infrastructure.exceptions.system import InitializationError
 from config.structs import ExchangeConfig
 
 
@@ -23,20 +24,22 @@ class MexcCompositePublicSpotExchange(CompositePublicSpotExchange):
 
     def __init__(self, config: ExchangeConfig, logger: Optional[HFTLoggerInterface] = None,
                  handlers: Optional[PublicWebsocketHandlers] = None):
-        """Initialize MEXC public exchange."""
-        super().__init__(config, logger, handlers)
+        """Initialize MEXC public exchange with direct client injection."""
+        try:
+            # Create clients directly with proper error context
+            rest_client = MexcPublicSpotRest(config, logger)
+            websocket_client = MexcPublicSpotWebsocket(
+                config=config,
+                handlers=self.ws_handlers,
+                logger=logger
+            )
+            
+            super().__init__(config, logger, handlers, rest_client, websocket_client)
+            
+        except Exception as e:
+            # Use logger if available, otherwise fall back to basic logging
+            if logger:
+                logger.error(f"Failed to create {self.__class__.__name__}", error=str(e))
+            raise InitializationError(f"MEXC exchange construction failed: {e}") from e
 
-    # Factory Methods - Return Existing MEXC Clients
-    
-    async def _create_public_rest(self) -> PublicSpotRest:
-        """Create MEXC public REST client."""
-        return MexcPublicSpotRest(self.config, self.logger)
-    
-    async def _create_public_websocket(self) -> Optional[PublicSpotWebsocket]:
-        """Create MEXC public WebSocket client with handlers."""
-
-        return MexcPublicSpotWebsocket(
-            config=self.config,
-            handlers=self._create_inner_websocket_handlers(),
-            logger=self.logger
-        )
+    # Factory methods removed - clients are now injected directly during construction

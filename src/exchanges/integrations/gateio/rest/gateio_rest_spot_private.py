@@ -23,7 +23,7 @@ Memory: O(1) per request, optimized for trading operations
 
 from typing import Dict, List, Optional
 import msgspec
-
+from utils import get_current_timestamp
 from exchanges.structs.common import (
     Symbol, Order, AssetBalance,
     AssetInfo, NetworkInfo, TradingFee,
@@ -44,6 +44,8 @@ from exchanges.integrations.gateio.utils import (
     from_time_in_force, to_order_status, rest_to_order, rest_to_balance
 )
 from exchanges.integrations.gateio.structs.exchange import GateioCurrencyResponse, GateioWithdrawStatusResponse
+from exchanges.integrations.gateio.rest.rest_factory import create_private_rest_manager
+
 
 class GateioPrivateSpotRest(PrivateSpotRest):
     """
@@ -52,6 +54,20 @@ class GateioPrivateSpotRest(PrivateSpotRest):
     Provides access to authenticated trading endpoints without WebSocket features.
     Optimized for high-frequency trading operations with minimal overhead.
     """
+
+    def __init__(self, config: ExchangeConfig, logger=None):
+        """
+        Initialize Gate.io private REST client.
+
+        Args:
+            config: ExchangeConfig with Gate.io configuration and authentication
+            logger: Optional HFT logger injection
+        """
+        # Create REST manager immediately
+        rest_manager = create_private_rest_manager(config, logger)
+        
+        # Call parent with injected REST manager
+        super().__init__(rest_manager, config,logger=logger)
 
     async def get_assets_info(self) -> Dict[AssetName, AssetInfo]:
         """
@@ -67,29 +83,6 @@ class GateioPrivateSpotRest(PrivateSpotRest):
             ExchangeAPIError: If unable to fetch currency information
         """
         return await self.get_currency_info()
-
-    def __init__(self, config: ExchangeConfig, logger=None):
-        """
-        Initialize Gate.io private REST client.
-        
-        Args:
-            config: ExchangeConfig with Gate.io configuration and credentials
-            logger: Optional HFT logger injection
-        """
-        super().__init__(config, is_private=True)
-        
-        # Initialize HFT logger
-        if logger is None:
-            from infrastructure.logging import get_exchange_logger
-            logger = get_exchange_logger('gateio', 'rest.private')
-        self.logger = logger
-        
-        # Initialize composition-based error handler
-        self._rest_error_handler = RestApiErrorHandler(
-            logger=self.logger,
-            max_retries=3,
-            base_delay=1.0
-        )
 
     
     def _handle_gateio_exception(self, status_code: int, message: str) -> ExchangeRestError:
@@ -478,7 +471,7 @@ class GateioPrivateSpotRest(PrivateSpotRest):
         self,
         symbol: Symbol,
         order_id: OrderId,
-        qunatity: Optional[float] = None,
+        quantity: Optional[float] = None,
         price: Optional[float] = None,
         quote_quantity: Optional[float] = None,
         time_in_force: Optional[TimeInForce] = None,
@@ -493,7 +486,7 @@ class GateioPrivateSpotRest(PrivateSpotRest):
         Args:
             symbol: Trading symbol
             order_id: Order ID to modify
-            qunatity: New order amount
+            quantity: New order amount
             price: New order price
             quote_quantity: New quote quantity
             time_in_force: New time in force
@@ -778,7 +771,7 @@ class GateioPrivateSpotRest(PrivateSpotRest):
                 address=request.address,
                 network=request.network,
                 status=WithdrawalStatus.PENDING,
-                timestamp=int(self._get_current_timestamp()),
+                timestamp=get_current_timestamp(),
                 memo=request.memo,
                 remark=request.remark
             )

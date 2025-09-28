@@ -7,12 +7,13 @@ from exchanges.integrations.mexc.ws.mexc_ws_private import MexcPrivateSpotWebsoc
 from infrastructure.networking.websocket.handlers import PrivateWebsocketHandlers
 from infrastructure.logging import HFTLoggerInterface
 from config.structs import ExchangeConfig
+from infrastructure.exceptions.system import InitializationError
 
 
 class MexcCompositePrivateSpotExchange(CompositePrivateSpotExchange):
     """
     MEXC private exchange implementation using composite pattern.
-    
+
     Provides trading operations by composing existing MEXC infrastructure:
     - MexcPrivateSpotRest for authenticated REST API calls
     - MexcPrivateSpotWebsocket for private data streaming
@@ -21,22 +22,15 @@ class MexcCompositePrivateSpotExchange(CompositePrivateSpotExchange):
 
     def __init__(self, config: ExchangeConfig, logger: Optional[HFTLoggerInterface] = None,
                  handlers: Optional[PrivateWebsocketHandlers] = None):
-        """Initialize MEXC private exchange."""
-        super().__init__(config, logger, handlers)
+        """Initialize MEXC private exchange with direct client injection."""
+            # Create clients directly with proper error context
+        rest_client = MexcPrivateSpotRest(config, logger)
 
-    # Factory Methods - Return Existing MEXC Clients
-    
-    async def _create_private_rest(self) -> MexcPrivateSpotRest:
-        """Create MEXC private REST client."""
-        return MexcPrivateSpotRest(self.config, self.logger)
-    
-    async def _create_private_websocket(self) -> Optional[MexcPrivateSpotWebsocket]:
-        """Create MEXC private WebSocket client with handlers."""
+        # Create inner handlers for websocket client
+        websocket_client = MexcPrivateSpotWebsocket(config=config,
+                                                    handlers=self.ws_handlers,
+                                                    logger=logger)
 
-        return MexcPrivateSpotWebsocket(
-            config=self.config,
-            handlers=self._create_inner_websocket_handlers(),
-            logger=self.logger
-        )
+        # Call parent with clients first, then config
+        super().__init__(rest_client, websocket_client, config, logger, handlers)
 
-    # Withdrawal operations are inherited from WithdrawalMixin which delegates to _private_rest

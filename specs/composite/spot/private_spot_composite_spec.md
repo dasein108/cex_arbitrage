@@ -253,7 +253,7 @@ async def _initialize_private_websocket(self) -> None:
         return
 
     # Create handlers
-    handlers = await self._create_inner_websocket_handlers()
+    handlers = await self._get_inner_websocket_handlers()
 
     # Create WebSocket with handlers
     self._private_ws = await self._create_private_websocket(handlers)

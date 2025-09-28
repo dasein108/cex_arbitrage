@@ -1,16 +1,14 @@
-from abc import ABC
 from typing import Optional
 import time
 
-from infrastructure.networking.http.utils import create_rest_transport_manager
-from infrastructure.networking.http.structs import HTTPMethod
+from infrastructure.networking.http import HTTPMethod, RestManager
 
 from config.structs import ExchangeConfig
 
 # HFT Logger Integration
-from infrastructure.logging import get_exchange_logger, HFTLoggerInterface, LoggingTimer
+from infrastructure.logging import HFTLoggerInterface, LoggingTimer
 
-class BaseRestInterface(ABC):
+class BaseRestInterface:
     """
     Abstract composite for exchange REST operations using the new transport system.
     
@@ -19,29 +17,20 @@ class BaseRestInterface(ABC):
     """
 
 
-    def __init__(self, config: ExchangeConfig, is_private: bool = False, logger: Optional[HFTLoggerInterface] = None):
-        self.exchange_name = config.name
-        api_type = 'private' if is_private else 'public'
-        self.exchange_tag = f'{self.exchange_name}_{api_type}'
-
-        # Use injected logger or create exchange-specific logger
-        component_name = f'rest.composite.{self.exchange_tag}'
-        self.logger = logger or get_exchange_logger(config.name, component_name)
-
-        # Initialize REST transport manager using factory
-        self._rest = create_rest_transport_manager(
-            exchange_config=config,
-            is_private=is_private,
-        )
-
-        # Log initialization with structured data
-        self.logger.info("BaseExchangeRestInterface initialized",
-                        exchange=config.name,
-                        api_type=api_type)
+    def __init__(self, rest_manager: RestManager, config: ExchangeConfig, logger: Optional[HFTLoggerInterface]):
+        # Direct injection - no lazy initialization
+        self._rest: RestManager = rest_manager
         
-        # Track component initialization metrics
-        self.logger.metric("rest_base_interfaces_initialized", 1,
-                          tags={"exchange": config.name, "api_type": api_type})
+        # Store configuration for child implementations
+        self.config = config
+        self.exchange_name = config.name
+        # Setup logging
+        self.logger = logger
+        
+        # Log initialization
+        self.logger.info("BaseRestInterface initialized", exchange=config.name)
+        self.logger.metric("rest_base_interfaces_initialized", 1, tags={"exchange": config.name})
+
 
     async def close(self):
         """Clean up resources and close connections."""
@@ -61,6 +50,7 @@ class BaseRestInterface(ABC):
 
     async def request(self, method: HTTPMethod, endpoint: str, params: dict = None, data: dict = None, headers: dict = None):
         """Make an HTTP request using the REST transport manager with performance tracking."""
+        
         # Track request performance and metrics
         with LoggingTimer(self.logger, "rest_base_request") as timer:
             self.logger.debug("Making REST request",
@@ -115,7 +105,3 @@ class BaseRestInterface(ABC):
     async def __aexit__(self, exc_type, exc_val, exc_tb):
         """Async context manager exit."""
         await self.close()
-
-    def _get_current_timestamp(self) -> int:
-        """Get current timestamp in milliseconds."""
-        return int(time.time() * 1000)

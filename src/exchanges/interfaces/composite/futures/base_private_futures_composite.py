@@ -32,53 +32,24 @@ class CompositePrivateFuturesExchange(BasePrivateComposite[PrivateFuturesRest, P
     """
 
     def __init__(self, config, logger: Optional[HFTLoggerInterface] = None,
-                 handlers: Optional[PrivateWebsocketHandlers] = None):
-        """Initialize private futures exchange interface."""
-        super().__init__(config, ExchangeType.FUTURES, logger=logger, handlers=handlers)
+                 handlers: Optional[PrivateWebsocketHandlers] = None,
+                 rest_client: Optional[PrivateFuturesRest] = None,
+                 websocket_client: Optional[PrivateFuturesWebsocket] = None):
+        """Initialize private futures exchange interface with direct client injection."""
+        super().__init__(config, ExchangeType.FUTURES, logger=logger, handlers=handlers,
+                         rest_client=rest_client,
+                         websocket_client=websocket_client)
 
         # Futures-specific private data
         self._leverage_settings: Dict[Symbol, Dict] = {}
         self._margin_info: Dict[Symbol, Dict] = {}
         self._positions: Dict[Symbol, Position] = {}
-        
-        # Alias for backward compatibility
-        self._positions: Dict[Symbol, Position] = self._positions
 
-    # Properties for futures private data (reuse parent implementation pattern)
-    
-    # @property
-    # def leverage_settings(self) -> Dict[Symbol, Dict]:
-    #     """Get current leverage settings for all symbols."""
-    #     return self._leverage_settings.copy()
-    #
-    # @property
-    # def margin_info(self) -> Dict[Symbol, Dict]:
-    #     """Get current margin information for all symbols."""
-    #     return self._margin_info.copy()
-    #
-    # @property
-    # def futures_positions(self) -> Dict[Symbol, Position]:
-    #     """Get current futures positions."""
-    #     return self._futures_positions.copy()
 
     @property
     def positions(self) -> Dict[Symbol, Position]:
         """Get current positions (alias for futures_positions)."""
         return self._positions.copy()
-
-    # Futures-specific abstract methods (must be implemented by concrete classes)
-
-    # @abstractmethod
-    # async def set_leverage(self, symbol: Symbol, leverage: int) -> bool:
-    #     """Set leverage for a symbol."""
-    #     pass
-    #
-    # @abstractmethod
-    # async def get_leverage(self, symbol: Symbol) -> Dict:
-    #     """Get current leverage for a symbol."""
-    #     pass
-
-
 
     @abstractmethod
     async def close_position(
@@ -89,25 +60,11 @@ class CompositePrivateFuturesExchange(BasePrivateComposite[PrivateFuturesRest, P
         """Close position (partially or completely)."""
         pass
 
-    # Abstract futures data loading methods
+    @abstractmethod
+    async def _load_positions(self) -> None:
+        """Load current futures positions from exchange."""
+        pass
 
-    # @abstractmethod
-    # async def _load_leverage_settings(self) -> None:
-    #     """Load leverage settings from REST API."""
-    #     pass
-    #
-    # @abstractmethod
-    # async def _load_margin_info(self) -> None:
-    #     """Load margin information from REST API."""
-    #     pass
-    #
-    # @abstractmethod
-    # async def _load_futures_positions(self) -> None:
-    #     """Load futures positions from REST API."""
-    #     pass
-
-    # Key futures extensions - leverage initialization and WebSocket handlers
-    
     async def initialize(self, symbols_info: SymbolsInfo) -> None:
         """Initialize futures exchange with symbols and futures-specific data."""
         # Initialize base private functionality
@@ -117,7 +74,7 @@ class CompositePrivateFuturesExchange(BasePrivateComposite[PrivateFuturesRest, P
             # Load futures-specific private data
             # await self._load_leverage_settings()
             # await self._load_margin_info()
-            # await self._load_futures_positions()
+            await self._load_positions()
 
             self.logger.info(f"{self._tag} futures private data initialized")
 
@@ -125,18 +82,15 @@ class CompositePrivateFuturesExchange(BasePrivateComposite[PrivateFuturesRest, P
             self.logger.error(f"Failed to initialize futures private data for {self._tag}: {e}")
             raise
 
-    def _create_inner_websocket_handlers(self) -> PrivateWebsocketHandlers:
+    def _get_inner_websocket_handlers(self) -> PrivateWebsocketHandlers:
         """
         Extend WebSocket handlers to include position handler for futures.
         
         This is the key extension - adds position_handler to the base implementation.
         """
-        return PrivateWebsocketHandlers(
-            order_handler=self._order_handler,
-            balance_handler=self._balance_handler,
-            execution_handler=self._execution_handler,
-            position_handler=self._position_handler,  # Futures-specific position handling
-        )
+        handlers = super()._get_inner_websocket_handlers()
+        handlers.position_handler = self._position_handler
+        return handlers
 
     # Futures-specific position event handler (abstract)
     async def _position_handler(self, position: Position) -> None:

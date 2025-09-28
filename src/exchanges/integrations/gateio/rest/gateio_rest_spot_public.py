@@ -33,7 +33,7 @@ from exchanges.structs.common import (
     Ticker
 )
 from exchanges.structs.enums import KlineInterval
-from exchanges.interfaces import PublicSpotRest
+from exchanges.interfaces.rest import PublicSpotRest
 # Removed BaseExchangeMapper import - using direct utility functions
 from infrastructure.networking.http.structs import HTTPMethod
 from config.structs import ExchangeConfig
@@ -45,6 +45,7 @@ from exchanges.integrations.gateio.utils import (
     to_pair, to_symbol, format_quantity, format_price, to_side
 )
 from exchanges.integrations.gateio.services.spot_symbol_mapper import GateioSpotSymbol
+from exchanges.integrations.gateio.rest.rest_factory import create_public_rest_manager
 
 
 class GateioPublicSpotRest(PublicSpotRest):
@@ -63,19 +64,17 @@ class GateioPublicSpotRest(PublicSpotRest):
             config: ExchangeConfig with Gate.io configuration
             logger: Optional HFT logger injection
         """
-        super().__init__(config, is_private=False)
+        # Create REST manager immediately
+        rest_manager = create_public_rest_manager(config, logger)
         
-        # Initialize HFT logger
-        if logger is None:
-            from infrastructure.logging import get_exchange_logger
-            logger = get_exchange_logger('gateio', 'rest.public')
-        self.logger = logger
-        
+        # Call parent with injected REST manager
+        super().__init__(rest_manager, config, logger=logger)
+
         # Simple caching for exchange info to reduce API calls (HFT compliant - config data only)
         self._exchange_info: Optional[Dict[Symbol, SymbolInfo]] = None
         self._cache_timestamp: float = 0
         self._cache_ttl: float = 300.0  # 5-minute cache TTL
-    
+
     def _extract_symbol_precision(self, gateio_symbol: Dict[str, Any]) -> tuple[int, int, float, float]:
         """
         Extract precision and size limits from Gate.io symbol data.

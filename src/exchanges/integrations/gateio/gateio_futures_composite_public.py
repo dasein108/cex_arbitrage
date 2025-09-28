@@ -6,7 +6,7 @@ public operations with futures-specific WebSocket and REST handling.
 """
 
 from typing import List, Optional, Dict, Any
-from exchanges.interfaces.composite.spot.base_public_spot_composite import CompositePublicSpotExchange
+from exchanges.interfaces.composite.futures.base_public_futures_composite import CompositePublicFuturesExchange
 from exchanges.interfaces import PublicFuturesRest
 from exchanges.interfaces.ws.futures.ws_public_futures import PublicFuturesWebsocket
 from exchanges.structs.common import Symbol
@@ -14,9 +14,10 @@ from infrastructure.logging import HFTLoggerInterface
 from infrastructure.networking.websocket.handlers import PublicWebsocketHandlers
 from exchanges.integrations.gateio.ws import GateioPublicFuturesWebsocket
 from exchanges.integrations.gateio.rest.gateio_rest_futures_public import GateioPublicFuturesRest
+from infrastructure.exceptions.system import InitializationError
 
 
-class GateioFuturesCompositePublicSpotExchange(CompositePublicSpotExchange):
+class GateioFuturesCompositePublicExchange(CompositePublicFuturesExchange):
     """
     Gate.io futures public composite exchange.
     
@@ -33,24 +34,19 @@ class GateioFuturesCompositePublicSpotExchange(CompositePublicSpotExchange):
 
     def __init__(self, config, logger: Optional[HFTLoggerInterface] = None,
                  handlers: Optional[PublicWebsocketHandlers] = None):
-        """Initialize Gate.io futures public composite exchange."""
-        super().__init__(config, logger=logger, handlers=handlers)
-        
-        # Override tag for futures identification
-        self._tag = f'{config.name}_futures_public'
+        """Initialize Gate.io futures public composite exchange with direct client injection."""
+            # Create clients directly with proper error context
+        rest_client = GateioPublicFuturesRest(config, logger)
+        websocket_client = GateioPublicFuturesWebsocket(config, self._get_inner_websocket_handlers(), logger)
 
-    # Composite pattern implementation - create futures-specific components
+        super().__init__(config, logger=logger, handlers=handlers,
+                         rest_client=rest_client, websocket_client=websocket_client)
 
-    async def _create_public_rest(self) -> PublicFuturesRest:
-        """Create Gate.io futures public REST client."""
-        return GateioPublicFuturesRest(self.config, self.logger)
 
-    async def _create_public_websocket(self) -> PublicFuturesWebsocket:
-        """Create Gate.io futures public WebSocket client."""
-        return GateioPublicFuturesWebsocket(self.config, self._create_inner_websocket_handlers(), self.logger)
+    # Factory methods removed - clients are now injected directly during construction
 
-    def _create_inner_websocket_handlers(self) -> PublicWebsocketHandlers:
-        handlers = super()._create_inner_websocket_handlers()
+    def _get_inner_websocket_handlers(self) -> PublicWebsocketHandlers:
+        handlers = super()._get_inner_websocket_handlers()
         # Add futures-specific channel handlers if needed
         return handlers
 

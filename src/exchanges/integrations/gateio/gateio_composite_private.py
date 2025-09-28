@@ -10,6 +10,7 @@ from exchanges.structs import Side, OrderType
 from infrastructure.networking.websocket.handlers import PrivateWebsocketHandlers
 from infrastructure.logging import HFTLoggerInterface
 from config.structs import ExchangeConfig
+from infrastructure.exceptions.system import InitializationError
 
 
 class GateioCompositePrivateSpotExchange(CompositePrivateSpotExchange):
@@ -24,20 +25,15 @@ class GateioCompositePrivateSpotExchange(CompositePrivateSpotExchange):
 
     def __init__(self, config: ExchangeConfig, logger: Optional[HFTLoggerInterface] = None,
                  handlers: Optional[PrivateWebsocketHandlers] = None):
-        """Initialize Gate.io private exchange."""
-        super().__init__(config, logger, handlers)
+        """Initialize Gate.io private exchange with direct client injection."""
+        # Create clients directly with proper error context
+        rest_client = GateioPrivateSpotRest(config, logger)
 
-    # Factory Methods - Return Existing Gate.io Clients
-    
-    async def _create_private_rest(self) -> GateioPrivateSpotRest:
-        """Create Gate.io private REST client."""
-        return GateioPrivateSpotRest(self.config, self.logger)
-    
-    async def _create_private_websocket(self) -> Optional[GateioPrivateSpotWebsocket]:
-        """Create Gate.io private WebSocket client with handlers."""
+        # Initialize parent first to make _create_inner_websocket_handlers available
+        # We'll provide a temporary WebSocket client and update it after initialization
+        websocket_client = GateioPrivateSpotWebsocket(config=config,
+                                                           handlers=self.ws_handlers,  # Will be set later
+                                                           logger=logger)
 
-        return GateioPrivateSpotWebsocket(
-            config=self.config,
-            handlers=self._create_inner_websocket_handlers(),
-            logger=self.logger
-        )
+        # Call parent with clients first, then config
+        super().__init__(rest_client, websocket_client, config, logger, handlers)

@@ -33,8 +33,7 @@ class BaseCompositeExchange(ABC):
     """
 
     def __init__(self, config: ExchangeConfig, is_private: bool, exchange_type: ExchangeType,
-                 logger: Optional[HFTLoggerInterface] = None,
-                 handlers: Optional[Union[PrivateWebsocketHandlers, PublicWebsocketHandlers]] = None):
+                 logger: Optional[HFTLoggerInterface]):
         """
         Initialize composite exchange interface.
         
@@ -43,7 +42,6 @@ class BaseCompositeExchange(ABC):
             is_private: Whether this is a private (trading) or public (market data) exchange
             exchange_type: Exchange type (SPOT, FUTURES) for tag and behavior customization
             logger: Optional injected HFT logger (auto-created if not provided)
-            handlers: Optional WebSocket handlers (PrivateWebsocketHandlers or PublicWebsocketHandlers)
         """
         self._is_private = is_private
         self._exchange_name = config.name
@@ -58,15 +56,12 @@ class BaseCompositeExchange(ABC):
         self._connection_state = ConnectionState.DISCONNECTED
         
         # Use injected logger or create exchange-specific logger
-        self.logger = logger or get_exchange_logger(config.name, self._tag)
+        self.logger = logger
         
         # Connection and state management
         self._symbols_info: Optional[SymbolsInfo] = None
         self._last_update_time = 0.0
         
-        # Store handlers for subclass use
-        self.handlers = handlers
-
         # Log interface initialization
         self.logger.info("BaseExchangeInterface initialized", exchange=config.name, tag=self._tag)
 
@@ -143,16 +138,6 @@ class BaseCompositeExchange(ABC):
     def symbols_info(self) -> Optional[SymbolsInfo]:
         """Get symbol information."""
         return self._symbols_info
-
-    @abstractmethod
-    def _create_inner_websocket_handlers(self) -> Union[PrivateWebsocketHandlers, PublicWebsocketHandlers]:
-        """
-        Get WebSocket event handlers for this exchange.
-
-        Returns:
-            Instance of PrivateWebsocketHandlers or PublicWebsocketHandlers
-        """
-        pass
 
     async def _handle_connection_state(self, state: ConnectionState) -> None:
         """

@@ -24,6 +24,8 @@ Memory: O(1) per request, optimized for trading operations
 from typing import Dict, List, Optional, Any
 import msgspec
 
+from infrastructure.networking.http import RestManager
+from utils import get_current_timestamp
 from exchanges.structs.common import (
     Symbol, Order, AssetBalance,
     AssetInfo, NetworkInfo, WithdrawalRequest, WithdrawalResponse
@@ -33,18 +35,18 @@ from exchanges.structs.enums import TimeInForce, WithdrawalStatus
 from exchanges.structs import OrderType, Side
 from infrastructure.networking.http.structs import HTTPMethod
 from infrastructure.exceptions.exchange import ExchangeRestError, ExchangeRestOrderCancelledFilledOrNotExist
-from exchanges.interfaces import PrivateSpotRest
+from exchanges.interfaces.rest import PrivateSpotRest
 from exchanges.interfaces.rest.interfaces import ListenKeyInterface
 from exchanges.integrations.mexc.structs.exchange import (MexcAccountResponse, MexcOrderResponse,
                                                           MexcCurrencyInfoResponse)
 
+from config.structs import ExchangeConfig
+from .strategies import create_private_rest_manager
 # Import direct utility functions
 from exchanges.integrations.mexc.utils import (
     to_pair, from_side, from_order_type, format_quantity, format_price, 
     from_time_in_force, to_order_status, rest_to_order, rest_to_withdrawal_status
 )
-
-
 
 class MexcPrivateSpotRest(PrivateSpotRest, ListenKeyInterface):
     """
@@ -54,7 +56,21 @@ class MexcPrivateSpotRest(PrivateSpotRest, ListenKeyInterface):
     Optimized for high-frequency trading operations with minimal overhead.
     """
 
-    async def modify_order(self, symbol: Symbol, order_id: OrderId, qunatity: Optional[float] = None,
+    def __init__(self, config: ExchangeConfig, logger=None, **kwargs):
+        """
+        Initialize MEXC private REST client.
+
+        Args:
+            config: ExchangeConfig with composite URL and authentication
+            logger: Optional HFT logger injection
+        """
+        # Create REST manager immediately
+        rest_manager = create_private_rest_manager(config, logger)
+
+        # Call parent with injected REST manager
+        super().__init__(rest_manager, config, logger=logger)
+
+    async def modify_order(self, symbol: Symbol, order_id: OrderId, quantity: Optional[float] = None,
                            price: Optional[float] = None, quote_quantity: Optional[float] = None,
                            time_in_force: Optional[TimeInForce] = None, stop_price: Optional[float] = None) -> Order:
         raise NotImplementedError("MEXC does not support direct order modification via API")
@@ -624,7 +640,7 @@ class MexcPrivateSpotRest(PrivateSpotRest, ListenKeyInterface):
                 address=request.address,
                 network=request.network,
                 status=WithdrawalStatus.PENDING,
-                timestamp=int(self._get_current_timestamp()),
+                timestamp=get_current_timestamp(),
                 memo=request.memo,
                 remark=request.remark
             )

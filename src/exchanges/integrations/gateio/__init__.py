@@ -51,7 +51,7 @@ from .gateio_composite_private import GateioCompositePrivateSpotExchange
 from .gateio_composite_public import GateioCompositePublicSpotExchange
 
 # Futures exchange implementations (separate from spot)
-from .gateio_futures_composite_public import GateioFuturesCompositePublicSpotExchange
+from .gateio_futures_composite_public import GateioFuturesCompositePublicExchange
 from .gateio_futures_composite_private import GateioFuturesCompositePrivateExchange
 # Auto-register Gate.io services (symbol mapper, mappings) 
 from . import services

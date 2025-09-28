@@ -24,20 +24,9 @@ from config.structs import ExchangeConfig
 from infrastructure.logging import HFTLoggerInterface
 
 
-class PrivateTradingInterface(BaseRestInterface, ABC):
+class PrivateTradingInterface(ABC):
     """Abstract interface for private exchange trading operations (both spot and futures)"""
     CAN_MODIFY_ORDERS = False  # Default capability flag for modifying orders
-
-    def __init__(self, config: ExchangeConfig, logger: Optional[HFTLoggerInterface] = None, **kwargs):
-        """Initialize private trading interface with transport manager."""
-        if not config.has_credentials():
-            raise ValueError(f"{config.name} API credentials must be provided")
-            
-        super().__init__(
-            config=config,
-            is_private=True,  # Private API operations with authentication
-            logger=logger  # Pass logger to parent for specialized private logging
-        )
 
     @abstractmethod
     async def get_balances(self) -> List[AssetBalance]:
@@ -54,7 +43,7 @@ class PrivateTradingInterface(BaseRestInterface, ABC):
         self,
         symbol: Symbol,
         order_id: OrderId,
-        qunatity: Optional[float] = None,
+        quantity: Optional[float] = None,
         price: Optional[float] = None,
         quote_quantity: Optional[float] = None,
         time_in_force: Optional[TimeInForce] = None,

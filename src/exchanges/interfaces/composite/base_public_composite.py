@@ -30,8 +30,8 @@ The BasePublicComposite extracts common functionality between spot and futures p
 
 ## Implementation Pattern
 
-This is an abstract base class using the Template Method pattern:
-- Concrete exchanges implement factory methods for REST/WS creation
+This is a base class using client injection pattern:
+- Concrete exchanges provide pre-constructed REST/WebSocket clients
 - Base class handles orchestration and state management
 - Eliminates code duplication across exchange implementations
 
@@ -114,18 +114,16 @@ class BasePublicComposite(BaseCompositeExchange, Generic[RestT, WebsocketT]):
     
     ## Implementation Requirements
     
-    Concrete exchanges must implement:
-    1. `_create_public_rest()`: Factory for REST client
-    2. `_create_public_websocket()`: Factory for WebSocket client
+    Concrete exchanges must provide REST and WebSocket clients during construction:
     
     Example:
         ```python
         class MexcPublicExchange(BasePublicComposite[MexcPublicRest, MexcPublicWebsocket]):
-            async def _create_public_rest(self) -> MexcPublicRest:
-                return MexcPublicRest(self.config, self.logger)
-                
-            async def _create_public_websocket(self) -> MexcPublicWebsocket:
-                return MexcPublicWebsocket(self.config, handlers, self.logger)
+            def __init__(self, config, logger=None, handlers=None):
+                rest_client = MexcPublicRest(config, logger)
+                websocket_client = MexcPublicWebsocket(config, handlers, logger)
+                super().__init__(config, ExchangeType.SPOT, logger, handlers, 
+                                rest_client, websocket_client)
         ```
     
     ## Thread Safety
@@ -138,18 +136,36 @@ class BasePublicComposite(BaseCompositeExchange, Generic[RestT, WebsocketT]):
     """
 
     def __init__(self, config, exchange_type: ExchangeType, logger: Optional[HFTLoggerInterface] = None,
-                 handlers: Optional[PublicWebsocketHandlers] = None):
+                 handlers: Optional[PublicWebsocketHandlers] = None,
+                 rest_client: Optional[RestT] = None,
+                 websocket_client: Optional[WebsocketT] = None):
         """
-        Initialize public exchange interface.
+        Initialize public exchange interface with direct client injection.
         
         Args:
             config: Exchange configuration (credentials not required)
             exchange_type: Exchange type (SPOT, FUTURES) for behavior customization
             logger: Optional injected HFT logger (auto-created if not provided)
             handlers: Optional PublicWebsocketHandlers for custom event handling
+            rest_client: Pre-constructed REST client for API operations
+            websocket_client: Pre-constructed WebSocket client for real-time data
+            
+        Raises:
+            InitializationError: If required clients are not provided
         """
-        super().__init__(config, is_private=False, exchange_type=exchange_type, logger=logger,
-                         handlers=handlers)
+        super().__init__(config, is_private=False, exchange_type=exchange_type, logger=logger)
+
+        self.handlers = handlers
+
+        self.ws_handlers = PublicWebsocketHandlers(
+                orderbook_handler=self._handle_orderbook,
+                ticker_handler=self._handle_ticker,
+                trade_handler=self._handle_trade,
+                book_ticker_handler=self._handle_book_ticker,
+            )
+        # Store clients directly instead of factory functions
+        self._public_rest = rest_client
+        self._public_ws = websocket_client
         
         # Market data state (enhanced for HFT operations)
         self._orderbooks: Dict[Symbol, OrderBook] = {}
@@ -161,9 +177,8 @@ class BasePublicComposite(BaseCompositeExchange, Generic[RestT, WebsocketT]):
         
         self._active_symbols: Set[Symbol] = set()
         
-        # Client instances (managed by factory methods)
-        self._public_rest: Optional[RestT] = None
-        self._public_ws: Optional[WebsocketT] = None
+        # Client instances (provided during construction)
+        # Note: _public_rest and _public_ws already set above
         
         # Connection status tracking
         self._public_rest_connected = False
@@ -179,28 +194,8 @@ class BasePublicComposite(BaseCompositeExchange, Generic[RestT, WebsocketT]):
         ] = []
 
     # ========================================
-    # Abstract Factory Methods
+    # Factory methods removed - clients are now injected directly during construction
     # ========================================
-
-    @abstractmethod
-    async def _create_public_rest(self) -> RestT:
-        """
-        Create exchange-specific public REST client.
-        
-        Subclasses must implement this factory method to return
-        their specific REST client that extends PublicRestInterface.
-        """
-        pass
-
-    @abstractmethod
-    async def _create_public_websocket(self) -> Optional[WebsocketT]:
-        """
-        Create exchange-specific public WebSocket client.
-        
-        Returns:
-            Optional[WebsocketT]: WebSocket client or None if disabled
-        """
-        pass
 
     # ========================================
     # Properties and Core Interface
@@ -326,9 +321,10 @@ class BasePublicComposite(BaseCompositeExchange, Generic[RestT, WebsocketT]):
         try:
             init_start = time.perf_counter()
             
-            # Step 1: Create public REST client using abstract factory
-            self.logger.info(f"{self._tag} Creating public REST client...")
-            self._public_rest = await self._create_public_rest()
+            # Step 1: Validate injected REST client
+            if not self._public_rest:
+                raise InitializationError("No public REST client provided")
+            self.logger.info(f"{self._tag} Using injected public REST client...")
             
             # Step 2: Load initial market data via REST (parallel loading)
             self.logger.info(f"{self._tag} Loading initial market data...")
@@ -491,24 +487,15 @@ class BasePublicComposite(BaseCompositeExchange, Generic[RestT, WebsocketT]):
             'best_bid_ask_count': len(self._book_ticker),
         }
 
-    def _create_inner_websocket_handlers(self) -> PublicWebsocketHandlers:
-        """
-        Handlers to connect websocket events to internal methods.
-        """
-        return PublicWebsocketHandlers(
-                orderbook_handler=self._handle_orderbook,
-                ticker_handler=self._handle_ticker,
-                trade_handler=self._handle_trade,
-                book_ticker_handler=self._handle_book_ticker,
-            )
-
     async def _initialize_public_websocket(self) -> None:
         """Initialize public WebSocket with constructor injection pattern including book ticker handler."""
         try:
             self.logger.debug("Initializing public WebSocket client")
 
-            # Use abstract factory method to create client
-            self._public_ws = await self._create_public_websocket()
+            # Use injected WebSocket client if available
+            if not self._public_ws:
+                self.logger.warning("No public WebSocket client provided - skipping WebSocket initialization")
+                return
             
             self._public_ws_connected = self._public_ws.is_connected
 

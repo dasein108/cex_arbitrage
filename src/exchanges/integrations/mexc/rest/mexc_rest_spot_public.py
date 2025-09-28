@@ -26,6 +26,7 @@ import time
 from typing import Dict, List, Optional
 from datetime import datetime
 import msgspec
+from infrastructure.networking.http import RestManager
 
 from exchanges.integrations.mexc.structs.exchange import (
     MexcSymbolResponse, MexcExchangeInfoResponse, 
@@ -38,15 +39,15 @@ from exchanges.structs.common import (
 from exchanges.structs.types import AssetName
 from exchanges.structs.enums import KlineInterval
 from exchanges.structs import Side
-from exchanges.interfaces import PublicSpotRest
+from exchanges.interfaces.rest import PublicSpotRest
 # Using MexcSymbol singleton for symbol conversions
 from exchanges.integrations.mexc.services.symbol_mapper import MexcSymbol
 from config.structs import ExchangeConfig
 from infrastructure.networking.http.structs import HTTPMethod
 from common.iterators import time_range_iterator
-# Inline utility function to avoid import issues
-def get_minimal_step(precision: int) -> float:
-    return 10**-precision
+from utils import get_minimal_step
+from .strategies import create_public_rest_manager
+
 
 class MexcPublicSpotRest(PublicSpotRest):
     """
@@ -64,16 +65,14 @@ class MexcPublicSpotRest(PublicSpotRest):
             config: ExchangeConfig with composite URL and rate limits
             logger: Optional HFT logger injection
         """
-        super().__init__(config, is_private=False)
+        # Create REST manager immediately
+        rest_manager = create_public_rest_manager(config, logger)
+
+        # Call parent with injected REST manager
+        super().__init__(rest_manager, config,  logger=logger)
 
         self._symbols_info: Optional[Dict[Symbol, SymbolInfo]] = None
-        
-        # Initialize HFT logger
-        if logger is None:
-            from infrastructure.logging import get_exchange_logger
-            logger = get_exchange_logger('mexc', 'rest.public')
-        self.logger = logger
-        
+
     def _extract_symbol_precision(self, mexc_symbol: MexcSymbolResponse) -> tuple[int, int, float, float]:
         """
         Extract precision and size limits from MEXC symbol data.

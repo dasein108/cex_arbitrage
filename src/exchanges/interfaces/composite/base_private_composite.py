@@ -47,23 +47,46 @@ class BasePrivateComposite(BaseCompositeExchange, Generic[RestT, WebsocketT]):
     - Position management (futures-only via futures subclass)
     """
 
-    def __init__(self, config: ExchangeConfig, exchange_type: ExchangeType, logger: Optional[HFTLoggerInterface] = None,
-                 handlers: Optional[PrivateWebsocketHandlers] = None) -> None:
+    def __init__(self,
+                 config: ExchangeConfig, exchange_type: ExchangeType, 
+                 logger: Optional[HFTLoggerInterface] = None,
+                 handlers: Optional[PrivateWebsocketHandlers] = None,
+                 rest_client: Optional[RestT]=None, websocket_client: Optional[WebsocketT]=None) -> None:
         """
-        Initialize base private exchange interface.
+        Initialize base private exchange interface with direct client injection.
         
         Args:
+            rest_client: Required pre-constructed REST client for API operations
+            websocket_client: Required pre-constructed WebSocket client for real-time data
             config: Exchange configuration with API credentials
             exchange_type: Exchange type (SPOT, FUTURES) for behavior customization
             logger: Optional injected HFT logger (auto-created if not provided)
             handlers: Optional private WebSocket handlers
-        """
-        # Create default handlers if none provided
-        if not handlers:
-            handlers = PrivateWebsocketHandlers()
             
+        Raises:
+            InitializationError: If required clients are not provided or invalid
+        """
+        # Validate required clients immediately at construction
+        if rest_client is None:
+            raise InitializationError("REST client is required and cannot be None")
+        if websocket_client is None:
+            raise InitializationError("WebSocket client is required and cannot be None")
+            
+        # Create default handlers if none provided
+        self.handlers = handlers
+
+        self.ws_handlers = PrivateWebsocketHandlers(
+            order_handler=self._order_handler,
+            balance_handler=self._balance_handler,
+            execution_handler=self._execution_handler,
+        )
+
         super().__init__(config=config, is_private=True, exchange_type=exchange_type,
-                         logger=logger, handlers=handlers)
+                         logger=logger)
+        
+        # Store clients directly (now guaranteed to be non-None)
+        self._private_rest: RestT = rest_client
+        self._private_ws: WebsocketT = websocket_client
 
         # Private data state (HFT COMPLIANT - no caching of real-time data)
         self._balances: Dict[AssetName, AssetBalance] = {}
@@ -73,9 +96,8 @@ class BasePrivateComposite(BaseCompositeExchange, Generic[RestT, WebsocketT]):
         self._executed_orders: Dict[Symbol, Dict[OrderId, Order]] = {}
         self._max_executed_orders_per_symbol = 1000  # Memory management limit
 
-        # Client instances (managed by abstract factory methods)
-        self._private_rest: Optional[RestT] = None
-        self._private_ws: Optional[WebsocketT] = None
+        # Client instances are now guaranteed to be non-None via validation
+        # _private_rest and _private_ws are set above with type safety
 
         # Connection status tracking
         self._private_rest_connected = False
@@ -179,27 +201,7 @@ class BasePrivateComposite(BaseCompositeExchange, Generic[RestT, WebsocketT]):
         """
         return await self._private_rest.get_order(symbol, order_id)
 
-    # Abstract factory methods
-
-    @abstractmethod
-    async def _create_private_rest(self) -> RestT:
-        """
-        Create exchange-specific private REST client.
-        
-        Returns:
-            RestT implementation for this exchange
-        """
-        pass
-
-    @abstractmethod
-    async def _create_private_websocket(self) -> Optional[WebsocketT]:
-        """
-        Create exchange-specific private WebSocket client with handler objects.
-        
-        Returns:
-            WebsocketT implementation or None
-        """
-        pass
+    # Factory methods removed - clients are now injected directly during construction
 
     # Data loading methods
 
@@ -207,10 +209,7 @@ class BasePrivateComposite(BaseCompositeExchange, Generic[RestT, WebsocketT]):
         """
         Load account balances from REST API with error handling and metrics.
         """
-        if not self._private_rest:
-            self.logger.warning("No private REST client available for balance loading")
-            return
-
+        # Client is guaranteed to be available via constructor validation
         try:
             with LoggingTimer(self.logger, "load_balances") as timer:
                 balances_data = await self._private_rest.get_balances()
@@ -228,9 +227,7 @@ class BasePrivateComposite(BaseCompositeExchange, Generic[RestT, WebsocketT]):
         """
         Load open orders from REST API with error handling.
         """
-        if not self._private_rest:
-            return
-
+        # Client is guaranteed to be available via constructor validation
         try:
             with LoggingTimer(self.logger, "load_open_orders") as timer:
                 orders = await self._private_rest.get_open_orders(symbol)
@@ -369,22 +366,21 @@ class BasePrivateComposite(BaseCompositeExchange, Generic[RestT, WebsocketT]):
         self._symbols_info = symbols_info
 
         try:
-            # Step 1: Create REST clients using abstract factory
-            self.logger.info(f"{self._tag} Creating REST clients...")
-            self._private_rest = await self._create_private_rest()
-            self._private_rest_connected = self._private_rest is not None
+            # Step 1: Clients are guaranteed to be valid via constructor validation
+            self._private_rest_connected = True
+            self.logger.info(f"{self._tag} REST client validated")
 
             # Step 2: Load private data via REST (parallel loading)
             self.logger.info(f"{self._tag} Loading private data...")
             await self._refresh_exchange_data()
 
-            # Step 3: Create WebSocket clients with handler injection
-            self.logger.info(f"{self._tag} Creating WebSocket clients...")
+            # Step 3: Initialize WebSocket if provided
+            self.logger.info(f"{self._tag} Initializing WebSocket client...")
             await self._initialize_private_websocket()
 
             self.logger.info(f"{self._tag} private initialization completed",
-                            has_rest=self._private_rest is not None,
-                            has_ws=self._private_ws is not None,
+                            has_rest=True,  # Always true via validation
+                            has_ws=True,    # Always true via validation
                             balance_count=len(self._balances),
                             order_count=sum(len(orders) for orders in self._open_orders.values()))
 
@@ -393,26 +389,17 @@ class BasePrivateComposite(BaseCompositeExchange, Generic[RestT, WebsocketT]):
             await self.close()  # Cleanup on failure
             raise
 
-    def _create_inner_websocket_handlers(self) -> PrivateWebsocketHandlers:
-        """
-        Create handlers to connect websocket events to internal methods.
-        """
-        return PrivateWebsocketHandlers(
-            order_handler=self._order_handler,
-            balance_handler=self._balance_handler,
-            execution_handler=self._execution_handler,
-        )
-
     async def _initialize_private_websocket(self) -> None:
-        """Initialize private WebSocket with constructor injection."""
+        """Initialize private WebSocket (guaranteed to be available)."""
         if not self.config.has_credentials():
             self.logger.info("No credentials - skipping private WebSocket")
             return
 
+        # WebSocket client is guaranteed to exist via constructor validation
         try:
-            self._private_ws = await self._create_private_websocket()
             await self._private_ws.initialize()
-
+            self._private_ws_connected = True
+            self.logger.info("Private WebSocket initialized successfully")
         except Exception as e:
             self.logger.error("Private WebSocket initialization failed", error=str(e))
             raise InitializationError(f"Private WebSocket initialization failed: {e}")
@@ -520,15 +507,13 @@ class BasePrivateComposite(BaseCompositeExchange, Generic[RestT, WebsocketT]):
     async def close(self) -> None:
         """Close private exchange connections."""
         try:
-            close_tasks = []
+            # Clients are guaranteed to exist via constructor validation
+            close_tasks = [
+                self._private_ws.close(),
+                self._private_rest.close()
+            ]
 
-            if self._private_ws:
-                close_tasks.append(self._private_ws.close())
-            if self._private_rest:
-                close_tasks.append(self._private_rest.close())
-
-            if close_tasks:
-                await asyncio.gather(*close_tasks, return_exceptions=True)
+            await asyncio.gather(*close_tasks, return_exceptions=True)
 
             # Call parent cleanup
             await super().close()

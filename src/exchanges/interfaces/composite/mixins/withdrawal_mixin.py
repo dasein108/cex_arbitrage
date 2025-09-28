@@ -87,6 +87,8 @@ class WithdrawalMixin(PrivateSpotDependencies, PrivateExchangeValidationMixin):
         Raises:
             InitializationError: If REST client not available or initialization fails
         """
+        self.logger.info(f"{self._tag} Initializing withdrawal infrastructure...")
+
         if self._withdrawal_initialized:
             self.logger.debug("Withdrawal infrastructure already initialized")
             return
@@ -97,8 +99,8 @@ class WithdrawalMixin(PrivateSpotDependencies, PrivateExchangeValidationMixin):
         except TypeError as e:
             raise InitializationError(f"Missing required dependencies: {e}")
             
-        if self._private_rest is None:
-            raise InitializationError("Private REST client must be initialized before withdrawal infrastructure")
+        # Private REST client is guaranteed to be available via constructor validation
+        # No need to check for None
         
         try:
             # Load asset information for withdrawal validation
@@ -145,12 +147,9 @@ class WithdrawalMixin(PrivateSpotDependencies, PrivateExchangeValidationMixin):
             Dictionary mapping AssetName to AssetInfo with network configurations
             
         Raises:
-            NotImplementedError: If private REST client is not available
             ExchangeAPIError: If unable to fetch currency information
         """
-        if not hasattr(self, '_private_rest') or self._private_rest is None:
-            raise NotImplementedError("Private REST client required for asset info retrieval")
-        
+        # Private REST client is guaranteed to be available via constructor validation
         return await self._private_rest.get_assets_info()
     
     async def submit_withdrawal(self, request: WithdrawalRequest) -> WithdrawalResponse:
@@ -165,12 +164,9 @@ class WithdrawalMixin(PrivateSpotDependencies, PrivateExchangeValidationMixin):
             WithdrawalResponse with withdrawal details
             
         Raises:
-            NotImplementedError: If private REST client is not available
             ExchangeAPIError: If withdrawal submission fails
         """
-        if not hasattr(self, '_private_rest') or self._private_rest is None:
-            raise NotImplementedError("Private REST client required for withdrawal operations")
-        
+        # Private REST client is guaranteed to be available via constructor validation
         return await self._private_rest.submit_withdrawal(request)
     
     async def withdraw(self, request: WithdrawalRequest) -> WithdrawalResponse:
@@ -198,12 +194,9 @@ class WithdrawalMixin(PrivateSpotDependencies, PrivateExchangeValidationMixin):
             True if cancellation successful, False otherwise
             
         Raises:
-            NotImplementedError: If private REST client is not available
             ExchangeAPIError: If cancellation fails
         """
-        if not hasattr(self, '_private_rest') or self._private_rest is None:
-            raise NotImplementedError("Private REST client required for withdrawal operations")
-        
+        # Private REST client is guaranteed to be available via constructor validation
         return await self._private_rest.cancel_withdrawal(withdrawal_id)
     
     async def get_withdrawal_status(self, withdrawal_id: str) -> WithdrawalResponse:
@@ -218,12 +211,9 @@ class WithdrawalMixin(PrivateSpotDependencies, PrivateExchangeValidationMixin):
             WithdrawalResponse with current status
             
         Raises:
-            NotImplementedError: If private REST client is not available
             ExchangeAPIError: If withdrawal not found or query fails
         """
-        if not hasattr(self, '_private_rest') or self._private_rest is None:
-            raise NotImplementedError("Private REST client required for withdrawal operations")
-        
+        # Private REST client is guaranteed to be available via constructor validation
         return await self._private_rest.get_withdrawal_status(withdrawal_id)
     
     async def get_withdrawal_history(
@@ -241,13 +231,8 @@ class WithdrawalMixin(PrivateSpotDependencies, PrivateExchangeValidationMixin):
             
         Returns:
             List of historical withdrawals
-            
-        Raises:
-            NotImplementedError: If private REST client is not available
         """
-        if not hasattr(self, '_private_rest') or self._private_rest is None:
-            raise NotImplementedError("Private REST client required for withdrawal operations")
-        
+        # Private REST client is guaranteed to be available via constructor validation
         return await self._private_rest.get_withdrawal_history(asset, limit)
     
     # Additional helper methods specific to composite usage
@@ -257,9 +242,9 @@ class WithdrawalMixin(PrivateSpotDependencies, PrivateExchangeValidationMixin):
         Check if this exchange instance has withdrawal capability.
         
         Returns:
-            True if private REST client is available for withdrawals
+            True (always, since private REST client is guaranteed to be available)
         """
-        return hasattr(self, '_private_rest') and self._private_rest is not None
+        return True  # Client is guaranteed to be available via constructor validation
     
     async def get_withdrawal_limits(
         self,
@@ -280,8 +265,7 @@ class WithdrawalMixin(PrivateSpotDependencies, PrivateExchangeValidationMixin):
         Raises:
             NotImplementedError: If private REST client is not available
         """
-        if not self._has_withdrawal_capability():
-            raise NotImplementedError("Private REST client required for withdrawal operations")
+        # Private REST client is guaranteed to be available via constructor validation
         
         # Use the inherited method from WithdrawalInterface
         return await self.get_withdrawal_limits_for_asset(asset, network)
@@ -297,8 +281,7 @@ class WithdrawalMixin(PrivateSpotDependencies, PrivateExchangeValidationMixin):
             ValueError: If validation fails
             NotImplementedError: If private REST client is not available
         """
-        if not self._has_withdrawal_capability():
-            raise NotImplementedError("Private REST client required for withdrawal validation")
+        # Private REST client is guaranteed to be available via constructor validation
         
         return await self.validate_withdrawal_request(request)
     

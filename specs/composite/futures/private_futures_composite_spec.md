@@ -241,7 +241,7 @@ async def initialize(self, symbols_info: SymbolsInfo) -> None:
         await asyncio.gather(
             self._load_leverage_settings(),
             self._load_margin_info(),
-            self._load_futures_positions(),
+            self._load_positions(),
             return_exceptions=True
         )
 
