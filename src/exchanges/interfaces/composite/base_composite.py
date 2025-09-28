@@ -6,18 +6,19 @@ handling connection management, initialization, and state tracking.
 """
 
 from abc import ABC, abstractmethod
-from typing import Optional, Union
+from typing import Optional, Union, Generic, TypeVar
 
 from exchanges.structs.common import SymbolsInfo
 from config.structs import ExchangeConfig
 from infrastructure.networking.websocket.handlers import PrivateWebsocketHandlers,PublicWebsocketHandlers
 from infrastructure.networking.websocket.structs import ConnectionState
+from .types import RestClientType, WebSocketClientType
 
 # HFT Logger Integration
 from infrastructure.logging import get_exchange_logger, LoggingTimer, HFTLoggerInterface
 
 
-class BaseCompositeExchange(ABC):
+class BaseCompositeExchange(Generic[RestClientType, WebSocketClientType], ABC):
     """
     Base exchange interface with common connection and state management logic.
     
@@ -32,13 +33,20 @@ class BaseCompositeExchange(ABC):
     establishing common patterns for connection management and state tracking.
     """
 
-    def __init__(self, config: ExchangeConfig, is_private: bool, logger: Optional[HFTLoggerInterface] = None):
+    def __init__(self, 
+                 config: ExchangeConfig, 
+                 rest_client: Optional[RestClientType] = None,
+                 websocket_client: Optional[WebSocketClientType] = None,
+                 is_private: bool = False,
+                 logger: Optional[HFTLoggerInterface] = None):
         """
-        Initialize composite exchange interface.
+        Initialize composite exchange interface with dependency injection.
         
         Args:
-            tag: Unique identifier for this exchange instance
             config: Exchange configuration containing credentials and settings
+            rest_client: Injected REST client instance
+            websocket_client: Injected WebSocket client instance (optional)
+            is_private: Whether this is a private exchange instance
             logger: Optional injected HFT logger (auto-created if not provided)
         """
         self._is_private = is_private
@@ -51,12 +59,23 @@ class BaseCompositeExchange(ABC):
         # Use injected logger or create exchange-specific logger
         self.logger = logger or get_exchange_logger(config.name, self._tag)
         
+        # Dependency injection - assign injected clients
+        self._rest: Optional[RestClientType] = rest_client
+        self._ws: Optional[WebSocketClientType] = websocket_client
+        
+        # Connection status tracking
+        self._rest_connected = rest_client is not None
+        self._ws_connected = websocket_client is not None
+        
         # Connection and state management
         self._symbols_info: Optional[SymbolsInfo] = None
         self._last_update_time = 0.0
 
         # Log interface initialization
-        self.logger.info("BaseExchangeInterface initialized", exchange=config.name)
+        self.logger.info("BaseExchangeInterface initialized", 
+                        exchange=config.name,
+                        has_rest=self._rest is not None,
+                        has_ws=self._ws is not None)
 
     @abstractmethod
     async def close(self):
@@ -131,6 +150,26 @@ class BaseCompositeExchange(ABC):
     def symbols_info(self) -> Optional[SymbolsInfo]:
         """Get symbol information."""
         return self._symbols_info
+
+    @property
+    def rest_client(self) -> Optional[RestClientType]:
+        """Get the injected REST client."""
+        return self._rest
+
+    @property
+    def websocket_client(self) -> Optional[WebSocketClientType]:
+        """Get the injected WebSocket client."""
+        return self._ws
+
+    @property
+    def has_rest_client(self) -> bool:
+        """Check if REST client is available."""
+        return self._rest is not None
+
+    @property
+    def has_websocket_client(self) -> bool:
+        """Check if WebSocket client is available."""
+        return self._ws is not None
 
     @abstractmethod
     def _create_inner_websocket_handlers(self) -> Union[PrivateWebsocketHandlers, PublicWebsocketHandlers]:

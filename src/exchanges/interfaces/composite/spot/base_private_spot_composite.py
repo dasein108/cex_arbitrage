@@ -12,6 +12,7 @@ from infrastructure.networking.websocket.handlers import PrivateWebsocketHandler
 from config.structs import ExchangeConfig
 from exchanges.interfaces.composite.base_private_composite import BasePrivateComposite
 from exchanges.interfaces.composite.mixins import WithdrawalMixin
+from exchanges.interfaces.composite.types import PrivateRestType, PrivateWebSocketType
 from infrastructure.exceptions.system import InitializationError
 
 
@@ -28,17 +29,23 @@ class BasePrivateSpotComposite(BasePrivateComposite, WithdrawalMixin):
     functionality including withdrawals.
     """
 
-    def __init__(self, config: ExchangeConfig, logger: Optional[HFTLoggerInterface] = None,
+    def __init__(self, 
+                 config: ExchangeConfig, 
+                 rest_client: PrivateRestType,
+                 websocket_client: Optional[PrivateWebSocketType] = None,
+                 logger: Optional[HFTLoggerInterface] = None,
                  handlers: Optional[PrivateWebsocketHandlers] = None) -> None:
         """
-        Initialize private spot exchange interface.
+        Initialize private spot exchange interface with dependency injection.
         
         Args:
             config: Exchange configuration with API credentials
+            rest_client: Injected private REST client instance
+            websocket_client: Injected private WebSocket client instance (optional)
             logger: Optional injected HFT logger (auto-created if not provided)
             handlers: Optional private WebSocket handlers
         """
-        super().__init__(config, logger, handlers)
+        super().__init__(config, rest_client, websocket_client, logger, handlers)
         
         # Update tag to indicate spot operations
         self._tag = f'{config.name}_private_spot'
@@ -70,3 +77,14 @@ class BasePrivateSpotComposite(BasePrivateComposite, WithdrawalMixin):
             self.logger.error(f"Spot exchange initialization failed: {e}")
             await self.close()  # Cleanup on failure
             raise InitializationError(f"Spot initialization failed: {e}")
+
+    def _create_inner_websocket_handlers(self) -> PrivateWebsocketHandlers:
+        """Get private WebSocket handlers for Gate.io."""
+        return PrivateWebsocketHandlers(
+            order_handler=self._order_handler,
+            balance_handler=self._balance_handler,
+            execution_handler=self._execution_handler,
+        )
+
+# Alias for backward compatibility with existing imports
+CompositePrivateSpotExchange = BasePrivateSpotComposite

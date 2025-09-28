@@ -1,7 +1,7 @@
 """
 WebSocket components for HFT trading systems.
 
-This module provides high-performance WebSocket infrastructure using strategy pattern
+This module provides high-performance WebSocket infrastructure using mixin-based
 composition for exchange-agnostic trading implementations.
 """
 

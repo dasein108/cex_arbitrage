@@ -57,6 +57,7 @@ from exchanges.structs.common import (Symbol, SymbolsInfo, OrderBook, BookTicker
 from exchanges.structs.enums import OrderbookUpdateType
 from infrastructure.exceptions.system import InitializationError
 from exchanges.interfaces.composite.base_composite import BaseCompositeExchange
+from exchanges.interfaces.composite.types import PublicRestType, PublicWebSocketType
 from infrastructure.exceptions.exchange import ExchangeRestError
 from infrastructure.networking.websocket.structs import PublicWebsocketChannelType
 from infrastructure.logging import LoggingTimer, HFTLoggerInterface
@@ -65,7 +66,7 @@ from exchanges.interfaces.rest.spot.rest_spot_public import PublicSpotRest
 from exchanges.interfaces.ws.spot.ws_spot_public import PublicSpotWebsocket
 
 
-class CompositePublicSpotExchange(BaseCompositeExchange):
+class CompositePublicSpotExchange(BaseCompositeExchange[PublicRestType, PublicWebSocketType]):
     """
     Base interface for public exchange operations in HFT arbitrage systems.
     
@@ -109,20 +110,20 @@ class CompositePublicSpotExchange(BaseCompositeExchange):
     
     ## Implementation Requirements
     
-    Concrete exchanges must implement:
-    1. `_create_public_rest()`: Factory for REST client
-    2. `_create_public_ws_with_handlers()`: Factory for WebSocket client
+    Concrete exchanges use dependency injection:
+    - REST and WebSocket clients are injected via constructor
+    - No factory methods needed - simplified implementation
     
     Example:
         ```python
+        # Create clients first
+        rest_client = MexcPublicRest(config, logger)
+        ws_client = MexcPublicWebsocket(config, handlers, logger)
+        
+        # Inject clients into composite
         class MexcPublicExchange(CompositePublicExchange):
-            async def _create_public_rest(self) -> PublicSpotRest:
-                return MexcPublicRest(self.config, self.logger)
-                
-            async def _create_public_ws_with_handlers(
-                self, handlers: PublicWebsocketHandlers
-            ) -> PublicSpotWebsocket:
-                return MexcPublicWebsocket(self.config, handlers, self.logger)
+            def __init__(self, config, rest_client, ws_client, logger=None):
+                super().__init__(config, rest_client, ws_client, logger)
         ```
     
     ## Thread Safety
@@ -134,16 +135,35 @@ class CompositePublicSpotExchange(BaseCompositeExchange):
     - Safe for multiple arbitrage engines to monitor
     """
 
-    def __init__(self, config, logger: Optional[HFTLoggerInterface] = None,
+    def _create_inner_websocket_handlers(self) -> PublicWebsocketHandlers:
+        """Get public WebSocket handlers for Gate.io."""
+        return PublicWebsocketHandlers(
+            orderbook_handler=self._handle_orderbook,
+            ticker_handler=self._handle_ticker,
+            trade_handler=self._handle_trade,
+            book_ticker_handler=self._handle_book_ticker,
+        )
+
+    def __init__(self, config, 
+                 rest_client: PublicRestType,
+                 websocket_client: Optional[PublicWebSocketType] = None,
+                 logger: Optional[HFTLoggerInterface] = None,
                  handlers: Optional[PublicWebsocketHandlers] = None):
         """
-        Initialize public exchange interface.
+        Initialize public exchange interface with dependency injection.
         
         Args:
             config: Exchange configuration (credentials not required)
+            rest_client: Injected public REST client instance
+            websocket_client: Injected public WebSocket client instance (optional)
             logger: Optional injected HFT logger (auto-created if not provided)
+            handlers: Optional custom handlers for WebSocket events
         """
-        super().__init__(config, is_private=False, logger=logger)
+        super().__init__(config, 
+                        rest_client=rest_client,
+                        websocket_client=websocket_client,
+                        is_private=False, 
+                        logger=logger)
         self.handlers = handlers  # Optional custom handlers for WebSocket events
         # Market data state (existing + enhanced)
         self._orderbooks: Dict[Symbol, OrderBook] = {}
@@ -155,13 +175,7 @@ class CompositePublicSpotExchange(BaseCompositeExchange):
         
         self._active_symbols: Set[Symbol] = set()
         
-        # Client instances (NEW - managed by factory methods)
-        self._public_rest: Optional[PublicSpotRest] = None
-        self._public_ws: Optional[PublicSpotWebsocket] = None
-        
-        # Connection status tracking (NEW)
-        self._public_rest_connected = False
-        self._public_ws_connected = False
+        # Client instances now injected via constructor - no need for duplicates
         
         # Performance tracking for HFT compliance (NEW)
         self._book_ticker_update_count = 0
@@ -172,32 +186,7 @@ class CompositePublicSpotExchange(BaseCompositeExchange):
             Callable[[Symbol, OrderBook, OrderbookUpdateType], Awaitable[None]]
         ] = []
 
-    # ========================================
-    # Abstract Factory Methods (COPIED FROM composite exchange)
-    # ========================================
-
-    @abstractmethod
-    async def _create_public_rest(self) -> PublicSpotRest:
-        """
-        Create exchange-specific public REST client.
-        PATTERN: Copied from composite exchange line 120
-        
-        Subclasses must implement this factory method to return
-        their specific REST client that extends PublicSpotRest.
-        """
-        pass
-
-    @abstractmethod
-    async def _create_public_websocket(self) -> Optional[PublicSpotWebsocket]:
-        """
-        Handlers to connect websocket events to internal methods.
-        Args:
-            handlers: PublicWebsocketHandlers object with event handlers
-            
-        Returns:
-            Optional[PublicSpotWebsocket]: WebSocket client or None if disabled
-        """
-        pass
+    # Factory methods ELIMINATED - clients injected via constructor
 
     # ========================================
     # Properties and Abstract Methods
@@ -225,7 +214,7 @@ class CompositePublicSpotExchange(BaseCompositeExchange):
             return self._book_ticker.get(symbol)
         else:
             if force:
-               ob = await self._public_rest.get_orderbook(symbol, 1)
+               ob = await self._rest.get_orderbook(symbol, 1)
 
                return BookTicker(
                    symbol=symbol,
@@ -243,13 +232,13 @@ class CompositePublicSpotExchange(BaseCompositeExchange):
 
     async def _load_symbols_info(self) -> None:
         """Load symbol information from REST API with error handling."""
-        if not self._public_rest:
+        if not self._rest:
             self.logger.warning("No public REST client available for symbols info loading")
             return
             
         try:
             with LoggingTimer(self.logger, "load_symbols_info") as timer:
-                self._symbols_info = await self._public_rest.get_symbols_info()
+                self._symbols_info = await self._rest.get_symbols_info()
 
             self.logger.info("Symbols info loaded successfully",
                             symbol_count=len(self._symbols_info) if self._symbols_info else 0,
@@ -280,7 +269,7 @@ class CompositePublicSpotExchange(BaseCompositeExchange):
     async def _get_orderbook_snapshot(self, symbol: Symbol) -> OrderBook:
         """Get orderbook snapshot from REST API with error handling."""
         with LoggingTimer(self.logger, "get_orderbook_snapshot") as timer:
-            orderbook = await self._public_rest.get_orderbook(symbol)
+            orderbook = await self._rest.get_orderbook(symbol)
 
         # Track performance for HFT compliance
         if timer.elapsed_ms > 50:
@@ -293,10 +282,10 @@ class CompositePublicSpotExchange(BaseCompositeExchange):
 
     async def _stop_real_time_streaming(self) -> None:
         """Stop real-time WebSocket streaming."""
-        if self._public_ws:
+        if self._ws:
             try:
-                await self._public_ws.close()
-                self._public_ws_connected = False
+                await self._ws.close()
+                self._ws_connected = False
                 self.logger.info("Real-time streaming stopped")
             except Exception as e:
                 self.logger.error("Error stopping real-time streaming", error=str(e))
@@ -327,7 +316,7 @@ class CompositePublicSpotExchange(BaseCompositeExchange):
             
             # Step 1: Create public REST client using abstract factory (line 60)
             self.logger.info(f"{self._tag} Creating public REST client...")
-            self._public_rest = await self._create_public_rest()
+            # REST client already injected via constructor
             
             # Step 2: Load initial market data via REST (parallel loading, line 70)
             self.logger.info(f"{self._tag} Loading initial market data...")
@@ -348,8 +337,8 @@ class CompositePublicSpotExchange(BaseCompositeExchange):
                             symbols=len(self._active_symbols),
                             init_time_ms=round(init_time, 2),
                             hft_compliant=init_time < 100.0,
-                            has_rest=self._public_rest is not None,
-                            has_ws=self._public_ws is not None,
+                            has_rest=self._rest is not None,
+                            has_ws=self._ws is not None,
                             orderbook_count=len(self._orderbooks))
                             
         except Exception as e:
@@ -509,16 +498,16 @@ class CompositePublicSpotExchange(BaseCompositeExchange):
             # TODO: This will be refactored in websocket_refactoring.md to align properly
 
             # Use abstract factory method to create client
-            self._public_ws = await self._create_public_websocket()
-            
-            self._public_ws_connected = self._public_ws.is_connected
+            # WebSocket client already injected via constructor
+            if self._ws:
+                await self._ws.initialize(symbols=list(self.active_symbols),
+                                                 channels=[PublicWebsocketChannelType.BOOK_TICKER])
 
-            await self._public_ws.initialize(symbols=list(self.active_symbols),
-                                             channels=[PublicWebsocketChannelType.BOOK_TICKER])
-
-            self.logger.info("Public WebSocket client initialized",
-                            connected=self._public_ws_connected,
-                            has_book_ticker_handler=True)
+                self.logger.info("Public WebSocket client initialized",
+                                connected=self._ws.is_connected,
+                                has_book_ticker_handler=True)
+            else:
+                self.logger.info("No WebSocket client available - skipping WebSocket initialization")
                             
         except Exception as e:
             self.logger.error("Public WebSocket initialization failed", error=str(e))
@@ -665,10 +654,10 @@ class CompositePublicSpotExchange(BaseCompositeExchange):
         try:
             close_tasks = []
             
-            if self._public_ws:
-                close_tasks.append(self._public_ws.close())
-            if self._public_rest:
-                close_tasks.append(self._public_rest.close())
+            if self._ws:
+                close_tasks.append(self._ws.close())
+            if self._rest:
+                close_tasks.append(self._rest.close())
                 
             if close_tasks:
                 await asyncio.gather(*close_tasks, return_exceptions=True)
@@ -677,8 +666,8 @@ class CompositePublicSpotExchange(BaseCompositeExchange):
             await super().close()
             
             # Reset connection status
-            self._public_rest_connected = False
-            self._public_ws_connected = False
+            self._rest_connected = False
+            self._ws_connected = False
             
             # Clear cached market data including best bid/ask
             self._orderbooks.clear()

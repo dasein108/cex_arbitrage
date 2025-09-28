@@ -1,5 +1,5 @@
 """
-WebSocket Handler Classes
+WebSocket Handler DataClasses
 
 Provides structured handler objects for WebSocket message processing.
 Replaces multiple callback parameters with organized handler classes.

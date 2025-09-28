@@ -16,7 +16,8 @@ from exchanges.structs.types import AssetName, OrderId
 from exchanges.structs import Side, Trade, OrderType
 from config.structs import ExchangeConfig
 from infrastructure.exceptions.system import InitializationError
-from exchanges.interfaces.composite.spot.base_public_spot_composite import BaseCompositeExchange
+from exchanges.interfaces.composite.base_composite import BaseCompositeExchange
+from exchanges.interfaces.composite.types import PrivateRestType, PrivateWebSocketType
 from infrastructure.logging import LoggingTimer, HFTLoggerInterface
 from infrastructure.networking.websocket.handlers import PrivateWebsocketHandlers
 from exchanges.interfaces.rest.spot.rest_spot_private import PrivateSpotRest
@@ -24,7 +25,7 @@ from exchanges.interfaces.ws.spot.ws_spot_private import PrivateSpotWebsocket
 from exchanges.utils.exchange_utils import is_order_done
 
 
-class BasePrivateComposite(BaseCompositeExchange):
+class BasePrivateComposite(BaseCompositeExchange[PrivateRestType, PrivateWebSocketType]):
     """
     Base private composite exchange interface WITHOUT withdrawal functionality.
     
@@ -43,17 +44,27 @@ class BasePrivateComposite(BaseCompositeExchange):
     - Position management (futures-only via futures subclass)
     """
 
-    def __init__(self, config: ExchangeConfig, logger: Optional[HFTLoggerInterface] = None,
+    def __init__(self, 
+                 config: ExchangeConfig, 
+                 rest_client: PrivateRestType,
+                 websocket_client: Optional[PrivateWebSocketType] = None,
+                 logger: Optional[HFTLoggerInterface] = None,
                  handlers: Optional[PrivateWebsocketHandlers] = None) -> None:
         """
-        Initialize base private exchange interface.
+        Initialize base private exchange interface with dependency injection.
         
         Args:
             config: Exchange configuration with API credentials
+            rest_client: Injected private REST client instance
+            websocket_client: Injected private WebSocket client instance (optional)
             logger: Optional injected HFT logger (auto-created if not provided)
             handlers: Optional private WebSocket handlers
         """
-        super().__init__(config=config, is_private=True, logger=logger)
+        super().__init__(config=config, 
+                        rest_client=rest_client, 
+                        websocket_client=websocket_client,
+                        is_private=True, 
+                        logger=logger)
 
         if not handlers:
             self.handlers = PrivateWebsocketHandlers()
@@ -69,14 +80,6 @@ class BasePrivateComposite(BaseCompositeExchange):
         # Executed orders state management (HFT-safe caching of completed orders only)
         self._executed_orders: Dict[Symbol, Dict[OrderId, Order]] = {}
         self._max_executed_orders_per_symbol = 1000  # Memory management limit
-
-        # Client instances (managed by abstract factory methods)
-        self._private_rest: Optional[PrivateSpotRest] = None
-        self._private_ws: Optional[PrivateSpotWebsocket] = None
-
-        # Connection status tracking
-        self._private_rest_connected = False
-        self._private_ws_connected = False
 
         # Authentication validation
         if not config.has_credentials():
@@ -135,13 +138,13 @@ class BasePrivateComposite(BaseCompositeExchange):
         si = self.symbols_info.get(symbol)
         quantity_ = si.round_base(quantity)
         price_ = si.round_quote(price)
-        return await self._private_rest.place_order(symbol, side, OrderType.LIMIT, quantity_, price_, **kwargs)
+        return await self._rest.place_order(symbol, side, OrderType.LIMIT, quantity_, price_, **kwargs)
 
     async def place_market_order(self, symbol: Symbol, side: Side, quote_quantity: float, **kwargs) -> Order:
         """Place a market order via REST API."""
         quote_quantity_ = self.symbols_info.get(symbol).round_quote(quote_quantity)
         # TODO: FIX: infrastructure.exceptions.exchange.ExchangeRestError: (500, 'Futures order placement failed: Futures market orders with quote_quantity require current price. Use quantity parameter instead.')
-        return await self._private_rest.place_order(symbol, side, OrderType.MARKET,
+        return await self._rest.place_order(symbol, side, OrderType.MARKET,
                                                     quote_quantity=quote_quantity_, **kwargs)
 
     async def cancel_order(self, symbol: Symbol, order_id: OrderId) -> Order:
@@ -158,7 +161,7 @@ class BasePrivateComposite(BaseCompositeExchange):
         Raises:
             ExchangeError: If cancellation fails
         """
-        return await self._private_rest.cancel_order(symbol, order_id)
+        return await self._rest.cancel_order(symbol, order_id)
 
     async def get_order(self, symbol: Symbol, order_id: OrderId) -> Order:
         """
@@ -174,29 +177,9 @@ class BasePrivateComposite(BaseCompositeExchange):
         Raises:
             ExchangeError: If order not found or query fails
         """
-        return await self._private_rest.get_order(symbol, order_id)
+        return await self._rest.get_order(symbol, order_id)
 
-    # Abstract factory methods
-
-    @abstractmethod
-    async def _create_private_rest(self) -> PrivateSpotRest:
-        """
-        Create exchange-specific private REST client.
-        
-        Returns:
-            PrivateSpotRest implementation for this exchange
-        """
-        pass
-
-    @abstractmethod
-    async def _create_private_websocket(self) -> Optional[PrivateSpotWebsocket]:
-        """
-        Create exchange-specific private WebSocket client with handler objects.
-        
-        Returns:
-            PrivateSpotWebsocket implementation or None
-        """
-        pass
+    # Factory methods ELIMINATED - clients injected via constructor
 
     # Data loading methods
 
@@ -204,13 +187,13 @@ class BasePrivateComposite(BaseCompositeExchange):
         """
         Load account balances from REST API with error handling and metrics.
         """
-        if not self._private_rest:
-            self.logger.warning("No private REST client available for balance loading")
+        if not self._rest:
+            self.logger.warning("No REST client available for balance loading")
             return
 
         try:
             with LoggingTimer(self.logger, "load_balances") as timer:
-                balances_data = await self._private_rest.get_balances()
+                balances_data = await self._rest.get_balances()
                 self._balances = {b.asset: b for b in balances_data}
 
             self.logger.info("Balances loaded successfully",
@@ -225,12 +208,12 @@ class BasePrivateComposite(BaseCompositeExchange):
         """
         Load open orders from REST API with error handling.
         """
-        if not self._private_rest:
+        if not self._rest:
             return
 
         try:
             with LoggingTimer(self.logger, "load_open_orders") as timer:
-                orders = await self._private_rest.get_open_orders(symbol)
+                orders = await self._rest.get_open_orders(symbol)
                 for o in orders:
                     self._update_open_order(o)
 
@@ -316,7 +299,7 @@ class BasePrivateComposite(BaseCompositeExchange):
 
         try:
             with LoggingTimer(self.logger, f"get_order_fallback_{symbol}"):
-                order = await self._private_rest.get_order(symbol, order_id)
+                order = await self._rest.get_order(symbol, order_id)
                 self._update_order(order)
                 return order
 
@@ -344,7 +327,7 @@ class BasePrivateComposite(BaseCompositeExchange):
             # Step 2: Fallback to REST API
             try:
                 with LoggingTimer(self.logger, f"get_asset_balance_{asset}"):
-                    balance = await self._private_rest.get_asset_balance(asset)
+                    balance = await self._rest.get_asset_balance(asset)
                     if balance:
                         self._update_balance(asset, balance)
                     return balance
@@ -366,22 +349,25 @@ class BasePrivateComposite(BaseCompositeExchange):
         self._symbols_info = symbols_info
 
         try:
-            # Step 1: Create REST clients using abstract factory
-            self.logger.info(f"{self._tag} Creating REST clients...")
-            self._private_rest = await self._create_private_rest()
-            self._private_rest_connected = self._private_rest is not None
+            # Clients are already injected via constructor - no creation needed
+            
+            # Step 1: Load private data via REST if available
+            if self._rest:
+                self.logger.info(f"{self._tag} Loading private data...")
+                await self._refresh_exchange_data()
+            else:
+                self.logger.warning(f"{self._tag} No REST client available - skipping data loading")
 
-            # Step 2: Load private data via REST (parallel loading)
-            self.logger.info(f"{self._tag} Loading private data...")
-            await self._refresh_exchange_data()
-
-            # Step 3: Create WebSocket clients with handler injection
-            self.logger.info(f"{self._tag} Creating WebSocket clients...")
-            await self._initialize_private_websocket()
+            # Step 2: Initialize WebSocket if available
+            if self._ws:
+                self.logger.info(f"{self._tag} Initializing WebSocket client...")
+                await self._ws.initialize()
+            else:
+                self.logger.info(f"{self._tag} No WebSocket client available - skipping WebSocket initialization")
 
             self.logger.info(f"{self._tag} private initialization completed",
-                            has_rest=self._private_rest is not None,
-                            has_ws=self._private_ws is not None,
+                            has_rest=self._rest is not None,
+                            has_ws=self._ws is not None,
                             balance_count=len(self._balances),
                             order_count=sum(len(orders) for orders in self._open_orders.values()))
 
@@ -400,19 +386,7 @@ class BasePrivateComposite(BaseCompositeExchange):
             execution_handler=self._execution_handler,
         )
 
-    async def _initialize_private_websocket(self) -> None:
-        """Initialize private WebSocket with constructor injection."""
-        if not self.config.has_credentials():
-            self.logger.info("No credentials - skipping private WebSocket")
-            return
-
-        try:
-            self._private_ws = await self._create_private_websocket()
-            await self._private_ws.initialize()
-
-        except Exception as e:
-            self.logger.error("Private WebSocket initialization failed", error=str(e))
-            raise InitializationError(f"Private WebSocket initialization failed: {e}")
+    # WebSocket initialization method ELIMINATED - client injected via constructor
 
     # Event handlers
 
@@ -507,8 +481,8 @@ class BasePrivateComposite(BaseCompositeExchange):
             'has_credentials': self._config.has_credentials(),
             'symbols_with_executed_orders': len([s for s, orders in self._executed_orders.items() if orders]),
             'connection_status': {
-                'private_rest_connected': self._private_rest_connected,
-                'private_ws_connected': self._private_ws_connected,
+                'rest_connected': self._rest_connected,
+                'ws_connected': self._ws_connected,
             }
         }
 
@@ -519,10 +493,10 @@ class BasePrivateComposite(BaseCompositeExchange):
         try:
             close_tasks = []
 
-            if self._private_ws:
-                close_tasks.append(self._private_ws.close())
-            if self._private_rest:
-                close_tasks.append(self._private_rest.close())
+            if self._ws:
+                close_tasks.append(self._ws.close())
+            if self._rest:
+                close_tasks.append(self._rest.close())
 
             if close_tasks:
                 await asyncio.gather(*close_tasks, return_exceptions=True)
@@ -531,8 +505,8 @@ class BasePrivateComposite(BaseCompositeExchange):
             await super().close()
 
             # Reset connection status
-            self._private_rest_connected = False
-            self._private_ws_connected = False
+            self._rest_connected = False
+            self._ws_connected = False
 
         except Exception as e:
             self.logger.error("Error closing private exchange", error=str(e))

@@ -59,7 +59,7 @@ class BaseWebsocketInterface(ABC):
         pass
 
     async def initialize(self, symbols=None) -> None:
-        """Initialize WebSocket connection using strategy pattern."""
+        """Initialize WebSocket connection using mixin composition."""
         try:
             with LoggingTimer(self.logger, "ws_interface_initialization") as timer:
                 await self._ws_manager.initialize(symbols or [])

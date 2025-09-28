@@ -224,30 +224,80 @@ def _create_composite_component(
     handlers: Optional[Union[PublicWebsocketHandlers, PrivateWebsocketHandlers]],
     logger: HFTLoggerInterface
 ) -> Any:
-    """Create composite exchange component."""
+    """
+    Create composite exchange component using dependency injection.
+    
+    This function creates REST and WebSocket clients first, then injects them
+    into the composite exchange constructor, eliminating factory methods.
+    """
+    # Step 1: Create REST client (always required)
+    rest_client = _create_rest_component(exchange, config, is_private, logger)
+    
+    # Step 2: Create WebSocket client (optional, only if handlers provided)
+    websocket_client = None
+    if handlers is not None:
+        websocket_client = _create_websocket_component(exchange, config, is_private, handlers, logger)
+    
+    # Step 3: Create composite exchange with dependency injection
     if exchange == ExchangeEnum.MEXC:
         if is_private:
             from exchanges.integrations.mexc.mexc_composite_private import MexcCompositePrivateSpotExchange
-            return MexcCompositePrivateSpotExchange(config=config, logger=logger, handlers=handlers)
+            return MexcCompositePrivateSpotExchange(
+                config=config, 
+                rest_client=rest_client,
+                websocket_client=websocket_client,
+                logger=logger, 
+                handlers=handlers
+            )
         else:
             from exchanges.integrations.mexc.mexc_composite_public import MexcCompositePublicSpotExchange
-            return MexcCompositePublicSpotExchange(config=config, logger=logger, handlers=handlers)
+            return MexcCompositePublicSpotExchange(
+                config=config,
+                rest_client=rest_client,
+                websocket_client=websocket_client,
+                logger=logger,
+                handlers=handlers
+            )
             
     elif exchange == ExchangeEnum.GATEIO:
         if is_private:
             from exchanges.integrations.gateio.gateio_composite_private import GateioCompositePrivateSpotExchange
-            return GateioCompositePrivateSpotExchange(config=config, logger=logger, handlers=handlers)
+            return GateioCompositePrivateSpotExchange(
+                config=config,
+                rest_client=rest_client,
+                websocket_client=websocket_client,
+                logger=logger,
+                handlers=handlers
+            )
         else:
             from exchanges.integrations.gateio.gateio_composite_public import GateioCompositePublicSpotExchange
-            return GateioCompositePublicSpotExchange(config=config, logger=logger, handlers=handlers)
+            return GateioCompositePublicSpotExchange(
+                config=config,
+                rest_client=rest_client,
+                websocket_client=websocket_client,
+                logger=logger,
+                handlers=handlers
+            )
             
     elif exchange == ExchangeEnum.GATEIO_FUTURES:
         if is_private:
             from exchanges.integrations.gateio.gateio_futures_composite_private import GateioFuturesCompositePrivateExchange
-            return GateioFuturesCompositePrivateExchange(config=config, logger=logger, handlers=handlers)
+            return GateioFuturesCompositePrivateExchange(
+                config=config,
+                rest_client=rest_client,
+                websocket_client=websocket_client,
+                logger=logger,
+                handlers=handlers
+            )
         else:
             from exchanges.integrations.gateio.gateio_futures_composite_public import GateioFuturesCompositePublicSpotExchange
-            return GateioFuturesCompositePublicSpotExchange(config=config, logger=logger, handlers=handlers)
+            return GateioFuturesCompositePublicSpotExchange(
+                config=config,
+                rest_client=rest_client,
+                websocket_client=websocket_client,
+                logger=logger,
+                handlers=handlers
+            )
     else:
         raise ValueError(f"Composite component not implemented for {exchange.value}")
 

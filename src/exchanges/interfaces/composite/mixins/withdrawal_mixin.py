@@ -21,7 +21,7 @@ if TYPE_CHECKING:
 
 class WithdrawalMixinProtocol(Protocol):
     """Protocol defining expected attributes for classes using WithdrawalMixin."""
-    _private_rest: Optional['PrivateSpotRest']
+    _rest: Optional['PrivateSpotRest']
     _assets_info: Dict[AssetName, AssetInfo]
     logger: 'HFTLoggerInterface'
 
@@ -35,12 +35,12 @@ class WithdrawalMixin:
     be mixed into spot exchange implementations, not futures exchanges.
     
     Requirements:
-        - The class using this mixin must have a _private_rest attribute
-        - The _private_rest client must implement WithdrawalInterface
+        - The class using this mixin must have a _rest attribute
+        - The _rest client must implement WithdrawalInterface
     """
     
     # Type hint to resolve IDE warnings
-    _private_rest: Optional['PrivateSpotRest']
+    _rest: Optional['PrivateSpotRest']
     _assets_info: Dict[AssetName, AssetInfo]
     logger: 'HFTLoggerInterface'
     
@@ -56,10 +56,10 @@ class WithdrawalMixin:
             NotImplementedError: If private REST client is not available
             ExchangeAPIError: If unable to fetch currency information
         """
-        if not hasattr(self, '_private_rest') or self._private_rest is None:
+        if not hasattr(self, '_rest') or self._rest is None:
             raise NotImplementedError("Private REST client required for asset info retrieval")
         
-        return await self._private_rest.get_assets_info()
+        return await self._rest.get_assets_info()
     
     async def submit_withdrawal(self, request: WithdrawalRequest) -> WithdrawalResponse:
         """
@@ -76,10 +76,10 @@ class WithdrawalMixin:
             NotImplementedError: If private REST client is not available
             ExchangeAPIError: If withdrawal submission fails
         """
-        if not hasattr(self, '_private_rest') or self._private_rest is None:
+        if not hasattr(self, '_rest') or self._rest is None:
             raise NotImplementedError("Private REST client required for withdrawal operations")
         
-        return await self._private_rest.submit_withdrawal(request)
+        return await self._rest.submit_withdrawal(request)
     
     async def withdraw(self, request: WithdrawalRequest) -> WithdrawalResponse:
         """
@@ -109,10 +109,10 @@ class WithdrawalMixin:
             NotImplementedError: If private REST client is not available
             ExchangeAPIError: If cancellation fails
         """
-        if not hasattr(self, '_private_rest') or self._private_rest is None:
+        if not hasattr(self, '_rest') or self._rest is None:
             raise NotImplementedError("Private REST client required for withdrawal operations")
         
-        return await self._private_rest.cancel_withdrawal(withdrawal_id)
+        return await self._rest.cancel_withdrawal(withdrawal_id)
     
     async def get_withdrawal_status(self, withdrawal_id: str) -> WithdrawalResponse:
         """
@@ -129,10 +129,10 @@ class WithdrawalMixin:
             NotImplementedError: If private REST client is not available
             ExchangeAPIError: If withdrawal not found or query fails
         """
-        if not hasattr(self, '_private_rest') or self._private_rest is None:
+        if not hasattr(self, '_rest') or self._rest is None:
             raise NotImplementedError("Private REST client required for withdrawal operations")
         
-        return await self._private_rest.get_withdrawal_status(withdrawal_id)
+        return await self._rest.get_withdrawal_status(withdrawal_id)
     
     async def get_withdrawal_history(
         self,
@@ -153,10 +153,10 @@ class WithdrawalMixin:
         Raises:
             NotImplementedError: If private REST client is not available
         """
-        if not hasattr(self, '_private_rest') or self._private_rest is None:
+        if not hasattr(self, '_rest') or self._rest is None:
             raise NotImplementedError("Private REST client required for withdrawal operations")
         
-        return await self._private_rest.get_withdrawal_history(asset, limit)
+        return await self._rest.get_withdrawal_history(asset, limit)
     
     # Additional helper methods specific to composite usage
     
@@ -167,7 +167,7 @@ class WithdrawalMixin:
         Returns:
             True if private REST client is available for withdrawals
         """
-        return hasattr(self, '_private_rest') and self._private_rest is not None
+        return hasattr(self, '_rest') and self._rest is not None
     
     async def get_withdrawal_limits(
         self,

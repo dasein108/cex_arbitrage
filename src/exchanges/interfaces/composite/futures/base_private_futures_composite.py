@@ -12,6 +12,7 @@ from decimal import Decimal
 
 from exchanges.structs.common import Symbol, Order, Position, SymbolsInfo
 from exchanges.interfaces.composite.base_private_composite import BasePrivateComposite
+from exchanges.interfaces.composite.types import PrivateRestType, PrivateWebSocketType
 from infrastructure.logging import HFTLoggerInterface
 from infrastructure.networking.websocket.handlers import PrivateWebsocketHandlers
 
@@ -29,10 +30,14 @@ class CompositePrivateFuturesExchange(BasePrivateComposite):
     NOTE: Futures exchanges do NOT support withdrawals - use spot exchanges for withdrawals.
     """
 
-    def __init__(self, config, logger: Optional[HFTLoggerInterface] = None,
+    def __init__(self, 
+                 config, 
+                 rest_client: PrivateRestType,
+                 websocket_client: Optional[PrivateWebSocketType] = None,
+                 logger: Optional[HFTLoggerInterface] = None,
                  handlers: Optional[PrivateWebsocketHandlers] = None):
-        """Initialize private futures exchange interface."""
-        super().__init__(config, logger=logger, handlers=handlers)
+        """Initialize private futures exchange interface with dependency injection."""
+        super().__init__(config, rest_client, websocket_client, logger, handlers)
         
         # Override tag to indicate futures operations
         self._tag = f'{config.name}_private_futures'
@@ -152,3 +157,48 @@ class CompositePrivateFuturesExchange(BasePrivateComposite):
         base_stats = super().get_trading_stats()
         base_stats['active_positions'] = len(self._positions)
         return base_stats
+
+    async def close_position(
+            self,
+            symbol: Symbol,
+            quantity: Optional[Decimal] = None
+    ) -> List[Order]:
+        """Close position (partially or completely) for Gate.io futures."""
+        try:
+            # Get current position
+            positions = await self._rest.get_positions(symbol)
+            if not positions:
+                self.logger.warning(f"No position found for {symbol}")
+                return []
+
+            orders = []
+            for position in positions:
+                if position.quantity == 0:
+                    continue
+
+                # Determine close quantity
+                close_qty = quantity if quantity else abs(position.quantity)
+
+                # Determine side (opposite of position)
+                close_side = 'sell' if position.quantity > 0 else 'buy'
+
+                # Place market order to close position
+                order = await self.place_market_order(
+                    symbol=symbol,
+                    side=close_side,
+                    order_type='market',
+                    quantity=close_qty,
+                    reduce_only=True,
+                    close_position=(quantity is None)  # Full close if no quantity specified
+                )
+
+                orders.append(order)
+
+            self.logger.info(f"Closed position for {symbol}, orders: {[o.order_id for o in orders]}")
+            return orders
+
+        except Exception as e:
+            self.logger.error(f"Failed to close position for {symbol}: {e}")
+            raise
+
+
