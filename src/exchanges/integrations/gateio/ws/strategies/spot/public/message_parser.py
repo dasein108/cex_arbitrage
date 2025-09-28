@@ -6,13 +6,8 @@ from exchanges.structs.common import Symbol
 
 # New parsing utilities
 from infrastructure.networking.websocket.parsing.message_parsing_utils import MessageParsingUtils
-from infrastructure.networking.websocket.parsing.symbol_extraction import (
-    UniversalSymbolExtractor, GateioSymbolExtraction
-)
 from infrastructure.networking.websocket.parsing.error_handling import WebSocketErrorHandler
-from infrastructure.networking.websocket.parsing.universal_transformer import (
-    create_gateio_transformer, DataType
-)
+# Gate.io uses direct utility functions - no universal transformer needed
 
 # HFT Logger Integration
 from infrastructure.logging import get_strategy_logger, HFTLoggerInterface
@@ -34,18 +29,12 @@ class GateioPublicMessageParser(MessageParser):
         # Initialize utilities
         self.parsing_utils = MessageParsingUtils()
         
-        # Initialize symbol extraction with Gate.io strategy
-        from exchanges.integrations.gateio.utils import to_symbol
-        symbol_strategy = GateioSymbolExtraction(to_symbol)
-        self.symbol_extractor = UniversalSymbolExtractor(symbol_strategy)
+        # No symbol extractor needed - use direct utility functions
         
         # Initialize error handler
         self.error_handler = WebSocketErrorHandler("gateio", self.logger)
         
-        # Initialize universal data transformer (replaces individual parsing methods)
-        self.data_transformer = create_gateio_transformer(
-            self.symbol_extractor, self.error_handler, self.logger
-        )
+        # Gate.io uses direct utility functions - no data transformer needed
         
         # Log initialization
         if self.logger:
@@ -101,9 +90,21 @@ class GateioPublicMessageParser(MessageParser):
         # Get channel name from message
         channel = message.get("channel", "")
         
-        # Use universal transformer for subscription responses
-        return await self.data_transformer.transform_subscription_response(
-            message, channel, "Gate.io spot public"
+        # Handle subscription response directly
+        error = message.get("error")
+        if error:
+            return self.error_handler.handle_subscription_error(
+                message, channel, {"error": error}
+            )
+        
+        # Check for success status
+        result = message.get("result", {})
+        status = result.get("status", "success")  # Gate.io defaults to success
+        
+        return self.parsing_utils.create_subscription_response(
+            channel=channel,
+            status="success" if status == "success" else "fail",
+            raw_data=message
         )
 
     async def _parse_update_message(self, message: Dict[str, Any]) -> Optional[ParsedMessage]:
@@ -122,25 +123,165 @@ class GateioPublicMessageParser(MessageParser):
             )
         
         if "order_book_update" in channel or "orderbook" in channel:
-            return await self.data_transformer.transform_data(
-                DataType.ORDERBOOK, result_data, channel, "Gate.io spot public"
-            )
+            return await self._parse_orderbook_update(result_data, channel)
         elif "trades" in channel:
-            return await self.data_transformer.transform_data(
-                DataType.TRADES, result_data, channel, "Gate.io spot public"
-            )
+            return await self._parse_trades_update(result_data, channel)
         elif "book_ticker" in channel:
-            return await self.data_transformer.transform_data(
-                DataType.BOOK_TICKER, result_data, channel, "Gate.io spot public"
-            )
+            return await self._parse_book_ticker_update(result_data, channel)
         else:
             return self.error_handler.handle_unknown_message_type(
                 {"channel": channel, "data": result_data}, 
                 context=f"Gate.io update with channel: {channel}"
             )
 
-    # Individual parsing methods removed - replaced by Universal Data Transformer
-    # All _parse_*_update methods are now handled by self.data_transformer.transform_data()
+    # Direct utility function parsing methods
+    
+    async def _parse_orderbook_update(self, data, channel: str) -> Optional[ParsedMessage]:
+        """Parse Gate.io orderbook update with direct parsing - no helper functions."""
+        try:
+            from exchanges.structs.common import OrderBook, OrderBookEntry
+            from exchanges.integrations.gateio.utils import to_symbol
+            
+            # Extract symbol from data fields (Gate.io puts symbol in 's' field)
+            symbol_str = data.get('s') or data.get('currency_pair')
+            if not symbol_str:
+                return self.error_handler.handle_missing_fields_error(
+                    ["s", "currency_pair"], data, "Gate.io orderbook update"
+                )
+            
+            # Direct parsing of Gate.io orderbook structure
+            bids = []
+            asks = []
+            
+            # Parse bids - arrays of [price, amount]
+            if 'b' in data and data['b']:
+                for bid_data in data['b']:
+                    if len(bid_data) >= 2:
+                        price = float(bid_data[0])
+                        size = float(bid_data[1])
+                        bids.append(OrderBookEntry(price=price, size=size))
+            
+            # Parse asks - arrays of [price, amount]  
+            if 'a' in data and data['a']:
+                for ask_data in data['a']:
+                    if len(ask_data) >= 2:
+                        price = float(ask_data[0])
+                        size = float(ask_data[1])
+                        asks.append(OrderBookEntry(price=price, size=size))
+            
+            # Create unified orderbook directly
+            orderbook = OrderBook(
+                symbol=to_symbol(symbol_str),
+                bids=bids,
+                asks=asks,
+                timestamp=data.get('t', 0),  # Gate.io uses 't' for timestamp
+                last_update_id=data.get('u', None)  # Gate.io uses 'u' for last update ID
+            )
+            
+            return self.create_parsed_message(
+                message_type=MessageType.ORDERBOOK,
+                symbol=orderbook.symbol,
+                channel=channel,
+                data=orderbook
+            )
+            
+        except Exception as e:
+            return self.error_handler.handle_transformation_error(
+                data, e, "orderbook_update", "Gate.io spot public"
+            )
+    
+    async def _parse_trades_update(self, data, channel: str) -> Optional[ParsedMessage]:
+        """Parse Gate.io trades update with direct parsing - no helper functions."""
+        try:
+            from exchanges.structs.common import Trade
+            from exchanges.integrations.gateio.utils import to_symbol, to_side
+            
+            # Extract symbol from data fields (Gate.io puts symbol in 'currency_pair' field for trades)
+            symbol_str = None
+            if isinstance(data, list) and len(data) > 0:
+                # For trades, data is typically a list, get symbol from first trade
+                symbol_str = data[0].get('currency_pair') or data[0].get('s')
+            elif isinstance(data, dict):
+                # For single trade data
+                symbol_str = data.get('currency_pair') or data.get('s')
+            
+            if not symbol_str:
+                return self.error_handler.handle_missing_fields_error(
+                    ["currency_pair", "s"], data, "Gate.io trades update"
+                )
+            
+            # Gate.io trades are typically a list - direct parsing
+            trades = []
+            trade_list = data if isinstance(data, list) else [data]
+            symbol = to_symbol(symbol_str)
+            
+            for trade_data in trade_list:
+                # Direct parsing of Gate.io trade format
+                create_time = trade_data.get('create_time', 0)
+                timestamp = int(create_time * 1000) if create_time else 0
+                
+                price = float(trade_data.get('price', '0'))
+                quantity = float(trade_data.get('amount', '0'))
+                
+                trade = Trade(
+                    symbol=symbol,
+                    price=price,
+                    quantity=quantity,
+                    quote_quantity=price * quantity,
+                    side=to_side(trade_data.get('side', 'buy')),
+                    timestamp=timestamp,
+                    trade_id=str(trade_data.get('id', '')),
+                    is_maker=trade_data.get('role', '') == 'maker'  # May not be available in public trades
+                )
+                trades.append(trade)
+            
+            return self.create_parsed_message(
+                message_type=MessageType.TRADE,
+                symbol=trades[0].symbol if trades else None,
+                channel=channel,
+                data=trades
+            )
+            
+        except Exception as e:
+            return self.error_handler.handle_transformation_error(
+                data, e, "trades_update", "Gate.io spot public"
+            )
+    
+    async def _parse_book_ticker_update(self, data, channel: str) -> Optional[ParsedMessage]:
+        """Parse Gate.io book ticker update with direct parsing - no helper functions."""
+        try:
+            from exchanges.structs.common import BookTicker
+            from exchanges.integrations.gateio.utils import to_symbol
+            
+            # Extract symbol from data fields (Gate.io puts symbol in 's' field for book ticker)
+            symbol_str = data.get('s') or data.get('currency_pair')
+            if not symbol_str:
+                return self.error_handler.handle_missing_fields_error(
+                    ["s", "currency_pair"], data, "Gate.io book ticker update"
+                )
+            
+            # Direct parsing of Gate.io book ticker format
+            book_ticker = BookTicker(
+                symbol=to_symbol(symbol_str),
+                bid_price=float(data.get('b', '0')),
+                bid_quantity=float(data.get('B', '0')),
+                ask_price=float(data.get('a', '0')),
+                ask_quantity=float(data.get('A', '0')),
+                timestamp=int(data.get('t', 0)),
+                update_id=data.get('u', 0)
+            )
+            
+            return self.create_parsed_message(
+                message_type=MessageType.BOOK_TICKER,
+                symbol=book_ticker.symbol,
+                channel=channel,
+                data=book_ticker
+            )
+            
+        except Exception as e:
+            return self.error_handler.handle_transformation_error(
+                data, e, "book_ticker_update", "Gate.io spot public"
+            )
 
     def get_message_type(self, message: Dict[str, Any]) -> MessageType:
         """Detect Gate.io message type from JSON structure."""

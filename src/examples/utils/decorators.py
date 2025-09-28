@@ -49,7 +49,7 @@ def api_test(test_name: str, timeout: int = DEFAULT_TEST_TIMEOUT):
                         result = await func(*args, **kwargs)
                 else:
                     result = func(*args, **kwargs)
-                
+                print(result)
                 execution_time = (time.time() - start_time) * 1000
                 
                 return {

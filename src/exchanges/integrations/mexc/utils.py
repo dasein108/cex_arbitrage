@@ -7,18 +7,17 @@ No classes, no factories, no dependency injection - just direct transformations.
 HFT COMPLIANT: Zero overhead function calls, no object instantiation.
 """
 
-from typing import Dict, Union
+from typing import Dict, List, Optional
+import re
 
 from exchanges.integrations.mexc.structs.exchange import (
-    MexcOrderResponse, MexcBalanceResponse, MexcAccountResponse, 
-    MexcWSPrivateOrderData, MexcWSPrivateBalanceData, MexcWSPrivateTradeData,
-    MexcWSTradeEntry, MexcWSOrderbookData, MexcOrderBookResponse, MexcTradeResponse
+    MexcOrderResponse
 )
 from exchanges.structs.common import (
-    Side, OrderStatus, OrderType, TimeInForce, AssetBalance, Order, Trade, OrderBook, BookTicker
+    Side, OrderStatus, OrderType, TimeInForce, Order, Symbol
 )
-from exchanges.structs.types import OrderId, AssetName
-from exchanges.structs.enums import KlineInterval, WithdrawalStatus
+from exchanges.structs.types import OrderId
+from exchanges.structs.enums import WithdrawalStatus
 
 # MEXC -> Unified mappings (these could be module-level constants)
 _MEXC_ORDER_STATUS_MAP = {
@@ -55,28 +54,6 @@ _MEXC_TIF_MAP = {
     'FOK': TimeInForce.FOK,
 }
 
-# MEXC WebSocket Status Mapping (Unified enum -> MEXC integer)
-_WS_STATUS_MAPPING = {
-    1: OrderStatus.NEW,
-    2: OrderStatus.PARTIALLY_FILLED,
-    3: OrderStatus.FILLED,
-    4: OrderStatus.CANCELED,
-    5: OrderStatus.PARTIALLY_CANCELED,
-    6: OrderStatus.REJECTED,
-    7: OrderStatus.EXPIRED
-}
-
-
-# MEXC WebSocket Type Mapping (MEXC integer -> Unified enum)
-_WS_TYPE_MAPPING = {
-    1: OrderType.LIMIT,
-    2: OrderType.MARKET,
-    3: OrderType.LIMIT_MAKER,
-    4: OrderType.IMMEDIATE_OR_CANCEL,
-    5: OrderType.FILL_OR_KILL,
-    6: OrderType.STOP_LIMIT,
-    7: OrderType.STOP_MARKET
-}
 
 
 _MEXC_WITHDRAW_STATUS_MAP = {
@@ -238,350 +215,40 @@ def rest_to_order(mexc_order_data: MexcOrderResponse) -> Order:
     )
 
 
-def ws_to_balance(mexc_ws_balance) -> AssetBalance:
-    """Transform MEXC WebSocket balance data to unified AssetBalance struct."""
-    from exchanges.integrations.mexc.structs.exchange import MexcWSPrivateBalanceData
-    
-    # Handle both struct and dict types
-    if isinstance(mexc_ws_balance, MexcWSPrivateBalanceData):
-        return AssetBalance(
-            asset=AssetName(mexc_ws_balance.asset),
-            available=float(mexc_ws_balance.free),
-            locked=float(mexc_ws_balance.locked)
-        )
-    else:
-        # Handle dict or object with attributes
-        return AssetBalance(
-            asset=AssetName(getattr(mexc_ws_balance, 'asset', mexc_ws_balance.get('asset', ''))),
-            available=float(getattr(mexc_ws_balance, 'free', mexc_ws_balance.get('free', '0'))),
-            locked=float(getattr(mexc_ws_balance, 'locked', mexc_ws_balance.get('locked', '0')))
-        )
-
-
-def ws_to_order(mexc_ws_order) -> Order:
-    """Transform MEXC WebSocket order data to unified Order struct."""
-    from exchanges.integrations.mexc.structs.exchange import MexcWSPrivateOrderData
-    
-    # Handle both struct and dict types
-    if isinstance(mexc_ws_order, MexcWSPrivateOrderData):
-        symbol = to_symbol(mexc_ws_order.symbol)
-        status = _WS_STATUS_MAPPING.get(mexc_ws_order.status, OrderStatus.UNKNOWN)
-        order_type = _WS_TYPE_MAPPING.get(mexc_ws_order.orderType, OrderType.LIMIT)
-        side = to_side(mexc_ws_order.side)
-        
-        return Order(
-            symbol=symbol,
-            side=side,
-            order_type=order_type,
-            price=float(mexc_ws_order.price),
-            quantity=float(mexc_ws_order.quantity),
-            filled_quantity=float(mexc_ws_order.filled_qty),
-            order_id=OrderId(mexc_ws_order.order_id),
-            status=status,
-            timestamp=mexc_ws_order.updateTime,
-            client_order_id=""
-        )
-    else:
-        # Fallback for dict or other object types
-        symbol = to_symbol(getattr(mexc_ws_order, 'symbol', mexc_ws_order.get('symbol', '')))
-        status = _WS_STATUS_MAPPING.get(
-            getattr(mexc_ws_order, 'status', mexc_ws_order.get('status', 1)), 
-            OrderStatus.UNKNOWN
-        )
-        order_type = _WS_TYPE_MAPPING.get(
-            getattr(mexc_ws_order, 'orderType', mexc_ws_order.get('orderType', 1)), 
-            OrderType.LIMIT
-        )
-        side = to_side(getattr(mexc_ws_order, 'side', mexc_ws_order.get('side', 'BUY')))
-        
-        return Order(
-            symbol=symbol,
-            side=side,
-            order_type=order_type,
-            price=float(getattr(mexc_ws_order, 'price', mexc_ws_order.get('price', '0'))),
-            quantity=float(getattr(mexc_ws_order, 'quantity', mexc_ws_order.get('quantity', '0'))),
-            filled_quantity=float(getattr(mexc_ws_order, 'filled_qty', mexc_ws_order.get('filled_qty', '0'))),
-            order_id=OrderId(getattr(mexc_ws_order, 'order_id', mexc_ws_order.get('order_id', ''))),
-            status=status,
-            timestamp=getattr(mexc_ws_order, 'updateTime', mexc_ws_order.get('updateTime', 0)),
-            client_order_id=""
-        )
-
-
-def ws_to_trade(mexc_ws_trade, symbol_str: str = None) -> Trade:
-    """Transform MEXC WebSocket trade data to unified Trade struct."""
-    from exchanges.integrations.mexc.structs.exchange import MexcWSTradeEntry, MexcWSPrivateTradeData
-    
-    # Handle public trade entry (MexcWSTradeEntry)
-    if isinstance(mexc_ws_trade, MexcWSTradeEntry) or hasattr(mexc_ws_trade, 'p'):
-        side = Side.BUY if getattr(mexc_ws_trade, 't', 1) == 1 else Side.SELL
-        price = float(getattr(mexc_ws_trade, 'p', mexc_ws_trade.get('p', '0')))
-        quantity = float(getattr(mexc_ws_trade, 'q', mexc_ws_trade.get('q', '0')))
-        
-        return Trade(
-            symbol=to_symbol(symbol_str),
-            price=price,
-            quantity=quantity,
-            quote_quantity=price * quantity,
-            side=side,
-            timestamp=getattr(mexc_ws_trade, 'T', mexc_ws_trade.get('T', 0)),
-            trade_id="",
-            is_maker=False
-        )
-    # Handle private trade data (MexcWSPrivateTradeData)
-    elif isinstance(mexc_ws_trade, MexcWSPrivateTradeData):
-        price = float(mexc_ws_trade.price)
-        quantity = float(mexc_ws_trade.quantity)
-        
-        return Trade(
-            symbol=to_symbol(symbol_str if symbol_str else mexc_ws_trade.symbol),
-            price=price,
-            quantity=quantity,
-            quote_quantity=price * quantity,
-            side=Side.BUY if mexc_ws_trade.side == 'BUY' else Side.SELL,
-            timestamp=mexc_ws_trade.timestamp,
-            trade_id="",
-            is_maker=mexc_ws_trade.is_maker
-        )
-    else:
-        # Fallback for dict or other object types
-        if hasattr(mexc_ws_trade, 'p') or (hasattr(mexc_ws_trade, 'get') and mexc_ws_trade.get('p')):
-            # Public trade format
-            side = Side.BUY if getattr(mexc_ws_trade, 't', mexc_ws_trade.get('t', 1)) == 1 else Side.SELL
-            price = float(getattr(mexc_ws_trade, 'p', mexc_ws_trade.get('p', '0')))
-            quantity = float(getattr(mexc_ws_trade, 'q', mexc_ws_trade.get('q', '0')))
-            
-            return Trade(
-                symbol=to_symbol(symbol_str),
-                price=price,
-                quantity=quantity,
-                quote_quantity=price * quantity,
-                side=side,
-                timestamp=getattr(mexc_ws_trade, 'T', mexc_ws_trade.get('T', 0)),
-                trade_id="",
-                is_maker=False
-            )
-        else:
-            # Private trade format
-            price = float(getattr(mexc_ws_trade, 'price', mexc_ws_trade.get('price', '0')))
-            quantity = float(getattr(mexc_ws_trade, 'quantity', mexc_ws_trade.get('quantity', '0')))
-            
-            return Trade(
-                symbol=to_symbol(symbol_str if symbol_str else getattr(mexc_ws_trade, 'symbol', mexc_ws_trade.get('symbol', ''))),
-                price=price,
-                quantity=quantity,
-                quote_quantity=price * quantity,
-                side=Side.BUY if getattr(mexc_ws_trade, 'side', mexc_ws_trade.get('side', 'BUY')) == 'BUY' else Side.SELL,
-                timestamp=getattr(mexc_ws_trade, 'timestamp', mexc_ws_trade.get('timestamp', getattr(mexc_ws_trade, 'time', mexc_ws_trade.get('time', 0)))),
-                trade_id="",
-                is_maker=getattr(mexc_ws_trade, 'is_maker', mexc_ws_trade.get('is_maker', False))
-            )
-
-
-def ws_to_orderbook(mexc_ws_orderbook, symbol_str: str = None) -> OrderBook:
-    """Transform MEXC WebSocket orderbook data to unified OrderBook."""
-    from exchanges.structs.common import OrderBookEntry
-    from exchanges.integrations.mexc.structs.exchange import MexcWSOrderbookData, MexcOrderBookResponse
-    
-    bids = []
-    asks = []
-    
-    # Handle different orderbook data types
-    if isinstance(mexc_ws_orderbook, (MexcWSOrderbookData, MexcOrderBookResponse)):
-        # Process bids
-        if mexc_ws_orderbook.bids:
-            for bid_data in mexc_ws_orderbook.bids:
-                if len(bid_data) >= 2:
-                    price = float(bid_data[0])
-                    size = float(bid_data[1])
-                    bids.append(OrderBookEntry(price=price, size=size))
-        
-        # Process asks
-        if mexc_ws_orderbook.asks:
-            for ask_data in mexc_ws_orderbook.asks:
-                if len(ask_data) >= 2:
-                    price = float(ask_data[0])
-                    size = float(ask_data[1])
-                    asks.append(OrderBookEntry(price=price, size=size))
-    else:
-        # Fallback for dict or other object types
-        bids_data = getattr(mexc_ws_orderbook, 'bids', mexc_ws_orderbook.get('bids', []) if hasattr(mexc_ws_orderbook, 'get') else [])
-        asks_data = getattr(mexc_ws_orderbook, 'asks', mexc_ws_orderbook.get('asks', []) if hasattr(mexc_ws_orderbook, 'get') else [])
-        
-        for bid_data in bids_data:
-            if len(bid_data) >= 2:
-                price = float(bid_data[0])
-                size = float(bid_data[1])
-                bids.append(OrderBookEntry(price=price, size=size))
-        
-        for ask_data in asks_data:
-            if len(ask_data) >= 2:
-                price = float(ask_data[0])
-                size = float(ask_data[1])
-                asks.append(OrderBookEntry(price=price, size=size))
-    
-    # Get symbol from data or parameter
-    if symbol_str:
-        symbol = to_symbol(symbol_str)
-    elif hasattr(mexc_ws_orderbook, 'symbol'):
-        symbol = to_symbol(mexc_ws_orderbook.symbol)
-    else:
-        symbol = None
-    
-    return OrderBook(
-        symbol=symbol,
-        bids=bids,
-        asks=asks,
-        timestamp=getattr(mexc_ws_orderbook, 'timestamp', 0),
-        last_update_id=getattr(mexc_ws_orderbook, 'lastUpdateId', getattr(mexc_ws_orderbook, 'version', None))
-    )
-
-
-def ws_to_book_ticker(mexc_ws_ticker, symbol_str: str = None) -> BookTicker:
-    """Transform MEXC WebSocket book ticker data to unified BookTicker."""
-    
-    # Get symbol from data or parameter
-    if symbol_str:
-        symbol = to_symbol(symbol_str)
-    elif hasattr(mexc_ws_ticker, 'symbol'):
-        symbol = to_symbol(mexc_ws_ticker.symbol)
-    else:
-        symbol = None
-    
-    # Handle both struct and dict types with fallback values
-    def safe_get_float(obj, key, default=0):
-        if hasattr(obj, key):
-            return float(getattr(obj, key, default))
-        elif hasattr(obj, 'get'):
-            return float(obj.get(key, default))
-        else:
-            return float(default)
-    
-    def safe_get_int(obj, key, default=0):
-        if hasattr(obj, key):
-            return int(getattr(obj, key, default))
-        elif hasattr(obj, 'get'):
-            return int(obj.get(key, default))
-        else:
-            return int(default)
-    
-    return BookTicker(
-        symbol=symbol,
-        bid_price=safe_get_float(mexc_ws_ticker, 'bidPrice'),
-        bid_quantity=safe_get_float(mexc_ws_ticker, 'bidQty'),
-        ask_price=safe_get_float(mexc_ws_ticker, 'askPrice'),
-        ask_quantity=safe_get_float(mexc_ws_ticker, 'askQty'),
-        timestamp=safe_get_int(mexc_ws_ticker, 'timestamp'),
-        update_id=safe_get_int(mexc_ws_ticker, 'updateId')
-    )
-
-
-def rest_to_balance(mexc_rest_balance) -> AssetBalance:
-    """Transform MEXC REST balance response to unified AssetBalance."""
-    from exchanges.integrations.mexc.structs.exchange import MexcBalanceResponse
-    
-    # Handle both dict and struct types for backward compatibility
-    if isinstance(mexc_rest_balance, MexcBalanceResponse):
-        return AssetBalance(
-            asset=AssetName(mexc_rest_balance.asset),
-            available=float(mexc_rest_balance.free),
-            locked=float(mexc_rest_balance.locked)
-        )
-    else:
-        # Fallback to dict access
-        return AssetBalance(
-            asset=AssetName(mexc_rest_balance.get('asset', '')),
-            available=float(mexc_rest_balance.get('free', '0')),
-            locked=float(mexc_rest_balance.get('locked', '0'))
-        )
-
-
 def rest_to_withdrawal_status(mexc_status: str) -> WithdrawalStatus:
     """Convert MEXC withdrawal status to unified WithdrawalStatus."""
     return _MEXC_WITHDRAW_STATUS_MAP.get(mexc_status.upper(), WithdrawalStatus.UNKNOWN)
 
 
-def rest_to_trade(mexc_trade_data: Union[MexcTradeResponse, dict]) -> Trade:
-    """Transform MEXC REST trade response to unified Trade struct."""
+# Symbol extraction utility functions for MEXC WebSocket messages
+def extract_symbol_from_data(data: Dict[str, any], fields: List[str] = None) -> Optional[str]:
+    """Extract symbol from MEXC message data."""
+    # MEXC typically uses 'symbol' or 's' fields
+    if fields is None:
+        fields = ['s', 'symbol', 'currency_pair', 'contract', 'pair', 'market']
     
-    if isinstance(mexc_trade_data, MexcTradeResponse):
-        # Convert MEXC trade response to unified Trade
-        side = Side.BUY if not mexc_trade_data.isBuyerMaker else Side.SELL
-        
-        return Trade(
-            symbol=None,  # Symbol needs to be provided externally
-            price=float(mexc_trade_data.price),
-            quantity=float(mexc_trade_data.qty),
-            quote_quantity=float(mexc_trade_data.quoteQty),
-            side=side,
-            timestamp=mexc_trade_data.time,
-            trade_id=str(mexc_trade_data.id) if mexc_trade_data.id else "",
-            is_maker=mexc_trade_data.isBuyerMaker
-        )
-    else:
-        # Fallback for dict access
-        is_buyer_maker = mexc_trade_data.get('isBuyerMaker', False)
-        side = Side.BUY if not is_buyer_maker else Side.SELL
-        
-        return Trade(
-            symbol=None,  # Symbol needs to be provided externally
-            price=float(mexc_trade_data.get('price', '0')),
-            quantity=float(mexc_trade_data.get('qty', '0')),
-            quote_quantity=float(mexc_trade_data.get('quoteQty', '0')),
-            side=side,
-            timestamp=mexc_trade_data.get('time', 0),
-            trade_id=str(mexc_trade_data.get('id', '')) if mexc_trade_data.get('id') else "",
-            is_maker=is_buyer_maker
-        )
+    for field in fields:
+        symbol_str = data.get(field)
+        if symbol_str and isinstance(symbol_str, str):
+            return symbol_str
+    return None
 
 
-def rest_to_orderbook(mexc_orderbook_data: Union[MexcOrderBookResponse, dict], symbol_str: str = None) -> OrderBook:
-    """Transform MEXC REST orderbook response to unified OrderBook."""
-    from exchanges.structs.common import OrderBookEntry
-    
-    bids = []
-    asks = []
-    
-    if isinstance(mexc_orderbook_data, MexcOrderBookResponse):
-        # Process bids
-        for bid_data in mexc_orderbook_data.bids:
-            if len(bid_data) >= 2:
-                price = float(bid_data[0])
-                size = float(bid_data[1])
-                bids.append(OrderBookEntry(price=price, size=size))
-        
-        # Process asks
-        for ask_data in mexc_orderbook_data.asks:
-            if len(ask_data) >= 2:
-                price = float(ask_data[0])
-                size = float(ask_data[1])
-                asks.append(OrderBookEntry(price=price, size=size))
-        
-        last_update_id = mexc_orderbook_data.lastUpdateId
-    else:
-        # Fallback for dict access
-        bids_data = mexc_orderbook_data.get('bids', [])
-        asks_data = mexc_orderbook_data.get('asks', [])
-        
-        for bid_data in bids_data:
-            if len(bid_data) >= 2:
-                price = float(bid_data[0])
-                size = float(bid_data[1])
-                bids.append(OrderBookEntry(price=price, size=size))
-        
-        for ask_data in asks_data:
-            if len(ask_data) >= 2:
-                price = float(ask_data[0])
-                size = float(ask_data[1])
-                asks.append(OrderBookEntry(price=price, size=size))
-        
-        last_update_id = mexc_orderbook_data.get('lastUpdateId', None)
-    
-    return OrderBook(
-        symbol=to_symbol(symbol_str) if symbol_str else None,
-        bids=bids,
-        asks=asks,
-        timestamp=0,  # REST API doesn't provide timestamp
-        last_update_id=last_update_id
-    )
+def extract_symbol_from_channel(channel: str) -> Optional[str]:
+    """Extract symbol from MEXC channel name."""
+    # MEXC format: "spot@public.bookTicker.v3.api@BTCUSDT"
+    if '@' in channel and not channel.endswith(')'):
+        # Look for symbol pattern at the end
+        parts = channel.split('@')
+        if parts:
+            last_part = parts[-1]
+            # MEXC symbols are typically all caps, no separators
+            if re.match(r'^[A-Z]{2,10}USDT?$', last_part):
+                return last_part
+    return None
+
+
+def convert_symbol_string(symbol_str: str) -> Optional[Symbol]:
+    """Convert MEXC symbol string to unified Symbol."""
+    return to_symbol(symbol_str)
 

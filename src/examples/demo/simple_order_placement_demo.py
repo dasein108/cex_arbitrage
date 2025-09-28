@@ -29,7 +29,7 @@ async def main():
     logger = get_logger("order_demo")
 
     # Configuration
-    exchange_name = "gateio_futures"  # Change to desired exchange
+    exchange_name = "gateio_spot"  # Change to desired exchange
     test_cases: List[TestCase] = ["limit_ioc", "limit_gtc", "market_quote_qty"] #
     try:
         # Get exchange configuration and enum

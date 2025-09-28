@@ -21,6 +21,8 @@ from infrastructure.networking.websocket.structs import SubscriptionAction, Publ
 from exchanges.structs.common import Symbol
 # BaseExchangeMapper dependency removed - using direct utility functions
 from exchanges.consts import DEFAULT_PUBLIC_WEBSOCKET_CHANNELS
+from exchanges.integrations.gateio.utils import from_subscription_action, get_spot_channel_name, to_pair, to_symbol, \
+    EventType
 
 # HFT Logger Integration
 from infrastructure.logging import get_strategy_logger, HFTLoggerInterface
@@ -79,7 +81,6 @@ class GateioPublicSubscriptionStrategy(SubscriptionStrategy):
         
         current_time = int(time.time())
         # Use direct utility functions
-        from exchanges.integrations.gateio.utils import from_subscription_action, get_spot_channel_name, to_pair, to_symbol, EventType
         event = from_subscription_action(action)
         messages = []
         

@@ -7,10 +7,11 @@ No classes, no factories, no dependency injection - just direct transformations.
 HFT COMPLIANT: Zero overhead function calls, no object instantiation.
 """
 
-from typing import Dict
+from typing import Dict, Optional
+import re
 from enum import Enum
 from exchanges.structs.common import (
-    Side, OrderStatus, OrderType, TimeInForce, AssetName, AssetBalance, Order, Trade, OrderBook, BookTicker
+    Side, OrderStatus, OrderType, TimeInForce, AssetName, AssetBalance, Order, Trade, OrderBook, BookTicker, Symbol
 )
 from exchanges.structs.types import OrderId
 from exchanges.structs.enums import KlineInterval
@@ -573,6 +574,40 @@ def futures_ws_to_balance(gate_ws_balance) -> AssetBalance:
         available=float(gate_ws_balance.get('available', '0')),
         locked=float(gate_ws_balance.get('locked', '0'))
     )
+
+
+# Symbol extraction utility functions for Gate.io WebSocket messages
+def extract_symbol_from_data(data: Dict[str, any], fields: list[str] = None) -> Optional[str]:
+    """Extract symbol from Gate.io message data."""
+    # Gate.io uses different fields for different message types
+    if fields is None:
+        fields = ['s', 'symbol', 'currency_pair', 'contract', 'pair', 'market']
+    
+    for field in fields:
+        symbol_str = data.get(field)
+        if symbol_str and isinstance(symbol_str, str):
+            return symbol_str
+    return None
+
+
+def extract_symbol_from_channel(channel: str) -> Optional[str]:
+    """Extract symbol from Gate.io channel name."""
+    # Gate.io format: "spot.trades.BTC_USDT" or "futures.book_ticker.BTC_USD"
+    if '.' in channel:
+        parts = channel.split('.')
+        if len(parts) >= 3:
+            return parts[-1]  # Last part is symbol
+    return None
+
+
+def convert_spot_symbol_string(symbol_str: str) -> Optional[Symbol]:
+    """Convert Gate.io spot symbol string to unified Symbol."""
+    return to_symbol(symbol_str)
+
+
+def convert_futures_symbol_string(symbol_str: str) -> Optional[Symbol]:
+    """Convert Gate.io futures symbol string to unified Symbol."""
+    return to_futures_symbol(symbol_str)
 
 
 # All utility functions are directly available - no wrapper classes needed

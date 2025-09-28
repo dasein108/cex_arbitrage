@@ -19,7 +19,7 @@ def create_websocket_manager(
     exchange_config: ExchangeConfig,
     is_private: bool = False,
     message_handler=None,
-    state_change_handler=None,
+    connection_handler=None,
     **kwargs
 ) -> WebSocketManager:
     """
@@ -31,7 +31,7 @@ def create_websocket_manager(
         exchange_config: Exchange configuration
         is_private: Whether to use private API (requires credentials)
         message_handler: Callback for parsed messages
-        state_change_handler: Callback for connection state changes
+        connection_handler: Callback for connection state changes
         **kwargs: Additional strategy configuration
 
     Returns:
@@ -154,5 +154,5 @@ def create_websocket_manager(
         strategies=strategy_set,
         message_handler=message_handler,
         manager_config=manager_config,
-        connection_handler=state_change_handler
+        connection_handler=connection_handler
     )

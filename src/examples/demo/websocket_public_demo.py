@@ -48,7 +48,7 @@ class PublicWebSocketClient:
             is_private=False,
             config=config,
             handlers=create_public_handlers(
-                orderbook_diff_handler=self._handle_orderbook_update,
+                orderbook_handler=self._handle_orderbook_update,
                 trades_handler=self._handle_trades_update,
                 book_ticker_handler=self._handle_book_ticker_update
             ),
@@ -343,7 +343,7 @@ async def main(exchange_name: str):
 
 
 if __name__ == "__main__":
-    exchange_name = sys.argv[1] if len(sys.argv) > 1 else "mexc_spot"
+    exchange_name = sys.argv[1] if len(sys.argv) > 1 else "gateio_spot"
 
     try:
         asyncio.run(main(exchange_name))

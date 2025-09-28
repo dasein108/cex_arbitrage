@@ -9,24 +9,17 @@ from infrastructure.networking.websocket.strategies.message_parser import Messag
 from infrastructure.networking.websocket.structs import ParsedMessage, MessageType
 from exchanges.integrations.mexc.ws.protobuf_parser import MexcProtobufParser
 from exchanges.structs.common import OrderBook, Trade, BookTicker
-from exchanges.integrations.mexc.structs.exchange import MexcWSTradeEntry
-# Use direct utility functions instead of mapper classes
-from exchanges.integrations.mexc import utils as mexc_utils
+# Direct protobuf field parsing - no utility functions needed
 from exchanges.integrations.mexc.services.symbol_mapper import MexcSymbol
 
 # New parsing utilities
 from infrastructure.networking.websocket.parsing.message_parsing_utils import MessageParsingUtils
-from infrastructure.networking.websocket.parsing.symbol_extraction import (
-    UniversalSymbolExtractor, MexcSymbolExtraction
-)
 from infrastructure.networking.websocket.parsing.error_handling import WebSocketErrorHandler
-from infrastructure.networking.websocket.parsing.universal_transformer import (
-    create_mexc_transformer, DataType
-)
+# Direct protobuf parsing - no universal transformer needed
 
 # HFT Logger Integration
 from infrastructure.logging import get_strategy_logger, HFTLoggerInterface
-
+from exchanges.structs import Side
 
 class MexcPublicMessageParser(MessageParser):
     """MEXC public WebSocket message parser with HFT optimizations."""
@@ -41,39 +34,34 @@ class MexcPublicMessageParser(MessageParser):
 
     def __init__(self, logger: Optional[HFTLoggerInterface] = None):
         super().__init__(logger)
-        
+
         # Use injected logger or create strategy-specific logger
         if logger is None:
             tags = ['mexc', 'public', 'ws', 'message_parser']
             logger = get_strategy_logger('ws.message_parser.mexc.public', tags)
-        
+
         self.logger = logger
         self.entry_pool = OrderBookEntryPool(initial_size=200, max_size=500)
-        
+
         # Initialize utilities
         self.parsing_utils = MessageParsingUtils()
-        
-        # Initialize symbol extraction with MEXC strategy
-        symbol_strategy = MexcSymbolExtraction(MexcSymbol.to_symbol)
-        self.symbol_extractor = UniversalSymbolExtractor(symbol_strategy)
-        
+
+        # No symbol extractor needed - use direct protobuf parsing
+
         # Initialize error handler
         self.error_handler = WebSocketErrorHandler("mexc", self.logger)
-        
-        # Initialize universal data transformer (replaces individual parsing methods)
-        self.data_transformer = create_mexc_transformer(
-            self.symbol_extractor, self.error_handler, self.logger
-        )
-        
+
+        # Direct protobuf parsing - no data transformer needed
+
         # Log MEXC-specific initialization (move to DEBUG per logging spec)
         if self.logger:
             self.logger.debug("MexcPublicMessageParser initialized with common utilities",
-                             entry_pool_initial_size=200,
-                             entry_pool_max_size=500)
-            
+                              entry_pool_initial_size=200,
+                              entry_pool_max_size=500)
+
             # Track component initialization
             self.logger.metric("mexc_public_message_parsers_initialized", 1,
-                              tags={"exchange": "mexc", "api_type": "public"})
+                               tags={"exchange": "mexc", "api_type": "public"})
 
     async def parse_message(self, raw_message: str) -> Optional[ParsedMessage]:
         """Parse MEXC WebSocket message with fast type detection."""
@@ -89,8 +77,8 @@ class MexcPublicMessageParser(MessageParser):
                 if raw_message.startswith('{') or raw_message.startswith('['):
                     if self.logger:
                         self.logger.debug("Detected JSON message format",
-                                        exchange="mexc",
-                                        format="json")
+                                          exchange="mexc",
+                                          format="json")
                     json_msg = self.parsing_utils.safe_json_decode(raw_message, self.logger, "mexc")
                     if json_msg:
                         return await self._parse_json_message(json_msg)
@@ -108,22 +96,22 @@ class MexcPublicMessageParser(MessageParser):
             if message_bytes and message_bytes[0] == 0x0a:
                 if self.logger:
                     self.logger.debug("Detected protobuf message format (starts with 0x0a)",
-                                    exchange="mexc",
-                                    format="protobuf")
+                                      exchange="mexc",
+                                      format="protobuf")
                 return await self._parse_protobuf_message(message_bytes, 'mexc_v3')
             # Secondary check for spot@public BUT only if it doesn't look like JSON
             elif message_bytes and b'spot@public' in message_bytes[:50] and not (
                     message_bytes.startswith(b'{') or message_bytes.startswith(b'[')):
                 if self.logger:
                     self.logger.debug("Detected protobuf message format (contains spot@public, not JSON)",
-                                    exchange="mexc",
-                                    format="protobuf")
+                                      exchange="mexc",
+                                      format="protobuf")
                 return await self._parse_protobuf_message(message_bytes, 'mexc_v3')
             else:
                 if self.logger:
                     self.logger.debug("Unknown message format",
-                                    exchange="mexc",
-                                    first_bytes=message_bytes[:10].hex() if message_bytes else "empty")
+                                      exchange="mexc",
+                                      first_bytes=message_bytes[:10].hex() if message_bytes else "empty")
                 return None
 
         except Exception as e:
@@ -182,8 +170,8 @@ class MexcPublicMessageParser(MessageParser):
             else:
                 if self.logger:
                     self.logger.warning("Unknown message type in diff parsing",
-                                      exchange="mexc",
-                                      message_type=type(raw_message).__name__)
+                                        exchange="mexc",
+                                        message_type=type(raw_message).__name__)
                 return None
 
         except Exception as e:
@@ -352,8 +340,7 @@ class MexcPublicMessageParser(MessageParser):
 
         except Exception as e:
             return self.error_handler.handle_transformation_error(
-                {"raw_bytes_length": len(raw_protobuf) if raw_protobuf else 0}, 
-                e, "protobuf_parsing", "MEXC public"
+                {"data_length": len(data)}, e, "protobuf_trades", "MEXC public"
             )
 
         return None
@@ -367,16 +354,12 @@ class MexcPublicMessageParser(MessageParser):
             message_type = self.get_message_type(msg)
 
             if message_type == MessageType.ORDERBOOK:
-                # Use universal transformer for orderbook parsing
-                return await self.data_transformer.transform_data(
-                    DataType.ORDERBOOK, msg.get('d', {}), msg.get('c', ''), "MEXC public JSON"
-                )
+                # MEXC primarily uses protobuf for orderbook data - JSON parsing not critical
+                return None
 
             elif message_type == MessageType.TRADE:
-                # Use universal transformer for trades parsing
-                return await self.data_transformer.transform_data(
-                    DataType.TRADES, msg.get('d', {}), msg.get('c', ''), "MEXC public JSON"
-                )
+                # MEXC primarily uses protobuf for trades data - JSON parsing not critical
+                return None
 
             elif message_type == MessageType.HEARTBEAT:
                 return self.create_heartbeat_response(msg)
@@ -389,10 +372,8 @@ class MexcPublicMessageParser(MessageParser):
                 )
 
             elif message_type == MessageType.BOOK_TICKER:
-                # Use universal transformer for book ticker parsing
-                return await self.data_transformer.transform_data(
-                    DataType.BOOK_TICKER, msg.get('d', {}), msg.get('c', ''), "MEXC public JSON"
-                )
+                # MEXC primarily uses protobuf for book ticker data - JSON parsing not critical
+                return None
 
             return None
 
@@ -416,10 +397,10 @@ class MexcPublicMessageParser(MessageParser):
             if b'aggre.deals' in data[:50]:
                 if self.logger:
                     self.logger.debug("Processing trades protobuf",
-                                    exchange="mexc",
-                                    symbol=symbol_str,
-                                    format="protobuf",
-                                    message_type="trades")
+                                      exchange="mexc",
+                                      symbol=symbol_str,
+                                      format="protobuf",
+                                      message_type="trades")
                 trades = await self._parse_trades_from_protobuf(data, symbol_str)
 
                 return self.create_parsed_message(
@@ -432,10 +413,10 @@ class MexcPublicMessageParser(MessageParser):
             elif b'aggre.depth' in data[:50]:
                 if self.logger:
                     self.logger.debug("Processing orderbook protobuf",
-                                    exchange="mexc",
-                                    symbol=symbol_str,
-                                    format="protobuf",
-                                    message_type="orderbook")
+                                      exchange="mexc",
+                                      symbol=symbol_str,
+                                      format="protobuf",
+                                      message_type="orderbook")
                 orderbook = await self._parse_orderbook_from_protobuf(data, symbol_str)
 
                 return self.create_parsed_message(
@@ -448,10 +429,10 @@ class MexcPublicMessageParser(MessageParser):
             elif b'aggre.bookTicker' in data[:50]:
                 if self.logger:
                     self.logger.debug("Processing book ticker protobuf",
-                                    exchange="mexc",
-                                    symbol=symbol_str,
-                                    format="protobuf",
-                                    message_type="book_ticker")
+                                      exchange="mexc",
+                                      symbol=symbol_str,
+                                      format="protobuf",
+                                      message_type="book_ticker")
                 book_ticker = await self._parse_book_ticker_from_protobuf(data, symbol_str)
 
                 return self.create_parsed_message(
@@ -464,10 +445,10 @@ class MexcPublicMessageParser(MessageParser):
             else:
                 if self.logger:
                     self.logger.debug("Unknown protobuf message type",
-                                    exchange="mexc",
-                                    symbol=symbol_str,
-                                    format="protobuf",
-                                    data_preview=data[:50].hex())
+                                      exchange="mexc",
+                                      symbol=symbol_str,
+                                      format="protobuf",
+                                      data_preview=data[:50].hex())
                 return None
 
         except Exception as e:
@@ -489,7 +470,7 @@ class MexcPublicMessageParser(MessageParser):
             if wrapper.HasField('publicAggreDepths'):
                 depth_data = wrapper.publicAggreDepths
 
-                # Convert to OrderBook
+                # Direct parsing from protobuf fields - bid_item/ask_item already have parsed price/quantity
                 bids = []
                 asks = []
 
@@ -534,13 +515,19 @@ class MexcPublicMessageParser(MessageParser):
             if wrapper.HasField('publicAggreDeals'):
                 deals_data = wrapper.publicAggreDeals
 
-                # Convert to MEXC trade entries list
-                mexc_trades = []
+                # Convert protobuf deals directly to unified trades
                 unified_trades = []
 
                 for deal_item in deals_data.deals:
-                    # Create MEXC-specific struct for performance
-                    unified_trade = mexc_utils.ws_to_trade(deal_item, symbol_str)
+                    # Direct parsing from protobuf fields - deal_item already has parsed data
+                    unified_trade = Trade(
+                        symbol=MexcSymbol.to_symbol(symbol_str),
+                        price=float(deal_item.price),
+                        quantity=float(deal_item.quantity),
+                        timestamp=int(deal_item.time),
+                        side=Side.BUY if deal_item.tradeType == 1 else Side.SELL,
+                        trade_id=str(deal_item.time)  # Use timestamp as trade ID
+                    )
                     unified_trades.append(unified_trade)
 
                 return unified_trades
@@ -551,11 +538,11 @@ class MexcPublicMessageParser(MessageParser):
             return self.error_handler.handle_transformation_error(
                 {"data_length": len(data)}, e, "protobuf_trades", "MEXC public"
             )
-            traceback.print_exc()
+            return None
             return None
 
     # Individual JSON parsing methods removed - replaced by Universal Data Transformer
-    # _parse_trades_from_json and _parse_book_ticker_from_json are now handled by self.data_transformer.transform_data()
+    # Individual JSON parsing methods removed - MEXC uses direct protobuf parsing
 
     async def _parse_book_ticker_from_protobuf(
             self,
@@ -570,21 +557,20 @@ class MexcPublicMessageParser(MessageParser):
             # Check if we have book ticker data
             if wrapper.HasField('publicAggreBookTicker'):
                 book_ticker_data = wrapper.publicAggreBookTicker
-                
-                # Extract symbol 
+
+                # Direct parsing from protobuf fields - book_ticker_data already has parsed price/quantity fields
                 symbol = MexcSymbol.to_symbol(symbol_str)
-                
-                # Parse protobuf book ticker data
+
                 book_ticker = BookTicker(
                     symbol=symbol,
                     bid_price=float(book_ticker_data.bidPrice),
                     bid_quantity=float(book_ticker_data.bidQuantity),
                     ask_price=float(book_ticker_data.askPrice),
                     ask_quantity=float(book_ticker_data.askQuantity),
-                    timestamp=int(time.time() * 1000),  # MEXC doesn't provide timestamp
-                    update_id=None  # MEXC doesn't provide update_id
+                    timestamp=int(time.time() * 1000),  # MEXC protobuf doesn't include timestamp
+                    update_id=None  # MEXC protobuf doesn't include update_id
                 )
-                
+
                 return book_ticker
 
             return None
@@ -594,17 +580,17 @@ class MexcPublicMessageParser(MessageParser):
                 {"data_length": len(data)}, e, "protobuf_book_ticker", "MEXC public"
             )
             return None
-    
+
     def get_supported_message_types(self) -> List[str]:
         """Get list of supported message types for MEXC."""
         return ["orderbook", "trades", "book_ticker", "subscription", "ping_pong", "other", "error"]
-    
+
     # Helper methods for cleaner code organization
-    
+
     def create_heartbeat_response(self, message: Dict[str, Any]) -> ParsedMessage:
         """Create heartbeat response message."""
         return self.parsing_utils.create_heartbeat_response(message)
-    
+
     def create_subscription_response(self, channel: str, status: str, raw_data: Dict[str, Any]) -> ParsedMessage:
         """Create subscription response message."""
         return self.parsing_utils.create_subscription_response(
@@ -612,4 +598,3 @@ class MexcPublicMessageParser(MessageParser):
             status=status,
             raw_data=raw_data
         )
-

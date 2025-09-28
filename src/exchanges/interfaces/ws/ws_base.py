@@ -44,7 +44,7 @@ class BaseWebsocketInterface(ABC):
             exchange_config=config,
             is_private=is_private,
             message_handler=message_handler or self._handle_parsed_message,
-            state_change_handler=state_change_handler,
+            connection_handler=state_change_handler,
             logger=self.logger  # Inject HFT logger into WebSocket manager
         )
         

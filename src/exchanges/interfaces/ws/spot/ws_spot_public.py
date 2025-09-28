@@ -62,7 +62,7 @@ class PublicSpotWebsocket(ABC):
             exchange_config=config,
             is_private=False,
             message_handler=self._handle_parsed_message,
-            state_change_handler=self._handle_state_change
+            connection_handler=self._connection_handler
         )
 
         # State management for symbols (moved from WebSocket manager)
@@ -191,7 +191,7 @@ class PublicSpotWebsocket(ABC):
             self.logger.error(f"Error handling parsed message: {e}")
             self.logger.debug(f"Full traceback: {traceback.format_exc()}")
     
-    async def _handle_state_change(self, state: ConnectionState) -> None:
+    async def _connection_handler(self, state: ConnectionState) -> None:
         """
         Handle connection state changes.
         
