@@ -142,7 +142,7 @@ class WebSocketDemo(ExchangeDemoBase, WebSocketDemoMixin):
             handlers = create_private_handlers(
                 order_handler=self._handle_order_update,
                 balance_handler=self.data_manager.handle_balance_update,
-                trade_handler=self._handle_private_trade_update
+                execution_handler=self._handle_private_trade_update
             )
             
             self.websocket_client = create_websocket_client(

@@ -1,7 +1,7 @@
 """MEXC private exchange implementation using composite pattern."""
 
 from typing import Optional, List
-from exchanges.interfaces.composite.spot.base_private_spot_composite import CompositePrivateExchange
+from exchanges.interfaces.composite.spot.base_private_spot_composite import CompositePrivateSpotExchange
 from exchanges.interfaces.rest.spot.rest_spot_private import PrivateSpotRest
 from exchanges.interfaces.ws.spot.ws_spot_private import PrivateSpotWebsocket
 from exchanges.integrations.mexc.rest.mexc_rest_spot_private import MexcPrivateSpotRest
@@ -14,7 +14,7 @@ from infrastructure.logging import HFTLoggerInterface
 from config.structs import ExchangeConfig
 
 
-class MexcCompositePrivateExchange(CompositePrivateExchange):
+class MexcCompositePrivateSpotExchange(CompositePrivateSpotExchange):
     """
     MEXC private exchange implementation using composite pattern.
     
@@ -54,14 +54,4 @@ class MexcCompositePrivateExchange(CompositePrivateExchange):
             execution_handler=self._execution_handler,
         )
 
-    async def withdraw(self, request: WithdrawalRequest) -> WithdrawalResponse:
-        """Submit a withdrawal request via MEXC REST API."""
-        return await self._private_rest.submit_withdrawal(request)
-
-    async def get_withdrawal_status(self, withdrawal_id: str) -> WithdrawalResponse:
-        """Get current status of a withdrawal via MEXC REST API."""
-        return await self._private_rest.get_withdrawal_status(withdrawal_id)
-
-    async def get_withdrawal_history(self, asset: Optional[AssetName] = None, limit: int = 100) -> List[WithdrawalResponse]:
-        """Get withdrawal history via MEXC REST API."""
-        return await self._private_rest.get_withdrawal_history(asset, limit)
+    # Withdrawal operations are inherited from WithdrawalMixin which delegates to _private_rest

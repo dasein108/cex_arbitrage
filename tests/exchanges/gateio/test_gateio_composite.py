@@ -8,8 +8,8 @@ as MEXC but adapted for Gate.io-specific features.
 import pytest
 import asyncio
 from unittest.mock import Mock, AsyncMock, patch
-from exchanges.integrations.gateio.gateio_composite_public import GateioCompositePublicExchange
-from exchanges.integrations.gateio.gateio_composite_private import GateioCompositePrivateExchange
+from exchanges.integrations.gateio.gateio_composite_public import GateioCompositePublicSpotExchange
+from exchanges.integrations.gateio.gateio_composite_private import GateioCompositePrivateSpotExchange
 from exchanges.structs.common import Symbol, OrderBook, Order, AssetBalance, BookTicker, Trade
 from exchanges.structs.types import AssetName, OrderId
 from exchanges.structs import Side, OrderType, OrderStatus
@@ -37,7 +37,7 @@ class TestGateioCompositePublicExchange:
     @pytest.fixture
     def exchange(self, config, logger):
         """Create Gate.io public composite exchange instance."""
-        return GateioCompositePublicExchange(config, logger)
+        return GateioCompositePublicSpotExchange(config, logger)
 
     @pytest.mark.asyncio
     async def test_factory_methods(self, exchange):
@@ -147,7 +147,7 @@ class TestGateioCompositePrivateExchange:
     @pytest.fixture
     def exchange(self, config, logger):
         """Create Gate.io private composite exchange instance."""
-        return GateioCompositePrivateExchange(config, logger)
+        return GateioCompositePrivateSpotExchange(config, logger)
 
     @pytest.mark.asyncio
     async def test_factory_methods(self, exchange):

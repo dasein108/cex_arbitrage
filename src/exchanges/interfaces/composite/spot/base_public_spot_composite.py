@@ -65,7 +65,7 @@ from exchanges.interfaces.rest.spot.rest_spot_public import PublicSpotRest
 from exchanges.interfaces.ws.spot.ws_spot_public import PublicSpotWebsocket
 
 
-class CompositePublicExchange(BaseCompositeExchange):
+class CompositePublicSpotExchange(BaseCompositeExchange):
     """
     Base interface for public exchange operations in HFT arbitrage systems.
     

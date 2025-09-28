@@ -43,7 +43,7 @@ from .balance import BalanceMonitor
 from .recovery import RecoveryManager
 from .aggregator import MarketDataAggregator
 
-from exchanges.interfaces.composite.spot.base_private_spot_composite import CompositePrivateExchange
+from exchanges.interfaces.composite.spot.base_private_spot_composite import CompositePrivateSpotExchange
 from infrastructure.error_handling import TradingErrorHandler, ErrorContext
 from infrastructure.exceptions.exchange import ArbitrageEngineError
 
@@ -69,7 +69,7 @@ class ArbitrageEngine:
     def __init__(
         self,
         config: ArbitrageConfig,
-        exchanges: Dict[str, CompositePrivateExchange],
+        exchanges: Dict[str, CompositePrivateSpotExchange],
         logger: Optional[HFTLoggerInterface] = None,
     ):
         """

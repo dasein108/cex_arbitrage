@@ -10,7 +10,7 @@ HFT COMPLIANT: Minimal overhead engine creation.
 from infrastructure.logging import get_logger
 from typing import Dict, Union
 from trading.arbitrage.types import ArbitrageConfig
-from exchanges.interfaces.composite.spot.base_private_spot_composite import CompositePrivateExchange
+from exchanges.interfaces.composite.spot.base_private_spot_composite import CompositePrivateSpotExchange
 
 logger = get_logger('arbitrage.engine_utils')
 
@@ -40,7 +40,7 @@ def get_recommended_engine_type(config: ArbitrageConfig) -> str:
 def create_engine(
     engine_type: str,
     config: ArbitrageConfig,
-    exchanges: Dict[str, CompositePrivateExchange]
+    exchanges: Dict[str, CompositePrivateSpotExchange]
 ) -> Union['SimpleArbitrageEngine', 'ArbitrageEngine']:
     """
     Create arbitrage engine instance based on type.

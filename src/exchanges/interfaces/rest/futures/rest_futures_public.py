@@ -18,3 +18,4 @@ class PublicFuturesRest(PublicSpotRest):
     # async def get_mark_price(self, symbol: Symbol) -> float:
     #     """Get current mark price."""
     #     pass
+    pass

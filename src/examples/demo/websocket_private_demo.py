@@ -54,7 +54,7 @@ class PrivateWebSocketClient:
             handlers=create_private_handlers(
                 order_handler=self._handle_order_update,
                 balance_handler=self._handle_balance_update,
-                trade_handler=self._handle_trade_update
+                execution_handler=self._handle_trade_update
             )
         )
 

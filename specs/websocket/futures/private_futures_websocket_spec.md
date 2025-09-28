@@ -156,7 +156,7 @@ class FuturesPrivateWebsocketHandlers(PrivateWebsocketHandlers):
 async def _position_handler(self, position: Position) -> None:
     """Process position updates in composite layer"""
     # Update position state
-    self._futures_positions[position.symbol] = position
+    self._positions[position.symbol] = position
 
     # Check risk metrics
     if position.margin_ratio > 0.8:

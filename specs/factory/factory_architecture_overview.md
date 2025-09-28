@@ -147,24 +147,29 @@ _composite_cache: Dict[str, Any] = {}  # "{exchange}_{domain}_composite"
 ### Direct Instantiation Pattern
 
 **Switch-Based Routing** (No Registry Overhead):
+
 ```python
 # Transport Factory Pattern
 if exchange == ExchangeEnum.MEXC:
     if is_private:
         from exchanges.integrations.mexc.rest.mexc_rest_spot_private import MexcPrivateSpotRest
+
         instance = MexcPrivateSpotRest(config=config, logger=logger_override)
     else:
         from exchanges.integrations.mexc.rest.mexc_rest_spot_public import MexcPublicSpotRest
+
         instance = MexcPublicSpotRest(config=config, logger=logger_override)
 
 # Composite Factory Pattern
 if exchange == ExchangeEnum.MEXC:
     if is_private:
-        from exchanges.integrations.mexc.mexc_composite_private import MexcCompositePrivateExchange
-        instance = MexcCompositePrivateExchange(config=config, logger=logger_override)
+        from exchanges.integrations.mexc.mexc_composite_private import MexcCompositePrivateSpotExchange
+
+        instance = MexcCompositePrivateSpotExchange(config=config, logger=logger_override)
     else:
-        from exchanges.integrations.mexc.mexc_composite_public import MexcCompositePublicExchange
-        instance = MexcCompositePublicExchange(config=config, logger=logger_override)
+        from exchanges.integrations.mexc.mexc_composite_public import MexcCompositePublicSpotExchange
+
+        instance = MexcCompositePublicSpotExchange(config=config, logger=logger_override)
 ```
 
 **Performance Benefits**:

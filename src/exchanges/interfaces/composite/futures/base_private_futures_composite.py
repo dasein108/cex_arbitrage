@@ -11,22 +11,22 @@ from typing import Dict, List, Optional, Any
 from decimal import Decimal
 
 from exchanges.structs.common import Symbol, Order, Position, SymbolsInfo
-from exchanges.interfaces.composite.spot.base_private_spot_composite import CompositePrivateExchange
+from exchanges.interfaces.composite.base_private_composite import BasePrivateComposite
 from infrastructure.logging import HFTLoggerInterface
 from infrastructure.networking.websocket.handlers import PrivateWebsocketHandlers
 
 
-class CompositePrivateFuturesExchange(CompositePrivateExchange):
+class CompositePrivateFuturesExchange(BasePrivateComposite):
     """
     Base interface for private futures exchange operations.
     
-    Extends CompositePrivateExchange with futures-specific features:
+    Extends BasePrivateComposite with futures-specific features:
     - Leverage management
     - Futures position control (long/short)
     - Margin management
     - Futures-specific order types
     
-    Reuses most functionality from CompositePrivateExchange for efficiency.
+    NOTE: Futures exchanges do NOT support withdrawals - use spot exchanges for withdrawals.
     """
 
     def __init__(self, config, logger: Optional[HFTLoggerInterface] = None,
@@ -40,10 +40,10 @@ class CompositePrivateFuturesExchange(CompositePrivateExchange):
         # Futures-specific private data
         self._leverage_settings: Dict[Symbol, Dict] = {}
         self._margin_info: Dict[Symbol, Dict] = {}
-        self._futures_positions: Dict[Symbol, Position] = {}
+        self._positions: Dict[Symbol, Position] = {}
         
         # Alias for backward compatibility
-        self._positions: Dict[Symbol, Position] = self._futures_positions
+        self._positions: Dict[Symbol, Position] = self._positions
 
     # Properties for futures private data (reuse parent implementation pattern)
     
@@ -65,7 +65,7 @@ class CompositePrivateFuturesExchange(CompositePrivateExchange):
     @property
     def positions(self) -> Dict[Symbol, Position]:
         """Get current positions (alias for futures_positions)."""
-        return self._futures_positions.copy()
+        return self._positions.copy()
 
     # Futures-specific abstract methods (must be implemented by concrete classes)
 
@@ -116,9 +116,9 @@ class CompositePrivateFuturesExchange(CompositePrivateExchange):
 
         try:
             # Load futures-specific private data
-            await self._load_leverage_settings()
-            await self._load_margin_info()
-            await self._load_futures_positions()
+            # await self._load_leverage_settings()
+            # await self._load_margin_info()
+            # await self._load_futures_positions()
 
             self.logger.info(f"{self._tag} futures private data initialized")
 
@@ -142,17 +142,13 @@ class CompositePrivateFuturesExchange(CompositePrivateExchange):
     # Futures-specific position event handler (abstract)
     async def _position_handler(self, position: Position) -> None:
         """Handle position updates from WebSocket (futures-specific)."""
-        pass
-
-    # Simple position update utility
-    def _update_futures_position(self, position: Position) -> None:
-        """Update internal futures position state."""
-        self._futures_positions[position.symbol] = position
+        self._positions[position.symbol] = position
         self.logger.debug(f"Updated futures position for {position.symbol}: {position}")
+
 
     # Enhanced trading stats with position metrics
     def get_trading_stats(self) -> Dict[str, Any]:
         """Get trading stats including position metrics."""
         base_stats = super().get_trading_stats()
-        base_stats['active_positions'] = len(self._futures_positions)
+        base_stats['active_positions'] = len(self._positions)
         return base_stats

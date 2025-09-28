@@ -17,8 +17,8 @@ from exchanges.utils.exchange_utils import get_exchange_enum, is_order_done, is_
 # Add src to path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'src'))
 
-from exchanges.interfaces.composite.spot.base_public_spot_composite import CompositePublicExchange
-from exchanges.interfaces.composite.spot.base_private_spot_composite import CompositePrivateExchange
+from exchanges.interfaces.composite.spot.base_public_spot_composite import CompositePublicSpotExchange
+from exchanges.interfaces.composite.spot.base_private_spot_composite import CompositePrivateSpotExchange
 from exchanges.structs import (Side, TimeInForce, OrderStatus, AssetName, OrderId, Symbol, Order,
                                AssetBalance, OrderBook, BookTicker, SymbolInfo, ExchangeEnum)
 from infrastructure.logging import get_logger, LoggingTimer
@@ -57,7 +57,7 @@ class UnifiedArbitrageDemo:
         mexc_symbol = get_symbol_mapper(ExchangeEnum.MEXC).to_symbol(symbol_str)
 
         symbol = Symbol(base=mexc_symbol.base, quote=mexc_symbol.quote,
-                        is_futures='_futures'in symbol_str.lower())
+                        is_futures='_futures'in exchange_name.lower())
         self.symbol = symbol
 
         # Exchange
@@ -83,8 +83,8 @@ class UnifiedArbitrageDemo:
                                                     component_type='composite',
                                                     handlers=public_handlers)
 
-        self.public_exchange: Optional[CompositePublicExchange] = public_exchange
-        self.private_exchange: Optional[CompositePrivateExchange] = private_exchange
+        self.public_exchange: Optional[CompositePublicSpotExchange] = public_exchange
+        self.private_exchange: Optional[CompositePrivateSpotExchange] = private_exchange
 
         self.symbol_info: Optional[SymbolInfo] = None
         # Order tracking

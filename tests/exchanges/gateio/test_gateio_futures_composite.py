@@ -10,7 +10,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from decimal import Decimal
 from typing import Dict, List
 
-from exchanges.integrations.gateio.gateio_futures_composite_public import GateioFuturesCompositePublicExchange
+from exchanges.integrations.gateio.gateio_futures_composite_public import GateioFuturesCompositePublicSpotExchange
 from exchanges.integrations.gateio.gateio_futures_composite_private import GateioFuturesCompositePrivateExchange
 from exchanges.structs.common import Symbol, Order, Position, SymbolsInfo, SymbolInfo
 from exchanges.structs.types import AssetName
@@ -69,7 +69,7 @@ class TestGateioFuturesCompositePublicExchange:
     @pytest.fixture
     def public_exchange(self, mock_config, mock_logger):
         """Create public exchange instance for testing."""
-        return GateioFuturesCompositePublicExchange(mock_config, mock_logger)
+        return GateioFuturesCompositePublicSpotExchange(mock_config, mock_logger)
 
     @pytest.mark.asyncio
     async def test_initialization(self, public_exchange, sample_symbols_info):
@@ -350,8 +350,8 @@ class TestGateioFuturesCompositePrivateExchange:
         await private_exchange._position_handler(position)
         
         # Verify position is stored
-        assert symbol in private_exchange._futures_positions
-        assert private_exchange._futures_positions[symbol] == position
+        assert symbol in private_exchange._positions
+        assert private_exchange._positions[symbol] == position
 
     def test_trading_stats_futures(self, private_exchange):
         """Test trading stats for futures private exchange."""
@@ -379,8 +379,8 @@ class TestGateioFuturesCompositePrivateExchange:
             timestamp=1234567890
         )
         
-        private_exchange._futures_positions[symbol] = long_position
-        private_exchange._futures_positions[short_symbol] = short_position
+        private_exchange._positions[symbol] = long_position
+        private_exchange._positions[short_symbol] = short_position
         
         # Mock parent stats
         with patch('exchanges.interfaces.composite.base_private_futures_exchange.CompositePrivateFuturesExchange.get_trading_stats') as mock_parent:
@@ -401,7 +401,7 @@ class TestGateioFuturesCompositePrivateExchange:
 @pytest.mark.asyncio
 async def test_exchange_lifecycle(mock_config, mock_logger, sample_symbols_info):
     """Test complete exchange lifecycle for both public and private."""
-    public_exchange = GateioFuturesCompositePublicExchange(mock_config, mock_logger)
+    public_exchange = GateioFuturesCompositePublicSpotExchange(mock_config, mock_logger)
     private_exchange = GateioFuturesCompositePrivateExchange(mock_config, mock_logger)
     
     # Mock all components

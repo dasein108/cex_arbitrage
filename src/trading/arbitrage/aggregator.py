@@ -44,7 +44,7 @@ from exchanges.structs.common import (
     Trade,
     SymbolInfo,
 )
-from exchanges.interfaces.composite import CompositePublicExchange
+from exchanges.interfaces.composite import CompositePublicSpotExchange
 from exchanges.structs.types import ExchangeName
 from infrastructure.exceptions.exchange import ExchangeRestError as MarketDataError
 
@@ -103,7 +103,7 @@ class MarketDataAggregator:
     def __init__(
         self,
         config: ArbitrageConfig,
-        exchanges: Dict[ExchangeName, CompositePublicExchange],
+        exchanges: Dict[ExchangeName, CompositePublicSpotExchange],
         data_update_callback: Optional[Callable[[MarketDataSnapshot], None]] = None,
     ):
         """
@@ -298,7 +298,7 @@ class MarketDataAggregator:
     async def _websocket_connection_manager(
         self,
         exchange_name: ExchangeName,
-        exchange_client: CompositePublicExchange,
+        exchange_client: CompositePublicSpotExchange,
         symbols: Set[Symbol],
     ) -> None:
         """
@@ -359,7 +359,7 @@ class MarketDataAggregator:
     async def _rest_fallback_manager(
         self,
         exchange_name: ExchangeName,
-        exchange_client: CompositePublicExchange,
+        exchange_client: CompositePublicSpotExchange,
         symbols: Set[Symbol],
     ) -> None:
         """
@@ -600,7 +600,7 @@ class MarketDataAggregator:
     async def _fetch_rest_data(
         self,
         exchange_name: ExchangeName,
-        exchange_client: CompositePublicExchange,
+        exchange_client: CompositePublicSpotExchange,
         symbols: Set[Symbol],
     ) -> None:
         """

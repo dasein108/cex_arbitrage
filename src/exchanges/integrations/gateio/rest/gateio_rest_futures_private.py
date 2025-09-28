@@ -505,6 +505,10 @@ class GateioPrivateFuturesRest(PrivateFuturesRest):
             self.logger.error(f"Failed to fetch futures trading fees: {e}")
             raise ExchangeRestError(500, f"Futures trading fees fetch failed: {str(e)}")
 
+    # mock
+    async def get_assets_info(self, **kwargs):
+        return {}
+
     # ---------- Lifecycle ----------
     async def close(self) -> None:
         try:

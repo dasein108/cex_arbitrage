@@ -33,14 +33,15 @@ CompositePrivateExchange (parent - inherits all private spot)
 ## Futures-Specific State
 
 ### Additional State Management
+
 ```python
 # Futures-specific private data
 self._leverage_settings: Dict[Symbol, Dict] = {}
 self._margin_info: Dict[Symbol, Dict] = {}
-self._futures_positions: Dict[Symbol, Position] = {}
+self._positions: Dict[Symbol, Position] = {}
 
 # Alias for compatibility
-self._positions = self._futures_positions  # Backward compatible
+self._positions = self._positions  # Backward compatible
 
 # Tag override
 self._tag = f'{config.name}_private_futures'
@@ -116,7 +117,7 @@ async def place_futures_order(
     """Place futures order with advanced options"""
     # Handle close position
     if close_position:
-        position = self._futures_positions.get(symbol)
+        position = self._positions.get(symbol)
         if position:
             side = Side.SELL if position.side == PositionSide.LONG else Side.BUY
             quantity = position.quantity_usdt
@@ -137,7 +138,7 @@ async def close_position(
         quantity: Optional[Decimal] = None
 ) -> List[Order]:
     """Close position partially or completely"""
-    position = self._futures_positions.get(symbol)
+    position = self._positions.get(symbol)
     if not position:
         raise ValueError(f"No position for {symbol}")
 
@@ -157,6 +158,7 @@ async def close_position(
 ```
 
 ### Futures Data Loading
+
 ```python
 @abstractmethod
 async def _load_leverage_settings(self) -> None:
@@ -165,6 +167,7 @@ async def _load_leverage_settings(self) -> None:
         settings = await self._private_rest.get_leverage(symbol)
         self._leverage_settings[symbol] = settings
 
+
 @abstractmethod
 async def _load_margin_info(self) -> None:
     """Load margin requirements"""
@@ -172,12 +175,13 @@ async def _load_margin_info(self) -> None:
     for symbol, info in margin_data.items():
         self._margin_info[symbol] = info
 
+
 @abstractmethod
 async def _load_futures_positions(self) -> None:
     """Load current positions"""
     positions = await self._private_rest.get_positions()
     for position in positions:
-        self._futures_positions[position.symbol] = position
+        self._positions[position.symbol] = position
 ```
 
 ## Enhanced WebSocket Handlers
@@ -200,7 +204,7 @@ async def _get_websocket_handlers(self) -> PrivateWebsocketHandlers:
 async def _position_handler(self, position: Position) -> None:
     """Handle position updates from WebSocket"""
     # Update position state
-    self._update_futures_position(position)
+    self._update_position(position)
 
     # Check risk metrics
     if position.margin_ratio > 0.8:
@@ -225,12 +229,13 @@ async def _position_handler(self, position: Position) -> None:
 ## Enhanced Initialization
 
 ### Futures-Specific Initialization
+
 ```python
 async def initialize(self, symbols_info: SymbolsInfo) -> None:
     """Initialize with futures-specific data"""
     # Initialize base private functionality
     await super().initialize(symbols_info)
-    
+
     try:
         # Load futures-specific data (parallel)
         await asyncio.gather(
@@ -239,13 +244,13 @@ async def initialize(self, symbols_info: SymbolsInfo) -> None:
             self._load_futures_positions(),
             return_exceptions=True
         )
-        
+
         self.logger.info(
             f"{self._tag} futures data initialized",
-            positions=len(self._futures_positions),
+            positions=len(self._positions),
             leverage_configs=len(self._leverage_settings)
         )
-        
+
     except Exception as e:
         self.logger.error(f"Futures init failed: {e}")
         raise
@@ -254,12 +259,13 @@ async def initialize(self, symbols_info: SymbolsInfo) -> None:
 ## Position Management
 
 ### Position State Updates
+
 ```python
 def _update_futures_position(self, position: Position) -> None:
     """Update position with risk calculations"""
     # Store position
-    self._futures_positions[position.symbol] = position
-    
+    self._positions[position.symbol] = position
+
     # Calculate additional metrics
     if position.mark_price and position.entry_price:
         # Calculate ROE (Return on Equity)
@@ -267,29 +273,30 @@ def _update_futures_position(self, position: Position) -> None:
             roe = (position.mark_price - position.entry_price) / position.entry_price
         else:
             roe = (position.entry_price - position.mark_price) / position.entry_price
-        
+
         position.roe_percent = roe * position.leverage * 100
-    
+
     self.logger.debug(f"Position updated: {position}")
 ```
 
 ### Risk Monitoring
+
 ```python
 def get_position_risk(self, symbol: Symbol) -> Dict:
     """Calculate position risk metrics"""
-    position = self._futures_positions.get(symbol)
+    position = self._positions.get(symbol)
     if not position:
         return {}
-    
+
     mark = position.mark_price
     liquidation = position.liquidation_price
-    
+
     # Distance to liquidation
     if position.side == PositionSide.LONG:
         liq_distance = (mark - liquidation) / mark
     else:
         liq_distance = (liquidation - mark) / mark
-    
+
     return {
         'symbol': symbol,
         'unrealized_pnl': position.unrealized_pnl,
@@ -303,27 +310,28 @@ def get_position_risk(self, symbol: Symbol) -> Dict:
 ## Enhanced Trading Statistics
 
 ### Futures-Specific Stats
+
 ```python
 def get_trading_stats(self) -> Dict[str, Any]:
     """Get enhanced trading statistics"""
     base_stats = super().get_trading_stats()
-    
+
     # Add futures metrics
-    base_stats['active_positions'] = len(self._futures_positions)
+    base_stats['active_positions'] = len(self._positions)
     base_stats['total_unrealized_pnl'] = sum(
-        p.unrealized_pnl for p in self._futures_positions.values()
+        p.unrealized_pnl for p in self._positions.values()
     )
     base_stats['total_margin_used'] = sum(
-        p.margin for p in self._futures_positions.values()
+        p.margin for p in self._positions.values()
     )
-    
+
     # Risk metrics
     high_risk_positions = [
-        p for p in self._futures_positions.values()
+        p for p in self._positions.values()
         if p.margin_ratio > 0.7
     ]
     base_stats['high_risk_positions'] = len(high_risk_positions)
-    
+
     return base_stats
 ```
 
@@ -399,13 +407,14 @@ NEVER CACHE:
 ```
 
 ### Order Safety
+
 ```python
 # Always validate reduce-only orders
 if reduce_only and not self._has_position(symbol):
     raise ValueError("Cannot place reduce-only without position")
 
 # Check position before close
-if close_position and symbol not in self._futures_positions:
+if close_position and symbol not in self._positions:
     raise ValueError(f"No position to close for {symbol}")
 ```
 

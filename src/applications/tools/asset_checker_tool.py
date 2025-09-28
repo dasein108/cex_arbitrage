@@ -32,8 +32,8 @@ sys.path.insert(0, str(project_root))
 
 from exchanges.structs.types import AssetName
 from exchanges.structs.common import AssetInfo
-from exchanges.integrations.mexc.mexc_composite_private import MexcCompositePrivateExchange
-from exchanges.integrations.gateio.gateio_composite_private import GateioCompositePrivateExchange
+from exchanges.integrations.mexc.mexc_composite_private import MexcCompositePrivateSpotExchange
+from exchanges.integrations.gateio.gateio_composite_private import GateioCompositePrivateSpotExchange
 from config.config_manager import HftConfig
 
 
@@ -68,9 +68,9 @@ class AssetStatusChecker:
             exchange_config = self.config.get_exchange_config(config_key)
 
             if exchange_key == 'mexc_spot':
-                self.exchange_instances[exchange_key] = MexcCompositePrivateExchange(exchange_config)
+                self.exchange_instances[exchange_key] = MexcCompositePrivateSpotExchange(exchange_config)
             elif exchange_key == 'gateio_spot':
-                self.exchange_instances[exchange_key] = GateioCompositePrivateExchange(exchange_config)
+                self.exchange_instances[exchange_key] = GateioCompositePrivateSpotExchange(exchange_config)
 
             # Initialize the exchange (this will create the internal REST client)
             if self.exchange_instances[exchange_key]:

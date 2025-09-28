@@ -227,27 +227,27 @@ def _create_composite_component(
     """Create composite exchange component."""
     if exchange == ExchangeEnum.MEXC:
         if is_private:
-            from exchanges.integrations.mexc.mexc_composite_private import MexcCompositePrivateExchange
-            return MexcCompositePrivateExchange(config=config, logger=logger, handlers=handlers)
+            from exchanges.integrations.mexc.mexc_composite_private import MexcCompositePrivateSpotExchange
+            return MexcCompositePrivateSpotExchange(config=config, logger=logger, handlers=handlers)
         else:
-            from exchanges.integrations.mexc.mexc_composite_public import MexcCompositePublicExchange
-            return MexcCompositePublicExchange(config=config, logger=logger, handlers=handlers)
+            from exchanges.integrations.mexc.mexc_composite_public import MexcCompositePublicSpotExchange
+            return MexcCompositePublicSpotExchange(config=config, logger=logger, handlers=handlers)
             
     elif exchange == ExchangeEnum.GATEIO:
         if is_private:
-            from exchanges.integrations.gateio.gateio_composite_private import GateioCompositePrivateExchange
-            return GateioCompositePrivateExchange(config=config, logger=logger, handlers=handlers)
+            from exchanges.integrations.gateio.gateio_composite_private import GateioCompositePrivateSpotExchange
+            return GateioCompositePrivateSpotExchange(config=config, logger=logger, handlers=handlers)
         else:
-            from exchanges.integrations.gateio.gateio_composite_public import GateioCompositePublicExchange
-            return GateioCompositePublicExchange(config=config, logger=logger, handlers=handlers)
+            from exchanges.integrations.gateio.gateio_composite_public import GateioCompositePublicSpotExchange
+            return GateioCompositePublicSpotExchange(config=config, logger=logger, handlers=handlers)
             
     elif exchange == ExchangeEnum.GATEIO_FUTURES:
         if is_private:
             from exchanges.integrations.gateio.gateio_futures_composite_private import GateioFuturesCompositePrivateExchange
             return GateioFuturesCompositePrivateExchange(config=config, logger=logger, handlers=handlers)
         else:
-            from exchanges.integrations.gateio.gateio_futures_composite_public import GateioFuturesCompositePublicExchange
-            return GateioFuturesCompositePublicExchange(config=config, logger=logger, handlers=handlers)
+            from exchanges.integrations.gateio.gateio_futures_composite_public import GateioFuturesCompositePublicSpotExchange
+            return GateioFuturesCompositePublicSpotExchange(config=config, logger=logger, handlers=handlers)
     else:
         raise ValueError(f"Composite component not implemented for {exchange.value}")
 

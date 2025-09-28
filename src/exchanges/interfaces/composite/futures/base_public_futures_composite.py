@@ -11,11 +11,11 @@ from typing import Dict, List, Optional, Any
 from decimal import Decimal
 
 from exchanges.structs.common import Symbol
-from exchanges.interfaces.composite.spot.base_public_spot_composite import CompositePublicExchange
+from exchanges.interfaces.composite.spot.base_public_spot_composite import CompositePublicSpotExchange
 from infrastructure.logging import HFTLoggerInterface
 
 
-class CompositePublicFuturesExchange(CompositePublicExchange):
+class CompositePublicFuturesSpotExchange(CompositePublicSpotExchange):
     """
     Base interface for public futures exchange operations.
     

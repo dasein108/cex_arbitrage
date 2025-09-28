@@ -6,7 +6,7 @@ public operations with futures-specific WebSocket and REST handling.
 """
 
 from typing import List, Optional, Dict, Any
-from exchanges.interfaces.composite.spot.base_public_spot_composite import CompositePublicExchange
+from exchanges.interfaces.composite.spot.base_public_spot_composite import CompositePublicSpotExchange
 from exchanges.interfaces.rest.futures.rest_futures_public import PublicFuturesRest
 from exchanges.interfaces.ws.futures.ws_public_futures import PublicFuturesWebsocket
 from exchanges.structs.common import Symbol
@@ -16,7 +16,7 @@ from exchanges.integrations.gateio.ws import GateioPublicFuturesWebsocket
 from exchanges.integrations.gateio.rest.gateio_rest_futures_public import GateioPublicFuturesRest
 
 
-class GateioFuturesCompositePublicExchange(CompositePublicExchange):
+class GateioFuturesCompositePublicSpotExchange(CompositePublicSpotExchange):
     """
     Gate.io futures public composite exchange.
     

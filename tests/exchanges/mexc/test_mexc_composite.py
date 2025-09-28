@@ -2,8 +2,8 @@
 
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
-from exchanges.integrations.mexc.mexc_composite_public import MexcCompositePublicExchange
-from exchanges.integrations.mexc.mexc_composite_private import MexcCompositePrivateExchange
+from exchanges.integrations.mexc.mexc_composite_public import MexcCompositePublicSpotExchange
+from exchanges.integrations.mexc.mexc_composite_private import MexcCompositePrivateSpotExchange
 from exchanges.structs.common import Symbol, OrderBook, AssetBalance, Order
 from exchanges.structs.types import AssetName, OrderId
 from exchanges.structs import Side, OrderStatus
@@ -25,7 +25,7 @@ class TestMexcCompositePublic:
     @pytest.fixture
     async def public_exchange(self, config):
         """Create test public exchange."""
-        exchange = MexcCompositePublicExchange(config)
+        exchange = MexcCompositePublicSpotExchange(config)
         yield exchange
         await exchange.close()
     
@@ -58,7 +58,7 @@ class TestMexcCompositePublic:
     async def test_websocket_disabled(self, config):
         """Test WebSocket creation when disabled."""
         config.enable_websocket = False
-        exchange = MexcCompositePublicExchange(config)
+        exchange = MexcCompositePublicSpotExchange(config)
         
         handlers = PublicWebsocketHandlers(
             orderbook_handler=AsyncMock(),
@@ -109,7 +109,7 @@ class TestMexcCompositePrivate:
     @pytest.fixture
     async def private_exchange(self, config):
         """Create test private exchange."""
-        exchange = MexcCompositePrivateExchange(config)
+        exchange = MexcCompositePrivateSpotExchange(config)
         yield exchange
         await exchange.close()
     

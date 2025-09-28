@@ -308,12 +308,13 @@ LOG_LEVEL=INFO
 ## Integration with Main System
 
 ### Component Reuse
+
 ```python
 # Demo components directly used in production
 from exchanges.factory import create_exchange_component
 from exchanges.interfaces.composite import (
-    CompositePublicExchange,
-    CompositePrivateExchange
+    CompositePublicSpotExchange,
+    CompositePrivateSpotExchange
 )
 ```
 

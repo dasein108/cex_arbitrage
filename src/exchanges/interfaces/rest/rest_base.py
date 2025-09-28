@@ -1,5 +1,5 @@
 from abc import ABC
-from typing import Optional, TYPE_CHECKING
+from typing import Optional
 import time
 
 from infrastructure.networking.http.utils import create_rest_transport_manager

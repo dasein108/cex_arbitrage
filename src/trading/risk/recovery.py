@@ -45,7 +45,7 @@ from .structures import (
 
 from exchanges.structs.common import Symbol
 from exchanges.structs.enums import OrderSide
-from exchanges.interfaces.composite import CompositePrivateExchange
+from exchanges.interfaces.composite import CompositePrivateSpotExchange
 from exchanges.structs.types import ExchangeName
 from infrastructure.exceptions.exchange import RecoveryError
 
@@ -145,7 +145,7 @@ class RecoveryManager:
     def __init__(
         self,
         config: ArbitrageConfig,
-        exchanges: Dict[str, CompositePrivateExchange],
+        exchanges: Dict[str, CompositePrivateSpotExchange],
         recovery_alert_callback: Optional[Callable[[RecoveryContext], None]] = None,
     ):
         """

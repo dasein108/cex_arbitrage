@@ -11,8 +11,7 @@ from decimal import Decimal
 from exchanges.interfaces.composite.futures.base_private_futures_composite import CompositePrivateFuturesExchange
 from exchanges.interfaces.rest.futures.rest_futures_private import PrivateFuturesRest
 from exchanges.interfaces.ws.futures.ws_private_futures import PrivateFuturesWebsocket
-from exchanges.structs import AssetName
-from exchanges.structs.common import Symbol, Order, Position, WithdrawalRequest, WithdrawalResponse
+from exchanges.structs.common import Symbol, Order, Position
 from infrastructure.logging import HFTLoggerInterface
 from infrastructure.networking.websocket.handlers import PrivateWebsocketHandlers
 from exchanges.integrations.gateio.rest.gateio_rest_futures_private import GateioPrivateFuturesRest
@@ -32,17 +31,9 @@ class GateioFuturesCompositePrivateExchange(CompositePrivateFuturesExchange):
     
     Extends base futures composite with Gate.io-specific implementations
     for futures trading and position management.
+    
+    NOTE: Futures exchanges do not support withdrawals - use spot exchange for withdrawals.
     """
-
-    async def get_withdrawal_history(self, asset: Optional[AssetName] = None, limit: int = 100) -> List[
-        WithdrawalResponse]:
-        raise NotImplemented("Not exist, separate interface")
-
-    async def get_withdrawal_status(self, withdrawal_id: str) -> WithdrawalResponse:
-        raise NotImplemented("Not exist, separate interface")
-
-    async def withdraw(self, request: WithdrawalRequest) -> WithdrawalResponse:
-        raise NotImplemented("Not exist, separate interface")
 
     def __init__(self, config, logger: Optional[HFTLoggerInterface] = None,
                  handlers: Optional[PrivateWebsocketHandlers] = None):
@@ -188,9 +179,9 @@ class GateioFuturesCompositePrivateExchange(CompositePrivateFuturesExchange):
             # Update internal position tracking
             for position in positions:
                 if position.quantity != 0:  # Only track active positions
-                    self._futures_positions[position.symbol] = position
+                    self._positions[position.symbol] = position
             
-            self.logger.debug(f"Loaded {len(self._futures_positions)} active positions")
+            self.logger.debug(f"Loaded {len(self._positions)} active positions")
             
         except Exception as e:
             self.logger.error(f"Failed to load futures positions: {e}")
@@ -202,7 +193,7 @@ class GateioFuturesCompositePrivateExchange(CompositePrivateFuturesExchange):
         """Handle position updates from Gate.io futures WebSocket."""
         try:
             # Update internal position state
-            self._update_futures_position(position)
+            self._update_position(position)
             
             # Log significant position changes
             if abs(position.quantity) > 0:
@@ -223,7 +214,7 @@ class GateioFuturesCompositePrivateExchange(CompositePrivateFuturesExchange):
             'exchange_name': 'gateio',
             'leverage_symbols': len(self._leverage_settings),
             'margin_symbols': len(self._margin_info),
-            'long_positions': len([p for p in self._futures_positions.values() if p.quantity > 0]),
-            'short_positions': len([p for p in self._futures_positions.values() if p.quantity < 0])
+            'long_positions': len([p for p in self._positions.values() if p.quantity > 0]),
+            'short_positions': len([p for p in self._positions.values() if p.quantity < 0])
         })
         return base_stats
