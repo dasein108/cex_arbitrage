@@ -33,7 +33,7 @@ from exchanges.structs.common import (
     Ticker
 )
 from exchanges.structs.enums import KlineInterval
-from exchanges.interfaces.rest.spot import PublicSpotRest
+from exchanges.interfaces import PublicSpotRest
 # Removed BaseExchangeMapper import - using direct utility functions
 from infrastructure.networking.http.structs import HTTPMethod
 from config.structs import ExchangeConfig

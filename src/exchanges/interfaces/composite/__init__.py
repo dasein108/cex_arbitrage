@@ -9,17 +9,19 @@ Architecture:
 """
 
 from .base_composite import BaseCompositeExchange
+from .base_public_composite import BasePublicComposite
 from .base_private_composite import BasePrivateComposite
 from exchanges.interfaces.composite.spot.base_public_spot_composite import CompositePublicSpotExchange
 from exchanges.interfaces.composite.spot.base_private_spot_composite import CompositePrivateSpotExchange
 from exchanges.interfaces.composite.futures.base_private_futures_composite import CompositePrivateFuturesExchange
-from exchanges.interfaces.composite.futures.base_public_futures_composite import CompositePublicFuturesSpotExchange
+from exchanges.interfaces.composite.futures.base_public_futures_composite import CompositePublicFuturesExchange
 
 __all__ = [
     'BaseCompositeExchange',
+    'BasePublicComposite',
     'BasePrivateComposite',
     'CompositePublicSpotExchange',
     'CompositePrivateSpotExchange',
     'CompositePrivateFuturesExchange',
-    'CompositePublicFuturesSpotExchange'
+    'CompositePublicFuturesExchange'
 ]

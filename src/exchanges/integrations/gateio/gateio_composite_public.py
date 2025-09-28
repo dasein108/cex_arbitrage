@@ -2,7 +2,7 @@
 
 from typing import Optional
 from exchanges.interfaces.composite.spot.base_public_spot_composite import CompositePublicSpotExchange
-from exchanges.interfaces.rest.spot.rest_spot_public import PublicSpotRest
+from exchanges.interfaces import PublicSpotRest
 from exchanges.interfaces.ws.spot.ws_spot_public import PublicSpotWebsocket
 from exchanges.integrations.gateio.rest.gateio_rest_spot_public import GateioPublicSpotRest
 from exchanges.integrations.gateio.ws.gateio_ws_public import GateioPublicSpotWebsocket
@@ -40,17 +40,6 @@ class GateioCompositePublicSpotExchange(CompositePublicSpotExchange):
             config=self.config,
             handlers=self._create_inner_websocket_handlers(),
             logger=self.logger
-        )
-
-    # WebSocket Handler Implementation
-    
-    def _create_inner_websocket_handlers(self) -> PublicWebsocketHandlers:
-        """Get public WebSocket handlers for Gate.io."""
-        return PublicWebsocketHandlers(
-            orderbook_handler=self._handle_orderbook,
-            ticker_handler=self._handle_ticker,
-            trade_handler=self._handle_trade,
-            book_ticker_handler=self._handle_book_ticker,
         )
 
     # Handler method implementations - inherit base behavior but add Gate.io-specific logging

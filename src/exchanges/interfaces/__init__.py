@@ -1,21 +1,15 @@
-from .rest import (PublicSpotRest, PrivateSpotRest,
-                   PublicFuturesRest, PrivateFuturesRest, BaseRestInterface)
+from .rest import (BaseRestInterface)
+from .rest.rest_interfaces import PrivateSpotRest, PublicSpotRest, PrivateFuturesRest, PublicFuturesRest
 from .ws import (PublicSpotWebsocket, PrivateSpotWebsocket,
                  PublicFuturesWebsocket, BaseWebsocketInterface)
 
-from .composite import (BaseCompositeExchange, CompositePrivateSpotExchange, CompositePublicSpotExchange,
-                        CompositePublicFuturesSpotExchange, CompositePrivateFuturesExchange)
+from .composite import (BaseCompositeExchange, BasePublicComposite, CompositePrivateSpotExchange, CompositePublicSpotExchange,
+                        CompositePublicFuturesExchange, CompositePrivateFuturesExchange)
 __all__ = [
     # common
     "BaseRestInterface",
     "BaseWebsocketInterface",
     # rest
-    "PublicSpotRest",
-    "PrivateSpotRest",
-
-    "PublicFuturesRest",
-    "PrivateFuturesRest",
-
     # websockets
     "PublicSpotWebsocket",
     "PrivateSpotWebsocket",
@@ -24,8 +18,9 @@ __all__ = [
 
     # composite
     'BaseCompositeExchange',
+    'BasePublicComposite',
     'CompositePrivateSpotExchange',
     'CompositePublicSpotExchange',
-    'CompositePublicFuturesSpotExchange',
+    'CompositePublicFuturesExchange',
     'CompositePrivateFuturesExchange'
 ]

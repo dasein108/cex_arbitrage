@@ -82,7 +82,8 @@
       "Bash(__NEW_LINE__ echo)",
       "Bash(mkdir:*)",
       "Bash(mv:*)",
-      "Read(/Users/dasein/dev/cex_artifrage/ai-docs/**)"
+      "Read(/Users/dasein/dev/cex_artifrage/ai-docs/**)",
+      "Bash(__NEW_LINE__ echo -e \"\\n=== SEPARATED DOMAIN ARCHITECTURE SUMMARY ===\")"
     ],
     "deny": [],
     "ask": [],

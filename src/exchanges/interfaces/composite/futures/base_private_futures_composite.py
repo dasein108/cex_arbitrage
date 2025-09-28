@@ -10,13 +10,15 @@ from abc import abstractmethod
 from typing import Dict, List, Optional, Any
 from decimal import Decimal
 
-from exchanges.structs.common import Symbol, Order, Position, SymbolsInfo
+from exchanges.structs import Symbol, Order, Position, SymbolsInfo, ExchangeType
 from exchanges.interfaces.composite.base_private_composite import BasePrivateComposite
+from exchanges.interfaces import PrivateFuturesRest
+from exchanges.interfaces.ws.futures.ws_private_futures import PrivateFuturesWebsocket
 from infrastructure.logging import HFTLoggerInterface
 from infrastructure.networking.websocket.handlers import PrivateWebsocketHandlers
 
 
-class CompositePrivateFuturesExchange(BasePrivateComposite):
+class CompositePrivateFuturesExchange(BasePrivateComposite[PrivateFuturesRest, PrivateFuturesWebsocket]):
     """
     Base interface for private futures exchange operations.
     
@@ -32,10 +34,7 @@ class CompositePrivateFuturesExchange(BasePrivateComposite):
     def __init__(self, config, logger: Optional[HFTLoggerInterface] = None,
                  handlers: Optional[PrivateWebsocketHandlers] = None):
         """Initialize private futures exchange interface."""
-        super().__init__(config, logger=logger, handlers=handlers)
-        
-        # Override tag to indicate futures operations
-        self._tag = f'{config.name}_private_futures'
+        super().__init__(config, ExchangeType.FUTURES, logger=logger, handlers=handlers)
 
         # Futures-specific private data
         self._leverage_settings: Dict[Symbol, Dict] = {}

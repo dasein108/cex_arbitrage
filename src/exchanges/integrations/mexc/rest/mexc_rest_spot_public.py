@@ -38,7 +38,7 @@ from exchanges.structs.common import (
 from exchanges.structs.types import AssetName
 from exchanges.structs.enums import KlineInterval
 from exchanges.structs import Side
-from exchanges.interfaces.rest.spot import PublicSpotRest
+from exchanges.interfaces import PublicSpotRest
 # Using MexcSymbol singleton for symbol conversions
 from exchanges.integrations.mexc.services.symbol_mapper import MexcSymbol
 from config.structs import ExchangeConfig

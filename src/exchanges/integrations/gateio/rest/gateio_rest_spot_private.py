@@ -33,7 +33,7 @@ from exchanges.structs.types import AssetName, OrderId
 from exchanges.structs.enums import TimeInForce, WithdrawalStatus
 from exchanges.structs import OrderType, Side
 from infrastructure.networking.http.structs import HTTPMethod
-from exchanges.interfaces.rest.spot.rest_spot_private import PrivateSpotRest
+from exchanges.interfaces import PrivateSpotRest
 from config.structs import ExchangeConfig
 from infrastructure.exceptions.exchange import ExchangeRestError
 from infrastructure.error_handling import RestApiErrorHandler, ErrorContext

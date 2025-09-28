@@ -10,43 +10,50 @@ from abc import abstractmethod
 from typing import Dict, List, Optional, Any
 from decimal import Decimal
 
+from exchanges.structs import ExchangeType
 from exchanges.structs.common import Symbol
-from exchanges.interfaces.composite.spot.base_public_spot_composite import CompositePublicSpotExchange
+from exchanges.interfaces.composite.base_public_composite import BasePublicComposite
+from exchanges.interfaces import PublicFuturesRest
+from exchanges.interfaces.ws.futures.ws_public_futures import PublicFuturesWebsocket
 from infrastructure.logging import HFTLoggerInterface
+from infrastructure.networking.websocket.handlers import PublicWebsocketHandlers
 
 
-class CompositePublicFuturesSpotExchange(CompositePublicSpotExchange):
+class CompositePublicFuturesExchange(BasePublicComposite[PublicFuturesRest, PublicFuturesWebsocket]):
     """
-    Base interface for public futures exchange operations.
+    Public futures exchange interface with futures-specific market data operations.
     
-    Extends public exchange functionality with futures-specific features:
-    - Funding rate tracking
+    This class extends BasePublicComposite with futures-specific functionality:
+    - Funding rate tracking and history
     - Open interest monitoring
-    - Futures-specific symbol information
     - Mark price and index price data
+    - Futures-specific symbol information
     
-    This interface does not require authentication and focuses on
-    public futures market data.
+    Maintains separated domain architecture where this interface handles ONLY
+    public futures market data operations without any trading capabilities.
+    
+    ## Implementation Requirements
+    
+    Concrete futures exchanges must implement:
+    1. `_create_public_rest()`: Factory for PublicFuturesRest client
+    2. `_create_public_websocket()`: Factory for PublicFuturesWebsocket client
+    3. All futures-specific abstract methods for funding rates, open interest, etc.
     """
 
-    def __init__(self, config, logger: Optional[HFTLoggerInterface] = None):
+    def __init__(self, config, logger: Optional[HFTLoggerInterface] = None,
+                 handlers: Optional[PublicWebsocketHandlers] = None):
         """
         Initialize public futures exchange interface.
         
         Args:
             config: Exchange configuration
             logger: Optional injected HFT logger (auto-created if not provided)
+            handlers: Optional PublicWebsocketHandlers for custom event handling
         """
-        super().__init__(config, logger=logger)
-        
-        # Override tag to indicate futures operations
-        self._tag = f'{config.name}_public_futures'
+        super().__init__(config, ExchangeType.FUTURES, logger=logger, handlers=handlers)
 
         # Futures-specific data (using generic Dict structures for now)
         self._funding_rates: Dict[Symbol, Dict] = {}
-        self._open_interest: Dict[Symbol, Dict] = {}
-        self._mark_prices: Dict[Symbol, Decimal] = {}
-        self._index_prices: Dict[Symbol, Decimal] = {}
 
     # Abstract properties for futures data
 
@@ -61,80 +68,6 @@ class CompositePublicFuturesSpotExchange(CompositePublicSpotExchange):
         """
         pass
 
-    @property
-    @abstractmethod
-    def open_interest(self) -> Dict[Symbol, Dict]:
-        """
-        Get current open interest for all tracked symbols.
-        
-        Returns:
-            Dictionary mapping symbols to open interest information
-        """
-        pass
-
-    @property
-    @abstractmethod
-    def mark_prices(self) -> Dict[Symbol, Decimal]:
-        """
-        Get current mark prices for all tracked symbols.
-        
-        Returns:
-            Dictionary mapping symbols to mark prices
-        """
-        pass
-
-    @property
-    @abstractmethod
-    def index_prices(self) -> Dict[Symbol, Decimal]:
-        """
-        Get current index prices for all tracked symbols.
-        
-        Returns:
-            Dictionary mapping symbols to index prices
-        """
-        pass
-
-    # Abstract futures data loading methods
-
-    @abstractmethod
-    async def _load_funding_rates(self, symbols: List[Symbol]) -> None:
-        """
-        Load funding rates for symbols from REST API.
-        
-        Args:
-            symbols: List of symbols to load funding rates for
-        """
-        pass
-
-    @abstractmethod
-    async def _load_open_interest(self, symbols: List[Symbol]) -> None:
-        """
-        Load open interest data for symbols from REST API.
-        
-        Args:
-            symbols: List of symbols to load open interest for
-        """
-        pass
-
-    @abstractmethod
-    async def _load_mark_prices(self, symbols: List[Symbol]) -> None:
-        """
-        Load mark prices for symbols from REST API.
-        
-        Args:
-            symbols: List of symbols to load mark prices for
-        """
-        pass
-
-    @abstractmethod
-    async def _load_index_prices(self, symbols: List[Symbol]) -> None:
-        """
-        Load index prices for symbols from REST API.
-        
-        Args:
-            symbols: List of symbols to load index prices for
-        """
-        pass
 
     @abstractmethod
     async def get_funding_rate_history(
@@ -168,12 +101,6 @@ class CompositePublicFuturesSpotExchange(CompositePublicSpotExchange):
 
         if symbols:
             try:
-                # Load futures-specific data
-                await self._load_funding_rates(symbols)
-                await self._load_open_interest(symbols)
-                await self._load_mark_prices(symbols)
-                await self._load_index_prices(symbols)
-
                 self.logger.info(f"{self._tag} futures data initialized for {len(symbols)} symbols")
 
             except Exception as e:
@@ -193,18 +120,7 @@ class CompositePublicFuturesSpotExchange(CompositePublicSpotExchange):
 
         if self.active_symbols:
             active_symbols_list = list(self.active_symbols)
-            try:
-                # Refresh futures-specific data
-                await self._load_funding_rates(active_symbols_list)
-                await self._load_open_interest(active_symbols_list)
-                await self._load_mark_prices(active_symbols_list)
-                await self._load_index_prices(active_symbols_list)
 
-                self.logger.info(f"{self._tag} futures data refreshed")
-
-            except Exception as e:
-                self.logger.error(f"Failed to refresh futures data for {self._tag}: {e}")
-                raise
 
     # Futures data update methods
 
@@ -219,41 +135,6 @@ class CompositePublicFuturesSpotExchange(CompositePublicSpotExchange):
         self._funding_rates[symbol] = funding_rate
         self.logger.debug(f"Updated funding rate for {symbol}: {funding_rate}")
 
-    def _update_open_interest(self, symbol: Symbol, open_interest: Dict) -> None:
-        """
-        Update internal open interest state.
-        
-        Args:
-            symbol: Symbol that was updated
-            open_interest: New open interest information
-        """
-        self._open_interest[symbol] = open_interest
-        self.logger.debug(f"Updated open interest for {symbol}: {open_interest}")
-
-    def _update_mark_price(self, symbol: Symbol, mark_price: Decimal) -> None:
-        """
-        Update internal mark price state.
-        
-        Args:
-            symbol: Symbol that was updated
-            mark_price: New mark price
-        """
-        self._mark_prices[symbol] = mark_price
-        self.logger.debug(f"Updated mark price for {symbol}: {mark_price}")
-
-    def _update_index_price(self, symbol: Symbol, index_price: Decimal) -> None:
-        """
-        Update internal index price state.
-        
-        Args:
-            symbol: Symbol that was updated
-            index_price: New index price
-        """
-        self._index_prices[symbol] = index_price
-        self.logger.debug(f"Updated index price for {symbol}: {index_price}")
-
-    # Enhanced monitoring for futures
-
     def get_futures_stats(self) -> Dict[str, Any]:
         """
         Get futures-specific statistics for monitoring.
@@ -265,9 +146,6 @@ class CompositePublicFuturesSpotExchange(CompositePublicSpotExchange):
         
         futures_stats = {
             'tracked_funding_rates': len(self._funding_rates),
-            'tracked_open_interest': len(self._open_interest),
-            'tracked_mark_prices': len(self._mark_prices),
-            'tracked_index_prices': len(self._index_prices),
         }
         
         return {**base_stats, **futures_stats}

@@ -5,7 +5,7 @@ This interface provides common trading operations that are available
 for both spot and futures exchanges.
 """
 
-from abc import abstractmethod
+from abc import abstractmethod, ABC
 from typing import Dict, List, Optional
 from exchanges.interfaces.rest.rest_base import BaseRestInterface
 # BaseExchangeMapper dependency removed - using direct utility functions
@@ -24,7 +24,7 @@ from config.structs import ExchangeConfig
 from infrastructure.logging import HFTLoggerInterface
 
 
-class PrivateTradingInterface(BaseRestInterface):
+class PrivateTradingInterface(BaseRestInterface, ABC):
     """Abstract interface for private exchange trading operations (both spot and futures)"""
     CAN_MODIFY_ORDERS = False  # Default capability flag for modifying orders
 

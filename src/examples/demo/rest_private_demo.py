@@ -15,7 +15,7 @@ from exchanges.structs.common import Symbol
 from exchanges.structs.types import AssetName
 from exchanges.structs.enums import TimeInForce
 from exchanges.structs import OrderType, Side
-from exchanges.interfaces.rest.spot.rest_spot_private import PrivateSpotRest
+from exchanges.interfaces import PrivateSpotRest
 from config.config_manager import HftConfig
 from exchanges.factory import create_rest_client
 

@@ -19,6 +19,13 @@ class ExchangeEnum(Enum):
     GATEIO = ExchangeName("GATEIO_SPOT")
     GATEIO_FUTURES = ExchangeName("GATEIO_FUTURES")
 
+class ExchangeType(Enum):
+    """Type of exchange market."""
+    SPOT = "spot"
+    FUTURES = "futures"
+    MARGIN = "margin"
+    SWAP = "swap"
+    OPTIONS = "options"
 
 class ExchangeStatus(IntEnum):
     """Exchange connection status."""

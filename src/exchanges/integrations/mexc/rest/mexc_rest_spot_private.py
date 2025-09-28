@@ -33,7 +33,7 @@ from exchanges.structs.enums import TimeInForce, WithdrawalStatus
 from exchanges.structs import OrderType, Side
 from infrastructure.networking.http.structs import HTTPMethod
 from infrastructure.exceptions.exchange import ExchangeRestError, ExchangeRestOrderCancelledFilledOrNotExist
-from exchanges.interfaces.rest.spot.rest_spot_private import PrivateSpotRest
+from exchanges.interfaces import PrivateSpotRest
 from exchanges.interfaces.rest.interfaces import ListenKeyInterface
 from exchanges.integrations.mexc.structs.exchange import (MexcAccountResponse, MexcOrderResponse,
                                                           MexcCurrencyInfoResponse)

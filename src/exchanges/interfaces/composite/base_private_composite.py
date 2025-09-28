@@ -8,23 +8,27 @@ which are only needed for spot exchanges.
 
 import asyncio
 from abc import abstractmethod
-from typing import Dict, List, Optional, Any
-from exchanges.structs.common import (
-    Symbol, AssetBalance, Order, SymbolsInfo
+from typing import Dict, List, Optional, Any, TypeVar, Generic
+from exchanges.structs import (
+    Symbol, AssetBalance, Order, SymbolsInfo, ExchangeType
 )
 from exchanges.structs.types import AssetName, OrderId
 from exchanges.structs import Side, Trade, OrderType
 from config.structs import ExchangeConfig
 from infrastructure.exceptions.system import InitializationError
-from exchanges.interfaces.composite.spot.base_public_spot_composite import BaseCompositeExchange
+from exchanges.interfaces.composite.base_composite import BaseCompositeExchange
 from infrastructure.logging import LoggingTimer, HFTLoggerInterface
 from infrastructure.networking.websocket.handlers import PrivateWebsocketHandlers
-from exchanges.interfaces.rest.spot.rest_spot_private import PrivateSpotRest
+from exchanges.interfaces.rest.interfaces.trading_interface import PrivateTradingInterface
 from exchanges.interfaces.ws.spot.ws_spot_private import PrivateSpotWebsocket
 from exchanges.utils.exchange_utils import is_order_done
 
+# Generic type variables for REST and WebSocket interfaces
+RestT = TypeVar('RestT', bound=PrivateTradingInterface)
+WebsocketT = TypeVar('WebsocketT', bound=PrivateSpotWebsocket)
 
-class BasePrivateComposite(BaseCompositeExchange):
+
+class BasePrivateComposite(BaseCompositeExchange, Generic[RestT, WebsocketT]):
     """
     Base private composite exchange interface WITHOUT withdrawal functionality.
     
@@ -43,24 +47,23 @@ class BasePrivateComposite(BaseCompositeExchange):
     - Position management (futures-only via futures subclass)
     """
 
-    def __init__(self, config: ExchangeConfig, logger: Optional[HFTLoggerInterface] = None,
+    def __init__(self, config: ExchangeConfig, exchange_type: ExchangeType, logger: Optional[HFTLoggerInterface] = None,
                  handlers: Optional[PrivateWebsocketHandlers] = None) -> None:
         """
         Initialize base private exchange interface.
         
         Args:
             config: Exchange configuration with API credentials
+            exchange_type: Exchange type (SPOT, FUTURES) for behavior customization
             logger: Optional injected HFT logger (auto-created if not provided)
             handlers: Optional private WebSocket handlers
         """
-        super().__init__(config=config, is_private=True, logger=logger)
-
+        # Create default handlers if none provided
         if not handlers:
-            self.handlers = PrivateWebsocketHandlers()
-        else:
-            self.handlers = handlers
-
-        self._tag = f'{config.name}_private'
+            handlers = PrivateWebsocketHandlers()
+            
+        super().__init__(config=config, is_private=True, exchange_type=exchange_type,
+                         logger=logger, handlers=handlers)
 
         # Private data state (HFT COMPLIANT - no caching of real-time data)
         self._balances: Dict[AssetName, AssetBalance] = {}
@@ -71,8 +74,8 @@ class BasePrivateComposite(BaseCompositeExchange):
         self._max_executed_orders_per_symbol = 1000  # Memory management limit
 
         # Client instances (managed by abstract factory methods)
-        self._private_rest: Optional[PrivateSpotRest] = None
-        self._private_ws: Optional[PrivateSpotWebsocket] = None
+        self._private_rest: Optional[RestT] = None
+        self._private_ws: Optional[WebsocketT] = None
 
         # Connection status tracking
         self._private_rest_connected = False
@@ -179,22 +182,22 @@ class BasePrivateComposite(BaseCompositeExchange):
     # Abstract factory methods
 
     @abstractmethod
-    async def _create_private_rest(self) -> PrivateSpotRest:
+    async def _create_private_rest(self) -> RestT:
         """
         Create exchange-specific private REST client.
         
         Returns:
-            PrivateSpotRest implementation for this exchange
+            RestT implementation for this exchange
         """
         pass
 
     @abstractmethod
-    async def _create_private_websocket(self) -> Optional[PrivateSpotWebsocket]:
+    async def _create_private_websocket(self) -> Optional[WebsocketT]:
         """
         Create exchange-specific private WebSocket client with handler objects.
         
         Returns:
-            PrivateSpotWebsocket implementation or None
+            WebsocketT implementation or None
         """
         pass
 

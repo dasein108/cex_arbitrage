@@ -6,24 +6,25 @@ available for spot exchanges, not futures/derivatives exchanges.
 It delegates to the underlying REST client for actual implementation.
 """
 
-from typing import Dict, List, Optional, TYPE_CHECKING, Protocol
+from typing import Dict, List, Optional, TYPE_CHECKING, Any
 from exchanges.structs.common import (
     AssetInfo,
     WithdrawalRequest,
     WithdrawalResponse
 )
 from exchanges.structs.types import AssetName
+from infrastructure.logging import LoggingTimer
+from infrastructure.exceptions.system import InitializationError
+from exchanges.interfaces.protocols.private_dependencies import (
+    PrivateSpotDependencies,
+    PrivateExchangeValidationMixin
+)
 
 if TYPE_CHECKING:
-    from exchanges.interfaces.rest.spot.rest_spot_private import PrivateSpotRest
+    from exchanges.interfaces import PrivateSpotRest
 
 
-class WithdrawalMixinProtocol(Protocol):
-    """Protocol defining expected attributes for classes using WithdrawalMixin."""
-    _private_rest: Optional['PrivateSpotRest']
-
-
-class WithdrawalMixin:
+class WithdrawalMixin(PrivateSpotDependencies, PrivateExchangeValidationMixin):
     """
     Mixin providing withdrawal functionality for spot exchanges only.
     
@@ -31,13 +32,109 @@ class WithdrawalMixin:
     operations to the underlying private REST client. It should only
     be mixed into spot exchange implementations, not futures exchanges.
     
+    Features:
+        - Initialization hook for withdrawal infrastructure
+        - Asset information loading and caching
+        - Complete withdrawal operations delegation
+        - Type-safe dependencies via PrivateSpotDependencies protocol
+        - Runtime validation via PrivateExchangeValidationMixin
+    
     Requirements:
-        - The class using this mixin must have a _private_rest attribute
-        - The _private_rest client must implement WithdrawalInterface
+        - The class using this mixin must implement PrivateSpotDependencies protocol
+        - Call _initialize_withdrawal_infrastructure() after REST client setup
+    
+    Dependencies (enforced by protocol):
+        - _private_rest: PrivateSpotRest client for API operations
+        - logger: HFTLoggerInterface for performance monitoring
     """
     
-    # Type hint to resolve IDE warnings
-    _private_rest: Optional['PrivateSpotRest']
+    def __init__(self, *args, **kwargs):
+        """Initialize withdrawal mixin with state tracking and dependency validation."""
+        super().__init__(*args, **kwargs)
+        
+        # Validate dependencies are available (runtime check)
+        # Note: This provides extra safety beyond compile-time protocol checking
+        try:
+            self._validate_private_dependencies()
+        except TypeError:
+            # Dependencies may not be available during construction
+            # They should be validated later during _initialize_withdrawal_infrastructure()
+            pass
+        
+        # Asset info for withdrawal validation (withdrawal-specific state)
+        self._assets_info: Dict[AssetName, AssetInfo] = {}
+        self._withdrawal_initialized = False
+    
+    @property
+    def assets_info(self) -> Dict[AssetName, AssetInfo]:
+        """Get cached asset information."""
+        return self._assets_info.copy()
+    
+    async def _initialize_withdrawal_infrastructure(self) -> None:
+        """
+        Initialize withdrawal-related infrastructure.
+        
+        This method should be called by the main composite class after
+        the private REST client is initialized but before the exchange
+        is considered fully initialized.
+        
+        Features:
+            - Loads asset information for withdrawal validation
+            - Sets up withdrawal-specific state
+            - Validates REST client availability
+            - Prevents double initialization
+        
+        Raises:
+            InitializationError: If REST client not available or initialization fails
+        """
+        if self._withdrawal_initialized:
+            self.logger.debug("Withdrawal infrastructure already initialized")
+            return
+        
+        # Validate all required dependencies are available
+        try:
+            self._validate_private_dependencies()
+        except TypeError as e:
+            raise InitializationError(f"Missing required dependencies: {e}")
+            
+        if self._private_rest is None:
+            raise InitializationError("Private REST client must be initialized before withdrawal infrastructure")
+        
+        try:
+            # Load asset information for withdrawal validation
+            self.logger.debug("Loading withdrawal asset information...")
+            await self._load_assets_info()
+            
+            # Mark as initialized
+            self._withdrawal_initialized = True
+            
+            self.logger.info("Withdrawal infrastructure initialized successfully",
+                            asset_count=len(self._assets_info))
+
+        except Exception as e:
+            self.logger.error("Failed to initialize withdrawal infrastructure", error=str(e))
+            raise InitializationError(f"Withdrawal infrastructure initialization failed: {e}")
+    
+    async def _load_assets_info(self) -> None:
+        """
+        Load asset information from REST API for withdrawal validation.
+        
+        This method is called internally by _initialize_withdrawal_infrastructure()
+        and should not be called directly by external code.
+        """
+        try:
+            with LoggingTimer(self.logger, "load_assets_info") as timer:
+                # Use the REST client to get asset information
+                assets_info_data = await self.get_assets_info()
+                self._assets_info = assets_info_data
+
+            self.logger.debug("Assets info loaded for withdrawal validation",
+                            asset_count=len(assets_info_data),
+                            load_time_ms=timer.elapsed_ms)
+
+        except Exception as e:
+            self.logger.error("Failed to load assets info for withdrawal", error=str(e))
+            raise
     
     async def get_assets_info(self) -> Dict[AssetName, AssetInfo]:
         """
@@ -215,9 +312,11 @@ class WithdrawalMixin:
         Raises:
             ValueError: If validation fails
         """
-        # Get currency info for validation
-        currency_info = await self.get_assets_info()
-        asset_info = currency_info.get(request.asset)
+        # Use cached asset info for validation (loaded during initialization)
+        if not self._withdrawal_initialized:
+            raise RuntimeError("Withdrawal infrastructure not initialized. Call _initialize_withdrawal_infrastructure() first.")
+        
+        asset_info = self._assets_info.get(request.asset)
 
         if not asset_info:
             raise ValueError(f"Asset {request.asset} not supported")
@@ -267,8 +366,11 @@ class WithdrawalMixin:
         Returns:
             Dictionary with 'min', 'max', and 'fee' limits
         """
-        currency_info = await self.get_assets_info()
-        asset_info = currency_info.get(asset)
+        # Use cached asset info (loaded during initialization)
+        if not self._withdrawal_initialized:
+            raise RuntimeError("Withdrawal infrastructure not initialized. Call _initialize_withdrawal_infrastructure() first.")
+        
+        asset_info = self._assets_info.get(asset)
 
         if not asset_info:
             raise ValueError(f"Asset {asset} not supported")

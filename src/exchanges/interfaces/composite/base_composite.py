@@ -8,7 +8,7 @@ handling connection management, initialization, and state tracking.
 from abc import ABC, abstractmethod
 from typing import Optional, Union
 
-from exchanges.structs.common import SymbolsInfo
+from exchanges.structs import SymbolsInfo, ExchangeType
 from config.structs import ExchangeConfig
 from infrastructure.networking.websocket.handlers import PrivateWebsocketHandlers,PublicWebsocketHandlers
 from infrastructure.networking.websocket.structs import ConnectionState
@@ -32,18 +32,27 @@ class BaseCompositeExchange(ABC):
     establishing common patterns for connection management and state tracking.
     """
 
-    def __init__(self, config: ExchangeConfig, is_private: bool, logger: Optional[HFTLoggerInterface] = None):
+    def __init__(self, config: ExchangeConfig, is_private: bool, exchange_type: ExchangeType,
+                 logger: Optional[HFTLoggerInterface] = None,
+                 handlers: Optional[Union[PrivateWebsocketHandlers, PublicWebsocketHandlers]] = None):
         """
         Initialize composite exchange interface.
         
         Args:
-            tag: Unique identifier for this exchange instance
             config: Exchange configuration containing credentials and settings
+            is_private: Whether this is a private (trading) or public (market data) exchange
+            exchange_type: Exchange type (SPOT, FUTURES) for tag and behavior customization
             logger: Optional injected HFT logger (auto-created if not provided)
+            handlers: Optional WebSocket handlers (PrivateWebsocketHandlers or PublicWebsocketHandlers)
         """
         self._is_private = is_private
         self._exchange_name = config.name
-        self._tag = f"{config.name}_{'private' if is_private else 'public'}"
+        self._exchange_type = exchange_type
+        
+        # Build tag with exchange type
+        base_tag = f"{config.name}_{'private' if is_private else 'public'}"
+        self._tag = f"{base_tag}_{exchange_type.value.lower()}"
+        
         self._config = config
         self._initialized = False
         self._connection_state = ConnectionState.DISCONNECTED
@@ -54,9 +63,12 @@ class BaseCompositeExchange(ABC):
         # Connection and state management
         self._symbols_info: Optional[SymbolsInfo] = None
         self._last_update_time = 0.0
+        
+        # Store handlers for subclass use
+        self.handlers = handlers
 
         # Log interface initialization
-        self.logger.info("BaseExchangeInterface initialized", exchange=config.name)
+        self.logger.info("BaseExchangeInterface initialized", exchange=config.name, tag=self._tag)
 
     @abstractmethod
     async def close(self):

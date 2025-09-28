@@ -3,14 +3,13 @@ import time
 from typing import Dict, List, Optional, Any
 from datetime import datetime
 
-from exchanges.interfaces import PublicFuturesRest
+from exchanges.interfaces import PublicFuturesRest, PublicSpotRest
 from exchanges.structs.common import (
     Symbol, SymbolInfo, OrderBook, OrderBookEntry, Trade, Kline,
     Ticker
 )
 from exchanges.structs.enums import KlineInterval
 from exchanges.structs import Side
-from exchanges.interfaces.rest.spot import PublicSpotRest
 # Removed BaseExchangeMapper import - using direct utility functions
 from infrastructure.networking.http.structs import HTTPMethod
 from config.structs import ExchangeConfig
