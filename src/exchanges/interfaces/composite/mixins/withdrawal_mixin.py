@@ -16,11 +16,14 @@ from exchanges.structs.types import AssetName
 
 if TYPE_CHECKING:
     from exchanges.interfaces.rest.spot.rest_spot_private import PrivateSpotRest
+    from infrastructure.logging import HFTLoggerInterface
 
 
 class WithdrawalMixinProtocol(Protocol):
     """Protocol defining expected attributes for classes using WithdrawalMixin."""
     _private_rest: Optional['PrivateSpotRest']
+    _assets_info: Dict[AssetName, AssetInfo]
+    logger: 'HFTLoggerInterface'
 
 
 class WithdrawalMixin:
@@ -38,6 +41,8 @@ class WithdrawalMixin:
     
     # Type hint to resolve IDE warnings
     _private_rest: Optional['PrivateSpotRest']
+    _assets_info: Dict[AssetName, AssetInfo]
+    logger: 'HFTLoggerInterface'
     
     async def get_assets_info(self) -> Dict[AssetName, AssetInfo]:
         """
@@ -251,6 +256,28 @@ class WithdrawalMixin:
             if network_info.memo_regex and request.memo:
                 if not re.match(network_info.memo_regex, request.memo):
                     raise ValueError(f"Invalid memo format for {request.network}")
+
+    async def _load_assets_info(self) -> None:
+        """
+        Load asset information from REST API for withdrawal validation.
+        Uses the get_assets_info method which delegates to REST client.
+        """
+        try:
+            from infrastructure.logging import LoggingTimer
+
+            with LoggingTimer(self.logger, "load_assets_info") as timer:
+                # Use the get_assets_info method which delegates to REST client
+                assets_info_data = await self.get_assets_info()
+                self._assets_info = assets_info_data
+
+            self.logger.info("Assets info loaded successfully",
+                            asset_count=len(assets_info_data),
+                            load_time_ms=timer.elapsed_ms)
+
+        except Exception as e:
+            self.logger.error("Failed to load assets info", error=str(e))
+            from infrastructure.exceptions.system import InitializationError
+            raise InitializationError(f"Assets info loading failed: {e}")
 
     async def get_withdrawal_limits_for_asset(
         self,

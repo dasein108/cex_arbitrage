@@ -15,7 +15,7 @@ from exchanges.interfaces.composite.mixins import WithdrawalMixin
 from infrastructure.exceptions.system import InitializationError
 
 
-class CompositePrivateSpotExchange(BasePrivateComposite, WithdrawalMixin):
+class BasePrivateSpotComposite(BasePrivateComposite, WithdrawalMixin):
     """
     Base interface for private SPOT exchange operations.
     
@@ -48,27 +48,6 @@ class CompositePrivateSpotExchange(BasePrivateComposite, WithdrawalMixin):
 
     # Spot-specific functionality extensions
 
-    async def _load_assets_info(self) -> None:
-        """
-        Load asset information from REST API for withdrawal validation.
-        Uses the get_assets_info method from WithdrawalMixin.
-        """
-        try:
-            from infrastructure.logging import LoggingTimer
-
-            with LoggingTimer(self.logger, "load_assets_info") as timer:
-                # Use the mixin's method which delegates to REST client
-                assets_info_data = await self.get_assets_info()
-                self._assets_info = assets_info_data
-
-            self.logger.info("Assets info loaded successfully",
-                            asset_count=len(assets_info_data),
-                            load_time_ms=timer.elapsed_ms)
-
-        except Exception as e:
-            self.logger.error("Failed to load assets info", error=str(e))
-            raise InitializationError(f"Assets info loading failed: {e}")
-
     async def initialize(self, symbols_info):
         """
         Initialize spot exchange with symbols and asset information.
@@ -90,4 +69,4 @@ class CompositePrivateSpotExchange(BasePrivateComposite, WithdrawalMixin):
         except Exception as e:
             self.logger.error(f"Spot exchange initialization failed: {e}")
             await self.close()  # Cleanup on failure
-            raise
+            raise InitializationError(f"Spot initialization failed: {e}")
