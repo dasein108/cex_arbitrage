@@ -46,26 +46,31 @@ dependency injection, and interface-driven design for maximum maintainability
 and extensibility.
 """
 
-# Core exchange implementations
-from .gateio_composite_private import GateioCompositePrivateSpotExchange
-from .gateio_composite_public import GateioCompositePublicSpotExchange
-
-# Futures exchange implementations (separate from spot)
-from .gateio_futures_composite_public import GateioFuturesCompositePublicSpotExchange
-from .gateio_futures_composite_private import GateioFuturesCompositePrivateExchange
+# Exchange clients for direct access
+from .rest.gateio_rest_spot_public import GateioPublicSpotRest
+from .rest.gateio_rest_spot_private import GateioPrivateSpotRest
+from .rest.gateio_rest_futures_public import GateioPublicFuturesRest
+from .rest.gateio_rest_futures_private import GateioPrivateFuturesRest
+from .ws.gateio_ws_public import GateioPublicSpotWebsocket
+from .ws.gateio_ws_private import GateioPrivateSpotWebsocket
+from .ws.gateio_ws_public_futures import GateioPublicFuturesWebsocket
+from .ws.gateio_ws_private_futures import GateioPrivateFuturesWebsocket
 # Auto-register Gate.io services (symbol mapper, mappings) 
 from . import services
 
 # Auto-register Gate.io REST strategies
 from .rest import strategies
 
-# Auto-register Gate.io WebSocket strategies (triggers registration)
-from .ws import strategies as ws_strategies
+# WebSocket strategies removed - using mixin-based handlers
 
 __all__ = [
-    # Core exchange implementations
-    'GateioCompositePrivateSpotExchange',
-    'GateioCompositePublicSpotExchange',
-    'GateioFuturesCompositePublicSpotExchange',
-    'GateioFuturesCompositePrivateExchange',
+    # Direct client access
+    'GateioPublicSpotRest',
+    'GateioPrivateSpotRest', 
+    'GateioPublicSpotWebsocket',
+    'GateioPrivateSpotWebsocket',
+    'GateioPublicFuturesRest',
+    'GateioPrivateFuturesRest',
+    'GateioPublicFuturesWebsocket',
+    'GateioPrivateFuturesWebsocket',
 ]

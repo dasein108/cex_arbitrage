@@ -43,15 +43,9 @@ class CompositePrivateFuturesExchange(BasePrivateComposite):
         self._tag = f'{config.name}_private_futures'
 
         # Futures-specific private data
-        self._leverage_settings: Dict[Symbol, Dict] = {}
-        self._margin_info: Dict[Symbol, Dict] = {}
         self._positions: Dict[Symbol, Position] = {}
         
-        # Alias for backward compatibility
-        self._positions: Dict[Symbol, Position] = self._positions
 
-    # Properties for futures private data (reuse parent implementation pattern)
-    
     # @property
     # def leverage_settings(self) -> Dict[Symbol, Dict]:
     #     """Get current leverage settings for all symbols."""
@@ -158,47 +152,5 @@ class CompositePrivateFuturesExchange(BasePrivateComposite):
         base_stats['active_positions'] = len(self._positions)
         return base_stats
 
-    async def close_position(
-            self,
-            symbol: Symbol,
-            quantity: Optional[Decimal] = None
-    ) -> List[Order]:
-        """Close position (partially or completely) for Gate.io futures."""
-        try:
-            # Get current position
-            positions = await self._rest.get_positions(symbol)
-            if not positions:
-                self.logger.warning(f"No position found for {symbol}")
-                return []
-
-            orders = []
-            for position in positions:
-                if position.quantity == 0:
-                    continue
-
-                # Determine close quantity
-                close_qty = quantity if quantity else abs(position.quantity)
-
-                # Determine side (opposite of position)
-                close_side = 'sell' if position.quantity > 0 else 'buy'
-
-                # Place market order to close position
-                order = await self.place_market_order(
-                    symbol=symbol,
-                    side=close_side,
-                    order_type='market',
-                    quantity=close_qty,
-                    reduce_only=True,
-                    close_position=(quantity is None)  # Full close if no quantity specified
-                )
-
-                orders.append(order)
-
-            self.logger.info(f"Closed position for {symbol}, orders: {[o.order_id for o in orders]}")
-            return orders
-
-        except Exception as e:
-            self.logger.error(f"Failed to close position for {symbol}: {e}")
-            raise
 
 

@@ -225,10 +225,11 @@ def _create_composite_component(
     logger: HFTLoggerInterface
 ) -> Any:
     """
-    Create composite exchange component using dependency injection.
+    Create composite exchange component using direct base class injection.
     
     This function creates REST and WebSocket clients first, then injects them
-    into the composite exchange constructor, eliminating factory methods.
+    directly into the appropriate base composite class, eliminating unnecessary
+    exchange-specific wrapper classes.
     """
     # Step 1: Create REST client (always required)
     rest_client = _create_rest_component(exchange, config, is_private, logger)
@@ -238,31 +239,14 @@ def _create_composite_component(
     if handlers is not None:
         websocket_client = _create_websocket_component(exchange, config, is_private, handlers, logger)
     
-    # Step 3: Create composite exchange with dependency injection
-    if exchange == ExchangeEnum.MEXC:
+    # Step 3: Create composite exchange using base classes directly
+    # No need for exchange-specific wrapper classes - base classes handle everything
+    
+    if exchange == ExchangeEnum.GATEIO_FUTURES:
+        # Futures exchanges require futures-specific base classes
         if is_private:
-            from exchanges.integrations.mexc.mexc_composite_private import MexcCompositePrivateSpotExchange
-            return MexcCompositePrivateSpotExchange(
-                config=config, 
-                rest_client=rest_client,
-                websocket_client=websocket_client,
-                logger=logger, 
-                handlers=handlers
-            )
-        else:
-            from exchanges.integrations.mexc.mexc_composite_public import MexcCompositePublicSpotExchange
-            return MexcCompositePublicSpotExchange(
-                config=config,
-                rest_client=rest_client,
-                websocket_client=websocket_client,
-                logger=logger,
-                handlers=handlers
-            )
-            
-    elif exchange == ExchangeEnum.GATEIO:
-        if is_private:
-            from exchanges.integrations.gateio.gateio_composite_private import GateioCompositePrivateSpotExchange
-            return GateioCompositePrivateSpotExchange(
+            from exchanges.interfaces.composite.futures.base_private_futures_composite import CompositePrivateFuturesExchange
+            return CompositePrivateFuturesExchange(
                 config=config,
                 rest_client=rest_client,
                 websocket_client=websocket_client,
@@ -270,28 +254,8 @@ def _create_composite_component(
                 handlers=handlers
             )
         else:
-            from exchanges.integrations.gateio.gateio_composite_public import GateioCompositePublicSpotExchange
-            return GateioCompositePublicSpotExchange(
-                config=config,
-                rest_client=rest_client,
-                websocket_client=websocket_client,
-                logger=logger,
-                handlers=handlers
-            )
-            
-    elif exchange == ExchangeEnum.GATEIO_FUTURES:
-        if is_private:
-            from exchanges.integrations.gateio.gateio_futures_composite_private import GateioFuturesCompositePrivateExchange
-            return GateioFuturesCompositePrivateExchange(
-                config=config,
-                rest_client=rest_client,
-                websocket_client=websocket_client,
-                logger=logger,
-                handlers=handlers
-            )
-        else:
-            from exchanges.integrations.gateio.gateio_futures_composite_public import GateioFuturesCompositePublicSpotExchange
-            return GateioFuturesCompositePublicSpotExchange(
+            from exchanges.interfaces.composite.futures.base_public_futures_composite import CompositePublicFuturesExchange
+            return CompositePublicFuturesExchange(
                 config=config,
                 rest_client=rest_client,
                 websocket_client=websocket_client,
@@ -299,7 +263,25 @@ def _create_composite_component(
                 handlers=handlers
             )
     else:
-        raise ValueError(f"Composite component not implemented for {exchange.value}")
+        # MEXC and GATEIO spot use the same base classes with injected clients
+        if is_private:
+            from exchanges.interfaces.composite.spot.base_private_spot_composite import CompositePrivateSpotExchange
+            return CompositePrivateSpotExchange(
+                config=config,
+                rest_client=rest_client,
+                websocket_client=websocket_client,
+                logger=logger,
+                handlers=handlers
+            )
+        else:
+            from exchanges.interfaces.composite.spot.base_public_spot_composite import CompositePublicSpotExchange
+            return CompositePublicSpotExchange(
+                config=config,
+                rest_client=rest_client,
+                websocket_client=websocket_client,
+                logger=logger,
+                handlers=handlers
+            )
 
 
 # Convenience functions for backward compatibility and ease of use

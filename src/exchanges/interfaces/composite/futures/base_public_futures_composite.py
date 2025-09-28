@@ -15,146 +15,31 @@ from exchanges.interfaces.composite.spot.base_public_spot_composite import Compo
 from infrastructure.logging import HFTLoggerInterface
 
 
-class CompositePublicFuturesSpotExchange(CompositePublicSpotExchange):
+class CompositePublicFuturesExchange(CompositePublicSpotExchange):
     """
     Base interface for public futures exchange operations.
     
-    Extends public exchange functionality with futures-specific features:
-    - Funding rate tracking
-    - Open interest monitoring
-    - Futures-specific symbol information
-    - Mark price and index price data
-    
+
     This interface does not require authentication and focuses on
     public futures market data.
     """
 
-    def __init__(self, config, logger: Optional[HFTLoggerInterface] = None):
+    def __init__(self, config, rest_client=None, websocket_client=None, logger: Optional[HFTLoggerInterface] = None, handlers=None):
         """
         Initialize public futures exchange interface.
         
         Args:
             config: Exchange configuration
+            rest_client: Injected REST client for dependency injection
+            websocket_client: Injected WebSocket client for dependency injection
             logger: Optional injected HFT logger (auto-created if not provided)
+            handlers: Optional WebSocket handlers for custom event handling
         """
-        super().__init__(config, logger=logger)
+        super().__init__(config, rest_client=rest_client, websocket_client=websocket_client, logger=logger, handlers=handlers)
         
         # Override tag to indicate futures operations
         self._tag = f'{config.name}_public_futures'
 
-        # Futures-specific data (using generic Dict structures for now)
-        self._funding_rates: Dict[Symbol, Dict] = {}
-        self._open_interest: Dict[Symbol, Dict] = {}
-        self._mark_prices: Dict[Symbol, Decimal] = {}
-        self._index_prices: Dict[Symbol, Decimal] = {}
-
-    # Abstract properties for futures data
-
-    @property
-    @abstractmethod
-    def funding_rates(self) -> Dict[Symbol, Dict]:
-        """
-        Get current funding rates for all tracked symbols.
-        
-        Returns:
-            Dictionary mapping symbols to funding rate information
-        """
-        pass
-
-    @property
-    @abstractmethod
-    def open_interest(self) -> Dict[Symbol, Dict]:
-        """
-        Get current open interest for all tracked symbols.
-        
-        Returns:
-            Dictionary mapping symbols to open interest information
-        """
-        pass
-
-    @property
-    @abstractmethod
-    def mark_prices(self) -> Dict[Symbol, Decimal]:
-        """
-        Get current mark prices for all tracked symbols.
-        
-        Returns:
-            Dictionary mapping symbols to mark prices
-        """
-        pass
-
-    @property
-    @abstractmethod
-    def index_prices(self) -> Dict[Symbol, Decimal]:
-        """
-        Get current index prices for all tracked symbols.
-        
-        Returns:
-            Dictionary mapping symbols to index prices
-        """
-        pass
-
-    # Abstract futures data loading methods
-
-    @abstractmethod
-    async def _load_funding_rates(self, symbols: List[Symbol]) -> None:
-        """
-        Load funding rates for symbols from REST API.
-        
-        Args:
-            symbols: List of symbols to load funding rates for
-        """
-        pass
-
-    @abstractmethod
-    async def _load_open_interest(self, symbols: List[Symbol]) -> None:
-        """
-        Load open interest data for symbols from REST API.
-        
-        Args:
-            symbols: List of symbols to load open interest for
-        """
-        pass
-
-    @abstractmethod
-    async def _load_mark_prices(self, symbols: List[Symbol]) -> None:
-        """
-        Load mark prices for symbols from REST API.
-        
-        Args:
-            symbols: List of symbols to load mark prices for
-        """
-        pass
-
-    @abstractmethod
-    async def _load_index_prices(self, symbols: List[Symbol]) -> None:
-        """
-        Load index prices for symbols from REST API.
-        
-        Args:
-            symbols: List of symbols to load index prices for
-        """
-        pass
-
-    @abstractmethod
-    async def get_funding_rate_history(
-        self, 
-        symbol: Symbol,
-        limit: int = 100
-    ) -> List[Dict]:
-        """
-        Get historical funding rates for a symbol.
-        
-        Args:
-            symbol: Symbol to get funding rate history for
-            limit: Maximum number of records to return
-            
-        Returns:
-            List of historical funding rates
-        """
-        pass
-
-    # Enhanced initialization for futures
 
     async def initialize(self, symbols: List[Symbol] = None) -> None:
         """
@@ -169,10 +54,6 @@ class CompositePublicFuturesSpotExchange(CompositePublicSpotExchange):
         if symbols:
             try:
                 # Load futures-specific data
-                await self._load_funding_rates(symbols)
-                await self._load_open_interest(symbols)
-                await self._load_mark_prices(symbols)
-                await self._load_index_prices(symbols)
 
                 self.logger.info(f"{self._tag} futures data initialized for {len(symbols)} symbols")
 
@@ -194,80 +75,8 @@ class CompositePublicFuturesSpotExchange(CompositePublicSpotExchange):
         if self.active_symbols:
             active_symbols_list = list(self.active_symbols)
             try:
-                # Refresh futures-specific data
-                await self._load_funding_rates(active_symbols_list)
-                await self._load_open_interest(active_symbols_list)
-                await self._load_mark_prices(active_symbols_list)
-                await self._load_index_prices(active_symbols_list)
-
-                self.logger.info(f"{self._tag} futures data refreshed")
-
+                pass
             except Exception as e:
                 self.logger.error(f"Failed to refresh futures data for {self._tag}: {e}")
                 raise
 
-    # Futures data update methods
-
-    def _update_funding_rate(self, symbol: Symbol, funding_rate: Dict) -> None:
-        """
-        Update internal funding rate state.
-        
-        Args:
-            symbol: Symbol that was updated
-            funding_rate: New funding rate information
-        """
-        self._funding_rates[symbol] = funding_rate
-        self.logger.debug(f"Updated funding rate for {symbol}: {funding_rate}")
-
-    def _update_open_interest(self, symbol: Symbol, open_interest: Dict) -> None:
-        """
-        Update internal open interest state.
-        
-        Args:
-            symbol: Symbol that was updated
-            open_interest: New open interest information
-        """
-        self._open_interest[symbol] = open_interest
-        self.logger.debug(f"Updated open interest for {symbol}: {open_interest}")
-
-    def _update_mark_price(self, symbol: Symbol, mark_price: Decimal) -> None:
-        """
-        Update internal mark price state.
-        
-        Args:
-            symbol: Symbol that was updated
-            mark_price: New mark price
-        """
-        self._mark_prices[symbol] = mark_price
-        self.logger.debug(f"Updated mark price for {symbol}: {mark_price}")
-
-    def _update_index_price(self, symbol: Symbol, index_price: Decimal) -> None:
-        """
-        Update internal index price state.
-        
-        Args:
-            symbol: Symbol that was updated
-            index_price: New index price
-        """
-        self._index_prices[symbol] = index_price
-        self.logger.debug(f"Updated index price for {symbol}: {index_price}")
-
-    # Enhanced monitoring for futures
-
-    def get_futures_stats(self) -> Dict[str, Any]:
-        """
-        Get futures-specific statistics for monitoring.
-        
-        Returns:
-            Dictionary with futures market data statistics
-        """
-        base_stats = self.get_orderbook_stats()
-        
-        futures_stats = {
-            'tracked_funding_rates': len(self._funding_rates),
-            'tracked_open_interest': len(self._open_interest),
-            'tracked_mark_prices': len(self._mark_prices),
-            'tracked_index_prices': len(self._index_prices),
-        }
-        
-        return {**base_stats, **futures_stats}

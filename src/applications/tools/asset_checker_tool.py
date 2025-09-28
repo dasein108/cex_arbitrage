@@ -32,8 +32,8 @@ sys.path.insert(0, str(project_root))
 
 from exchanges.structs.types import AssetName
 from exchanges.structs.common import AssetInfo
-from exchanges.integrations.mexc.mexc_composite_private import MexcCompositePrivateSpotExchange
-from exchanges.integrations.gateio.gateio_composite_private import GateioCompositePrivateSpotExchange
+from exchanges.factory.exchange_factory import create_exchange_component
+from exchanges.structs.enums import ExchangeEnum
 from config.config_manager import HftConfig
 
 
@@ -60,17 +60,27 @@ class AssetStatusChecker:
             'mexc_spot': 'MEXC_SPOT',
             'gateio_spot': 'GATEIO_SPOT'
         }
+        
+        # Exchange enum mapping
+        self.exchange_enums = {
+            'mexc_spot': ExchangeEnum.MEXC,
+            'gateio_spot': ExchangeEnum.GATEIO
+        }
 
     async def initialize(self):
         """Initialize all configured exchange clients."""
         for exchange_key in self.exchanges:
             config_key = self.exchange_configs[exchange_key]
             exchange_config = self.config.get_exchange_config(config_key)
+            exchange_enum = self.exchange_enums[exchange_key]
 
-            if exchange_key == 'mexc_spot':
-                self.exchange_instances[exchange_key] = MexcCompositePrivateSpotExchange(exchange_config)
-            elif exchange_key == 'gateio_spot':
-                self.exchange_instances[exchange_key] = GateioCompositePrivateSpotExchange(exchange_config)
+            # Create private composite exchange using factory
+            self.exchange_instances[exchange_key] = create_exchange_component(
+                exchange=exchange_enum,
+                config=exchange_config,
+                component_type='composite',
+                is_private=True
+            )
 
             # Initialize the exchange (this will create the internal REST client)
             if self.exchange_instances[exchange_key]:

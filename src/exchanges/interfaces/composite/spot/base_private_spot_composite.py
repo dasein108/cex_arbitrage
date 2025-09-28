@@ -16,7 +16,7 @@ from exchanges.interfaces.composite.types import PrivateRestType, PrivateWebSock
 from infrastructure.exceptions.system import InitializationError
 
 
-class BasePrivateSpotComposite(BasePrivateComposite, WithdrawalMixin):
+class CompositePrivateSpotExchange(BasePrivateComposite, WithdrawalMixin):
     """
     Base interface for private SPOT exchange operations.
     
@@ -86,5 +86,3 @@ class BasePrivateSpotComposite(BasePrivateComposite, WithdrawalMixin):
             execution_handler=self._execution_handler,
         )
 
-# Alias for backward compatibility with existing imports
-CompositePrivateSpotExchange = BasePrivateSpotComposite
