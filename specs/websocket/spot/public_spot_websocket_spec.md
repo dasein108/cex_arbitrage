@@ -44,21 +44,22 @@ class PublicWebsocketHandlers:
 ```
 
 ### Handler Injection Pattern
+
 ```python
 # Constructor injection for clean separation
 def __init__(
-    self,
-    config: ExchangeConfig,
-    handlers: PublicWebsocketHandlers,  # Injected handlers
-    logger: HFTLogger,
-    state_change_handler: Optional[Callable] = None
+        self,
+        config: ExchangeConfig,
+        handlers: PublicWebsocketHandlers,  # Injected handlers
+        logger: HFTLogger,
+        state_change_handler: Optional[Callable] = None
 ):
     self.handlers = handlers  # Store for message routing
     # Create WebSocket manager with message handler
     self._ws_manager = create_websocket_manager(
         exchange_config=config,
         is_private=False,
-        message_handler=self._handle_parsed_message
+        message_handler=self._handle_message
     )
 ```
 

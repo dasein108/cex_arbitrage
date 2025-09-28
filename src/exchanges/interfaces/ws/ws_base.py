@@ -1,4 +1,4 @@
-from abc import ABC
+from abc import ABC, abstractmethod
 from typing import Optional, Callable, Awaitable, Any, Dict
 
 from config.structs import ExchangeConfig
@@ -43,7 +43,7 @@ class BaseWebsocketInterface(ABC):
         self._ws_manager = create_websocket_manager(
             exchange_config=config,
             is_private=is_private,
-            message_handler=message_handler or self._handle_parsed_message,
+            message_handler=message_handler or self._handle_message,
             connection_handler=state_change_handler,
             logger=self.logger  # Inject HFT logger into WebSocket manager
         )
@@ -53,10 +53,10 @@ class BaseWebsocketInterface(ABC):
                         tag=tag,
                         is_private=is_private)
 
-    async def _handle_parsed_message(self, parsed_message) -> None:
+    @abstractmethod
+    async def _handle_message(self, raw_message: Any) -> None:
         """Default message handler - should be overridden by subclasses."""
-        self.logger.debug("Received message",
-                         message_type=parsed_message.message_type if hasattr(parsed_message, 'message_type') else 'unknown')
+        pass
 
     async def initialize(self, symbols=None) -> None:
         """Initialize WebSocket connection using strategy pattern."""

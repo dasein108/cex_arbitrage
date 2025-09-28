@@ -26,10 +26,10 @@ class PrivateSpotWebsocket(BaseWebsocketInterface, ABC):
         super().__init__(
             config=config,
             is_private=True,  # Private API operations
-            message_handler=self._handle_parsed_message
+            message_handler=self._handle_message
         )
 
-    async def _handle_parsed_message(self, parsed_message) -> None:
+    async def _handle_message(self, parsed_message) -> None:
         """Handle parsed messages from WebSocket manager with private-specific routing."""
         try:
             message_type = parsed_message.message_type

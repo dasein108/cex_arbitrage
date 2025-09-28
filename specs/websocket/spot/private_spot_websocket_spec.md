@@ -45,18 +45,19 @@ class PrivateWebsocketHandlers:
 ```
 
 ### Handler Injection Pattern
+
 ```python
 def __init__(
-    self,
-    config: ExchangeConfig,
-    handlers: PrivateWebsocketHandlers,  # Injected handlers
-    **kwargs
+        self,
+        config: ExchangeConfig,
+        handlers: PrivateWebsocketHandlers,  # Injected handlers
+        **kwargs
 ):
     self.handlers = handlers
     super().__init__(
         config=config,
         is_private=True,  # Authenticated connection
-        message_handler=self._handle_parsed_message
+        message_handler=self._handle_message
     )
 ```
 

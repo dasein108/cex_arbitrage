@@ -18,8 +18,9 @@ from infrastructure.logging import HFTLogger
 from infrastructure.networking.websocket.structs import ConnectionState, MessageType, ParsedMessage, PublicWebsocketChannelType
 from infrastructure.networking.websocket.handlers import PublicWebsocketHandlers
 import traceback
+from exchanges.interfaces.ws.ws_base import BaseWebsocketInterface
 
-class PublicSpotWebsocket(ABC):
+class PublicSpotWebsocket(BaseWebsocketInterface, ABC):
     """
     Base class for exchange public WebSocket implementations.
     
@@ -36,6 +37,7 @@ class PublicSpotWebsocket(ABC):
         logger: HFTLogger,
         connection_handler: Optional[Callable[[ConnectionState], Awaitable[None]]] = None,
     ):
+        super().__init__(config=config, is_private=False)
         """
         Initialize composite public WebSocket with handler object.
         
@@ -61,7 +63,7 @@ class PublicSpotWebsocket(ABC):
         self._ws_manager = create_websocket_manager(
             exchange_config=config,
             is_private=False,
-            message_handler=self._handle_parsed_message,
+            message_handler=self._handle_message,
             connection_handler=self._connection_handler
         )
 
@@ -133,7 +135,7 @@ class PublicSpotWebsocket(ABC):
         """Get currently active symbols."""
         return self._active_symbols.copy()
 
-    async def _handle_parsed_message(self, message: ParsedMessage) -> None:
+    async def _handle_message(self, message: ParsedMessage) -> None:
         """
         Route parsed messages to appropriate handlers.
         

@@ -353,15 +353,7 @@ class MexcPublicMessageParser(MessageParser):
         try:
             message_type = self.get_message_type(msg)
 
-            if message_type == MessageType.ORDERBOOK:
-                # MEXC primarily uses protobuf for orderbook data - JSON parsing not critical
-                return None
-
-            elif message_type == MessageType.TRADE:
-                # MEXC primarily uses protobuf for trades data - JSON parsing not critical
-                return None
-
-            elif message_type == MessageType.HEARTBEAT:
+            if message_type == MessageType.HEARTBEAT:
                 return self.create_heartbeat_response(msg)
 
             elif message_type == MessageType.SUBSCRIPTION_CONFIRM:
@@ -401,6 +393,7 @@ class MexcPublicMessageParser(MessageParser):
                                       symbol=symbol_str,
                                       format="protobuf",
                                       message_type="trades")
+
                 trades = await self._parse_trades_from_protobuf(data, symbol_str)
 
                 return self.create_parsed_message(
