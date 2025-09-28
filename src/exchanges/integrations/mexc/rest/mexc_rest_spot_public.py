@@ -38,15 +38,13 @@ from exchanges.structs.common import (
 from exchanges.structs.types import AssetName
 from exchanges.structs.enums import KlineInterval
 from exchanges.structs import Side
-from exchanges.interfaces.rest.spot import PublicSpotRest
+from exchanges.interfaces.rest import PublicSpotRest
 # Using MexcSymbol singleton for symbol conversions
 from exchanges.integrations.mexc.services.symbol_mapper import MexcSymbol
 from config.structs import ExchangeConfig
 from infrastructure.networking.http.structs import HTTPMethod
 from common.iterators import time_range_iterator
-# Inline utility function to avoid import issues
-def get_minimal_step(precision: int) -> float:
-    return 10**-precision
+from utils import get_minimal_step
 
 class MexcPublicSpotRest(PublicSpotRest):
     """
@@ -599,4 +597,24 @@ class MexcPublicSpotRest(PublicSpotRest):
         
         self.logger.debug(f"Retrieved {len(sorted_klines)} klines in batch for {symbol.base}/{symbol.quote}")
         return sorted_klines
+    
+    async def is_tradable(self, symbol: Symbol, is_futures: bool = False) -> bool:
+        """
+        Check if a symbol is tradable on MEXC.
+        
+        Args:
+            symbol: Symbol to check
+            is_futures: Not used for spot trading (always False)
+            
+        Returns:
+            True if symbol is tradable, False otherwise
+        """
+        if not self._symbols_info:
+            await self.get_symbols_info()
+        
+        if symbol not in self._symbols_info:
+            return False
+            
+        symbol_info = self._symbols_info[symbol]
+        return not symbol_info.inactive
     

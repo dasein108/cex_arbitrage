@@ -93,12 +93,9 @@ def websocket_client(self) -> Optional[WebSocketClientType]:
 """Type definitions for composite exchange dependency injection."""
 
 from typing import TypeVar, Union
-from exchanges.interfaces.rest.spot.rest_spot_public import PublicSpotRest
-from exchanges.interfaces.rest.spot.rest_spot_private import PrivateSpotRest
+from exchanges.interfaces import PrivateSpotRest, PublicSpotRest, PublicFuturesRest, PrivateFuturesRest
 from exchanges.interfaces.ws.spot.ws_spot_public import PublicSpotWebsocket
 from exchanges.interfaces.ws.spot.ws_spot_private import PrivateSpotWebsocket
-from exchanges.interfaces.rest.futures.rest_futures_public import PublicFuturesRest
-from exchanges.interfaces.rest.futures.rest_futures_private import PrivateFuturesRest
 from exchanges.interfaces.ws.futures.ws_futures_public import PublicFuturesWebsocket
 from exchanges.interfaces.ws.futures.ws_futures_private import PrivateFuturesWebsocket
 

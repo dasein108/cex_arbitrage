@@ -115,7 +115,3 @@ class BaseRestInterface(ABC):
     async def __aexit__(self, exc_type, exc_val, exc_tb):
         """Async context manager exit."""
         await self.close()
-
-    def _get_current_timestamp(self) -> int:
-        """Get current timestamp in milliseconds."""
-        return int(time.time() * 1000)

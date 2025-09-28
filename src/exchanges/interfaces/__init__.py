@@ -1,5 +1,5 @@
-from .rest import (PublicSpotRest, PrivateSpotRest,
-                   PublicFuturesRest, PrivateFuturesRest, BaseRestInterface)
+from .rest import (BaseRestInterface)
+from .rest.rest_interfaces import PrivateSpotRest, PublicSpotRest, PublicFuturesRest, PrivateFuturesRest
 from .ws import (PublicSpotWebsocket, PrivateSpotWebsocket,
                  PublicFuturesWebsocket, BaseWebsocketInterface)
 
@@ -10,12 +10,6 @@ __all__ = [
     "BaseRestInterface",
     "BaseWebsocketInterface",
     # rest
-    "PublicSpotRest",
-    "PrivateSpotRest",
-
-    "PublicFuturesRest",
-    "PrivateFuturesRest",
-
     # websockets
     "PublicSpotWebsocket",
     "PrivateSpotWebsocket",

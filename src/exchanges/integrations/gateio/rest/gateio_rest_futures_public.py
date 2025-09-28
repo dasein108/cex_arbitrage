@@ -3,14 +3,13 @@ import time
 from typing import Dict, List, Optional, Any
 from datetime import datetime
 
-from exchanges.interfaces import PublicFuturesRest
+from exchanges.interfaces.rest import PublicFuturesRest
 from exchanges.structs.common import (
     Symbol, SymbolInfo, OrderBook, OrderBookEntry, Trade, Kline,
     Ticker
 )
 from exchanges.structs.enums import KlineInterval
 from exchanges.structs import Side
-from exchanges.interfaces.rest.spot import PublicSpotRest
 # Removed BaseExchangeMapper import - using direct utility functions
 from infrastructure.networking.http.structs import HTTPMethod
 from config.structs import ExchangeConfig
@@ -581,6 +580,26 @@ class GateioPublicFuturesRest(PublicFuturesRest):
     def _get_interval_milliseconds(self, interval: KlineInterval) -> int:
         """Get interval duration in milliseconds for close time calculation."""
         return self._get_interval_seconds(interval) * 1000
+
+    async def is_tradable(self, symbol: Symbol, is_futures: bool = True) -> bool:
+        """
+        Check if a symbol is tradable on Gate.io futures.
+        
+        Args:
+            symbol: Symbol to check
+            is_futures: Always True for futures trading
+            
+        Returns:
+            True if symbol is tradable, False otherwise
+        """
+        if not self._symbols_info:
+            await self.get_symbols_info()
+        
+        if symbol not in self._symbols_info:
+            return False
+            
+        symbol_info = self._symbols_info[symbol]
+        return not symbol_info.inactive
 
     async def close(self):
         self.logger.info("Closed Gate.io futures public client")

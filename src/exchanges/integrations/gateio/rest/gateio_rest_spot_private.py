@@ -33,7 +33,7 @@ from exchanges.structs.types import AssetName, OrderId
 from exchanges.structs.enums import TimeInForce, WithdrawalStatus
 from exchanges.structs import OrderType, Side
 from infrastructure.networking.http.structs import HTTPMethod
-from exchanges.interfaces.rest.spot.rest_spot_private import PrivateSpotRest
+from exchanges.interfaces.rest import PrivateSpotRest
 from config.structs import ExchangeConfig
 from infrastructure.exceptions.exchange import ExchangeRestError
 from infrastructure.error_handling import RestApiErrorHandler, ErrorContext
@@ -44,6 +44,8 @@ from exchanges.integrations.gateio.utils import (
     from_time_in_force, to_order_status, rest_to_order, rest_to_balance
 )
 from exchanges.integrations.gateio.structs.exchange import GateioCurrencyResponse, GateioWithdrawStatusResponse
+from utils import get_current_timestamp
+
 
 class GateioPrivateSpotRest(PrivateSpotRest):
     """
@@ -778,7 +780,7 @@ class GateioPrivateSpotRest(PrivateSpotRest):
                 address=request.address,
                 network=request.network,
                 status=WithdrawalStatus.PENDING,
-                timestamp=int(self._get_current_timestamp()),
+                timestamp=get_current_timestamp(),
                 memo=request.memo,
                 remark=request.remark
             )

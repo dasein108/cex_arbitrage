@@ -33,7 +33,7 @@ from exchanges.structs.enums import TimeInForce, WithdrawalStatus
 from exchanges.structs import OrderType, Side
 from infrastructure.networking.http.structs import HTTPMethod
 from infrastructure.exceptions.exchange import ExchangeRestError, ExchangeRestOrderCancelledFilledOrNotExist
-from exchanges.interfaces.rest.spot.rest_spot_private import PrivateSpotRest
+from exchanges.interfaces.rest import PrivateSpotRest
 from exchanges.interfaces.rest.interfaces import ListenKeyInterface
 from exchanges.integrations.mexc.structs.exchange import (MexcAccountResponse, MexcOrderResponse,
                                                           MexcCurrencyInfoResponse)
@@ -43,7 +43,7 @@ from exchanges.integrations.mexc.utils import (
     to_pair, from_side, from_order_type, format_quantity, format_price, 
     from_time_in_force, to_order_status, rest_to_order, rest_to_withdrawal_status
 )
-
+from utils import get_current_timestamp
 
 
 class MexcPrivateSpotRest(PrivateSpotRest, ListenKeyInterface):
@@ -624,7 +624,7 @@ class MexcPrivateSpotRest(PrivateSpotRest, ListenKeyInterface):
                 address=request.address,
                 network=request.network,
                 status=WithdrawalStatus.PENDING,
-                timestamp=int(self._get_current_timestamp()),
+                timestamp=get_current_timestamp(),
                 memo=request.memo,
                 remark=request.remark
             )

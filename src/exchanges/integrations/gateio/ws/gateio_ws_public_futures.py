@@ -37,7 +37,7 @@ from exchanges.interfaces.ws import PublicFuturesWebsocket
 from infrastructure.networking.websocket.structs import ConnectionState, PublicWebsocketChannelType
 from infrastructure.networking.websocket.handlers import PublicWebsocketHandlers
 from infrastructure.logging import HFTLogger
-from exchanges.utils.symbol_validator import get_symbol_validator
+# Symbol validation is now handled at the data collector level
 
 class GateioPublicFuturesWebsocket(PublicFuturesWebsocket):
     """Gate.io public futures WebSocket client using dependency injection pattern."""
@@ -101,22 +101,16 @@ class GateioPublicFuturesWebsocket(PublicFuturesWebsocket):
     # Enhanced symbol management using symbol-channel mapping
     async def subscribe(self, symbols: List[Symbol]) -> None:
         """Add futures symbols for subscription using enhanced symbol-channel mapping."""
-        # Filter symbols to only tradable ones
-        validator = get_symbol_validator()
-        valid_symbols = validator.filter_tradable_symbols('gateio_futures', symbols, is_futures=True)
-        
-        if not valid_symbols:
-            self.logger.warning(f"No valid symbols to subscribe after filtering {len(symbols)} symbols")
+        # Validation is handled at the data collector level
+        # WebSocket clients receive pre-validated symbols
+        if not symbols:
             return
             
-        if len(valid_symbols) < len(symbols):
-            self.logger.info(f"Filtered {len(symbols)} symbols to {len(valid_symbols)} valid tradable symbols")
-            
-        # Use unified subscription method with valid symbols only
-        await self._ws_manager.subscribe(symbols=valid_symbols)
+        # Use unified subscription method
+        await self._ws_manager.subscribe(symbols=symbols)
         
         # Move from pending to active on successful subscription
-        self._active_symbols.update(valid_symbols)
+        self._active_symbols.update(symbols)
 
         self.logger.info(f"Added {len(symbols)} futures symbols: {[str(s) for s in symbols]}")
     

@@ -127,10 +127,30 @@ class UnifiedWebSocketManager:
             config = get_exchange_config(exchange.value)
             
             # Filter symbols to only tradable ones before subscription
-            from exchanges.utils.symbol_validator import get_symbol_validator
-            validator = get_symbol_validator()
+            from exchanges.factory import create_exchange_component
             is_futures = 'futures' in exchange.value.lower()
-            valid_symbols = validator.filter_tradable_symbols(exchange.value, symbols, is_futures=is_futures)
+            
+            # Create temporary REST client for validation
+            rest_client = create_exchange_component(
+                exchange=exchange,
+                config=config,
+                component_type='rest',
+                is_private=False
+            )
+            
+            # Filter symbols using REST client validation
+            valid_symbols = []
+            for symbol in symbols:
+                try:
+                    if await rest_client.is_tradable(symbol, is_futures=is_futures):
+                        valid_symbols.append(symbol)
+                except Exception as e:
+                    self.logger.debug(f"Error checking symbol {symbol}: {e}")
+                    # On error, include symbol (fail-safe approach)
+                    valid_symbols.append(symbol)
+            
+            # Close temporary REST client
+            await rest_client.close()
             
             if not valid_symbols:
                 self.logger.warning(f"No valid symbols to subscribe for {exchange.value} after filtering {len(symbols)} symbols")
@@ -138,7 +158,9 @@ class UnifiedWebSocketManager:
                 
             if len(valid_symbols) < len(symbols):
                 excluded_count = len(symbols) - len(valid_symbols)
-                self.logger.info(f"Filtered out {excluded_count} non-tradable symbols for {exchange.value}")
+                excluded_symbols = [s for s in symbols if s not in valid_symbols]
+                self.logger.info(f"Filtered out {excluded_count} non-tradable symbols for {exchange.value}: {[f'{s.base}/{s.quote}' for s in excluded_symbols[:3]]}...")
+                
 
             # Create WebSocket client using configured handlers
             # Note: PublicWebsocketHandlers expects handlers with single parameter (data only)
