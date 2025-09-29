@@ -18,36 +18,17 @@ HFT COMPLIANCE: Sub-millisecond message processing, <100ms reconnection.
 import asyncio
 import time
 import traceback
-from typing import List, Dict, Optional, Callable, Any, Awaitable, Set
+from typing import Dict, Optional, Callable, Any, Awaitable
 from websockets.client import WebSocketClientProtocol
 from websockets.protocol import State as WsState
 
-from infrastructure.networking.websocket.strategies.strategy_set import WebSocketStrategySet
-from .structs import (ParsedMessage, WebSocketManagerConfig, PerformanceMetrics, ConnectionState,
-                      SubscriptionAction, PublicWebsocketChannelType)
+from .structs import (ParsedMessage, WebSocketManagerConfig, PerformanceMetrics, ConnectionState)
 from config.structs import WebSocketConfig
-from exchanges.structs import Symbol
 from infrastructure.exceptions.exchange import ExchangeRestError
 import msgspec
 
 # HFT Logger Integration
 from infrastructure.logging import get_logger, LoggingTimer
-from dataclasses import dataclass
-
-
-# TODO: move out, further refactoring
-@dataclass
-class ReconnectionPolicy:
-    """Strategy-specific reconnection policy configuration."""
-    max_attempts: int
-    initial_delay: float
-    backoff_factor: float
-    max_delay: float
-    reset_on_1005: bool = True  # Reset attempts on WebSocket 1005 errors
-
-
-
-
 
 class WebSocketManager:
     """
@@ -56,22 +37,11 @@ class WebSocketManager:
     This version supports both:
     1. Direct message handling (mixin-based composition)
     2. High-performance routing with minimal overhead
-    
-    Architecture selection is configuration-driven with hot-swapping capability.
-    Provides compatibility layer for seamless migration with zero downtime.
-    
-    Key features:
-    - Dual-path message processing
-    - Configuration-based architecture switching
-    - Performance monitoring for both paths
-    - Circuit breaker patterns with automatic fallback
-    - Zero-overhead adapter layer (<5ns per message)
     """
     
     def __init__(
         self,
         config: WebSocketConfig,
-        strategies: Optional[WebSocketStrategySet] = None,
         connect_method: Optional[Callable[[], Awaitable[WebSocketClientProtocol]]] = None,
         auth_method: Optional[Callable[[], Awaitable[bool]]] = None,
         message_handler: Optional[Callable[[ParsedMessage], Awaitable[None]]] = None,
@@ -81,20 +51,12 @@ class WebSocketManager:
         logger=None,
     ):
         self.config = config
-        self.strategies = strategies
         self._raw_message_handler = message_handler
         self.connection_handler = connection_handler
         self.error_handler = error_handler
         self.connect_method = connect_method
         self.auth_method = auth_method
         self.manager_config = manager_config or WebSocketManagerConfig()
-
-        self.reconnection_policy = ReconnectionPolicy(
-            max_attempts=10,
-            initial_delay=1.0,
-            backoff_factor=2.0,
-            max_delay=60.0 * 5,
-        )
 
         # Initialize HFT logger with optional injection
         self.logger = logger or get_logger('ws.manager')
@@ -107,14 +69,10 @@ class WebSocketManager:
         self._connection_task: Optional[asyncio.Task] = None
         self._reader_task: Optional[asyncio.Task] = None
         self._processing_task: Optional[asyncio.Task] = None
-        self._heartbeat_task: Optional[asyncio.Task] = None
-        
+
         # Control flags
         self._should_reconnect = True
-        # Delayed import to avoid circular dependency
-        self._active_symbols: Set[Symbol] = set()
-        self._ws_channels: List[PublicWebsocketChannelType] = []
-        
+
         # Performance tracking
         self.metrics = PerformanceMetrics()
         self.start_time = 0.0
@@ -124,30 +82,15 @@ class WebSocketManager:
             maxsize=self.manager_config.max_pending_messages
         )
 
-    async def initialize(self, symbols: Optional[List[Symbol]] = None,
-                         default_channels: Optional[List[PublicWebsocketChannelType]] = None) -> None:
+    async def initialize(self) -> None:
         """
         Initialize WebSocket connection using strategy.connect() directly.
         
-        Args:
-            :param symbols: Optional list of Symbol instances for initial subscription
-            :param default_channels: Optional list of channels for initial subscription
         """
-        # Import Symbol type here if needed for type checking
-        from exchanges.structs.common import Symbol
         self.start_time = time.perf_counter()
-        if symbols:
-            self._active_symbols.update(symbols)
-
-        if default_channels:
-            self._ws_channels = default_channels
 
         try:
             with LoggingTimer(self.logger, "ws_manager_initialization") as timer:
-                self.logger.info("Initializing WebSocket manager with direct strategy connection",
-                                 symbols_count=len(symbols) if symbols else 0,
-                                 channels_count=len(default_channels) if default_channels else 0)
-                
                 # Start connection loop (handles reconnection with strategy policies)
                 self._should_reconnect = True
                 self._connection_task = asyncio.create_task(self._connection_loop())
@@ -155,15 +98,8 @@ class WebSocketManager:
                 # Start message processing
                 self._processing_task = asyncio.create_task(self._process_messages())
 
-                # Start strategy-managed heartbeat if needed
-                # Note: This heartbeat supplements built-in ping/pong for exchanges requiring custom ping
-                # if self.config.heartbeat_interval and self.config.heartbeat_interval > 0:
-                #     self._heartbeat_task = asyncio.create_task(self._heartbeat_loop())
-                #     self.logger.info("Started custom heartbeat",
-                #                    heartbeat_interval=self.config.heartbeat_interval,
-                #                    note="supplements built-in ping/pong")
-            
-            self.logger.info("WebSocket manager V4 initialized successfully",
+
+            self.logger.info("WebSocket manager initialized successfully",
                            initialization_time_ms=timer.elapsed_ms)
             
             # Track initialization metrics
@@ -184,72 +120,7 @@ class WebSocketManager:
             await self.close()
             raise ExchangeRestError(500, f"WebSocket initialization failed: {e}")
     
-    async def subscribe(self, symbols: List[Symbol]) -> None:
-        """Subscribe to symbols using strategy."""
-        # Import Symbol type here if needed
-        from exchanges.structs.common import Symbol
-        if not self.is_connected():
-            raise ExchangeRestError(503, "WebSocket not connected")
 
-        try:
-            with LoggingTimer(self.logger, "subscription_processing") as timer:
-                messages = await self.strategies.subscription_strategy.create_subscription_messages(
-                    action=SubscriptionAction.SUBSCRIBE, symbols=symbols, channels=self._ws_channels)
-                
-                if not messages:
-                    self.logger.warning("No subscription messages created",
-                                      symbols_count=len(symbols),
-                                      channels_count=len(self._ws_channels))
-                    return
-                
-                self.logger.info("Sending subscription messages",
-                               messages_count=len(messages),
-                               symbols_count=len(symbols))
-                
-                for message in messages:
-                    await self.send_message(message)
-                    self.logger.debug("Sent subscription message", subscription_data=message)
-                
-                self._active_symbols.update(symbols)
-            
-            # Track subscription metrics
-            self.logger.metric("ws_subscriptions", len(symbols),
-                             tags={"exchange": "ws"})
-            self.logger.metric("subscription_time_ms", timer.elapsed_ms,
-                             tags={"exchange": "ws"})
-            
-        except Exception as e:
-            self.logger.error("Subscription failed",
-                            symbols_count=len(symbols),
-                            error_type=type(e).__name__,
-                            error_message=str(e))
-            
-            # Track subscription failure metrics
-            self.logger.metric("ws_subscription_failures", 1,
-                             tags={"exchange": "ws"})
-            
-            raise ExchangeRestError(400, f"Subscription failed: {e}")
-    
-    async def unsubscribe(self, symbols: List[Symbol]) -> None:
-        """Unsubscribe from symbols using strategy."""
-        if not self.is_connected():
-            return
-        
-        try:
-            messages = await self.strategies.subscription_strategy.create_subscription_messages(
-                action=SubscriptionAction.UNSUBSCRIBE, symbols=symbols, channels=self._ws_channels)
-            
-            if not messages:
-                return
-            
-            for message in messages:
-                await self.send_message(message)
-            
-            self._active_symbols.difference_update(symbols)
-
-        except Exception as e:
-            self.logger.error(f"Unsubscription failed: {e}")
-    
     async def send_message(self, message: Dict[str, Any]) -> None:
         """Send message through direct WebSocket connection."""
         if not self._websocket or self.connection_state != ConnectionState.CONNECTED:
@@ -270,15 +141,12 @@ class WebSocketManager:
         Uses strategy.connect() directly and implements reconnection 
         using strategy-provided policies.
         """
-        # reconnection_policy = self.strategies.connection_strategy.get_reconnection_policy()
         reconnect_attempts = 0
         
         while self._should_reconnect:
             try:
                 await self._update_state(ConnectionState.CONNECTING)
 
-                # TODO: move to connection_factory
-                # Use strategy to establish connection directly
                 self._websocket = await self.connect_method()
                 
                 await self._update_state(ConnectionState.CONNECTED)
@@ -287,9 +155,9 @@ class WebSocketManager:
                 reconnect_attempts = 0
 
 
-                # TODO: Move outside to on_connected
                 # Authenticate if required
                 auth_success = await self.auth_method() if self.auth_method else True
+
                 if not auth_success:
                     self.logger.error("Authentication failed")
                     self.logger.metric("ws_auth_failures", 1,
@@ -300,18 +168,11 @@ class WebSocketManager:
                 # Track successful connection
                 self.logger.metric("ws_connections", 1,
                                  tags={"exchange": "ws"})
-                
-                # Subscribe to active symbols
-                # if self._active_symbols:
-                await self.subscribe(list(self._active_symbols))
-                # -----
-
 
                 # Start message reader
                 self._reader_task = asyncio.create_task(self._message_reader())
                 
-                self.logger.info("Strategy-driven WebSocket connection established successfully",
-                               active_symbols_count=len(self._active_symbols))
+                self.logger.info("Strategy-driven WebSocket connection established successfully")
                 
                 # Wait for connection to close
                 await self._reader_task
@@ -321,7 +182,7 @@ class WebSocketManager:
             except Exception as e:
                 traceback.print_exc()
 
-                await self._handle_connection_error(e, self.reconnection_policy, reconnect_attempts)
+                await self._handle_connection_error(e, reconnect_attempts)
                 reconnect_attempts += 1
         
         await self._update_state(ConnectionState.DISCONNECTED)
@@ -340,17 +201,17 @@ class WebSocketManager:
                     await self._on_raw_message(raw_message)
 
                 except Exception as e:
-                    await self._on_error(e)
+                    await self._on_reader_error(e)
                     break
         except asyncio.CancelledError:
             self.logger.debug("Message reader cancelled")
         except Exception as e:
             self.logger.error(f"Message reader error: {e}")
-            await self._on_error(e)
+            await self._on_reader_error(e)
         pass
 
     
-    async def _handle_connection_error(self, error: Exception, policy, attempt: int) -> None:
+    async def _handle_connection_error(self, error: Exception, attempt: int) -> None:
         """Handle connection errors using strategy-specific policies."""
         await self._update_state(ConnectionState.ERROR)
         
@@ -362,14 +223,14 @@ class WebSocketManager:
         #     return
         
         # Check max attempts
-        if attempt >= policy.max_attempts:
-            self.logger.error(f"Max reconnection attempts ({policy.max_attempts}) reached")
+        if attempt >= self.config.max_reconnect_attempts:
+            self.logger.error(f"Max reconnection attempts ({self.config.max_reconnect_attempts}) reached")
             self._should_reconnect = False
             return
 
         delay = min(
-            policy.initial_delay * (policy.backoff_factor ** attempt),
-            policy.max_delay
+            self.config.reconnect_delay * (self.config.reconnect_backoff ** attempt),
+            self.config.max_reconnect_delay
         )
         # # Calculate delay with strategy policy
         # error_type = self.strategies.connection_strategy.classify_error(error)
@@ -467,8 +328,15 @@ class WebSocketManager:
 
                     self.logger.metric("ws_message_processing_time_ms", processing_time_ms)
                 except Exception as e:
-                    await self._handle_processing_error(e, raw_message)
-                
+                    self.metrics.error_count += 1
+
+                    self.logger.error("Error processing message",
+                                      error_type=type(e).__name__,
+                                      error_message=str(e))
+
+                    # Track message processing error metrics with path identification
+                    self.logger.metric("ws_message_processing_errors", 1,
+                                       tags={"exchange": "ws"})
                 finally:
                     self._message_queue.task_done()
                 # -----
@@ -486,19 +354,7 @@ class WebSocketManager:
                 
                 await asyncio.sleep(0.1)
 
-    async def _handle_processing_error(self, error: Exception, raw_message: Any) -> None:
-        """Handle errors during message processing with path-specific logic."""
-        self.metrics.error_count += 1
-        
-        self.logger.error("Error processing message",
-                        error_type=type(error).__name__,
-                        error_message=str(error))
-        
-        # Track message processing error metrics with path identification
-        self.logger.metric("ws_message_processing_errors", 1,
-                         tags={"exchange": "ws"})
-    
-    async def _on_error(self, error: Exception) -> None:
+    async def _on_reader_error(self, error: Exception) -> None:
         """Handle WebSocket errors using strategy classification."""
         self.metrics.error_count += 1
         
@@ -513,60 +369,6 @@ class WebSocketManager:
         self.logger.metric("ws_errors", 1,
                          tags={"exchange": "ws", "error_type": error_type})
         
-        # Strategy decides on reconnection in _connection_loop
-    
-    # async def _heartbeat_loop(self) -> None:
-    #     """Strategy-managed heartbeat loop."""
-    #     consecutive_failures = 0
-    #     max_failures = 3
-    #
-    #     try:
-    #         while True:
-    #             await asyncio.sleep(self.config.heartbeat_interval)
-    #
-    #             # Use strategy for heartbeat (custom ping messages for exchanges that need them)
-    #             if self.config.has_heartbeat and self.is_connected():
-    #                 try:
-    #                     await self.strategies.connection_strategy.handle_heartbeat()
-    #                     consecutive_failures = 0  # Reset on success
-    #                     self.logger.debug("Strategy heartbeat sent successfully")
-    #
-    #                     # Track successful heartbeat
-    #                     self.logger.metric("ws_heartbeats_sent", 1,
-    #                                      tags={"exchange": "ws"})
-    #
-    #                 except Exception as e:
-    #                     consecutive_failures += 1
-    #                     self.logger.warning("Strategy heartbeat failed",
-    #                                       consecutive_failures=consecutive_failures,
-    #                                       max_failures=max_failures,
-    #                                       error_message=str(e))
-    #
-    #                     # Track heartbeat failures
-    #                     self.logger.metric("ws_heartbeat_failures", 1,
-    #                                      tags={"exchange": "ws"})
-    #
-    #                     # If too many consecutive failures, stop heartbeat (built-in ping/pong will handle)
-    #                     if consecutive_failures >= max_failures:
-    #                         self.logger.error("Too many consecutive heartbeat failures, stopping custom heartbeat",
-    #                                         max_failures=max_failures)
-    #
-    #                         # Track heartbeat loop failure
-    #                         self.logger.metric("ws_heartbeat_loop_failures", 1,
-    #                                          tags={"exchange": "ws"})
-    #                         break
-    #
-    #     except asyncio.CancelledError:
-    #         self.logger.debug("Strategy heartbeat loop cancelled")
-    #     except Exception as e:
-    #         self.logger.error("Strategy heartbeat loop error",
-    #                         error_type=type(e).__name__,
-    #                         error_message=str(e))
-    #
-    #         # Track heartbeat loop error metrics
-    #         self.logger.metric("ws_heartbeat_loop_errors", 1,
-    #                          tags={"exchange": "ws"})
-    
     def is_connected(self) -> bool:
         """Check if WebSocket is connected."""
         if self.connection_state != ConnectionState.CONNECTED or self._websocket is None:
@@ -580,9 +382,8 @@ class WebSocketManager:
     
     async def close(self) -> None:
         """Close WebSocket manager and cleanup resources."""
-        self.logger.info("Closing WebSocket manager V4...",
-                        active_symbols_count=len(self._active_symbols))
-        
+        self.logger.info("Closing WebSocket manager...")
+
         try:
             with LoggingTimer(self.logger, "ws_manager_close") as timer:
                 self._should_reconnect = False
@@ -590,7 +391,6 @@ class WebSocketManager:
                 # Cancel all tasks
                 tasks = [
                     self._processing_task,
-                    self._heartbeat_task,
                     self._connection_task,
                     self._reader_task
                 ]

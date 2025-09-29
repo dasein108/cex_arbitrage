@@ -1,14 +1,13 @@
 import hashlib
-import hmac
-import time
-from typing import Dict, Any
+from typing import Dict, Any, List
 from urllib.parse import urlencode
 
-from infrastructure.networking.http import AuthStrategy, HTTPMethod, AuthenticationData
+from exchanges.interfaces.rest.strategies import BaseExchangeAuthStrategy
+from infrastructure.networking.http import HTTPMethod, AuthenticationData
 from config.structs import ExchangeConfig
 
 
-class GateioAuthStrategy(AuthStrategy):
+class GateioAuthStrategy(BaseExchangeAuthStrategy):
     """Gate.io-specific authentication based on ExchangeConfig credentials."""
 
     def __init__(self, exchange_config: ExchangeConfig, logger=None, **kwargs):
@@ -20,37 +19,35 @@ class GateioAuthStrategy(AuthStrategy):
             logger: Optional HFT logger injection
             **kwargs: Additional parameters (ignored for compatibility)
         """
-        if not exchange_config.credentials.has_private_api:
-            raise ValueError("Gate.io credentials not configured in ExchangeConfig")
-        
-        self.api_key = exchange_config.credentials.api_key
-        self.secret_key = exchange_config.credentials.secret_key.encode('utf-8')
-        self.exchange_config = exchange_config
-        
-        # Timestamp synchronization for RecvWindow errors
-        self._time_offset = 0.0  # Offset to add to local timestamp (in seconds)
-        
-        # Initialize HFT logger with hierarchical tags
-        if logger is None:
-            from infrastructure.logging import get_strategy_logger
-            tags = ['gateio', 'rest', 'auth']
-            logger = get_strategy_logger('rest.auth.gateio', tags)
-        self.logger = logger
+        super().__init__(exchange_config, logger, **kwargs)
 
-    async def sign_request(
+    @property
+    def exchange_name(self) -> str:
+        """Exchange name for logging and identification."""
+        return "Gate.io"
+
+    def get_signature_algorithm(self) -> str:
+        """Gate.io uses SHA512 for HMAC signatures."""
+        return "sha512"
+
+    def get_auth_headers(self, signature: str, timestamp: str) -> Dict[str, str]:
+        """Get Gate.io-specific authentication headers."""
+        return {
+            'KEY': self.api_key,
+            'SIGN': signature,
+            'Timestamp': timestamp,
+            'Content-Type': 'application/json'
+        }
+
+    def prepare_signature_string(
         self,
         method: HTTPMethod,
         endpoint: str,
         params: Dict[str, Any],
         json_data: Dict[str, Any],
-        timestamp: int
-    ) -> AuthenticationData:
-        """Generate Gate.io authentication data with HMAC-SHA512 signature."""
-        # Use current time.time() as float, following official example
-        # Apply time offset for timestamp synchronization
-        current_time = time.time() + self._time_offset
-        timestamp_str = str(current_time)
-        
+        timestamp: str
+    ) -> str:
+        """Prepare Gate.io signature string format."""
         # Prepare request body and query string according to Gate.io format
         if method == HTTPMethod.GET:
             # GET requests: use query parameters, empty body
@@ -77,43 +74,38 @@ class GateioAuthStrategy(AuthStrategy):
         # signature_string = method + "\n" + url_path + "\n" + query_string + "\n" + payload_hash + "\n" + timestamp
         # Note: url_path should include the API prefix (e.g., /api/v4/spot/accounts)
         url_path = f"/api/v4{endpoint}" if not endpoint.startswith("/api/v4") else endpoint
-        string_to_sign = f"{method.value}\n{url_path}\n{query_string}\n{hash_of_request_body}\n{timestamp_str}"
-        
-        # Create HMAC SHA512 signature
-        signature = hmac.new(
-            self.secret_key,
-            string_to_sign.encode('utf-8'),
-            hashlib.sha512
-        ).hexdigest()
-        
-        # Prepare authentication headers
-        auth_headers = {
-            'KEY': self.api_key,
-            'SIGN': signature,
-            'Timestamp': timestamp_str,
-            'Content-Type': 'application/json'
-        }
+        return f"{method.value}\n{url_path}\n{query_string}\n{hash_of_request_body}\n{timestamp}"
 
-        # Return authentication data based on method
-        if method in [HTTPMethod.GET, HTTPMethod.DELETE]:
+    def _prepare_auth_data(
+        self,
+        auth_headers: Dict[str, str],
+        params: Dict[str, Any],
+        json_data: Dict[str, Any],
+        signature: str
+    ) -> AuthenticationData:
+        """Prepare Gate.io authentication data with proper parameter placement."""
+        # For GET/DELETE: params in query, no body
+        # For POST/PUT: JSON body from json_data, params in query  
+        if json_data:
+            # POST/PUT requests: data in JSON body, params in query string
+            import json
+            request_body = json.dumps(json_data, separators=(',', ':'))
+            return AuthenticationData(
+                headers=auth_headers,
+                params=params if params else {},
+                data=request_body
+            )
+        else:
             # GET/DELETE requests: params in query string, no body
             return AuthenticationData(
                 headers=auth_headers,
                 params=params if params else {},
                 data=None
             )
-        else:
-            # POST/PUT requests: data in JSON body, params in query string
-            return AuthenticationData(
-                headers=auth_headers,
-                params=params if params else {},
-                data=request_body if request_body else None
-            )
 
-    def requires_auth(self, endpoint: str) -> bool:
-        """Check if Gate.io endpoint requires authentication."""
-        # Private endpoints that require authentication
-        private_endpoints = [
+    def get_private_endpoints(self) -> List[str]:
+        """Get list of private endpoint prefixes that require authentication."""
+        return [
             '/spot/accounts',
             '/spot/orders',
             '/spot/fee',
@@ -123,22 +115,7 @@ class GateioAuthStrategy(AuthStrategy):
             '/wallet/withdraw_status',
             '/futures'  # All futures endpoints require auth
         ]
-
-        return any(endpoint.startswith(private_ep) for private_ep in private_endpoints)
     
-    async def refresh_timestamp(self) -> None:
-        """
-        Refresh timestamp synchronization for Gate.io timestamp errors.
-        
-        Adjusts local time offset to sync with server time.
-        Uses a small forward adjustment to account for network latency.
-        """
-        # Add a small forward offset (0.5 seconds) to account for network latency
-        # This helps prevent timestamp errors on subsequent requests
-        self._time_offset = 0.5  # 500ms forward adjustment
-        
-        self.logger.info("Gate.io timestamp synchronized for timestamp error",
-                        time_offset_seconds=self._time_offset)
-        
-        self.logger.metric("rest_auth_timestamp_syncs", 1,
-                          tags={"exchange": "gateio", "reason": "timestamp_error"})
+    def _get_sync_offset(self) -> float:
+        """Get Gate.io synchronization offset."""
+        return 0.5  # 500ms forward adjustment for Gate.io

@@ -28,7 +28,7 @@ import asyncio
 from exchanges.structs import Order, AssetBalance, Trade, Side, OrderType, OrderStatus
 from exchanges.integrations.mexc.rest.mexc_rest_spot_private import MexcPrivateSpotRest
 from config.structs import ExchangeConfig
-from exchanges.interfaces.ws import BasePrivateWebsocketPrivate
+from exchanges.interfaces.ws import BaseWebsocketPrivate
 from infrastructure.exceptions.system import InitializationError
 from infrastructure.networking.websocket.handlers import PrivateWebsocketHandlers
 # ExchangeMapperFactory dependency removed - using direct utility functions
@@ -40,7 +40,8 @@ from exchanges.integrations.mexc.structs.protobuf.PrivateOrdersV3Api_pb2 import 
 from exchanges.integrations.mexc.structs.protobuf.PrivateDealsV3Api_pb2 import PrivateDealsV3Api
 from websockets import connect
 
-from infrastructure.networking.websocket.structs import SubscriptionAction, WebsocketChannelType
+from infrastructure.networking.websocket.structs import SubscriptionAction, WebsocketChannelType, \
+    PrivateWebsocketChannelType
 from utils import safe_cancel_task, get_current_timestamp
 from exchanges.integrations.mexc.utils import from_subscription_action, _WS_ORDER_STATUS_MAPPING, _WS_ORDER_TYPE_MAPPING
 from exchanges.integrations.mexc.ws.protobuf_parser import MexcProtobufParser
@@ -54,7 +55,7 @@ _PRIVATE_CHANNEL_MAPPING = {
 }
 
 
-class MexcPrivateSpotWebsocket(BasePrivateWebsocketPrivate):
+class MexcSpotWebsocket(BaseWebsocketPrivate):
     """MEXC private WebSocket client using dependency injection pattern."""
 
     def _prepare_subscription_message(self, action: SubscriptionAction, channel: WebsocketChannelType,
@@ -232,7 +233,7 @@ class MexcPrivateSpotWebsocket(BasePrivateWebsocketPrivate):
                         available=balance_amount,
                         locked=frozen_amount,
                     )
-                    await self.handle_balance(balance)
+                    await self._exec_bound_handler(PrivateWebsocketChannelType.BALANCE, balance)
 
             elif "orders" in channel:
                 # Order update - direct protobuf field parsing
@@ -257,7 +258,8 @@ class MexcPrivateSpotWebsocket(BasePrivateWebsocketPrivate):
                         client_order_id=None
                     )
 
-                    await self.handle_order(order)
+                    await self._exec_bound_handler(PrivateWebsocketChannelType.ORDER, order)
+
 
             elif "deals" in channel:
                 # Trade/execution update - direct protobuf field parsing
@@ -267,7 +269,7 @@ class MexcPrivateSpotWebsocket(BasePrivateWebsocketPrivate):
                     # Direct parsing from protobuf fields - deal_data already has parsed fields
                     order_side = getattr(deal_data, 'tradeType', 0)
 
-                    unified_trade = Trade(
+                    trade = Trade(
                         symbol=MexcSymbol.to_symbol(symbol) if symbol else None,
                         price=float(deal_data.price) if hasattr(deal_data, 'price') else 0.0,
                         quantity=float(deal_data.quantity) if hasattr(deal_data, 'quantity') else 0.0,
@@ -276,7 +278,8 @@ class MexcPrivateSpotWebsocket(BasePrivateWebsocketPrivate):
                         trade_id=str(getattr(deal_data, 'time', get_current_timestamp()))  # Use timestamp as trade ID
                     )
 
-                    await self.handle_execution(unified_trade)
+                    await self._exec_bound_handler(PrivateWebsocketChannelType.TRADE, trade)
+
             else:
                 # Unknown protobuf message type
                 self.logger.warning(f"Received unknown protobuf message on channel: {channel}",

@@ -51,7 +51,7 @@ from .rest.gateio_rest_spot_public import GateioPublicSpotRest
 from .rest.gateio_rest_spot_private import GateioPrivateSpotRest
 from .rest.gateio_rest_futures_public import GateioPublicFuturesRest
 from .rest.gateio_rest_futures_private import GateioPrivateFuturesRest
-from .ws.gateio_ws_public import GateioPublicSpotWebsocket
+from .ws.gateio_ws_public import GateioSpotWebsocketPublic
 from .ws.gateio_ws_private import GateioPrivateSpotWebsocket
 from .ws.gateio_ws_public_futures import GateioPublicFuturesWebsocket
 from .ws.gateio_ws_private_futures import GateioPrivateFuturesWebsocket
@@ -66,8 +66,8 @@ from .rest import strategies
 __all__ = [
     # Direct client access
     'GateioPublicSpotRest',
-    'GateioPrivateSpotRest', 
-    'GateioPublicSpotWebsocket',
+    'GateioPrivateSpotRest',
+    'GateioSpotWebsocketPublic',
     'GateioPrivateSpotWebsocket',
     'GateioPublicFuturesRest',
     'GateioPrivateFuturesRest',

@@ -1,9 +1,9 @@
 """
 Gate.io Private Futures WebSocket Implementation
 
+Clean implementation following the MEXC pattern with direct logic implementation.
 Separate exchange implementation treating Gate.io futures private operations as completely 
-independent from Gate.io spot. Uses dedicated configuration section 'gateio_futures' with 
-its own ExchangeEnum.GATEIO_FUTURES and separate WebSocket endpoints.
+independent from Gate.io spot. Uses dedicated configuration with its own futures endpoints.
 
 Handles private futures WebSocket streams for account data including:
 - Futures order updates via JSON
@@ -13,10 +13,10 @@ Handles private futures WebSocket streams for account data including:
 - Futures margin updates
 
 Features:
+- Direct implementation (no strategy dependencies)
 - Completely separate from Gate.io spot configuration
-- Dedicated ExchangeEnum.GATEIO_FUTURES with 'gateio_futures' config section
 - HFT-optimized message processing for futures trading
-- Event-driven architecture with injected handlers
+- Event-driven architecture with structured handlers
 - Clean separation from spot exchange operations
 - Gate.io futures-specific JSON message parsing
 
@@ -26,20 +26,215 @@ Gate.io Private Futures WebSocket Specifications:
 - Message Format: JSON with channel-based subscriptions
 - Channels: futures.orders, futures.balances, futures.user_trades, futures.positions
 
-Architecture: Independent exchange with separate configuration and factory support
+Architecture: Direct implementation following MEXC pattern
 """
 
-from typing import Dict, Optional, Callable, Awaitable
+import time
+import hashlib
+import hmac
+from typing import Dict, Optional, Any, List, Union
 
-from exchanges.structs.common import Order, AssetBalance, Trade
+from exchanges.structs.common import Order, AssetBalance, OrderId, Trade, OrderStatus, OrderType, Side, Position
 from exchanges.structs.types import AssetName
-from config.structs import ExchangeConfig
-from exchanges.interfaces.ws.futures.ws_private_futures import PrivateFuturesWebsocket
-from infrastructure.networking.websocket.handlers import PrivateWebsocketHandlers
-from .gateio_ws_common import GateioBaseWebsocket
+from exchanges.interfaces.ws import BaseWebsocketPrivate
+from infrastructure.networking.websocket.structs import SubscriptionAction, WebsocketChannelType, PrivateWebsocketChannelType
+from exchanges.integrations.gateio.services.futures_symbol_mapper import GateioFuturesSymbol
+
+from exchanges.integrations.gateio.utils import (
+    from_subscription_action,
+    to_order_type,
+    to_order_status,
+    to_side,
+)
+from exchanges.integrations.gateio.ws.gateio_ws_common import GateioBaseWebsocket
+
+# Private futures channel mapping for Gate.io
+_PRIVATE_FUTURES_CHANNEL_MAPPING = {
+    WebsocketChannelType.ORDER: "futures.orders",
+    WebsocketChannelType.TRADE: "futures.usertrades",
+    WebsocketChannelType.BALANCE: "futures.balances",
+    WebsocketChannelType.POSITION: "futures.positions",
+    WebsocketChannelType.HEARTBEAT: "futures.ping",
+}
 
 
-class GateioPrivateFuturesWebsocket(PrivateFuturesWebsocket, GateioBaseWebsocket):
-    """Gate.io private futures WebSocket client using dependency injection pattern."""
-    pass
+class GateioPrivateFuturesWebsocket(GateioBaseWebsocket, BaseWebsocketPrivate):
+    """Gate.io private futures WebSocket client inheriting from common base for shared Gate.io logic."""
+    PING_CHANNEL = "futures.ping"
+
+    def _prepare_subscription_message(self, action: SubscriptionAction,
+                                      channel: WebsocketChannelType, **kwargs) -> Dict[str, Any]:
+        """Prepare Gate.io private futures subscription message format."""
+        event = from_subscription_action(action)
+        channel_name = _PRIVATE_FUTURES_CHANNEL_MAPPING.get(channel, None)
         
+        if channel_name is None:
+            raise ValueError(f"Unsupported private futures channel type: {channel}")
+            
+        message = {
+            "time": int(time.time()),
+            "channel": channel_name,
+            "event": event
+        }
+        
+        # Add payload for channels that require it
+        if channel in [WebsocketChannelType.ORDER, WebsocketChannelType.TRADE, WebsocketChannelType.POSITION]:
+            message["payload"] = ["!all"]  # Subscribe to all updates
+            
+        self.logger.debug(f"Created Gate.io private futures {event} message for channel: {channel_name}",
+                        channel=channel_name,
+                        event=event,
+                        exchange=self.exchange_name)
+        
+        return message
+
+    async def _generate_auth_message(self) -> Optional[Dict[str, Any]]:
+        """Generate Gate.io futures WebSocket authentication message."""
+        timestamp = int(time.time())
+        timestamp_ms = int(time.time() * 1000)
+        req_id = f"{timestamp_ms}-1"
+        
+        # Gate.io futures WebSocket authentication signature format
+        channel = "futures.login"  # Futures-specific login channel
+        request_param_bytes = b""  # Empty for login request
+        
+        key = f"api\n{channel}\n{request_param_bytes.decode()}\n{timestamp}"
+        
+        # Create HMAC SHA512 signature
+        signature = hmac.new(
+            self.secret_key.encode('utf-8'),
+            key.encode('utf-8'),
+            hashlib.sha512
+        ).hexdigest()
+        
+        auth_message = {
+            "time": timestamp,
+            "channel": channel,
+            "event": "api",
+            "payload": {
+                "api_key": self.api_key,
+                "signature": signature,
+                "timestamp": str(timestamp),
+                "req_id": req_id
+            }
+        }
+        
+        return auth_message
+
+    async def _handle_update_message(self, message: Dict[str, Any]) -> None:
+        """Handle Gate.io private futures update messages."""
+        channel = message.get("channel", "")
+        result_data = message.get("result", [])
+        
+        if not result_data:
+            return
+            
+        # Route based on channel type
+        if channel == "futures.balances":
+            await self._parse_futures_balance_update(result_data)
+        elif channel in ["futures.orders", "futures.orders_v2"]:
+            await self._parse_futures_order_update(result_data)
+        elif channel in ["futures.user_trades", "futures.usertrades", "futures.usertrades_v2"]:
+            await self._parse_futures_user_trade_update(result_data)
+        elif channel in ["futures.positions", "futures.position"]:
+            await self._parse_futures_position_update(result_data)
+        else:
+            self.logger.debug(f"Received update for unknown Gate.io private futures channel: {channel}")
+
+    async def _parse_futures_balance_update(self, data: Union[List[Dict[str, Any]], Dict[str, Any]]) -> None:
+        """Parse Gate.io futures balance update."""
+        try:
+            balance_list = data if isinstance(data, list) else [data]
+            
+            for balance_data in balance_list:
+                # Convert Gate.io futures balance to unified format
+                balance = AssetBalance(
+                    asset=AssetName(balance_data.get('currency', '')),
+                    available=float(balance_data.get('available', '0')),
+                    locked=float(balance_data.get('locked', '0'))
+                )
+                await self._exec_bound_handler(PrivateWebsocketChannelType.BALANCE, balance)
+                
+        except Exception as e:
+            self.logger.error(f"Error parsing Gate.io futures balance update: {e}")
+
+    async def _parse_futures_order_update(self, data: Union[List[Dict[str, Any]], Dict[str, Any]]) -> None:
+        """Parse Gate.io futures order update."""
+        try:
+            order_list = data if isinstance(data, list) else [data]
+            
+            for order_data in order_list:
+                # Convert Gate.io futures order to unified format
+                symbol = GateioFuturesSymbol.to_symbol(order_data.get('contract', ''))
+
+                # Convert create_time to milliseconds if needed
+                create_time = order_data.get('create_time', 0)
+                timestamp = int(create_time * 1000) if create_time and create_time < 1e10 else int(create_time or 0)
+
+                order = Order(
+                    order_id=OrderId(str(order_data.get('id', ''))),
+                    symbol=symbol,
+                    side=to_side(order_data.get('side', 'buy')),
+                    order_type=to_order_type(order_data.get('type', 'limit')),
+                    quantity=float(order_data.get('size', '0')),  # Futures uses 'size'
+                    price=float(order_data.get('price', '0')) if order_data.get('price') else None,
+                    filled_quantity=float(order_data.get('filled_size', '0')),
+                    remaining_quantity=float(order_data.get('left', '0')),
+                    status=to_order_status(order_data.get('status', 'open')),
+                    timestamp=timestamp
+                )
+                await self._exec_bound_handler(PrivateWebsocketChannelType.ORDER, order)
+                
+        except Exception as e:
+            self.logger.error(f"Error parsing Gate.io futures order update: {e}")
+
+    async def _parse_futures_user_trade_update(self, data: Union[List[Dict[str, Any]], Dict[str, Any]]) -> None:
+        """Parse Gate.io futures user trade update."""
+        try:
+            trade_list = data if isinstance(data, list) else [data]
+            
+            for trade_data in trade_list:
+                # Convert Gate.io futures trade to unified format
+                symbol = GateioFuturesSymbol.to_symbol(trade_data.get('contract', ''))
+
+                # Handle size field - negative means sell, positive means buy
+                size = float(trade_data.get('size', '0'))
+                quantity = abs(size)
+                side = Side.SELL if size < 0 else Side.BUY
+
+                # Use create_time_ms if available, otherwise create_time in seconds
+                timestamp = trade_data.get('create_time_ms', 0)
+                if not timestamp:
+                    create_time = trade_data.get('create_time', 0)
+                    timestamp = int(create_time * 1000) if create_time else 0
+
+                price = float(trade_data.get('price', '0'))
+
+                trade = Trade(
+                    symbol=symbol,
+                    price=price,
+                    quantity=quantity,
+                    quote_quantity=price * quantity,
+                    side=side,
+                    timestamp=int(timestamp),
+                    is_maker=trade_data.get('role', '') == 'maker'  # May not be available
+                )
+
+                await self._exec_bound_handler(PrivateWebsocketChannelType.TRADE, trade)
+                
+        except Exception as e:
+            self.logger.error(f"Error parsing Gate.io futures user trade update: {e}")
+
+    async def _parse_futures_position_update(self, data: Union[List[Dict[str, Any]], Dict[str, Any]]) -> None:
+        """Parse Gate.io futures position update."""
+        self.logger.warning("Not yet implemented: Gate.io futures position update parsing")
+        # try:
+        #     position_list = data if isinstance(data, list) else [data]
+        #
+        #     for position_data in position_list:
+        #         # Convert Gate.io futures position to unified format
+        #         position = futures_ws_to_position(position_data)
+        #         await self.handle_position(position)
+        #
+        # except Exception as e:
+        #     self.logger.error(f"Error parsing Gate.io futures position update: {e}")

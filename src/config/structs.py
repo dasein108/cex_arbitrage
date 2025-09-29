@@ -79,7 +79,6 @@ class WebSocketConfig(Struct, frozen=True):
         text_encoding: Text encoding for messages
     """
     # Connection settings
-    url: str
     connect_timeout: float = 10.0
     ping_interval: float = 20.0
     ping_timeout: float = 10.0
@@ -104,13 +103,6 @@ class WebSocketConfig(Struct, frozen=True):
     def has_heartbeat(self) -> bool:
         """Check if heartbeat is enabled."""
         return self.heartbeat_interval is not None and self.heartbeat_interval > 0
-
-    def with_url(self, new_url: str) -> "WebSocketConfig":
-        """Create a new config instance with updated URL in case of dynamic url."""
-        data = msgspec.structs.asdict(self)
-        data['url'] = new_url
-        return WebSocketConfig(**data)
-
 
 class RestTransportConfig(Struct, frozen=True):
     """

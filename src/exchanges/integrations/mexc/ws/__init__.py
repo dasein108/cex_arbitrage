@@ -1,6 +1,6 @@
-from .mexc_ws_public import MexcPublicSpotWebsocket
-from .mexc_ws_private import MexcPrivateSpotWebsocket
+from .mexc_ws_public import MexcSpotWebsocketPublic
+from .mexc_ws_private import MexcSpotWebsocket
 from .strategies import (MexcPublicConnectionStrategy, MexcPublicSubscriptionStrategy, MexcPublicMessageParser,
 MexcPrivateMessageParser, MexcPrivateConnectionStrategy, MexcPrivateSubscriptionStrategy)
 
-__all__ = ["MexcPublicSpotWebsocket", "MexcPrivateSpotWebsocket"]
+__all__ = ["MexcSpotWebsocketPublic", "MexcSpotWebsocket"]

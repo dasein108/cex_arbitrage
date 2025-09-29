@@ -58,12 +58,9 @@ from exchanges.structs.enums import OrderbookUpdateType
 from infrastructure.exceptions.system import InitializationError
 from exchanges.interfaces.composite.base_composite import BaseCompositeExchange
 from exchanges.interfaces.composite.types import PublicRestType, PublicWebSocketType
-from infrastructure.exceptions.exchange import ExchangeRestError
 from infrastructure.networking.websocket.structs import PublicWebsocketChannelType
 from infrastructure.logging import LoggingTimer, HFTLoggerInterface
 from infrastructure.networking.websocket.handlers import PublicWebsocketHandlers, PrivateWebsocketHandlers
-from exchanges.interfaces import PublicSpotRest
-from exchanges.interfaces.ws.spot.ws_spot_public import PublicSpotWebsocket
 
 
 class CompositePublicSpotExchange(BaseCompositeExchange[PublicRestType, PublicWebSocketType]):

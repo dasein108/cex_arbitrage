@@ -20,8 +20,6 @@ from exchanges.interfaces.composite.base_composite import BaseCompositeExchange
 from exchanges.interfaces.composite.types import PrivateRestType, PrivateWebSocketType
 from infrastructure.logging import LoggingTimer, HFTLoggerInterface
 from infrastructure.networking.websocket.handlers import PrivateWebsocketHandlers
-from exchanges.interfaces import PrivateSpotRest
-from exchanges.interfaces.ws.spot.ws_spot_private import PrivateSpotWebsocket
 from exchanges.utils.exchange_utils import is_order_done
 
 

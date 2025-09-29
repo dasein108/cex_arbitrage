@@ -378,8 +378,9 @@ from infrastructure.networking.websocket.handlers import PrivateWebsocketHandler
 # MEXC imports
 from exchanges.integrations.mexc.rest.mexc_rest_spot_private import MexcPrivateSpotRest
 from exchanges.integrations.mexc.rest.mexc_rest_spot_public import MexcPublicSpotRest
-from exchanges.integrations.mexc.ws.mexc_ws_private import MexcPrivateSpotWebsocket
-from exchanges.integrations.mexc.ws.mexc_ws_public import MexcPublicSpotWebsocket
+from exchanges.integrations.mexc.ws.mexc_ws_private import MexcSpotWebsocket
+from exchanges.integrations.mexc.ws.mexc_ws_public import MexcSpotWebsocketPublic
+
 
 # Gate.io imports (add as needed)
 # from exchanges.integrations.gateio.rest... import ...
@@ -387,35 +388,35 @@ from exchanges.integrations.mexc.ws.mexc_ws_public import MexcPublicSpotWebsocke
 
 class ClientFactory:
     """Factory for creating REST and WebSocket clients before injection."""
-    
+
     @staticmethod
     def create_mexc_private_clients(
-        config: ExchangeConfig,
-        logger: Optional[HFTLoggerInterface] = None,
-        handlers: Optional[PrivateWebsocketHandlers] = None
-    ) -> tuple[MexcPrivateSpotRest, Optional[MexcPrivateSpotWebsocket]]:
+            config: ExchangeConfig,
+            logger: Optional[HFTLoggerInterface] = None,
+            handlers: Optional[PrivateWebsocketHandlers] = None
+    ) -> tuple[MexcPrivateSpotRest, Optional[MexcSpotWebsocket]]:
         """Create MEXC private REST and WebSocket clients."""
         rest_client = MexcPrivateSpotRest(config, logger)
-        
+
         ws_client = None
         if config.has_credentials() and handlers:
-            ws_client = MexcPrivateSpotWebsocket(config, handlers, logger)
-            
+            ws_client = MexcSpotWebsocket(config, handlers, logger)
+
         return rest_client, ws_client
-    
+
     @staticmethod
     def create_mexc_public_clients(
-        config: ExchangeConfig,
-        logger: Optional[HFTLoggerInterface] = None,
-        handlers: Optional[PublicWebsocketHandlers] = None
-    ) -> tuple[MexcPublicSpotRest, Optional[MexcPublicSpotWebsocket]]:
+            config: ExchangeConfig,
+            logger: Optional[HFTLoggerInterface] = None,
+            handlers: Optional[PublicWebsocketHandlers] = None
+    ) -> tuple[MexcPublicSpotRest, Optional[MexcSpotWebsocketPublic]]:
         """Create MEXC public REST and WebSocket clients."""
         rest_client = MexcPublicSpotRest(config, logger)
-        
+
         ws_client = None
         if handlers:
-            ws_client = MexcPublicSpotWebsocket(config, handlers, logger)
-            
+            ws_client = MexcSpotWebsocketPublic(config, handlers, logger)
+
         return rest_client, ws_client
 ```
 

@@ -1,5 +1,6 @@
 from abc import ABC, abstractmethod
-from typing import Any, Optional, List, Dict, Union
+from typing import Any, Optional, List, Dict, Union, TypeVar, Generic, Callable, Awaitable
+from enum import IntEnum
 
 from infrastructure.logging import HFTLoggerInterface
 from infrastructure.networking.websocket.structs import ParsedMessage, WebsocketChannelType, SubscriptionAction
@@ -7,6 +8,53 @@ from exchanges.structs.common import Order, AssetBalance, Symbol, Trade, OrderBo
 from websockets.client import WebSocketClientProtocol
 from websockets.protocol import State as WsState
 
+# Generic type for channel enums
+T = TypeVar('T', bound=IntEnum)
+
+
+class WebsocketBindHandlerInterface(Generic[T], ABC):
+    """Generic interface for binding handlers to channel types."""
+    
+    def __init__(self):
+        self._bound_handlers: Dict[T, Callable[[Any], Awaitable[None]]] = {}
+    
+    def bind(self, channel: T, handler: Callable[[Any], Awaitable[None]]) -> None:
+        """Bind a handler function to a WebSocket channel.
+        
+        Args:
+            channel: The channel type to bind
+            handler: Async function to handle messages for this channel
+        """
+        self._bound_handlers[channel] = handler
+        if hasattr(self, 'logger'):
+            self.logger.debug(f"Bound handler for channel: {channel.name}")
+
+    def _get_bound_handler(self, channel: T) -> Callable[[Any], Awaitable[None]]:
+        """Get bound handler for channel or raise exception if not bound.
+        
+        Args:
+            channel: The channel type
+            
+        Returns:
+            The bound handler function
+            
+        Raises:
+            ValueError: If no handler is bound for the channel
+        """
+        if channel not in self._bound_handlers:
+            raise ValueError(f"No handler bound for channel {channel.name} (value: {channel.value}). "
+                           f"Use bind({channel.name}, your_handler_function) to bind a handler.")
+        return self._bound_handlers[channel]
+
+    async def _exec_bound_handler(self, channel: T, *args, **kwargs) -> None:
+        """Execute the bound handler for a channel with the given message.
+
+        Args:
+            channel: The channel type
+            message: The message to pass to the handler
+        """
+        handler = self._get_bound_handler(channel)
+        return await handler(*args, **kwargs)
 
 class WebsocketRawMessageProcessorInterface(ABC):
     async def process_raw(self, raw_message: Any) -> ParsedMessage:
@@ -79,64 +127,6 @@ class WebsocketSubscriptionPublicInterface(ABC):
     # async def handle_subscription_error(self, parsed_message: ParsedMessage) -> None:
     #     """Handle subscription confirmation message."""
     #     pass
-
-class PrivateWebsocketMessageHandlerInterface(ABC):
-    logger: HFTLoggerInterface
-
-    async def handle_order(self, order: Order) -> None:
-        """Handle order update."""
-        self.logger.warning(f"OVERRIDE: Received order update: {order}")
-
-    async def handle_balance(self, balance: AssetBalance) -> None:
-        """Handle balance update."""
-        self.logger.warning(f"OVERRIDE: Received balance update: {balance}")
-
-    async def handle_execution(self, trade: Trade) -> None:
-        """Handle execution report/trade data."""
-        self.logger.warning(f"OVERRIDE: Received execution report: {trade}")
-
-
-class PublicWebsocketMessageHandlerInterface(ABC):
-    logger: HFTLoggerInterface
-
-    async def handle_orderbook(self, orderbook: OrderBook) -> None:
-        """Handle orderbook update."""
-        self.logger.warning(f"OVERRIDE: Received orderbook update: {orderbook}")
-
-    async def handle_orderbook_diff(self, orderbook_update) -> None:
-        """Handle orderbook diff update (used by some WebSocket implementations)."""
-        self.logger.warning(f"OVERRIDE: Received orderbook diff update: {orderbook_update}")
-
-    async def handle_ticker(self, ticker: Ticker) -> None:
-        """Handle ticker update."""
-        self.logger.warning(f"OVERRIDE: Received ticker update: {ticker}")
-
-    async def handle_trade(self, trade: Trade) -> None:
-        """Handle trade data."""
-        self.logger.warning(f"OVERRIDE: Received trade data: {trade}")
-
-    async def handle_book_ticker(self, book_ticker: BookTicker) -> None:
-        """Handle book ticker data."""
-        self.logger.warning(f"OVERRIDE: Received book ticker data: {book_ticker}")
-
-
-class ChannelSubscriptionManagerInterface(ABC):
-    def subscribe(self, channels: WebsocketChannelType, *args, **kwargs) -> None:
-        raise NotImplementedError
-
-    def unsubscribe(self, channels: WebsocketChannelType, *args, **kwargs) -> None:
-        raise NotImplementedError
-
-
-
-
-class SymbolChannelSubscriptionManagerInterface(ABC):
-    def subscribe(self, symbol, channels: WebsocketChannelType) -> None:
-        raise NotImplementedError
-
-
-    def unsubscribe(self, symbol, channels: WebsocketChannelType) -> None:
-        raise NotImplementedError
 
 
 

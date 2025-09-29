@@ -26,12 +26,13 @@ from typing import Dict, Any
 from websockets import connect
 
 from exchanges.integrations.gateio.services.spot_symbol_mapper import GateioSpotSymbol
-from exchanges.interfaces.ws import BasePublicWebsocketPrivate
+from exchanges.interfaces.ws import BaseWebsocketPublic
 from exchanges.integrations.mexc.structs.protobuf.PushDataV3ApiWrapper_pb2 import PushDataV3ApiWrapper
 from exchanges.integrations.mexc.structs.protobuf.PublicLimitDepthsV3Api_pb2 import PublicLimitDepthsV3Api
 from exchanges.integrations.mexc.structs.protobuf.PublicAggreDealsV3Api_pb2 import PublicAggreDealsV3Api
 from exchanges.structs import Symbol, OrderBook, BookTicker, Trade, Side
-from infrastructure.networking.websocket.structs import SubscriptionAction, WebsocketChannelType
+from infrastructure.networking.websocket.structs import SubscriptionAction, WebsocketChannelType, \
+    PublicWebsocketChannelType
 from exchanges.integrations.mexc.utils import from_subscription_action
 from exchanges.integrations.mexc.ws.protobuf_parser import MexcProtobufParser
 from exchanges.integrations.mexc.services.symbol_mapper import MexcSymbol
@@ -42,7 +43,7 @@ import msgspec
 from utils import get_current_timestamp
 
 
-class MexcPublicSpotWebsocket(BasePublicWebsocketPrivate):
+class MexcSpotWebsocketPublic(BaseWebsocketPublic):
     """MEXC public WebSocket client using dependency injection pattern."""
 
     def __init__(self, *args, **kwargs):
@@ -137,7 +138,7 @@ class MexcPublicSpotWebsocket(BasePublicWebsocketPrivate):
                     # trade_id=str(deal_item.time)  # Use timestamp as trade ID
                 )
 
-                await self.handle_trade(trade)
+                await self._exec_bound_handler(PublicWebsocketChannelType.TRADES, trade)
 
         elif wrapper.HasField('publicAggreDepths'):
             depth_data = wrapper.publicAggreDepths
@@ -174,8 +175,8 @@ class MexcPublicSpotWebsocket(BasePublicWebsocketPrivate):
                 asks=asks,
                 timestamp=get_current_timestamp()
             )
+            await self._exec_bound_handler(PublicWebsocketChannelType.ORDERBOOK, orderbook)
 
-            await self.handle_orderbook(orderbook)
         elif wrapper.HasField('publicAggreBookTicker'):
                 book_ticker_data = wrapper.publicAggreBookTicker
 
@@ -191,5 +192,5 @@ class MexcPublicSpotWebsocket(BasePublicWebsocketPrivate):
                     timestamp=get_current_timestamp(),  # MEXC protobuf doesn't include timestamp
                     update_id=None  # MEXC protobuf doesn't include update_id
                 )
+                await self._exec_bound_handler(PublicWebsocketChannelType.ORDERBOOK, book_ticker)
 
-                await self.handle_book_ticker(book_ticker)

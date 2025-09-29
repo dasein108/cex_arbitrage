@@ -237,25 +237,11 @@ class BookTicker(Struct):
 class FuturesTicker(Struct):
     """Futures ticker with comprehensive market data including funding rates."""
     symbol: Symbol
-    last_price: float
-    mark_price: float
-    index_price: float
-    funding_rate: float
-    funding_rate_indicative: float
-    high_24h: float
-    low_24h: float
-    change_price: float
-    change_percentage: float
-    volume_24h: float
-    volume_24h_base: float
-    volume_24h_quote: float
-    volume_24h_settle: float
-    total_size: float  # Open interest
-    timestamp: int
-    quanto_base_rate: str = ""
-    price_type: str = "last"
-    change_from: str = "24h"
-
+    price: float
+    mark_price: Optional[float] = None
+    index_price: Optional[float] = None
+    funding_rate: Optional[float] = None
+    funding_rate_indicative: Optional[float] = None
 # Configuration structures
 
 class TradingFee(Struct):

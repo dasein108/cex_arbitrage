@@ -29,7 +29,11 @@ class PrivateWebsocketChannelType(IntEnum):
     TRADE = 5
     BALANCE = 6  # Fixed duplicate value
     ORDER = 7
+    POSITION = 8
 
+class ServiceWebsocketChannelType(IntEnum):
+    """Service channel types."""
+    HEARTBEAT = 999
 
 class WebsocketChannelType(IntEnum):
     """Unified channel type classification."""
@@ -42,6 +46,9 @@ class WebsocketChannelType(IntEnum):
     TRADE = PrivateWebsocketChannelType.TRADE.value
     BALANCE = PrivateWebsocketChannelType.BALANCE.value
     ORDER = PrivateWebsocketChannelType.ORDER.value
+    POSITION = PrivateWebsocketChannelType.POSITION.value
+    HEARTBEAT = ServiceWebsocketChannelType.HEARTBEAT.value
+
 
 class MessageType(IntEnum):
     """Message type classification for fast routing."""
@@ -54,6 +61,7 @@ class MessageType(IntEnum):
     TRADE = PrivateWebsocketChannelType.TRADE.value
     BALANCE = PrivateWebsocketChannelType.BALANCE.value
     ORDER = PrivateWebsocketChannelType.ORDER.value
+    POSITION = PrivateWebsocketChannelType.POSITION.value
     SUBSCRIPTION_CONFIRM = 0
     HEARTBEAT = 999
     ERROR = -1

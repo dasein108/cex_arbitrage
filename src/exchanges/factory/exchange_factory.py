@@ -159,19 +159,19 @@ def _create_websocket_component(
     """Create WebSocket client component."""
     if exchange == ExchangeEnum.MEXC:
         if is_private:
-            from exchanges.integrations.mexc.ws import MexcPrivateSpotWebsocket
-            return MexcPrivateSpotWebsocket(config=config, logger=logger)
+            from exchanges.integrations.mexc.ws import MexcSpotWebsocket
+            return MexcSpotWebsocket(config=config, logger=logger)
         else:
-            from exchanges.integrations.mexc.ws import MexcPublicSpotWebsocket
-            return MexcPublicSpotWebsocket(config=config, logger=logger)
+            from exchanges.integrations.mexc.ws import MexcSpotWebsocketPublic
+            return MexcSpotWebsocketPublic(config=config, logger=logger)
 
     elif exchange == ExchangeEnum.GATEIO:
         if is_private:
             from exchanges.integrations.gateio.ws import GateioPrivateSpotWebsocket
             return GateioPrivateSpotWebsocket(config=config, logger=logger)
         else:
-            from exchanges.integrations.gateio.ws import GateioPublicSpotWebsocket
-            return GateioPublicSpotWebsocket(config=config, logger=logger)
+            from exchanges.integrations.gateio.ws import GateioSpotWebsocketPublic
+            return GateioSpotWebsocketPublic(config=config, logger=logger)
             
     elif exchange == ExchangeEnum.GATEIO_FUTURES:
         if is_private:

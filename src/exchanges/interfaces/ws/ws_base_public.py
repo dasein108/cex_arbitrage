@@ -8,24 +8,19 @@ HFT COMPLIANCE: Optimized for sub-millisecond message processing.
 """
 
 from typing import List, Dict, Optional, Set, Callable, Awaitable, Any, Union
-from abc import ABC, abstractmethod
+from abc import ABC
 
-from exchanges.consts import DEFAULT_PUBLIC_WEBSOCKET_CHANNELS
 from exchanges.structs.common import Symbol, OrderBook, Trade, BookTicker
-from config.structs import ExchangeConfig
-from infrastructure.logging import HFTLogger
 from infrastructure.networking.websocket.structs import ConnectionState, MessageType, ParsedMessage, \
     PublicWebsocketChannelType
-import traceback
-from exchanges.interfaces.ws.ws_base import BaseWebsocketInterface
 from infrastructure.networking.websocket.structs import ParsedMessage, WebsocketChannelType
 from exchanges.interfaces.ws.ws_base import BaseWebsocketInterface
-from .interfaces.interfaces import WebsocketSubscriptionPublicInterface, PublicWebsocketMessageHandlerInterface
+from .interfaces.interfaces import WebsocketSubscriptionPublicInterface, WebsocketBindHandlerInterface
 from infrastructure.networking.websocket.structs import SubscriptionAction
 
 
-class BasePublicWebsocketPrivate(BaseWebsocketInterface, WebsocketSubscriptionPublicInterface,
-                                 PublicWebsocketMessageHandlerInterface, ABC):
+class BaseWebsocketPublic(BaseWebsocketInterface, WebsocketSubscriptionPublicInterface,
+                          WebsocketBindHandlerInterface[PublicWebsocketChannelType], ABC):
     """
     Base class for exchange public WebSocket implementations.
     
@@ -60,10 +55,13 @@ class BasePublicWebsocketPrivate(BaseWebsocketInterface, WebsocketSubscriptionPu
                 self.logger.debug(f"Already subscribed to all requested channels for symbol {s}")
                 continue
 
-            ws_subscriptions = self._prepare_subscription_message(SubscriptionAction.SUBSCRIBE,
-                                                                  s, channels)
+            for c in channels:
+                if c not in PublicWebsocketChannelType:
+                    self.logger.warning(f"Invalid channel {c} for public subscription on symbol {s}")
+                    channels.remove(c)
+                    ws_subscriptions = self._prepare_subscription_message(SubscriptionAction.SUBSCRIBE, s, c)
 
-            await self._ws_manager.send_message(ws_subscriptions)
+                    await self._ws_manager.send_message(ws_subscriptions)
 
             if s not in self.subscriptions:
                 self.subscriptions[s] = []
@@ -86,10 +84,10 @@ class BasePublicWebsocketPrivate(BaseWebsocketInterface, WebsocketSubscriptionPu
                 self.logger.debug(f"No subscribed channels to unsubscribe for symbol {s}")
                 continue
 
-            ws_unsubscriptions = self._prepare_subscription_message(SubscriptionAction.UNSUBSCRIBE, s,
-                                                                    channels, **kwargs)
+            for c in channels:
+                ws_unsubscriptions = self._prepare_subscription_message(SubscriptionAction.UNSUBSCRIBE, s, c)
 
-            await self._ws_manager.send_message(ws_unsubscriptions)
+                await self._ws_manager.send_message(ws_unsubscriptions)
 
             for ch in channels:
                 if ch in self.subscriptions[s]:

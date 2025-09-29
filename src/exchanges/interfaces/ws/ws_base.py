@@ -2,8 +2,7 @@ from abc import ABC, abstractmethod
 from typing import Optional, Callable, Awaitable, Any, Dict, List
 
 from config.structs import ExchangeConfig
-# ExchangeMapperFactory dependency removed - using direct utility functions
-from infrastructure.networking.websocket.utils import create_websocket_manager
+from infrastructure.networking.websocket import WebSocketManager
 
 # HFT Logger Integration
 from infrastructure.logging import get_exchange_logger, LoggingTimer, HFTLoggerInterface
@@ -57,10 +56,11 @@ class BaseWebsocketInterface(ABC):
         # Mapper dependency removed - strategies use direct utility functions
 
         # Initialize WebSocket manager using factory pattern with logger injection
-        self._ws_manager = create_websocket_manager(exchange_config=config, connect_method=self._connect,
-                                                    auth_method=self._auth, is_private=is_private,
-                                                    message_handler=self._handle_message,
-                                                    connection_handler=self._connection_handler, logger=self.logger)
+        self._ws_manager = WebSocketManager(config=config.websocket,
+                                            connect_method=self._connect,
+                                            auth_method=self._auth,
+                                            message_handler=self._handle_message,
+                                            connection_handler=self._connection_handler, logger=self.logger)
 
         self.logger.info("Initialized WebSocket manager",
                          exchange=self.exchange_name,
@@ -82,7 +82,6 @@ class BaseWebsocketInterface(ABC):
         try:
             with LoggingTimer(self.logger, "ws_interface_initialization") as timer:
                 await self._ws_manager.initialize()
-
 
             self.logger.info("WebSocket initialized",
                              exchange=self.exchange_name,

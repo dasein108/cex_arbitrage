@@ -18,14 +18,12 @@ from infrastructure.networking.websocket.structs import (
 from infrastructure.networking.websocket.handlers import PublicWebsocketHandlers, PrivateWebsocketHandlers
 
 from .ws_base import BaseWebsocketInterface
-from .ws_base_public import BasePublicWebsocketPrivate
-from .ws_base_private import BasePrivateWebsocketPrivate
-from .spot import PrivateSpotWebsocket, PublicSpotWebsocket
-from .futures import PublicFuturesWebsocket, PrivateFuturesWebsocket
+from .ws_base_public import BaseWebsocketPublic
+from .ws_base_private import BaseWebsocketPrivate
 __all__ = [
     'WebSocketManager',
-    'BasePublicWebsocketPrivate',
-    'BasePrivateWebsocketPrivate',
+    'BaseWebsocketPublic',
+    'BaseWebsocketPrivate',
 # Factory removed
     'MessageType',
     'SubscriptionAction',
@@ -39,10 +37,6 @@ __all__ = [
     'BaseWebsocketInterface',
     'MessageParser',
     'ConnectionState',
-    'PrivateSpotWebsocket',
-    'PublicSpotWebsocket',
-    'PublicFuturesWebsocket',
     'PublicWebsocketHandlers',
     'PrivateWebsocketHandlers',
-    'PrivateFuturesWebsocket'
 ]

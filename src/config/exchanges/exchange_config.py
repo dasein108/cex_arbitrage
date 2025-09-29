@@ -118,7 +118,7 @@ class ExchangeConfigManager:
 
         # Use exchange-specific websocket config or global template
         websocket_config_data = data.get('websocket_config', self.websocket_template)
-        websocket_config = self._parse_websocket_config(websocket_config_data, data['websocket_url'])
+        websocket_config = self._parse_websocket_config(websocket_config_data)
 
         # Parse transport config if present
         transport_config = None
@@ -164,14 +164,10 @@ class ExchangeConfigManager:
             
         return RateLimitConfig(requests_per_second=requests_per_second)
     
-    def _parse_websocket_config(self, part_config: Dict[str, Any], websocket_url: str) -> WebSocketConfig:
+    def _parse_websocket_config(self, part_config: Dict[str, Any]) -> WebSocketConfig:
         """Parse WebSocket configuration. Allow defaults for optional fields, fail on URL format."""
-        # Basic URL format validation - trust config provides valid URLs
-        if not (websocket_url.startswith('ws://') or websocket_url.startswith('wss://')):
-            raise ValueError(f"WebSocket URL must start with ws:// or wss://, got: {websocket_url}")
-        
+
         return WebSocketConfig(
-            url=websocket_url,
             connect_timeout=float(part_config.get('connect_timeout', 10.0)),
             ping_interval=float(part_config.get('ping_interval', 20.0)),
             ping_timeout=float(part_config.get('ping_timeout', 10.0)),
