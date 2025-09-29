@@ -3,6 +3,12 @@ Data Collector - Unified WebSocket Manager and Main Orchestrator
 
 Manages real-time data collection from multiple exchanges using WebSocket connections.
 Provides unified interface for MEXC and Gate.io book ticker data collection.
+
+REFACTORED: Uses new architecture patterns (Sep 2025):
+- Constructor Injection: WebSocket clients created without handlers, then bound directly using client.bind()
+- Handler Binding Pattern: Uses .bind(channel, handler) method for type-safe channel-to-method connection
+- Explicit Channel Types: Uses PublicWebsocketChannelType enum instead of WEBSOCKET_CHANNELS constants
+- Eliminates Handler Creation Overhead: No more PublicWebsocketHandlers objects passed to factory
 """
 
 import asyncio
@@ -16,7 +22,7 @@ from infrastructure.networking.websocket.handlers import PublicWebsocketHandlers
 from db import BookTickerSnapshot
 from db.models import TradeSnapshot
 from .analytics import RealTimeAnalytics, ArbitrageOpportunity
-from .consts import WEBSOCKET_CHANNELS
+# Removed: from .consts import WEBSOCKET_CHANNELS - using direct channel types now
 from config.config_manager import get_exchange_config
 # HFT Logger Integration
 from infrastructure.logging import get_logger, LoggingTimer
@@ -42,11 +48,16 @@ class UnifiedWebSocketManager:
     """
     Unified WebSocket manager for collecting book ticker data from multiple exchanges.
     
+    REFACTORED: Uses new architecture patterns for WebSocket client management:
+    - Constructor Injection: Creates WebSocket clients without pre-bound handlers
+    - Handler Binding Pattern: Uses client.bind() to connect channels to handlers
+    - Explicit Channel Types: Uses PublicWebsocketChannelType enum for type safety
+    
     Features:
     - Manages connections to MEXC and Gate.io WebSockets
     - Maintains in-memory cache of latest book ticker data
     - Provides unified interface for subscribing to symbols
-    - Routes updates to registered handlers
+    - Routes updates to registered handlers via direct binding
     """
 
     def __init__(
@@ -116,7 +127,12 @@ class UnifiedWebSocketManager:
 
     async def _initialize_exchange_client(self, exchange: ExchangeEnum, symbols: List[Symbol]) -> None:
         """
-        Initialize WebSocket client for a specific exchange.
+        Initialize WebSocket client for a specific exchange using new architecture patterns.
+        
+        REFACTORED: Uses constructor injection + direct handler binding pattern:
+        1. Create WebSocket client without handlers (constructor injection)
+        2. Bind handlers directly to client using .bind() method
+        3. Use explicit channel types instead of constants
         
         Args:
             exchange: Exchange enum (ExchangeEnum.MEXC, ExchangeEnum.GATEIO, etc.)
@@ -152,31 +168,36 @@ class UnifiedWebSocketManager:
             await composite.close()
                 
 
-            # Create WebSocket client using configured handlers
-            # Note: PublicWebsocketHandlers expects handlers with single parameter (data only)
-            exchange_handlers = PublicWebsocketHandlers(
-                book_ticker_handler=lambda book_ticker: self._handle_book_ticker_update(exchange,
-                                                                                        book_ticker.symbol,
-                                                                                        book_ticker),
-                trade_handler=lambda trade: self._handle_trades_update(exchange, trade.symbol, [trade])
-            )
-
+            # Create WebSocket client using new constructor injection pattern
+            # No handlers passed to factory - we'll bind them directly
             client = create_websocket_client(
                 exchange=exchange,
                 config=config,
-                is_private=False,
-                handlers=exchange_handlers
+                is_private=False
             )
+            
+            # NEW PATTERN: Bind handlers directly to client using .bind() method
+            from infrastructure.networking.websocket.structs import PublicWebsocketChannelType
+            client.bind(PublicWebsocketChannelType.BOOK_TICKER, 
+                       lambda book_ticker: self._handle_book_ticker_update(exchange, book_ticker.symbol, book_ticker))
+            client.bind(PublicWebsocketChannelType.PUB_TRADE, 
+                       lambda trade: self._handle_trades_update(exchange, trade.symbol, [trade]))
 
             # Store client and initialize
             self._exchange_clients[exchange] = client
             self._active_symbols[exchange] = set()
             self._connected[exchange] = False
 
-            # Initialize connection and subscribe to symbols
+            # Initialize connection and subscribe to symbols using new pattern
             with LoggingTimer(self.logger, "websocket_initialization") as timer:
-                await client.initialize(symbols, WEBSOCKET_CHANNELS)
+                await client.initialize()
+                # NEW PATTERN: Subscribe using channel types instead of constants
+                from infrastructure.networking.websocket.structs import PublicWebsocketChannelType
+                channels = [PublicWebsocketChannelType.BOOK_TICKER, PublicWebsocketChannelType.PUB_TRADE]
+                await client.subscribe(symbols, channels)
+
                 self._active_symbols[exchange].update(symbols)
+
                 self._connected[exchange] = True
 
             self.logger.info("WebSocket initialized successfully",
@@ -346,7 +367,10 @@ class UnifiedWebSocketManager:
         try:
             for exchange, client in self._exchange_clients.items():
                 if self._connected[exchange]:
-                    await client.subscribe(symbols)
+                    # Use channel types for subscription
+                    from infrastructure.networking.websocket.structs import PublicWebsocketChannelType
+                    channels = [PublicWebsocketChannelType.BOOK_TICKER, PublicWebsocketChannelType.PUB_TRADE]
+                    await client.subscribe(symbols, channels)
                     self._active_symbols[exchange].update(symbols)
 
             self.logger.info(f"Added {len(symbols)} symbols to all exchanges")
@@ -368,7 +392,10 @@ class UnifiedWebSocketManager:
         try:
             for exchange, client in self._exchange_clients.items():
                 if self._connected[exchange]:
-                    await client.unsubscribe(symbols)
+                    # Use channel types for unsubscription
+                    from infrastructure.networking.websocket.structs import PublicWebsocketChannelType
+                    channels = [PublicWebsocketChannelType.BOOK_TICKER, PublicWebsocketChannelType.PUB_TRADE]
+                    await client.unsubscribe(symbols, channels)
                     self._active_symbols[exchange].difference_update(symbols)
 
             # Remove from cache
@@ -783,7 +810,8 @@ class DataCollector:
             self.analytics = RealTimeAnalytics(self.config.analytics)
             self.logger.info("Analytics engine initialized")
 
-            # Initialize WebSocket manager with analytics handler
+            # Initialize WebSocket manager using new constructor injection pattern
+            # Pass handlers directly to constructor - internal implementation will use .bind()
             handlers = PublicWebsocketHandlers(
                 book_ticker_handler=self._handle_external_book_ticker,
                 trade_handler=self._handle_external_trade
