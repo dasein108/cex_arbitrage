@@ -50,13 +50,12 @@ class PrivateWebSocketClient:
         self.websocket = create_websocket_client(
             exchange=get_exchange_enum(exchange_name),
             is_private=True,
-            config=config,
-            handlers=create_private_handlers(
-                order_handler=self._handle_order_update,
-                balance_handler=self._handle_balance_update,
-                execution_handler=self._handle_trade_update
-            )
+            config=config
         )
+
+        self.websocket.order_handler=self._handle_order_update
+        self.websocket.balance_handler=self._handle_balance_update
+        self.websocket.trade_handler=self._handle_trade_update
 
 
 

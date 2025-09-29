@@ -26,10 +26,9 @@ Architecture: Handler objects with composite class coordination
 from typing import Dict, Optional, Any, Union
 import asyncio
 from exchanges.structs import Order, AssetBalance, Trade, Side, OrderType, OrderStatus
-from exchanges.structs.types import AssetName
 from exchanges.integrations.mexc.rest.mexc_rest_spot_private import MexcPrivateSpotRest
 from config.structs import ExchangeConfig
-from exchanges.interfaces.ws import BasePrivateWebsocket
+from exchanges.interfaces.ws import BasePrivateWebsocketPrivate
 from infrastructure.exceptions.system import InitializationError
 from infrastructure.networking.websocket.handlers import PrivateWebsocketHandlers
 # ExchangeMapperFactory dependency removed - using direct utility functions
@@ -43,8 +42,7 @@ from websockets import connect
 
 from infrastructure.networking.websocket.structs import SubscriptionAction, WebsocketChannelType
 from utils import safe_cancel_task, get_current_timestamp
-from exchanges.integrations.mexc.utils import from_subscription_action
-from exchanges.consts import DEFAULT_PRIVATE_WEBSOCKET_CHANNELS
+from exchanges.integrations.mexc.utils import from_subscription_action, _WS_ORDER_STATUS_MAPPING, _WS_ORDER_TYPE_MAPPING
 from exchanges.integrations.mexc.ws.protobuf_parser import MexcProtobufParser
 from exchanges.integrations.mexc.services.symbol_mapper import MexcSymbol
 import msgspec
@@ -55,21 +53,8 @@ _PRIVATE_CHANNEL_MAPPING = {
     WebsocketChannelType.BALANCE: "spot@private.account.v3.pb"
 }
 
-_WS_ORDER_STATUS_MAPPING = {
-    1: OrderStatus.NEW,
-    2: OrderStatus.FILLED,
-    3: OrderStatus.PARTIALLY_FILLED,
-    4: OrderStatus.CANCELED,
-}
 
-_WS_ORDER_TYPE_MAPPING = {
-    1: OrderType.LIMIT,
-    2: OrderType.MARKET,
-    3: OrderType.STOP_LIMIT,
-    4: OrderType.STOP_MARKET,
-}
-
-class MexcPrivateSpotWebsocket(BasePrivateWebsocket):
+class MexcPrivateSpotWebsocket(BasePrivateWebsocketPrivate):
     """MEXC private WebSocket client using dependency injection pattern."""
 
     def _prepare_subscription_message(self, action: SubscriptionAction, channel: WebsocketChannelType,
@@ -106,7 +91,7 @@ class MexcPrivateSpotWebsocket(BasePrivateWebsocket):
             self.logger.debug(f"Connecting to MEXC private WebSocket: {ws_url[:50]}...")
 
             # MEXC private connection with minimal headers (same as public)
-            _websocket = await connect(
+            websocket = await connect(
                 ws_url,
                 # MEXC-specific optimizations
                 ping_interval=self.config.websocket.ping_interval,
@@ -123,7 +108,7 @@ class MexcPrivateSpotWebsocket(BasePrivateWebsocket):
             self._keep_alive_task = asyncio.create_task(self._keep_alive_loop())
 
             self.logger.debug("MEXC private WebSocket connected successfully")
-            return _websocket
+            return websocket
 
         except Exception as e:
             self.logger.error(f"Failed to connect to MEXC private WebSocket: {e}")
@@ -139,7 +124,6 @@ class MexcPrivateSpotWebsocket(BasePrivateWebsocket):
     def __init__(
         self,
         config: ExchangeConfig,
-        handlers: PrivateWebsocketHandlers,
         **kwargs
     ):
         """
@@ -256,7 +240,7 @@ class MexcPrivateSpotWebsocket(BasePrivateWebsocket):
                     order_data = wrapper.privateOrders
 
                     # Direct parsing from protobuf fields - order_data already has parsed fields
-                    order_type = _WS_ORDER_TYPE_MAPPING.get(getattr(order_data, 'status', 0),OrderType.LIMIT)
+                    order_type = _WS_ORDER_TYPE_MAPPING.get(getattr(order_data, 'status', 0), OrderType.LIMIT)
                     order_status_code = getattr(order_data, 'status', 0)
                     status = _WS_ORDER_STATUS_MAPPING.get(order_status_code, OrderStatus.UNKNOWN)
                     order = Order(
@@ -321,14 +305,13 @@ class MexcPrivateSpotWebsocket(BasePrivateWebsocket):
                 # Handle protobuf message - simple approach
                 return await self._parse_protobuf_message(raw_message)
 
+            if isinstance(raw_message, str):
+                message = msgspec.json.decode(raw_message)
             else:
-                if isinstance(raw_message, str):
-                    message = msgspec.json.decode(raw_message)
-                else:
                     # If it's already a dict, use it directly
-                    message = raw_message
+                message = raw_message
 
-                self.logger.info(f'Received non-protobuf message on private channel {message}',)
+            self.logger.info(f'Received non-protobuf message on private channel {message}')
 
         except Exception as e:
             self.logger.error(f"Error parsing private message: {e}",

@@ -3,12 +3,12 @@ from abc import ABC, abstractmethod
 from typing import Any, Optional, List, Dict, Union
 from infrastructure.networking.websocket.structs import ParsedMessage, WebsocketChannelType
 from exchanges.interfaces.ws.ws_base import BaseWebsocketInterface
-from .interfaces.interfaces import WebsocketSubscriptionInterface, PrivateWebsocketMessageHandlerInterface
+from .interfaces.interfaces import WebsocketSubscriptionPrivateInterface, PrivateWebsocketMessageHandlerInterface
 from infrastructure.networking.websocket.structs import SubscriptionAction
 
 
-class BasePrivateWebsocket(BaseWebsocketInterface, WebsocketSubscriptionInterface,
-                           PrivateWebsocketMessageHandlerInterface, ABC):
+class BasePrivateWebsocketPrivate(BaseWebsocketInterface, WebsocketSubscriptionPrivateInterface,
+                                  PrivateWebsocketMessageHandlerInterface, ABC):
     """Abstract interface for private exchange WebSocket operations (account data)"""
     
     def __init__(self, *args, **kwargs):

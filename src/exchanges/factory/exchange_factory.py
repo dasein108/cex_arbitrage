@@ -26,7 +26,6 @@ def create_exchange_component(
     config: ExchangeConfig,
     component_type: ComponentType,
     is_private: bool = False,
-    handlers: Optional[Union[PublicWebsocketHandlers, PrivateWebsocketHandlers]] = None,
     use_cache: bool = True,
     logger_override: Optional[HFTLoggerInterface] = None
 ) -> Any:
@@ -84,9 +83,7 @@ def create_exchange_component(
         )
 
     """
-    # Validate inputs
-    _validate_component_request(exchange, config, component_type, is_private, handlers)
-    
+
     # Build cache key
     private_suffix = "_private" if is_private else "_public"
     cache_key = f"{exchange.value}_{component_type}{private_suffix}"
@@ -105,9 +102,9 @@ def create_exchange_component(
     if component_type == 'rest':
         instance = _create_rest_component(exchange, config, is_private, logger_override)
     elif component_type == 'websocket':
-        instance = _create_websocket_component(exchange, config, is_private, handlers, logger_override)
+        instance = _create_websocket_component(exchange, config, is_private, logger_override)
     elif component_type == 'composite':
-        instance = _create_composite_component(exchange, config, is_private, handlers, logger_override)
+        instance = _create_composite_component(exchange, config, is_private, logger_override)
     else:
         raise ValueError(f"Unsupported component_type: {component_type}")
     
@@ -117,35 +114,6 @@ def create_exchange_component(
         
     logger.info(f"Created {component_type} component: {exchange.value} ({'private' if is_private else 'public'})")
     return instance
-
-
-def _validate_component_request(
-    exchange: ExchangeEnum,
-    config: ExchangeConfig, 
-    component_type: ComponentType,
-    is_private: bool,
-    handlers: Optional[Union[PublicWebsocketHandlers, PrivateWebsocketHandlers]]
-) -> None:
-    """Validate component creation request."""
-    # Check if exchange is supported
-    if exchange not in get_supported_exchanges():
-        raise ValueError(f"Exchange {exchange.value} not supported")
-    
-    # Check credentials for private components
-    if is_private and not config.credentials.has_private_api:
-        raise ValueError(f"Private component requires valid credentials for {exchange.value}")
-    
-    # Check handlers for websocket and composite components
-    if component_type in ['websocket', 'composite'] and handlers is not None:
-        # Validate handler type matches component privacy when handlers are provided
-        if is_private and not isinstance(handlers, PrivateWebsocketHandlers):
-            raise ValueError(f"Private {component_type} requires PrivateWebsocketHandlers, got {type(handlers).__name__}")
-        elif not is_private and not isinstance(handlers, PublicWebsocketHandlers):
-            raise ValueError(f"Public {component_type} requires PublicWebsocketHandlers, got {type(handlers).__name__}")
-    
-    # WebSocket components require handlers
-    if component_type == 'websocket' and handlers is None:
-        raise ValueError("WebSocket component requires handlers parameter")
 
 
 def _create_rest_component(
@@ -186,33 +154,32 @@ def _create_websocket_component(
     exchange: ExchangeEnum,
     config: ExchangeConfig,
     is_private: bool,
-    handlers: Union[PublicWebsocketHandlers, PrivateWebsocketHandlers],
     logger: HFTLoggerInterface
 ) -> Any:
     """Create WebSocket client component."""
     if exchange == ExchangeEnum.MEXC:
         if is_private:
             from exchanges.integrations.mexc.ws import MexcPrivateSpotWebsocket
-            return MexcPrivateSpotWebsocket(config=config, handlers=handlers, logger=logger)
+            return MexcPrivateSpotWebsocket(config=config, logger=logger)
         else:
             from exchanges.integrations.mexc.ws import MexcPublicSpotWebsocket
-            return MexcPublicSpotWebsocket(config=config, handlers=handlers, logger=logger)
+            return MexcPublicSpotWebsocket(config=config, logger=logger)
 
     elif exchange == ExchangeEnum.GATEIO:
         if is_private:
             from exchanges.integrations.gateio.ws import GateioPrivateSpotWebsocket
-            return GateioPrivateSpotWebsocket(config=config, handlers=handlers, logger=logger)
+            return GateioPrivateSpotWebsocket(config=config, logger=logger)
         else:
             from exchanges.integrations.gateio.ws import GateioPublicSpotWebsocket
-            return GateioPublicSpotWebsocket(config=config, handlers=handlers, logger=logger)
+            return GateioPublicSpotWebsocket(config=config, logger=logger)
             
     elif exchange == ExchangeEnum.GATEIO_FUTURES:
         if is_private:
             from exchanges.integrations.gateio.ws import GateioPrivateFuturesWebsocket
-            return GateioPrivateFuturesWebsocket(config=config, handlers=handlers, logger=logger)
+            return GateioPrivateFuturesWebsocket(config=config, logger=logger)
         else:
             from exchanges.integrations.gateio.ws import GateioPublicFuturesWebsocket
-            return GateioPublicFuturesWebsocket(config=config, handlers=handlers, logger=logger)
+            return GateioPublicFuturesWebsocket(config=config, logger=logger)
     else:
         raise ValueError(f"WebSocket component not implemented for {exchange.value}")
 
@@ -221,7 +188,6 @@ def _create_composite_component(
     exchange: ExchangeEnum,
     config: ExchangeConfig,
     is_private: bool,
-    handlers: Optional[Union[PublicWebsocketHandlers, PrivateWebsocketHandlers]],
     logger: HFTLoggerInterface
 ) -> Any:
     """
@@ -237,7 +203,7 @@ def _create_composite_component(
     # Step 2: Create WebSocket client (optional, only if handlers provided)
     websocket_client = None
     if handlers is not None:
-        websocket_client = _create_websocket_component(exchange, config, is_private, handlers, logger)
+        websocket_client = _create_websocket_component(exchange, config, is_private, logger)
     
     # Step 3: Create composite exchange using base classes directly
     # No need for exchange-specific wrapper classes - base classes handle everything
@@ -251,7 +217,6 @@ def _create_composite_component(
                 rest_client=rest_client,
                 websocket_client=websocket_client,
                 logger=logger,
-                handlers=handlers
             )
         else:
             from exchanges.interfaces.composite.futures.base_public_futures_composite import CompositePublicFuturesExchange
@@ -260,7 +225,6 @@ def _create_composite_component(
                 rest_client=rest_client,
                 websocket_client=websocket_client,
                 logger=logger,
-                handlers=handlers
             )
     else:
         # MEXC and GATEIO spot use the same base classes with injected clients
@@ -271,7 +235,6 @@ def _create_composite_component(
                 rest_client=rest_client,
                 websocket_client=websocket_client,
                 logger=logger,
-                handlers=handlers
             )
         else:
             from exchanges.interfaces.composite.spot.base_public_spot_composite import CompositePublicSpotExchange
@@ -280,7 +243,6 @@ def _create_composite_component(
                 rest_client=rest_client,
                 websocket_client=websocket_client,
                 logger=logger,
-                handlers=handlers
             )
 
 
@@ -311,7 +273,6 @@ def create_rest_client(
 def create_websocket_client(
     exchange: ExchangeEnum,
     config: ExchangeConfig,
-    handlers: Union[PublicWebsocketHandlers, PrivateWebsocketHandlers],
     is_private: bool = False,
     use_cache: bool = True,
     logger_override: Optional[HFTLoggerInterface] = None
@@ -326,7 +287,6 @@ def create_websocket_client(
         config=config,
         component_type='websocket',
         is_private=is_private,
-        handlers=handlers,
         use_cache=use_cache,
         logger_override=logger_override
     )
@@ -336,7 +296,6 @@ def create_composite_exchange(
     exchange: ExchangeEnum,
     config: ExchangeConfig,
     is_private: bool = False,
-    handlers: Optional[Union[PublicWebsocketHandlers, PrivateWebsocketHandlers]] = None,
     use_cache: bool = True,
     logger_override: Optional[HFTLoggerInterface] = None
 ) -> Any:
@@ -347,7 +306,6 @@ def create_composite_exchange(
         exchange: Exchange to create composite for
         config: Exchange configuration
         is_private: Whether to create private or public composite
-        handlers: Optional WebSocket handlers for custom event handling
         use_cache: Whether to use component caching
         logger_override: Custom logger injection
     
@@ -361,7 +319,6 @@ def create_composite_exchange(
         config=config,
         component_type='composite',
         is_private=is_private,
-        handlers=handlers,
         use_cache=use_cache,
         logger_override=logger_override
     )

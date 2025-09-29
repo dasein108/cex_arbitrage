@@ -13,6 +13,7 @@ import re
 from exchanges.integrations.mexc.structs.exchange import (
     MexcOrderResponse
 )
+from exchanges.structs import OrderStatus, OrderType
 from exchanges.structs.common import (
     Side, OrderStatus, OrderType, TimeInForce, Order, Symbol
 )
@@ -252,3 +253,16 @@ def convert_symbol_string(symbol_str: str) -> Optional[Symbol]:
     """Convert MEXC symbol string to unified Symbol."""
     return to_symbol(symbol_str)
 
+
+_WS_ORDER_STATUS_MAPPING = {
+    1: OrderStatus.NEW,
+    2: OrderStatus.FILLED,
+    3: OrderStatus.PARTIALLY_FILLED,
+    4: OrderStatus.CANCELED,
+}
+_WS_ORDER_TYPE_MAPPING = {
+    1: OrderType.LIMIT,
+    2: OrderType.MARKET,
+    3: OrderType.STOP_LIMIT,
+    4: OrderType.STOP_MARKET,
+}

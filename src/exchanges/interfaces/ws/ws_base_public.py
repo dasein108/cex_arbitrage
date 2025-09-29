@@ -14,15 +14,18 @@ from exchanges.consts import DEFAULT_PUBLIC_WEBSOCKET_CHANNELS
 from exchanges.structs.common import Symbol, OrderBook, Trade, BookTicker
 from config.structs import ExchangeConfig
 from infrastructure.logging import HFTLogger
-from infrastructure.networking.websocket.structs import ConnectionState, MessageType, ParsedMessage, PublicWebsocketChannelType
+from infrastructure.networking.websocket.structs import ConnectionState, MessageType, ParsedMessage, \
+    PublicWebsocketChannelType
 import traceback
 from exchanges.interfaces.ws.ws_base import BaseWebsocketInterface
 from infrastructure.networking.websocket.structs import ParsedMessage, WebsocketChannelType
 from exchanges.interfaces.ws.ws_base import BaseWebsocketInterface
-from .interfaces.interfaces import WebsocketSubscriptionInterface, PrivateWebsocketMessageHandlerInterface
+from .interfaces.interfaces import WebsocketSubscriptionPublicInterface, PublicWebsocketMessageHandlerInterface
 from infrastructure.networking.websocket.structs import SubscriptionAction
 
-class BasePublicWebsocket(BaseWebsocketInterface, ABC):
+
+class BasePublicWebsocketPrivate(BaseWebsocketInterface, WebsocketSubscriptionPublicInterface,
+                                 PublicWebsocketMessageHandlerInterface, ABC):
     """
     Base class for exchange public WebSocket implementations.
     
@@ -35,19 +38,12 @@ class BasePublicWebsocket(BaseWebsocketInterface, ABC):
     @property
     def active_symbols(self) -> List[Symbol]:
         return list(self.subscriptions.keys())
-    
+
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
         # State management for symbols (moved from WebSocket manager)
         self.subscriptions: Dict[Symbol, List[WebsocketChannelType]] = {}
-
-    @abstractmethod
-    def _prepare_subscription_message(self,
-                                            action: SubscriptionAction,
-                                            symbol: Symbol,
-                                            channels: List[WebsocketChannelType], **kwargs) -> Dict[str, Any]:
-        pass
 
     async def subscribe(self, symbol: Union[List[Symbol], Symbol],
                         channel: Union[List[WebsocketChannelType], WebsocketChannelType],
@@ -74,7 +70,7 @@ class BasePublicWebsocket(BaseWebsocketInterface, ABC):
 
             self.subscriptions[s] += channels
 
-    async def unsubscribe(self,  symbol: Union[List[Symbol], Symbol],
+    async def unsubscribe(self, symbol: Union[List[Symbol], Symbol],
                           channel: Union[List[WebsocketChannelType], WebsocketChannelType],
                           **kwargs) -> None:
         channels = channel if isinstance(channel, list) else [channel]

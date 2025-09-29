@@ -3,7 +3,7 @@ from typing import Any, Optional, List, Dict, Union
 
 from infrastructure.logging import HFTLoggerInterface
 from infrastructure.networking.websocket.structs import ParsedMessage, WebsocketChannelType, SubscriptionAction
-from exchanges.structs.common import Order, AssetBalance, Position, Trade, OrderBook, Ticker, BookTicker
+from exchanges.structs.common import Order, AssetBalance, Symbol, Trade, OrderBook, Ticker, BookTicker
 from websockets.client import WebSocketClientProtocol
 from websockets.protocol import State as WsState
 
@@ -37,18 +37,38 @@ class WebsocketConnectionInterface(ABC):
         raise True # Default to True for public connections
 
 
-class WebsocketSubscriptionInterface(ABC):
+class WebsocketSubscriptionPrivateInterface(ABC):
 
     @abstractmethod
     def _prepare_subscription_message(self, action: SubscriptionAction,
-                                            channel: WebsocketChannelType, *args, **kwargs) -> Dict[str, Any]:
+                                            channel: WebsocketChannelType, **kwargs) -> Dict[str, Any]:
         pass
     @abstractmethod
-    async def subscribe(self, channel: Union[List[WebsocketChannelType],WebsocketChannelType], *args, **kwargs) -> None:
+    async def subscribe(self, channel: Union[List[WebsocketChannelType],WebsocketChannelType], **kwargs) -> None:
         raise NotImplementedError
 
     @abstractmethod
-    async def unsubscribe(self, channel: Union[List[WebsocketChannelType],WebsocketChannelType], *args, **kwargs) -> None:
+    async def unsubscribe(self, channel: Union[List[WebsocketChannelType],WebsocketChannelType], **kwargs) -> None:
+        raise NotImplementedError
+
+class WebsocketSubscriptionPublicInterface(ABC):
+
+    @abstractmethod
+    def _prepare_subscription_message(self, action: SubscriptionAction,
+                                      symbol: Symbol,
+                                      channel: WebsocketChannelType, **kwargs) -> Dict[str, Any]:
+        pass
+
+    @abstractmethod
+    async def subscribe(self,  symbol: Union[List[Symbol], Symbol],
+                        channel: Union[List[WebsocketChannelType], WebsocketChannelType],
+                        **kwargs) -> None:
+        raise NotImplementedError
+
+    @abstractmethod
+    async def unsubscribe(self,  symbol: Union[List[Symbol], Symbol],
+                          channel: Union[List[WebsocketChannelType], WebsocketChannelType],
+                          **kwargs) -> None:
         raise NotImplementedError
 
     # @abstractmethod
@@ -77,30 +97,27 @@ class PrivateWebsocketMessageHandlerInterface(ABC):
 
 
 class PublicWebsocketMessageHandlerInterface(ABC):
-    @abstractmethod
+    logger: HFTLoggerInterface
+
     async def handle_orderbook(self, orderbook: OrderBook) -> None:
         """Handle orderbook update."""
-        pass
+        self.logger.warning(f"OVERRIDE: Received orderbook update: {orderbook}")
 
-    @abstractmethod
     async def handle_orderbook_diff(self, orderbook_update) -> None:
         """Handle orderbook diff update (used by some WebSocket implementations)."""
-        pass
+        self.logger.warning(f"OVERRIDE: Received orderbook diff update: {orderbook_update}")
 
-    @abstractmethod
     async def handle_ticker(self, ticker: Ticker) -> None:
         """Handle ticker update."""
-        pass
+        self.logger.warning(f"OVERRIDE: Received ticker update: {ticker}")
 
-    @abstractmethod
     async def handle_trade(self, trade: Trade) -> None:
         """Handle trade data."""
-        pass
+        self.logger.warning(f"OVERRIDE: Received trade data: {trade}")
 
-    @abstractmethod
     async def handle_book_ticker(self, book_ticker: BookTicker) -> None:
         """Handle book ticker data."""
-        pass
+        self.logger.warning(f"OVERRIDE: Received book ticker data: {book_ticker}")
 
 
 class ChannelSubscriptionManagerInterface(ABC):

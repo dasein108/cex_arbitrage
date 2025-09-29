@@ -46,13 +46,11 @@ class PublicWebSocketClient:
         self.websocket = create_websocket_client(
             exchange=ExchangeEnum(self.exchange_name),
             is_private=False,
-            config=config,
-            handlers=create_public_handlers(
-                orderbook_handler=self._handle_orderbook_update,
-                trades_handler=self._handle_trades_update,
-                book_ticker_handler=self._handle_book_ticker_update
-            ),
-        )
+            config=config)
+
+        self.websocket.orderbook_handler = self._handle_orderbook_update
+        self.websocket.trades_handler = self._handle_trades_update
+        self.websocket.book_ticker_handler = self._handle_book_ticker_update
 
         logger.info("Public WebSocket client initialized",
                     exchange=self.exchange_name,
