@@ -60,7 +60,7 @@ from exchanges.interfaces.composite.types import PublicRestType, PublicWebsocket
 from infrastructure.logging import LoggingTimer, HFTLoggerInterface
 from infrastructure.networking.websocket.handlers import PublicWebsocketHandlers
 from exchanges.interfaces.ws.interfaces.common import WebsocketBindHandlerInterface
-from infrastructure.networking.websocket.structs import PublicWebsocketChannelType
+from infrastructure.networking.websocket.structs import PublicWebsocketChannelType, WebsocketChannelType
 
 class BasePublicComposite(BaseCompositeExchange[PublicRestType, PublicWebsocketType],
                           WebsocketBindHandlerInterface[PublicWebsocketChannelType]):
@@ -81,6 +81,7 @@ class BasePublicComposite(BaseCompositeExchange[PublicRestType, PublicWebsocketT
             websocket_client: Injected public WebSocket client instance (optional)
             logger: Optional injected HFT logger (auto-created if not provided)
         """
+        WebsocketBindHandlerInterface.__init__(self)
         super().__init__(config,
                          rest_client=rest_client,
                          websocket_client=websocket_client,
@@ -252,7 +253,9 @@ class BasePublicComposite(BaseCompositeExchange[PublicRestType, PublicWebsocketT
             )
             self.logger.info(f"{self._tag} Creating public WebSocket client...")
 
-            await self._initialize_public_websocket()
+            await self._ws.initialize()
+            await self._ws.subscribe(symbol=list(self.active_symbols),
+                                     channel=[WebsocketChannelType.BOOK_TICKER])
 
             self._initialized = True
 
@@ -411,31 +414,6 @@ class BasePublicComposite(BaseCompositeExchange[PublicRestType, PublicWebsocketT
             trade_handler=self._handle_trade,
             book_ticker_handler=self._handle_book_ticker,  # This one already matches signature
         )
-
-    async def _initialize_public_websocket(self) -> None:
-        """Initialize public WebSocket with constructor injection pattern including book ticker handler."""
-        try:
-            self.logger.debug("Initializing public WebSocket client")
-
-            # Use abstract factory method to create client
-            # WebSocket client already injected via constructor
-            if self._ws:
-                await self._ws.initialize(symbols=list(self.active_symbols),
-                                          channels=[PublicWebsocketChannelType.BOOK_TICKER])
-
-                self.logger.info("Public WebSocket client initialized",
-                                 connected=self._ws.is_connected,
-                                 has_book_ticker_handler=True)
-            else:
-                self.logger.info("No WebSocket client available - skipping WebSocket initialization")
-
-        except Exception as e:
-            self.logger.error("Public WebSocket initialization failed", error=str(e))
-            raise InitializationError(f"Public WebSocket initialization failed: {e}")
-
-    # ========================================
-    # Event Handler Methods with Book Ticker Support (NEW)
-    # ========================================
 
     # Direct data handlers (match PublicWebsocketHandlers signatures)
     async def _handle_orderbook(self, orderbook: OrderBook) -> None:

@@ -1,0 +1,20 @@
+# Development and testing dependencies
+# These are not required for production deployment
+
+# Testing framework
+pytest==8.3.3
+pytest-asyncio==0.24.0
+
+# Code formatting and quality
+black==24.10.0
+isort==5.13.2
+autoflake==2.3.1
+ruff==0.7.3
+mypy==1.13.0
+
+# Development tools
+ipython==8.29.0
+
+# Performance profiling (optional)
+py-spy==0.3.14
+memory-profiler==0.61.0

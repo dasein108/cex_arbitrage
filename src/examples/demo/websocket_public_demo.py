@@ -15,6 +15,7 @@ import asyncio
 import sys
 from typing import List, Dict
 
+from exchanges import DEFAULT_PUBLIC_WEBSOCKET_CHANNELS
 from exchanges.structs import Symbol, OrderBook, Trade, BookTicker, ExchangeEnum
 from exchanges.structs.types import AssetName
 from config.config_manager import HftConfig
@@ -59,7 +60,8 @@ class PublicWebSocketClient:
     async def initialize(self, symbols: List[Symbol]) -> None:
         """Initialize WebSocket connection and subscriptions."""
         # Pass symbols to initialize() - they will be subscribed automatically when connection is established
-        await self.websocket.initialize(symbols)
+        await self.websocket.initialize()
+        await self.websocket.subscribe(symbols,DEFAULT_PUBLIC_WEBSOCKET_CHANNELS)
         logger.info("WebSocket initialized",
                     symbol_count=len(symbols))
 

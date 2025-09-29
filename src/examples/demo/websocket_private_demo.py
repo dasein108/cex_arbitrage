@@ -65,7 +65,7 @@ class PrivateWebSocketClient:
         """Initialize WebSocket connection and subscriptions."""
         # For private WebSocket, pass empty list to initialize() - private channels will be subscribed automatically
         await self.websocket.initialize()
-
+        await self.websocket.subscribe(DEFAULT_PRIVATE_WEBSOCKET_CHANNELS)
         logger.info(f"{self.exchange_name} private WebSocket initialized for account and order updates")
 
     async def close(self) -> None:

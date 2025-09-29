@@ -13,9 +13,8 @@ class PrivateBaseWebsocket(BaseWebsocketInterface, WebsocketSubscriptionPrivateI
     
     def __init__(self, *args, **kwargs):
         """Initialize private WebSocket interface with handler object."""
-        
 
-        # Initialize composite class with private API configuration
+        WebsocketBindHandlerInterface.__init__(self)
         super().__init__(
             *args,
             **kwargs,
@@ -35,8 +34,7 @@ class PrivateBaseWebsocket(BaseWebsocketInterface, WebsocketSubscriptionPrivateI
                   **kwargs) -> None:
         channels = channel if isinstance(channel, list) else [channel]
         for ch in channels:
-            ws_subscriptions = self._prepare_subscription_message(SubscriptionAction.SUBSCRIBE,
-                                                                  ch, **kwargs)
+            ws_subscriptions = self._prepare_subscription_message(SubscriptionAction.SUBSCRIBE, ch, **kwargs)
 
             await self._ws_manager.send_message(ws_subscriptions)
             self.subscriptions.append(ch)

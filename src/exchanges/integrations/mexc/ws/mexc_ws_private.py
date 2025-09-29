@@ -205,7 +205,7 @@ class MexcPrivateSpotWebsocket(PrivateBaseWebsocket):
     async def close(self):
         await super().close()
         # Cancel keep-alive task if running
-        self._keep_alive_task = safe_cancel_task(self._keep_alive_task)
+        self._keep_alive_task = await safe_cancel_task(self._keep_alive_task)
         await self._delete_listen_key()
 
     async def _parse_protobuf_message(self, raw_message: bytes):

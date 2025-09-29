@@ -225,11 +225,19 @@ class Order(msgspec.Struct):
 ### Installation
 
 ```bash
-# Install all dependencies
+# Install production dependencies only
 make install
 
+# Install development dependencies only
+make install-dev
+
+# Install all dependencies (production + development)
+make install-all
+
 # Or install manually:
-pip install -r requirements.txt
+pip install -r requirements.txt              # Production only
+pip install -r requirements-dev.txt          # Development only
+pip install -r requirements.txt -r requirements-dev.txt  # All
 ```
 
 ### Development Tools

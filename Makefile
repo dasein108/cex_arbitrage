@@ -8,7 +8,9 @@ help:
 	@echo "CEX Arbitrage Development Tools"
 	@echo ""
 	@echo "Available commands:"
-	@echo "  make install      - Install all dependencies"
+	@echo "  make install      - Install production dependencies only"
+	@echo "  make install-dev  - Install development dependencies only"
+	@echo "  make install-all  - Install all dependencies (prod + dev)"
 	@echo "  make format       - Format all Python code (black + isort + autoflake)"
 	@echo "  make lint         - Run linting (ruff + mypy)"
 	@echo "  make clean        - Remove unused imports and variables"
@@ -17,8 +19,19 @@ help:
 
 # Install dependencies
 install:
-	@echo "Installing dependencies..."
+	@echo "Installing production dependencies..."
 	pip install -r requirements.txt
+
+# Install development dependencies
+install-dev:
+	@echo "Installing development dependencies..."
+	pip install -r requirements-dev.txt
+
+# Install all dependencies (production + development)
+install-all:
+	@echo "Installing all dependencies..."
+	pip install -r requirements.txt
+	pip install -r requirements-dev.txt
 
 # Format all code
 format:

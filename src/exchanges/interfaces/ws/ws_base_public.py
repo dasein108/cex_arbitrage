@@ -35,6 +35,7 @@ class PublicBaseWebsocket(BaseWebsocketInterface, WebsocketSubscriptionPublicInt
         return list(self.subscriptions.keys())
 
     def __init__(self, *args, **kwargs):
+        WebsocketBindHandlerInterface.__init__(self)
         super().__init__(*args, **kwargs)
 
         # State management for symbols (moved from WebSocket manager)
@@ -55,13 +56,16 @@ class PublicBaseWebsocket(BaseWebsocketInterface, WebsocketSubscriptionPublicInt
                 self.logger.debug(f"Already subscribed to all requested channels for symbol {s}")
                 continue
 
+            ws_subscriptions = []
             for c in channels:
                 if c not in PublicWebsocketChannelType:
                     self.logger.warning(f"Invalid channel {c} for public subscription on symbol {s}")
                     channels.remove(c)
+                else:
                     ws_subscriptions = self._prepare_subscription_message(SubscriptionAction.SUBSCRIBE, s, c)
 
-                    await self._ws_manager.send_message(ws_subscriptions)
+            if ws_subscriptions:
+                await self._ws_manager.send_message(ws_subscriptions)
 
             if s not in self.subscriptions:
                 self.subscriptions[s] = []

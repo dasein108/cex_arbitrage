@@ -77,7 +77,7 @@ class BaseWebsocketInterface(ABC):
 
         await self.on_connection_handler(raw_message) if self.on_connection_handler else None
 
-    async def initialize(self, symbols=None) -> None:
+    async def initialize(self) -> None:
         """Initialize WebSocket connection using mixin composition."""
         try:
             with LoggingTimer(self.logger, "ws_interface_initialization") as timer:
@@ -85,7 +85,6 @@ class BaseWebsocketInterface(ABC):
 
             self.logger.info("WebSocket initialized",
                              exchange=self.exchange_name,
-                             symbols_count=len(symbols) if symbols else 0,
                              initialization_time_ms=timer.elapsed_ms)
 
             # Track initialization metrics
@@ -109,10 +108,6 @@ class BaseWebsocketInterface(ABC):
     def is_connected(self) -> bool:
         """Check if WebSocket is connected."""
         return self._ws_manager.is_connected()
-
-    def get_performance_metrics(self) -> Dict:
-        """Get HFT performance metrics."""
-        return self._ws_manager.get_performance_metrics()
 
     async def close(self) -> None:
         """Close WebSocket connection and clean up resources."""

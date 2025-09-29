@@ -22,7 +22,7 @@ from infrastructure.logging import LoggingTimer, HFTLoggerInterface
 from infrastructure.networking.websocket.handlers import PrivateWebsocketHandlers
 from exchanges.utils.exchange_utils import is_order_done
 from exchanges.interfaces.ws.interfaces.common import WebsocketBindHandlerInterface
-from infrastructure.networking.websocket.structs import PrivateWebsocketChannelType
+from infrastructure.networking.websocket.structs import PrivateWebsocketChannelType, WebsocketChannelType
 
 
 class BasePrivateComposite(BaseCompositeExchange[PrivateRestType, PrivateWebsocketType],
@@ -52,19 +52,19 @@ class BasePrivateComposite(BaseCompositeExchange[PrivateRestType, PrivateWebsock
                  logger: Optional[HFTLoggerInterface] = None) -> None:
         """
         Initialize base private exchange interface with dependency injection.
-        
+
         Args:
             config: Exchange configuration with API credentials
             rest_client: Injected private REST client instance
             websocket_client: Injected private WebSocket client instance (optional)
             logger: Optional injected HFT logger (auto-created if not provided)
         """
-        super().__init__(config=config, 
-                        rest_client=rest_client, 
-                        websocket_client=websocket_client,
-                        is_private=True, 
-                        logger=logger)
-
+        WebsocketBindHandlerInterface.__init__(self)
+        super().__init__(config=config,
+                         rest_client=rest_client,
+                         websocket_client=websocket_client,
+                         is_private=True,
+                         logger=logger)
 
         # bind WebSocket handlers to websocket client events
         websocket_client.bind(PrivateWebsocketChannelType.BALANCE, self._balance_handler)
@@ -143,7 +143,7 @@ class BasePrivateComposite(BaseCompositeExchange[PrivateRestType, PrivateWebsock
         quote_quantity_ = self.symbols_info.get(symbol).round_quote(quote_quantity)
         # TODO: FIX: infrastructure.exceptions.exchange.ExchangeRestError: (500, 'Futures order placement failed: Futures market orders with quote_quantity require current price. Use quantity parameter instead.')
         return await self._rest.place_order(symbol, side, OrderType.MARKET,
-                                                    quote_quantity=quote_quantity_, **kwargs)
+                                            quote_quantity=quote_quantity_, **kwargs)
 
     async def cancel_order(self, symbol: Symbol, order_id: OrderId) -> Order:
         """
@@ -195,8 +195,8 @@ class BasePrivateComposite(BaseCompositeExchange[PrivateRestType, PrivateWebsock
                 self._balances = {b.asset: b for b in balances_data}
 
             self.logger.info("Balances loaded successfully",
-                            balance_count=len(balances_data),
-                            load_time_ms=timer.elapsed_ms)
+                             balance_count=len(balances_data),
+                             load_time_ms=timer.elapsed_ms)
 
         except Exception as e:
             self.logger.error("Failed to load balances", error=str(e))
@@ -216,8 +216,8 @@ class BasePrivateComposite(BaseCompositeExchange[PrivateRestType, PrivateWebsock
                     self._update_open_order(o)
 
             self.logger.info("Open orders loaded",
-                            open_orders_count=sum(len(orders) for orders in self._open_orders.values()),
-                            load_time_ms=timer.elapsed_ms)
+                             open_orders_count=sum(len(orders) for orders in self._open_orders.values()),
+                             load_time_ms=timer.elapsed_ms)
 
         except Exception as e:
             self.logger.error("Failed to load open orders", error=str(e))
@@ -241,8 +241,8 @@ class BasePrivateComposite(BaseCompositeExchange[PrivateRestType, PrivateWebsock
 
         self._open_orders[order.symbol][order.order_id] = order
         self.logger.debug("Open order updated",
-                         order_id=order.order_id,
-                         status=order.status)
+                          order_id=order.order_id,
+                          status=order.status)
 
     def _get_open_order(self, symbol: Symbol, order_id: OrderId):
         """Get open order from local cache."""
@@ -260,8 +260,8 @@ class BasePrivateComposite(BaseCompositeExchange[PrivateRestType, PrivateWebsock
         if self._get_open_order(order.symbol, order.order_id):
             del self._open_orders[order.symbol][order.order_id]
             self.logger.debug("Open order removed",
-                             order_id=order.order_id,
-                             status=order.status)
+                              order_id=order.order_id,
+                              status=order.status)
 
     def _update_order(self, order: Order):
         """Update order state based on completion status."""
@@ -292,7 +292,7 @@ class BasePrivateComposite(BaseCompositeExchange[PrivateRestType, PrivateWebsock
         order = self._get_executed_order(symbol, order_id)
         if order:
             self.logger.debug("Order found in executed orders cache",
-                            order_id=order_id, status=order.status)
+                              order_id=order_id, status=order.status)
             return order
 
         try:
@@ -303,7 +303,7 @@ class BasePrivateComposite(BaseCompositeExchange[PrivateRestType, PrivateWebsock
 
         except Exception as e:
             self.logger.error("Failed to get order via REST fallback",
-                            order_id=order_id, error=str(e))
+                              order_id=order_id, error=str(e))
             return None
 
     async def get_asset_balance(self, asset: AssetName, force=False) -> Optional[AssetBalance]:
@@ -332,7 +332,7 @@ class BasePrivateComposite(BaseCompositeExchange[PrivateRestType, PrivateWebsock
 
             except Exception as e:
                 self.logger.error("Failed to get asset balance via REST fallback",
-                                asset=asset, error=str(e))
+                                  asset=asset, error=str(e))
                 return None
 
         return AssetBalance(asset=asset, available=0.0, locked=0.0)
@@ -348,7 +348,7 @@ class BasePrivateComposite(BaseCompositeExchange[PrivateRestType, PrivateWebsock
 
         try:
             # Clients are already injected via constructor - no creation needed
-            
+
             # Step 1: Load private data via REST if available
             if self._rest:
                 self.logger.info(f"{self._tag} Loading private data...")
@@ -360,14 +360,18 @@ class BasePrivateComposite(BaseCompositeExchange[PrivateRestType, PrivateWebsock
             if self._ws:
                 self.logger.info(f"{self._tag} Initializing WebSocket client...")
                 await self._ws.initialize()
+                await self._ws.subscribe([WebsocketChannelType.ORDER,
+                                          WebsocketChannelType.BALANCE,
+                                          WebsocketChannelType.EXECUTION])
+
             else:
                 self.logger.info(f"{self._tag} No WebSocket client available - skipping WebSocket initialization")
 
             self.logger.info(f"{self._tag} private initialization completed",
-                            has_rest=self._rest is not None,
-                            has_ws=self._ws is not None,
-                            balance_count=len(self._balances),
-                            order_count=sum(len(orders) for orders in self._open_orders.values()))
+                             has_rest=self._rest is not None,
+                             has_ws=self._ws is not None,
+                             balance_count=len(self._balances),
+                             order_count=sum(len(orders) for orders in self._open_orders.values()))
 
         except Exception as e:
             self.logger.error(f"Private exchange initialization failed: {e}")
@@ -458,8 +462,8 @@ class BasePrivateComposite(BaseCompositeExchange[PrivateRestType, PrivateWebsock
                 del executed_orders[order_id]
 
         self.logger.debug(f"Cleaned up executed orders cache for {symbol}",
-                         removed=orders_to_remove,
-                         remaining=len(executed_orders))
+                          removed=orders_to_remove,
+                          remaining=len(executed_orders))
 
     # Monitoring and diagnostics
 
