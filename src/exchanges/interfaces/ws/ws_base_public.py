@@ -10,16 +10,16 @@ HFT COMPLIANCE: Optimized for sub-millisecond message processing.
 from typing import List, Dict, Optional, Set, Callable, Awaitable, Any, Union
 from abc import ABC
 
-from exchanges.structs.common import Symbol, OrderBook, Trade, BookTicker
+from exchanges.structs.common import Symbol
 from infrastructure.networking.websocket.structs import ConnectionState, MessageType, ParsedMessage, \
     PublicWebsocketChannelType
 from infrastructure.networking.websocket.structs import ParsedMessage, WebsocketChannelType
 from exchanges.interfaces.ws.ws_base import BaseWebsocketInterface
-from .interfaces.interfaces import WebsocketSubscriptionPublicInterface, WebsocketBindHandlerInterface
+from .interfaces.common import WebsocketSubscriptionPublicInterface, WebsocketBindHandlerInterface
 from infrastructure.networking.websocket.structs import SubscriptionAction
 
 
-class BaseWebsocketPublic(BaseWebsocketInterface, WebsocketSubscriptionPublicInterface,
+class PublicBaseWebsocket(BaseWebsocketInterface, WebsocketSubscriptionPublicInterface,
                           WebsocketBindHandlerInterface[PublicWebsocketChannelType], ABC):
     """
     Base class for exchange public WebSocket implementations.

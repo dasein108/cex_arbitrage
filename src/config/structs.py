@@ -245,6 +245,19 @@ class ExchangeConfig(Struct, frozen=True):
     transport: Optional[RestTransportConfig] = None
     enabled: bool = True
 
+    @property
+    def is_futures(self):
+        return "_futures" in self.name.lower()
+
+    @property
+    def exchange_enum(self) -> ExchangeEnum:
+        """Get ExchangeEnum from name."""
+        try:
+            return ExchangeEnum(str(self.name).upper())
+        except ValueError:
+            available = [e for e in ExchangeEnum]
+            raise ValueError(f"Unknown exchange name: {self.name}, available: {available}.")
+
     def has_credentials(self) -> bool:
         """
         Check if exchange has valid credentials for private operations.

@@ -151,7 +151,7 @@ def get_spot_private_channel_name(channel_type) -> str:
     
     _PRIVATE_CHANNEL_MAPPING = {
         PrivateWebsocketChannelType.ORDER: "spot@private.orders.v3.api",
-        PrivateWebsocketChannelType.TRADE: "spot@private.deals.v3.api",
+        PrivateWebsocketChannelType.EXECUTION: "spot@private.deals.v3.api",
         PrivateWebsocketChannelType.BALANCE: "spot@private.account.v3.api"
     }
     return _PRIVATE_CHANNEL_MAPPING.get(channel_type, "")
@@ -164,7 +164,7 @@ def get_spot_channel_name(channel_type) -> str:
     _PUBLIC_CHANNEL_MAPPING = {
         PublicWebsocketChannelType.BOOK_TICKER: "spot@public.aggre.bookTicker.v3.api.pb",
         PublicWebsocketChannelType.ORDERBOOK: "spot@public.increase.depth.v3.api",
-        PublicWebsocketChannelType.TRADES: "spot@public.aggre.deals.v3.api.pb"
+        PublicWebsocketChannelType.TRADE: "spot@public.aggre.deals.v3.api.pb"
     }
     return _PUBLIC_CHANNEL_MAPPING.get(channel_type, "")
 

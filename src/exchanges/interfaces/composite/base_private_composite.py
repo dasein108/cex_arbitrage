@@ -17,13 +17,16 @@ from exchanges.structs import Side, Trade, OrderType
 from config.structs import ExchangeConfig
 from infrastructure.exceptions.system import InitializationError
 from exchanges.interfaces.composite.base_composite import BaseCompositeExchange
-from exchanges.interfaces.composite.types import PrivateRestType, PrivateWebSocketType
+from exchanges.interfaces.composite.types import PrivateRestType, PrivateWebsocketType
 from infrastructure.logging import LoggingTimer, HFTLoggerInterface
 from infrastructure.networking.websocket.handlers import PrivateWebsocketHandlers
 from exchanges.utils.exchange_utils import is_order_done
+from exchanges.interfaces.ws.interfaces.common import WebsocketBindHandlerInterface
+from infrastructure.networking.websocket.structs import PrivateWebsocketChannelType
 
 
-class BasePrivateComposite(BaseCompositeExchange[PrivateRestType, PrivateWebSocketType]):
+class BasePrivateComposite(BaseCompositeExchange[PrivateRestType, PrivateWebsocketType],
+                           WebsocketBindHandlerInterface[PrivateWebsocketChannelType]):
     """
     Base private composite exchange interface WITHOUT withdrawal functionality.
     
@@ -42,12 +45,11 @@ class BasePrivateComposite(BaseCompositeExchange[PrivateRestType, PrivateWebSock
     - Position management (futures-only via futures subclass)
     """
 
-    def __init__(self, 
-                 config: ExchangeConfig, 
+    def __init__(self,
+                 config: ExchangeConfig,
                  rest_client: PrivateRestType,
-                 websocket_client: Optional[PrivateWebSocketType] = None,
-                 logger: Optional[HFTLoggerInterface] = None,
-                 handlers: Optional[PrivateWebsocketHandlers] = None) -> None:
+                 websocket_client: PrivateWebsocketType,
+                 logger: Optional[HFTLoggerInterface] = None) -> None:
         """
         Initialize base private exchange interface with dependency injection.
         
@@ -56,7 +58,6 @@ class BasePrivateComposite(BaseCompositeExchange[PrivateRestType, PrivateWebSock
             rest_client: Injected private REST client instance
             websocket_client: Injected private WebSocket client instance (optional)
             logger: Optional injected HFT logger (auto-created if not provided)
-            handlers: Optional private WebSocket handlers
         """
         super().__init__(config=config, 
                         rest_client=rest_client, 
@@ -64,12 +65,11 @@ class BasePrivateComposite(BaseCompositeExchange[PrivateRestType, PrivateWebSock
                         is_private=True, 
                         logger=logger)
 
-        if not handlers:
-            self.handlers = PrivateWebsocketHandlers()
-        else:
-            self.handlers = handlers
 
-        self._tag = f'{config.name}_private'
+        # bind WebSocket handlers to websocket client events
+        websocket_client.bind(PrivateWebsocketChannelType.BALANCE, self._balance_handler)
+        websocket_client.bind(PrivateWebsocketChannelType.ORDER, self._order_handler)
+        websocket_client.bind(PrivateWebsocketChannelType.EXECUTION, self._execution_handler)
 
         # Private data state (HFT COMPLIANT - no caching of real-time data)
         self._balances: Dict[AssetName, AssetBalance] = {}
@@ -398,7 +398,7 @@ class BasePrivateComposite(BaseCompositeExchange[PrivateRestType, PrivateWebSock
                          status=order.status.name,
                          filled=f"{order.filled_quantity}/{order.quantity}")
 
-        await self.handlers.handle_order(order)
+        await self._exec_bound_handler(PrivateWebsocketChannelType.ORDER, order)
 
     async def _balance_handler(self, balance: AssetBalance) -> None:
         """Handle balance update event."""
@@ -407,7 +407,7 @@ class BasePrivateComposite(BaseCompositeExchange[PrivateRestType, PrivateWebSock
                          exchange=self._exchange_name,
                          asset_balance=balance.asset)
 
-        await self.handlers.handle_balance(balance)
+        await self._exec_bound_handler(PrivateWebsocketChannelType.BALANCE, balance)
 
     async def _execution_handler(self, trade: Trade) -> None:
         """Handle execution report/trade event."""
@@ -418,7 +418,7 @@ class BasePrivateComposite(BaseCompositeExchange[PrivateRestType, PrivateWebSock
                          quantity=trade.quantity,
                          price=trade.price,
                          is_maker=trade.is_maker)
-        await self.handlers.handle_execution(trade)
+        await self._exec_bound_handler(PrivateWebsocketChannelType.EXECUTION, trade)
 
     # Data refresh and utilities
 

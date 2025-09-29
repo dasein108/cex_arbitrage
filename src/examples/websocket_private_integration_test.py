@@ -30,7 +30,7 @@ from typing import Dict, Any
 from exchanges.structs.common import Order, AssetBalance
 from exchanges.structs import ExchangeEnum
 from config.config_manager import HftConfig
-from exchanges.factory import create_websocket_client, create_private_handlers
+from exchanges.exchange_factory import create_websocket_client, create_private_handlers
 from examples.integration_test_framework import (
     IntegrationTestRunner, TestCategory, TestStatus, EXIT_CODE_SUCCESS, EXIT_CODE_FAILED_TESTS, EXIT_CODE_ERROR,
     EXIT_CODE_CONFIG_ERROR

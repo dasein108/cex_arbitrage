@@ -35,7 +35,7 @@ from exchanges.integrations.gateio.services.spot_symbol_mapper import GateioSpot
 from exchanges.structs.common import Order, AssetBalance, Trade, OrderId
 from exchanges.structs.types import AssetName
 from config.structs import ExchangeConfig
-from exchanges.interfaces.ws import BaseWebsocketPrivate
+from exchanges.interfaces.ws import PrivateBaseWebsocket
 from infrastructure.networking.websocket.structs import SubscriptionAction, WebsocketChannelType, PrivateWebsocketChannelType
 from exchanges.integrations.gateio.utils import (
     from_subscription_action,
@@ -56,7 +56,7 @@ _PRIVATE_CHANNEL_MAPPING = {
 }
 
 
-class GateioPrivateSpotWebsocket(GateioBaseWebsocket, BaseWebsocketPrivate):
+class GateioPrivateSpotWebsocket(GateioBaseWebsocket, PrivateBaseWebsocket):
     """Gate.io private WebSocket client inheriting from common base for shared Gate.io logic."""
     PING_CHANNEL = "spot.ping"
 
@@ -188,4 +188,4 @@ class GateioPrivateSpotWebsocket(GateioBaseWebsocket, BaseWebsocketPrivate):
                 is_maker=trade_data.get('role', '') == 'maker'  # May not be available in public trades
             )
 
-            await self._exec_bound_handler(PrivateWebsocketChannelType.TRADE, trade)
+            await self._exec_bound_handler(PrivateWebsocketChannelType.EXECUTION, trade)

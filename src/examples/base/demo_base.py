@@ -12,7 +12,7 @@ from abc import ABC, abstractmethod
 
 from exchanges.structs.common import Symbol
 from config.config_manager import HftConfig
-from exchanges.factory import create_rest_client
+from exchanges.exchange_factory import create_rest_client
 from exchanges.utils.exchange_utils import get_exchange_enum
 from infrastructure.logging import HFTLoggerInterface, get_logger
 from ..utils.constants import TEST_SYMBOLS, DEMO_SEPARATOR

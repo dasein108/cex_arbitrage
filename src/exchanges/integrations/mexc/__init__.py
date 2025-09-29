@@ -45,7 +45,7 @@ and extensibility.
 
 # REST and WebSocket clients for direct access
 from exchanges.integrations.mexc.rest.mexc_rest_spot_public import MexcPublicSpotRest
-from exchanges.integrations.mexc.ws.mexc_ws_public import MexcSpotWebsocketPublic
+from exchanges.integrations.mexc.ws.mexc_ws_public import MexcPublicSpotWebsocketBaseWebsocket
 # Auto-register MEXC services (symbol mapper, mappings) 
 from . import services
 
@@ -53,10 +53,9 @@ from . import services
 from .rest import strategies
 
 # Auto-register MEXC WebSocket strategies (triggers registration)
-from .ws import strategies as ws_strategies
 
 __all__ = [
     # Direct client access
     'MexcPublicSpotRest',
-    'MexcSpotWebsocketPublic',
+    'MexcPublicSpotWebsocketBaseWebsocket',
 ]

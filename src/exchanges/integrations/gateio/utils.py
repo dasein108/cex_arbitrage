@@ -147,7 +147,7 @@ def get_spot_private_channel_name(channel_type) -> str:
     
     _PRIVATE_CHANNEL_MAPPING = {
         PrivateWebsocketChannelType.ORDER: "spot.orders",
-        PrivateWebsocketChannelType.TRADE: "spot.usertrades",
+        PrivateWebsocketChannelType.EXECUTION: "spot.usertrades",
         PrivateWebsocketChannelType.BALANCE: "spot.balances"
     }
     return _PRIVATE_CHANNEL_MAPPING.get(channel_type, "")
@@ -159,7 +159,7 @@ def get_futures_private_channel_name(channel_type) -> str:
     
     _FUTURES_PRIVATE_CHANNEL_MAPPING = {
         PrivateWebsocketChannelType.ORDER: "futures.orders",
-        PrivateWebsocketChannelType.TRADE: "futures.usertrades",
+        PrivateWebsocketChannelType.EXECUTION: "futures.usertrades",
         PrivateWebsocketChannelType.BALANCE: "futures.balances"
     }
     return _FUTURES_PRIVATE_CHANNEL_MAPPING.get(channel_type, "")
@@ -172,7 +172,7 @@ def get_spot_channel_name(channel_type) -> str:
     _SPOT_PUBLIC_CHANNEL_MAPPING = {
         PublicWebsocketChannelType.BOOK_TICKER: "spot.book_ticker",
         PublicWebsocketChannelType.ORDERBOOK: "spot.order_book",
-        PublicWebsocketChannelType.TRADES: "spot.trades"
+        PublicWebsocketChannelType.TRADE: "spot.trades"
     }
     return _SPOT_PUBLIC_CHANNEL_MAPPING.get(channel_type, "")
 
@@ -184,7 +184,7 @@ def get_futures_channel_name(channel_type) -> str:
     _FUTURES_PUBLIC_CHANNEL_MAPPING = {
         PublicWebsocketChannelType.BOOK_TICKER: "futures.book_ticker",
         PublicWebsocketChannelType.ORDERBOOK: "futures.order_book", 
-        PublicWebsocketChannelType.TRADES: "futures.trades"
+        PublicWebsocketChannelType.TRADE: "futures.trades"
     }
     return _FUTURES_PUBLIC_CHANNEL_MAPPING.get(channel_type, "")
 

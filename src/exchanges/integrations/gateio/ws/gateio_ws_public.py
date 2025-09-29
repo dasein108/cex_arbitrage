@@ -30,7 +30,7 @@ from websockets import connect
 from exchanges.integrations.gateio.services.spot_symbol_mapper import GateioSpotSymbol
 from exchanges.structs.common import Symbol, Trade, OrderBook, BookTicker, OrderBookEntry, Side
 from config.structs import ExchangeConfig
-from exchanges.interfaces.ws import BaseWebsocketPublic
+from exchanges.interfaces.ws import PublicBaseWebsocket
 from infrastructure.networking.websocket.structs import SubscriptionAction, WebsocketChannelType
 from utils import get_current_timestamp
 from exchanges.integrations.gateio.utils import (
@@ -43,11 +43,11 @@ from exchanges.integrations.gateio.ws.gateio_ws_common import GateioBaseWebsocke
 _SPOT_PUBLIC_CHANNEL_MAPPING = {
     WebsocketChannelType.BOOK_TICKER: "spot.book_ticker",
     WebsocketChannelType.ORDERBOOK: "spot.order_book",
-    WebsocketChannelType.TRADES: "spot.trades",
+    WebsocketChannelType.EXECUTION: "spot.trades",
     WebsocketChannelType.HEARTBEAT: "spot.ping",
 }
 
-class GateioSpotWebsocketPublic(GateioBaseWebsocket, BaseWebsocketPublic):
+class GateioPublicSpotWebsocketBaseWebsocket(GateioBaseWebsocket, PublicBaseWebsocket):
     """Gate.io public WebSocket client inheriting from common base for shared Gate.io logic."""
     PING_CHANNEL = "spot.ping"
     def __init__(self, *args, **kwargs):

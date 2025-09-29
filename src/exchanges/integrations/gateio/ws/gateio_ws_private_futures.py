@@ -36,7 +36,7 @@ from typing import Dict, Optional, Any, List, Union
 
 from exchanges.structs.common import Order, AssetBalance, OrderId, Trade, OrderStatus, OrderType, Side, Position
 from exchanges.structs.types import AssetName
-from exchanges.interfaces.ws import BaseWebsocketPrivate
+from exchanges.interfaces.ws import PrivateBaseWebsocket
 from infrastructure.networking.websocket.structs import SubscriptionAction, WebsocketChannelType, PrivateWebsocketChannelType
 from exchanges.integrations.gateio.services.futures_symbol_mapper import GateioFuturesSymbol
 
@@ -58,7 +58,7 @@ _PRIVATE_FUTURES_CHANNEL_MAPPING = {
 }
 
 
-class GateioPrivateFuturesWebsocket(GateioBaseWebsocket, BaseWebsocketPrivate):
+class GateioPrivateFuturesWebsocket(GateioBaseWebsocket, PrivateBaseWebsocket):
     """Gate.io private futures WebSocket client inheriting from common base for shared Gate.io logic."""
     PING_CHANNEL = "futures.ping"
 
@@ -220,7 +220,7 @@ class GateioPrivateFuturesWebsocket(GateioBaseWebsocket, BaseWebsocketPrivate):
                     is_maker=trade_data.get('role', '') == 'maker'  # May not be available
                 )
 
-                await self._exec_bound_handler(PrivateWebsocketChannelType.TRADE, trade)
+                await self._exec_bound_handler(PrivateWebsocketChannelType.EXECUTION, trade)
                 
         except Exception as e:
             self.logger.error(f"Error parsing Gate.io futures user trade update: {e}")

@@ -12,7 +12,7 @@ from infrastructure.networking.websocket.handlers import PrivateWebsocketHandler
 from config.structs import ExchangeConfig
 from exchanges.interfaces.composite.base_private_composite import BasePrivateComposite
 from exchanges.interfaces.composite.mixins import WithdrawalMixin
-from exchanges.interfaces.composite.types import PrivateRestType, PrivateWebSocketType
+from exchanges.interfaces.composite.types import PrivateRestType, PrivateWebsocketType
 from infrastructure.exceptions.system import InitializationError
 
 
@@ -29,12 +29,11 @@ class CompositePrivateSpotExchange(BasePrivateComposite, WithdrawalMixin):
     functionality including withdrawals.
     """
 
-    def __init__(self, 
-                 config: ExchangeConfig, 
+    def __init__(self,
+                 config: ExchangeConfig,
                  rest_client: PrivateRestType,
-                 websocket_client: Optional[PrivateWebSocketType] = None,
-                 logger: Optional[HFTLoggerInterface] = None,
-                 handlers: Optional[PrivateWebsocketHandlers] = None) -> None:
+                 websocket_client: Optional[PrivateWebsocketType] = None,
+                 logger: Optional[HFTLoggerInterface] = None):
         """
         Initialize private spot exchange interface with dependency injection.
         
@@ -43,13 +42,11 @@ class CompositePrivateSpotExchange(BasePrivateComposite, WithdrawalMixin):
             rest_client: Injected private REST client instance
             websocket_client: Injected private WebSocket client instance (optional)
             logger: Optional injected HFT logger (auto-created if not provided)
-            handlers: Optional private WebSocket handlers
         """
-        super().__init__(config, rest_client, websocket_client, logger, handlers)
+        super().__init__(config, rest_client, websocket_client, logger)
         
         # Update tag to indicate spot operations
-        self._tag = f'{config.name}_private_spot'
-        
+
         # Asset info for withdrawal validation (spot-specific)
         self._assets_info = {}
 

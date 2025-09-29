@@ -17,7 +17,7 @@ from typing import Optional, Literal, List
 
 from config import get_exchange_config
 from exchanges.utils import get_exchange_enum
-from exchanges.factory import create_exchange_component
+from exchanges.exchange_factory import create_exchange_component
 from exchanges.structs.common import Symbol, AssetName
 from exchanges.structs import Side, TimeInForce, OrderType
 from infrastructure.logging import get_logger

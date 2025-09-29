@@ -3,19 +3,17 @@ from abc import ABC, abstractmethod
 from typing import Any, Optional, List, Dict, Union
 from infrastructure.networking.websocket.structs import ParsedMessage, WebsocketChannelType, PrivateWebsocketChannelType
 from exchanges.interfaces.ws.ws_base import BaseWebsocketInterface
-from .interfaces.interfaces import WebsocketSubscriptionPrivateInterface, WebsocketBindHandlerInterface
+from .interfaces.common import WebsocketSubscriptionPrivateInterface, WebsocketBindHandlerInterface
 from infrastructure.networking.websocket.structs import SubscriptionAction
 
 
-class BaseWebsocketPrivate(BaseWebsocketInterface, WebsocketSubscriptionPrivateInterface,
+class PrivateBaseWebsocket(BaseWebsocketInterface, WebsocketSubscriptionPrivateInterface,
                            WebsocketBindHandlerInterface[PrivateWebsocketChannelType], ABC):
     """Abstract interface for private exchange WebSocket operations (account data)"""
     
     def __init__(self, *args, **kwargs):
         """Initialize private WebSocket interface with handler object."""
         
-        if not self.config.credentials.has_private_api:
-            raise ValueError("Gate.io futures credentials not configured for private WebSocket")
 
         # Initialize composite class with private API configuration
         super().__init__(
@@ -23,6 +21,8 @@ class BaseWebsocketPrivate(BaseWebsocketInterface, WebsocketSubscriptionPrivateI
             **kwargs,
             is_private=True,  # Private API operations
         )
+        if not self.config.credentials.has_private_api:
+            raise ValueError("Gate.io futures credentials not configured for private WebSocket")
 
         self.subscriptions: List[WebsocketChannelType] = []
 

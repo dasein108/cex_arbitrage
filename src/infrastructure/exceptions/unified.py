@@ -1,10 +1,12 @@
 """
-Unified Exception Hierarchy for Error Processing
+Exchange Exception Hierarchy for Error Processing
 
 Provides standardized error handling with consistent correlation tracking
 and context management across all exchange integrations.
 
 HFT COMPLIANT: Minimal overhead exception creation with correlation tracking.
+
+Note: Class names retain 'Unified' prefix for backward compatibility.
 """
 
 import time

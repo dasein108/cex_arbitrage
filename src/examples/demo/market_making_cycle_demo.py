@@ -22,7 +22,7 @@ from exchanges.interfaces.composite.spot.base_private_spot_composite import Comp
 from exchanges.structs import (Side, TimeInForce, OrderStatus, AssetName, OrderId, Symbol, Order,
                                AssetBalance, OrderBook, BookTicker, SymbolInfo, ExchangeEnum)
 from infrastructure.logging import get_logger, LoggingTimer
-from exchanges.factory import create_exchange_component, get_symbol_mapper
+from exchanges.exchange_factory import create_exchange_component, get_symbol_mapper
 from infrastructure.networking.websocket.handlers import PublicWebsocketHandlers, PrivateWebsocketHandlers
 
 

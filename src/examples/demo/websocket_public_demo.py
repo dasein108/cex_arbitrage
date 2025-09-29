@@ -22,7 +22,7 @@ from common.orderbook_diff_processor import ParsedOrderbookUpdate
 
 # HFT Logger Integration
 from infrastructure.logging import get_logger
-from exchanges.factory import create_websocket_client, create_public_handlers
+from exchanges.exchange_factory import create_websocket_client, create_public_handlers
 
 # Set up HFT logging
 logger = get_logger('websocket_public_demo')

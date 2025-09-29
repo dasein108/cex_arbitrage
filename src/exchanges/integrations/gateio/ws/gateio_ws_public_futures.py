@@ -35,7 +35,7 @@ from websockets import connect
 
 from exchanges.structs.common import Symbol, Trade, OrderBook, BookTicker, Ticker, Side, FuturesTicker
 from config.structs import ExchangeConfig
-from exchanges.interfaces.ws import BaseWebsocketPublic
+from exchanges.interfaces.ws import PublicBaseWebsocket
 from infrastructure.networking.websocket.structs import SubscriptionAction, WebsocketChannelType, PublicWebsocketChannelType
 from utils import get_current_timestamp
 from exchanges.integrations.gateio.utils import (
@@ -47,11 +47,11 @@ from exchanges.integrations.gateio.services.futures_symbol_mapper import GateioF
 _FUTURES_PUBLIC_CHANNEL_MAPPING = {
     WebsocketChannelType.BOOK_TICKER: "futures.book_ticker",
     WebsocketChannelType.ORDERBOOK: "futures.order_book",
-    WebsocketChannelType.TRADES: "futures.trades",
+    WebsocketChannelType.EXECUTION: "futures.trades",
     WebsocketChannelType.HEARTBEAT: "futures.ping",
 }
 
-class GateioPublicFuturesWebsocket(GateioBaseWebsocket, BaseWebsocketPublic):
+class GateioPublicFuturesWebsocketBaseWebsocket(GateioBaseWebsocket, PublicBaseWebsocket):
     """Gate.io public futures WebSocket client inheriting from common base for shared Gate.io logic."""
     PING_CHANNEL = "futures.ping"
     def __init__(self, *args, **kwargs):
@@ -88,7 +88,7 @@ class GateioPublicFuturesWebsocket(GateioBaseWebsocket, BaseWebsocketPublic):
             # Special handling for different futures channels
             if ch == WebsocketChannelType.ORDERBOOK:
                 message["payload"] = [exchange_symbol, "5", "100ms"]  # Level, frequency
-            elif ch == WebsocketChannelType.TRADES:
+            elif ch == WebsocketChannelType.EXECUTION:
                 message["payload"] = [exchange_symbol, "100ms"]  # Symbol, frequency
                 
             messages.append(message)
@@ -207,7 +207,7 @@ class GateioPublicFuturesWebsocket(GateioBaseWebsocket, BaseWebsocketPublic):
                     trade_id=str(trade_data.get('id', ''))
                 )
                 
-                await self._exec_bound_handler(PublicWebsocketChannelType.TRADES, trade)
+                await self._exec_bound_handler(PublicWebsocketChannelType.TRADE, trade)
                 
         except Exception as e:
             self.logger.error(f"Error parsing Gate.io futures trades update: {e}")

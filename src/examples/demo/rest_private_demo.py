@@ -17,7 +17,7 @@ from exchanges.structs.enums import TimeInForce
 from exchanges.structs import OrderType, Side
 from exchanges.interfaces.rest import PrivateSpotRest
 from config.config_manager import HftConfig
-from exchanges.factory import create_rest_client
+from exchanges.exchange_factory import create_rest_client
 
 
 async def check_get_account_balance(exchange: PrivateSpotRest, exchange_name: str):

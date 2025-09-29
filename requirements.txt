@@ -28,6 +28,8 @@ python-dotenv==1.0.1  # Environment variable management
 pytest==8.3.3  # Testing framework
 pytest-asyncio==0.24.0  # Async test support
 black==24.10.0  # Code formatter
+isort==5.13.2  # Import sorting
+autoflake==2.3.1  # Remove unused imports and variables
 ruff==0.7.3  # Fast Python linter
 mypy==1.13.0  # Static type checker
 ipython==8.29.0  # Enhanced Python shell

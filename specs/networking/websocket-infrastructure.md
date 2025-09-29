@@ -19,7 +19,7 @@ The WebSocketManager serves as the central coordinator for all WebSocket operati
    # The initialize() method automatically connects AND subscribes
    await ws_manager.initialize(
        symbols=[Symbol('BTC', 'USDT'), Symbol('ETH', 'USDT')],
-       default_channels=[PublicWebsocketChannelType.ORDERBOOK, PublicWebsocketChannelType.TRADES]
+       default_channels=[PublicWebsocketChannelType.ORDERBOOK, PublicWebsocketChannelType.EXECUTION]
    )
    # After this call: connected = True, subscribed to all symbols/channels
    ```
@@ -289,23 +289,23 @@ from exchanges.structs.common import Symbol
 
 # Create strategy set (exchange-specific implementations)
 strategies = WebSocketStrategySet(
-    connection_strategy=ExchangeConnectionStrategy(config),
-    subscription_strategy=ExchangeSubscriptionStrategy(),
-    message_parser=ExchangeMessageParser()
+   connection_strategy=ExchangeConnectionStrategy(config),
+   subscription_strategy=ExchangeSubscriptionStrategy(),
+   message_parser=ExchangeMessageParser()
 )
 
 # Create manager
 ws_manager = WebSocketManager(
-    config=websocket_config,
-    strategies=strategies,
-    message_handler=handle_parsed_message,
-    connection_handler=handle_connection_state
+   config=websocket_config,
+   strategies=strategies,
+   message_handler=handle_parsed_message,
+   connection_handler=handle_connection_state
 )
 
 # Initialize with automatic connect + subscribe
 await ws_manager.initialize(
-    symbols=[Symbol('BTC', 'USDT'), Symbol('ETH', 'USDT')],
-    default_channels=[PublicWebsocketChannelType.ORDERBOOK, PublicWebsocketChannelType.TRADES]
+   symbols=[Symbol('BTC', 'USDT'), Symbol('ETH', 'USDT')],
+   default_channels=[PublicWebsocketChannelType.ORDERBOOK, PublicWebsocketChannelType.EXECUTION]
 )
 
 # Manager is now connected and subscribed to all symbols/channels

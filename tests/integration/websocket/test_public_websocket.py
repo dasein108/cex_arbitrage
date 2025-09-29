@@ -19,7 +19,7 @@ from collections import defaultdict
 from exchanges.structs.common import Symbol, OrderBook, Trade
 from exchanges.structs.types import AssetName
 from config.config_manager import HftConfig
-from exchanges.factory import create_websocket_client, create_public_handlers
+from exchanges.exchange_factory import create_websocket_client, create_public_handlers
 from exchanges.structs import ExchangeEnum
 from tests.integration_test_framework import (
     IntegrationTestRunner, TestCategory, TestStatus
@@ -214,7 +214,7 @@ class WebSocketPublicIntegrationTest:
             from infrastructure.networking.websocket.structs import PublicWebsocketChannelType
             channels = [
                 PublicWebsocketChannelType.ORDERBOOK,
-                PublicWebsocketChannelType.TRADES
+                PublicWebsocketChannelType.TRADE
             ]
             
             return {
@@ -242,7 +242,7 @@ class WebSocketPublicIntegrationTest:
             from infrastructure.networking.websocket.structs import PublicWebsocketChannelType
             channels = [
                 PublicWebsocketChannelType.ORDERBOOK,
-                PublicWebsocketChannelType.TRADES
+                PublicWebsocketChannelType.TRADE
             ]
             
             await self.websocket_client.initialize(symbols, channels)
@@ -283,7 +283,7 @@ class WebSocketPublicIntegrationTest:
             from infrastructure.networking.websocket.structs import PublicWebsocketChannelType
             channels = [
                 PublicWebsocketChannelType.ORDERBOOK,
-                PublicWebsocketChannelType.TRADES
+                PublicWebsocketChannelType.TRADE
             ]
             
             await self.websocket_client.initialize(symbols, channels)
@@ -336,7 +336,7 @@ class WebSocketPublicIntegrationTest:
             from infrastructure.networking.websocket.structs import PublicWebsocketChannelType
             channels = [
                 PublicWebsocketChannelType.ORDERBOOK,
-                PublicWebsocketChannelType.TRADES
+                PublicWebsocketChannelType.TRADE
             ]
             
             await self.websocket_client.initialize(symbols, channels)

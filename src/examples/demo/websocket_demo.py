@@ -16,7 +16,7 @@ import sys
 from typing import Dict, Any, List
 
 from exchanges.structs.common import Symbol
-from exchanges.factory import create_websocket_client, create_public_handlers, create_private_handlers
+from exchanges.exchange_factory import create_websocket_client, create_public_handlers, create_private_handlers
 from exchanges.utils.exchange_utils import get_exchange_enum
 
 from ..base.demo_base import ExchangeDemoBase, WebSocketDemoMixin

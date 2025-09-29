@@ -26,7 +26,7 @@ from typing import Dict, Any
 from websockets import connect
 
 from exchanges.integrations.gateio.services.spot_symbol_mapper import GateioSpotSymbol
-from exchanges.interfaces.ws import BaseWebsocketPublic
+from exchanges.interfaces.ws import PublicBaseWebsocket
 from exchanges.integrations.mexc.structs.protobuf.PushDataV3ApiWrapper_pb2 import PushDataV3ApiWrapper
 from exchanges.integrations.mexc.structs.protobuf.PublicLimitDepthsV3Api_pb2 import PublicLimitDepthsV3Api
 from exchanges.integrations.mexc.structs.protobuf.PublicAggreDealsV3Api_pb2 import PublicAggreDealsV3Api
@@ -43,7 +43,7 @@ import msgspec
 from utils import get_current_timestamp
 
 
-class MexcSpotWebsocketPublic(BaseWebsocketPublic):
+class MexcPublicSpotWebsocketBaseWebsocket(PublicBaseWebsocket):
     """MEXC public WebSocket client using dependency injection pattern."""
 
     def __init__(self, *args, **kwargs):
@@ -89,7 +89,7 @@ class MexcSpotWebsocketPublic(BaseWebsocketPublic):
         elif WebsocketChannelType.ORDERBOOK == channel:
             params.append(f"spot@public.increase.depth.v3.api@10ms@{exchange_symbol}")
 
-        elif WebsocketChannelType.TRADES == channel:
+        elif WebsocketChannelType.EXECUTION == channel:
             params.append(f"spot@public.aggre.deals.v3.api.pb@10ms@{exchange_symbol}")
 
         if self.logger:
@@ -138,7 +138,7 @@ class MexcSpotWebsocketPublic(BaseWebsocketPublic):
                     # trade_id=str(deal_item.time)  # Use timestamp as trade ID
                 )
 
-                await self._exec_bound_handler(PublicWebsocketChannelType.TRADES, trade)
+                await self._exec_bound_handler(PublicWebsocketChannelType.TRADE, trade)
 
         elif wrapper.HasField('publicAggreDepths'):
             depth_data = wrapper.publicAggreDepths

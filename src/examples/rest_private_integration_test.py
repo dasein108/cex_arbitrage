@@ -32,7 +32,7 @@ from exchanges.structs.types import AssetName
 from exchanges.structs.enums import TimeInForce
 from exchanges.structs import OrderType, Side
 from config.config_manager import HftConfig
-from exchanges.factory import create_rest_client
+from exchanges.exchange_factory import create_rest_client
 from examples.integration_test_framework import (
     IntegrationTestRunner, TestCategory, TestStatus, EXIT_CODE_SUCCESS, EXIT_CODE_FAILED_TESTS, EXIT_CODE_ERROR,
     EXIT_CODE_CONFIG_ERROR

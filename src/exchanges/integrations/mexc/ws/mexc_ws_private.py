@@ -28,7 +28,7 @@ import asyncio
 from exchanges.structs import Order, AssetBalance, Trade, Side, OrderType, OrderStatus
 from exchanges.integrations.mexc.rest.mexc_rest_spot_private import MexcPrivateSpotRest
 from config.structs import ExchangeConfig
-from exchanges.interfaces.ws import BaseWebsocketPrivate
+from exchanges.interfaces.ws import PrivateBaseWebsocket
 from infrastructure.exceptions.system import InitializationError
 from infrastructure.networking.websocket.handlers import PrivateWebsocketHandlers
 # ExchangeMapperFactory dependency removed - using direct utility functions
@@ -55,7 +55,7 @@ _PRIVATE_CHANNEL_MAPPING = {
 }
 
 
-class MexcSpotWebsocket(BaseWebsocketPrivate):
+class MexcPrivateSpotWebsocket(PrivateBaseWebsocket):
     """MEXC private WebSocket client using dependency injection pattern."""
 
     def _prepare_subscription_message(self, action: SubscriptionAction, channel: WebsocketChannelType,
@@ -278,7 +278,7 @@ class MexcSpotWebsocket(BaseWebsocketPrivate):
                         trade_id=str(getattr(deal_data, 'time', get_current_timestamp()))  # Use timestamp as trade ID
                     )
 
-                    await self._exec_bound_handler(PrivateWebsocketChannelType.TRADE, trade)
+                    await self._exec_bound_handler(PrivateWebsocketChannelType.EXECUTION, trade)
 
             else:
                 # Unknown protobuf message type

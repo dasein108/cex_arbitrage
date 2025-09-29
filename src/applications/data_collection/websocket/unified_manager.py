@@ -10,7 +10,7 @@ from typing import Dict, List, Optional, Any
 from dataclasses import dataclass
 
 from exchanges.structs import Symbol, BookTicker, Trade, ExchangeEnum
-from exchanges.factory import create_websocket_client, PublicWebsocketHandlers
+from exchanges.exchange_factory import create_websocket_client, PublicWebsocketHandlers
 from config.config_manager import get_exchange_config
 from infrastructure.logging import get_logger, LoggingTimer
 from applications.data_collection.consts import WEBSOCKET_CHANNELS

@@ -20,13 +20,13 @@ class ConnectionState(Enum):
 class PublicWebsocketChannelType(IntEnum):
     """Channel type classification."""
     ORDERBOOK = 1
-    TRADES = 2
+    TRADE = 2
     BOOK_TICKER = 3
     TICKER = 4
 
 class PrivateWebsocketChannelType(IntEnum):
     """Channel type classification."""
-    TRADE = 5
+    EXECUTION = 5
     BALANCE = 6  # Fixed duplicate value
     ORDER = 7
     POSITION = 8
@@ -39,11 +39,11 @@ class WebsocketChannelType(IntEnum):
     """Unified channel type classification."""
     # Public channels
     ORDERBOOK = PublicWebsocketChannelType.ORDERBOOK.value
-    TRADES = PublicWebsocketChannelType.TRADES.value
+    EXECUTION = PublicWebsocketChannelType.TRADE.value
     BOOK_TICKER = PublicWebsocketChannelType.BOOK_TICKER.value
     TICKER = PublicWebsocketChannelType.TICKER.value
     # Private channels
-    TRADE = PrivateWebsocketChannelType.TRADE.value
+    TRADE = PrivateWebsocketChannelType.EXECUTION.value
     BALANCE = PrivateWebsocketChannelType.BALANCE.value
     ORDER = PrivateWebsocketChannelType.ORDER.value
     POSITION = PrivateWebsocketChannelType.POSITION.value
@@ -54,11 +54,11 @@ class MessageType(IntEnum):
     """Message type classification for fast routing."""
     # Copy channel values
     ORDERBOOK = PublicWebsocketChannelType.ORDERBOOK.value
-    TRADES = PublicWebsocketChannelType.TRADES.value
+    TRADES = PublicWebsocketChannelType.TRADE.value
     BOOK_TICKER = PublicWebsocketChannelType.BOOK_TICKER.value
     TICKER = PublicWebsocketChannelType.TICKER.value
     # Additional message types
-    TRADE = PrivateWebsocketChannelType.TRADE.value
+    TRADE = PrivateWebsocketChannelType.EXECUTION.value
     BALANCE = PrivateWebsocketChannelType.BALANCE.value
     ORDER = PrivateWebsocketChannelType.ORDER.value
     POSITION = PrivateWebsocketChannelType.POSITION.value

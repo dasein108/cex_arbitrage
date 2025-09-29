@@ -7,36 +7,12 @@ composition for exchange-agnostic trading implementations.
 
 from infrastructure.networking.websocket.ws_manager import WebSocketManager
 # Factory pattern removed - using direct instantiation
-from infrastructure.networking.websocket.strategies.subscription import SubscriptionStrategy
-from infrastructure.networking.websocket.strategies.connection import ConnectionStrategy
-from infrastructure.networking.websocket.strategies import MessageParser
-from infrastructure.networking.websocket.structs import (
-    MessageType, SubscriptionAction, ConnectionContext, 
-    SubscriptionContext, ParsedMessage, WebSocketManagerConfig,
-    PerformanceMetrics, ConnectionState
-)
-from infrastructure.networking.websocket.handlers import PublicWebsocketHandlers, PrivateWebsocketHandlers
 
 from .ws_base import BaseWebsocketInterface
-from .ws_base_public import BaseWebsocketPublic
-from .ws_base_private import BaseWebsocketPrivate
+from .ws_base_public import PublicBaseWebsocket
+from .ws_base_private import PrivateBaseWebsocket
 __all__ = [
     'WebSocketManager',
-    'BaseWebsocketPublic',
-    'BaseWebsocketPrivate',
-# Factory removed
-    'MessageType',
-    'SubscriptionAction',
-    'ConnectionContext',
-    'ConnectionStrategy',
-    'SubscriptionStrategy',
-    'SubscriptionContext', 
-    'ParsedMessage',
-    'WebSocketManagerConfig',
-    'PerformanceMetrics',
-    'BaseWebsocketInterface',
-    'MessageParser',
-    'ConnectionState',
-    'PublicWebsocketHandlers',
-    'PrivateWebsocketHandlers',
+    'PublicBaseWebsocket',
+    'PrivateBaseWebsocket',
 ]

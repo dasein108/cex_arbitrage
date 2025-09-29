@@ -32,7 +32,7 @@ sys.path.insert(0, str(project_root))
 
 from exchanges.structs.types import AssetName
 from exchanges.structs.common import AssetInfo
-from exchanges.factory.exchange_factory import create_exchange_component
+from exchanges.exchange_factory import get_composite_implementation
 from exchanges.structs.enums import ExchangeEnum
 from config.config_manager import HftConfig
 
@@ -75,10 +75,8 @@ class AssetStatusChecker:
             exchange_enum = self.exchange_enums[exchange_key]
 
             # Create private composite exchange using factory
-            self.exchange_instances[exchange_key] = create_exchange_component(
-                exchange=exchange_enum,
-                config=exchange_config,
-                component_type='composite',
+            self.exchange_instances[exchange_key] = get_composite_implementation(
+                exchange_config=exchange_config,
                 is_private=True
             )
 

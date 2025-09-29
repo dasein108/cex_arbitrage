@@ -6,11 +6,10 @@ handling connection management, initialization, and state tracking.
 """
 
 from abc import ABC, abstractmethod
-from typing import Optional, Union, Generic, TypeVar
+from typing import Optional, Generic
 
 from exchanges.structs.common import SymbolsInfo
 from config.structs import ExchangeConfig
-from infrastructure.networking.websocket.handlers import PrivateWebsocketHandlers,PublicWebsocketHandlers
 from infrastructure.networking.websocket.structs import ConnectionState
 from .types import RestClientType, WebSocketClientType
 
@@ -170,16 +169,6 @@ class BaseCompositeExchange(Generic[RestClientType, WebSocketClientType], ABC):
     def has_websocket_client(self) -> bool:
         """Check if WebSocket client is available."""
         return self._ws is not None
-
-    @abstractmethod
-    def _create_inner_websocket_handlers(self) -> Union[PrivateWebsocketHandlers, PublicWebsocketHandlers]:
-        """
-        Get WebSocket event handlers for this exchange.
-
-        Returns:
-            Instance of PrivateWebsocketHandlers or PublicWebsocketHandlers
-        """
-        pass
 
     async def _handle_connection_state(self, state: ConnectionState) -> None:
         """

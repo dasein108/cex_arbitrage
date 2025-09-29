@@ -131,7 +131,7 @@ async def _handle_parsed_message(self, message: ParsedMessage) -> None:
             )
             await self.handlers.handle_orderbook_diff(orderbook_update)
 
-        elif message.message_type == MessageType.TRADE:
+        elif message.message_type == MessageType.EXECUTION:
             # Handle single or multiple trades
             if isinstance(message.data, list):
                 for trade in message.data:

@@ -15,7 +15,7 @@ from exchanges.structs.common import (
 from exchanges.structs.types import AssetName
 
 if TYPE_CHECKING:
-    from exchanges.interfaces.rest.spot.rest_spot_private import PrivateSpotRest
+    from exchanges.interfaces.rest import PrivateSpotRest
     from infrastructure.logging import HFTLoggerInterface
 
 

@@ -10,7 +10,7 @@ from typing import Dict, List, Optional, Any
 
 from config.config_manager import get_data_collector_config
 from exchanges.structs import Symbol, BookTicker, Trade, ExchangeEnum
-from exchanges.factory import PublicWebsocketHandlers
+from exchanges.exchange_factory import PublicWebsocketHandlers
 from infrastructure.logging import get_logger
 
 # Import our decomposed components

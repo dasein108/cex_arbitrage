@@ -11,11 +11,11 @@ from typing import Dict, List, Optional, Any
 from decimal import Decimal
 
 from exchanges.structs.common import Symbol
-from exchanges.interfaces.composite.spot.base_public_spot_composite import CompositePublicSpotExchange
+from exchanges.interfaces.composite.base_public_composite import BasePublicComposite
 from infrastructure.logging import HFTLoggerInterface
 
 
-class CompositePublicFuturesExchange(CompositePublicSpotExchange):
+class CompositePublicFuturesExchange(BasePublicComposite):
     """
     Base interface for public futures exchange operations.
     
@@ -24,10 +24,10 @@ class CompositePublicFuturesExchange(CompositePublicSpotExchange):
     public futures market data.
     """
 
-    def __init__(self, config, rest_client=None, websocket_client=None, logger: Optional[HFTLoggerInterface] = None, handlers=None):
+    def __init__(self, config, rest_client=None, websocket_client=None, logger: Optional[HFTLoggerInterface] = None):
         """
         Initialize public futures exchange interface.
-        
+
         Args:
             config: Exchange configuration
             rest_client: Injected REST client for dependency injection
@@ -35,8 +35,8 @@ class CompositePublicFuturesExchange(CompositePublicSpotExchange):
             logger: Optional injected HFT logger (auto-created if not provided)
             handlers: Optional WebSocket handlers for custom event handling
         """
-        super().__init__(config, rest_client=rest_client, websocket_client=websocket_client, logger=logger, handlers=handlers)
-        
+        super().__init__(config, rest_client=rest_client, websocket_client=websocket_client, logger=logger)
+
         # Override tag to indicate futures operations
         self._tag = f'{config.name}_public_futures'
 

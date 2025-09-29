@@ -64,30 +64,31 @@ def __init__(
 ## Message Routing Implementation
 
 ### Core Message Handler
+
 ```python
 async def _handle_parsed_message(self, parsed_message) -> None:
     """Route private messages to appropriate handlers"""
     try:
         message_type = parsed_message.message_type
-        
+
         if message_type == MessageType.BALANCE:
             await self._handle_balance_message(parsed_message)
-            
+
         elif message_type == MessageType.ORDER:
             await self._handle_order_message(parsed_message)
-            
-        elif message_type == MessageType.TRADE:
+
+        elif message_type == MessageType.EXECUTION:
             await self._handle_trade_message(parsed_message)
-            
+
         elif message_type == MessageType.HEARTBEAT:
             self.logger.debug("Received private heartbeat")
-            
+
         elif message_type == MessageType.SUBSCRIPTION_CONFIRM:
             self.logger.info(f"Private subscription confirmed: {parsed_message.channel}")
-            
+
         elif message_type == MessageType.ERROR:
             self.logger.error(f"Private WebSocket error: {parsed_message.raw_data}")
-            
+
     except Exception as e:
         self.logger.error(f"Error handling private message: {e}")
 ```

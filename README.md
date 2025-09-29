@@ -225,14 +225,35 @@ class Order(msgspec.Struct):
 ### Installation
 
 ```bash
-# Install core dependencies
+# Install all dependencies
+make install
+
+# Or install manually:
 pip install -r requirements.txt
+```
 
-# Or install manually with core performance libraries:
-pip install uvloop msgspec aiohttp anyio
+### Development Tools
 
-# Development dependencies
-pip install pytest pytest-asyncio black ruff mypy
+This project includes automated code formatting and quality tools:
+
+```bash
+# Quick help
+make help
+
+# Format all code (black + isort + autoflake)
+make format
+
+# Remove unused imports only
+make clean
+
+# Run linting (ruff + mypy)
+make lint
+
+# Run all quality checks
+make check-all
+
+# Quick format (just black + isort)
+make quick-format
 ```
 
 ### Running the System
@@ -244,9 +265,10 @@ python PRD/arbitrage_engine_architecture_python_skeleton.py
 # Run tests
 pytest tests/
 
-# Code formatting
-black src/
-ruff check src/
+# Manual formatting (if not using Makefile)
+black src/ tests/ examples/ --line-length 120
+isort src/ tests/ examples/
+autoflake --in-place --remove-all-unused-imports --remove-unused-variables --recursive src/
 ```
 
 ## Testing Framework
