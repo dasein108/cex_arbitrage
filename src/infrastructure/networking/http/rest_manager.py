@@ -106,12 +106,13 @@ class RestManager:
             
             # Create semaphore for concurrency control
             self._semaphore = asyncio.Semaphore(context.max_concurrent)
-    
+
     def _parse_response(self, response_text: str) -> Any:
         """Ultra-high-performance JSON parsing using msgspec."""
         if not response_text:
             return None
-        
+
+        # TODO: move parsing out of rest client to able pare into strict structs
         try:
             return msgspec.json.decode(response_text)
         except Exception:
