@@ -92,7 +92,7 @@ class BasePublicComposite(BaseCompositeExchange[PublicRestType, PublicWebsocketT
         websocket_client.bind(PublicWebsocketChannelType.BOOK_TICKER, self._handle_book_ticker)
         websocket_client.bind(PublicWebsocketChannelType.ORDERBOOK, self._handle_orderbook)
         websocket_client.bind(PublicWebsocketChannelType.TICKER, self._handle_ticker)
-        websocket_client.bind(PublicWebsocketChannelType.TRADE, self._handle_trade)
+        websocket_client.bind(PublicWebsocketChannelType.PUB_TRADE, self._handle_trade)
 
         self._orderbooks: Dict[Symbol, OrderBook] = {}
         self._tickers: Dict[Symbol, Ticker] = {}
@@ -445,7 +445,7 @@ class BasePublicComposite(BaseCompositeExchange[PublicRestType, PublicWebsocketT
             # Trade events are typically forwarded to arbitrage layer
             self._track_operation("trade_update")
             self.logger.debug(f"Trade event processed", symbol=trade.symbol, exchange=self._exchange_name)
-            await self._exec_bound_handler(PublicWebsocketChannelType.TRADE, trade)
+            await self._exec_bound_handler(PublicWebsocketChannelType.PUB_TRADE, trade)
 
         except Exception as e:
             self.logger.error("Error handling direct trade", error=str(e))

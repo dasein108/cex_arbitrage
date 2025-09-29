@@ -172,7 +172,7 @@ def get_spot_channel_name(channel_type) -> str:
     _SPOT_PUBLIC_CHANNEL_MAPPING = {
         PublicWebsocketChannelType.BOOK_TICKER: "spot.book_ticker",
         PublicWebsocketChannelType.ORDERBOOK: "spot.order_book",
-        PublicWebsocketChannelType.TRADE: "spot.trades"
+        PublicWebsocketChannelType.PUB_TRADE: "spot.trades"
     }
     return _SPOT_PUBLIC_CHANNEL_MAPPING.get(channel_type, "")
 
@@ -184,7 +184,7 @@ def get_futures_channel_name(channel_type) -> str:
     _FUTURES_PUBLIC_CHANNEL_MAPPING = {
         PublicWebsocketChannelType.BOOK_TICKER: "futures.book_ticker",
         PublicWebsocketChannelType.ORDERBOOK: "futures.order_book", 
-        PublicWebsocketChannelType.TRADE: "futures.trades"
+        PublicWebsocketChannelType.PUB_TRADE: "futures.trades"
     }
     return _FUTURES_PUBLIC_CHANNEL_MAPPING.get(channel_type, "")
 

@@ -8,6 +8,7 @@ from infrastructure.networking.websocket import WebSocketManager
 from infrastructure.logging import get_exchange_logger, LoggingTimer, HFTLoggerInterface
 from websockets.client import WebSocketClientProtocol
 from websockets.protocol import State as WsState
+from infrastructure.networking.websocket.structs import ConnectionState
 
 
 class BaseWebsocketInterface(ABC):
@@ -35,8 +36,7 @@ class BaseWebsocketInterface(ABC):
             self,
             config: ExchangeConfig,
             is_private: bool = False,
-            logger: HFTLoggerInterface = None,
-            on_connection_handler: Optional[Callable[[Any], Awaitable[None]]] = None,
+            logger: HFTLoggerInterface = None
     ):
         self.config = config
         self.exchange_name = config.name
@@ -44,7 +44,6 @@ class BaseWebsocketInterface(ABC):
         self._websocket: Optional[WebSocketClientProtocol] = None
 
         self.is_private = is_private
-        self.on_connection_handler = on_connection_handler
 
         # Tag for logging consistency
         tag = 'private' if is_private else 'public'
@@ -72,10 +71,31 @@ class BaseWebsocketInterface(ABC):
         """Default message handler - should be overridden by subclasses."""
         pass
 
-    async def _connection_handler(self, raw_message: Any) -> None:
-        """Default message handler - should be overridden by subclasses."""
+    @abstractmethod
+    async def _resubscribe_all(self) -> None:
+        pass
 
-        await self.on_connection_handler(raw_message) if self.on_connection_handler else None
+    async def _connection_handler(self, state: ConnectionState) -> None:
+        if state == ConnectionState.CONNECTED:
+            self.logger.info("WebSocket connected")
+            # Resubscribe to all channels on reconnect
+            await self._resubscribe_all()
+            self.logger.info("Resubscribed to all channels after reconnect")
+        elif state == ConnectionState.DISCONNECTED:
+            self.logger.warning("WebSocket disconnected")
+        elif state == ConnectionState.RECONNECTING:
+            self.logger.info("WebSocket reconnecting...")
+        elif state == ConnectionState.ERROR:
+            self.logger.error("WebSocket connection failed")
+
+    async def _send_message_if_connected(self, message: Any) -> None:
+        """
+        Send message if WebSocket is connected.
+        Otherwise, just ignore, all subscriptions will be resent on reconnect.
+        """
+        if self.is_connected():
+            await self._ws_manager.send_message(message)
+
 
     async def initialize(self) -> None:
         """Initialize WebSocket connection using mixin composition."""

@@ -164,7 +164,7 @@ def get_spot_channel_name(channel_type) -> str:
     _PUBLIC_CHANNEL_MAPPING = {
         PublicWebsocketChannelType.BOOK_TICKER: "spot@public.aggre.bookTicker.v3.api.pb",
         PublicWebsocketChannelType.ORDERBOOK: "spot@public.increase.depth.v3.api",
-        PublicWebsocketChannelType.TRADE: "spot@public.aggre.deals.v3.api.pb"
+        PublicWebsocketChannelType.PUB_TRADE: "spot@public.aggre.deals.v3.api.pb"
     }
     return _PUBLIC_CHANNEL_MAPPING.get(channel_type, "")
 

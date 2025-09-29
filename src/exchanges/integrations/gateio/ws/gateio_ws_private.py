@@ -50,7 +50,7 @@ from exchanges.integrations.gateio.ws.gateio_ws_common import GateioBaseWebsocke
 # Private channel mapping for Gate.io
 _PRIVATE_CHANNEL_MAPPING = {
     WebsocketChannelType.ORDER: "spot.orders",
-    WebsocketChannelType.TRADE: "spot.usertrades",
+    WebsocketChannelType.PUB_TRADE: "spot.usertrades",
     WebsocketChannelType.BALANCE: "spot.balances",
     WebsocketChannelType.HEARTBEAT: "spot.ping",
 }
@@ -76,7 +76,7 @@ class GateioPrivateSpotWebsocket(GateioBaseWebsocket, PrivateBaseWebsocket):
         }
 
         # Add payload for channels that require it
-        if channel in [WebsocketChannelType.ORDER, WebsocketChannelType.TRADE]:
+        if channel in [WebsocketChannelType.ORDER, WebsocketChannelType.PUB_TRADE]:
             message["payload"] = ["!all"]  # Subscribe to all updates
 
         self.logger.debug(f"Created Gate.io private {event} message for channel: {channel_name}",

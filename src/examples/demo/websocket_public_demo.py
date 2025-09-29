@@ -24,6 +24,7 @@ from common.orderbook_diff_processor import ParsedOrderbookUpdate
 # HFT Logger Integration
 from infrastructure.logging import get_logger
 from exchanges.exchange_factory import create_websocket_client, create_public_handlers
+from infrastructure.networking.websocket.structs import WebsocketChannelType
 
 # Set up HFT logging
 logger = get_logger('websocket_public_demo')
@@ -49,9 +50,10 @@ class PublicWebSocketClient:
             is_private=False,
             config=config)
 
-        self.websocket.orderbook_handler = self._handle_orderbook_update
-        self.websocket.trades_handler = self._handle_trades_update
-        self.websocket.book_ticker_handler = self._handle_book_ticker_update
+
+        self.websocket.bind(WebsocketChannelType.ORDERBOOK, self._handle_orderbook_update)
+        self.websocket.bind(WebsocketChannelType.PUB_TRADE, self._handle_trades_update)
+        self.websocket.bind(WebsocketChannelType.BOOK_TICKER, self._handle_book_ticker_update)
 
         logger.info("Public WebSocket client initialized",
                     exchange=self.exchange_name,
@@ -121,9 +123,12 @@ class OrderBookManager:
     async def handle_orderbook_update(self, orderbook: OrderBook):
         """Store and process orderbook updates."""
         # Store the orderbook
-        symbol = OrderBook.symbol
+        symbol = orderbook.symbol
         self.orderbooks[symbol] = orderbook
 
+        logger.info(f'Orderbook update received {symbol} {orderbook}')
+        return
+        # TODO: broken,  fix next code
         # Track update counts
         if symbol not in self.update_counts:
             self.update_counts[symbol] = 0

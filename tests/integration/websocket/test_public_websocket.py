@@ -214,7 +214,7 @@ class WebSocketPublicIntegrationTest:
             from infrastructure.networking.websocket.structs import PublicWebsocketChannelType
             channels = [
                 PublicWebsocketChannelType.ORDERBOOK,
-                PublicWebsocketChannelType.TRADE
+                PublicWebsocketChannelType.PUB_TRADE
             ]
             
             return {
@@ -242,7 +242,7 @@ class WebSocketPublicIntegrationTest:
             from infrastructure.networking.websocket.structs import PublicWebsocketChannelType
             channels = [
                 PublicWebsocketChannelType.ORDERBOOK,
-                PublicWebsocketChannelType.TRADE
+                PublicWebsocketChannelType.PUB_TRADE
             ]
             
             await self.websocket_client.initialize(symbols, channels)
@@ -283,7 +283,7 @@ class WebSocketPublicIntegrationTest:
             from infrastructure.networking.websocket.structs import PublicWebsocketChannelType
             channels = [
                 PublicWebsocketChannelType.ORDERBOOK,
-                PublicWebsocketChannelType.TRADE
+                PublicWebsocketChannelType.PUB_TRADE
             ]
             
             await self.websocket_client.initialize(symbols, channels)
@@ -336,7 +336,7 @@ class WebSocketPublicIntegrationTest:
             from infrastructure.networking.websocket.structs import PublicWebsocketChannelType
             channels = [
                 PublicWebsocketChannelType.ORDERBOOK,
-                PublicWebsocketChannelType.TRADE
+                PublicWebsocketChannelType.PUB_TRADE
             ]
             
             await self.websocket_client.initialize(symbols, channels)

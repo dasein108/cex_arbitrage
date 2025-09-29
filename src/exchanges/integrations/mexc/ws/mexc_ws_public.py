@@ -25,7 +25,6 @@ from typing import Dict, Any
 
 from websockets import connect
 
-from exchanges.integrations.gateio.services.spot_symbol_mapper import GateioSpotSymbol
 from exchanges.interfaces.ws import PublicBaseWebsocket
 from exchanges.integrations.mexc.structs.protobuf.PushDataV3ApiWrapper_pb2 import PushDataV3ApiWrapper
 from exchanges.integrations.mexc.structs.protobuf.PublicLimitDepthsV3Api_pb2 import PublicLimitDepthsV3Api
@@ -81,7 +80,7 @@ class MexcPublicSpotWebsocketBaseWebsocket(PublicBaseWebsocket):
         method = from_subscription_action(action)
 
 
-        exchange_symbol = GateioSpotSymbol.to_pair(symbol)
+        exchange_symbol = MexcSymbol.to_pair(symbol)
         params = []  # Reset params for each symbol
         if WebsocketChannelType.BOOK_TICKER == channel:
             params.append(f"spot@public.aggre.bookTicker.v3.api.pb@10ms@{exchange_symbol}")
@@ -89,7 +88,8 @@ class MexcPublicSpotWebsocketBaseWebsocket(PublicBaseWebsocket):
         elif WebsocketChannelType.ORDERBOOK == channel:
             params.append(f"spot@public.increase.depth.v3.api@10ms@{exchange_symbol}")
 
-        elif WebsocketChannelType.EXECUTION == channel:
+        elif WebsocketChannelType.PUB_TRADE == channel:
+            # spot@public.aggre.deals.v3.api.pb@(100ms|10ms)@<symbol>
             params.append(f"spot@public.aggre.deals.v3.api.pb@10ms@{exchange_symbol}")
 
         if self.logger:
@@ -138,7 +138,7 @@ class MexcPublicSpotWebsocketBaseWebsocket(PublicBaseWebsocket):
                     # trade_id=str(deal_item.time)  # Use timestamp as trade ID
                 )
 
-                await self._exec_bound_handler(PublicWebsocketChannelType.TRADE, trade)
+                await self._exec_bound_handler(PublicWebsocketChannelType.PUB_TRADE, trade)
 
         elif wrapper.HasField('publicAggreDepths'):
             depth_data = wrapper.publicAggreDepths
@@ -192,5 +192,5 @@ class MexcPublicSpotWebsocketBaseWebsocket(PublicBaseWebsocket):
                     timestamp=get_current_timestamp(),  # MEXC protobuf doesn't include timestamp
                     update_id=None  # MEXC protobuf doesn't include update_id
                 )
-                await self._exec_bound_handler(PublicWebsocketChannelType.ORDERBOOK, book_ticker)
+                await self._exec_bound_handler(PublicWebsocketChannelType.BOOK_TICKER, book_ticker)
 

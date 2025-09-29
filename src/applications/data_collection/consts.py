@@ -1,3 +1,3 @@
 from infrastructure.networking.websocket.structs import PublicWebsocketChannelType
 
-WEBSOCKET_CHANNELS=[PublicWebsocketChannelType.BOOK_TICKER, PublicWebsocketChannelType.TRADE]
+WEBSOCKET_CHANNELS=[PublicWebsocketChannelType.BOOK_TICKER, PublicWebsocketChannelType.PUB_TRADE]

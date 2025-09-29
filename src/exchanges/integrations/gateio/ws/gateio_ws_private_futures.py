@@ -51,7 +51,7 @@ from exchanges.integrations.gateio.ws.gateio_ws_common import GateioBaseWebsocke
 # Private futures channel mapping for Gate.io
 _PRIVATE_FUTURES_CHANNEL_MAPPING = {
     WebsocketChannelType.ORDER: "futures.orders",
-    WebsocketChannelType.TRADE: "futures.usertrades",
+    WebsocketChannelType.PUB_TRADE: "futures.usertrades",
     WebsocketChannelType.BALANCE: "futures.balances",
     WebsocketChannelType.POSITION: "futures.positions",
     WebsocketChannelType.HEARTBEAT: "futures.ping",
@@ -78,7 +78,7 @@ class GateioPrivateFuturesWebsocket(GateioBaseWebsocket, PrivateBaseWebsocket):
         }
         
         # Add payload for channels that require it
-        if channel in [WebsocketChannelType.ORDER, WebsocketChannelType.TRADE, WebsocketChannelType.POSITION]:
+        if channel in [WebsocketChannelType.ORDER, WebsocketChannelType.PUB_TRADE, WebsocketChannelType.POSITION]:
             message["payload"] = ["!all"]  # Subscribe to all updates
             
         self.logger.debug(f"Created Gate.io private futures {event} message for channel: {channel_name}",

@@ -22,6 +22,8 @@ from config.config_manager import HftConfig
 from exchanges.exchange_factory import create_websocket_client, create_private_handlers
 from exchanges.utils.exchange_utils import get_exchange_enum
 from exchanges.consts import DEFAULT_PRIVATE_WEBSOCKET_CHANNELS
+from infrastructure.networking.websocket.structs import WebsocketChannelType
+
 # Set up logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -53,9 +55,9 @@ class PrivateWebSocketClient:
             config=config
         )
 
-        self.websocket.order_handler=self._handle_order_update
-        self.websocket.balance_handler=self._handle_balance_update
-        self.websocket.trade_handler=self._handle_trade_update
+        self.websocket.bind(WebsocketChannelType.ORDER, self._handle_order_update)
+        self.websocket.bind(WebsocketChannelType.BALANCE, self._handle_balance_update)
+        self.websocket.bind(WebsocketChannelType.EXECUTION, self._handle_trade_update)
 
 
 

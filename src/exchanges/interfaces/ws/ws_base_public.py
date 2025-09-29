@@ -41,6 +41,13 @@ class PublicBaseWebsocket(BaseWebsocketInterface, WebsocketSubscriptionPublicInt
         # State management for symbols (moved from WebSocket manager)
         self.subscriptions: Dict[Symbol, List[WebsocketChannelType]] = {}
 
+    async def _resubscribe_all(self) -> None:
+        for symbol, channels in self.subscriptions.items():
+            for channel in channels:
+                ws_subscriptions = self._prepare_subscription_message(SubscriptionAction.SUBSCRIBE, symbol, channel)
+                await self._ws_manager.send_message(ws_subscriptions)
+        self.logger.info("Resubscribed to all channels")
+
     async def subscribe(self, symbol: Union[List[Symbol], Symbol],
                         channel: Union[List[WebsocketChannelType], WebsocketChannelType],
                         **kwargs) -> None:
@@ -65,7 +72,7 @@ class PublicBaseWebsocket(BaseWebsocketInterface, WebsocketSubscriptionPublicInt
                     ws_subscriptions = self._prepare_subscription_message(SubscriptionAction.SUBSCRIBE, s, c)
 
             if ws_subscriptions:
-                await self._ws_manager.send_message(ws_subscriptions)
+                await self._send_message_if_connected(ws_subscriptions)
 
             if s not in self.subscriptions:
                 self.subscriptions[s] = []
@@ -91,7 +98,7 @@ class PublicBaseWebsocket(BaseWebsocketInterface, WebsocketSubscriptionPublicInt
             for c in channels:
                 ws_unsubscriptions = self._prepare_subscription_message(SubscriptionAction.UNSUBSCRIBE, s, c)
 
-                await self._ws_manager.send_message(ws_unsubscriptions)
+                await self._send_message_if_connected(ws_unsubscriptions)
 
             for ch in channels:
                 if ch in self.subscriptions[s]:

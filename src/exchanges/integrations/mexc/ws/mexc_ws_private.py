@@ -50,8 +50,8 @@ import msgspec
 
 _PRIVATE_CHANNEL_MAPPING = {
     WebsocketChannelType.ORDER: "spot@private.orders.v3.api.pb",
-    WebsocketChannelType.TRADE: "spot@private.deals.v3.api.pb",
-    WebsocketChannelType.BALANCE: "spot@private.account.v3.pb"
+    WebsocketChannelType.PUB_TRADE: "spot@private.deals.v3.api.pb",
+    WebsocketChannelType.BALANCE: "spot@private.account.v3.api.pb"
 }
 
 

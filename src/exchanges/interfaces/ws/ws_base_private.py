@@ -30,14 +30,21 @@ class PrivateBaseWebsocket(BaseWebsocketInterface, WebsocketSubscriptionPrivateI
                                             channel: WebsocketChannelType, **kwargs) -> Dict[str, Any]:
         pass
 
+    async def _resubscribe_all(self) -> None:
+        for ch in self.subscriptions:
+            ws_subscriptions = self._prepare_subscription_message(SubscriptionAction.SUBSCRIBE, ch)
+            await self._ws_manager.send_message(ws_subscriptions)
+        self.logger.info("Resubscribed to all channels")
+
     async def subscribe(self, channel: Union[List[WebsocketChannelType],WebsocketChannelType],
                   **kwargs) -> None:
         channels = channel if isinstance(channel, list) else [channel]
         for ch in channels:
             ws_subscriptions = self._prepare_subscription_message(SubscriptionAction.SUBSCRIBE, ch, **kwargs)
 
-            await self._ws_manager.send_message(ws_subscriptions)
             self.subscriptions.append(ch)
+
+            await self._send_message_if_connected(ws_subscriptions)
 
     async def unsubscribe(self,  channel: Union[List[WebsocketChannelType],WebsocketChannelType],
                     **kwargs) -> None:
@@ -46,7 +53,7 @@ class PrivateBaseWebsocket(BaseWebsocketInterface, WebsocketSubscriptionPrivateI
             if ch in self.subscriptions:
                 ws_unsubscriptions = self._prepare_subscription_message(SubscriptionAction.UNSUBSCRIBE,ch, **kwargs)
 
-                await self._ws_manager.send_message(ws_unsubscriptions)
+                await self._send_message_if_connected(ws_unsubscriptions)
                 self.subscriptions.remove(ch)
             else:
                 self.logger.warning(f"Attempted to unsubscribe from non-subscribed channel: {ch}")

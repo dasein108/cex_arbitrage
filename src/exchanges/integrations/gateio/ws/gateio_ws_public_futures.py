@@ -207,7 +207,7 @@ class GateioPublicFuturesWebsocketBaseWebsocket(GateioBaseWebsocket, PublicBaseW
                     trade_id=str(trade_data.get('id', ''))
                 )
                 
-                await self._exec_bound_handler(PublicWebsocketChannelType.TRADE, trade)
+                await self._exec_bound_handler(PublicWebsocketChannelType.PUB_TRADE, trade)
                 
         except Exception as e:
             self.logger.error(f"Error parsing Gate.io futures trades update: {e}")
