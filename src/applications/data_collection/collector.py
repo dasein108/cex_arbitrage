@@ -136,7 +136,7 @@ class UnifiedWebSocketManager:
                 component_type='composite',
                 is_private=False
             )
-            
+
             # Initialize to load symbol info
             await composite.initialize()
             
@@ -173,10 +173,10 @@ class UnifiedWebSocketManager:
             self._active_symbols[exchange] = set()
             self._connected[exchange] = False
 
-            # Initialize connection and subscribe to valid symbols only
+            # Initialize connection and subscribe to symbols
             with LoggingTimer(self.logger, "websocket_initialization") as timer:
-                await client.initialize(valid_symbols, WEBSOCKET_CHANNELS)
-                self._active_symbols[exchange].update(valid_symbols)
+                await client.initialize(symbols, WEBSOCKET_CHANNELS)
+                self._active_symbols[exchange].update(symbols)
                 self._connected[exchange] = True
 
             self.logger.info("WebSocket initialized successfully",

@@ -743,26 +743,6 @@ class GateioPublicSpotRest(PublicSpotRest):
         self.logger.info(f"Retrieved {len(sorted_klines)} klines in batch for {symbol.base}/{symbol.quote}")
         return sorted_klines
     
-    async def is_tradable(self, symbol: Symbol) -> bool:
-        """
-        Check if a symbol is tradable on Gate.io.
-        
-        Args:
-            symbol: Symbol to check
-            is_futures: Not used for spot trading (always False)
-            
-        Returns:
-            True if symbol is tradable, False otherwise
-        """
-        if not self._symbols_info:
-            await self.get_symbols_info()
-        
-        if symbol not in self._symbols_info:
-            return False
-            
-        symbol_info = self._symbols_info[symbol]
-        return not symbol_info.inactive
-    
     async def close(self) -> None:
         """Close the REST client and clean up resources."""
         try:

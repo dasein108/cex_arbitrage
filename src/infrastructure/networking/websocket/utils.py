@@ -6,6 +6,7 @@ Provides unified interface for WebSocket creation similar to REST transport patt
 
 HFT COMPLIANT: Sub-millisecond strategy creation with pre-validated combinations.
 """
+from collections.abc import Awaitable
 
 from config.structs import ExchangeConfig
 from .ws_manager import WebSocketManager, WebSocketManagerConfig
@@ -17,6 +18,8 @@ from infrastructure.logging import get_strategy_logger
 
 def create_websocket_manager(
     exchange_config: ExchangeConfig,
+    connect_method: Awaitable,
+    auth_method: Awaitable,
     is_private: bool = False,
     message_handler=None,
     connection_handler=None,
@@ -39,6 +42,8 @@ def create_websocket_manager(
 
     Raises:
         ValueError: If private API requested but no credentials available
+        :param auth_method:
+        :param connect_method:
     """
     if is_private and not exchange_config.has_credentials():
         raise ValueError("API key and secret key required for private WebSocket access")
@@ -55,7 +60,7 @@ def create_websocket_manager(
                 MexcPrivateMessageParser
             )
 
-            connection_strategy = MexcPrivateConnectionStrategy(exchange_config)
+            # connection_strategy = MexcPrivateConnectionStrategy(exchange_config)
             subscription_strategy = MexcPrivateSubscriptionStrategy()
             
             parser_logger = get_strategy_logger(f'ws.message_parser.mexc.private', ['mexc', 'private', 'ws', 'message_parser'])
@@ -68,7 +73,7 @@ def create_websocket_manager(
                 MexcPublicMessageParser
             )
 
-            connection_strategy = MexcPublicConnectionStrategy(exchange_config)
+            # connection_strategy = MexcPublicConnectionStrategy(exchange_config)
             subscription_strategy = MexcPublicSubscriptionStrategy()
             
             parser_logger = get_strategy_logger(f'ws.message_parser.mexc.public', ['mexc', 'public', 'ws', 'message_parser'])
@@ -82,7 +87,7 @@ def create_websocket_manager(
                 GateioPrivateMessageParser
             )
 
-            connection_strategy = GateioPrivateConnectionStrategy(exchange_config)
+            # connection_strategy = GateioPrivateConnectionStrategy(exchange_config)
             subscription_strategy = GateioPrivateSubscriptionStrategy()
             
             parser_logger = get_strategy_logger(f'ws.message_parser.gateio.private', ['gateio', 'private', 'ws', 'message_parser'])
@@ -96,7 +101,7 @@ def create_websocket_manager(
             )
 # No mapping imports needed - strategies use direct utilities
             
-            connection_strategy = GateioPublicConnectionStrategy(exchange_config)
+            # connection_strategy = GateioPublicConnectionStrategy(exchange_config)
             subscription_strategy = GateioPublicSubscriptionStrategy()
             
             parser_logger = get_strategy_logger(f'ws.message_parser.gateio.public', ['gateio', 'public', 'ws', 'message_parser'])
@@ -112,7 +117,7 @@ def create_websocket_manager(
                 GateioPrivateFuturesMessageParser
             )
             
-            connection_strategy = GateioPrivateFuturesConnectionStrategy(exchange_config)
+            # connection_strategy = GateioPrivateFuturesConnectionStrategy(exchange_config)
             subscription_strategy = GateioPrivateFuturesSubscriptionStrategy()
             
             parser_logger = get_strategy_logger(f'ws.message_parser.gateio_futures.private', ['gateio_futures', 'private', 'ws', 'message_parser'])
@@ -125,7 +130,7 @@ def create_websocket_manager(
                 GateioPublicFuturesMessageParser
             )
             
-            connection_strategy = GateioPublicFuturesConnectionStrategy(exchange_config)
+            # connection_strategy = GateioPublicFuturesConnectionStrategy(exchange_config)
             subscription_strategy = GateioPublicFuturesSubscriptionStrategy()
             
             parser_logger = get_strategy_logger(f'ws.message_parser.gateio_futures.public', ['gateio_futures', 'public', 'ws', 'message_parser'])
@@ -135,7 +140,7 @@ def create_websocket_manager(
         raise ValueError(f"Exchange {exchange.value} WebSocket strategies not implemented")
     
     strategy_set = WebSocketStrategySet(
-        connection_strategy=connection_strategy,
+        # connection_strategy=connection_strategy,
         subscription_strategy=subscription_strategy,
         message_parser=message_parser
     )
@@ -152,6 +157,8 @@ def create_websocket_manager(
     return WebSocketManager(
         config=exchange_config.websocket,
         strategies=strategy_set,
+        connect_method=connect_method,
+        auth_method=auth_method,
         message_handler=message_handler,
         manager_config=manager_config,
         connection_handler=connection_handler

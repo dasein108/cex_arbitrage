@@ -37,7 +37,7 @@ class PublicSpotWebsocket(BaseWebsocketInterface, ABC):
         logger: HFTLogger,
         connection_handler: Optional[Callable[[ConnectionState], Awaitable[None]]] = None,
     ):
-        super().__init__(config=config, is_private=False)
+        super().__init__(config=config, is_private=False, logger=logger)
         """
         Initialize composite public WebSocket with handler object.
         
@@ -54,18 +54,6 @@ class PublicSpotWebsocket(BaseWebsocketInterface, ABC):
         self.handlers = handlers
         self._state_change_handler = connection_handler
         
-        # Logger
-        self.logger = logger
-        
-        # Create WebSocket manager using dependency injection
-        from infrastructure.networking.websocket.utils import create_websocket_manager
-        
-        self._ws_manager = create_websocket_manager(
-            exchange_config=config,
-            is_private=False,
-            message_handler=self._handle_message,
-            connection_handler=self._connection_handler
-        )
 
         # State management for symbols (moved from WebSocket manager)
         self._active_symbols: Set[Symbol] = set()

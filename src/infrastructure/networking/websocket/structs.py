@@ -30,6 +30,19 @@ class PrivateWebsocketChannelType(IntEnum):
     BALANCE = 6  # Fixed duplicate value
     ORDER = 7
 
+
+class WebsocketChannelType(IntEnum):
+    """Unified channel type classification."""
+    # Public channels
+    ORDERBOOK = PublicWebsocketChannelType.ORDERBOOK.value
+    TRADES = PublicWebsocketChannelType.TRADES.value
+    BOOK_TICKER = PublicWebsocketChannelType.BOOK_TICKER.value
+    TICKER = PublicWebsocketChannelType.TICKER.value
+    # Private channels
+    TRADE = PrivateWebsocketChannelType.TRADE.value
+    BALANCE = PrivateWebsocketChannelType.BALANCE.value
+    ORDER = PrivateWebsocketChannelType.ORDER.value
+
 class MessageType(IntEnum):
     """Message type classification for fast routing."""
     # Copy channel values

@@ -91,19 +91,20 @@ Establish the foundational infrastructure for the new direct message handling ar
 - Update performance metrics collection
 
 **Implementation Approach**:
+
 ```python
 # Pseudo-code for dual-path routing
 async def _process_messages(self):
     while True:
         raw_message, queue_time = await self._message_queue.get()
-        
+
         if self.config.use_direct_handling:
             # New architecture: direct _handle_message()
             await self.websocket_handler._handle_message(raw_message)
         else:
             # Legacy architecture: strategy pattern
             parsed = await self.strategies.message_parser.parse_message(raw_message)
-            await self.message_handler(parsed)
+            await self._raw_message_handler(parsed)
 ```
 
 **Validation Criteria**:

@@ -23,19 +23,6 @@ class MarketDataInterface(ABC):
         pass
 
     @abstractmethod
-    async def is_tradable(self, symbol: Symbol) -> bool:
-        """Check if a symbol is tradable on this exchange
-
-        Args:
-            symbol: Symbol to check
-            is_futures: Whether to check for futures trading
-
-        Returns:
-            True if symbol is tradable, False otherwise
-        """
-        pass
-
-    @abstractmethod
     async def get_orderbook(self, symbol: Symbol, limit: int = 100) -> OrderBook:
         """Get order book for a symbol"""
         pass

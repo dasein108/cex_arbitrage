@@ -90,8 +90,12 @@ class CompositePublicFuturesExchange(CompositePublicSpotExchange):
         Returns:
             True if symbol is tradable for futures, False otherwise
         """
-        if not self._rest:
-            return False
+        if not self._symbols_info:
+            await self._load_symbols_info()
         
-        return await self._rest.is_tradable(symbol)
+        if symbol not in self._symbols_info:
+            return False
+            
+        symbol_info = self._symbols_info[symbol]
+        return not symbol_info.inactive
 

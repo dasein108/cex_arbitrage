@@ -12,11 +12,11 @@ class WebSocketStrategySet:
 
     def __init__(
         self,
-        connection_strategy: ConnectionStrategy,
+        # connection_strategy: ConnectionStrategy,
         subscription_strategy: SubscriptionStrategy,
         message_parser: MessageParser
     ):
-        self.connection_strategy = connection_strategy
+        # self.connection_strategy = connection_strategy
         self.subscription_strategy = subscription_strategy
         self.message_parser = message_parser
         # HFT Optimization: Pre-validate strategy compatibility
@@ -25,7 +25,7 @@ class WebSocketStrategySet:
     def _validate_strategies(self) -> None:
         """Validate strategy compatibility at initialization."""
         if not all([
-            self.connection_strategy,
+            # self.connection_strategy,
             self.subscription_strategy,
             self.message_parser
         ]):

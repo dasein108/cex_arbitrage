@@ -21,7 +21,7 @@ from exchanges.structs.common import Order, AssetBalance, Trade
 from config.config_manager import HftConfig
 from exchanges.factory import create_websocket_client, create_private_handlers
 from exchanges.utils.exchange_utils import get_exchange_enum
-
+from exchanges.consts import DEFAULT_PRIVATE_WEBSOCKET_CHANNELS
 # Set up logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -58,12 +58,15 @@ class PrivateWebSocketClient:
             )
         )
 
+
+
         logger.info(f"{self.exchange_name} private WebSocket client initialized with {type(self.websocket).__name__}")
 
     async def initialize(self) -> None:
         """Initialize WebSocket connection and subscriptions."""
         # For private WebSocket, pass empty list to initialize() - private channels will be subscribed automatically
         await self.websocket.initialize()
+
         logger.info(f"{self.exchange_name} private WebSocket initialized for account and order updates")
 
     async def close(self) -> None:
@@ -73,10 +76,6 @@ class PrivateWebSocketClient:
     def is_connected(self) -> bool:
         """Check if WebSocket is connected."""
         return self.websocket.is_connected()
-
-    def get_performance_metrics(self) -> Dict:
-        """Get HFT performance metrics."""
-        return self.websocket.get_performance_metrics()
 
     async def _handle_order_update(self, order: Order) -> None:
         """Handle order updates from WebSocket."""
@@ -246,14 +245,6 @@ async def main(exchange_name: str):
         logger.info("   (trades, balance changes, order updates, deposits, withdrawals, etc.)")
         await asyncio.sleep(30)
 
-        # Check if we received any data
-        metrics = ws.get_performance_metrics()
-        logger.info("📊 WebSocket Performance Metrics:")
-        logger.info(f"   Connection State: {metrics.get('connection_state', 'Unknown')}")
-        logger.info(f"   Messages Processed: {metrics.get('messages_processed', 0)}")
-        logger.info(f"   Error Count: {metrics.get('error_count', 0)}")
-        logger.info(f"   Connection Uptime: {metrics.get('connection_uptime_seconds', 0)}s")
-
         # Show received data summary
         summary = manager.get_summary()
         logger.info("📈 Data Summary:")
@@ -319,7 +310,7 @@ async def main(exchange_name: str):
 
 
 if __name__ == "__main__":
-    exchange_name = sys.argv[1] if len(sys.argv) > 1 else "gateio_spot"
+    exchange_name = sys.argv[1] if len(sys.argv) > 1 else "mexc_spot"
 
     try:
         asyncio.run(main(exchange_name))

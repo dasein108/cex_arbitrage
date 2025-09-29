@@ -9,7 +9,6 @@ from infrastructure.networking.websocket.structs import MessageType
 from infrastructure.networking.websocket.handlers import PrivateWebsocketHandlers
 from exchanges.interfaces.ws.ws_base import BaseWebsocketInterface
 
-
 class PrivateSpotWebsocket(BaseWebsocketInterface, ABC):
     """Abstract interface for private exchange WebSocket operations (account data)"""
     
@@ -26,7 +25,6 @@ class PrivateSpotWebsocket(BaseWebsocketInterface, ABC):
         super().__init__(
             config=config,
             is_private=True,  # Private API operations
-            message_handler=self._handle_message
         )
 
     async def _handle_message(self, parsed_message) -> None:

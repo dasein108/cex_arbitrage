@@ -1,86 +1,91 @@
-"""
-Gate.io Private WebSocket Implementation
 
-Clean implementation using handler objects for organized message processing.
-Handles authenticated WebSocket streams for account data including:
-- Order updates via JSON
-- Account balance changes via JSON  
-- Trade confirmations via JSON
-
-Features:
-- Handler object pattern for clean organization
-- HFT-optimized message processing
-- Event-driven architecture with structured handlers
-- Clean separation of concerns
-- Gate.io-specific JSON message parsing
-
-Gate.io Private WebSocket Specifications:
-- Endpoint: wss://api.gateio.ws/ws/v4/
-- Authentication: API key signature-based (HMAC-SHA512)
-- Message Format: JSON with channel-based subscriptions
-- Channels: spot.orders, spot.balances, spot.user_trades
-
-Architecture: Handler objects with composite class coordination
-"""
-
-from typing import Dict, Optional, Callable, Awaitable
-
-from exchanges.structs.common import Order, AssetBalance, Trade
-from exchanges.structs.types import AssetName
+from exchanges.interfaces import BaseWebsocketInterface
 from config.structs import ExchangeConfig
-from exchanges.interfaces.ws import PrivateSpotWebsocket
-from infrastructure.networking.websocket.handlers import PrivateWebsocketHandlers
+from websockets import connect
+import time
+import asyncio
+
+from utils import safe_cancel_task
 
 
-class GateioPrivateSpotWebsocket(PrivateSpotWebsocket):
+class GateioBaseWebsocket(BaseWebsocketInterface):
     """Gate.io private WebSocket client using dependency injection pattern."""
+
+    async def _create_websocket(self):
+        await self._stop_heartbeat()
+        websocket = await connect(
+            self.config.websocket_url,
+            # ping_interval=config.ping_interval,
+            # ping_timeout=config.ping_timeout,
+            max_queue=self.config.websocket.max_queue_size,
+            compression=None,  # Disable compression for CPU optimization in HFT
+            max_size=self.config.websocket.max_message_size,
+            write_limit=2 ** 20,  # 1MB write buffer
+        )
+
+        self._heartbeat_task = asyncio.create_task(self._heartbeat_loop())
+        return websocket
+
+    async def _auth(self) -> bool:
+        # Gate.io private WebSocket authentication logic
+        if not self.is_private:
+            return True
+
 
     def __init__(
         self,
         config: ExchangeConfig,
-        handlers: PrivateWebsocketHandlers,
+        *args,
         **kwargs
     ):
-        """
-        Initialize Gate.io private WebSocket with handler objects.
-        
-        Args:
-            config: Exchange configuration
-            handlers: PrivateWebsocketHandlers object containing message handlers
-            **kwargs: Additional arguments passed to base class
-        
-        Base class handles all strategy creation, WebSocket manager setup, and dependency injection.
-        Only Gate.io-specific initialization logic goes here.
-        """
-        # Validate Gate.io-specific requirements
         if not config.websocket:
             raise ValueError("Gate.io exchange configuration missing WebSocket settings")
         
         # Initialize via composite class with handler object
         super().__init__(
             config=config,
-            handlers=handlers,
+            *args,
             **kwargs
         )
-        
+
+        self._heartbeat_task: asyncio.Task | None = None
+
         self.logger.info("Gate.io private WebSocket initialized with handler objects")
 
-    # Gate.io-specific message handling can be added here if needed
-    # Base class handles all common WebSocket operations:
-    # - initialize(), close(), is_connected(), get_performance_metrics()
-    # - Message routing for BALANCE, ORDER, TRADE, HEARTBEAT, etc.
-    # - Default event handlers with dependency injection support
-    
-    # Override default handlers if Gate.io needs specific behavior
-    async def on_order_update(self, order: Order):
-        """Gate.io-specific order update handler."""
-        self.logger.info(f"Gate.io order update: {order.order_id} - {order.status} - {order.filled_quantity}/{order.quantity}")
+    async def _heartbeat_loop(self) -> None:
+        """Strategy-managed heartbeat loop."""
+        try:
+            while True:
+                if not self._ws_manager or not self._ws_manager.is_connected():
+                    self.logger.debug("WebSocket not connected, skipping heartbeat ping")
+                    continue
+                await asyncio.sleep(self.config.websocket.ping_interval)
 
-    async def on_balance_update(self, balances: Dict[AssetName, AssetBalance]):
-        """Gate.io-specific balance update handler."""
-        non_zero_balances = [b for b in balances.values() if b.available > 0 or b.locked > 0]
-        self.logger.info(f"Gate.io balance update: {len(non_zero_balances)} assets with non-zero balances")
+                import msgspec
 
-    async def on_trade_update(self, trade: Trade):
-        """Gate.io-specific trade update handler."""
-        self.logger.info(f"Gate.io trade executed: {trade.side.name} {trade.quantity} at {trade.price} ({'maker' if trade.is_maker else 'taker'})")
+                ping_msg = {
+                    "time": int(time.time()),
+                    "channel": "spot.ping",
+                    "event": "ping"
+                }
+
+                await self._ws_manager.send_message(ping_msg)
+                self.logger.debug("sending ping message", ping_msg=ping_msg)
+        except asyncio.CancelledError:
+            self.logger.debug("Strategy heartbeat loop cancelled")
+        except Exception as e:
+            self.logger.error("Strategy heartbeat loop error",
+                              error_type=type(e).__name__,
+                              error_message=str(e))
+
+            # Track heartbeat loop error metrics
+            self.logger.metric("ws_heartbeat_loop_errors", 1,
+                               tags={"exchange": "ws"})
+
+    async def _stop_heartbeat(self) -> None:
+        if self._heartbeat_task:
+            self._heartbeat_task = safe_cancel_task(self._heartbeat_task)
+
+    async def close(self) -> None:
+        await self._stop_heartbeat()
+        await super().close()

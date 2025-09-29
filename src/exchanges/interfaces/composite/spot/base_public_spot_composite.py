@@ -312,7 +312,7 @@ class CompositePublicSpotExchange(BaseCompositeExchange[PublicRestType, PublicWe
         await super().initialize()
         
         if symbols:
-            self._active_symbols.update(symbols)
+             self._active_symbols.update(symbols)
         
         try:
             init_start = time.perf_counter()
@@ -715,7 +715,11 @@ class CompositePublicSpotExchange(BaseCompositeExchange[PublicRestType, PublicWe
         Returns:
             True if symbol is tradable, False otherwise
         """
-        if not self._rest:
-            return False
+        if not self._symbols_info:
+            await self._load_symbols_info()
         
-        return await self._rest.is_tradable(symbol)
+        if symbol not in self._symbols_info:
+            return False
+            
+        symbol_info = self._symbols_info[symbol]
+        return not symbol_info.inactive
