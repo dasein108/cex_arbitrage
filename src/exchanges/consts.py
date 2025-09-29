@@ -2,7 +2,7 @@ from infrastructure.networking.websocket.structs import PublicWebsocketChannelTy
 
 # Default ws channel configuration
 DEFAULT_PUBLIC_WEBSOCKET_CHANNELS = [PublicWebsocketChannelType.BOOK_TICKER,
-                                      PublicWebsocketChannelType.PUB_TRADE] # PublicWebsocketChannelType.ORDERBOOK,
+                                     PublicWebsocketChannelType.ORDERBOOK, PublicWebsocketChannelType.PUB_TRADE]
 
 DEFAULT_PRIVATE_WEBSOCKET_CHANNELS = [PrivateWebsocketChannelType.EXECUTION, PrivateWebsocketChannelType.ORDER,
                                       PrivateWebsocketChannelType.BALANCE]

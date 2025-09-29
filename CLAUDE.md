@@ -10,13 +10,16 @@ High-level architectural overview for the ultra-high-performance CEX arbitrage e
 
 This is a **high-frequency trading (HFT) arbitrage engine** built for professional cryptocurrency trading across multiple exchanges, featuring a **separated domain architecture** where public and private interfaces are completely isolated with no overlap.
 
-### **Separated Domain Architecture (Current)**
+### **Separated Domain Architecture with Constructor Injection (Current)**
 
-**Complete Domain Separation Achieved**:
+**Complete Domain Separation with Modern Patterns**:
 - **CompositePublicExchange** - ONLY market data operations (orderbooks, trades, tickers, symbols)
 - **CompositePrivateExchange** - ONLY trading operations (orders, balances, positions, leverage)
-- **FullExchangeFactory** - Factory for creating separate public and private exchange instances
-- **No Inheritance** - Private exchanges do NOT inherit from public exchanges
+- **Simplified Exchange Factory** - Direct mapping-based factory with constructor injection
+- **Constructor Injection Pattern** - REST/WebSocket clients injected via constructors
+- **Explicit Cooperative Inheritance** - WebsocketBindHandlerInterface explicitly initialized
+- **Handler Binding Pattern** - WebSocket channels bound to handler methods using `.bind()`
+- **No Complex Inheritance** - Private exchanges do NOT inherit from public exchanges
 - **Minimal Shared Configuration** - Only static config like symbol_info, never real-time data
 - **HFT Safety Compliance** - No caching of real-time trading data across all interfaces
 
@@ -78,59 +81,52 @@ CompositePrivateExchange (trading domain - requires authentication)
 - **Security**: Trading operations completely isolated from market data
 - **HFT Optimized**: Sub-50ms execution targets in both domains
 
-### **Unified Exchange Factory Pattern**
+### **Simplified Exchange Factory with Constructor Injection**
 
-**Single Entry Point for All Exchange Components**:
+**Modern Factory Pattern with Direct Mapping**:
 
 ```python
-from exchanges.factory import create_exchange_component
-from exchanges.structs.common import Symbol
+from exchanges.exchange_factory import (
+    get_rest_implementation, 
+    get_ws_implementation, 
+    get_composite_implementation
+)
+from config.structs import ExchangeConfig
 from exchanges.structs.enums import ExchangeEnum
 
-# Unified factory with explicit component selection
-# REST client for direct API integration
-rest_client = create_exchange_component(
-    exchange=ExchangeEnum.MEXC,
-    config=mexc_config,
-    component_type='rest',
-    is_private=False
-)
+# Direct factory functions with constructor injection
+# Create REST client
+rest_client = get_rest_implementation(mexc_config, is_private=False)
 
-# WebSocket client for real-time streaming  
-ws_client = create_exchange_component(
-    exchange=ExchangeEnum.MEXC,
-    config=mexc_config,
-    component_type='websocket',
-    is_private=False,
-    handlers=public_handlers
-)
+# Create WebSocket client
+ws_client = get_ws_implementation(mexc_config, is_private=False)
 
-# Full composite exchange for trading operations
-trading_exchange = create_exchange_component(
-    exchange=ExchangeEnum.MEXC,
-    config=mexc_config,
-    component_type='composite',
-    is_private=True  # Requires credentials
-)
+# Create composite exchange with injected dependencies
+trading_exchange = get_composite_implementation(mexc_config, is_private=True)
+# Components are automatically created and injected via constructor
 
-# Separated domain pair for HFT systems
-public_exchange, private_exchange = create_exchange_component(
-    exchange=ExchangeEnum.MEXC,
-    config=mexc_config,
-    component_type='pair'  # Returns both domains separately
+# Manual construction for advanced use cases
+from exchanges.integrations.mexc.mexc_unified_exchange import MexcPublicExchange
+from exchanges.integrations.mexc.rest.mexc_rest_public import MexcPublicSpotRest
+from exchanges.integrations.mexc.ws.mexc_public_websocket import MexcPublicSpotWebsocketBaseWebsocket
+
+# Constructor injection pattern
+rest = MexcPublicSpotRest(config)
+ws = MexcPublicSpotWebsocketBaseWebsocket(config)
+public_exchange = MexcPublicExchange(
+    config=config,
+    rest_client=rest,      # Injected via constructor
+    websocket_client=ws    # Injected via constructor
 )
-# public_exchange: market data only (orderbooks, trades, tickers)
-# private_exchange: trading operations only (orders, balances, positions)
-# Complete isolation with no inheritance relationship
 ```
 
-**Unified Factory Benefits**:
-- **Single Entry Point**: One factory for all exchange components eliminates confusion
-- **Explicit Component Selection**: Clear `component_type` parameter ('rest', 'websocket', 'composite', 'pair')
-- **Type Safety**: Comprehensive validation prevents runtime errors
-- **Performance Optimized**: <1ms component creation with intelligent caching
-- **Separated Domain Support**: Complete isolation between public/private domains
-- **Backward Compatible**: Existing code continues to work via convenience functions
+**Simplified Factory Benefits**:
+- **Direct Mapping**: Simple dictionary-based component lookup
+- **Constructor Injection**: Dependencies injected at creation time
+- **No Complex Caching**: Eliminates validation and decision matrix complexity
+- **Performance Optimized**: ~110 lines vs 467 lines (76% reduction)
+- **Type Safety**: Clear mapping tables prevent runtime errors
+- **Backward Compatible**: Existing code works via compatibility wrappers
 
 ### **HFT Logging System**
 
@@ -249,7 +245,10 @@ The architecture is fully documented across specialized files:
 
 ### **Key Implementation Rules**
 - **Separated Domain Architecture**: Public (market data) and private (trading) are completely isolated
-- **No Inheritance**: Private exchanges do NOT inherit from public exchanges
+- **Constructor Injection Pattern**: REST/WebSocket clients injected via constructors, not factory methods
+- **Explicit Cooperative Inheritance**: `WebsocketBindHandlerInterface.__init__(self)` called explicitly
+- **Handler Binding Pattern**: WebSocket channels connected using `.bind()` method in constructors
+- **No Complex Inheritance**: Private exchanges do NOT inherit from public exchanges
 - **Authentication Boundary**: Public operations require no auth, private operations require credentials
 - **Minimal Configuration Sharing**: Only static config like symbol_info, never real-time data
 - **HFT Caching Policy**: NEVER cache real-time trading data (balances, orders, positions, orderbooks)
@@ -279,9 +278,9 @@ See **[Caching Policy](specs/performance/caching-policy.md)** for complete safet
 ### **Separated Domain Exchange Implementations**
 
 **Core Domain Interfaces**:
-- **[CompositePublicExchange](src/exchanges/interfaces/composite/spot/base_public_spot_composite.py)** - Pure market data interface
-- **[CompositePrivateExchange](src/exchanges/interfaces/composite/spot/base_private_spot_composite.py)** - Pure trading operations interface
-- **[FullExchangeFactory](src/exchanges/full_exchange_factory.py)** - Factory for creating separated domain instances
+- **[BasePublicComposite](src/exchanges/interfaces/composite/base_public_composite.py)** - Pure market data interface with constructor injection
+- **[BasePrivateComposite](src/exchanges/interfaces/composite/base_private_composite.py)** - Pure trading operations interface with constructor injection
+- **[Simplified Exchange Factory](src/exchanges/exchange_factory.py)** - Direct mapping factory with constructor injection
 
 **Public Domain Implementations (Market Data Only)**:
 - **[MexcPublicExchange](src/exchanges/integrations/mexc/public_exchange.py)** - MEXC market data (orderbooks, trades, tickers)
@@ -313,4 +312,4 @@ See **[Caching Policy](specs/performance/caching-policy.md)** for complete safet
 
 *This architectural overview reflects the current separated domain architecture where public and private interfaces are completely isolated with no inheritance or overlap. For detailed implementation guidance, see the comprehensive specification suite in the [specs/](specs/) directory.*
 
-**Last Updated**: September 2025 - Post-Separated Domain Architecture Implementation
+**Last Updated**: September 2025 - Post-Constructor Injection & Simplified Factory Implementation

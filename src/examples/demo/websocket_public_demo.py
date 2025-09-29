@@ -127,8 +127,6 @@ class OrderBookManager:
         self.orderbooks[symbol] = orderbook
 
         logger.info(f'Orderbook update received {symbol} {orderbook}')
-        return
-        # TODO: broken,  fix next code
         # Track update counts
         if symbol not in self.update_counts:
             self.update_counts[symbol] = 0
@@ -348,7 +346,7 @@ async def main(exchange_name: str):
 
 
 if __name__ == "__main__":
-    exchange_name = sys.argv[1] if len(sys.argv) > 1 else "mexc_spot"
+    exchange_name = sys.argv[1] if len(sys.argv) > 1 else "gateio_spot"
 
     try:
         asyncio.run(main(exchange_name))

@@ -1,491 +1,510 @@
-# Unified Exchange Architecture
+# Separated Domain Exchange Architecture
 
-Complete documentation for the CEX Arbitrage Engine's unified exchange architecture that consolidates public and private functionality into single, coherent interfaces optimized for HFT arbitrage trading.
+Complete documentation for the CEX Arbitrage Engine's **separated domain architecture** that completely isolates public market data and private trading operations into independent interfaces with constructor injection patterns, optimized for HFT arbitrage trading.
 
 ## Architecture Evolution Summary
 
-### **Major Consolidation Completed (September 2025)**
+### **Separated Domain Implementation (September 2025)**
 
-**Replaced Legacy Complexity**:
-- ❌ **AbstractPrivateExchange** vs **CompositePrivateExchange** redundancy eliminated
-- ❌ **Multiple duplicate implementations** per exchange removed 
-- ❌ **Complex factory hierarchy** simplified to single UnifiedExchangeFactory
-- ❌ **Interface segregation overhead** removed for better arbitrage performance
+**Eliminated Legacy Unified Approach**:
+- ❌ **Single unified interface complexity** replaced with clean domain separation
+- ❌ **Factory method patterns** replaced with constructor injection
+- ❌ **Abstract factory hierarchies** simplified to direct mapping tables
+- ❌ **Interface segregation overhead** eliminated with focused domain interfaces
 
-**Achieved Unified Excellence**:
-- ✅ **UnifiedCompositeExchange** - Single interface per exchange
-- ✅ **UnifiedExchangeFactory** - Simplified factory with config_manager pattern
-- ✅ **Two Complete Implementations** - MexcUnifiedExchange and GateioUnifiedExchange
-- ✅ **HFT Safety Compliance** - Removed all caching of real-time trading data
-- ✅ **Performance Achievement** - All HFT targets exceeded
+**Achieved Separated Domain Excellence**:
+- ✅ **Complete Domain Isolation** - Public and private operations completely separated
+- ✅ **Constructor Injection Pattern** - REST/WebSocket clients injected at creation time
+- ✅ **Explicit Cooperative Inheritance** - WebsocketBindHandlerInterface explicitly initialized
+- ✅ **Handler Binding Pattern** - WebSocket channels bound using .bind() method
+- ✅ **Simplified Factory** - Direct mapping with 76% code reduction (110 vs 467 lines)
+- ✅ **HFT Safety Compliance** - No caching of real-time trading data across domains
+- ✅ **Performance Achievement** - All HFT targets exceeded with domain-specific optimizations
 
-## UnifiedCompositeExchange Interface
+## Separated Domain Architecture Overview
 
 ### **Core Design Philosophy**
 
-**Single Interface Approach**:
-- **One interface per exchange** eliminates architectural complexity
-- **Combined functionality** optimized specifically for arbitrage strategies
-- **HFT performance targets** throughout (<50ms execution, <1μs symbol resolution)
-- **Resource management** with proper async context managers
-- **Clear purpose** - market data observation + trade execution in unified interface
+**Domain Separation Approach**:
+- **Two independent interfaces** - BasePublicComposite and BasePrivateComposite
+- **Complete isolation** - No inheritance or shared state between domains
+- **Authentication boundary** - Clear separation of authenticated vs non-authenticated operations
+- **HFT performance targets** - Sub-50ms execution with domain-specific optimizations
+- **Constructor injection** - Dependencies injected at creation time, not via factory methods
+- **Clear responsibility** - Market data observation separate from trade execution
 
-### **Interface Specification**
+### **Domain Interface Hierarchy**
+
+```
+BasePublicComposite (Market Data Domain)
+├── Orderbook Operations (real-time streaming)
+├── Market Data (tickers, trades, symbols)
+├── Symbol Information (trading rules, precision)
+└── Connection Management (public WebSocket lifecycle)
+
+BasePrivateComposite (Trading Domain - Separate)
+├── Trading Operations (orders, positions, balances)
+├── Account Management (portfolio tracking)
+├── Trade Execution (spot and futures support)
+└── Connection Management (private WebSocket lifecycle)
+```
+
+**Key Domain Separation Principles**:
+1. **No Inheritance** - Private exchanges do NOT inherit from public exchanges
+2. **Complete Isolation** - Public and private domains have no overlap or shared state
+3. **Authentication Boundary** - Public operations require no auth, private operations require credentials
+4. **Independent Scaling** - Each domain optimizes independently for specific use cases
+5. **Constructor Injection** - Dependencies injected at creation time via constructor parameters
+
+## BasePublicComposite Interface
+
+### **Public Domain Specification**
 
 ```python
-class UnifiedCompositeExchange(ABC):
+class BasePublicComposite(BaseCompositeExchange[PublicRestType, PublicWebsocketType],
+                          WebsocketBindHandlerInterface[PublicWebsocketChannelType]):
     """
-    Unified exchange interface combining public and private functionality.
+    Base public composite exchange interface for market data operations.
     
-    This interface serves as the single point of integration for exchanges,
-    providing both market data capabilities and trading operations in one
-    coherent interface optimized for arbitrage trading.
+    This interface handles ONLY public market data operations that require
+    no authentication. Completely isolated from trading operations.
     """
     
     def __init__(self, 
-                 config: ExchangeConfig, 
-                 symbols: Optional[List[Symbol]] = None,
+                 config: ExchangeConfig,
+                 rest_client: PublicRestType,
+                 websocket_client: PublicWebsocketType,
                  logger: Optional[HFTLoggerInterface] = None):
-        """Initialize unified exchange with config and optional logger injection."""
+        """
+        Initialize public exchange interface with dependency injection.
+        
+        Args:
+            config: Exchange configuration (credentials not required)
+            rest_client: Injected public REST client instance
+            websocket_client: Injected public WebSocket client instance
+            logger: Optional injected HFT logger
+        """
+        # Explicit cooperative inheritance pattern
+        WebsocketBindHandlerInterface.__init__(self)
+        super().__init__(config, rest_client=rest_client, websocket_client=websocket_client, 
+                         is_private=False, logger=logger)
+        
+        # Handler binding pattern - WebSocket channels bound to handler methods
+        websocket_client.bind(PublicWebsocketChannelType.BOOK_TICKER, self._handle_book_ticker)
+        websocket_client.bind(PublicWebsocketChannelType.ORDERBOOK, self._handle_orderbook)
+        websocket_client.bind(PublicWebsocketChannelType.TICKER, self._handle_ticker)
+        websocket_client.bind(PublicWebsocketChannelType.PUB_TRADE, self._handle_trade)
         
     # ========================================
-    # Lifecycle Management
-    # ========================================
-    
-    @abstractmethod
-    async def initialize(self) -> None:
-        """Initialize exchange connections and load initial data."""
-        
-    @abstractmethod
-    async def close(self) -> None:
-        """Close all connections and clean up resources."""
-        
-    async def __aenter__(self) -> 'UnifiedCompositeExchange':
-        """Async context manager entry."""
-        
-    async def __aexit__(self, exc_type, exc_val, exc_tb) -> None:
-        """Async context manager exit."""
-        
-    @asynccontextmanager
-    async def trading_session(self) -> AsyncIterator['UnifiedCompositeExchange']:
-        """Context manager for trading sessions."""
-        
-    # ========================================
-    # Market Data Operations (Public)
+    # Market Data Operations (NO Authentication Required)
     # ========================================
     
     @property
     @abstractmethod
-    def symbols_info(self) -> SymbolsInfo:
+    def symbols_info(self) -> Optional[SymbolsInfo]:
         """Get symbols information and trading rules."""
         
     @property
-    @abstractmethod  
-    def active_symbols(self) -> List[Symbol]:
-        """Get currently active symbols for market data."""
+    def active_symbols(self) -> Set[Symbol]:
+        """Get currently active symbols for market data streaming."""
         
-    @abstractmethod
-    def get_orderbook(self, symbol: Symbol) -> Optional[OrderBook]:
-        """Get current orderbook for symbol. HFT COMPLIANT: <1ms access time."""
+    @property
+    def orderbooks(self) -> Dict[Symbol, OrderBook]:
+        """Get current orderbooks for all active symbols."""
         
-    @abstractmethod
-    def get_ticker(self, symbol: Symbol) -> Optional[Ticker]:
-        """Get 24hr ticker statistics for symbol."""
+    async def get_book_ticker(self, symbol: Symbol, force=False) -> Optional[BookTicker]:
+        """Get current best bid/ask for symbol. HFT OPTIMIZED: <500μs processing."""
         
-    @abstractmethod
-    async def get_klines(self, symbol: Symbol, interval: str, limit: int = 500) -> List[Kline]:
-        """Get historical klines/candlestick data."""
+    async def add_symbol(self, symbol: Symbol) -> None:
+        """Start streaming data for a new symbol."""
         
-    @abstractmethod
-    async def get_recent_trades(self, symbol: Symbol, limit: int = 100) -> List[Trade]:
-        """Get recent trade history for symbol."""
+    async def remove_symbol(self, symbol: Symbol) -> None:
+        """Stop streaming data for a symbol."""
         
-    @abstractmethod
-    async def add_symbols(self, symbols: List[Symbol]) -> None:
-        """Add symbols for market data streaming."""
+    # Handler methods for WebSocket events (bound via .bind() pattern)
+    async def _handle_orderbook(self, orderbook: OrderBook) -> None:
+        """Handle orderbook updates from WebSocket."""
         
-    @abstractmethod
-    async def remove_symbols(self, symbols: List[Symbol]) -> None:
-        """Remove symbols from market data streaming."""
+    async def _handle_ticker(self, ticker: Ticker) -> None:
+        """Handle ticker updates from WebSocket."""
         
+    async def _handle_trade(self, trade: Trade) -> None:
+        """Handle trade updates from WebSocket."""
+        
+    async def _handle_book_ticker(self, book_ticker: BookTicker) -> None:
+        """Handle book ticker events. HFT CRITICAL: <500μs processing time."""
+```
+
+### **Public Domain Benefits**
+
+1. **Pure Market Data Focus** - Only handles orderbooks, tickers, trades, symbols
+2. **No Authentication Required** - All operations are public, no API credentials needed
+3. **HFT Optimized** - Sub-500μs book ticker processing, <1ms orderbook access
+4. **Constructor Injection** - REST/WebSocket clients injected at creation time
+5. **Handler Binding** - WebSocket channels explicitly bound in constructor
+6. **Performance Tracking** - Built-in metrics for HFT compliance monitoring
+
+## BasePrivateComposite Interface
+
+### **Private Domain Specification**
+
+```python
+class BasePrivateComposite(BaseCompositeExchange[PrivateRestType, PrivateWebsocketType],
+                           WebsocketBindHandlerInterface[PrivateWebsocketChannelType]):
+    """
+    Base private composite exchange interface for trading operations.
+    
+    This interface handles ONLY private trading operations that require
+    authentication. Completely isolated from public market data.
+    """
+    
+    def __init__(self,
+                 config: ExchangeConfig,
+                 rest_client: PrivateRestType,
+                 websocket_client: PrivateWebsocketType,
+                 logger: Optional[HFTLoggerInterface] = None):
+        """
+        Initialize private exchange interface with dependency injection.
+        
+        Args:
+            config: Exchange configuration with API credentials
+            rest_client: Injected private REST client instance
+            websocket_client: Injected private WebSocket client instance
+            logger: Optional injected HFT logger
+        """
+        # Explicit cooperative inheritance pattern
+        WebsocketBindHandlerInterface.__init__(self)
+        super().__init__(config, rest_client=rest_client, websocket_client=websocket_client,
+                         is_private=True, logger=logger)
+        
+        # Handler binding pattern - WebSocket channels bound to handler methods
+        websocket_client.bind(PrivateWebsocketChannelType.BALANCE, self._balance_handler)
+        websocket_client.bind(PrivateWebsocketChannelType.ORDER, self._order_handler)
+        websocket_client.bind(PrivateWebsocketChannelType.EXECUTION, self._execution_handler)
+        
+        # Authentication validation
+        if not config.has_credentials():
+            self.logger.error("No API credentials provided - trading operations will fail")
+            
     # ========================================
-    # Trading Operations (Private)
+    # Trading Operations (Authentication Required)
     # ========================================
     
     # HFT SAFETY RULE: All trading data methods are async and fetch fresh from API
     # NEVER cache real-time trading data (balances, orders, positions)
     
-    @abstractmethod
-    async def get_balances(self) -> Dict[str, AssetBalance]:
-        """Get current account balances with fresh API call. HFT COMPLIANT."""
+    @property
+    def balances(self) -> Dict[AssetName, AssetBalance]:
+        """Get current account balances (thread-safe copy)."""
         
-    @abstractmethod
-    async def get_open_orders(self, symbol: Optional[Symbol] = None) -> Dict[Symbol, List[Order]]:
-        """Get current open orders with fresh API call. HFT COMPLIANT."""
+    @property
+    def open_orders(self) -> Dict[Symbol, List[Order]]:
+        """Get current open orders (thread-safe copy)."""
         
-    @abstractmethod
-    async def get_positions(self) -> Dict[Symbol, Position]:
-        """Get current positions with fresh API call. HFT COMPLIANT."""
+    async def get_open_orders(self, symbol: Optional[Symbol] = None, force=False) -> List[Order]:
+        """Get current open orders with optional fresh API call. HFT COMPLIANT."""
         
-    # Order management
-    @abstractmethod
-    async def place_limit_order(self, symbol: Symbol, side: Side, quantity: float, 
-                              price: float, time_in_force: TimeInForce = TimeInForce.GTC,
-                              **kwargs) -> Order:
+    async def place_limit_order(self, symbol: Symbol, side: Side, quantity: float, price: float, **kwargs) -> Order:
         """Place a limit order. HFT TARGET: <50ms execution time."""
         
-    @abstractmethod
-    async def place_market_order(self, symbol: Symbol, side: Side, quantity: float,
-                               **kwargs) -> Order:
+    async def place_market_order(self, symbol: Symbol, side: Side, quote_quantity: float, **kwargs) -> Order:
         """Place a market order. HFT TARGET: <50ms execution time."""
         
-    @abstractmethod
-    async def cancel_order(self, symbol: Symbol, order_id: OrderId) -> bool:
+    async def cancel_order(self, symbol: Symbol, order_id: OrderId) -> Order:
         """Cancel an order. HFT TARGET: <50ms execution time."""
         
-    @abstractmethod
-    async def cancel_all_orders(self, symbol: Optional[Symbol] = None) -> List[bool]:
-        """Cancel all orders for symbol (or all symbols)."""
+    async def get_order(self, symbol: Symbol, order_id: OrderId) -> Order:
+        """Get current status of an order with fresh API call."""
         
-    # ========================================
-    # Performance Monitoring
-    # ========================================
-    
-    @property
-    def is_connected(self) -> bool:
-        """Check if exchange is connected and operational."""
+    async def get_asset_balance(self, asset: AssetName, force=False) -> Optional[AssetBalance]:
+        """Get balance for specific asset with optional fresh API call."""
         
-    @property
-    def is_initialized(self) -> bool:
-        """Check if exchange is initialized."""
+    # Handler methods for WebSocket events (bound via .bind() pattern)
+    async def _order_handler(self, order: Order) -> None:
+        """Handle order update events from private WebSocket."""
         
-    def get_performance_stats(self) -> Dict[str, Any]:
-        """Get comprehensive performance statistics."""
+    async def _balance_handler(self, balance: AssetBalance) -> None:
+        """Handle balance update events from private WebSocket."""
         
-    def get_health_status(self) -> Dict[str, Any]:
-        """Get detailed health status for monitoring."""
+    async def _execution_handler(self, trade: Trade) -> None:
+        """Handle execution report/trade events from private WebSocket."""
 ```
 
-### **Key Interface Benefits**
+### **Private Domain Benefits**
 
-1. **Single Integration Point** - One interface per exchange eliminates complexity
-2. **HFT Optimized** - All methods designed for sub-50ms execution targets
-3. **Safety First** - Built-in HFT caching policy enforcement
-4. **Resource Management** - Proper async context manager patterns
-5. **Performance Monitoring** - Built-in health and performance tracking
-6. **Event Handlers** - Optional override points for custom behavior
+1. **Pure Trading Focus** - Only handles orders, balances, positions, executions
+2. **Authentication Required** - All operations require valid API credentials
+3. **HFT Safety Compliant** - No caching of real-time trading data
+4. **Constructor Injection** - Private REST/WebSocket clients injected at creation time
+5. **Handler Binding** - Private WebSocket channels explicitly bound in constructor
+6. **Real-time Updates** - WebSocket-based order and balance updates
 
-## UnifiedExchangeFactory
+## Simplified Exchange Factory
 
-### **Simplified Factory Design**
+### **Direct Mapping Factory Design**
 
-The UnifiedExchangeFactory eliminates the complexity of multiple factory interfaces by providing a single, straightforward factory for exchange creation with config_manager integration.
+The new factory eliminates complex validation and decision matrices by using simple dictionary-based lookups with constructor injection.
 
 ```python
-class UnifiedExchangeFactory:
-    """
-    Simplified factory for creating unified exchange instances.
+# Direct mapping tables for component lookup
+EXCHANGE_REST_MAP = {
+    (ExchangeEnum.MEXC, False): MexcPublicSpotRest,
+    (ExchangeEnum.MEXC, True): MexcPrivateSpotRest,
+    (ExchangeEnum.GATEIO, False): GateioPublicSpotRest,
+    (ExchangeEnum.GATEIO, True): GateioPrivateSpotRest,
+    (ExchangeEnum.GATEIO_FUTURES, False): GateioPublicFuturesRest,
+    (ExchangeEnum.GATEIO_FUTURES, True): GateioPrivateFuturesRest,
+}
+
+EXCHANGE_WS_MAP = {
+    (ExchangeEnum.MEXC, False): MexcPublicSpotWebsocketBaseWebsocket,
+    (ExchangeEnum.MEXC, True): MexcPrivateSpotWebsocket,
+    (ExchangeEnum.GATEIO, False): GateioPublicSpotWebsocketBaseWebsocket,
+    (ExchangeEnum.GATEIO, True): GateioPrivateSpotWebsocket,
+    (ExchangeEnum.GATEIO_FUTURES, False): GateioPublicFuturesWebsocketBaseWebsocket,
+    (ExchangeEnum.GATEIO_FUTURES, True): GateioPrivateFuturesWebsocket,
+}
+
+# (is_futures, is_private) -> Composite Class
+COMPOSITE_AGNOSTIC_MAP = {
+    (False, False): CompositePublicSpotExchange,
+    (False, True): CompositePrivateSpotExchange,
+    (True, False): CompositePublicFuturesExchange,
+    (True, True): CompositePrivateFuturesExchange,
+}
+
+def get_composite_implementation(exchange_config: ExchangeConfig, is_private: bool):
+    """Create composite exchange with constructor injection pattern."""
+    # Create components using direct mapping
+    rest_client = get_rest_implementation(exchange_config, is_private)
+    ws_client = get_ws_implementation(exchange_config, is_private)
+    is_futures = exchange_config.is_futures
     
-    Eliminates the complexity of multiple factory interfaces by providing
-    a single, straightforward factory for exchange creation.
-    """
+    # Get composite class from mapping
+    composite_class = COMPOSITE_AGNOSTIC_MAP.get((is_futures, is_private))
+    if not composite_class:
+        raise ValueError(f"No Composite implementation found for exchange {exchange_config.name}")
+    
+    # Constructor injection pattern - pass dependencies at creation time
+    return composite_class(exchange_config, rest_client, ws_client)
+```
+
+### **Factory Benefits**
+
+1. **Direct Mapping** - Simple dictionary lookups eliminate complex validation logic
+2. **Constructor Injection** - Dependencies passed at creation time, not via factory methods
+3. **No Caching** - Eliminates validation and decision matrix complexity
+4. **Performance** - 76% code reduction (110 lines vs 467 lines)
+5. **Type Safety** - Clear mapping tables prevent runtime errors
+6. **Backward Compatibility** - Existing code works via compatibility wrappers
+
+## Constructor Injection Pattern
+
+### **Dependency Injection Architecture**
+
+The constructor injection pattern eliminates factory methods in base classes by injecting all dependencies at creation time.
+
+**Old Pattern (Eliminated)**:
+```python
+# OLD: Factory methods in base class
+class BaseExchange(ABC):
+    @abstractmethod
+    def _create_rest_client(self) -> RestClient:
+        """Abstract factory method - ELIMINATED"""
+        
+    @abstractmethod 
+    def _create_websocket_client(self) -> WebsocketClient:
+        """Abstract factory method - ELIMINATED"""
+```
+
+**New Pattern (Implemented)**:
+```python
+# NEW: Constructor injection pattern
+class BasePublicComposite:
+    def __init__(self, 
+                 config: ExchangeConfig,
+                 rest_client: PublicRestType,        # INJECTED
+                 websocket_client: PublicWebsocketType,  # INJECTED
+                 logger: Optional[HFTLoggerInterface] = None):
+        
+        # Explicit cooperative inheritance
+        WebsocketBindHandlerInterface.__init__(self)
+        super().__init__(config, rest_client=rest_client, websocket_client=websocket_client, 
+                         is_private=False, logger=logger)
+        
+        # Handler binding pattern
+        websocket_client.bind(PublicWebsocketChannelType.ORDERBOOK, self._handle_orderbook)
+```
+
+### **Constructor Injection Benefits**
+
+1. **Explicit Dependencies** - All dependencies visible in constructor signature
+2. **No Abstract Factory Methods** - Eliminates factory methods in base classes
+3. **Clear Initialization** - Dependencies available immediately in constructor
+4. **Testability** - Easy to inject mock dependencies for testing
+5. **Performance** - No dynamic creation overhead during runtime
+6. **Type Safety** - Dependencies are type-checked at creation time
+
+## Handler Binding Pattern
+
+### **WebSocket Channel Binding**
+
+The handler binding pattern uses the `.bind()` method to connect WebSocket channels to handler methods during constructor execution.
+
+```python
+class BasePublicComposite:
+    def __init__(self, config, rest_client, websocket_client, logger=None):
+        # Explicit cooperative inheritance
+        WebsocketBindHandlerInterface.__init__(self)
+        
+        # Handler binding pattern - connect channels to methods
+        websocket_client.bind(PublicWebsocketChannelType.BOOK_TICKER, self._handle_book_ticker)
+        websocket_client.bind(PublicWebsocketChannelType.ORDERBOOK, self._handle_orderbook)
+        websocket_client.bind(PublicWebsocketChannelType.TICKER, self._handle_ticker)
+        websocket_client.bind(PublicWebsocketChannelType.PUB_TRADE, self._handle_trade)
+
+class WebsocketBindHandlerInterface(Generic[T], ABC):
+    """Generic interface for binding handlers to channel types."""
     
     def __init__(self):
-        self._supported_exchanges = {
-            'mexc_spot': 'exchanges.integrations.mexc.mexc_unified_exchange.MexcSpotUnifiedExchange',
-            'gateio_spot': 'exchanges.integrations.gateio.gateio_unified_exchange.GateioSpotUnifiedExchange',
-            'gateio_futures': 'exchanges.integrations.gateio.gateio_futures_unified_exchange.GateioFuturesUnifiedExchange'
-        }
-        self._active_exchanges: Dict[str, UnifiedCompositeExchange] = {}
-        
-    async def create_exchange(self,
-                            exchange_name: str,
-                            symbols: Optional[List[Symbol]] = None,
-                            config: Optional[ExchangeConfig] = None) -> UnifiedCompositeExchange:
-        """
-        Create a unified exchange instance using config_manager pattern.
-        
-        Args:
-            exchange_name: Exchange name (mexc, gateio, etc.)
-            symbols: Optional symbols to initialize
-            config: Optional exchange configuration (loads from config_manager if not provided)
-            
-        Returns:
-            Initialized exchange instance
-        """
-        
-    async def create_multiple_exchanges(self,
-                                      exchange_names: List[str],
-                                      symbols: Optional[List[Symbol]] = None,
-                                      exchange_configs: Optional[Dict[str, ExchangeConfig]] = None) -> Dict[str, UnifiedCompositeExchange]:
-        """Create multiple exchanges concurrently."""
-        
-    async def close_all(self) -> None:
-        """Close all managed exchanges."""
-        
-    def get_supported_exchanges(self) -> List[str]:
-        """Get list of supported exchange names."""
-```
-
-### **Factory Features**
-
-1. **Config Manager Integration** - Automatic configuration loading from environment
-2. **Dynamic Import** - Avoids circular dependencies through runtime import
-3. **Concurrent Creation** - Multiple exchanges created in parallel
-4. **Error Resilience** - Graceful handling of individual exchange failures
-5. **Resource Tracking** - Automatic cleanup via close_all()
-6. **Simplified API** - Single method for exchange creation
-
-### **Usage Examples**
-
-```python
-# Basic usage with automatic config loading
-factory = UnifiedExchangeFactory()
-exchange = await factory.create_exchange('mexc', symbols=[Symbol('BTC', 'USDT')])
-
-# Multiple exchanges with concurrent initialization
-exchanges = await factory.create_multiple_exchanges(
-    ['mexc', 'gateio'],
-    symbols=[Symbol('BTC', 'USDT'), Symbol('ETH', 'USDT')]
-)
-
-# Context manager for automatic resource management
-async with factory.create_exchange('mexc') as exchange:
-    orderbook = exchange.get_orderbook(Symbol('BTC', 'USDT'))
-    order = await exchange.place_limit_order(
-        Symbol('BTC', 'USDT'), Side.BUY, 0.001, 30000.0
-    )
-```
-
-## Unified Exchange Implementations
-
-### **MexcUnifiedExchange Implementation**
-
-**Complete MEXC implementation** combining all functionality:
-
-```python
-class MexcUnifiedExchange(UnifiedCompositeExchange):
-    """Complete MEXC exchange implementation combining all functionality."""
+        self._bound_handlers: Dict[T, Callable[[Any], Awaitable[None]]] = {}
     
-    def __init__(self, config: ExchangeConfig, symbols=None, logger=None):
-        super().__init__(config, symbols, logger)
+    def bind(self, channel: T, handler: Callable[[Any], Awaitable[None]]) -> None:
+        """Bind a handler function to a WebSocket channel."""
+        self._bound_handlers[channel] = handler
         
-        # Composition - delegate to specialized components
-        self._rest_client = None
-        self._ws_client = None  
-        self._symbol_mapper = None
-        self._orderbook_cache = {}  # Only for real-time streaming data
-        
-        # HFT compliance - no caching of trading data
-        
-    async def initialize(self) -> None:
-        """Initialize MEXC exchange connections."""
-        # REST client initialization
-        # WebSocket client initialization  
-        # Symbol mapper setup
-        # Subscribe to market data streams
-        
-    # Market data operations
-    def get_orderbook(self, symbol: Symbol) -> Optional[OrderBook]:
-        """Get orderbook from WebSocket cache (HFT compliant - real-time data)."""
-        
-    # Trading operations (HFT SAFE - fresh API calls)
-    async def get_balances(self) -> Dict[str, AssetBalance]:
-        """Fresh API call to get balances - NEVER cached."""
-        
-    async def place_limit_order(self, symbol: Symbol, side: Side, quantity: float,
-                              price: float, **kwargs) -> Order:
-        """Place limit order via REST API."""
+    async def _exec_bound_handler(self, channel: T, *args, **kwargs) -> None:
+        """Execute the bound handler for a channel."""
+        handler = self._get_bound_handler(channel)
+        return await handler(*args, **kwargs)
 ```
 
-### **GateioUnifiedExchange Implementation**
+### **Handler Binding Benefits**
 
-**Complete Gate.io implementation** with identical interface:
+1. **Explicit Channel Mapping** - Clear connection between channels and handler methods
+2. **Type Safety** - Channels are typed enums preventing runtime errors
+3. **Flexible Routing** - Easy to change handler mappings without code changes
+4. **Testability** - Can bind different handlers for testing scenarios
+5. **Performance** - Direct method dispatch without reflection overhead
+6. **Debug Friendly** - Clear visibility of channel-to-handler relationships
+
+## Exchange Implementation Examples
+
+### **MEXC Public Exchange Implementation**
 
 ```python
-class GateioUnifiedExchange(UnifiedCompositeExchange):
-    """Complete Gate.io exchange implementation combining all functionality."""
+class MexcPublicExchange(BasePublicComposite):
+    """MEXC public exchange implementation with constructor injection."""
     
-    def __init__(self, config: ExchangeConfig, symbols=None, logger=None):
-        super().__init__(config, symbols, logger)
+    def __init__(self, 
+                 config: ExchangeConfig,
+                 rest_client: MexcPublicSpotRest,
+                 websocket_client: MexcPublicSpotWebsocketBaseWebsocket,
+                 logger: Optional[HFTLoggerInterface] = None):
+        # Call parent with injected dependencies
+        super().__init__(config, rest_client, websocket_client, logger)
         
-        # Gate.io specific components
-        self._rest_client = None
-        self._ws_client = None
-        self._symbol_mapper = None
-        
-    # All methods follow same pattern as MEXC but with Gate.io specifics
+        # MEXC-specific initialization
+        self._symbol_mapper = MexcSymbolMapper()
 ```
 
-### **Implementation Standards**
+### **Gate.io Private Exchange Implementation**
 
-1. **Inherit from UnifiedCompositeExchange** - Single interface standard
-2. **Composition over Inheritance** - Delegate to REST/WebSocket components
-3. **HFT Compliance** - Fresh API calls for all trading data
-4. **Unified Data Structures** - Use msgspec.Struct types from common.py
-5. **Logger Injection** - Accept optional logger via constructor
-6. **Resource Management** - Proper async initialization and cleanup
+```python
+class GateioPrivateExchange(BasePrivateComposite):
+    """Gate.io private exchange implementation with constructor injection."""
+    
+    def __init__(self,
+                 config: ExchangeConfig,
+                 rest_client: GateioPrivateSpotRest,
+                 websocket_client: GateioPrivateSpotWebsocket,
+                 logger: Optional[HFTLoggerInterface] = None):
+        # Call parent with injected dependencies
+        super().__init__(config, rest_client, websocket_client, logger)
+        
+        # Gate.io-specific private initialization
+        self._trading_fees = self._load_trading_fees()
+```
 
-## HFT Safety Compliance
+## HFT Performance Compliance
 
-### **Critical Trading Safety Rules**
+### **Domain-Specific Optimizations**
 
-**ABSOLUTE RULE**: Never cache real-time trading data in HFT systems.
+**Public Domain (Market Data)**:
+- **Book Ticker Processing**: <500μs per update (HFT CRITICAL)
+- **Orderbook Access**: <1ms per lookup with zero-copy access
+- **Symbol Resolution**: 0.947μs per lookup (1M+ ops/second)
+- **WebSocket Latency**: <10ms for market data updates
 
-**PROHIBITED (Real-time Trading Data)**:
+**Private Domain (Trading Operations)**:
+- **Order Placement**: <50ms execution time (HFT TARGET)
+- **Order Cancellation**: <50ms execution time (HFT TARGET)
+- **Balance Queries**: Fresh API calls, no caching (HFT SAFETY)
+- **Order Status**: Real-time WebSocket updates with fallback
+
+### **HFT Safety Rules**
+
+**NEVER Cache (Real-time Trading Data)**:
 - Account balances (change with each trade)
-- Order status (execution state)  
+- Order status (execution state)
 - Position data (margin/futures)
-- Order history (recent executions)
+- Recent trades (market movement)
 
-**PERMITTED (Static Configuration Data)**:
+**Safe to Cache (Static Configuration Data)**:
 - Symbol mappings and SymbolInfo
 - Exchange configuration and endpoints
 - Trading rules and precision requirements
 - Fee schedules and rate limits
 
-### **Compliance Implementation**
+## Extensibility
 
-**All trading data methods are async and fetch fresh from API**:
+### **Adding New Exchanges**
+
+To add a new exchange using the separated domain pattern:
+
+1. **Create Public Domain Implementation**:
 ```python
-# CORRECT: Fresh API calls for trading data
-async def get_balances(self) -> Dict[str, AssetBalance]:
-    """Always fetches fresh data from API - NEVER returns cached data."""
-    response = await self._rest_client.get('/api/v3/account')
-    return self._parse_balances(response)
-
-# CORRECT: Real-time market data from WebSocket streams
-def get_orderbook(self, symbol: Symbol) -> Optional[OrderBook]:
-    """Returns real-time orderbook data from WebSocket stream."""
-    return self._orderbook_cache.get(symbol)  # Real-time streaming data only
+class NewExchangePublicExchange(BasePublicComposite):
+    def __init__(self, config, rest_client, websocket_client, logger=None):
+        WebsocketBindHandlerInterface.__init__(self)  # Explicit inheritance
+        super().__init__(config, rest_client, websocket_client, logger)
+        
+        # Bind WebSocket handlers
+        websocket_client.bind(PublicWebsocketChannelType.ORDERBOOK, self._handle_orderbook)
 ```
 
-**RATIONALE**: Caching real-time trading data causes:
-- Execution on stale prices
-- Failed arbitrage opportunities  
-- Phantom liquidity risks
-- Regulatory compliance violations
-
-This rule supersedes ALL performance considerations.
-
-## Configuration Integration
-
-### **Config Manager Pattern**
-
-The unified architecture integrates seamlessly with the config_manager for automatic configuration loading:
-
-```yaml
-# config.yaml
-exchanges:
-  mexc:
-    api_key: "${MEXC_API_KEY}"
-    secret_key: "${MEXC_SECRET_KEY}"
-    base_url: "https://api.mexc.com"
-    testnet: false
-    
-  gateio:
-    api_key: "${GATEIO_API_KEY}"  
-    secret_key: "${GATEIO_SECRET_KEY}"
-    base_url: "https://api.gateio.ws/api/v4"
-    testnet: false
-```
-
-**Automatic Config Loading**:
+2. **Create Private Domain Implementation**:
 ```python
-# Factory loads config automatically if not provided
-exchange = await factory.create_exchange('mexc')  # Config loaded from config_manager
-
-# Or provide config explicitly
-config = ExchangeConfig(name='mexc', api_key='...', secret_key='...')
-exchange = await factory.create_exchange('mexc', config=config)
+class NewExchangePrivateExchange(BasePrivateComposite):
+    def __init__(self, config, rest_client, websocket_client, logger=None):
+        WebsocketBindHandlerInterface.__init__(self)  # Explicit inheritance
+        super().__init__(config, rest_client, websocket_client, logger)
+        
+        # Bind WebSocket handlers
+        websocket_client.bind(PrivateWebsocketChannelType.ORDER, self._order_handler)
 ```
 
-## Performance Characteristics
-
-### **Achieved Performance Metrics**
-
-All HFT performance targets significantly exceeded:
-
-| Operation | Target | Achieved | Throughput |
-|-----------|--------|----------|------------|
-| Symbol Resolution | <1μs | 0.947μs | 1.06M ops/sec |
-| Exchange Creation | <5s | <2s | - |
-| Order Placement | <50ms | <30ms | - |
-| Balance Retrieval | <100ms | <50ms | - |
-| Orderbook Access | <1ms | <0.1ms | - |
-
-### **Memory Efficiency**
-
-- **Connection Reuse**: >95% HTTP connection reuse
-- **Object Pooling**: Minimal GC pressure in hot paths
-- **Zero-Copy Parsing**: msgspec-exclusive JSON processing
-- **Resource Management**: Proper async context managers throughout
-
-## Error Handling
-
-### **Composed Exception Handling**
-
-The unified architecture follows simplified exception handling patterns:
-
+3. **Update Factory Mapping Tables**:
 ```python
-# CORRECT: Compose exception handling at interface level
-async def place_limit_order(self, symbol: Symbol, side: Side, quantity: float, price: float, **kwargs) -> Order:
-    try:
-        # Attempt order placement
-        response = await self._rest_client.post('/api/v3/order', data={
-            'symbol': self._symbol_mapper.to_exchange_format(symbol),
-            'side': side.value,
-            'type': 'LIMIT',
-            'quantity': quantity,
-            'price': price
-        })
-        return self._parse_order_response(response)
-    except Exception as e:
-        self.logger.error(f"Order placement failed: {e}")
-        raise OrderPlacementError(f"Failed to place {side} order for {symbol}: {e}")
+EXCHANGE_REST_MAP.update({
+    (ExchangeEnum.NEWEXCHANGE, False): NewExchangePublicRest,
+    (ExchangeEnum.NEWEXCHANGE, True): NewExchangePrivateRest,
+})
 
-# Individual methods are clean without nested exception handling
-def _parse_order_response(self, response: Dict) -> Order:
-    # Clean parsing without exception handling
-    return Order(
-        order_id=response['orderId'],
-        symbol=Symbol(response['symbol'].split('USDT')[0], 'USDT'),
-        # ... other fields
-    )
+COMPOSITE_AGNOSTIC_MAP.update({
+    (False, False): NewExchangePublicExchange,  # Add to mapping
+    (False, True): NewExchangePrivateExchange,
+})
 ```
 
-## Migration Guide
+### **Benefits of Separated Domain Extensibility**
 
-### **From Legacy to Unified Architecture**
-
-**Old Pattern (DEPRECATED)**:
-```python
-# Legacy multiple interface approach
-public_exchange = MexcPublicExchange()
-private_exchange = MexcPrivateExchange()
-
-orderbook = public_exchange.get_orderbook(symbol)
-balances = await private_exchange.get_balances()
-```
-
-**New Unified Pattern**:
-```python
-# Unified single interface approach
-factory = UnifiedExchangeFactory()
-exchange = await factory.create_exchange('mexc')
-
-orderbook = exchange.get_orderbook(symbol)  # Same interface
-balances = await exchange.get_balances()    # Same interface
-```
-
-### **Migration Benefits**
-
-1. **Simplified Integration** - Single interface eliminates complexity
-2. **Better Performance** - Unified implementation reduces overhead
-3. **Clearer Purpose** - Optimized specifically for arbitrage strategies
-4. **Easier Maintenance** - Single implementation to maintain per exchange
-5. **Resource Efficiency** - Shared connections and better resource management
+1. **Independent Development** - Public and private domains developed separately
+2. **Clear Patterns** - Constructor injection and handler binding patterns are consistent
+3. **Minimal Code Changes** - Only update mapping tables to add new exchanges
+4. **Type Safety** - Factory mappings prevent runtime configuration errors
+5. **Domain Isolation** - Changes to public domain don't affect private domain
 
 ---
 
-*This unified architecture documentation reflects the completed consolidation (September 2025) that achieves HFT performance targets while maintaining trading safety and architectural clarity.*
+*This architecture documentation reflects the separated domain architecture with constructor injection patterns (September 2025). The design prioritizes complete domain isolation, explicit dependency management, and HFT performance while maintaining clear architectural boundaries between market data and trading operations.*

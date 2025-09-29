@@ -1,17 +1,19 @@
 # System Architecture Overview
 
-## Unified Exchange Architecture
+## Separated Domain Architecture with Constructor Injection
 
-The CEX Arbitrage Engine has evolved to a **unified exchange architecture** that consolidates public and private functionality into single, coherent interfaces optimized for HFT arbitrage trading.
+The CEX Arbitrage Engine uses a **separated domain architecture** with **constructor injection patterns** that completely isolates public market data and private trading operations into independent interfaces optimized for HFT arbitrage trading.
 
-### **Major Architectural Consolidation**
+### **Modern Architecture Implementation**
 
 **COMPLETED (September 2025):**
-- **✅ UnifiedCompositeExchange**: Single interface per exchange eliminating public/private separation complexity
-- **✅ UnifiedExchangeFactory**: Simplified factory with config_manager pattern
-- **✅ Legacy Interface Removal**: Eliminated AbstractPrivateExchange vs CompositePrivateExchange redundancy
-- **✅ HFT Safety Compliance**: Removed all caching of real-time trading data
-- **✅ Two Complete Implementations**: MexcUnifiedExchange and GateioUnifiedExchange
+- **✅ Separated Domain Architecture**: Complete isolation between public and private operations
+- **✅ Constructor Injection Pattern**: REST/WebSocket clients injected via constructors
+- **✅ Explicit Cooperative Inheritance**: WebsocketBindHandlerInterface explicitly initialized
+- **✅ Handler Binding Pattern**: WebSocket channels bound using `.bind()` method
+- **✅ Simplified Factory**: Direct mapping-based factory (110 lines vs 467 lines)
+- **✅ HFT Safety Compliance**: No caching of real-time trading data
+- **✅ Complete Exchange Implementations**: MEXC and Gate.io with spot+futures support
 
 ## High-Level Architecture
 
@@ -24,113 +26,134 @@ The CEX Arbitrage Engine has evolved to a **unified exchange architecture** that
 └─────────────────────────────────────────────────────────────────┘
                                │
 ┌─────────────────────────────────────────────────────────────────┐
-│                 Unified Exchange Layer (NEW)                   │
+│                Separated Domain Layer (NEW)                    │
 │  ┌─────────────────┐  ┌─────────────────┐  ┌─────────────────┐  │
-│  │UnifiedExchangeFactory│ │ConfigManager│  │  SymbolResolver │  │
+│  │ ExchangeFactory │  │  ConfigManager  │  │  SymbolResolver │  │
+│  │(Direct Mapping) │  │                 │  │                 │  │
 │  └─────────────────┘  └─────────────────┘  └─────────────────┘  │
 └─────────────────────────────────────────────────────────────────┘
                                │
 ┌─────────────────────────────────────────────────────────────────┐
-│              Unified Exchange Implementations                   │
-│  ┌─────────────────┐  ┌─────────────────┐  ┌─────────────────┐  │
-│  │MexcUnifiedExchange │ │GateioUnifiedExch│  │  Future Unified │  │
-│  │Market+Trading   │  │ Market+Trading  │  │     Exchange    │  │
-│  └─────────────────┘  └─────────────────┘  └─────────────────┘  │
+│           Separated Domain Implementations                     │
+│  ┌─────────────────┐           ┌─────────────────┐            │
+│  │  Public Domain  │  ISOLATED │  Private Domain │            │
+│  │ BasePublicComposite │  <──>  │ BasePrivateComposite │      │
+│  │ (Market Data)   │           │ (Trading Ops)   │            │
+│  └─────────────────┘           └─────────────────┘            │
+│            │                             │                    │
+│  ┌─────────────────┐           ┌─────────────────┐            │
+│  │   MEXC Public   │           │  MEXC Private   │            │
+│  │  Gate.io Public │           │ Gate.io Private │            │
+│  └─────────────────┘           └─────────────────┘            │
 └─────────────────────────────────────────────────────────────────┘
                                │
 ┌─────────────────────────────────────────────────────────────────┐
 │                   Infrastructure Layer                          │
 │  ┌─────────────────┐  ┌─────────────────┐  ┌─────────────────┐  │
-│  │ HFT Logging     │  │  Networking     │  │   Data Structs  │  │
-│  │ (1.16μs latency)│  │  (REST+WS)      │  │   (msgspec)     │  │
+│  │ HFT Logging     │  │ REST+WebSocket  │  │   Data Structs  │  │
+│  │ (1.16μs latency)│  │ (Injected)      │  │   (msgspec)     │  │
 │  └─────────────────┘  └─────────────────┘  └─────────────────┘  │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
 ## Core Architectural Patterns
 
-### 1. Unified Interface Design
+### 1. Separated Domain Design with Constructor Injection
 
-**UnifiedCompositeExchange Pattern**:
-- **Single Interface**: Combines public market data + private trading operations
-- **Clear Purpose**: Optimized specifically for arbitrage strategies
-- **HFT Optimized**: Sub-50ms execution targets throughout
-- **Resource Management**: Proper async context manager support
-- **No Interface Segregation**: Eliminates complexity of separate public/private interfaces
+**Separated Domain Architecture**:
+- **Complete Isolation**: Public (market data) and private (trading) domains have no overlap
+- **No Inheritance**: Private exchanges do NOT inherit from public exchanges
+- **Authentication Boundary**: Clear separation of authenticated vs non-authenticated operations
+- **Independent Scaling**: Each domain optimizes independently for specific use cases
+- **Constructor Injection**: Dependencies injected at creation time, not via factory methods
 
-**Unified Factory Pattern**:
-- **UnifiedExchangeFactory**: Single factory for all exchange creation
-- **Config Manager Integration**: Automatic configuration loading
-- **Concurrent Creation**: Multiple exchanges initialized in parallel
-- **Error Resilience**: Graceful handling of individual exchange failures
+**Simplified Factory Pattern**:
+- **Direct Mapping**: Dictionary-based component lookup with constructor injection
+- **No Complex Validation**: Eliminates decision matrices and caching complexity
+- **Performance**: 76% code reduction (110 lines vs 467 lines)
+- **Explicit Creation**: Clear separation of REST, WebSocket, and composite creation
 
-**Pragmatic SOLID Application**:
-- **SRP**: Single interface per exchange with coherent responsibilities
-- **LSP**: All unified exchanges fully substitutable
-- **DIP**: Factory-based dependency injection where complexity justifies it
-- **Pragmatic ISP**: Combined interfaces where separation adds no value
+**Modern Initialization Patterns**:
+- **Explicit Cooperative Inheritance**: `WebsocketBindHandlerInterface.__init__(self)` called explicitly
+- **Handler Binding**: WebSocket channels bound using `.bind()` method in constructors
+- **Constructor Injection**: REST/WebSocket clients injected via constructor parameters
+- **No Factory Methods**: Eliminates abstract factory methods in base classes
 
-### 2. Unified Factory Pattern
+### 2. Simplified Factory with Direct Mapping
 
-**Problem Solved**: Simplified complex factory hierarchy into single, straightforward factory.
+**Problem Solved**: Eliminated complex factory hierarchy with direct mapping-based creation.
 
 **Implementation**:
 ```python
-class UnifiedExchangeFactory:
-    def __init__(self):
-        self._supported_exchanges = {
-            'mexc': 'exchanges.integrations.mexc.mexc_unified_exchange.MexcUnifiedExchange',
-            'gateio': 'exchanges.integrations.gateio.gateio_unified_exchange.GateioUnifiedExchange'
-        }
+# Direct mapping tables
+EXCHANGE_REST_MAP = {
+    (ExchangeEnum.MEXC, False): MexcPublicSpotRest,
+    (ExchangeEnum.MEXC, True): MexcPrivateSpotRest,
+    (ExchangeEnum.GATEIO, False): GateioPublicSpotRest,
+    (ExchangeEnum.GATEIO, True): GateioPrivateSpotRest,
+}
+
+EXCHANGE_WS_MAP = {
+    (ExchangeEnum.MEXC, False): MexcPublicSpotWebsocketBaseWebsocket,
+    (ExchangeEnum.MEXC, True): MexcPrivateSpotWebsocket,
+}
+
+# Factory functions with constructor injection
+def get_composite_implementation(exchange_config: ExchangeConfig, is_private: bool):
+    rest_client = get_rest_implementation(exchange_config, is_private)
+    ws_client = get_ws_implementation(exchange_config, is_private)
     
-    async def create_exchange(self, exchange_name: str, symbols=None, config=None):
-        # Config manager integration - loads config automatically if not provided
-        # Dynamic import to avoid circular dependencies
-        # Initialize and track for resource management
+    # Constructor injection pattern
+    composite_class = COMPOSITE_AGNOSTIC_MAP.get((is_futures, is_private))
+    return composite_class(exchange_config, rest_client, ws_client)
 ```
 
 **Benefits**:
-- **Simplified API** - Single method for exchange creation
-- **Config Manager Integration** - Automatic configuration loading from environment
-- **Dynamic Import** - Avoids circular dependencies
-- **Resource Tracking** - Automatic cleanup via close_all()
+- **Direct Mapping** - Simple dictionary lookups eliminate complex logic
+- **Constructor Injection** - Dependencies passed at creation time
+- **No Caching** - Eliminates validation and decision matrix complexity
+- **Performance** - 76% code reduction with faster component creation
 
-### 3. Unified Interface System
+### 3. Separated Domain Interface System
 
-**Central Design Principle**: Single interface per exchange combining all necessary functionality.
+**Central Design Principle**: Complete isolation between public market data and private trading operations.
 
-**Unified Interface Architecture**:
+**Separated Domain Architecture**:
 
 ```
-UnifiedCompositeExchange (Single Interface)
-├── Market Data Operations (public - no authentication)
-├── Trading Operations (private - requires credentials)
-├── Resource Management (lifecycle and connections)
-└── Performance Monitoring (health and metrics)
+BasePublicComposite (Market Data Domain)
+├── Orderbook Operations (real-time streaming)
+├── Market Data (tickers, trades, symbols)
+├── Symbol Information (trading rules, precision)
+└── Connection Management (public WebSocket lifecycle)
+
+BasePrivateComposite (Trading Domain - Separate)
+├── Trading Operations (orders, positions, balances)
+├── Account Management (portfolio tracking)
+├── Trade Execution (spot and futures support)
+└── Connection Management (private WebSocket lifecycle)
 ```
 
-**Implementation Pattern**:
+**Constructor Injection Pattern**:
 ```python
-class MexcUnifiedExchange(UnifiedCompositeExchange):
-    """Complete MEXC exchange implementation combining all functionality"""
-    
-    def __init__(self, config: ExchangeConfig, symbols=None, logger=None):
-        super().__init__(config, symbols, logger)
+class BasePublicComposite(BaseCompositeExchange, WebsocketBindHandlerInterface):
+    def __init__(self, config, rest_client: PublicRestType, websocket_client: PublicWebsocketType, logger=None):
+        # Explicit cooperative inheritance
+        WebsocketBindHandlerInterface.__init__(self)
+        super().__init__(config, rest_client=rest_client, websocket_client=websocket_client, is_private=False, logger=logger)
         
-        # Composition - delegate to specialized components
-        self._rest_client = None
-        self._ws_client = None
-        self._symbol_mapper = None
-        
-        # No separate public/private interfaces - single unified implementation
+        # Handler binding pattern
+        websocket_client.bind(PublicWebsocketChannelType.ORDERBOOK, self._handle_orderbook)
+        websocket_client.bind(PublicWebsocketChannelType.TICKER, self._handle_ticker)
+        websocket_client.bind(PublicWebsocketChannelType.BOOK_TICKER, self._handle_book_ticker)
 ```
 
 **Key Design Rules**:
-1. **MUST inherit from UnifiedCompositeExchange** - Single interface standard
-2. **Combine public + private operations** - No interface separation
-3. **HFT compliance mandatory** - Fresh API calls, no caching of real-time trading data
-4. **Unified data structures only** - Use msgspec.Struct types from `src/exchanges/structs/common.py`
-5. **Resource management** - Proper async context manager implementation
+1. **Complete Domain Separation** - Public and private exchanges are independent
+2. **Constructor Injection** - All dependencies injected via constructor parameters
+3. **Explicit Cooperative Inheritance** - WebsocketBindHandlerInterface.__init__(self) called explicitly
+4. **Handler Binding** - WebSocket channels bound using .bind() method
+5. **No Factory Methods** - Eliminates abstract factory methods in base classes
 
 **Unified Data Structures** (from `src/exchanges/structs/common.py`):
 ```python
@@ -168,9 +191,9 @@ class Order:
     timestamp: float
 ```
 
-## Unified Configuration Architecture
+## Separated Domain Configuration Architecture
 
-### Configuration with Config Manager Pattern
+### Configuration with Constructor Injection Pattern
 ```yaml
 # Unified configuration structure
 exchanges:
@@ -187,11 +210,11 @@ exchanges:
     testnet: false
 ```
 
-### Unified Configuration Flow
+### Separated Domain Configuration Flow
 ```
-config.yaml → config_manager → UnifiedExchangeFactory → UnifiedCompositeExchange → Single Implementation
-     ↓              ↓                       ↓                         ↓                        ↓
- Unified Dict → get_exchange_config() → create_exchange() → UnifiedCompositeExchange → MexcUnifiedExchange
+config.yaml → config_manager → ExchangeFactory → BasePublicComposite + BasePrivateComposite → Exchange Implementations
+     ↓              ↓                   ↓                     ↓                                        ↓
+ Unified Dict → get_exchange_config() → get_composite_implementation() → Constructor Injection → MEXC/Gate.io
 ```
 
 **Configuration Benefits**:
@@ -251,7 +274,7 @@ config.yaml → config_manager → UnifiedExchangeFactory → UnifiedCompositeEx
 
 **Key Insight**: All HFT performance targets significantly exceeded. Focus on code simplicity and maintainability.
 
-## Unified System Initialization Flow
+## Separated Domain System Initialization Flow
 
 ```
 1. Load Environment Variables (.env)
@@ -262,9 +285,9 @@ config.yaml → config_manager → UnifiedExchangeFactory → UnifiedCompositeEx
          ↓
 4. Create UnifiedExchangeFactory
          ↓
-5. Create Unified Exchanges (concurrent)
+5. Create Separated Domain Exchanges (constructor injection)
          ↓   
-6. Initialize Exchange Resources (REST + WebSocket)
+6. Initialize Injected Resources (REST + WebSocket clients)
          ↓
 7. Build Symbol Resolution System (1.06M ops/sec)
          ↓
@@ -272,15 +295,16 @@ config.yaml → config_manager → UnifiedExchangeFactory → UnifiedCompositeEx
          ↓
 9. Initialize Performance Monitoring
          ↓
-10. Begin Arbitrage Operations
+10. Begin Separated Domain Operations
 ```
 
 **Initialization Benefits**:
-- **Concurrent Exchange Creation**: Multiple exchanges initialized in parallel
+- **Constructor Injection**: Dependencies injected at creation time
+- **Explicit Initialization**: WebsocketBindHandlerInterface explicitly initialized
+- **Handler Binding**: WebSocket channels bound during constructor execution
+- **Domain Isolation**: Public and private exchanges completely independent
 - **Resource Management**: Proper async context managers throughout
-- **Error Resilience**: Individual exchange failures don't affect others
-- **Performance Tracking**: Built-in metrics from system start
-- **Clean Shutdown**: Graceful resource cleanup via close_all()
+- **Error Resilience**: Domain failures don't cascade between public/private
 
 ## Error Handling Strategy
 
@@ -318,31 +342,41 @@ async def _parse_orderbook_update(self, message):
 
 ## Extensibility Points
 
-### Adding New Exchanges (Simplified)
-1. **Implement UnifiedCompositeExchange** in new exchange module
-2. **Add to UnifiedExchangeFactory._supported_exchanges** dictionary
-3. **Configure in config.yaml** under `exchanges:` section  
-4. **No other code changes required**
+### Adding New Exchanges (Separated Domain Pattern)
+1. **Implement BasePublicComposite and BasePrivateComposite** in separate modules
+2. **Add REST/WebSocket implementations** with constructor injection
+3. **Update factory mapping tables** for direct component lookup
+4. **Configure in config.yaml** under `exchanges:` section
 
 **Example**:
 ```python
-# 1. Create exchange implementation
-class NewExchangeUnifiedExchange(UnifiedCompositeExchange):
-    # Implement all abstract methods
-    pass
+# 1. Create separated domain implementations
+class NewExchangePublicExchange(BasePublicComposite):
+    def __init__(self, config, rest_client, websocket_client, logger=None):
+        WebsocketBindHandlerInterface.__init__(self)  # Explicit cooperative inheritance
+        super().__init__(config, rest_client, websocket_client, logger)
+        
+        # Handler binding pattern
+        websocket_client.bind(PublicWebsocketChannelType.ORDERBOOK, self._handle_orderbook)
 
-# 2. Register in factory
-self._supported_exchanges = {
-    'mexc': 'exchanges.integrations.mexc.mexc_unified_exchange.MexcUnifiedExchange',
-    'gateio': 'exchanges.integrations.gateio.gateio_unified_exchange.GateioUnifiedExchange',
-    'newexchange': 'exchanges.integrations.newexchange.newexchange_unified_exchange.NewExchangeUnifiedExchange'
+class NewExchangePrivateExchange(BasePrivateComposite):
+    def __init__(self, config, rest_client, websocket_client, logger=None):
+        WebsocketBindHandlerInterface.__init__(self)  # Explicit cooperative inheritance
+        super().__init__(config, rest_client, websocket_client, logger)
+        
+        # Handler binding pattern
+        websocket_client.bind(PrivateWebsocketChannelType.ORDER, self._order_handler)
+
+# 2. Update factory mapping tables
+EXCHANGE_REST_MAP = {
+    (ExchangeEnum.NEWEXCHANGE, False): NewExchangePublicRest,
+    (ExchangeEnum.NEWEXCHANGE, True): NewExchangePrivateRest,
 }
 
-# 3. Add configuration
-# exchanges:
-#   newexchange:
-#     api_key: "${NEWEXCHANGE_API_KEY}"
-#     secret_key: "${NEWEXCHANGE_SECRET_KEY}"
+COMPOSITE_AGNOSTIC_MAP = {
+    (False, False): NewExchangePublicExchange,  # (is_futures, is_private)
+    (False, True): NewExchangePrivateExchange,
+}
 ```
 
 ### Adding New Trading Strategies
@@ -420,4 +454,4 @@ self._supported_exchanges = {
 
 ---
 
-*This architecture documentation reflects the unified exchange architecture with completed consolidation (September 2025). All architectural decisions prioritize HFT performance while maintaining trading safety and code clarity.*
+*This architecture documentation reflects the separated domain architecture with constructor injection patterns (September 2025). All architectural decisions prioritize HFT performance while maintaining complete domain isolation and trading safety.*

@@ -31,7 +31,8 @@ from exchanges.integrations.gateio.services.spot_symbol_mapper import GateioSpot
 from exchanges.structs.common import Symbol, Trade, OrderBook, BookTicker, OrderBookEntry, Side
 from config.structs import ExchangeConfig
 from exchanges.interfaces.ws import PublicBaseWebsocket
-from infrastructure.networking.websocket.structs import SubscriptionAction, WebsocketChannelType
+from infrastructure.networking.websocket.structs import SubscriptionAction, WebsocketChannelType, \
+    PublicWebsocketChannelType
 from utils import get_current_timestamp
 from exchanges.integrations.gateio.utils import (
     from_subscription_action, 
@@ -65,7 +66,7 @@ class GateioPublicSpotWebsocketBaseWebsocket(GateioBaseWebsocket, PublicBaseWebs
         event = from_subscription_action(action)
         
         # Convert symbol to Gate.io format
-        exchange_symbol = GateioSpotSymbol.to_symbol(symbol)
+        exchange_symbol = GateioSpotSymbol.to_pair(symbol)
         
         messages = []
         for ch in channels:
@@ -155,7 +156,7 @@ class GateioPublicSpotWebsocketBaseWebsocket(GateioBaseWebsocket, PublicBaseWebs
                 last_update_id=data.get('u', None)
             )
             
-            await self.handle_orderbook(orderbook)
+            await self._exec_bound_handler(PublicWebsocketChannelType.ORDERBOOK, orderbook)
             
         except Exception as e:
             self.logger.error(f"Error parsing Gate.io orderbook update: {e}")
@@ -189,9 +190,9 @@ class GateioPublicSpotWebsocketBaseWebsocket(GateioBaseWebsocket, PublicBaseWebs
                     side=to_side(trade_data.get('side', 'buy')),
                     trade_id=str(trade_data.get('id', ''))
                 )
-                
-                await self.handle_trade(trade)
-                
+
+                await self._exec_bound_handler(PublicWebsocketChannelType.PUB_TRADE, trade)
+
         except Exception as e:
             self.logger.error(f"Error parsing Gate.io trades update: {e}")
 
@@ -215,8 +216,8 @@ class GateioPublicSpotWebsocketBaseWebsocket(GateioBaseWebsocket, PublicBaseWebs
                 timestamp=int(data.get('t', get_current_timestamp())),
                 update_id=data.get('u', 0)
             )
-            
-            await self.handle_book_ticker(book_ticker)
-            
+
+            await self._exec_bound_handler(PublicWebsocketChannelType.BOOK_TICKER, book_ticker)
+
         except Exception as e:
             self.logger.error(f"Error parsing Gate.io book ticker update: {e}")
