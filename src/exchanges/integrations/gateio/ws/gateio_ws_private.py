@@ -78,8 +78,16 @@ class GateioPrivateSpotWebsocket(GateioBaseWebsocket, PrivateBaseWebsocket):
         }
 
         # Add payload for channels that require it
-        if channel in [WebsocketChannelType.ORDER, WebsocketChannelType.PUB_TRADE]:
-            message["payload"] = ["!all"]  # Subscribe to all updates
+        # spot.orders accepts ["!all"] to subscribe to all updates
+        if channel == WebsocketChannelType.ORDER:
+            message["payload"] = ["!all"]  # Subscribe to all order updates
+        # spot.usertrades requires specific currency pairs like ["BTC_USDT"]
+        elif channel == WebsocketChannelType.EXECUTION:
+            # Get symbols from kwargs or use default trading pairs
+            # symbols = kwargs.get('symbols', ["BTC_USDT", "ETH_USDT", "BNB_USDT"])
+            # message["payload"] = symbols
+            message["payload"] = ["!all"]  # Subscribe to all order updates
+
 
         # Add authentication for private channels
         message["auth"] = self._generate_signature(channel_name, event, timestamp)
@@ -87,6 +95,7 @@ class GateioPrivateSpotWebsocket(GateioBaseWebsocket, PrivateBaseWebsocket):
         self.logger.info(f"Created Gate.io private {event} message for channel: {channel_name}",
                           channel=channel_name,
                           event=event,
+                          payload=message.get("payload"),
                           exchange=self.exchange_name)
 
         return message
@@ -126,7 +135,7 @@ class GateioPrivateSpotWebsocket(GateioBaseWebsocket, PrivateBaseWebsocket):
             await self._parse_balance_update(result_data)
         elif channel in ["spot.orders", "spot.orders_v2"]:
             await self._parse_order_update(result_data)
-        elif channel in ["spot.user_trades", "spot.usertrades", "spot.usertrades_v2"]:
+        elif channel in ["spot.usertrades", "spot.usertrades_v2"]:
             await self._parse_user_trade_update(result_data)
         else:
             self.logger.debug(f"Received update for unknown Gate.io private channel: {channel}")

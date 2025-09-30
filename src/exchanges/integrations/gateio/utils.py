@@ -15,6 +15,7 @@ from exchanges.structs.common import (
 )
 from exchanges.structs.types import OrderId
 from exchanges.structs.enums import KlineInterval
+from exchanges.integrations.gateio.services.spot_symbol_mapper import GateioSpotSymbol
 
 
 # Event types for Gate.io WebSocket
@@ -111,7 +112,6 @@ def to_symbol(pair_str: str):
 
 def from_symbol(symbol):
     """Convert Symbol to Gate.io pair string."""
-    from exchanges.integrations.gateio.services.spot_symbol_mapper import GateioSpotSymbol
     return GateioSpotSymbol.to_pair(symbol)
 
 

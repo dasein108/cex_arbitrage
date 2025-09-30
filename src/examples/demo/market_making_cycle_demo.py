@@ -13,6 +13,7 @@ from typing import Optional, Dict, List
 
 from config import get_exchange_config
 from exchanges.utils.exchange_utils import get_exchange_enum, is_order_done, is_order_filled
+from infrastructure.networking.websocket.structs import PrivateWebsocketChannelType, PublicWebsocketChannelType
 
 # Add src to path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'src'))
@@ -22,7 +23,7 @@ from exchanges.interfaces.composite.spot.base_private_spot_composite import Comp
 from exchanges.structs import (Side, TimeInForce, OrderStatus, AssetName, OrderId, Symbol, Order,
                                AssetBalance, OrderBook, BookTicker, SymbolInfo, ExchangeEnum)
 from infrastructure.logging import get_logger, LoggingTimer
-from exchanges.exchange_factory import create_exchange_component, get_symbol_mapper
+from exchanges.exchange_factory import get_composite_implementation, get_symbol_mapper
 from infrastructure.networking.websocket.handlers import PublicWebsocketHandlers, PrivateWebsocketHandlers
 
 
@@ -60,28 +61,16 @@ class UnifiedArbitrageDemo:
                         is_futures='_futures'in exchange_name.lower())
         self.symbol = symbol
 
-        # Exchange
-        private_handlers = PrivateWebsocketHandlers(
-            order_handler=self._handle_order_update,
-            balance_handler=self._handle_balance_update,
-            execution_handler=self._handle_trade,
-        )
-        # public_handlers = PublicWebsocketHandlers
-        private_exchange = create_exchange_component(exchange_enum,
-                                                     config=config,
-                                                     is_private=True,
-                                                     component_type='composite',
-                                                     handlers=private_handlers)
+        private_exchange = get_composite_implementation(config, is_private=True)
+        private_exchange.bind(PrivateWebsocketChannelType.ORDER, self._handle_order_update)
+        private_exchange.bind(PrivateWebsocketChannelType.BALANCE, self._handle_balance_update)
+        private_exchange.bind(PrivateWebsocketChannelType.EXECUTION, self._handle_private_trade)
 
-        public_handlers = PublicWebsocketHandlers(
-            book_ticker_handler=self._handle_orderbook_update,
-            trade_handler=self._handle_trade)
 
-        public_exchange = create_exchange_component(exchange_enum,
-                                                    config=config,
-                                                    is_private=False,
-                                                    component_type='composite',
-                                                    handlers=public_handlers)
+        public_exchange = get_composite_implementation(config, is_private=False)
+        public_exchange.bind(PublicWebsocketChannelType.BOOK_TICKER, self._handle_orderbook_update)
+        public_exchange.bind(PublicWebsocketChannelType.ORDERBOOK, self._handle_orderbook_update)
+        public_exchange.bind(PublicWebsocketChannelType.PUB_TRADE, self._handle_trade)
 
         self.public_exchange: Optional[CompositePublicSpotExchange] = public_exchange
         self.private_exchange: Optional[CompositePrivateSpotExchange] = private_exchange

@@ -95,23 +95,6 @@ def create_exchange_component(exchange: ExchangeEnum, config: ExchangeConfig, co
         raise ValueError(f"Unsupported component_type: {component_type}")
 
 
-# Handler creation functions - also export the classes themselves
-from infrastructure.networking.websocket.handlers import PublicWebsocketHandlers, PrivateWebsocketHandlers
-
-# Export the handler classes for direct import
-__all__ = ['PublicWebsocketHandlers', 'PrivateWebsocketHandlers']
-
-
-def create_public_handlers(**kwargs):
-    """Create PublicWebsocketHandlers."""
-    return PublicWebsocketHandlers(**kwargs)
-
-
-def create_private_handlers(**kwargs):
-    """Create PrivateWebsocketHandlers."""
-    return PrivateWebsocketHandlers(**kwargs)
-
-
 # Symbol mapper (if needed)
 def get_symbol_mapper(exchange: ExchangeEnum):
     """Get symbol mapper for exchange."""

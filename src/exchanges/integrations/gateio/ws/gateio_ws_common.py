@@ -145,7 +145,7 @@ class GateioBaseWebsocket(BaseWebsocketInterface):
         status = result.get("status", "unknown")
 
         if status == "success":
-            self.logger.debug(f"Successfully subscribed/unsubscribed to Gate.io private futures channel: {channel}")
+            self.logger.info(f"Successfully subscribed/unsubscribed to Gate.io private futures channel: {channel}")
         else:
             error_msg = error.get("message", "Unknown error")
             self.logger.error(f"Gate.io private futures subscription error for channel {channel}: {error_msg}"

@@ -80,7 +80,17 @@ class GateioPrivateFuturesWebsocket(GateioBaseWebsocket, PrivateBaseWebsocket):
         }
 
         # Add payload for channels that require it
-        if channel in [WebsocketChannelType.ORDER, WebsocketChannelType.PUB_TRADE, WebsocketChannelType.POSITION]:
+        # futures.orders and futures.positions accept ["!all"] to subscribe to all updates
+        if channel in [WebsocketChannelType.ORDER, WebsocketChannelType.POSITION]:
+            message["payload"] = ["!all"]  # Subscribe to all updates
+        # futures.usertrades requires specific contract format like ["user_id", "BTC_USD"]
+        elif channel == WebsocketChannelType.EXECUTION:
+            # Get user_id and contracts from kwargs or use defaults
+            # user_id = kwargs.get('user_id', "20011")  # Default user_id
+            # contracts = kwargs.get('contracts', ["BTC_USD", "ETH_USD"])
+            # # For usertrades, we need [user_id, contract] format
+            # contract = contracts[0] if isinstance(contracts, list) else contracts
+            # message["payload"] = [user_id, contract]
             message["payload"] = ["!all"]  # Subscribe to all updates
 
         # Add authentication for private channels
@@ -89,6 +99,7 @@ class GateioPrivateFuturesWebsocket(GateioBaseWebsocket, PrivateBaseWebsocket):
         self.logger.info(f"Created Gate.io private futures {event} message for channel: {channel_name}",
                         channel=channel_name,
                         event=event,
+                        payload=message.get("payload"),
                         exchange=self.exchange_name)
         
         return message
@@ -161,7 +172,7 @@ class GateioPrivateFuturesWebsocket(GateioBaseWebsocket, PrivateBaseWebsocket):
             await self._parse_futures_balance_update(result_data)
         elif channel in ["futures.orders", "futures.orders_v2"]:
             await self._parse_futures_order_update(result_data)
-        elif channel in ["futures.user_trades", "futures.usertrades", "futures.usertrades_v2"]:
+        elif channel in ["futures.usertrades", "futures.usertrades_v2"]:
             await self._parse_futures_user_trade_update(result_data)
         elif channel in ["futures.positions", "futures.position"]:
             await self._parse_futures_position_update(result_data)

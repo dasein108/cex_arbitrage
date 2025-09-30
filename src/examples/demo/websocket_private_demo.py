@@ -19,7 +19,7 @@ from typing import List, Dict
 
 from exchanges.structs.common import Order, AssetBalance, Trade
 from config.config_manager import HftConfig
-from exchanges.exchange_factory import create_websocket_client, create_private_handlers
+from exchanges.exchange_factory import create_websocket_client
 from exchanges.utils.exchange_utils import get_exchange_enum
 from exchanges.consts import DEFAULT_PRIVATE_WEBSOCKET_CHANNELS
 from infrastructure.networking.websocket.structs import WebsocketChannelType
@@ -311,7 +311,7 @@ async def main(exchange_name: str):
 
 
 if __name__ == "__main__":
-    exchange_name = sys.argv[1] if len(sys.argv) > 1 else "gateio_spot"
+    exchange_name = sys.argv[1] if len(sys.argv) > 1 else "gateio_futures"
 
     try:
         asyncio.run(main(exchange_name))

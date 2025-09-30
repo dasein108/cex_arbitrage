@@ -87,9 +87,9 @@ class GateioPublicFuturesWebsocket(GateioBaseWebsocket, PublicBaseWebsocket):
             
             # Special handling for different futures channels
             if ch == WebsocketChannelType.ORDERBOOK:
-                message["payload"] = [exchange_symbol, "5", "100ms"]  # Level, frequency
+                message["payload"] = [exchange_symbol, "5", "10ms"]  # Level, frequency
             elif ch == WebsocketChannelType.EXECUTION:
-                message["payload"] = [exchange_symbol, "100ms"]  # Symbol, frequency
+                message["payload"] = [exchange_symbol, "10ms"]  # Symbol, frequency
                 
             messages.append(message)
             
