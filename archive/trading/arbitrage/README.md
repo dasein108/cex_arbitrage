@@ -268,78 +268,78 @@ PYTHONPATH=src python src/main.py --log-level DEBUG
 ```python
 import asyncio
 import logging
-from trading.arbitrage import ArbitrageController
+from archive.trading.arbitrage import ArbitrageController
 
 
 async def main():
-   # Configure logging
-   logging.basicConfig(level=logging.INFO)
+    # Configure logging
+    logging.basicConfig(level=logging.INFO)
 
-   # Initialize the SOLID-compliant controller
-   controller = ArbitrageController()
+    # Initialize the SOLID-compliant controller
+    controller = ArbitrageController()
 
-   try:
-      # Initialize all components (configuration, exchanges, monitors)
-      await controller.initialize(dry_run=True)  # Safe mode for testing
+    try:
+        # Initialize all components (configuration, exchanges, monitors)
+        await controller.initialize(dry_run=True)  # Safe mode for testing
 
-      # Run the arbitrage session
-      await controller.run()
+        # Run the arbitrage session
+        await controller.run()
 
-   except KeyboardInterrupt:
-      print("Shutdown requested...")
-   finally:
-      # Graceful shutdown with resource cleanup
-      await controller.shutdown()
+    except KeyboardInterrupt:
+        print("Shutdown requested...")
+    finally:
+        # Graceful shutdown with resource cleanup
+        await controller.shutdown()
 
 
 if __name__ == "__main__":
-   asyncio.run(main())
+    asyncio.run(main())
 ```
 
 ### Component-Level Usage (For Advanced Integration)
 
 ```python
-from trading.arbitrage import ConfigurationManager
-from trading.arbitrage import ExchangeFactory
-from trading.arbitrage import PerformanceMonitor
-from trading.arbitrage import ShutdownManager
+from archive.trading.arbitrage import ConfigurationManager
+from archive.trading.arbitrage import ExchangeFactory
+from archive.trading.arbitrage import PerformanceMonitor
+from archive.trading.arbitrage import ShutdownManager
 
 
 async def custom_arbitrage_setup():
-   # Configure each component independently
-   config_manager = ConfigurationManager()
-   config = await config_manager.load_configuration(dry_run=True)
+    # Configure each component independently
+    config_manager = ConfigurationManager()
+    config = await config_manager.load_configuration(dry_run=True)
 
-   # Create exchanges using Factory pattern
-   exchange_factory = ExchangeFactory()
-   exchanges = await exchange_factory.create_exchanges(
-      exchange_names=config.enabled_exchanges,
-      dry_run=config.enable_dry_run
-   )
+    # Create exchanges using Factory pattern
+    exchange_factory = ExchangeFactory()
+    exchanges = await exchange_factory.create_exchanges(
+        exchange_names=config.enabled_exchanges,
+        dry_run=config.enable_dry_run
+    )
 
-   # Setup performance monitoring
-   performance_monitor = PerformanceMonitor(config)
-   performance_monitor.start()
+    # Setup performance monitoring
+    performance_monitor = PerformanceMonitor(config)
+    performance_monitor.start()
 
-   # Setup graceful shutdown
-   shutdown_manager = ShutdownManager()
-   shutdown_manager.setup_signal_handlers()
+    # Setup graceful shutdown
+    shutdown_manager = ShutdownManager()
+    shutdown_manager.setup_signal_handlers()
 
-   try:
-      # Your custom arbitrage logic here
-      print(f"Initialized {len(exchanges)} exchanges")
-      print(f"Configuration: {config.engine_name}")
+    try:
+        # Your custom arbitrage logic here
+        print(f"Initialized {len(exchanges)} exchanges")
+        print(f"Configuration: {config.engine_name}")
 
-      # Example: Monitor performance
-      while not shutdown_manager.is_shutdown_requested():
-         metrics = performance_monitor.get_metrics()
-         print(f"Performance: {metrics}")
-         await asyncio.sleep(10)
+        # Example: Monitor performance
+        while not shutdown_manager.is_shutdown_requested():
+            metrics = performance_monitor.get_metrics()
+            print(f"Performance: {metrics}")
+            await asyncio.sleep(10)
 
-   finally:
-      # Clean shutdown
-      await performance_monitor.stop()
-      await exchange_factory.close_all()
+    finally:
+        # Clean shutdown
+        await performance_monitor.stop()
+        await exchange_factory.close_all()
 ```
 
 ### Manual Opportunity Execution
@@ -593,31 +593,31 @@ async def health_monitor():
 
 ```python
 import pytest
-from trading.arbitrage import ArbitrageEngine, ArbitrageConfig
+from archive.trading.arbitrage import ArbitrageEngine, ArbitrageConfig
 
 
 @pytest.mark.asyncio
 async def test_opportunity_execution():
-   """Test basic opportunity execution"""
-   engine = create_test_engine()
-   opportunity = create_test_opportunity()
+    """Test basic opportunity execution"""
+    engine = create_test_engine()
+    opportunity = create_test_opportunity()
 
-   result = await engine.execute_opportunity(opportunity)
+    result = await engine.execute_opportunity(opportunity)
 
-   assert result.final_state == ArbitrageState.COMPLETED
-   assert result.total_execution_time_ms < 50
-   assert result.realized_profit > 0
+    assert result.final_state == ArbitrageState.COMPLETED
+    assert result.total_execution_time_ms < 50
+    assert result.realized_profit > 0
 
 
 @pytest.mark.asyncio
 async def test_risk_validation():
-   """Test risk management validation"""
-   risk_manager = create_test_risk_manager()
-   high_risk_opportunity = create_high_risk_opportunity()
+    """Test risk management validation"""
+    risk_manager = create_test_risk_manager()
+    high_risk_opportunity = create_high_risk_opportunity()
 
-   is_valid = await risk_manager.validate_opportunity_risk(high_risk_opportunity)
+    is_valid = await risk_manager.validate_opportunity_risk(high_risk_opportunity)
 
-   assert not is_valid  # Should reject high-risk opportunity
+    assert not is_valid  # Should reject high-risk opportunity
 ```
 
 ### Integration Testing
@@ -935,7 +935,7 @@ PYTHONPATH=src python src/main.py        # Professional CLI
 
 ```python
 # ✅ New way - SOLID components
-from trading.arbitrage import ArbitrageController
+from archive.trading.arbitrage import ArbitrageController
 
 controller = ArbitrageController()  # Clean orchestration
 ```

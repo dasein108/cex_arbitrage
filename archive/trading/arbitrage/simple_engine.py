@@ -12,10 +12,10 @@ from infrastructure.logging import get_logger
 import time
 from typing import Dict, Any, Optional, List, Set
 
-from trading.arbitrage.types import ArbitrageConfig, EngineStatistics, ArbitragePair
-from trading.arbitrage.detector import OpportunityDetector
-from trading.arbitrage.aggregator import MarketDataAggregator
-from trading.arbitrage.structures import ArbitrageOpportunity
+from archive.trading.arbitrage.types import ArbitrageConfig, EngineStatistics, ArbitragePair
+from archive.trading.arbitrage.detector import OpportunityDetector
+from archive.trading.arbitrage.aggregator import MarketDataAggregator
+from archive.trading.arbitrage.structures import ArbitrageOpportunity
 from exchanges.interfaces.composite import CompositePrivateSpotExchange
 from exchanges.structs.common import Symbol
 from exchanges.structs.types import ExchangeName, AssetName

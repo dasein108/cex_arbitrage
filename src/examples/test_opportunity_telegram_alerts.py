@@ -9,9 +9,9 @@ import asyncio
 import logging
 from exchanges.structs.common import Symbol
 from exchanges.structs.types import ExchangeName, AssetName
-from trading.arbitrage import ArbitrageOpportunity, OpportunityType
-from trading.arbitrage import OpportunityProcessor
-from trading.arbitrage import ArbitrageConfig, EngineStatistics, RiskLimits
+from archive.trading.arbitrage import ArbitrageOpportunity, OpportunityType
+from archive.trading.arbitrage import OpportunityProcessor
+from archive.trading.arbitrage import ArbitrageConfig, EngineStatistics, RiskLimits
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)

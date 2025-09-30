@@ -12,7 +12,7 @@ from contextlib import asynccontextmanager
 from infrastructure.logging import get_logger
 import time
 from typing import Dict, Any, Optional, Callable, AsyncIterator
-from trading.arbitrage.types import EngineStatistics, ArbitrageConfig
+from archive.trading.arbitrage.types import EngineStatistics, ArbitrageConfig
 
 logger = get_logger('arbitrage.performance_monitor')
 

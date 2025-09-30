@@ -39,8 +39,8 @@ from exchanges.integrations.gateio.public_exchange import GateioPublicExchange
 from exchanges.integrations.gateio.public_futures_exchange import GateioPublicFuturesExchange
 
 # Import existing analysis components
-from trading.analytics.data_collector import ArbitrageDataPipeline
-from trading.analytics.spread_analyzer import SpreadAnalyzer
+from archive.trading import ArbitrageDataPipeline
+from archive.trading import SpreadAnalyzer
 
 # Import shared utilities (DRY compliance)
 from applications.tools.shared_utils import (

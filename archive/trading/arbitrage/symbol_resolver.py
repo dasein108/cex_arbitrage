@@ -14,7 +14,7 @@ from dataclasses import dataclass, field
 
 from exchanges.interfaces.composite import CompositePublicSpotExchange
 from exchanges.structs.common import Symbol, SymbolInfo
-from trading.arbitrage.types import ExchangePairConfig, ArbitragePair, OpportunityType
+from archive.trading.arbitrage.types import ExchangePairConfig, ArbitragePair, OpportunityType
 
 logger = get_logger('arbitrage.symbol_resolver')
 

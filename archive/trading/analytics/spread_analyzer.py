@@ -24,9 +24,9 @@ project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
 
 # Import utility classes
-from trading.analysis.utils.data_loader import DataLoader
-from trading.analysis.utils.spread_calculator import SpreadCalculator
-from trading.analysis.utils.metrics import MetricsCalculator
+from archive.trading import DataLoader
+from archive.trading import SpreadCalculator
+from archive.trading import MetricsCalculator
 
 
 class ArbitrageMetrics(Struct):

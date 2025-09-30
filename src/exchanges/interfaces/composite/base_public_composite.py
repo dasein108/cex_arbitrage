@@ -59,11 +59,11 @@ from exchanges.interfaces.composite.base_composite import BaseCompositeExchange
 from exchanges.interfaces.composite.types import PublicRestType, PublicWebsocketType
 from infrastructure.logging import LoggingTimer, HFTLoggerInterface
 from infrastructure.networking.websocket.handlers import PublicWebsocketHandlers
-from exchanges.interfaces.ws.interfaces.common import WebsocketBindHandlerInterface
+from exchanges.interfaces.common.binding import BoundHandlerInterface
 from infrastructure.networking.websocket.structs import PublicWebsocketChannelType, WebsocketChannelType
 
 class BasePublicComposite(BaseCompositeExchange[PublicRestType, PublicWebsocketType],
-                          WebsocketBindHandlerInterface[PublicWebsocketChannelType]):
+                          BoundHandlerInterface[PublicWebsocketChannelType]):
     """
     Base public composite exchange interface for market data operations.
     """
@@ -81,7 +81,7 @@ class BasePublicComposite(BaseCompositeExchange[PublicRestType, PublicWebsocketT
             websocket_client: Injected public WebSocket client instance (optional)
             logger: Optional injected HFT logger (auto-created if not provided)
         """
-        WebsocketBindHandlerInterface.__init__(self)
+        BoundHandlerInterface.__init__(self)
         super().__init__(config,
                          rest_client=rest_client,
                          websocket_client=websocket_client,

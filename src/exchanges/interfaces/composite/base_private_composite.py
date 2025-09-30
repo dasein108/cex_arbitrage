@@ -21,12 +21,12 @@ from exchanges.interfaces.composite.types import PrivateRestType, PrivateWebsock
 from infrastructure.logging import LoggingTimer, HFTLoggerInterface
 from infrastructure.networking.websocket.handlers import PrivateWebsocketHandlers
 from exchanges.utils.exchange_utils import is_order_done
-from exchanges.interfaces.ws.interfaces.common import WebsocketBindHandlerInterface
+from exchanges.interfaces.common.binding import BoundHandlerInterface
 from infrastructure.networking.websocket.structs import PrivateWebsocketChannelType, WebsocketChannelType
 
 
 class BasePrivateComposite(BaseCompositeExchange[PrivateRestType, PrivateWebsocketType],
-                           WebsocketBindHandlerInterface[PrivateWebsocketChannelType]):
+                           BoundHandlerInterface[PrivateWebsocketChannelType]):
     """
     Base private composite exchange interface WITHOUT withdrawal functionality.
     
@@ -59,7 +59,7 @@ class BasePrivateComposite(BaseCompositeExchange[PrivateRestType, PrivateWebsock
             websocket_client: Injected private WebSocket client instance (optional)
             logger: Optional injected HFT logger (auto-created if not provided)
         """
-        WebsocketBindHandlerInterface.__init__(self)
+        BoundHandlerInterface.__init__(self)
         super().__init__(config=config,
                          rest_client=rest_client,
                          websocket_client=websocket_client,

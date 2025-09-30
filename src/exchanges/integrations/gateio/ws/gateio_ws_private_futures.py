@@ -265,14 +265,49 @@ class GateioPrivateFuturesWebsocket(GateioBaseWebsocket, PrivateBaseWebsocket):
 
     async def _parse_futures_position_update(self, data: Union[List[Dict[str, Any]], Dict[str, Any]]) -> None:
         """Parse Gate.io futures position update."""
-        self.logger.warning("Not yet implemented: Gate.io futures position update parsing")
-        # try:
-        #     position_list = data if isinstance(data, list) else [data]
-        #
-        #     for position_data in position_list:
-        #         # Convert Gate.io futures position to unified format
-        #         position = futures_ws_to_position(position_data)
-        #         await self.handle_position(position)
-        #
-        # except Exception as e:
-        #     self.logger.error(f"Error parsing Gate.io futures position update: {e}")
+        try:
+            position_list = data if isinstance(data, list) else [data]
+            
+            for position_data in position_list:
+                # Convert Gate.io futures position to unified format
+                symbol = GateioFuturesSymbol.to_symbol(position_data.get('contract', ''))
+                
+                # Handle position size - positive means long, negative means short
+                size = float(position_data.get('size', '0'))
+                abs_size = abs(size)
+                side = Side.BUY if size >= 0 else Side.SELL
+                
+                # Parse timestamps - prefer time_ms if available
+                timestamp = position_data.get('time_ms', 0)
+                if not timestamp:
+                    time_sec = position_data.get('time', 0)
+                    timestamp = int(time_sec * 1000) if time_sec else 0
+                
+                # Parse entry price
+                entry_price = float(position_data.get('entry_price', '0'))
+                
+                # Parse PnL fields
+                realized_pnl = float(position_data.get('realised_pnl', '0'))
+                # Gate.io doesn't provide unrealized PnL directly in position updates
+                
+                # Parse margin and liquidation price
+                margin = float(position_data.get('margin', '0')) if position_data.get('margin') else None
+                liquidation_price = float(position_data.get('liq_price', '0')) if position_data.get('liq_price') else None
+                
+                position = Position(
+                    symbol=symbol,
+                    side=side,
+                    size=abs_size,
+                    entry_price=entry_price,
+                    mark_price=None,  # Not provided in position updates
+                    unrealized_pnl=None,  # Not provided in position updates
+                    realized_pnl=realized_pnl,
+                    liquidation_price=liquidation_price,
+                    margin=margin,
+                    timestamp=int(timestamp)
+                )
+                
+                await self._exec_bound_handler(PrivateWebsocketChannelType.POSITION, position)
+                
+        except Exception as e:
+            self.logger.error(f"Error parsing Gate.io futures position update: {e}")

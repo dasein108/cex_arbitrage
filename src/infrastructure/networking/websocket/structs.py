@@ -42,6 +42,7 @@ class WebsocketChannelType(IntEnum):
     PUB_TRADE = PublicWebsocketChannelType.PUB_TRADE.value
     BOOK_TICKER = PublicWebsocketChannelType.BOOK_TICKER.value
     TICKER = PublicWebsocketChannelType.TICKER.value
+
     # Private channels
     EXECUTION = PrivateWebsocketChannelType.EXECUTION.value
     BALANCE = PrivateWebsocketChannelType.BALANCE.value

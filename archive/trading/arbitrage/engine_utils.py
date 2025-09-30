@@ -9,7 +9,7 @@ HFT COMPLIANT: Minimal overhead engine creation.
 
 from infrastructure.logging import get_logger
 from typing import Dict, Union
-from trading.arbitrage.types import ArbitrageConfig
+from archive.trading.arbitrage.types import ArbitrageConfig
 from exchanges.interfaces.composite.spot.base_private_spot_composite import CompositePrivateSpotExchange
 
 logger = get_logger('arbitrage.engine_utils')
@@ -61,14 +61,14 @@ def create_engine(
     
     if engine_type == "simple":
         try:
-            from trading.arbitrage.simple_engine import SimpleArbitrageEngine
+            from archive.trading.arbitrage.simple_engine import SimpleArbitrageEngine
             return SimpleArbitrageEngine(config, exchanges)
         except ImportError as e:
             logger.error(f"Could not import SimpleArbitrageEngine: {e}")
             raise
     elif engine_type == "production":
         try:
-            from trading.arbitrage.engine import ArbitrageEngine
+            from archive.trading.arbitrage.engine import ArbitrageEngine
             return ArbitrageEngine(config, exchanges)
         except ImportError as e:
             logger.error(f"Could not import ArbitrageEngine: {e}")

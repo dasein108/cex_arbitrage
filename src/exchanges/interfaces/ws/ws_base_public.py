@@ -15,12 +15,13 @@ from infrastructure.networking.websocket.structs import ConnectionState, Message
     PublicWebsocketChannelType
 from infrastructure.networking.websocket.structs import ParsedMessage, WebsocketChannelType
 from exchanges.interfaces.ws.ws_base import BaseWebsocketInterface
-from .interfaces.common import WebsocketSubscriptionPublicInterface, WebsocketBindHandlerInterface
+from .interfaces.common import WebsocketSubscriptionPublicInterface
+from ..common.binding import BoundHandlerInterface
 from infrastructure.networking.websocket.structs import SubscriptionAction
 
 
 class PublicBaseWebsocket(BaseWebsocketInterface, WebsocketSubscriptionPublicInterface,
-                          WebsocketBindHandlerInterface[PublicWebsocketChannelType], ABC):
+                          BoundHandlerInterface[PublicWebsocketChannelType], ABC):
     """
     Base class for exchange public WebSocket implementations.
     
@@ -35,7 +36,7 @@ class PublicBaseWebsocket(BaseWebsocketInterface, WebsocketSubscriptionPublicInt
         return list(self.subscriptions.keys())
 
     def __init__(self, *args, **kwargs):
-        WebsocketBindHandlerInterface.__init__(self)
+        BoundHandlerInterface.__init__(self)
         super().__init__(*args, **kwargs)
 
         # State management for symbols (moved from WebSocket manager)

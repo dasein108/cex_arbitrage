@@ -8,12 +8,12 @@ websockets==15.0.1  # WebSocket client, pure Python implementation
 
 # High-performance JSON/data parsing
 msgspec==0.19.0  # Fastest JSON encoder/decoder with schema validation
-orjson==3.11.3  # Ultra-fast JSON library (3x faster than json)
-pysimdjson==6.0.2  # SIMD-accelerated JSON parsing (alternative to orjson)
+# orjson==3.11.3  # Ultra-fast JSON library (3x faster than json)
+# pysimdjson==6.0.2  # SIMD-accelerated JSON parsing (alternative to orjson)
 
 # Data structures and algorithms
 sortedcontainers==2.4.0  # Fast sorted collections for order book management
-numpy==2.0.2  # Efficient array operations for numerical computations
+numpy~=1.26.4
 numba==0.60.0  # JIT compiler for numerical functions
 
 # Monitoring and metrics
@@ -26,8 +26,11 @@ python-dotenv==1.0.1  # Environment variable management
 
 # Protobuf support for MEXC WebSocket optimization
 protobuf==5.29.2  # Protocol buffers for binary message parsing
-pandas
-pyyaml
+pandas~=2.3.2
+pyyaml~=6.0.2
 zmq
-asyncpg
-aiofiles
+asyncpg~=0.30.0
+aiofiles~=24.1.0
+dotenv~=0.9.9
+pytest~=8.4.2
+reactivex~=4.0.4

@@ -11,11 +11,11 @@ import asyncio
 from infrastructure.logging import get_logger
 from typing import Dict, Optional, Any
 
-from trading.arbitrage.types import ArbitrageConfig
-from trading.arbitrage.configuration_manager import ConfigurationManager
-from trading.arbitrage.performance_monitor import PerformanceMonitor
-from trading.arbitrage.shutdown_manager import ShutdownManager, ShutdownReason
-from trading.arbitrage.symbol_resolver import SymbolResolver
+from archive.trading.arbitrage.types import ArbitrageConfig
+from archive.trading.arbitrage.configuration_manager import ConfigurationManager
+from archive.trading import PerformanceMonitor
+from archive.trading.arbitrage.shutdown_manager import ShutdownManager, ShutdownReason
+from archive.trading.arbitrage.symbol_resolver import SymbolResolver
 from exchanges.interfaces.composite import CompositePrivateSpotExchange
 
 logger = get_logger('arbitrage.controller')
@@ -191,7 +191,7 @@ class ArbitrageController:
     async def _run_engine_session(self):
         """Run the engine trading session."""
         # Import here to avoid circular dependency
-        from trading.arbitrage.engine_utils import get_recommended_engine_type, create_engine
+        from archive.trading.arbitrage.engine_utils import get_recommended_engine_type, create_engine
         
         # Get recommended engine type based on configuration
         engine_type = get_recommended_engine_type(self.config)
