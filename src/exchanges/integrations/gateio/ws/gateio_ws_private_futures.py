@@ -51,7 +51,7 @@ from exchanges.integrations.gateio.ws.gateio_ws_common import GateioBaseWebsocke
 # Private futures channel mapping for Gate.io
 _PRIVATE_FUTURES_CHANNEL_MAPPING = {
     WebsocketChannelType.ORDER: "futures.orders",
-    WebsocketChannelType.PUB_TRADE: "futures.usertrades",
+    WebsocketChannelType.EXECUTION: "futures.usertrades",
     WebsocketChannelType.BALANCE: "futures.balances",
     WebsocketChannelType.POSITION: "futures.positions",
     WebsocketChannelType.HEARTBEAT: "futures.ping",
@@ -71,22 +71,49 @@ class GateioPrivateFuturesWebsocket(GateioBaseWebsocket, PrivateBaseWebsocket):
         if channel_name is None:
             raise ValueError(f"Unsupported private futures channel type: {channel}")
             
+        timestamp = int(time.time())
         message = {
-            "time": int(time.time()),
+            "id": int(time.time() * 1e6),
+            "time": timestamp,
             "channel": channel_name,
             "event": event
         }
-        
+
         # Add payload for channels that require it
         if channel in [WebsocketChannelType.ORDER, WebsocketChannelType.PUB_TRADE, WebsocketChannelType.POSITION]:
             message["payload"] = ["!all"]  # Subscribe to all updates
+
+        # Add authentication for private channels
+        message["auth"] = self._generate_signature(channel_name, event, timestamp)
             
-        self.logger.debug(f"Created Gate.io private futures {event} message for channel: {channel_name}",
+        self.logger.info(f"Created Gate.io private futures {event} message for channel: {channel_name}",
                         channel=channel_name,
                         event=event,
                         exchange=self.exchange_name)
         
         return message
+
+    def _generate_signature(self, channel: str, event: str, timestamp: int) -> Dict[str, str]:
+        """Generate Gate.io authentication signature for WebSocket messages.
+
+        According to Gate.io WebSocket docs, signature string format is:
+        channel=<channel>&event=<event>&time=<time>
+        """
+        # Gate.io signature format: channel=<channel>&event=<event>&time=<time>
+        signature_string = f"channel={channel}&event={event}&time={timestamp}"
+
+        # Create HMAC-SHA512 signature
+        signature = hmac.new(
+            self.secret_key.encode('utf-8'),
+            signature_string.encode('utf-8'),
+            hashlib.sha512
+        ).hexdigest()
+
+        return {
+            "method": "api_key",
+            "KEY": self.api_key,
+            "SIGN": signature
+        }
 
     async def _generate_auth_message(self) -> Optional[Dict[str, Any]]:
         """Generate Gate.io futures WebSocket authentication message."""

@@ -94,7 +94,11 @@ class BaseWebsocketInterface(ABC):
         Otherwise, just ignore, all subscriptions will be resent on reconnect.
         """
         if self.is_connected():
+            self.logger.info(f"Sending WebSocket message: {message}")
             await self._ws_manager.send_message(message)
+        else:
+            self.logger.warning(f"WebSocket not connected, cannot send message: {message}. postponed until reconnect.")
+
 
 
     async def initialize(self) -> None:

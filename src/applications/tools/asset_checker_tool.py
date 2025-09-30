@@ -26,13 +26,15 @@ from pathlib import Path
 from typing import Dict, List, Set, Optional
 import yaml
 
+from exchanges.interfaces import PublicSpotRest, PrivateSpotRest
+
 # Add parent directories to path for imports
 project_root = Path(__file__).parent.parent.parent  # Points to src/
 sys.path.insert(0, str(project_root))
 
 from exchanges.structs.types import AssetName
 from exchanges.structs.common import AssetInfo
-from exchanges.exchange_factory import get_composite_implementation
+from exchanges.exchange_factory import get_rest_implementation
 from exchanges.structs.enums import ExchangeEnum
 from config.config_manager import HftConfig
 
@@ -44,23 +46,17 @@ class AssetStatusChecker:
         self.config = HftConfig()
 
         # Configure exchanges to check (easily configurable)
-        self.exchanges = ['mexc_spot', 'gateio_spot']  # Add exchanges here
+        self.exchanges = [ExchangeEnum.MEXC, ExchangeEnum.GATEIO]  # Add exchanges here
 
         # Exchange instances
-        self.exchange_instances: Dict[str, Optional[object]] = {}
+        self.exchange_instances: Dict[ExchangeEnum, PrivateSpotRest] = {}
 
         # Exchange display names for clean output
         self.exchange_display_names = {
-            'mexc_spot': 'MEXC',
-            'gateio_spot': 'Gate.io'
+            ExchangeEnum.MEXC: 'MEXC',
+             ExchangeEnum.GATEIO: 'Gate.io'
         }
 
-        # Exchange config mapping
-        self.exchange_configs = {
-            'mexc_spot': 'MEXC_SPOT',
-            'gateio_spot': 'GATEIO_SPOT'
-        }
-        
         # Exchange enum mapping
         self.exchange_enums = {
             'mexc_spot': ExchangeEnum.MEXC,
@@ -69,20 +65,14 @@ class AssetStatusChecker:
 
     async def initialize(self):
         """Initialize all configured exchange clients."""
-        for exchange_key in self.exchanges:
-            config_key = self.exchange_configs[exchange_key]
-            exchange_config = self.config.get_exchange_config(config_key)
-            exchange_enum = self.exchange_enums[exchange_key]
+        for exchange_enum in self.exchanges:
+            exchange_config = self.config.get_exchange_config(exchange_enum.value)
 
             # Create private composite exchange using factory
-            self.exchange_instances[exchange_key] = get_composite_implementation(
+            self.exchange_instances[exchange_enum] = get_rest_implementation(
                 exchange_config=exchange_config,
                 is_private=True
             )
-
-            # Initialize the exchange (this will create the internal REST client)
-            if self.exchange_instances[exchange_key]:
-                await self.exchange_instances[exchange_key].initialize({})
 
     def get_coins_from_config(self) -> Set[str]:
         """Extract unique base assets from config.yaml arbitrage_pairs."""

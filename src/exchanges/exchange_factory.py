@@ -19,11 +19,11 @@ EXCHANGE_REST_MAP = {
 }
 
 EXCHANGE_WS_MAP = {
-    (ExchangeEnum.MEXC, False): MexcPublicSpotWebsocketBaseWebsocket,
+    (ExchangeEnum.MEXC, False): MexcPublicSpotWebsocket,
     (ExchangeEnum.MEXC, True): MexcPrivateSpotWebsocket,
-    (ExchangeEnum.GATEIO, False): GateioPublicSpotWebsocketBaseWebsocket,
+    (ExchangeEnum.GATEIO, False): GateioPublicSpotWebsocket,
     (ExchangeEnum.GATEIO, True):  GateioPrivateSpotWebsocket,
-    (ExchangeEnum.GATEIO_FUTURES, False): GateioPublicFuturesWebsocketBaseWebsocket,
+    (ExchangeEnum.GATEIO_FUTURES, False): GateioPublicFuturesWebsocket,
     (ExchangeEnum.GATEIO_FUTURES, True): GateioPrivateFuturesWebsocket,
 }
 

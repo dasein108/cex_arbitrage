@@ -51,9 +51,9 @@ from .rest.gateio_rest_spot_public import GateioPublicSpotRest
 from .rest.gateio_rest_spot_private import GateioPrivateSpotRest
 from .rest.gateio_rest_futures_public import GateioPublicFuturesRest
 from .rest.gateio_rest_futures_private import GateioPrivateFuturesRest
-from .ws.gateio_ws_public import GateioPublicSpotWebsocketBaseWebsocket
+from .ws.gateio_ws_public import GateioPublicSpotWebsocket
 from .ws.gateio_ws_private import GateioPrivateSpotWebsocket
-from .ws.gateio_ws_public_futures import GateioPublicFuturesWebsocketBaseWebsocket
+from .ws.gateio_ws_public_futures import GateioPublicFuturesWebsocket
 from .ws.gateio_ws_private_futures import GateioPrivateFuturesWebsocket
 # Auto-register Gate.io services (symbol mapper, mappings) 
 from . import services
@@ -67,10 +67,10 @@ __all__ = [
     # Direct client access
     'GateioPublicSpotRest',
     'GateioPrivateSpotRest',
-    'GateioPublicSpotWebsocketBaseWebsocket',
+    'GateioPublicSpotWebsocket',
     'GateioPrivateSpotWebsocket',
     'GateioPublicFuturesRest',
     'GateioPrivateFuturesRest',
-    'GateioPublicFuturesWebsocketBaseWebsocket',
+    'GateioPublicFuturesWebsocket',
     'GateioPrivateFuturesWebsocket',
 ]

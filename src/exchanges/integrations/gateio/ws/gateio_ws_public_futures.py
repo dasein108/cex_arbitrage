@@ -47,11 +47,11 @@ from exchanges.integrations.gateio.services.futures_symbol_mapper import GateioF
 _FUTURES_PUBLIC_CHANNEL_MAPPING = {
     WebsocketChannelType.BOOK_TICKER: "futures.book_ticker",
     WebsocketChannelType.ORDERBOOK: "futures.order_book",
-    WebsocketChannelType.EXECUTION: "futures.trades",
+    WebsocketChannelType.PUB_TRADE: "futures.trades",
     WebsocketChannelType.HEARTBEAT: "futures.ping",
 }
 
-class GateioPublicFuturesWebsocketBaseWebsocket(GateioBaseWebsocket, PublicBaseWebsocket):
+class GateioPublicFuturesWebsocket(GateioBaseWebsocket, PublicBaseWebsocket):
     """Gate.io public futures WebSocket client inheriting from common base for shared Gate.io logic."""
     PING_CHANNEL = "futures.ping"
     def __init__(self, *args, **kwargs):

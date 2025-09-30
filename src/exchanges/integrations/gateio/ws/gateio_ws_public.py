@@ -48,7 +48,7 @@ _SPOT_PUBLIC_CHANNEL_MAPPING = {
     WebsocketChannelType.HEARTBEAT: "spot.ping",
 }
 
-class GateioPublicSpotWebsocketBaseWebsocket(GateioBaseWebsocket, PublicBaseWebsocket):
+class GateioPublicSpotWebsocket(GateioBaseWebsocket, PublicBaseWebsocket):
     """Gate.io public WebSocket client inheriting from common base for shared Gate.io logic."""
     PING_CHANNEL = "spot.ping"
     def __init__(self, *args, **kwargs):

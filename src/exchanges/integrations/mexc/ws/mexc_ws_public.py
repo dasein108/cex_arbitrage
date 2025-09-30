@@ -42,7 +42,7 @@ import msgspec
 from utils import get_current_timestamp
 
 
-class MexcPublicSpotWebsocketBaseWebsocket(PublicBaseWebsocket):
+class MexcPublicSpotWebsocket(PublicBaseWebsocket):
     """MEXC public WebSocket client using dependency injection pattern."""
 
     def __init__(self, *args, **kwargs):

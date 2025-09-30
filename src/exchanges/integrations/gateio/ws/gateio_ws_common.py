@@ -125,12 +125,8 @@ class GateioBaseWebsocket(BaseWebsocketInterface):
         
         Returns True for public connections, should be overridden for private.
         """
-        # Public WebSockets don't need authentication
-        if not self.is_private:
-            return True
-        
-        # Private WebSockets should override this method
-        return False
+        # Auth handled by each channel subscription
+        return True
 
     async def close(self) -> None:
         """
@@ -145,13 +141,15 @@ class GateioBaseWebsocket(BaseWebsocketInterface):
         """Handle Gate.io futures subscription/unsubscription responses."""
         channel = message.get("channel", "")
         result = message.get("result", {})
+        error = message.get("error", {})
         status = result.get("status", "unknown")
 
         if status == "success":
             self.logger.debug(f"Successfully subscribed/unsubscribed to Gate.io private futures channel: {channel}")
         else:
-            error_msg = result.get("error", "Unknown error")
-            self.logger.error(f"Gate.io private futures subscription error for channel {channel}: {error_msg}")
+            error_msg = error.get("message", "Unknown error")
+            self.logger.error(f"Gate.io private futures subscription error for channel {channel}: {error_msg}"
+                              f"\r\n{message}")
 
     async def _handle_auth_response(self, message: Dict[str, Any]) -> None:
         """Handle Gate.io futures authentication response."""

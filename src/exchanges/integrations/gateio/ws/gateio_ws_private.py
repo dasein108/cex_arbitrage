@@ -50,7 +50,7 @@ from exchanges.integrations.gateio.ws.gateio_ws_common import GateioBaseWebsocke
 # Private channel mapping for Gate.io
 _PRIVATE_CHANNEL_MAPPING = {
     WebsocketChannelType.ORDER: "spot.orders",
-    WebsocketChannelType.PUB_TRADE: "spot.usertrades",
+    WebsocketChannelType.EXECUTION: "spot.usertrades",
     WebsocketChannelType.BALANCE: "spot.balances",
     WebsocketChannelType.HEARTBEAT: "spot.ping",
 }
@@ -69,8 +69,10 @@ class GateioPrivateSpotWebsocket(GateioBaseWebsocket, PrivateBaseWebsocket):
         if channel_name is None:
             raise ValueError(f"Unsupported private channel type: {channel}")
 
+        timestamp = int(time.time())
         message = {
-            "time": int(time.time()),
+            "id": int(time.time() * 1e6),
+            "time": timestamp,
             "channel": channel_name,
             "event": event
         }
@@ -79,7 +81,10 @@ class GateioPrivateSpotWebsocket(GateioBaseWebsocket, PrivateBaseWebsocket):
         if channel in [WebsocketChannelType.ORDER, WebsocketChannelType.PUB_TRADE]:
             message["payload"] = ["!all"]  # Subscribe to all updates
 
-        self.logger.debug(f"Created Gate.io private {event} message for channel: {channel_name}",
+        # Add authentication for private channels
+        message["auth"] = self._generate_signature(channel_name, event, timestamp)
+
+        self.logger.info(f"Created Gate.io private {event} message for channel: {channel_name}",
                           channel=channel_name,
                           event=event,
                           exchange=self.exchange_name)

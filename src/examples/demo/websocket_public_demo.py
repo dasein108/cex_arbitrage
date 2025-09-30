@@ -83,10 +83,6 @@ class PublicWebSocketClient:
         """Check if WebSocket is connected."""
         return self.websocket.is_connected()
 
-    def get_performance_metrics(self) -> Dict:
-        """Get HFT performance metrics."""
-        return self.websocket.get_performance_metrics()
-
     async def _handle_orderbook_update(self, orderbook_data: ParsedOrderbookUpdate) -> None:
         """Handle orderbook updates from WebSocket."""
         if self.orderbook_handler:
@@ -247,13 +243,6 @@ async def main(exchange_name: str):
                     symbol_count=len(symbols))
         await asyncio.sleep(30)
 
-        # Get performance metrics
-        metrics = ws.get_performance_metrics()
-        logger.info("📊 WebSocket Performance Metrics",
-                    connection_state=metrics.get('connection_state', 'Unknown'),
-                    messages_processed=metrics.get('messages_processed', 0),
-                    error_count=metrics.get('error_count', 0),
-                    uptime_seconds=metrics.get('connection_uptime_seconds', 0))
 
         # Show received data summary
         summary = manager.get_summary()
@@ -346,7 +335,7 @@ async def main(exchange_name: str):
 
 
 if __name__ == "__main__":
-    exchange_name = sys.argv[1] if len(sys.argv) > 1 else "gateio_spot"
+    exchange_name = sys.argv[1] if len(sys.argv) > 1 else "gateio_futures"
 
     try:
         asyncio.run(main(exchange_name))
