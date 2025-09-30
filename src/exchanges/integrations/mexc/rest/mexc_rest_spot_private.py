@@ -40,7 +40,7 @@ from exchanges.integrations.mexc.structs.exchange import (MexcAccountResponse, M
 
 # Import direct utility functions
 from exchanges.integrations.mexc.utils import (
-    to_pair, from_side, from_order_type, format_quantity, format_price, 
+    from_side, from_order_type, format_quantity, format_price,
     from_time_in_force, to_order_status, rest_to_order, rest_to_withdrawal_status
 )
 from utils import get_current_timestamp

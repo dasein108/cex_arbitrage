@@ -169,6 +169,7 @@ class GateioBaseWebsocket(BaseWebsocketInterface):
     async def _handle_message(self, raw_message: Any) -> None:
         """Handle incoming Gate.io private futures WebSocket messages."""
         try:
+            print('WS', raw_message)
             # Parse JSON message
             if isinstance(raw_message, str):
                 message = msgspec.json.decode(raw_message)

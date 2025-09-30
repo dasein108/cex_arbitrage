@@ -50,7 +50,6 @@ class PublicWebSocketClient:
             is_private=False,
             config=config)
 
-
         self.websocket.bind(WebsocketChannelType.ORDERBOOK, self._handle_orderbook_update)
         self.websocket.bind(WebsocketChannelType.PUB_TRADE, self._handle_trades_update)
         self.websocket.bind(WebsocketChannelType.BOOK_TICKER, self._handle_book_ticker_update)

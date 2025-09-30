@@ -7,7 +7,7 @@ which are only needed for spot exchanges.
 """
 
 import asyncio
-from abc import abstractmethod
+from abc import abstractmethod, ABC
 from typing import Dict, List, Optional, Any
 from exchanges.structs.common import (
     Symbol, AssetBalance, Order, SymbolsInfo
@@ -19,14 +19,15 @@ from infrastructure.exceptions.system import InitializationError
 from exchanges.interfaces.composite.base_composite import BaseCompositeExchange
 from exchanges.interfaces.composite.types import PrivateRestType, PrivateWebsocketType
 from infrastructure.logging import LoggingTimer, HFTLoggerInterface
-from infrastructure.networking.websocket.handlers import PrivateWebsocketHandlers
 from exchanges.utils.exchange_utils import is_order_done
 from exchanges.interfaces.common.binding import BoundHandlerInterface
 from infrastructure.networking.websocket.structs import PrivateWebsocketChannelType, WebsocketChannelType
+from exchanges.interfaces.ractive import PrivateObservableStreams
 
 
 class BasePrivateComposite(BaseCompositeExchange[PrivateRestType, PrivateWebsocketType],
-                           BoundHandlerInterface[PrivateWebsocketChannelType]):
+                           BoundHandlerInterface[PrivateWebsocketChannelType],
+                           PrivateObservableStreams):
     """
     Base private composite exchange interface WITHOUT withdrawal functionality.
     
@@ -59,6 +60,7 @@ class BasePrivateComposite(BaseCompositeExchange[PrivateRestType, PrivateWebsock
             websocket_client: Injected private WebSocket client instance (optional)
             logger: Optional injected HFT logger (auto-created if not provided)
         """
+        PrivateObservableStreams.__init__(self)
         BoundHandlerInterface.__init__(self)
         super().__init__(config=config,
                          rest_client=rest_client,
@@ -192,11 +194,14 @@ class BasePrivateComposite(BaseCompositeExchange[PrivateRestType, PrivateWebsock
         try:
             with LoggingTimer(self.logger, "load_balances") as timer:
                 balances_data = await self._rest.get_balances()
-                self._balances = {b.asset: b for b in balances_data}
+                for b in balances_data:
+                    await self._update_balance(b.asset, b)
 
             self.logger.info("Balances loaded successfully",
                              balance_count=len(balances_data),
                              load_time_ms=timer.elapsed_ms)
+
+
 
         except Exception as e:
             self.logger.error("Failed to load balances", error=str(e))
@@ -210,10 +215,22 @@ class BasePrivateComposite(BaseCompositeExchange[PrivateRestType, PrivateWebsock
             return
 
         try:
+            # sync with prev in case of reconnect
+            prev_open_orders = self._open_orders.copy()
+
             with LoggingTimer(self.logger, "load_open_orders") as timer:
                 orders = await self._rest.get_open_orders(symbol)
                 for o in orders:
-                    self._update_open_order(o)
+                    # if it was opened before reconnect, remove from forced reload list
+                    if prev_open_orders.get(o.symbol, {}).get(o.order_id):
+                        del prev_open_orders[o.symbol][o.order_id]
+                    await self._update_order(o)
+
+                # orders that can be filled in-between reconnects, publish  their updates
+                for prev_o_symbol in prev_open_orders.keys():
+                    for prev_o in prev_open_orders[prev_o_symbol].values():
+                        await self._update_order(prev_o)
+
 
             self.logger.info("Open orders loaded",
                              open_orders_count=sum(len(orders) for orders in self._open_orders.values()),
@@ -240,6 +257,7 @@ class BasePrivateComposite(BaseCompositeExchange[PrivateRestType, PrivateWebsock
             self._open_orders[order.symbol] = {}
 
         self._open_orders[order.symbol][order.order_id] = order
+
         self.logger.debug("Open order updated",
                           order_id=order.order_id,
                           status=order.status)
@@ -263,13 +281,18 @@ class BasePrivateComposite(BaseCompositeExchange[PrivateRestType, PrivateWebsock
                               order_id=order.order_id,
                               status=order.status)
 
-    def _update_order(self, order: Order):
+    async def _update_order(self, order: Order):
         """Update order state based on completion status."""
         if is_order_done(order):
             self._remove_open_order(order)
             self._update_executed_order(order)
         else:
             self._update_open_order(order)
+        # TODO: remove
+        await self._exec_bound_handler(PrivateWebsocketChannelType.ORDER, order)
+
+        self.publish('orders', order)
+
 
     async def get_active_order(self, symbol: Symbol, order_id: OrderId) -> Optional[Order]:
         """
@@ -298,7 +321,7 @@ class BasePrivateComposite(BaseCompositeExchange[PrivateRestType, PrivateWebsock
         try:
             with LoggingTimer(self.logger, f"get_order_fallback_{symbol}"):
                 order = await self._rest.get_order(symbol, order_id)
-                self._update_order(order)
+                await self._update_order(order)
                 return order
 
         except Exception as e:
@@ -327,7 +350,7 @@ class BasePrivateComposite(BaseCompositeExchange[PrivateRestType, PrivateWebsock
                 with LoggingTimer(self.logger, f"get_asset_balance_{asset}"):
                     balance = await self._rest.get_asset_balance(asset)
                     if balance:
-                        self._update_balance(asset, balance)
+                        await self._update_balance(asset, balance)
                     return balance
 
             except Exception as e:
@@ -378,23 +401,13 @@ class BasePrivateComposite(BaseCompositeExchange[PrivateRestType, PrivateWebsock
             await self.close()  # Cleanup on failure
             raise
 
-    def _create_inner_websocket_handlers(self) -> PrivateWebsocketHandlers:
-        """
-        Create handlers to connect websocket events to internal methods.
-        """
-        return PrivateWebsocketHandlers(
-            order_handler=self._order_handler,
-            balance_handler=self._balance_handler,
-            execution_handler=self._execution_handler,
-        )
-
     # WebSocket initialization method ELIMINATED - client injected via constructor
 
     # Event handlers
 
     async def _order_handler(self, order: Order) -> None:
         """Handle order update event."""
-        self._update_order(order)
+        await self._update_order(order)
         self.logger.info("order update processed",
                          exchange=self._exchange_name,
                          symbol=order.symbol,
@@ -402,16 +415,14 @@ class BasePrivateComposite(BaseCompositeExchange[PrivateRestType, PrivateWebsock
                          status=order.status.name,
                          filled=f"{order.filled_quantity}/{order.quantity}")
 
-        await self._exec_bound_handler(PrivateWebsocketChannelType.ORDER, order)
 
     async def _balance_handler(self, balance: AssetBalance) -> None:
         """Handle balance update event."""
-        self._balances[balance.asset] = balance
+        await self._update_balance(balance.asset, balance)
         self.logger.info("balance update processed",
                          exchange=self._exchange_name,
                          asset_balance=balance.asset)
 
-        await self._exec_bound_handler(PrivateWebsocketChannelType.BALANCE, balance)
 
     async def _execution_handler(self, trade: Trade) -> None:
         """Handle execution report/trade event."""
@@ -422,6 +433,9 @@ class BasePrivateComposite(BaseCompositeExchange[PrivateRestType, PrivateWebsock
                          quantity=trade.quantity,
                          price=trade.price,
                          is_maker=trade.is_maker)
+
+        # await self.publish('trades', trade)
+        # TODO: remove
         await self._exec_bound_handler(PrivateWebsocketChannelType.EXECUTION, trade)
 
     # Data refresh and utilities
@@ -439,9 +453,15 @@ class BasePrivateComposite(BaseCompositeExchange[PrivateRestType, PrivateWebsock
             return_exceptions=True
         )
 
-    def _update_balance(self, asset: AssetName, balance: AssetBalance) -> None:
+    async def _update_balance(self, asset: AssetName, balance: AssetBalance) -> None:
         """Update internal balance state."""
         self._balances[asset] = balance
+
+        # TODO: remove
+        await self._exec_bound_handler(PrivateWebsocketChannelType.BALANCE, balance)
+
+        self.publish('balances', balance)
+
         self.logger.debug(f"Updated balance for {asset}: {balance}")
 
     def _cleanup_executed_orders(self, symbol: Symbol) -> None:
@@ -465,30 +485,6 @@ class BasePrivateComposite(BaseCompositeExchange[PrivateRestType, PrivateWebsock
                           removed=orders_to_remove,
                           remaining=len(executed_orders))
 
-    # Monitoring and diagnostics
-
-    def get_trading_stats(self) -> Dict[str, Any]:
-        """
-        Get trading statistics for monitoring.
-        
-        Returns:
-            Dictionary with trading and account statistics
-        """
-        executed_orders_count = sum(len(orders_dict) for orders_dict in self._executed_orders.values())
-
-        trading_stats = {
-            'total_balances': len(self._balances),
-            'open_orders_count': sum(len(orders) for orders in self._open_orders.values()),
-            'executed_orders_count': executed_orders_count,
-            'has_credentials': self._config.has_credentials(),
-            'symbols_with_executed_orders': len([s for s, orders in self._executed_orders.items() if orders]),
-            'connection_status': {
-                'rest_connected': self._rest_connected,
-                'ws_connected': self._ws_connected,
-            }
-        }
-
-        return {**trading_stats}
 
     async def close(self) -> None:
         """Close private exchange connections."""
@@ -505,6 +501,8 @@ class BasePrivateComposite(BaseCompositeExchange[PrivateRestType, PrivateWebsock
 
             # Call parent cleanup
             await super().close()
+
+            self.dispose()
 
             # Reset connection status
             self._rest_connected = False

@@ -4,7 +4,7 @@ from typing import Generic, Dict, Callable, Any, Awaitable
 from exchanges.interfaces.ws.interfaces.common import T
 
 
-class BoundHandlerInterface(Generic[T], ABC):
+class BoundHandlerInterface(Generic[T]):
     """Generic interface for binding handlers to channel types."""
 
     def __init__(self):

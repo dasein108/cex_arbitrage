@@ -49,7 +49,7 @@ class CompositePublicFuturesExchange(BasePublicComposite):
             symbols: Optional list of symbols to track
         """
         # Initialize composite public functionality
-        await super().initialize()
+        await super().initialize(symbols)
 
         if symbols:
             try:

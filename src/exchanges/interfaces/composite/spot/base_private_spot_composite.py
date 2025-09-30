@@ -8,7 +8,6 @@ with spot-specific withdrawal functionality via WithdrawalMixin.
 
 from typing import Optional
 from infrastructure.logging import HFTLoggerInterface
-from infrastructure.networking.websocket.handlers import PrivateWebsocketHandlers
 from config.structs import ExchangeConfig
 from exchanges.interfaces.composite.base_private_composite import BasePrivateComposite
 from exchanges.interfaces.composite.mixins import WithdrawalMixin
@@ -75,11 +74,4 @@ class CompositePrivateSpotExchange(BasePrivateComposite, WithdrawalMixin):
             await self.close()  # Cleanup on failure
             raise InitializationError(f"Spot initialization failed: {e}")
 
-    def _create_inner_websocket_handlers(self) -> PrivateWebsocketHandlers:
-        """Get private WebSocket handlers for Gate.io."""
-        return PrivateWebsocketHandlers(
-            order_handler=self._order_handler,
-            balance_handler=self._balance_handler,
-            execution_handler=self._execution_handler,
-        )
 
