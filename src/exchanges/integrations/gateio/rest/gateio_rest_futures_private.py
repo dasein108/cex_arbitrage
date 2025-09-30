@@ -15,8 +15,8 @@ from config.structs import ExchangeConfig
 
 # Import direct utility functions
 from exchanges.integrations.gateio.utils import (
-    from_futures_symbol, from_side, from_order_type, format_quantity, format_price, 
-    from_time_in_force, to_order_status, get_order_params, rest_to_order, 
+    from_futures_symbol, from_side, from_order_type, format_quantity, format_price,
+    from_time_in_force, to_order_status, rest_spot_to_order,
     reverse_lookup_order_type, to_side
 )
 from exchanges.integrations.gateio.services.futures_symbol_mapper import GateioFuturesSymbol
@@ -176,15 +176,12 @@ class GateioPrivateFuturesRest(PrivateFuturesRest):
             if stop_price:
                 payload["stop"] = format_price(stop_price)
 
-            # Add any special order params the mapper knows about
-            payload.update(get_order_params(order_type, time_in_force or TimeInForce.GTC))
-
             endpoint = "/futures/usdt/orders"
             response = await self.request(HTTPMethod.POST, endpoint, data=payload)
 
             # Try to transform using shared mapper; if mapper can't, fall back to manual minimal construct
             try:
-                order = rest_to_order(response)
+                order = rest_spot_to_order(response)
                 self.logger.info(f"Placed futures order {order.order_id}")
                 return order
             except Exception:
@@ -218,7 +215,7 @@ class GateioPrivateFuturesRest(PrivateFuturesRest):
             response = await self.request(HTTPMethod.DELETE, endpoint, params=params)
 
             try:
-                return rest_to_order(response)
+                return rest_spot_to_order(response)
             except Exception:
                 # Best-effort mapping
                 return Order(
@@ -252,7 +249,7 @@ class GateioPrivateFuturesRest(PrivateFuturesRest):
             if isinstance(response, list):
                 for item in response:
                     try:
-                        cancelled.append(rest_to_order(item))
+                        cancelled.append(rest_spot_to_order(item))
                     except Exception:
                         # best-effort minimal mapping
                         cancelled.append(Order(
@@ -269,7 +266,7 @@ class GateioPrivateFuturesRest(PrivateFuturesRest):
             else:
                 # single-object response
                 try:
-                    cancelled.append(rest_to_order(response))
+                    cancelled.append(rest_spot_to_order(response))
                 except Exception:
                     cancelled.append(Order(
                         order_id=OrderId(str(response.get("id", ""))),
@@ -301,7 +298,7 @@ class GateioPrivateFuturesRest(PrivateFuturesRest):
             response = await self.request(HTTPMethod.GET, endpoint, params=params)
 
             try:
-                return rest_to_order(response)
+                return rest_spot_to_order(response)
             except Exception:
                 return Order(
                     order_id=order_id,
@@ -340,7 +337,7 @@ class GateioPrivateFuturesRest(PrivateFuturesRest):
             open_orders: List[Order] = []
             for item in response:
                 try:
-                    open_orders.append(rest_to_order(item))
+                    open_orders.append(rest_spot_to_order(item))
                 except Exception:
                     open_orders.append(Order(
                         order_id=OrderId(str(item.get("id", ""))),

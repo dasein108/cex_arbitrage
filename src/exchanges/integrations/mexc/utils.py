@@ -19,6 +19,7 @@ from exchanges.structs.common import (
 )
 from exchanges.structs.types import OrderId
 from exchanges.structs.enums import WithdrawalStatus
+from exchanges.integrations.mexc.services.symbol_mapper import MexcSymbol
 
 # MEXC -> Unified mappings (these could be module-level constants)
 _MEXC_ORDER_STATUS_MAP = {
@@ -119,19 +120,6 @@ def from_time_in_force(unified_tif: TimeInForce) -> str:
     return _UNIFIED_TO_MEXC_TIF.get(unified_tif, 'gtc')
 
 
-# Symbol mapping via direct singleton access
-def to_symbol(pair_str: str):
-    """Convert MEXC pair string to Symbol."""
-    from exchanges.integrations.mexc.services.symbol_mapper import MexcSymbol
-    return MexcSymbol.to_symbol(pair_str)
-
-
-def from_symbol(symbol):
-    """Convert Symbol to MEXC pair string."""
-    from exchanges.integrations.mexc.services.symbol_mapper import MexcSymbol
-    return MexcSymbol.to_pair(symbol)
-
-
 # Additional utility functions for WebSocket and REST operations
 def format_quantity(quantity: float, precision: int = 8) -> str:
     """Format quantity with standard precision handling."""
@@ -145,30 +133,6 @@ def format_price(price: float, precision: int = 8) -> str:
     return formatted if formatted else "0"
 
 
-def get_spot_private_channel_name(channel_type) -> str:
-    """Get MEXC-specific spot private channel name."""
-    from infrastructure.networking.websocket.structs import PrivateWebsocketChannelType
-    
-    _PRIVATE_CHANNEL_MAPPING = {
-        PrivateWebsocketChannelType.ORDER: "spot@private.orders.v3.api",
-        PrivateWebsocketChannelType.EXECUTION: "spot@private.deals.v3.api",
-        PrivateWebsocketChannelType.BALANCE: "spot@private.account.v3.api"
-    }
-    return _PRIVATE_CHANNEL_MAPPING.get(channel_type, "")
-
-
-def get_spot_channel_name(channel_type) -> str:
-    """Get MEXC-specific spot public channel name."""
-    from infrastructure.networking.websocket.structs import PublicWebsocketChannelType
-    
-    _PUBLIC_CHANNEL_MAPPING = {
-        PublicWebsocketChannelType.BOOK_TICKER: "spot@public.aggre.bookTicker.v3.api.pb",
-        PublicWebsocketChannelType.ORDERBOOK: "spot@public.increase.depth.v3.api",
-        PublicWebsocketChannelType.PUB_TRADE: "spot@public.aggre.deals.v3.api.pb"
-    }
-    return _PUBLIC_CHANNEL_MAPPING.get(channel_type, "")
-
-
 def from_subscription_action(action) -> str:
     """Convert SubscriptionAction to MEXC format."""
     from infrastructure.networking.websocket.structs import SubscriptionAction
@@ -179,22 +143,11 @@ def from_subscription_action(action) -> str:
         return "UNSUBSCRIPTION"
     return "SUBSCRIPTION"
 
-
-def is_subscription_successful(status: str) -> bool:
-    """Check if MEXC subscription was successful."""
-    return status.lower() in ["success", "subscribed", "ok"]
-
-
-def to_pair(symbol) -> str:
-    """Convert Symbol to MEXC pair format."""
-    return from_symbol(symbol)
-
-
 def rest_to_order(mexc_order_data: MexcOrderResponse) -> Order:
     """Transform MEXC REST order response to unified Order struct."""
     
     # Convert MEXC symbol to unified Symbol
-    symbol = to_symbol(mexc_order_data.symbol)
+    symbol =  MexcSymbol.to_symbol(mexc_order_data.symbol)
     
     # Calculate fee from fills if available
     fee = 0.0
@@ -220,38 +173,6 @@ def rest_to_withdrawal_status(mexc_status: str) -> WithdrawalStatus:
     """Convert MEXC withdrawal status to unified WithdrawalStatus."""
     return _MEXC_WITHDRAW_STATUS_MAP.get(mexc_status.upper(), WithdrawalStatus.UNKNOWN)
 
-
-# Symbol extraction utility functions for MEXC WebSocket messages
-def extract_symbol_from_data(data: Dict[str, any], fields: List[str] = None) -> Optional[str]:
-    """Extract symbol from MEXC message data."""
-    # MEXC typically uses 'symbol' or 's' fields
-    if fields is None:
-        fields = ['s', 'symbol', 'currency_pair', 'contract', 'pair', 'market']
-    
-    for field in fields:
-        symbol_str = data.get(field)
-        if symbol_str and isinstance(symbol_str, str):
-            return symbol_str
-    return None
-
-
-def extract_symbol_from_channel(channel: str) -> Optional[str]:
-    """Extract symbol from MEXC channel name."""
-    # MEXC format: "spot@public.bookTicker.v3.api@BTCUSDT"
-    if '@' in channel and not channel.endswith(')'):
-        # Look for symbol pattern at the end
-        parts = channel.split('@')
-        if parts:
-            last_part = parts[-1]
-            # MEXC symbols are typically all caps, no separators
-            if re.match(r'^[A-Z]{2,10}USDT?$', last_part):
-                return last_part
-    return None
-
-
-def convert_symbol_string(symbol_str: str) -> Optional[Symbol]:
-    """Convert MEXC symbol string to unified Symbol."""
-    return to_symbol(symbol_str)
 
 
 _WS_ORDER_STATUS_MAPPING = {

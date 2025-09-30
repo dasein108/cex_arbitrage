@@ -40,8 +40,8 @@ from infrastructure.error_handling import RestApiErrorHandler, ErrorContext
 
 # Import direct utility functions
 from exchanges.integrations.gateio.utils import (
-    to_pair, from_side, from_order_type, format_quantity, format_price, 
-    from_time_in_force, to_order_status, rest_to_order, rest_to_balance
+    to_pair, from_side, from_order_type, format_quantity, format_price,
+    from_time_in_force, to_order_status, rest_spot_to_order
 )
 from exchanges.integrations.gateio.structs.exchange import GateioCurrencyResponse, GateioWithdrawStatusResponse
 from utils import get_current_timestamp
@@ -134,7 +134,11 @@ class GateioPrivateSpotRest(PrivateSpotRest):
             
             balances = []
             for balance_data in response_data:
-                balance = rest_to_balance(balance_data)
+                balance = AssetBalance(
+                                asset=AssetName(balance_data['currency']),
+                                available=float(balance_data['available']),
+                                locked=float(balance_data['locked'])
+                            )
                 # Only include assets with non-zero total balance
                 if balance.total > 0:
                     balances.append(balance)
@@ -287,7 +291,7 @@ class GateioPrivateSpotRest(PrivateSpotRest):
         )
         
         # Transform Gate.io response to unified Order
-        order = rest_to_order(response_data)
+        order = rest_spot_to_order(response_data)
         
         self.logger.info(f"Placed {side.name} order: {order.order_id}")
         return order
@@ -338,7 +342,7 @@ class GateioPrivateSpotRest(PrivateSpotRest):
         )
         
         # Transform Gate.io response to unified Order
-        order = rest_to_order(response_data)
+        order = rest_spot_to_order(response_data)
         
         self.logger.info(f"Cancelled order: {order_id}")
         return order
@@ -374,7 +378,7 @@ class GateioPrivateSpotRest(PrivateSpotRest):
             
             cancelled_orders = []
             for order_data in response_data:
-                order = rest_to_order(order_data)
+                order = rest_spot_to_order(order_data)
                 cancelled_orders.append(order)
             
             self.logger.info(f"Cancelled {len(cancelled_orders)} orders for {symbol}")
@@ -413,7 +417,7 @@ class GateioPrivateSpotRest(PrivateSpotRest):
             )
             
             # Transform Gate.io response to unified Order
-            order = rest_to_order(response_data)
+            order = rest_spot_to_order(response_data)
             
             self.logger.debug(f"Retrieved order status: {order_id}")
             return order
@@ -464,7 +468,7 @@ class GateioPrivateSpotRest(PrivateSpotRest):
             
             open_orders = []
             for order_data in response_data:
-                order = rest_to_order(order_data)
+                order = rest_spot_to_order(order_data)
                 open_orders.append(order)
             
             symbol_str = f" for {symbol}" if symbol else ""
