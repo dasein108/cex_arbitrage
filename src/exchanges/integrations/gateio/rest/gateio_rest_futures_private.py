@@ -15,7 +15,7 @@ from config.structs import ExchangeConfig
 
 # Import direct utility functions
 from exchanges.integrations.gateio.utils import (
-    from_futures_symbol, from_side, from_order_type, format_quantity, format_price,
+    from_side, from_order_type, format_quantity, format_price,
     from_time_in_force, to_order_status, rest_spot_to_order,
     reverse_lookup_order_type, to_side
 )
@@ -125,7 +125,7 @@ class GateioPrivateFuturesRest(PrivateFuturesRest):
             and price provided, compute size = quote_quantity / price.
         """
         try:
-            contract = from_futures_symbol(symbol)
+            contract = GateioFuturesSymbol.to_pair(symbol)
             payload: Dict[str, Any] = {"contract": contract, "side": from_side(side)}
 
             # Map order type to exchange values
@@ -209,7 +209,7 @@ class GateioPrivateFuturesRest(PrivateFuturesRest):
         Cancel single futures order. DELETE /futures/usdt/orders/{id}?contract=...
         """
         try:
-            contract = from_futures_symbol(symbol)
+            contract = GateioFuturesSymbol.to_pair(symbol)
             endpoint = f"/futures/usdt/orders/{order_id}"
             params = {"contract": contract}
             response = await self.request(HTTPMethod.DELETE, endpoint, params=params)
@@ -240,7 +240,7 @@ class GateioPrivateFuturesRest(PrivateFuturesRest):
         Endpoint: DELETE /futures/usdt/orders?contract=...
         """
         try:
-            contract = from_futures_symbol(symbol)
+            contract = GateioFuturesSymbol.to_pair(symbol)
             endpoint = "/futures/usdt/orders"
             params = {"contract": contract}
             response = await self.request(HTTPMethod.DELETE, endpoint, params=params)
@@ -292,7 +292,7 @@ class GateioPrivateFuturesRest(PrivateFuturesRest):
         Query single futures order: GET /futures/usdt/orders/{id}?contract=...
         """
         try:
-            contract = from_futures_symbol(symbol)
+            contract = GateioFuturesSymbol.to_pair(symbol)
             endpoint = f"/futures/usdt/orders/{order_id}"
             params = {"contract": contract}
             response = await self.request(HTTPMethod.GET, endpoint, params=params)
@@ -326,7 +326,7 @@ class GateioPrivateFuturesRest(PrivateFuturesRest):
                 self.logger.debug("No symbol provided for get_open_orders - returning empty list (API requires contract)")
                 return []
 
-            contract = from_futures_symbol(symbol)
+            contract = GateioFuturesSymbol.to_pair(symbol)
             endpoint = "/futures/usdt/orders"
             params = {"status": "open", "contract": contract}
             response = await self.request(HTTPMethod.GET, endpoint, params=params)

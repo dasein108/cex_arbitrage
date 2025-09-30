@@ -19,7 +19,6 @@ def get_minimal_step(precision: int) -> float:
     return 10**-precision
 
 # Import direct utility functions
-from exchanges.integrations.gateio.utils import from_futures_symbol
 from exchanges.integrations.gateio.services.futures_symbol_mapper import GateioFuturesSymbol
 from exchanges.integrations.gateio.services.spot_symbol_mapper import get_exchange_interval
 
@@ -154,7 +153,7 @@ class GateioPublicFuturesRest(PublicFuturesRest):
         Get futures order book. Endpoint: /futures/usdt/order_book
         """
         try:
-            contract = from_futures_symbol(symbol)  # should output e.g. "BTC_USDT" or "BTC_USDT_20241225"
+            contract = GateioFuturesSymbol.to_pair(symbol)  # should output e.g. "BTC_USDT" or "BTC_USDT_20241225"
 
             optimized_limit = max(1, min(100, limit))
             params = {
@@ -208,7 +207,7 @@ class GateioPublicFuturesRest(PublicFuturesRest):
         Gate.io futures may use signed 'size' (positive buy, negative sell).
         """
         try:
-            contract = from_futures_symbol(symbol)
+            contract = GateioFuturesSymbol.to_pair(symbol)
             optimized_limit = max(1, min(1000, limit))
             params = {'contract': contract, 'limit': optimized_limit}
 
@@ -262,7 +261,7 @@ class GateioPublicFuturesRest(PublicFuturesRest):
         Gate.io expects seconds for 'from'/'to'.
         """
         try:
-            contract = from_futures_symbol(symbol)
+            contract = GateioFuturesSymbol.to_pair(symbol)
             optimized_limit = max(1, min(1000, limit))
             params = {'contract': contract, 'limit': optimized_limit}
             if timestamp_from:
@@ -388,7 +387,7 @@ class GateioPublicFuturesRest(PublicFuturesRest):
         Returns raw dict (public-only).
         """
         try:
-            contract = from_futures_symbol(symbol)
+            contract = GateioFuturesSymbol.to_pair(symbol)
             params = {'contract': contract}
             response_data = await self.request(
                 HTTPMethod.GET,
@@ -411,7 +410,7 @@ class GateioPublicFuturesRest(PublicFuturesRest):
         Gate.io returns array of dicts: {'o', 'h', 'l', 'c', 'v', 't', 'sum'}
         """
         try:
-            contract = from_futures_symbol(symbol)
+            contract = GateioFuturesSymbol.to_pair(symbol)
             interval = get_exchange_interval(timeframe)
 
             params = {'contract': contract, 'interval': interval}

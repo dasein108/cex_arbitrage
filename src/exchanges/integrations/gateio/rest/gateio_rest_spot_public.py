@@ -209,7 +209,7 @@ class GateioPublicSpotRest(PublicSpotRest):
             ExchangeAPIError: If unable to fetch order book data
         """
         try:
-            pair = to_pair(symbol)
+            pair = GateioSpotSymbol.to_pair(symbol)
             
             # Validate limit for Gate.io API (1-100)
             optimized_limit = max(1, min(100, limit))
@@ -279,7 +279,7 @@ class GateioPublicSpotRest(PublicSpotRest):
             ExchangeAPIError: If unable to fetch trade data
         """
         try:
-            pair = to_pair(symbol)
+            pair = GateioSpotSymbol.to_pair(symbol)
             
             # Validate limit for Gate.io API (1-1000)
             optimized_limit = max(1, min(1000, limit))
@@ -353,7 +353,7 @@ class GateioPublicSpotRest(PublicSpotRest):
             ExchangeAPIError: If unable to fetch trade data
         """
         try:
-            pair = to_pair(symbol)
+            pair = GateioSpotSymbol.to_pair(symbol)
             
             # Validate limit for Gate.io API (1-1000)
             optimized_limit = max(1, min(1000, limit))
@@ -441,7 +441,7 @@ class GateioPublicSpotRest(PublicSpotRest):
             params = {}
             if symbol:
                 # Get ticker for specific symbol
-                pair = to_pair(symbol)
+                pair = GateioSpotSymbol.to_pair(symbol)
                 params['currency_pair'] = pair
             # If no currency_pair specified, API returns all tickers
             
@@ -614,7 +614,7 @@ class GateioPublicSpotRest(PublicSpotRest):
         """
         klines = []
         try:
-            pair = to_pair(symbol)
+            pair = GateioSpotSymbol.to_pair(symbol)
             from exchanges.integrations.gateio.services.spot_symbol_mapper import get_exchange_interval
             interval = get_exchange_interval(timeframe)
             
