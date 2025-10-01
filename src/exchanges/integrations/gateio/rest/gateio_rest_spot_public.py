@@ -42,7 +42,7 @@ from common.iterators import time_range_iterator, get_interval_seconds
 
 # Import direct utility functions
 from exchanges.integrations.gateio.utils import (
-    to_pair, to_symbol, format_quantity, format_price, to_side
+    to_side
 )
 from exchanges.integrations.gateio.services.spot_symbol_mapper import GateioSpotSymbol
 

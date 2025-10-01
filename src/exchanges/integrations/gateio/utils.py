@@ -13,6 +13,7 @@ from enum import Enum
 from exchanges.structs.common import (
     Side, OrderStatus, OrderType, TimeInForce, AssetName, AssetBalance, Order
 )
+from exchanges.structs.enums import WithdrawalStatus
 from exchanges.structs.types import OrderId
 from exchanges.integrations.gateio.services.spot_symbol_mapper import GateioSpotSymbol
 
@@ -45,6 +46,22 @@ _GATEIO_TIF_MAP = {
     'gtc': TimeInForce.GTC,
     'ioc': TimeInForce.IOC,
     'fok': TimeInForce.FOK,
+}
+
+_GATEIO_WITHDRAW_STATUS_MAP = {
+    "DONE": WithdrawalStatus.COMPLETED,
+    "CANCEL": WithdrawalStatus.CANCELED,
+    "REQUEST": WithdrawalStatus.PENDING,
+    "PEND": WithdrawalStatus.PENDING,
+    "VERIFY": WithdrawalStatus.PENDING,
+    "MANUAL": WithdrawalStatus.PENDING,
+    "REVIEW": WithdrawalStatus.PENDING,
+    "EXTPEND": WithdrawalStatus.PROCESSING,
+    "PROCES": WithdrawalStatus.PROCESSING,
+    "FAIL": WithdrawalStatus.FAILED,
+    "INVALID": WithdrawalStatus.FAILED,
+    "DMOVE": WithdrawalStatus.PENDING,
+    "BCODE": WithdrawalStatus.PROCESSING,
 }
 
 # Reverse mappings for unified -> Gate.io
@@ -155,7 +172,9 @@ def rest_spot_to_order(gateio_order_data) -> Order:
         fee=fee
     )
 
-
+def to_withdrawal_status(gateio_status: str) -> WithdrawalStatus:
+    """Convert GATEIO withdrawal status to unified WithdrawalStatus."""
+    return _GATEIO_WITHDRAW_STATUS_MAP.get(gateio_status.upper(), WithdrawalStatus.UNKNOWN)
 
 def reverse_lookup_order_type(gateio_type_str: str) -> OrderType:
     """Reverse lookup for Gate.io order type strings to unified OrderType."""
