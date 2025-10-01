@@ -114,7 +114,7 @@ async def main():
                     price=limit_price,
                     time_in_force=TimeInForce.IOC
                 )
-                logger.info("IOC limit order placed", order_id=ioc_order.order_id)
+                logger.info(f"IOC limit order placed {ioc_order}")
             except Exception as e:
                 logger.error("IOC limit order failed", error=str(e))
 
@@ -133,7 +133,12 @@ async def main():
                     price=limit_price,
                     time_in_force=TimeInForce.GTC
                 )
-                logger.info("GTC limit order placed", order_id=gtc_order.order_id)
+                logger.info(f"GTC limit order placed {gtc_order}")
+                canceled_gtc = await private_rest.cancel_order(
+                    symbol=symbol,
+                    order_id=gtc_order.order_id
+                )
+                logger.info(f"GTC limit order canceled {canceled_gtc}")
             except Exception as e:
                 logger.error("GTC limit order failed", error=str(e))
 

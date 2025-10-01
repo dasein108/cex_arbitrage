@@ -69,7 +69,8 @@ class Order(Struct):
     time_in_force: TimeInForce = TimeInForce.GTC
 
     def __str__(self):
-        return f"{self.symbol} {self.side} {self.order_type.name} {self.quantity}@{self.price} status: {self.status.name}"
+        return (f"{self.symbol} {self.side.name} "
+                f"{self.order_type.name} {self.quantity}@{self.price} status: {self.status.name}")
     
 class AssetBalance(Struct):
     """Account balance for a single asset."""

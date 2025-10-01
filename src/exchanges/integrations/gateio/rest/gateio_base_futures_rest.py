@@ -82,15 +82,15 @@ class GateioBaseFuturesRestInterface(BaseRestClientInterface):
         """
         Generate fresh timestamp for Gate.io authentication.
         
-        Includes Gate.io-specific offset to prevent timing issues.
+        Uses decimal seconds format as required by Gate.io API specification.
         
         Returns:
-            Timestamp string in seconds (not milliseconds like MEXC)
+            Timestamp string in decimal seconds format (e.g., "1541993715.5")
         """
+        # Note: Gate.io uses decimal seconds in float format
         current_time = time.time()
-        # Add Gate.io-specific offset to prevent timing issues
         adjusted_time = current_time + (self._TIMESTAMP_OFFSET / 1000.0)
-        return str(int(adjusted_time))  # Gate.io uses seconds, not milliseconds
+        return str(adjusted_time)  # Keep as decimal seconds for Gate.io
     
     async def _authenticate(
         self, 
@@ -143,12 +143,12 @@ class GateioBaseFuturesRestInterface(BaseRestClientInterface):
             
             # Build signature string (Gate.io format) - futures endpoints use /api/v4/futures/...
             # Ensure proper futures endpoint format
-            if endpoint.startswith('/futures/'):
-                url_path = f"/api/v4{endpoint}"
-            elif endpoint.startswith('/api/v4/futures/'):
+            if endpoint.startswith('/api/v4/'):
                 url_path = endpoint
+            elif endpoint.startswith('/futures/'):
+                url_path = f"/api/v4{endpoint}"
             else:
-                # Assume it's a futures endpoint and prefix appropriately
+                # Add /api/v4 prefix if missing, assume futures endpoint
                 url_path = f"/api/v4/futures{endpoint}" if not endpoint.startswith('/') else f"/api/v4/futures{endpoint}"
             
             signature_string = f"{method.value}\n{url_path}\n{query_string}\n{payload_hash}\n{timestamp}"
@@ -186,11 +186,24 @@ class GateioBaseFuturesRestInterface(BaseRestClientInterface):
             self.logger.metric("gateio_futures_auth_time_us", auth_time_us,
                               tags={"endpoint": endpoint})
             
-            return {
-                'headers': auth_headers,
-                'params': params or {},
-                'data': request_body if request_body else data
-            }
+            # Return properly formatted data for aiohttp
+            # When request_body exists (JSON string), we need to send it as raw text data
+            # When request_body is empty, send original data as JSON object
+            if request_body:
+                # Send pre-encoded JSON string as raw text data
+                return {
+                    'headers': auth_headers,
+                    'params': params or {},
+                    'data': request_body,
+                    'send_as_text': True  # Flag to indicate raw text data
+                }
+            else:
+                # Send original data object for JSON encoding by aiohttp
+                return {
+                    'headers': auth_headers,
+                    'params': params or {},
+                    'data': data
+                }
             
         except Exception as e:
             self.logger.error(

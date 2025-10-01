@@ -25,50 +25,108 @@ from infrastructure.networking.websocket.structs import WebsocketChannelType
 from exchanges.exchange_factory import get_composite_implementation
 
 
-def create_market_buy_stream(
+async def execute_market_buy(
     private_exchange: BasePrivateComposite,
     symbol: Symbol,
     quantity_usdt: float,
-    ask_price_stream: rx.Observable[BookTicker],
+    current_ask_price: float,
     logger
-) -> rx.Observable[Order]:
+) -> Order:
     """
-    Create a stream that executes market buy order once.
-    Fires only on the first ask price and completes after successful execution.
+    Execute a single market buy order.
+    Simple async function - no reactive patterns needed for one-time operation.
     
     Returns:
-        Observable stream of executed order (emits once)
+        Executed order
     """
-    def execute_order(book_ticker: BookTicker):
-        async def _execute():
-            try:
-                print(f"\n🛒 Executing LIVE market buy order at ask price {book_ticker.ask_price}...")
-                
-                order = await private_exchange.place_market_order(
-                    symbol=symbol,
-                    side=Side.BUY,
-                    quote_quantity=quantity_usdt,
-                    ensure=True
-                )
-                
-                print(f"   ✅ Market buy order placed: {order}")
-                return order
-                
-            except Exception as e:
-                logger.error("Failed to execute market buy", error=str(e))
-                print(f"   ❌ Market buy failed: {e}")
-                raise
+    try:
+        print(f"\n🛒 Executing LIVE market buy order at ask price {current_ask_price}...")
         
-        return rx.from_future(asyncio.ensure_future(_execute()))
-    
-    return ask_price_stream.pipe(
-        ops.take(1),  # Only take the first ask price
-        ops.flat_map(execute_order)
-    )
+        order = await private_exchange.place_market_order(
+            symbol=symbol,
+            side=Side.BUY,
+            quote_quantity=quantity_usdt,
+            ensure=True
+        )
+        
+        print(f"   ✅ Market buy order placed: {order}")
+        return order
+        
+    except Exception as e:
+        logger.error("Failed to execute market buy", error=str(e))
+        print(f"   ❌ Market buy failed: {e}")
+        raise
 
 
-def create_limit_sell_on_top_stream(
-    market_buy_stream: rx.Observable[Order],
+async def place_sell_order(
+    private_exchange: BasePrivateComposite,
+    symbol: Symbol,
+    symbol_info: SymbolInfo,
+    quantity: float,
+    ask_price: float,
+    logger
+) -> Order:
+    """Place initial limit sell order on top of the book."""
+    try:
+        sell_price = ask_price - symbol_info.tick
+        
+        order = await private_exchange.place_limit_order(
+            symbol=symbol,
+            side=Side.SELL,
+            quantity=quantity,
+            price=sell_price,
+            time_in_force=TimeInForce.GTC
+        )
+        
+        print(f"   ✅ Limit sell order placed: {order} at price {sell_price}")
+        return order
+        
+    except Exception as e:
+        logger.error("Failed to place limit sell", error=str(e))
+        print(f"   ❌ Limit sell placement failed: {e}")
+        raise
+
+
+async def cancel_and_replace_order(
+    private_exchange: BasePrivateComposite,
+    current_order: Order,
+    new_ask_price: float,
+    symbol_info: SymbolInfo,
+    reason: str,
+    logger
+) -> Order:
+    """Cancel current order and place new one at better price."""
+    try:
+        print(f"   ⚠️  {reason}, cancelling order {current_order.order_id}")
+        cancelled_order = await private_exchange.cancel_order(
+            current_order.symbol, 
+            current_order.order_id
+        )
+        
+        # Check if order was filled during cancellation
+        if is_order_filled(cancelled_order):
+            print(f"   ✅✅✅ Limit sell filled during cancel: {cancelled_order}")
+            return cancelled_order
+        
+        # Place new order at new price
+        await asyncio.sleep(0.1)
+        return await place_sell_order(
+            private_exchange=private_exchange,
+            symbol=current_order.symbol,
+            symbol_info=symbol_info,
+            quantity=current_order.quantity,
+            ask_price=new_ask_price,
+            logger=logger
+        )
+        
+    except Exception as e:
+        logger.error("Failed to cancel/replace order", error=str(e))
+        print(f"   ❌ Cancel/replace failed: {e}")
+        raise
+
+
+def create_sell_monitoring_stream(
+    market_buy_order: Order,
     ask_price_stream: rx.Observable[BookTicker],
     orders_stream: rx.Observable[Order],
     private_exchange: BasePrivateComposite,
@@ -77,136 +135,65 @@ def create_limit_sell_on_top_stream(
     logger
 ) -> rx.Observable[Order]:
     """
-    Create a stream that places/cancels limit sell orders until filled.
-    Triggered when market buy order is executed.
-    
-    Places limit sell at ask_price - tick to be on top of the book.
-    Cancels and replaces if price moves above our order.
-    
-    Returns:
-        Observable stream of filled sell orders
+    Monitor and manage limit sell order until filled.
+    Uses RxPY where it adds value: combining price updates with order status.
     """
+    print(f"\n📈 Starting limit sell cycle for quantity: {market_buy_order.filled_quantity}")
     
-    def create_sell_cycle(market_buy_order: Order):
-        """Create a sell cycle for a single market buy order."""
-        print(f"\n📈 Starting limit sell cycle for quantity: {market_buy_order.filled_quantity}")
+    # Track current sell order state
+    current_sell_order: Optional[Order] = None
+    
+    def handle_price_and_order_update(combined_data):
+        """Process price changes and order updates."""
+        ask_price, order_update = combined_data
         
-        # Local state for this sell cycle
-        current_sell_order: Optional[Order] = None
-        
-        async def place_sell_order(ask_price: float):
-            """Place a new limit sell order on top of the book."""
+        async def _process_update():
             nonlocal current_sell_order
             
-            try:
-                quantity = market_buy_order.filled_quantity
-                sell_price = ask_price - symbol_info.tick
-                
-                order = await private_exchange.place_limit_order(
-                    symbol=symbol,
-                    side=Side.SELL,
-                    quantity=quantity,
-                    price=sell_price,
-                    time_in_force=TimeInForce.GTC
-                )
-                
-                print(f"   ✅ Limit sell order placed: {order} at price {sell_price}")
-                current_sell_order = order
-                return order
-                
-            except Exception as e:
-                logger.error("Failed to place limit sell", error=str(e))
-                print(f"   ❌ Limit sell placement failed: {e}")
-                raise
-        
-        async def cancel_and_replace(ask_price: float, reason: str):
-            """Cancel current order and place new one."""
-            nonlocal current_sell_order
+            # Update order state if we received an update for our order
+            if order_update and current_sell_order and order_update.order_id == current_sell_order.order_id:
+                current_sell_order = order_update
+                if is_order_filled(order_update):
+                    print(f"   ✅✅✅ Limit sell order FILLED: {order_update}")
+                    return ("filled", order_update)
             
+            # Place initial order if none exists
             if not current_sell_order:
-                return await place_sell_order(ask_price)
-            
-            try:
-                print(f"   ⚠️  {reason}, cancelling order {current_sell_order.order_id}")
-                cancelled_order = await private_exchange.cancel_order(
-                    current_sell_order.symbol, 
-                    current_sell_order.order_id
+                order = await place_sell_order(
+                    private_exchange, symbol, symbol_info,
+                    market_buy_order.filled_quantity, ask_price.ask_price, logger
                 )
-                
-                # Check if order was filled during cancellation
-                if is_order_filled(cancelled_order):
-                    print(f"   ✅✅✅ Limit sell filled during cancel: {cancelled_order}")
-                    current_sell_order = cancelled_order
-                    return cancelled_order
-                else:
-                    # Place new order at new price
-                    await asyncio.sleep(0.1)
-                    return await place_sell_order(ask_price)
-                    
-            except Exception as e:
-                logger.error("Failed to cancel/replace order", error=str(e))
-                print(f"   ❌ Cancel/replace failed: {e}")
-                raise
-        
-        def handle_sell_logic(combined_data):
-            """Handle the sell order logic based on price and order updates."""
-            ask_price, order_update = combined_data
+                current_sell_order = order
+                return ("placed", order)
             
-            async def _handle():
-                nonlocal current_sell_order
-                
-                # If we have an order update for our current sell order
-                if order_update and current_sell_order and order_update.order_id == current_sell_order.order_id:
-                    current_sell_order = order_update
-                    
-                    if is_order_filled(order_update):
-                        print(f"   ✅✅✅ Limit sell order FILLED: {order_update}")
-                        return ("filled", order_update)
-                
-                # If no order exists yet, place initial order
-                if not current_sell_order:
-                    order = await place_sell_order(ask_price.ask_price)
-                    return ("placed", order)
-                
-                # If our price is not on top anymore, cancel and replace
-                if current_sell_order.price > ask_price.ask_price:
-                    order = await cancel_and_replace(
-                        ask_price.ask_price, 
-                        "Price moved above us"
-                    )
-                    if is_order_filled(order):
-                        return ("filled", order)
-                    return ("replaced", order)
-                
-                # Otherwise, just keep monitoring
-                return ("monitoring", current_sell_order)
+            # Replace order if price moved above us
+            if current_sell_order.price > ask_price.ask_price:
+                order = await cancel_and_replace_order(
+                    private_exchange, current_sell_order, ask_price.ask_price,
+                    symbol_info, "Price moved above us", logger
+                )
+                current_sell_order = order
+                if is_order_filled(order):
+                    return ("filled", order)
+                return ("replaced", order)
             
-            return rx.from_future(asyncio.ensure_future(_handle()))
+            # Continue monitoring
+            return ("monitoring", current_sell_order)
         
-        # Combine ask price stream and order updates
-        # Start with None to ensure we get initial ask price even without order updates
-        orders_with_initial: rx.Observable[Optional[Order]] = orders_stream.pipe(
-            ops.start_with(None)  # type: ignore
-        )
-        combined_stream = rx.combine_latest(
-            ask_price_stream,
-            orders_with_initial
-        )
-        
-        # Process the combined stream until filled
-        sell_cycle_stream = combined_stream.pipe(
-            ops.flat_map(handle_sell_logic),  # Returns (state, order) tuples
-            ops.take_while(lambda result: result[0] != "filled", inclusive=True),  # Continue until filled
-            ops.filter(lambda result: result[0] == "filled"),  # Only emit the filled result
-            ops.map(lambda result: result[1])  # Extract the order
-        )
-        
-        return sell_cycle_stream
+        return rx.from_future(asyncio.ensure_future(_process_update()))
     
-    # Create a new sell cycle for each market buy order
-    return market_buy_stream.pipe(
-        ops.map(create_sell_cycle),
-        ops.switch_latest()
+    # Combine price stream with order updates (start with None for initial price)
+    combined_stream = rx.combine_latest(
+        ask_price_stream,
+        orders_stream.pipe(ops.start_with(None))
+    )
+    
+    # Process until order is filled
+    return combined_stream.pipe(
+        ops.flat_map(handle_price_and_order_update),
+        ops.take_while(lambda result: result[0] != "filled", inclusive=True),
+        ops.filter(lambda result: result[0] == "filled"),
+        ops.map(lambda result: result[1])
     )
 
 
@@ -284,30 +271,45 @@ async def run_market_making_cycle(
 ) -> tuple[Order, Order]:
     """
     Execute a complete market making cycle: buy -> sell.
-    Returns when both orders are executed or raises exception on error.
+    Simplified sequential logic with RxPY only for ongoing monitoring.
     
     Returns:
         tuple of (market_buy_order, limit_sell_order)
     """
-    # Create events to track completion
-    cycle_complete = asyncio.Event()
-    cycle_error: Optional[Exception] = None
-    completed_orders = {}
+    # Step 1: Get current ask price and execute market buy
+    current_ask_price = await get_current_ask_price(demo_setup.ask_price_stream)
     
-    # Create market buy stream and share it to avoid multiple executions
-    market_buy_stream = create_market_buy_stream(
+    market_buy_order = await execute_market_buy(
         private_exchange=demo_setup.private_exchange,
         symbol=demo_setup.symbol,
         quantity_usdt=demo_setup.quantity_usdt,
-        ask_price_stream=demo_setup.ask_price_stream,
+        current_ask_price=current_ask_price,
         logger=logger
-    ).pipe(
-        ops.share()  # Share the stream so multiple subscriptions don't cause multiple executions
     )
     
-    # Create limit sell stream that triggers when market buy completes
-    limit_sell_stream = create_limit_sell_on_top_stream(
-        market_buy_stream=market_buy_stream,
+    print(f"📦 Market buy completed: {market_buy_order}")
+    
+    # Step 2: Monitor sell order until filled using reactive patterns
+    # This is where RxPY adds value - ongoing monitoring of price + order state
+    sell_complete_event = asyncio.Event()
+    sell_error: Optional[Exception] = None
+    filled_sell_order: Optional[Order] = None
+    
+    def on_sell_filled(order: Order):
+        nonlocal filled_sell_order
+        print(f"💰 Limit sell completed: {order}")
+        filled_sell_order = order
+        sell_complete_event.set()
+    
+    def on_sell_error(error: Exception):
+        nonlocal sell_error
+        print(f"❌ Error in sell monitoring: {error}")
+        sell_error = error
+        sell_complete_event.set()
+    
+    # Start sell monitoring stream
+    sell_stream = create_sell_monitoring_stream(
+        market_buy_order=market_buy_order,
         ask_price_stream=demo_setup.ask_price_stream,
         orders_stream=demo_setup.orders_stream,
         private_exchange=demo_setup.private_exchange,
@@ -316,68 +318,50 @@ async def run_market_making_cycle(
         logger=logger
     )
     
-    # Merge both streams into a single pipeline
-    # Note: We don't need to include market_buy_stream in merge since
-    # it's already being consumed by limit_sell_stream
-    complete_cycle_stream = rx.merge(
-        market_buy_stream.pipe(
-            ops.map(lambda order: ("buy", order))
-        ),
-        limit_sell_stream.pipe(
-            ops.map(lambda order: ("sell", order))
-        )
+    subscription = sell_stream.subscribe(
+        on_next=on_sell_filled,
+        on_error=on_sell_error
     )
     
-    def on_next(event):
-        order_type, order = event
-        if order_type == "buy":
-            print(f"📦 Market buy completed: {order}")
-            completed_orders["buy"] = order
-        elif order_type == "sell":
-            print(f"💰 Limit sell completed: {order}")
-            completed_orders["sell"] = order
-            # Sell completes the cycle
-            cycle_complete.set()
-    
-    def on_error(error):
-        nonlocal cycle_error
-        print(f"❌ Error in market making cycle: {error}")
-        cycle_error = error
-        cycle_complete.set()
-    
-    def on_completed():
-        print("✅ Market making cycle stream completed")
-        cycle_complete.set()
-    
-    # Subscribe to merged pipeline
-    subscription = complete_cycle_stream.subscribe(
-        on_next=on_next,
-        on_error=on_error,
-        on_completed=on_completed
-    )
-    
-    # Track subscription for cleanup
     demo_setup.subscription_tracker.add(subscription)
     
     try:
-        # Wait for cycle to complete or error
-        await cycle_complete.wait()
+        # Wait for sell order to complete
+        await sell_complete_event.wait()
         
-        # Check for errors
-        if cycle_error:
-            raise cycle_error
+        if sell_error:
+            raise sell_error
         
-        # Return completed orders
-        buy_order = completed_orders.get("buy")
-        sell_order = completed_orders.get("sell")
+        if not filled_sell_order:
+            raise RuntimeError("Sell order monitoring completed without result")
         
-        if not buy_order or not sell_order:
-            raise RuntimeError(f"Cycle incomplete: buy={buy_order is not None}, sell={sell_order is not None}")
-        
-        return buy_order, sell_order
+        return market_buy_order, filled_sell_order
     
     finally:
-        # Always dispose subscription
+        if subscription and not subscription.is_disposed:
+            subscription.dispose()
+
+
+async def get_current_ask_price(ask_price_stream: rx.Observable[BookTicker]) -> float:
+    """Get the current ask price from the stream."""
+    price_future = asyncio.Future()
+    
+    def on_price(book_ticker: BookTicker):
+        if not price_future.done():
+            price_future.set_result(book_ticker.ask_price)
+    
+    def on_error(error):
+        if not price_future.done():
+            price_future.set_exception(error)
+    
+    subscription = ask_price_stream.pipe(ops.take(1)).subscribe(
+        on_next=on_price,
+        on_error=on_error
+    )
+    
+    try:
+        return await price_future
+    finally:
         if subscription and not subscription.is_disposed:
             subscription.dispose()
 

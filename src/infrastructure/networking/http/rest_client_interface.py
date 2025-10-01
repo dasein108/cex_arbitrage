@@ -251,28 +251,50 @@ class BaseRestClientInterface(ABC):
             final_headers = auth_data.get('headers', {})
             final_params = auth_data.get('params') or params
             final_data = auth_data.get('data') or data
+            send_as_text = auth_data.get('send_as_text', False)
             
             # Build URL
             url = f"{self.config.base_url}{endpoint}"
             
-            # Execute request
-            async with self._session.request(
-                method.value, url,
-                params=final_params,
-                json=final_data,
-                headers=final_headers
-            ) as response:
-                response_text = await response.text()
-                
-                # Handle errors
-                if response.status >= 400:
-                    if response.status == 429:
-                        raise RateLimitErrorRest(response.status, f"Rate limit exceeded: {response_text}")
-                    else:
-                        raise self._handle_error(response.status, response_text)
-                
-                # Parse and return response
-                return self._parse_response(response_text)
+            # Execute request with proper data format
+            if send_as_text and final_data:
+                # Send pre-encoded JSON string as raw text data
+                async with self._session.request(
+                    method.value, url,
+                    params=final_params,
+                    data=final_data,  # Raw text data
+                    headers=final_headers
+                ) as response:
+                    response_text = await response.text()
+                    
+                    # Handle errors
+                    if response.status >= 400:
+                        if response.status == 429:
+                            raise RateLimitErrorRest(response.status, f"Rate limit exceeded: {response_text}")
+                        else:
+                            raise self._handle_error(response.status, response_text)
+                    
+                    # Parse and return response
+                    return self._parse_response(response_text)
+            else:
+                # Send data as JSON object (aiohttp will encode)
+                async with self._session.request(
+                    method.value, url,
+                    params=final_params,
+                    json=final_data,  # JSON object
+                    headers=final_headers
+                ) as response:
+                    response_text = await response.text()
+                    
+                    # Handle errors
+                    if response.status >= 400:
+                        if response.status == 429:
+                            raise RateLimitErrorRest(response.status, f"Rate limit exceeded: {response_text}")
+                        else:
+                            raise self._handle_error(response.status, response_text)
+                    
+                    # Parse and return response
+                    return self._parse_response(response_text)
                 
         finally:
             self.rate_limiter.release_permit(endpoint)
