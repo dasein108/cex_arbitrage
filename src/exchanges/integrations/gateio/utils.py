@@ -101,24 +101,6 @@ def to_symbol(pair_str: str):
     from exchanges.integrations.gateio.services.spot_symbol_mapper import GateioSpotSymbol
     return GateioSpotSymbol.to_symbol(pair_str)
 
-# TODO: remove use direct GateioSpotSymbol.to_pair OK
-#def from_symbol(symbol):
-#    """Convert Symbol to Gate.io pair string."""
-#    return GateioSpotSymbol.to_pair(symbol)
-
-# TODO: remove  use GateioFuturesSymbol.to_symbol(contract_str) OK
-# Futures-specific symbol mapping
-# def to_futures_symbol(contract_str: str):
-#     """Convert Gate.io futures contract string to Symbol."""
-#     from exchanges.integrations.gateio.services.futures_symbol_mapper import GateioFuturesSymbol
-#     return GateioFuturesSymbol.to_symbol(contract_str)
-
-# TODO: remove  use GateioFuturesSymbol.to_pair(contract_str) OK
-
-# def from_futures_symbol(symbol):
-#     """Convert Symbol to Gate.io futures contract string."""
-#     from exchanges.integrations.gateio.services.futures_symbol_mapper import GateioFuturesSymbol
-#     return GateioFuturesSymbol.to_pair(symbol)
 
 
 # Additional utility functions for WebSocket and REST operations
@@ -144,10 +126,7 @@ def from_subscription_action(action) -> str:
         return "unsubscribe"
     return "subscribe"
 
-# TODO: remove GateioSymbol.to_pait(contract_str)
-#def to_pair(symbol) -> str:
- #   """Convert Symbol to Gate.io pair format."""
-  #  return from_symbol(symbol)
+
 
 # TODO: implement for futures, refactor futures_rest, geti rid of fallabacks
 def rest_futures_to_order(gateio_order_data) -> Order:
