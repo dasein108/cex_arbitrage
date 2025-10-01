@@ -15,4 +15,5 @@ __all__ = [
     'WebSocketManager',
     'PublicBaseWebsocket',
     'PrivateBaseWebsocket',
+    'BaseWebsocketInterface'
 ]

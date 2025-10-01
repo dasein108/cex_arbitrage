@@ -8,7 +8,6 @@ from exchanges.structs.common import Symbol, OrderBook, AssetBalance, Order
 from exchanges.structs.types import AssetName, OrderId
 from exchanges.structs import Side, OrderStatus
 from config.structs import ExchangeConfig
-from infrastructure.networking.websocket.handlers import PublicWebsocketHandlers, PrivateWebsocketHandlers
 
 
 class TestMexcCompositePublic:
@@ -70,16 +69,6 @@ class TestMexcCompositePublic:
         ws_client = await exchange._create_public_websocket(handlers)
         assert ws_client is None
 
-    async def test_websocket_handlers(self, public_exchange):
-        """Test WebSocket handlers creation."""
-        handlers = public_exchange._create_inner_websocket_handlers()
-        
-        assert isinstance(handlers, PublicWebsocketHandlers)
-        assert handlers.orderbook_handler == public_exchange._handle_orderbook
-        assert handlers.ticker_handler == public_exchange._handle_ticker
-        assert handlers.trade_handler == public_exchange._handle_trade
-        assert handlers.book_ticker_handler == public_exchange._handle_book_ticker
-
     async def test_orderbooks_property(self, public_exchange):
         """Test orderbooks property returns thread-safe copy."""
         # Set up internal orderbooks
@@ -132,15 +121,6 @@ class TestMexcCompositePrivate:
                 logger=private_exchange.logger
             )
             assert ws_client == mock_ws.return_value
-
-    async def test_websocket_handlers(self, private_exchange):
-        """Test private WebSocket handlers creation."""
-        handlers = private_exchange._create_inner_websocket_handlers()
-        
-        assert isinstance(handlers, PrivateWebsocketHandlers)
-        assert handlers.order_handler == private_exchange._order_handler
-        assert handlers.balance_handler == private_exchange._balance_handler
-        assert handlers.execution_handler == private_exchange._execution_handler
 
     async def test_balances_property(self, private_exchange):
         """Test balances property returns thread-safe copy."""

@@ -50,7 +50,7 @@ See also:
 
 import asyncio
 import time
-from typing import Dict, List, Optional, Callable, Awaitable, Set
+from typing import Dict, List, Optional, Callable, Awaitable, Set, Any
 
 from exchanges.structs.common import (Symbol, SymbolsInfo, OrderBook, BookTicker, Ticker, Trade)
 from exchanges.structs.enums import OrderbookUpdateType
@@ -58,12 +58,13 @@ from infrastructure.exceptions.system import InitializationError
 from exchanges.interfaces.composite.base_composite import BaseCompositeExchange
 from exchanges.interfaces.composite.types import PublicRestType, PublicWebsocketType
 from infrastructure.logging import LoggingTimer, HFTLoggerInterface
-from infrastructure.networking.websocket.handlers import PublicWebsocketHandlers
 from exchanges.interfaces.common.binding import BoundHandlerInterface
 from infrastructure.networking.websocket.structs import PublicWebsocketChannelType, WebsocketChannelType
+from exchanges.interfaces.ractive import PublicObservableStreams
 
 class BasePublicComposite(BaseCompositeExchange[PublicRestType, PublicWebsocketType],
-                          BoundHandlerInterface[PublicWebsocketChannelType]):
+                          BoundHandlerInterface[PublicWebsocketChannelType],
+                         PublicObservableStreams):
     """
     Base public composite exchange interface for market data operations.
     """
@@ -81,6 +82,7 @@ class BasePublicComposite(BaseCompositeExchange[PublicRestType, PublicWebsocketT
             websocket_client: Injected public WebSocket client instance (optional)
             logger: Optional injected HFT logger (auto-created if not provided)
         """
+        PublicObservableStreams.__init__(self)
         BoundHandlerInterface.__init__(self)
         super().__init__(config,
                          rest_client=rest_client,
@@ -88,6 +90,10 @@ class BasePublicComposite(BaseCompositeExchange[PublicRestType, PublicWebsocketT
                          is_private=False,
                          logger=logger)
 
+
+        self.streams = PublicObservableStreams()
+
+        # TODO: remove use handlers or streams
         # bind WebSocket handlers to websocket client events
         websocket_client.bind(PublicWebsocketChannelType.BOOK_TICKER, self._handle_book_ticker)
         websocket_client.bind(PublicWebsocketChannelType.ORDERBOOK, self._handle_orderbook)
@@ -108,11 +114,6 @@ class BasePublicComposite(BaseCompositeExchange[PublicRestType, PublicWebsocketT
         # Performance tracking for HFT compliance (NEW)
         self._book_ticker_update_count = 0
         self._book_ticker_latency_sum = 0.0
-
-        # Update handlers for arbitrage layer (existing)
-        self._orderbook_update_handlers: List[
-            Callable[[Symbol, OrderBook, OrderbookUpdateType], Awaitable[None]]
-        ] = []
 
     # Factory methods ELIMINATED - clients injected via constructor
 
@@ -138,24 +139,20 @@ class BasePublicComposite(BaseCompositeExchange[PublicRestType, PublicWebsocketT
     async def get_book_ticker(self, symbol: Symbol, force=False) -> Optional[BookTicker]:
         """Get current best bid/ask (book ticker) for a symbol."""
 
-        if symbol in self._book_ticker:
+        if symbol in self._book_ticker and not force:
             return self._book_ticker.get(symbol)
-        else:
-            if force:
-                ob = await self._rest.get_orderbook(symbol, 1)
 
-                return BookTicker(
-                    symbol=symbol,
-                    bid_price=ob.bids[0].price if ob.bids else 0.0,
-                    bid_quantity=ob.bids[0].size if ob.bids else 0.0,
-                    ask_price=ob.asks[0].price if ob.asks else 0.0,
-                    ask_quantity=ob.asks[0].size if ob.asks else 0.0,
-                    timestamp=int(time.time() * 1000),
-                )
+        ob = await self._rest.get_orderbook(symbol, 1)
 
-        self.logger.warning("Book ticker not available for symbol", symbol=symbol, force=force)
+        return BookTicker(
+            symbol=symbol,
+            bid_price=ob.bids[0].price if ob.bids else 0.0,
+            bid_quantity=ob.bids[0].size if ob.bids else 0.0,
+            ask_price=ob.asks[0].price if ob.asks else 0.0,
+            ask_quantity=ob.asks[0].size if ob.asks else 0.0,
+            timestamp=int(time.time() * 1000),
+        )
 
-        return None
 
     async def _load_symbols_info(self) -> None:
         """Load symbol information from REST API with error handling."""
@@ -206,19 +203,10 @@ class BasePublicComposite(BaseCompositeExchange[PublicRestType, PublicWebsocketT
 
         return orderbook
 
-    async def _stop_real_time_streaming(self) -> None:
-        """Stop real-time WebSocket streaming."""
-        if self._ws:
-            try:
-                await self._ws.close()
-                self._ws_connected = False
-                self.logger.info("Real-time streaming stopped")
-            except Exception as e:
-                self.logger.error("Error stopping real-time streaming", error=str(e))
-
     # Initialization and lifecycle
 
-    async def initialize(self, symbols: List[Symbol] = None) -> None:
+    async def initialize(self, symbols: List[Symbol] = None,
+                         channels: List[WebsocketChannelType]=None ) -> None:
         """
         Initialize public exchange with template method orchestration.
         PATTERN: Copied from composite exchange line 45-120
@@ -236,6 +224,9 @@ class BasePublicComposite(BaseCompositeExchange[PublicRestType, PublicWebsocketT
 
         if symbols:
             self._active_symbols.update(symbols)
+
+        if channels is None:
+            channels = [WebsocketChannelType.BOOK_TICKER]
 
         try:
             init_start = time.perf_counter()
@@ -255,7 +246,7 @@ class BasePublicComposite(BaseCompositeExchange[PublicRestType, PublicWebsocketT
 
             await self._ws.initialize()
             await self._ws.subscribe(symbol=list(self.active_symbols),
-                                     channel=[WebsocketChannelType.BOOK_TICKER])
+                                     channel=channels)
 
             self._initialized = True
 
@@ -275,31 +266,6 @@ class BasePublicComposite(BaseCompositeExchange[PublicRestType, PublicWebsocketT
             raise InitializationError(f"Public initialization failed: {e}")
 
     # Orderbook update handlers for arbitrage layer
-
-    def add_orderbook_update_handler(
-            self,
-            handler: Callable[[Symbol, OrderBook, OrderbookUpdateType], Awaitable[None]]
-    ) -> None:
-        """
-        Add handler for orderbook updates (for arbitrage layer).
-
-        Args:
-            handler: Async function to call on orderbook updates
-        """
-        self._orderbook_update_handlers.append(handler)
-
-    def remove_orderbook_update_handler(
-            self,
-            handler: Callable[[Symbol, OrderBook, OrderbookUpdateType], Awaitable[None]]
-    ) -> None:
-        """
-        Remove orderbook update handler.
-
-        Args:
-            handler: Handler function to remove
-        """
-        if handler in self._orderbook_update_handlers:
-            self._orderbook_update_handlers.remove(handler)
 
     async def _load_orderbook_snapshot(self, symbol: Symbol) -> None:
         """
@@ -327,9 +293,7 @@ class BasePublicComposite(BaseCompositeExchange[PublicRestType, PublicWebsocketT
 
                 self._book_ticker[symbol] = book_ticker
                 self._book_ticker_update[symbol] = time.perf_counter()
-
-            # Notify arbitrage layer of initial snapshot
-            await self._notify_orderbook_update(symbol, orderbook, OrderbookUpdateType.SNAPSHOT)
+                self.publish("book_tickers", book_ticker)  # Publish to streams
 
         except Exception as e:
             self.logger.error(f"Failed to load orderbook snapshot for {symbol}: {e}")
@@ -355,66 +319,6 @@ class BasePublicComposite(BaseCompositeExchange[PublicRestType, PublicWebsocketT
         self._orderbooks[symbol] = orderbook
         self._last_update_time = time.perf_counter()
 
-        # Notify arbitrage layer asynchronously
-        asyncio.create_task(self._notify_orderbook_update(symbol, orderbook, update_type))
-
-    async def _notify_orderbook_update(
-            self,
-            symbol: Symbol,
-            orderbook: OrderBook,
-            update_type: OrderbookUpdateType
-    ) -> None:
-        """
-        Notify all registered handlers of orderbook updates.
-
-        Args:
-            symbol: Symbol that was updated
-            orderbook: Updated orderbook
-            update_type: Type of update
-        """
-        if not self._orderbook_update_handlers:
-            return
-
-        # Execute all handlers concurrently
-        tasks = [
-            handler(symbol, orderbook, update_type)
-            for handler in self._orderbook_update_handlers
-        ]
-
-        if tasks:
-            await asyncio.gather(*tasks, return_exceptions=True)
-
-    # Monitoring and diagnostics
-
-    def get_orderbook_stats(self) -> Dict[str, any]:
-        """
-        Get orderbook statistics for monitoring.
-
-        Returns:
-            Dictionary with orderbook and connection statistics
-        """
-        return {
-            'exchange': self._config.name,
-            'active_symbols': len(self._active_symbols),
-            'cached_orderbooks': len(self._orderbooks),
-            'connection_healthy': self.is_connected,
-            'connection_state': self.connection_state.name,
-            'last_update_time': self._last_update_time,
-            'best_bid_ask_count': len(self._book_ticker),  # NEW
-        }
-
-    def _create_inner_websocket_handlers(self) -> PublicWebsocketHandlers:
-        """
-        Handlers to connect websocket events to internal methods.
-        :return:
-        """
-        return PublicWebsocketHandlers(
-            orderbook_handler=self._handle_orderbook,
-            ticker_handler=self._handle_ticker,
-            trade_handler=self._handle_trade,
-            book_ticker_handler=self._handle_book_ticker,  # This one already matches signature
-        )
-
     # Direct data handlers (match PublicWebsocketHandlers signatures)
     async def _handle_orderbook(self, orderbook: OrderBook) -> None:
         """Handle orderbook updates from WebSocket (direct data object)."""
@@ -422,6 +326,7 @@ class BasePublicComposite(BaseCompositeExchange[PublicRestType, PublicWebsocketT
             self._update_orderbook(orderbook.symbol, orderbook, OrderbookUpdateType.DIFF)
             self._track_operation("orderbook_update")
 
+            # TODO: remove
             await self._exec_bound_handler(PublicWebsocketChannelType.ORDERBOOK, orderbook)
 
         except Exception as e:
@@ -434,6 +339,10 @@ class BasePublicComposite(BaseCompositeExchange[PublicRestType, PublicWebsocketT
             self._tickers[ticker.symbol] = ticker
             self._last_update_time = time.perf_counter()
             self._track_operation("ticker_update")
+
+            self.publish("tickers", ticker)  # Publish to streams
+
+            # TODO: remove
             await self._exec_bound_handler(PublicWebsocketChannelType.TICKER, ticker)
 
         except Exception as e:
@@ -445,6 +354,10 @@ class BasePublicComposite(BaseCompositeExchange[PublicRestType, PublicWebsocketT
             # Trade events are typically forwarded to arbitrage layer
             self._track_operation("trade_update")
             self.logger.debug(f"Trade event processed", symbol=trade.symbol, exchange=self._exchange_name)
+
+            self.publish("trades", trade)  # Publish to streams
+
+            # TODO: remove
             await self._exec_bound_handler(PublicWebsocketChannelType.PUB_TRADE, trade)
 
         except Exception as e:
@@ -461,6 +374,7 @@ class BasePublicComposite(BaseCompositeExchange[PublicRestType, PublicWebsocketT
             start_time = time.perf_counter()
 
             # Validate data freshness for HFT compliance
+            # TODO: Not sure that this is needed ??
             if not self._validate_data_timestamp(book_ticker.timestamp):
                 self.logger.warning("Stale book ticker data ignored",
                                     symbol=book_ticker.symbol)
@@ -488,6 +402,9 @@ class BasePublicComposite(BaseCompositeExchange[PublicRestType, PublicWebsocketT
                               ask_price=book_ticker.ask_price,
                               processing_time_us=processing_time)
 
+            self.publish("book_tickers", book_ticker)  # Publish to streams
+
+            # TODO: remove
             await self._exec_bound_handler(PublicWebsocketChannelType.BOOK_TICKER, book_ticker)
 
         except Exception as e:
@@ -506,24 +423,6 @@ class BasePublicComposite(BaseCompositeExchange[PublicRestType, PublicWebsocketT
         """
         return self._book_ticker.get(symbol)
 
-    def get_book_ticker_performance_stats(self) -> Dict[str, float]:
-        """
-        Get book ticker performance statistics for HFT monitoring.
-
-        Returns:
-            Dictionary with performance metrics
-        """
-        if self._book_ticker_update_count == 0:
-            return {"count": 0, "avg_latency_us": 0.0}
-
-        avg_latency = self._book_ticker_latency_sum / self._book_ticker_update_count
-        return {
-            "count": self._book_ticker_update_count,
-            "avg_latency_us": avg_latency,
-            "total_latency_us": self._book_ticker_latency_sum,
-            "hft_compliant": avg_latency < 500.0
-        }
-
     async def _refresh_exchange_data(self) -> None:
         """Refresh market data including best bid/ask after WebSocket reconnection."""
         try:
@@ -533,6 +432,8 @@ class BasePublicComposite(BaseCompositeExchange[PublicRestType, PublicWebsocketT
             refresh_tasks = []
             for symbol in self._active_symbols:
                 refresh_tasks.append(self._load_orderbook_snapshot(symbol))
+
+            # TODO: refresh tickers, if needed in future
 
             results = await asyncio.gather(*refresh_tasks, return_exceptions=True)
 
@@ -565,6 +466,9 @@ class BasePublicComposite(BaseCompositeExchange[PublicRestType, PublicWebsocketT
 
             if close_tasks:
                 await asyncio.gather(*close_tasks, return_exceptions=True)
+
+            # Cleanup observable streams
+            self.streams.dispose()
 
             # Call parent cleanup
             await super().close()

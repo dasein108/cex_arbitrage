@@ -1,7 +1,7 @@
 import asyncio
 from typing import Dict
 
-from infrastructure.exceptions.exchange import RateLimitErrorRest, ExchangeConnectionRestError
+from infrastructure.exceptions.exchange import RateLimitErrorRest, ExchangeConnectionRestError, RecvWindowError
 from infrastructure.networking.http import RetryStrategy
 from config.structs import ExchangeConfig
 
@@ -65,7 +65,8 @@ class MexcRetryStrategy(RetryStrategy):
         if isinstance(error, (
                 RateLimitErrorRest,
                 ExchangeConnectionRestError,
-                asyncio.TimeoutError
+                asyncio.TimeoutError,
+                RecvWindowError
         )):
             should_retry = True
 

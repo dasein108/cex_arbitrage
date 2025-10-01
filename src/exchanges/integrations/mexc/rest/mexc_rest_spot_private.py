@@ -24,6 +24,7 @@ Memory: O(1) per request, optimized for trading operations
 from typing import Dict, List, Optional, Any
 import msgspec
 
+from exchanges.integrations.mexc.services.symbol_mapper import MexcSymbol
 from exchanges.structs.common import (
     Symbol, Order, AssetBalance,
     AssetInfo, NetworkInfo, WithdrawalRequest, WithdrawalResponse
@@ -40,7 +41,7 @@ from exchanges.integrations.mexc.structs.exchange import (MexcAccountResponse, M
 
 # Import direct utility functions
 from exchanges.integrations.mexc.utils import (
-    to_pair, from_side, from_order_type, format_quantity, format_price, 
+    from_side, from_order_type, format_quantity, format_price,
     from_time_in_force, to_order_status, rest_to_order, rest_to_withdrawal_status
 )
 from utils import get_current_timestamp
@@ -150,7 +151,7 @@ class MexcPrivateSpotRest(PrivateSpotRest, ListenKeyInterface):
             ExchangeAPIError: If unable to place order
             ValueError: If required parameters are missing
         """
-        pair = to_pair(symbol)
+        pair = MexcSymbol.to_pair(symbol)
 
         # Validate required parameters based on order type
         if order_type in [OrderType.LIMIT, OrderType.LIMIT_MAKER, OrderType.STOP_LIMIT]:
@@ -234,7 +235,7 @@ class MexcPrivateSpotRest(PrivateSpotRest, ListenKeyInterface):
         Raises:
             ExchangeAPIError: If unable to cancel order
         """
-        pair = to_pair(symbol)
+        pair = MexcSymbol.to_pair(symbol)
 
         params = {
             'symbol': pair,
@@ -272,7 +273,7 @@ class MexcPrivateSpotRest(PrivateSpotRest, ListenKeyInterface):
         Raises:
             ExchangeAPIError: If unable to cancel orders
         """
-        pair = to_pair(symbol)
+        pair = MexcSymbol.to_pair(symbol)
 
         params = {'symbol': pair}
 
@@ -307,7 +308,7 @@ class MexcPrivateSpotRest(PrivateSpotRest, ListenKeyInterface):
         Raises:
             ExchangeAPIError: If unable to fetch order
         """
-        pair = to_pair(symbol)
+        pair = MexcSymbol.to_pair(symbol)
 
         params = {
             'symbol': pair,
@@ -343,7 +344,7 @@ class MexcPrivateSpotRest(PrivateSpotRest, ListenKeyInterface):
         """
         params = {}
         if symbol:
-            params['symbol'] = to_pair(symbol)
+            params['symbol'] = MexcSymbol.to_pair(symbol)
 
         response_data = await self.request(
             HTTPMethod.GET,

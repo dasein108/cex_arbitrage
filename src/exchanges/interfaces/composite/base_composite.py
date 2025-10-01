@@ -89,6 +89,18 @@ class BaseCompositeExchange(Generic[RestClientType, WebSocketClientType], ABC):
         """
         pass
 
+    async def wait_until_connected(self, timeout: float = 10.0) -> bool:
+        """
+        Wait until the exchange is connected or timeout occurs.
+
+        Args:
+            timeout: Maximum time to wait in seconds (default: 10.0)
+
+        Returns:
+            True if connected within timeout, False otherwise
+        """
+        return await self._ws.wait_until_connected(timeout=timeout)
+
     async def initialize(self, **kwargs) -> None:
         """
         Initialize exchange with configuration and optional parameters.

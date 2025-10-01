@@ -81,11 +81,13 @@ class GateioAuthStrategy(BaseExchangeAuthStrategy):
         auth_headers: Dict[str, str],
         params: Dict[str, Any],
         json_data: Dict[str, Any],
-        signature: str
+        signature: str,
+        timestamp_str: str
     ) -> AuthenticationData:
         """Prepare Gate.io authentication data with proper parameter placement."""
         # For GET/DELETE: params in query, no body
-        # For POST/PUT: JSON body from json_data, params in query  
+        # For POST/PUT: JSON body from json_data, params in query
+        # Note: timestamp is already in headers for Gate.io (not in params like MEXC)
         if json_data:
             # POST/PUT requests: data in JSON body, params in query string
             import json

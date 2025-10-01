@@ -30,7 +30,6 @@ from exchanges.integrations.mexc.rest.mexc_rest_spot_private import MexcPrivateS
 from config.structs import ExchangeConfig
 from exchanges.interfaces.ws import PrivateBaseWebsocket
 from infrastructure.exceptions.system import InitializationError
-from infrastructure.networking.websocket.handlers import PrivateWebsocketHandlers
 # ExchangeMapperFactory dependency removed - using direct utility functions
 from infrastructure.logging import get_exchange_logger
 

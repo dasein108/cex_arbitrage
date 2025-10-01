@@ -14,7 +14,6 @@ from exchanges.structs.common import Symbol, Order, Position, SymbolsInfo
 from exchanges.interfaces.composite.base_private_composite import BasePrivateComposite
 from exchanges.interfaces.composite.types import PrivateRestType, PrivateWebsocketType
 from infrastructure.logging import HFTLoggerInterface
-from infrastructure.networking.websocket.handlers import PrivateWebsocketHandlers
 
 
 class CompositePrivateFuturesExchange(BasePrivateComposite):
@@ -79,18 +78,6 @@ class CompositePrivateFuturesExchange(BasePrivateComposite):
             self.logger.error(f"Failed to initialize futures private data for {self._tag}: {e}")
             raise
 
-    def _create_inner_websocket_handlers(self) -> PrivateWebsocketHandlers:
-        """
-        Extend WebSocket handlers to include position handler for futures.
-        
-        This is the key extension - adds position_handler to the base implementation.
-        """
-        return PrivateWebsocketHandlers(
-            order_handler=self._order_handler,
-            balance_handler=self._balance_handler,
-            execution_handler=self._execution_handler,
-            position_handler=self._position_handler,  # Futures-specific position handling
-        )
 
     # Futures-specific position event handler (abstract)
     async def _position_handler(self, position: Position) -> None:

@@ -202,8 +202,10 @@ class RestManager:
                         # Skip auth if strategy says it's not needed
                         pass
                     else:
+                        # Auth strategy generates fresh timestamp just before signing
+                        # This prevents stale timestamps when there are delays before the request is sent
                         auth_data = await self.strategy_set.auth_strategy.sign_request(
-                            method, endpoint, params or {}, json_data, int(time.time() * 1000)
+                            method, endpoint, params or {}, json_data
                         )
                         # Apply authentication headers
                         request_params.setdefault('headers', {}).update(auth_data.headers)
@@ -263,6 +265,8 @@ class RestManager:
                         
                         # Use exception handler strategy if available, fallback to legacy handler
                         if self.strategy_set.exception_handler_strategy:
+                            logging.error(f"Exception {method.value} {url} {request_params} "
+                                          f"failed with status {response.status}: {response_text}")
                             raise self.strategy_set.exception_handler_strategy.handle_error(response.status, response_text)
                         else:
                             raise ExchangeRestError(response.status, f"HTTP {response.status}: {response_text}"
@@ -272,7 +276,7 @@ class RestManager:
                     # Parse and return successful response
                     return self._parse_response(response_text)
             
-            except (aiohttp.ClientConnectionError, asyncio.TimeoutError) as e:
+            except (aiohttp.ClientConnectionError, asyncio.TimeoutError, RecvWindowError) as e:
                 if not retry_strategy.should_retry(attempt, e) or attempt == max_attempts:
                     raise ExchangeConnectionRestError(
                         500, f"Connection failed after {attempt} attempts: {str(e)}"

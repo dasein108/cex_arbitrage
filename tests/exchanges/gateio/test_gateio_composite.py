@@ -54,16 +54,6 @@ class TestGateioCompositePublicExchange:
         assert public_ws is not None
         assert hasattr(public_ws, 'initialize')
 
-    @pytest.mark.asyncio
-    async def test_websocket_handler_creation(self, exchange):
-        """Test WebSocket handler creation and configuration."""
-        handlers = exchange._create_inner_websocket_handlers()
-        
-        assert handlers is not None
-        assert handlers.orderbook_handler is not None
-        assert handlers.ticker_handler is not None
-        assert handlers.trade_handler is not None
-        assert handlers.book_ticker_handler is not None
 
     @pytest.mark.asyncio
     async def test_orderbook_handler(self, exchange):
@@ -164,15 +154,6 @@ class TestGateioCompositePrivateExchange:
         assert private_ws is not None
         assert hasattr(private_ws, 'initialize')
 
-    @pytest.mark.asyncio
-    async def test_websocket_handler_creation(self, exchange):
-        """Test private WebSocket handler creation."""
-        handlers = exchange._create_inner_websocket_handlers()
-        
-        assert handlers is not None
-        assert handlers.order_handler is not None
-        assert handlers.balance_handler is not None
-        assert handlers.execution_handler is not None
 
     @pytest.mark.asyncio
     async def test_order_handler(self, exchange):

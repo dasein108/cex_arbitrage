@@ -43,7 +43,6 @@ from exchanges.integrations.gateio.utils import (
     to_side,
     to_order_type,
     to_order_status,
-    ws_to_order,
 )
 from exchanges.integrations.gateio.ws.gateio_ws_common import GateioBaseWebsocket
 

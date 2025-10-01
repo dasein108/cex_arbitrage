@@ -87,6 +87,28 @@ class BaseExchangeAuthStrategy(AuthStrategy, ABC):
         """Format timestamp for this exchange. Override if needed."""
         return str(timestamp)
 
+    def _parse_timestamp_to_int(self, timestamp_str: str) -> int:
+        """
+        Parse timestamp string to integer with error handling.
+        
+        Args:
+            timestamp_str: Timestamp as string
+            
+        Returns:
+            Timestamp as integer
+            
+        Raises:
+            ValueError: If timestamp cannot be parsed
+        """
+        try:
+            return int(float(timestamp_str))
+        except (ValueError, TypeError) as e:
+            # Fallback: try direct int conversion
+            try:
+                return int(timestamp_str) if isinstance(timestamp_str, str) else timestamp_str
+            except (ValueError, TypeError):
+                raise ValueError(f"Cannot parse timestamp '{timestamp_str}' to integer") from e
+
     def _get_hash_function(self):
         """Get the appropriate hash function based on the signature algorithm."""
         algorithm = self.get_signature_algorithm().lower()
@@ -102,11 +124,25 @@ class BaseExchangeAuthStrategy(AuthStrategy, ABC):
         method: HTTPMethod,
         endpoint: str,
         params: Dict[str, Any],
-        json_data: Dict[str, Any],
-        timestamp: int
+        json_data: Dict[str, Any]
     ) -> AuthenticationData:
-        """Generate exchange authentication data with HMAC signature."""
-        # Use current timestamp with offset
+        """
+        Generate exchange authentication data with HMAC signature.
+        
+        Always generates a fresh timestamp just before signing to prevent
+        stale timestamp errors when there are network delays.
+        
+        Args:
+            method: HTTP method
+            endpoint: API endpoint
+            params: Request parameters
+            json_data: JSON data
+        
+        Returns:
+            Authentication data with signature
+        """
+        # ALWAYS generate fresh timestamp just before signing
+        # This prevents stale timestamps when there are delays
         timestamp_str = self.get_current_timestamp()
         
         # Prepare signature string using exchange-specific logic
@@ -126,7 +162,8 @@ class BaseExchangeAuthStrategy(AuthStrategy, ABC):
         auth_headers = self.get_auth_headers(signature, timestamp_str)
         
         # Return authentication data - subclasses handle parameter placement
-        return self._prepare_auth_data(auth_headers, params, json_data, signature)
+        # Pass timestamp_str so the same timestamp used in signature is included in params
+        return self._prepare_auth_data(auth_headers, params, json_data, signature, timestamp_str)
 
     @abstractmethod
     def _prepare_auth_data(
@@ -134,9 +171,19 @@ class BaseExchangeAuthStrategy(AuthStrategy, ABC):
         auth_headers: Dict[str, str],
         params: Dict[str, Any],
         json_data: Dict[str, Any],
-        signature: str
+        signature: str,
+        timestamp_str: str
     ) -> AuthenticationData:
-        """Prepare final authentication data with exchange-specific parameter placement."""
+        """
+        Prepare final authentication data with exchange-specific parameter placement.
+        
+        Args:
+            auth_headers: Authentication headers
+            params: Request parameters
+            json_data: JSON data
+            signature: Generated signature
+            timestamp_str: The timestamp that was used in the signature
+        """
         pass
 
     def requires_auth(self, endpoint: str) -> bool:

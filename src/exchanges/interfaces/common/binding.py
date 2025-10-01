@@ -4,7 +4,7 @@ from typing import Generic, Dict, Callable, Any, Awaitable
 from exchanges.interfaces.ws.interfaces.common import T
 
 
-class BoundHandlerInterface(Generic[T], ABC):
+class BoundHandlerInterface(Generic[T]):
     """Generic interface for binding handlers to channel types."""
 
     def __init__(self):
@@ -34,8 +34,13 @@ class BoundHandlerInterface(Generic[T], ABC):
             ValueError: If no handler is bound for the channel
         """
         if channel not in self._bound_handlers:
-            raise ValueError(f"No handler bound for channel {channel.name} (value: {channel.value}). "
-                           f"Use bind({channel.name}, your_handler_function) to bind a handler.")
+            # raise ValueError(f"No handler bound for channel {channel.name} (value: {channel.value}). "
+            #                f"Use bind({channel.name}, your_handler_function) to bind a handler.")
+            async def _noop(*args, **kwargs) -> None:
+                pass
+
+            return _noop
+
         return self._bound_handlers[channel]
 
     async def _exec_bound_handler(self, channel: T, *args, **kwargs) -> None:

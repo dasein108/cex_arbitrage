@@ -18,7 +18,6 @@ from dataclasses import dataclass
 
 from exchanges.structs import Symbol, BookTicker, Trade, ExchangeEnum
 from exchanges.exchange_factory import create_websocket_client
-from infrastructure.networking.websocket.handlers import PublicWebsocketHandlers
 from db import BookTickerSnapshot
 from db.models import TradeSnapshot
 from .analytics import RealTimeAnalytics, ArbitrageOpportunity

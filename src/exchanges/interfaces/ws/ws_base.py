@@ -9,7 +9,8 @@ from infrastructure.logging import get_exchange_logger, LoggingTimer, HFTLoggerI
 from websockets.client import WebSocketClientProtocol
 from websockets.protocol import State as WsState
 from infrastructure.networking.websocket.structs import ConnectionState
-
+import time
+import asyncio
 
 class BaseWebsocketInterface(ABC):
     """
@@ -31,6 +32,19 @@ class BaseWebsocketInterface(ABC):
 
     async def _auth(self) -> bool:
         return True  # Default to True for public connections
+
+    async def wait_until_connected(self, timeout: float = 10.0) -> bool:
+        """Wait until the WebSocket is connected or timeout occurs."""
+        start_time = time.time()
+        while not self.is_connected():
+            if time.time() - start_time > timeout:
+                return False
+            await asyncio.sleep(0.1)
+        return True
+
+    # async def wait_util_subscribed(self, channel:  timeout: float = 10.0) -> bool:
+    #     pass
+    #     # TODO: implement, or check somehow
 
     def __init__(
             self,
