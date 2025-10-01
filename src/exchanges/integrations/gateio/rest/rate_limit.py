@@ -1,9 +1,7 @@
 from typing import Dict
 
-from exchanges.interfaces.rest.strategies import BaseExchangeRateLimit
-from infrastructure.networking.http import RateLimitContext
 from config.structs import ExchangeConfig
-
+from exchanges.interfaces.rest.base_rate_limit import BaseExchangeRateLimit, RateLimitContext
 
 class GateioRateLimit(BaseExchangeRateLimit):
     """Gate.io-specific rate limiting based on ExchangeConfig."""

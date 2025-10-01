@@ -179,8 +179,8 @@ class RestTransportConfig(Struct, frozen=True):
         """Get total timeout in seconds for compatibility."""
         return (self.connection_timeout_ms + self.read_timeout_ms) / 1000.0
     
-    def create_strategy_kwargs(self) -> Dict[str, Any]:
-        """Create kwargs for strategy constructors."""
+    def create_client_kwargs(self) -> Dict[str, Any]:
+        """Create kwargs for client constructors."""
         return {
             'max_latency_ms': self.max_latency_ms,
             'target_throughput_rps': self.target_throughput_rps,

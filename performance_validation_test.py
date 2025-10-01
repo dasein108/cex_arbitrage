@@ -311,9 +311,9 @@ async def test_architecture_validation():
         print("\n1. Validating direct implementation architecture...")
         
         # Check that we can import the new base classes
-        from src.exchanges.integrations.mexc.rest.mexc_base_rest import MexcBaseRest
-        from src.exchanges.integrations.gateio.rest.gateio_base_spot_rest import GateioBaseSpotRest
-        from src.exchanges.integrations.gateio.rest.gateio_base_futures_rest import GateioBaseFuturesRest
+        from src.exchanges.integrations.mexc.rest.mexc_base_rest import MexcBaseRestInterface
+        from src.exchanges.integrations.gateio.rest.gateio_base_spot_rest import GateioBaseSpotRestInterface
+        from src.exchanges.integrations.gateio.rest.gateio_base_futures_rest import GateioBaseFuturesRestInterface
         
         print("   ✓ All base REST implementations importable")
         
@@ -334,7 +334,7 @@ async def test_architecture_validation():
         
         try:
             # This should fail without proper dependency injection
-            base_rest = MexcBaseRest.__new__(MexcBaseRest)
+            base_rest = MexcBaseRestInterface.__new__(MexcBaseRestInterface)
             print("   ✗ Constructor injection not enforced")
             return False
         except:
@@ -343,7 +343,7 @@ async def test_architecture_validation():
         print("\n3. Validating elimination of strategy pattern...")
         
         # Check that base classes don't use strategy composition
-        mexc_methods = [method for method in dir(MexcBaseRest) if not method.startswith('_')]
+        mexc_methods = [method for method in dir(MexcBaseRestInterface) if not method.startswith('_')]
         strategy_methods = [method for method in mexc_methods if 'strategy' in method.lower()]
         
         if len(strategy_methods) == 0:
@@ -355,7 +355,7 @@ async def test_architecture_validation():
         
         # Validate that direct methods exist
         required_methods = ['request', '_authenticate', '_handle_error', '_parse_response']
-        mexc_has_methods = all(hasattr(MexcBaseRest, method) for method in required_methods)
+        mexc_has_methods = all(hasattr(MexcBaseRestInterface, method) for method in required_methods)
         
         if mexc_has_methods:
             print("   ✓ All required direct methods present")

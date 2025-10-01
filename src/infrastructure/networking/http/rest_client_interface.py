@@ -24,10 +24,8 @@ from infrastructure.exceptions.exchange import ExchangeRestError, RateLimitError
 from config.structs import ExchangeConfig
 from infrastructure.logging import HFTLoggerInterface, get_logger
 from infrastructure.decorators.retry import retry_decorator
-from exchanges.interfaces.rest.strategies import BaseExchangeRateLimit
-
-
-class BaseRestClient(ABC):
+from exchanges.interfaces.rest import BaseExchangeRateLimit
+class BaseRestClientInterface(ABC):
     """
     Abstract base class for exchange REST implementations.
     

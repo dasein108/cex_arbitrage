@@ -27,7 +27,7 @@ from typing import Any, Dict, Optional
 from urllib.parse import urlencode
 
 from infrastructure.networking.http.structs import HTTPMethod
-from infrastructure.networking.http.rest_base_new import BaseRestClient
+from infrastructure.networking.http.rest_client_interface import BaseRestClientInterface
 from infrastructure.exceptions.exchange import (
     ExchangeRestError, RateLimitErrorRest, RecvWindowError
 )
@@ -35,7 +35,7 @@ from infrastructure.decorators.retry import gateio_retry
 from infrastructure.logging import HFTLoggerInterface
 
 
-class GateioBaseSpotRest(BaseRestClient):
+class GateioBaseSpotRestInterface(BaseRestClientInterface):
     """
     Base REST client for Gate.io Spot with direct implementation pattern.
     

@@ -48,10 +48,10 @@ from exchanges.integrations.mexc.utils import (
 from utils import get_current_timestamp
 
 # Import the new base REST implementation
-from .mexc_base_rest import MexcBaseRest
+from .mexc_base_rest import MexcBaseRestInterface
 
 
-class MexcPrivateSpotRestInterface(MexcBaseRest, PrivateSpotRestInterface, ListenKeyInterface):
+class MexcPrivateSpotRestInterface(MexcBaseRestInterface, PrivateSpotRestInterface, ListenKeyInterface):
     """
     MEXC private REST API client focused on trading operations.
     

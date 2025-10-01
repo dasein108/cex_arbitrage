@@ -23,7 +23,7 @@ from urllib.parse import urlencode
 
 from config.structs import ExchangeConfig
 from infrastructure.networking.http.structs import HTTPMethod
-from infrastructure.networking.http.rest_base_new import BaseRestClient
+from infrastructure.networking.http.rest_client_interface import BaseRestClientInterface
 from infrastructure.exceptions.exchange import (
     ExchangeRestError, RateLimitErrorRest, RecvWindowError
 )
@@ -31,7 +31,7 @@ from infrastructure.decorators.retry import mexc_retry
 from infrastructure.logging import HFTLoggerInterface
 
 
-class MexcBaseRest(BaseRestClient):
+class MexcBaseRestInterface(BaseRestClientInterface):
     """
     Base REST client for MEXC with direct implementation pattern.
     

@@ -47,9 +47,9 @@ from common.iterators import time_range_iterator
 from utils import get_minimal_step
 from infrastructure.logging import HFTLoggerInterface
 # Import the new base REST implementation
-from .mexc_base_rest import MexcBaseRest
+from .mexc_base_rest import MexcBaseRestInterface
 
-class MexcPublicSpotRestInterface(MexcBaseRest, PublicSpotRestInterface):
+class MexcPublicSpotRestInterface(MexcBaseRestInterface, PublicSpotRestInterface):
     """
     MEXC public REST API client focused on direct API calls.
     

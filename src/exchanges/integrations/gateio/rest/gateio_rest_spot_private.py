@@ -32,6 +32,7 @@ from exchanges.structs.common import (
 from exchanges.structs.types import AssetName, OrderId
 from exchanges.structs.enums import TimeInForce, WithdrawalStatus
 from exchanges.structs import OrderType, Side
+from infrastructure.logging import HFTLoggerInterface
 from infrastructure.networking.http.structs import HTTPMethod
 from exchanges.interfaces.rest import PrivateSpotRestInterface
 from config.structs import ExchangeConfig
@@ -47,9 +48,9 @@ from exchanges.integrations.gateio.structs.exchange import GateioCurrencyRespons
 from utils import get_current_timestamp
 
 
-from .gateio_base_spot_rest import GateioBaseSpotRest
+from .gateio_base_spot_rest import GateioBaseSpotRestInterface
 
-class GateioPrivateSpotRestInterface(GateioBaseSpotRest, PrivateSpotRestInterface):
+class GateioPrivateSpotRestInterface(GateioBaseSpotRestInterface, PrivateSpotRestInterface):
     """
     Gate.io private REST API client focused on trading operations.
     
@@ -57,7 +58,7 @@ class GateioPrivateSpotRestInterface(GateioBaseSpotRest, PrivateSpotRestInterfac
     Optimized for high-frequency trading operations with minimal overhead.
     """
 
-    def __init__(self, config, logger, **kwargs):
+    def __init__(self, config, logger: HFTLoggerInterface = None, **kwargs):
         """
         Initialize Gate.io private spot REST client with simplified constructor.
         

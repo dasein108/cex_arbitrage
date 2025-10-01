@@ -15,7 +15,7 @@ import os
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'src'))
 
 from config.structs import ExchangeConfig
-from exchanges.integrations.mexc.rest.mexc_base_rest import MexcBaseRest
+from exchanges.integrations.mexc.rest.mexc_base_rest import MexcBaseRestInterface
 from infrastructure.logging import get_console_logger
 
 
@@ -49,7 +49,7 @@ async def test_mexc_base_rest():
     try:
         # Create MEXC base REST client
         print("\n1. Creating MEXC base REST client...")
-        client = MexcBaseRest(
+        client = MexcBaseRestInterface(
             config=mexc_config,
             rate_limiter=rate_limiter,
             logger=logger,
@@ -117,7 +117,7 @@ async def test_authentication_setup():
     try:
         # Test public client (no auth)
         print("\n1. Testing public client setup...")
-        public_client = MexcBaseRest(
+        public_client = MexcBaseRestInterface(
             config=mexc_config,
             rate_limiter=rate_limiter,
             logger=logger,
@@ -129,7 +129,7 @@ async def test_authentication_setup():
         # Test private client without credentials (should fail)
         print("\n2. Testing private client without credentials...")
         try:
-            private_client = MexcBaseRest(
+            private_client = MexcBaseRestInterface(
                 config=mexc_config,
                 rate_limiter=rate_limiter,
                 logger=logger,
@@ -162,7 +162,7 @@ async def test_performance_baseline():
     logger = get_console_logger("mexc_perf_test", level="WARNING")  # Reduce logging noise
     
     try:
-        client = MexcBaseRest(mexc_config, rate_limiter, logger, is_private=False)
+        client = MexcBaseRestInterface(mexc_config, rate_limiter, logger, is_private=False)
         
         # Warm up
         await client.request("GET", "/api/v3/ping")

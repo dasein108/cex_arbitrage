@@ -55,13 +55,7 @@ from .ws.gateio_ws_public import GateioPublicSpotWebsocket
 from .ws.gateio_ws_private import GateioPrivateSpotWebsocket
 from .ws.gateio_ws_public_futures import GateioPublicFuturesWebsocket
 from .ws.gateio_ws_private_futures import GateioPrivateFuturesWebsocket
-# Auto-register Gate.io services (symbol mapper, mappings) 
-from . import services
 
-# Auto-register Gate.io REST strategies
-from .rest import strategies
-
-# WebSocket strategies removed - using mixin-based handlers
 
 __all__ = [
     # Direct client access

@@ -2,7 +2,6 @@ from abc import ABC
 
 from exchanges.interfaces.rest import PrivateTradingInterface
 from exchanges.interfaces.rest.interfaces import PrivateFuturesInterface, WithdrawalInterface, MarketDataInterface
-from infrastructure.networking.http.rest_base_new import BaseRestClient
 
 
 class PrivateSpotRestInterface(PrivateTradingInterface, WithdrawalInterface, ABC):

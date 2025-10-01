@@ -25,6 +25,10 @@ import asyncio
 import time
 from typing import Dict, List, Optional, Any
 from datetime import datetime
+
+from infrastructure.logging import HFTLoggerInterface
+
+
 # Inline utility function to avoid import issues
 def get_minimal_step(precision: int) -> float:
     return 10**-precision
@@ -47,9 +51,9 @@ from exchanges.integrations.gateio.utils import (
 from exchanges.integrations.gateio.services.spot_symbol_mapper import GateioSpotSymbol
 
 
-from .gateio_base_spot_rest import GateioBaseSpotRest
+from .gateio_base_spot_rest import GateioBaseSpotRestInterface
 
-class GateioPublicSpotRestInterface(GateioBaseSpotRest, PublicSpotRestInterface):
+class GateioPublicSpotRestInterface(GateioBaseSpotRestInterface, PublicSpotRestInterface):
     """
     Gate.io public REST API client focused on direct API calls.
     
@@ -57,7 +61,7 @@ class GateioPublicSpotRestInterface(GateioBaseSpotRest, PublicSpotRestInterface)
     Optimized for high-frequency market data retrieval with minimal overhead.
     """
     
-    def __init__(self, config: ExchangeConfig, logger, **kwargs):
+    def __init__(self, config: ExchangeConfig, logger: HFTLoggerInterface = None, **kwargs):
         """
         Initialize Gate.io public REST client with simplified constructor.
         

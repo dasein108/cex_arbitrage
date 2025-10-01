@@ -3,25 +3,29 @@ import time
 from abc import ABC, abstractmethod
 from typing import Dict, Any
 
-from infrastructure.networking.http import RateLimitStrategy, RateLimitContext
 from config.structs import ExchangeConfig
+from msgspec import Struct
+
+class RateLimitContext(Struct, frozen=True):
+    requests_per_second: float
+    burst_capacity: int
+    endpoint_weight: float=1
 
 
 class BaseExchangeRateLimit(ABC):
     """
-    Base rate limiting strategy for exchanges with common semaphore-based patterns.
+    Base rate limiting implementation for exchanges with direct method calls.
     
     Provides shared functionality for:
     - Global and endpoint-specific rate limiting
     - Semaphore-based concurrency control
-    - Request timing and statistics
     - Request timing and statistics
     - Configurable rate limits from ExchangeConfig
     """
 
     def __init__(self, exchange_config: ExchangeConfig, logger=None, **kwargs):
         """
-        Initialize base exchange rate limiting strategy.
+        Initialize base exchange rate limiting with constructor injection.
         
         Args:
             exchange_config: Exchange configuration containing rate_limit settings
@@ -32,9 +36,8 @@ class BaseExchangeRateLimit(ABC):
         
         # Initialize logger if not provided
         if logger is None:
-            from infrastructure.logging import get_strategy_logger
-            tags = [self.exchange_name.lower(), 'rest', 'rate_limit']
-            logger = get_strategy_logger(f'rest.rate_limit.{self.exchange_name.lower()}', tags)
+            from infrastructure.logging import get_logger
+            logger = get_logger(f'rest.rate_limit.{self.exchange_name.lower()}')
         self.logger = logger
         
         # Extract rate limits from config or use exchange defaults

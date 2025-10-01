@@ -8,6 +8,7 @@ from exchanges.structs.common import (
 from exchanges.structs.types import AssetName, OrderId
 from exchanges.structs.enums import TimeInForce
 from exchanges.structs import OrderType, Side
+from infrastructure.logging import HFTLoggerInterface
 from infrastructure.networking.http.structs import HTTPMethod
 from infrastructure.exceptions.exchange import ExchangeRestError
 # Removed BaseExchangeMapper import - using direct utility functions
@@ -22,10 +23,10 @@ from exchanges.integrations.gateio.utils import (
 from exchanges.integrations.gateio.services.futures_symbol_mapper import GateioFuturesSymbol
 
 
-from .gateio_base_futures_rest import GateioBaseFuturesRest
+from .gateio_base_futures_rest import GateioBaseFuturesRestInterface
 
-class GateioPrivateFuturesRestInterface(GateioBaseFuturesRest, PrivateFuturesRestInterface):
-    def __init__(self, config: ExchangeConfig, logger, **kwargs):
+class GateioPrivateFuturesRestInterface(GateioBaseFuturesRestInterface, PrivateFuturesRestInterface):
+    def __init__(self, config: ExchangeConfig, logger: HFTLoggerInterface = None, **kwargs):
         """
         Initialize Gate.io private futures REST client with simplified constructor.
         
