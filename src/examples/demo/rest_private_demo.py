@@ -15,12 +15,12 @@ from exchanges.structs.common import Symbol
 from exchanges.structs.types import AssetName
 from exchanges.structs.enums import TimeInForce
 from exchanges.structs import OrderType, Side
-from exchanges.interfaces.rest import PrivateSpotRest
+from exchanges.interfaces.rest import PrivateSpotRestInterface
 from config.config_manager import HftConfig
 from exchanges.exchange_factory import create_rest_client
 
 
-async def check_get_account_balance(exchange: PrivateSpotRest, exchange_name: str):
+async def check_get_account_balance(exchange: PrivateSpotRestInterface, exchange_name: str):
     """Check get_account_balance method."""
     print(f"\n=== {exchange_name.upper()} GET ACCOUNT BALANCE CHECK ===")
     try:
@@ -38,7 +38,7 @@ async def check_get_account_balance(exchange: PrivateSpotRest, exchange_name: st
         print(f"Error: {e}")
 
 
-async def check_get_asset_balance(exchange: PrivateSpotRest, exchange_name: str):
+async def check_get_asset_balance(exchange: PrivateSpotRestInterface, exchange_name: str):
     """Check get_asset_balance method."""
     print(f"\n=== {exchange_name.upper()} GET ASSET BALANCE CHECK ===")
     asset = AssetName('USDT')
@@ -57,7 +57,7 @@ async def check_get_asset_balance(exchange: PrivateSpotRest, exchange_name: str)
         print(f"Error: {e}")
 
 
-async def check_place_order(exchange: PrivateSpotRest, exchange_name: str):
+async def check_place_order(exchange: PrivateSpotRestInterface, exchange_name: str):
     """Check place_order method."""
     print(f"\n=== {exchange_name.upper()} PLACE ORDER CHECK ===")
     symbol = Symbol(base=AssetName('ADA'), quote=AssetName('USDT'), is_futures=False)
@@ -86,7 +86,7 @@ async def check_place_order(exchange: PrivateSpotRest, exchange_name: str):
         print(f"Error: {e}")
 
 
-async def check_get_open_orders(exchange: PrivateSpotRest, exchange_name: str):
+async def check_get_open_orders(exchange: PrivateSpotRestInterface, exchange_name: str):
     """Check get_open_orders method."""
     print(f"\n=== {exchange_name.upper()} GET OPEN ORDERS CHECK ===")
     
@@ -110,7 +110,7 @@ async def check_get_open_orders(exchange: PrivateSpotRest, exchange_name: str):
         print(f"Error: {e}")
 
 
-async def check_get_order(exchange: PrivateSpotRest, exchange_name: str):
+async def check_get_order(exchange: PrivateSpotRestInterface, exchange_name: str):
     """Check get_order method."""
     print(f"\n=== {exchange_name.upper()} GET ORDER CHECK ===")
     symbol = Symbol(base=AssetName('BTC'), quote=AssetName('USDT'), is_futures=False)
@@ -133,7 +133,7 @@ async def check_get_order(exchange: PrivateSpotRest, exchange_name: str):
         print(f"Error: {e}")
 
 
-async def check_cancel_order(exchange: PrivateSpotRest, exchange_name: str):
+async def check_cancel_order(exchange: PrivateSpotRestInterface, exchange_name: str):
     """Check cancel_order method."""
     print(f"\n=== {exchange_name.upper()} CANCEL ORDER CHECK ===")
     symbol = Symbol(base=AssetName('BTC'), quote=AssetName('USDT'), is_futures=False)
@@ -151,7 +151,7 @@ async def check_cancel_order(exchange: PrivateSpotRest, exchange_name: str):
         print(f"Error: {e}")
 
 
-async def check_cancel_all_orders(exchange: PrivateSpotRest, exchange_name: str):
+async def check_cancel_all_orders(exchange: PrivateSpotRestInterface, exchange_name: str):
     """Check cancel_all_orders method."""
     print(f"\n=== {exchange_name.upper()} CANCEL ALL ORDERS CHECK ===")
     symbol = Symbol(base=AssetName('BTC'), quote=AssetName('USDT'), is_futures=False)
@@ -209,7 +209,7 @@ async def main(exchange_name: str):
 
 
 if __name__ == "__main__":
-    exchange_name = sys.argv[1] if len(sys.argv) > 1 else "gateio_futures"
+    exchange_name = sys.argv[1] if len(sys.argv) > 1 else "gateio_spot"
 
     try:
         asyncio.run(main(exchange_name))

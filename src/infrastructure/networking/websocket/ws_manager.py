@@ -84,14 +84,14 @@ class WebSocketManager:
 
     async def initialize(self) -> None:
         """
-        Initialize WebSocket connection using strategy.connect() directly.
+        Initialize WebSocket connection using direct connection method.
         
         """
         self.start_time = time.perf_counter()
 
         try:
             with LoggingTimer(self.logger, "ws_manager_initialization") as timer:
-                # Start connection loop (handles reconnection with strategy policies)
+                # Start connection loop (handles reconnection with configured policies)
                 self._should_reconnect = True
                 self._connection_task = asyncio.create_task(self._connection_loop())
                 
@@ -136,9 +136,9 @@ class WebSocketManager:
     
     async def _connection_loop(self) -> None:
         """
-        Main connection loop with strategy-based reconnection.
+        Main connection loop with direct connection and reconnection.
         
-        Uses strategy.connect() directly and implements reconnection 
+        Uses connect_method directly and implements reconnection 
         using strategy-provided policies.
         """
         reconnect_attempts = 0
@@ -172,7 +172,7 @@ class WebSocketManager:
                 # Start message reader
                 self._reader_task = asyncio.create_task(self._message_reader())
                 
-                self.logger.info("Strategy-driven WebSocket connection established successfully")
+                self.logger.info("Direct WebSocket connection established successfully")
                 
                 # Wait for connection to close
                 await self._reader_task
@@ -212,15 +212,10 @@ class WebSocketManager:
 
     
     async def _handle_connection_error(self, error: Exception, attempt: int) -> None:
-        """Handle connection errors using strategy-specific policies."""
+        """Handle connection errors using configured policies."""
         await self._update_state(ConnectionState.ERROR)
         
-        # Let strategy decide if we should reconnect
-        # if not self.strategies.connection_strategy.should_reconnect(error):
-        #     error_type = self.strategies.connection_strategy.classify_error(error)
-        #     self.logger.error(f"Strategy decided not to reconnect after {error_type} error: {error}")
-        #     self._should_reconnect = False
-        #     return
+        # Connection error handling - check if reconnection should continue
         
         # Check max attempts
         if attempt >= self.config.max_reconnect_attempts:
@@ -232,10 +227,7 @@ class WebSocketManager:
             self.config.reconnect_delay * (self.config.reconnect_backoff ** attempt),
             self.config.max_reconnect_delay
         )
-        # # Calculate delay with strategy policy
-        # error_type = self.strategies.connection_strategy.classify_error(error)
-        # if policy.reset_on_1005 and error_type == "abnormal_closure":
-        #     delay = policy.initial_delay  # Reset delay for 1005 errors
+        # Calculate reconnection delay based on error type
         # else:
         #     delay = min(
         #         policy.initial_delay * (policy.backoff_factor ** attempt),
@@ -355,10 +347,10 @@ class WebSocketManager:
                 await asyncio.sleep(0.1)
 
     async def _on_reader_error(self, error: Exception) -> None:
-        """Handle WebSocket errors using strategy classification."""
+        """Handle WebSocket errors with error classification."""
         self.metrics.error_count += 1
         
-        error_type =  "<TODO>" #self.strategies.connection_strategy.classify_error(error)
+        error_type = type(error).__name__
         
 
         self.logger.error("WebSocket error",
@@ -413,10 +405,7 @@ class WebSocketManager:
                                         error_message=str(e))
                     self._websocket = None
                 
-                # Strategy cleanup
-                # if self.strategies and self.strategies.connection_strategy:
-                #     await self.strategies.connection_strategy.cleanup()
-                #
+                # Connection cleanup
                 self.connection_state = ConnectionState.DISCONNECTED
             
             self.logger.info("WebSocket manager V4 closed",

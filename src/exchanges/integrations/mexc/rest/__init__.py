@@ -1,8 +1,8 @@
 # This module provides MEXC REST API implementations
-from .mexc_rest_spot_private import MexcPrivateSpotRest
-from .mexc_rest_spot_public import MexcPublicSpotRest
+from .mexc_rest_spot_private import MexcPrivateSpotRestInterface
+from .mexc_rest_spot_public import MexcPublicSpotRestInterface
 
 __all__ = [
-    "MexcPublicSpotRest", 
-    "MexcPrivateSpotRest"
+    "MexcPublicSpotRestInterface",
+    "MexcPrivateSpotRestInterface"
 ]

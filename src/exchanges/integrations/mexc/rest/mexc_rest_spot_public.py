@@ -38,15 +38,18 @@ from exchanges.structs.common import (
 from exchanges.structs.types import AssetName
 from exchanges.structs.enums import KlineInterval
 from exchanges.structs import Side
-from exchanges.interfaces.rest import PublicSpotRest
+from exchanges.interfaces.rest import PublicSpotRestInterface
 # Using MexcSymbol singleton for symbol conversions
 from exchanges.integrations.mexc.services.symbol_mapper import MexcSymbol
 from config.structs import ExchangeConfig
 from infrastructure.networking.http.structs import HTTPMethod
 from common.iterators import time_range_iterator
 from utils import get_minimal_step
+from infrastructure.logging import HFTLoggerInterface
+# Import the new base REST implementation
+from .mexc_base_rest import MexcBaseRestInterface
 
-class MexcPublicSpotRest(PublicSpotRest):
+class MexcPublicSpotRestInterface(MexcBaseRestInterface, PublicSpotRestInterface):
     """
     MEXC public REST API client focused on direct API calls.
     
@@ -54,23 +57,22 @@ class MexcPublicSpotRest(PublicSpotRest):
     Optimized for high-frequency market data retrieval with minimal overhead.
     """
 
-    def __init__(self, config: ExchangeConfig, logger=None, **kwargs):
+    def __init__(self, config: ExchangeConfig, logger: Optional[HFTLoggerInterface] = None, **kwargs):
         """
-        Initialize MEXC public REST client.
+        Initialize MEXC public REST client with simplified constructor.
 
         Args:
-            config: ExchangeConfig with composite URL and rate limits
-            logger: Optional HFT logger injection
+            config: ExchangeConfig with MEXC URL and settings
+            logger: HFT logger instance (injected)
+            **kwargs: Additional parameters for compatibility
         """
-        super().__init__(config, is_private=False)
+        # Initialize base REST client (rate_limiter created internally)
+        super().__init__(config, logger, is_private=False, **kwargs)
 
         self._symbols_info: Optional[Dict[Symbol, SymbolInfo]] = None
         
-        # Initialize HFT logger
-        if logger is None:
-            from infrastructure.logging import get_exchange_logger
-            logger = get_exchange_logger('mexc', 'rest.public')
-        self.logger = logger
+        self.logger.debug("MEXC public spot REST client initialized",
+                         exchange="mexc", api_type="public")
         
     def _extract_symbol_precision(self, mexc_symbol: MexcSymbolResponse) -> tuple[int, int, float, float]:
         """

@@ -3,13 +3,14 @@ import time
 from typing import Dict, List, Optional, Any
 from datetime import datetime
 
-from exchanges.interfaces.rest import PublicFuturesRest
+from exchanges.interfaces.rest import PublicFuturesRestInterface
 from exchanges.structs.common import (
     Symbol, SymbolInfo, OrderBook, OrderBookEntry, Trade, Kline,
     Ticker
 )
 from exchanges.structs.enums import KlineInterval
 from exchanges.structs import Side
+from infrastructure.logging import HFTLoggerInterface
 # Removed BaseExchangeMapper import - using direct utility functions
 from infrastructure.networking.http.structs import HTTPMethod
 from config.structs import ExchangeConfig
@@ -23,7 +24,9 @@ from exchanges.integrations.gateio.services.futures_symbol_mapper import GateioF
 from exchanges.integrations.gateio.services.spot_symbol_mapper import get_exchange_interval
 
 
-class GateioPublicFuturesRest(PublicFuturesRest):
+from .gateio_base_futures_rest import GateioBaseFuturesRestInterface
+
+class GateioPublicFuturesRestInterface(GateioBaseFuturesRestInterface, PublicFuturesRestInterface):
     """
     Gate.io public REST client for futures (USDT-settled) — rewritten in the same
     architecture/style as GateioPublicSpotRest.
@@ -34,14 +37,17 @@ class GateioPublicFuturesRest(PublicFuturesRest):
     - Robust parsing: supports both array and dict payload shapes.
     """
 
-    def __init__(self, config: ExchangeConfig, logger=None):
-        super().__init__(config, is_private=False)
-
-        # Initialize HFT logger
-        if logger is None:
-            from infrastructure.logging import get_exchange_logger
-            logger = get_exchange_logger('gateio_futures', 'rest.public')
-        self.logger = logger
+    def __init__(self, config, logger: HFTLoggerInterface = None, **kwargs):
+        """
+        Initialize Gate.io public futures REST client with simplified constructor.
+        
+        Args:
+            config: ExchangeConfig with Gate.io configuration
+            logger: HFT logger instance (injected)
+            **kwargs: Additional parameters for compatibility
+        """
+        # Initialize base REST client (rate_limiter created internally)
+        super().__init__(config, logger, is_private=False)
 
         # caching for contract info (only config data)
         self._exchange_info: Optional[Dict[Symbol, SymbolInfo]] = None

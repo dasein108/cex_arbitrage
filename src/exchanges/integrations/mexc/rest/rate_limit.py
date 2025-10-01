@@ -1,11 +1,9 @@
 from typing import Dict
 
-from exchanges.interfaces.rest.strategies import BaseExchangeRateLimitStrategy
-from infrastructure.networking.http import RateLimitContext
 from config.structs import ExchangeConfig
+from exchanges.interfaces.rest.base_rate_limit import BaseExchangeRateLimit, RateLimitContext
 
-
-class MexcRateLimitStrategy(BaseExchangeRateLimitStrategy):
+class MexcRateLimit(BaseExchangeRateLimit):
     """MEXC-specific rate limiting based on ExchangeConfig."""
 
     def __init__(self, exchange_config: ExchangeConfig, logger=None, **kwargs):

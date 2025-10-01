@@ -5,10 +5,8 @@ This interface provides common trading operations that are available
 for both spot and futures exchanges.
 """
 
-from abc import abstractmethod
+from abc import abstractmethod, ABC
 from typing import Dict, List, Optional
-from exchanges.interfaces.rest.rest_base import BaseRestInterface
-# BaseExchangeMapper dependency removed - using direct utility functions
 from exchanges.structs.common import (
     Symbol,
     Order,
@@ -18,26 +16,9 @@ from exchanges.structs.types import AssetName, OrderId
 from exchanges.structs.enums import TimeInForce
 from exchanges.structs import OrderType, Side
 
-from config.structs import ExchangeConfig
-
-# HFT Logger Integration
-from infrastructure.logging import HFTLoggerInterface
-
-
-class PrivateTradingInterface(BaseRestInterface):
+class PrivateTradingInterface(ABC):
     """Abstract interface for private exchange trading operations (both spot and futures)"""
     CAN_MODIFY_ORDERS = False  # Default capability flag for modifying orders
-
-    def __init__(self, config: ExchangeConfig, logger: Optional[HFTLoggerInterface] = None, **kwargs):
-        """Initialize private trading interface with transport manager."""
-        if not config.has_credentials():
-            raise ValueError(f"{config.name} API credentials must be provided")
-            
-        super().__init__(
-            config=config,
-            is_private=True,  # Private API operations with authentication
-            logger=logger  # Pass logger to parent for specialized private logging
-        )
 
     @abstractmethod
     async def get_balances(self) -> List[AssetBalance]:

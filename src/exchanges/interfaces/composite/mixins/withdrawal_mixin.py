@@ -15,13 +15,13 @@ from exchanges.structs.common import (
 from exchanges.structs.types import AssetName
 
 if TYPE_CHECKING:
-    from exchanges.interfaces.rest import PrivateSpotRest
+    from exchanges.interfaces.rest import PrivateSpotRestInterface
     from infrastructure.logging import HFTLoggerInterface
 
 
 class WithdrawalMixinProtocol(Protocol):
     """Protocol defining expected attributes for classes using WithdrawalMixin."""
-    _rest: Optional['PrivateSpotRest']
+    _rest: Optional['PrivateSpotRestInterface']
     _assets_info: Dict[AssetName, AssetInfo]
     logger: 'HFTLoggerInterface'
 
@@ -40,7 +40,7 @@ class WithdrawalMixin:
     """
     
     # Type hint to resolve IDE warnings
-    _rest: Optional['PrivateSpotRest']
+    _rest: Optional['PrivateSpotRestInterface']
     _assets_info: Dict[AssetName, AssetInfo]
     logger: 'HFTLoggerInterface'
     

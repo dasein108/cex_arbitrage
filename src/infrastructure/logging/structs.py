@@ -331,8 +331,8 @@ class LoggerComponentConfig(Struct, frozen=True):
     correlation_tracking: bool = False
     performance_tracking: bool = False
     
-    def get_strategy_path(self) -> str:
-        """Get strategy path from tags."""
+    def get_component_path(self) -> str:
+        """Get component path from tags."""
         if not self.tags:
             return self.name
         return ".".join(self.tags)

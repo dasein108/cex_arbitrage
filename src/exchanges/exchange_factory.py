@@ -10,12 +10,12 @@ from exchanges.structs.enums import ExchangeEnum
 from exchanges.interfaces.composite import *
 
 EXCHANGE_REST_MAP = {
-    (ExchangeEnum.MEXC, False): MexcPublicSpotRest,
-    (ExchangeEnum.MEXC, True): MexcPrivateSpotRest,
-    (ExchangeEnum.GATEIO, False): GateioPublicSpotRest,
-    (ExchangeEnum.GATEIO, True): GateioPrivateSpotRest,
-    (ExchangeEnum.GATEIO_FUTURES, False): GateioPublicFuturesRest,
-    (ExchangeEnum.GATEIO_FUTURES, True): GateioPrivateFuturesRest,
+    (ExchangeEnum.MEXC, False): MexcPublicSpotRestInterface,
+    (ExchangeEnum.MEXC, True): MexcPrivateSpotRestInterface,
+    (ExchangeEnum.GATEIO, False): GateioPublicSpotRestInterface,
+    (ExchangeEnum.GATEIO, True): GateioPrivateSpotRestInterface,
+    (ExchangeEnum.GATEIO_FUTURES, False): GateioPublicFuturesRestInterface,
+    (ExchangeEnum.GATEIO_FUTURES, True): GateioPrivateFuturesRestInterface,
 }
 
 EXCHANGE_WS_MAP = {

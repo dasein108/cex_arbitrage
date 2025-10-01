@@ -79,7 +79,7 @@ class SubscriptionAction(IntEnum):
 
 @dataclass(frozen=True)
 class ConnectionContext:
-    """Connection configuration for WebSocket strategies."""
+    """Connection configuration for WebSocket clients."""
     url: str
     headers: Dict[str, str]
     auth_required: bool = False

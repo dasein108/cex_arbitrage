@@ -26,7 +26,7 @@ Architecture: Handler objects with composite class coordination
 from typing import Dict, Optional, Any, Union
 import asyncio
 from exchanges.structs import Order, AssetBalance, Trade, Side, OrderType, OrderStatus
-from exchanges.integrations.mexc.rest.mexc_rest_spot_private import MexcPrivateSpotRest
+from exchanges.integrations.mexc.rest.mexc_rest_spot_private import MexcPrivateSpotRestInterface
 from config.structs import ExchangeConfig
 from exchanges.interfaces.ws import PrivateBaseWebsocket
 from infrastructure.exceptions.system import InitializationError
@@ -136,7 +136,7 @@ class MexcPrivateSpotWebsocket(PrivateBaseWebsocket):
         """
         # Create REST client for MEXC-specific operations (e.g., listen key management)
         rest_logger = get_exchange_logger('mexc', 'rest_private')
-        self.rest_client = MexcPrivateSpotRest(
+        self.rest_client = MexcPrivateSpotRestInterface(
             config=config,
             logger=rest_logger
         )

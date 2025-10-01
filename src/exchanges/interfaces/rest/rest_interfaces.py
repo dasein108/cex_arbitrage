@@ -2,26 +2,35 @@ from abc import ABC
 
 from exchanges.interfaces.rest import PrivateTradingInterface
 from exchanges.interfaces.rest.interfaces import PrivateFuturesInterface, WithdrawalInterface, MarketDataInterface
-from exchanges.interfaces.rest import BaseRestInterface
 
 
-class PrivateSpotRest(PrivateTradingInterface, WithdrawalInterface, ABC):
+class PrivateSpotRestInterface(PrivateTradingInterface, WithdrawalInterface, ABC):
     """
     Spot private REST interface - Trading + Withdrawal capabilities.
+    Uses the new BaseRestClient architecture.
     """
     pass
 
 
-class PublicSpotRest(BaseRestInterface, MarketDataInterface, ABC):
-    """Abstract interface for public exchange operations (market data)"""
+class PublicSpotRestInterface(MarketDataInterface, ABC):
+    """
+    Abstract interface for public exchange operations (market data).
+    Uses the new BaseRestClient architecture instead of legacy BaseRestInterface.
+    """
     pass
 
 
-class PublicFuturesRest(BaseRestInterface, MarketDataInterface, ABC):
-    """Abstract interface for public futures REST operations."""
+class PublicFuturesRestInterface(MarketDataInterface, ABC):
+    """
+    Abstract interface for public futures REST operations.
+    Uses the new BaseRestClient architecture instead of legacy BaseRestInterface.
+    """
     pass
 
 
-class PrivateFuturesRest(PrivateTradingInterface, PrivateFuturesInterface, ABC):
-    """Abstract interface for private futures REST operations."""
+class PrivateFuturesRestInterface(PrivateTradingInterface, PrivateFuturesInterface, ABC):
+    """
+    Abstract interface for private futures REST operations.
+    Uses the new BaseRestClient architecture.
+    """
     pass

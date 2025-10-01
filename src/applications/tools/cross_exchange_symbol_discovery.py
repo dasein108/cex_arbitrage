@@ -33,9 +33,9 @@ sys.path.insert(0, str(project_root))
 
 # Direct imports from src directory
 from exchanges.structs import Symbol, SymbolInfo, ExchangeEnum, ExchangeName, AssetName
-from exchanges.integrations.mexc.rest.mexc_rest_spot_public import MexcPublicSpotRest
-from exchanges.integrations.gateio.rest.gateio_rest_spot_public import GateioPublicSpotRest
-from exchanges.integrations.gateio.rest.gateio_rest_futures_public import GateioPublicFuturesRest
+from exchanges.integrations.mexc.rest.mexc_rest_spot_public import MexcPublicSpotRestInterface
+from exchanges.integrations.gateio.rest.gateio_rest_spot_public import GateioPublicSpotRestInterface
+from exchanges.integrations.gateio.rest.gateio_rest_futures_public import GateioPublicFuturesRestInterface
 from infrastructure.exceptions.exchange import ExchangeRestError
 
 
@@ -211,14 +211,14 @@ class SymbolDiscoveryEngine:
     def _create_exchange_client(self, exchange_market: ExchangeMarket):
         """Factory method to create exchange clients"""
         if exchange_market.exchange == ExchangeEnum.MEXC and exchange_market.market == MarketType.SPOT:
-            return MexcPublicSpotRest()
+            return MexcPublicSpotRestInterface()
         elif exchange_market.exchange == ExchangeEnum.MEXC and exchange_market.market == MarketType.FUTURES:
             # Return None for MEXC futures - we'll handle this specially
             return None
         elif exchange_market.exchange == ExchangeEnum.GATEIO and exchange_market.market == MarketType.SPOT:
-            return GateioPublicSpotRest()
+            return GateioPublicSpotRestInterface()
         elif exchange_market.exchange == ExchangeEnum.GATEIO and exchange_market.market == MarketType.FUTURES:
-            return GateioPublicFuturesRest()
+            return GateioPublicFuturesRestInterface()
         else:
             raise ValueError(f"Unsupported exchange/market: {exchange_market}")
     

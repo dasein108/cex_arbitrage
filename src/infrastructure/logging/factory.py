@@ -2,7 +2,7 @@
 Logging Factory for HFT System
 
 Creates and configures logger instances using struct-based configuration.
-Provides factory pattern injection for all components to use as self.logger.
+Provides direct method injection for all components to use as self.logger.
 
 HFT COMPLIANT: Fast logger creation, optimized backend selection.
 """
@@ -145,5 +145,5 @@ def get_exchange_logger(exchange: str, component: str = None) -> HFTLoggerInterf
     return get_logger(name)
 
 def get_strategy_logger(strategy_path: str, tags: List[str] = None) -> HFTLoggerInterface:
-    """Get strategy logger. Tags are ignored for simplicity."""
+    """Legacy function for backward compatibility. Use get_logger() directly in new code."""
     return get_logger(strategy_path)
