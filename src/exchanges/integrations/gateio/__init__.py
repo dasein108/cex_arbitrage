@@ -47,10 +47,10 @@ and extensibility.
 """
 
 # Exchange clients for direct access
-from .rest.gateio_rest_spot_public import GateioPublicSpotRest
-from .rest.gateio_rest_spot_private import GateioPrivateSpotRest
-from .rest.gateio_rest_futures_public import GateioPublicFuturesRest
-from .rest.gateio_rest_futures_private import GateioPrivateFuturesRest
+from .rest.gateio_rest_spot_public import GateioPublicSpotRestInterface
+from .rest.gateio_rest_spot_private import GateioPrivateSpotRestInterface
+from .rest.gateio_rest_futures_public import GateioPublicFuturesRestInterface
+from .rest.gateio_rest_futures_private import GateioPrivateFuturesRestInterface
 from .ws.gateio_ws_public import GateioPublicSpotWebsocket
 from .ws.gateio_ws_private import GateioPrivateSpotWebsocket
 from .ws.gateio_ws_public_futures import GateioPublicFuturesWebsocket
@@ -65,12 +65,12 @@ from .rest import strategies
 
 __all__ = [
     # Direct client access
-    'GateioPublicSpotRest',
-    'GateioPrivateSpotRest',
+    'GateioPublicSpotRestInterface',
+    'GateioPrivateSpotRestInterface',
     'GateioPublicSpotWebsocket',
     'GateioPrivateSpotWebsocket',
-    'GateioPublicFuturesRest',
-    'GateioPrivateFuturesRest',
+    'GateioPublicFuturesRestInterface',
+    'GateioPrivateFuturesRestInterface',
     'GateioPublicFuturesWebsocket',
     'GateioPrivateFuturesWebsocket',
 ]

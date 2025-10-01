@@ -7,14 +7,14 @@ retry logic, request handling, and exception management.
 """
 
 from .base_auth_strategy import BaseExchangeAuthStrategy
-from .base_rate_limit_strategy import BaseExchangeRateLimitStrategy
+from exchanges.interfaces.rest.base_rate_limit import BaseExchangeRateLimit
 from .base_request_strategy import BaseExchangeRequestStrategy
 from .base_retry_strategy import BaseExchangeRetryStrategy
 from .base_exception_handler import BaseExchangeExceptionHandler
 
 __all__ = [
     'BaseExchangeAuthStrategy',
-    'BaseExchangeRateLimitStrategy', 
+    'BaseExchangeRateLimit',
     'BaseExchangeRequestStrategy',
     'BaseExchangeRetryStrategy',
     'BaseExchangeExceptionHandler',

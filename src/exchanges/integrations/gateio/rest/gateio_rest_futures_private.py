@@ -1,7 +1,7 @@
 import time
 from typing import Dict, List, Optional, Any
 
-from exchanges.interfaces import PrivateFuturesRest
+from exchanges.interfaces import PrivateFuturesRestInterface
 from exchanges.structs.common import (
     Symbol, Order, AssetBalance, TradingFee, Position
 )
@@ -22,21 +22,20 @@ from exchanges.integrations.gateio.utils import (
 from exchanges.integrations.gateio.services.futures_symbol_mapper import GateioFuturesSymbol
 
 
-class GateioPrivateFuturesRest(PrivateFuturesRest):
-    def __init__(self, config: ExchangeConfig, logger=None):
+from .gateio_base_futures_rest import GateioBaseFuturesRest
+
+class GateioPrivateFuturesRestInterface(GateioBaseFuturesRest, PrivateFuturesRestInterface):
+    def __init__(self, config: ExchangeConfig, logger, **kwargs):
         """
-        Args:
-            config: ExchangeConfig containing credentials & transport config.
-            logger: Optional HFT logger injection
-        """
-        super().__init__(config, is_private=True)
+        Initialize Gate.io private futures REST client with simplified constructor.
         
-        # Initialize HFT logger
-        if logger is None:
-            from infrastructure.logging import get_exchange_logger
-            logger = get_exchange_logger('gateio_futures', 'rest.private')
-        self.logger = logger
-        self._logger = logger  # For backward compatibility
+        Args:
+            config: ExchangeConfig containing credentials & transport config
+            logger: HFT logger instance (injected)
+            **kwargs: Additional parameters for compatibility
+        """
+        # Initialize base REST client (rate_limiter created internally)
+        super().__init__(config, logger, is_private=True)
 
     def _handle_gateio_exception(self, status_code: int, message: str) -> ExchangeRestError:
         return ExchangeRestError(f"Gate.io futures error {status_code}: {message}")

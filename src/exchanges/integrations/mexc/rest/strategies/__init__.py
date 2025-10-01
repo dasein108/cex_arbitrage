@@ -6,14 +6,14 @@ Simplified architecture with constructor-based initialization.
 """
 
 from .request import MexcRequestStrategy
-from .rate_limit import MexcRateLimitStrategy
+from exchanges.integrations.mexc.rest.rate_limit import MexcRateLimit
 from .retry import MexcRetryStrategy
 from .auth import MexcAuthStrategy
 from .exception_handler import MexcExceptionHandlerStrategy
 
 __all__ = [
     'MexcRequestStrategy',
-    'MexcRateLimitStrategy', 
+    'MexcRateLimit',
     'MexcRetryStrategy',
     'MexcAuthStrategy',
     'MexcExceptionHandlerStrategy',

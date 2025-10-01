@@ -152,13 +152,13 @@ _composite_cache: Dict[str, Any] = {}  # "{exchange}_{domain}_composite"
 # Transport Factory Pattern
 if exchange == ExchangeEnum.MEXC:
     if is_private:
-        from exchanges.integrations.mexc.rest.mexc_rest_spot_private import MexcPrivateSpotRest
+        from exchanges.integrations.mexc.rest.mexc_rest_spot_private import MexcPrivateSpotRestInterface
 
-        instance = MexcPrivateSpotRest(config=config, logger=logger_override)
+        instance = MexcPrivateSpotRestInterface(config=config, logger=logger_override)
     else:
-        from exchanges.integrations.mexc.rest.mexc_rest_spot_public import MexcPublicSpotRest
+        from exchanges.integrations.mexc.rest.mexc_rest_spot_public import MexcPublicSpotRestInterface
 
-        instance = MexcPublicSpotRest(config=config, logger=logger_override)
+        instance = MexcPublicSpotRestInterface(config=config, logger=logger_override)
 
 # Composite Factory Pattern
 if exchange == ExchangeEnum.MEXC:

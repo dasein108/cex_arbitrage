@@ -115,3 +115,33 @@ class BaseRestInterface(ABC):
     async def __aexit__(self, exc_type, exc_val, exc_tb):
         """Async context manager exit."""
         await self.close()
+
+
+# Factory function for backward compatibility and easy testing
+def create_rest_interface(config: ExchangeConfig, is_private: bool = False, use_direct_implementation: bool = True) -> BaseRestInterface:
+    """
+    Factory function to create REST interface with option for direct or legacy implementation.
+    
+    Args:
+        config: Exchange configuration
+        is_private: Whether to create private API client
+        use_direct_implementation: If True, uses new direct implementation; if False, uses legacy strategy pattern
+        
+    Returns:
+        REST interface implementation (direct or legacy)
+    """
+    if use_direct_implementation:
+        # Use new direct implementation factory
+        try:
+            from exchanges.factory.rest_factory import create_rest_client
+            return create_rest_client(config, is_private)
+        except (ImportError, NotImplementedError):
+            # Fallback to legacy implementation if direct not available
+            pass
+    
+    # Legacy strategy pattern implementation
+    class LegacyRestInterface(BaseRestInterface):
+        def __init__(self, config: ExchangeConfig, is_private: bool):
+            super().__init__(config, is_private)
+    
+    return LegacyRestInterface(config, is_private)

@@ -5,7 +5,7 @@ This interface provides common trading operations that are available
 for both spot and futures exchanges.
 """
 
-from abc import abstractmethod
+from abc import abstractmethod, ABC
 from typing import Dict, List, Optional
 from exchanges.interfaces.rest.rest_base import BaseRestInterface
 # BaseExchangeMapper dependency removed - using direct utility functions
@@ -24,7 +24,7 @@ from config.structs import ExchangeConfig
 from infrastructure.logging import HFTLoggerInterface
 
 
-class ListenKeyInterface(BaseRestInterface):
+class ListenKeyInterface(ABC):
     """Abstract interface for exchange listen key operations (both spot and futures)"""
 
 

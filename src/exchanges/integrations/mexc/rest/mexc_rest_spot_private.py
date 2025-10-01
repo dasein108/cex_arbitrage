@@ -32,9 +32,10 @@ from exchanges.structs.common import (
 from exchanges.structs.types import AssetName, OrderId
 from exchanges.structs.enums import TimeInForce, WithdrawalStatus
 from exchanges.structs import OrderType, Side
+from infrastructure.logging import HFTLoggerInterface
 from infrastructure.networking.http.structs import HTTPMethod
 from infrastructure.exceptions.exchange import ExchangeRestError, ExchangeRestOrderCancelledFilledOrNotExist
-from exchanges.interfaces.rest import PrivateSpotRest
+from exchanges.interfaces.rest import PrivateSpotRestInterface
 from exchanges.interfaces.rest.interfaces import ListenKeyInterface
 from exchanges.integrations.mexc.structs.exchange import (MexcAccountResponse, MexcOrderResponse,
                                                           MexcCurrencyInfoResponse)
@@ -46,8 +47,11 @@ from exchanges.integrations.mexc.utils import (
 )
 from utils import get_current_timestamp
 
+# Import the new base REST implementation
+from .mexc_base_rest import MexcBaseRest
 
-class MexcPrivateSpotRest(PrivateSpotRest, ListenKeyInterface):
+
+class MexcPrivateSpotRestInterface(MexcBaseRest, PrivateSpotRestInterface, ListenKeyInterface):
     """
     MEXC private REST API client focused on trading operations.
     
@@ -55,12 +59,27 @@ class MexcPrivateSpotRest(PrivateSpotRest, ListenKeyInterface):
     Optimized for high-frequency trading operations with minimal overhead.
     """
 
+    def __init__(self, config, logger: Optional[HFTLoggerInterface] = None, **kwargs):
+        """
+        Initialize MEXC private REST client with constructor injection.
+
+        Args:
+            config: ExchangeConfig with MEXC URL and credentials
+            rate_limiter: Rate limiter instance (injected)
+            logger: HFT logger instance (injected)
+            **kwargs: Additional parameters for compatibility
+        """
+        # Initialize base REST client with constructor injection
+        # Note: PrivateSpotRestInterface now inherits from BaseRestClient, so we only need to call super().__init__
+        super().__init__(config, logger, is_private=True)
+        
+        self.logger.debug("MEXC private spot REST client initialized",
+                         exchange="mexc", api_type="private")
+
     async def modify_order(self, symbol: Symbol, order_id: OrderId, qunatity: Optional[float] = None,
                            price: Optional[float] = None, quote_quantity: Optional[float] = None,
                            time_in_force: Optional[TimeInForce] = None, stop_price: Optional[float] = None) -> Order:
         raise NotImplementedError("MEXC does not support direct order modification via API")
-
-    # Authentication is now handled automatically by the transport system
 
     async def get_balances(self) -> List[AssetBalance]:
         """
@@ -72,6 +91,7 @@ class MexcPrivateSpotRest(PrivateSpotRest, ListenKeyInterface):
         Raises:
             ExchangeAPIError: If unable to fetch account balance
         """
+        # Use base class request method (eliminates strategy dispatch overhead)
         response_data = await self.request(
             HTTPMethod.GET,
             '/api/v3/account'
@@ -204,6 +224,7 @@ class MexcPrivateSpotRest(PrivateSpotRest, ListenKeyInterface):
         # if new_order_resp_type is not None:
         #     params['newOrderRespType'] = new_order_resp_type
 
+        # Use base class request method with direct implementation
         response_data = await self.request(
             HTTPMethod.POST,
             '/api/v3/order',
@@ -242,6 +263,7 @@ class MexcPrivateSpotRest(PrivateSpotRest, ListenKeyInterface):
             'orderId': str(order_id)
         }
         try:
+            # Use base class request method with direct implementation
             response_data = await self.request(
                 HTTPMethod.DELETE,
                 '/api/v3/order',
@@ -277,6 +299,7 @@ class MexcPrivateSpotRest(PrivateSpotRest, ListenKeyInterface):
 
         params = {'symbol': pair}
 
+        # Use base class request method with direct implementation
         response_data = await self.request(
             HTTPMethod.DELETE,
             '/api/v3/openOrders',
@@ -315,6 +338,7 @@ class MexcPrivateSpotRest(PrivateSpotRest, ListenKeyInterface):
             'orderId': str(order_id)
         }
 
+        # Use base class request method with direct implementation
         response_data = await self.request(
             HTTPMethod.GET,
             '/api/v3/order',
@@ -346,6 +370,7 @@ class MexcPrivateSpotRest(PrivateSpotRest, ListenKeyInterface):
         if symbol:
             params['symbol'] = MexcSymbol.to_pair(symbol)
 
+        # Use base class request method with direct implementation
         response_data = await self.request(
             HTTPMethod.GET,
             '/api/v3/openOrders',
@@ -429,6 +454,7 @@ class MexcPrivateSpotRest(PrivateSpotRest, ListenKeyInterface):
         Raises:
             ExchangeAPIError: If unable to create listen key
         """
+        # Use base class request method with direct implementation
         response_data = await self.request(
             HTTPMethod.POST,
             '/api/v3/userDataStream'
@@ -451,6 +477,7 @@ class MexcPrivateSpotRest(PrivateSpotRest, ListenKeyInterface):
         Raises:
             ExchangeAPIError: If unable to fetch listen keys
         """
+        # Use base class request method with direct implementation
         response_data = await self.request(
             HTTPMethod.GET,
             '/api/v3/userDataStream'
@@ -471,6 +498,7 @@ class MexcPrivateSpotRest(PrivateSpotRest, ListenKeyInterface):
         """
         params = {'listenKey': listen_key}
 
+        # Use base class request method with direct implementation
         await self.request(
             HTTPMethod.PUT,
             '/api/v3/userDataStream',
@@ -491,6 +519,7 @@ class MexcPrivateSpotRest(PrivateSpotRest, ListenKeyInterface):
         """
         params = {'listenKey': listen_key}
 
+        # Use base class request method with direct implementation
         await self.request(
             HTTPMethod.DELETE,
             '/api/v3/userDataStream',
@@ -509,6 +538,7 @@ class MexcPrivateSpotRest(PrivateSpotRest, ListenKeyInterface):
         Raises:
             ExchangeAPIError: If unable to fetch currency information
         """
+        # Use base class request method with direct implementation
         response_data = await self.request(
             HTTPMethod.GET,
             '/api/v3/capital/config/getall'
@@ -595,6 +625,7 @@ class MexcPrivateSpotRest(PrivateSpotRest, ListenKeyInterface):
             params['withdrawOrderId'] = request.withdrawal_order_id
 
         try:
+            # Use base class request method with direct implementation
             response_data = await self.request(
                 HTTPMethod.POST,
                 '/api/v3/capital/withdraw',
@@ -704,6 +735,7 @@ class MexcPrivateSpotRest(PrivateSpotRest, ListenKeyInterface):
         params['limit'] = min(limit, 1000)
 
         try:
+            # Use base class request method with direct implementation
             response_data = await self.request(
                 HTTPMethod.GET,
                 '/api/v3/capital/withdraw/history',

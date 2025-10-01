@@ -11,7 +11,7 @@ from exchanges.interfaces.rest.interfaces.trading_interface import PrivateTradin
 from exchanges.interfaces.rest.interfaces.withdrawal_interface import WithdrawalInterface
 
 # Spot trading interfaces
-from .rest_interfaces import PrivateSpotRest, PublicSpotRest, PublicFuturesRest, PrivateFuturesRest
+from .rest_interfaces import PrivateSpotRestInterface, PublicSpotRestInterface, PublicFuturesRestInterface, PrivateFuturesRestInterface
 
 # Futures trading interfaces
 
@@ -20,8 +20,8 @@ __all__ = [
     "BaseRestInterface",
     "PrivateTradingInterface",
     "WithdrawalInterface",
-    'PublicSpotRest',
-    'PrivateSpotRest',
-    'PublicFuturesRest',
-    'PrivateFuturesRest'
+    'PublicSpotRestInterface',
+    'PrivateSpotRestInterface',
+    'PublicFuturesRestInterface',
+    'PrivateFuturesRestInterface'
 ]

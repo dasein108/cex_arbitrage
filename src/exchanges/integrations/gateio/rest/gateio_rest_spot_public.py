@@ -33,7 +33,7 @@ from exchanges.structs.common import (
     Ticker
 )
 from exchanges.structs.enums import KlineInterval
-from exchanges.interfaces.rest import PublicSpotRest
+from exchanges.interfaces.rest import PublicSpotRestInterface
 # Removed BaseExchangeMapper import - using direct utility functions
 from infrastructure.networking.http.structs import HTTPMethod
 from config.structs import ExchangeConfig
@@ -47,7 +47,9 @@ from exchanges.integrations.gateio.utils import (
 from exchanges.integrations.gateio.services.spot_symbol_mapper import GateioSpotSymbol
 
 
-class GateioPublicSpotRest(PublicSpotRest):
+from .gateio_base_spot_rest import GateioBaseSpotRest
+
+class GateioPublicSpotRestInterface(GateioBaseSpotRest, PublicSpotRestInterface):
     """
     Gate.io public REST API client focused on direct API calls.
     
@@ -55,21 +57,17 @@ class GateioPublicSpotRest(PublicSpotRest):
     Optimized for high-frequency market data retrieval with minimal overhead.
     """
     
-    def __init__(self, config: ExchangeConfig, logger=None):
+    def __init__(self, config: ExchangeConfig, logger, **kwargs):
         """
-        Initialize Gate.io public REST client.
+        Initialize Gate.io public REST client with simplified constructor.
         
         Args:
             config: ExchangeConfig with Gate.io configuration
-            logger: Optional HFT logger injection
+            logger: HFT logger instance (injected)
+            **kwargs: Additional parameters for compatibility
         """
-        super().__init__(config, is_private=False)
-        
-        # Initialize HFT logger
-        if logger is None:
-            from infrastructure.logging import get_exchange_logger
-            logger = get_exchange_logger('gateio', 'rest.public')
-        self.logger = logger
+        # Initialize base REST client (rate_limiter created internally)
+        super().__init__(config, logger, is_private=False)
         
         # Simple caching for exchange info to reduce API calls (HFT compliant - config data only)
         self._exchange_info: Optional[Dict[Symbol, SymbolInfo]] = None

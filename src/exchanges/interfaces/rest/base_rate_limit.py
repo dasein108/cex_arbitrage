@@ -7,13 +7,14 @@ from infrastructure.networking.http import RateLimitStrategy, RateLimitContext
 from config.structs import ExchangeConfig
 
 
-class BaseExchangeRateLimitStrategy(RateLimitStrategy, ABC):
+class BaseExchangeRateLimit(ABC):
     """
     Base rate limiting strategy for exchanges with common semaphore-based patterns.
     
     Provides shared functionality for:
     - Global and endpoint-specific rate limiting
     - Semaphore-based concurrency control
+    - Request timing and statistics
     - Request timing and statistics
     - Configurable rate limits from ExchangeConfig
     """

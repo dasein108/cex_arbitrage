@@ -1,20 +1,20 @@
 """Gate.io REST API Implementations"""
 
-from .gateio_rest_spot_public import GateioPublicSpotRest
-from .gateio_rest_spot_private import GateioPrivateSpotRest
-from .gateio_rest_futures_public import GateioPublicFuturesRest
-from .gateio_rest_futures_private import GateioPrivateFuturesRest
+from .gateio_rest_spot_public import GateioPublicSpotRestInterface
+from .gateio_rest_spot_private import GateioPrivateSpotRestInterface
+from .gateio_rest_futures_public import GateioPublicFuturesRestInterface
+from .gateio_rest_futures_private import GateioPrivateFuturesRestInterface
 from .strategies import (
-    GateioRequestStrategy, GateioRateLimitStrategy, GateioRetryStrategy, GateioAuthStrategy
+    GateioRequestStrategy, GateioRateLimit, GateioRetryStrategy, GateioAuthStrategy
 )
 
 __all__ = [
-    'GateioPublicSpotRest', 
-    'GateioPrivateSpotRest',
-    'GateioPublicFuturesRest',
-    'GateioPrivateFuturesRest',
-    'GateioRequestStrategy', 
-    'GateioRateLimitStrategy', 
+    'GateioPublicSpotRestInterface',
+    'GateioPrivateSpotRestInterface',
+    'GateioPublicFuturesRestInterface',
+    'GateioPrivateFuturesRestInterface',
+    'GateioRequestStrategy',
+    'GateioRateLimit',
     'GateioRetryStrategy', 
     'GateioAuthStrategy'
 ]

@@ -38,7 +38,7 @@ def create_rest_transport_manager(
     if exchange == ExchangeEnum.MEXC:
         from exchanges.integrations.mexc.rest.strategies import (
             MexcRequestStrategy,
-            MexcRateLimitStrategy, 
+            MexcRateLimit,
             MexcRetryStrategy
         )
         
@@ -46,7 +46,7 @@ def create_rest_transport_manager(
         request_strategy = MexcRequestStrategy(exchange_config, request_logger)
         
         rate_limit_logger = get_strategy_logger('rest.rate_limit', base_tags + ['rate_limit'])
-        rate_limit_strategy = MexcRateLimitStrategy(exchange_config, rate_limit_logger)
+        rate_limit_strategy = MexcRateLimit(exchange_config, rate_limit_logger)
         
         retry_logger = get_strategy_logger('rest.retry', base_tags + ['retry'])
         retry_strategy = MexcRetryStrategy(exchange_config, retry_logger)
@@ -65,7 +65,7 @@ def create_rest_transport_manager(
     elif exchange == ExchangeEnum.GATEIO:
         from exchanges.integrations.gateio.rest.strategies import (
             GateioRequestStrategy,
-            GateioRateLimitStrategy,
+            GateioRateLimit,
             GateioRetryStrategy
         )
         
@@ -73,7 +73,7 @@ def create_rest_transport_manager(
         request_strategy = GateioRequestStrategy(exchange_config, request_logger)
         
         rate_limit_logger = get_strategy_logger('rest.rate_limit', base_tags + ['rate_limit'])
-        rate_limit_strategy = GateioRateLimitStrategy(exchange_config, rate_limit_logger)
+        rate_limit_strategy = GateioRateLimit(exchange_config, rate_limit_logger)
         
         retry_logger = get_strategy_logger('rest.retry', base_tags + ['retry'])
         retry_strategy = GateioRetryStrategy(exchange_config, retry_logger)
@@ -91,7 +91,7 @@ def create_rest_transport_manager(
     elif exchange == ExchangeEnum.GATEIO_FUTURES:
         from exchanges.integrations.gateio.rest.strategies import (
             GateioRequestStrategy,
-            GateioRateLimitStrategy,
+            GateioRateLimit,
             GateioRetryStrategy
         )
         
@@ -99,7 +99,7 @@ def create_rest_transport_manager(
         request_strategy = GateioRequestStrategy(exchange_config, request_logger)
         
         rate_limit_logger = get_strategy_logger('rest.rate_limit', base_tags + ['rate_limit'])
-        rate_limit_strategy = GateioRateLimitStrategy(exchange_config, rate_limit_logger)
+        rate_limit_strategy = GateioRateLimit(exchange_config, rate_limit_logger)
         
         retry_logger = get_strategy_logger('rest.retry', base_tags + ['retry'])
         retry_strategy = GateioRetryStrategy(exchange_config, retry_logger)

@@ -26,7 +26,7 @@ from pathlib import Path
 from typing import Dict, List, Set, Optional
 import yaml
 
-from exchanges.interfaces import PublicSpotRest, PrivateSpotRest
+from exchanges.interfaces import PublicSpotRestInterface, PrivateSpotRestInterface
 
 # Add parent directories to path for imports
 project_root = Path(__file__).parent.parent.parent  # Points to src/
@@ -49,7 +49,7 @@ class AssetStatusChecker:
         self.exchanges = [ExchangeEnum.MEXC, ExchangeEnum.GATEIO]  # Add exchanges here
 
         # Exchange instances
-        self.exchange_instances: Dict[ExchangeEnum, PrivateSpotRest] = {}
+        self.exchange_instances: Dict[ExchangeEnum, PrivateSpotRestInterface] = {}
 
         # Exchange display names for clean output
         self.exchange_display_names = {

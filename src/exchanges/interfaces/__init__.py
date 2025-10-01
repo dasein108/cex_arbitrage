@@ -1,5 +1,5 @@
 from .rest import (BaseRestInterface)
-from .rest.rest_interfaces import PrivateSpotRest, PublicSpotRest, PublicFuturesRest, PrivateFuturesRest
+from .rest.rest_interfaces import PrivateSpotRestInterface, PublicSpotRestInterface, PublicFuturesRestInterface, PrivateFuturesRestInterface
 from .ws import PublicBaseWebsocket, PrivateBaseWebsocket, BaseWebsocketInterface
 from .composite import (BaseCompositeExchange, CompositePrivateSpotExchange, CompositePublicSpotExchange,
                         CompositePublicFuturesExchange, CompositePrivateFuturesExchange)
