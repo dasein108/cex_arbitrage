@@ -202,8 +202,10 @@ class RestManager:
                         # Skip auth if strategy says it's not needed
                         pass
                     else:
+                        # Auth strategy generates fresh timestamp just before signing
+                        # This prevents stale timestamps when there are delays before the request is sent
                         auth_data = await self.strategy_set.auth_strategy.sign_request(
-                            method, endpoint, params or {}, json_data, int(time.time() * 1000)
+                            method, endpoint, params or {}, json_data
                         )
                         # Apply authentication headers
                         request_params.setdefault('headers', {}).update(auth_data.headers)

@@ -3,13 +3,14 @@
 import asyncio
 import sys
 import os
-from typing import Optional
-from dataclasses import dataclass
+from typing import Optional, List
+from dataclasses import dataclass, field
 import reactivex as rx
 from reactivex import operators as ops
+from reactivex.disposable import Disposable
 
 from config.structs import ExchangeConfig
-from exchanges.interfaces.composite import BasePrivateComposite
+from exchanges.interfaces.composite import BasePrivateComposite, BasePublicComposite
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'src'))
 
@@ -210,14 +211,32 @@ def create_limit_sell_on_top_stream(
 
 
 @dataclass
+class SubscriptionTracker:
+    """Track and cleanup ReactiveX subscriptions."""
+    subscriptions: List[Disposable] = field(default_factory=list)
+    
+    def add(self, subscription: Disposable) -> None:
+        """Add subscription for tracking."""
+        self.subscriptions.append(subscription)
+    
+    def dispose_all(self) -> None:
+        """Dispose all tracked subscriptions."""
+        for sub in self.subscriptions:
+            if sub and not sub.is_disposed:
+                sub.dispose()
+        self.subscriptions.clear()
+
+@dataclass
 class DemoStrategySetup:
     symbol: Symbol
     private_exchange: BasePrivateComposite
+    public_exchange: BasePublicComposite  # Add for cleanup
     symbol_info: SymbolInfo
     orders_stream: rx.Observable[Order]
     balance_stream: rx.Observable[AssetBalance]
     ask_price_stream: rx.Observable[BookTicker]
     quantity_usdt: float = 3  # Default quantity for buys
+    subscription_tracker: SubscriptionTracker = field(default_factory=SubscriptionTracker)
 
 async def create_strategy_setup(exchange_config: ExchangeConfig, symbol: Symbol,
                                 quantity_usdt: float) -> DemoStrategySetup:
@@ -247,13 +266,16 @@ async def create_strategy_setup(exchange_config: ExchangeConfig, symbol: Symbol,
         ops.filter(lambda bt: bt.symbol == symbol),
         ops.distinct_until_changed(lambda bt: bt.ask_price)
     )
-    return DemoStrategySetup(symbol,
-                             private_exchange,
-                             symbol_info,
-                             orders_stream,
-                             balance_stream,
-                             ask_price_stream,
-                             quantity_usdt)
+    return DemoStrategySetup(
+        symbol=symbol,
+        private_exchange=private_exchange,
+        public_exchange=public_exchange,  # Include for cleanup
+        symbol_info=symbol_info,
+        orders_stream=orders_stream,
+        balance_stream=balance_stream,
+        ask_price_stream=ask_price_stream,
+        quantity_usdt=quantity_usdt
+    )
 
 
 async def run_market_making_cycle(
@@ -328,27 +350,86 @@ async def run_market_making_cycle(
         cycle_complete.set()
     
     # Subscribe to merged pipeline
-    complete_cycle_stream.subscribe(
+    subscription = complete_cycle_stream.subscribe(
         on_next=on_next,
         on_error=on_error,
         on_completed=on_completed
     )
     
-    # Wait for cycle to complete or error
-    await cycle_complete.wait()
+    # Track subscription for cleanup
+    demo_setup.subscription_tracker.add(subscription)
     
-    # Check for errors
-    if cycle_error:
-        raise cycle_error
+    try:
+        # Wait for cycle to complete or error
+        await cycle_complete.wait()
+        
+        # Check for errors
+        if cycle_error:
+            raise cycle_error
+        
+        # Return completed orders
+        buy_order = completed_orders.get("buy")
+        sell_order = completed_orders.get("sell")
+        
+        if not buy_order or not sell_order:
+            raise RuntimeError(f"Cycle incomplete: buy={buy_order is not None}, sell={sell_order is not None}")
+        
+        return buy_order, sell_order
     
-    # Return completed orders
-    buy_order = completed_orders.get("buy")
-    sell_order = completed_orders.get("sell")
-    
-    if not buy_order or not sell_order:
-        raise RuntimeError(f"Cycle incomplete: buy={buy_order is not None}, sell={sell_order is not None}")
-    
-    return buy_order, sell_order
+    finally:
+        # Always dispose subscription
+        if subscription and not subscription.is_disposed:
+            subscription.dispose()
+
+
+async def cleanup_resources(demo_setup: Optional[DemoStrategySetup], logger) -> None:
+    """Properly cleanup all resources to ensure program termination."""
+    if not demo_setup:
+        logger.info("No demo setup to cleanup")
+        return
+        
+    try:
+        logger.info("Starting resource cleanup...")
+        
+        # Dispose all ReactiveX subscriptions first
+        demo_setup.subscription_tracker.dispose_all()
+        logger.info("Disposed all ReactiveX subscriptions")
+        
+        # Close exchange connections with timeout
+        cleanup_tasks = []
+        
+        if demo_setup.private_exchange:
+            cleanup_tasks.append(demo_setup.private_exchange.close())
+            logger.info("Closing private exchange...")
+        
+        if demo_setup.public_exchange:
+            cleanup_tasks.append(demo_setup.public_exchange.close())
+            logger.info("Closing public exchange...")
+        
+        # Wait for cleanup with timeout
+        if cleanup_tasks:
+            await asyncio.wait_for(
+                asyncio.gather(*cleanup_tasks, return_exceptions=True),
+                timeout=5.0
+            )
+            logger.info("All exchanges closed successfully")
+        
+        # Cancel any remaining background tasks
+        tasks = [t for t in asyncio.all_tasks() if t != asyncio.current_task()]
+        if tasks:
+            logger.info(f"Cancelling {len(tasks)} remaining tasks...")
+            for task in tasks:
+                task.cancel()
+            await asyncio.gather(*tasks, return_exceptions=True)
+        
+        # Small delay for final cleanup
+        await asyncio.sleep(0.1)
+        logger.info("Resource cleanup completed")
+        
+    except asyncio.TimeoutError:
+        logger.warning("Resource cleanup timed out after 5 seconds")
+    except Exception as e:
+        logger.error(f"Error during resource cleanup: {e}")
 
 
 async def main(symbol: Symbol, exchange_config: ExchangeConfig, quantity_usdt: float):
@@ -373,10 +454,7 @@ async def main(symbol: Symbol, exchange_config: ExchangeConfig, quantity_usdt: f
     
     finally:
         print("\n🏁 Finalizing program...")
-        # Cleanup connections if needed
-
-
-        await asyncio.sleep(0.5)
+        await cleanup_resources(demo_setup if 'demo_setup' in locals() else None, logger)
 
 
 if __name__ == "__main__":

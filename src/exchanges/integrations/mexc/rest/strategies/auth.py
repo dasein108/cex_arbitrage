@@ -5,7 +5,6 @@ from urllib.parse import urlencode
 from exchanges.interfaces.rest.strategies import BaseExchangeAuthStrategy
 from infrastructure.networking.http import HTTPMethod, AuthenticationData
 from config.structs import ExchangeConfig
-from infrastructure.data_structures.connection import RestConnectionSettings
 
 # HFT Logger Integration
 from infrastructure.logging import LoggingTimer
@@ -13,6 +12,9 @@ from infrastructure.logging import LoggingTimer
 
 class MexcAuthStrategy(BaseExchangeAuthStrategy):
     """MEXC-specific authentication based on ExchangeConfig credentials."""
+
+    # Class-level constants to avoid repeated object creation
+    _RECV_WINDOW = 5000  # MEXC default recvWindow
 
     def __init__(self, exchange_config: ExchangeConfig, logger=None):
         """
@@ -27,7 +29,7 @@ class MexcAuthStrategy(BaseExchangeAuthStrategy):
         # Log strategy initialization (move to DEBUG per logging spec)
         self.logger.debug("MEXC auth strategy initialized",
                          api_key_configured=bool(self.api_key),
-                         recv_window=5000)
+                         recv_window=self._RECV_WINDOW)
         
         self.logger.metric("rest_auth_strategies_created", 1,
                           tags={"exchange": "mexc", "type": "private"})
@@ -69,22 +71,9 @@ class MexcAuthStrategy(BaseExchangeAuthStrategy):
             auth_params.update(json_data)
         
         # Add required MEXC auth parameters
-        rest_settings = RestConnectionSettings(
-            recv_window=5000,  # MEXC default
-            timeout=30,
-            max_retries=3
-        )
-        
-        # Use the timestamp provided by the base class
-        try:
-            # Convert timestamp string to int and add offset
-            timestamp_int = int(float(timestamp)) + int(self._time_offset)
-        except (ValueError, TypeError):
-            # Fallback to original timestamp
-            timestamp_int = int(timestamp) if isinstance(timestamp, str) else timestamp
-            
-        auth_params['timestamp'] = timestamp_int
-        auth_params['recvWindow'] = rest_settings.recv_window
+        # Note: timestamp already includes offset from base class get_current_timestamp()
+        auth_params['timestamp'] = self._parse_timestamp_to_int(timestamp)
+        auth_params['recvWindow'] = self._RECV_WINDOW
 
         # Create query string for signature (sorted parameters) 
         return urlencode(auth_params)
@@ -94,7 +83,8 @@ class MexcAuthStrategy(BaseExchangeAuthStrategy):
         auth_headers: Dict[str, str],
         params: Dict[str, Any],
         json_data: Dict[str, Any],
-        signature: str
+        signature: str,
+        timestamp_str: str
     ) -> AuthenticationData:
         """Prepare MEXC authentication data with signature in query params."""
         # MEXC puts everything in query params, including the signature
@@ -108,21 +98,10 @@ class MexcAuthStrategy(BaseExchangeAuthStrategy):
         if json_data:
             auth_params.update(json_data)
         
-        # Add required MEXC auth parameters and signature
-        rest_settings = RestConnectionSettings(
-            recv_window=5000,  # MEXC default
-            timeout=30,
-            max_retries=3
-        )
-        
-        timestamp_str = self.get_current_timestamp()
-        try:
-            timestamp_int = int(float(timestamp_str)) + int(self._time_offset)
-        except (ValueError, TypeError):
-            timestamp_int = int(timestamp_str) if isinstance(timestamp_str, str) else timestamp_str
-            
-        auth_params['timestamp'] = timestamp_int
-        auth_params['recvWindow'] = rest_settings.recv_window
+        # Use the SAME timestamp that was used in the signature
+        # This is critical - the timestamp in params MUST match what was signed
+        auth_params['timestamp'] = self._parse_timestamp_to_int(timestamp_str)
+        auth_params['recvWindow'] = self._RECV_WINDOW
         auth_params['signature'] = signature
 
         return AuthenticationData(
@@ -136,14 +115,13 @@ class MexcAuthStrategy(BaseExchangeAuthStrategy):
         method: HTTPMethod,
         endpoint: str,
         params: Dict[str, Any],
-        json_data: Dict[str, Any],
-        timestamp: int
+        json_data: Dict[str, Any]
     ) -> AuthenticationData:
         """Generate MEXC authentication data with proper signature handling and performance tracking."""
         try:
             with LoggingTimer(self.logger, "mexc_auth_signature_generation") as timer:
                 # Use the base class implementation with performance tracking
-                auth_data = await super().sign_request(method, endpoint, params, json_data, timestamp)
+                auth_data = await super().sign_request(method, endpoint, params, json_data)
             
             # Track signature generation metrics
             self.logger.metric("rest_auth_signatures_generated", 1,
