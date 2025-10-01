@@ -205,7 +205,8 @@ class BasePublicComposite(BaseCompositeExchange[PublicRestType, PublicWebsocketT
 
     # Initialization and lifecycle
 
-    async def initialize(self, symbols: List[Symbol] = None) -> None:
+    async def initialize(self, symbols: List[Symbol] = None,
+                         channels: List[WebsocketChannelType]=None ) -> None:
         """
         Initialize public exchange with template method orchestration.
         PATTERN: Copied from composite exchange line 45-120
@@ -223,6 +224,9 @@ class BasePublicComposite(BaseCompositeExchange[PublicRestType, PublicWebsocketT
 
         if symbols:
             self._active_symbols.update(symbols)
+
+        if channels is None:
+            channels = [WebsocketChannelType.BOOK_TICKER]
 
         try:
             init_start = time.perf_counter()
@@ -242,7 +246,7 @@ class BasePublicComposite(BaseCompositeExchange[PublicRestType, PublicWebsocketT
 
             await self._ws.initialize()
             await self._ws.subscribe(symbol=list(self.active_symbols),
-                                     channel=[WebsocketChannelType.BOOK_TICKER])
+                                     channel=channels)
 
             self._initialized = True
 
@@ -370,6 +374,7 @@ class BasePublicComposite(BaseCompositeExchange[PublicRestType, PublicWebsocketT
             start_time = time.perf_counter()
 
             # Validate data freshness for HFT compliance
+            # TODO: Not sure that this is needed ??
             if not self._validate_data_timestamp(book_ticker.timestamp):
                 self.logger.warning("Stale book ticker data ignored",
                                     symbol=book_ticker.symbol)

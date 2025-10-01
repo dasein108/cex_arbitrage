@@ -51,27 +51,10 @@ class CompositePrivateSpotExchange(BasePrivateComposite, WithdrawalMixin):
 
     # Spot-specific functionality extensions
 
-    async def initialize(self, symbols_info):
+    async def initialize(self, *args, **kwargs):
         """
         Initialize spot exchange with symbols and asset information.
-        
-        Args:
-            symbols_info: SymbolsInfo object with all exchange symbols details
         """
         # Initialize base private functionality first
-        await super().initialize(symbols_info)
-
-        try:
-            # Load spot-specific asset information for withdrawals
-            self.logger.info(f"{self._tag} Loading asset information...")
-            await self._load_assets_info()
-
-            self.logger.info(f"{self._tag} spot initialization completed",
-                            asset_count=len(self._assets_info))
-
-        except Exception as e:
-            self.logger.error(f"Spot exchange initialization failed: {e}")
-            await self.close()  # Cleanup on failure
-            raise InitializationError(f"Spot initialization failed: {e}")
-
-
+        await super().initialize(*args, **kwargs)
+        await self._load_assets_info()

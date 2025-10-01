@@ -56,12 +56,10 @@ _MEXC_TIF_MAP = {
     'FOK': TimeInForce.FOK,
 }
 
-
-
 _MEXC_WITHDRAW_STATUS_MAP = {
     "APPLY": WithdrawalStatus.PENDING,
     "AUDITING": WithdrawalStatus.PENDING,
-    "WAIT" : WithdrawalStatus.PENDING,
+    "WAIT": WithdrawalStatus.PENDING,
     "PROCESSING": WithdrawalStatus.PROCESSING,
     "WAIT_PACKAGING": WithdrawalStatus.PROCESSING,
     "WAIT_CONFIRM": WithdrawalStatus.PROCESSING,
@@ -76,7 +74,6 @@ _UNIFIED_TO_MEXC_STATUS = {v: k for k, v in _MEXC_ORDER_STATUS_MAP.items()}
 _UNIFIED_TO_MEXC_SIDE = {v: k for k, v in _MEXC_SIDE_MAP.items()}
 _UNIFIED_TO_MEXC_TYPE = {v: k for k, v in _MEXC_ORDER_TYPE_MAP.items()}
 _UNIFIED_TO_MEXC_TIF = {v: k for k, v in _MEXC_TIF_MAP.items()}
-
 
 
 # Direct conversion functions - no classes needed
@@ -102,7 +99,7 @@ def from_side(unified_side: Side) -> str:
 
 def to_order_type(mexc_type: str) -> OrderType:
     """Convert MEXC order type to unified OrderType."""
-    return _MEXC_ORDER_TYPE_MAP.get(mexc_type.lower(), OrderType.LIMIT)
+    return _MEXC_ORDER_TYPE_MAP.get(mexc_type.upper(), OrderType.LIMIT)
 
 
 def from_order_type(unified_type: OrderType) -> str:
@@ -112,7 +109,7 @@ def from_order_type(unified_type: OrderType) -> str:
 
 def to_time_in_force(mexc_tif: str) -> TimeInForce:
     """Convert MEXC time in force to unified TimeInForce."""
-    return _MEXC_TIF_MAP.get(mexc_tif.lower(), TimeInForce.GTC)
+    return _MEXC_TIF_MAP.get(mexc_tif, TimeInForce.GTC)
 
 
 def from_time_in_force(unified_tif: TimeInForce) -> str:
@@ -136,31 +133,36 @@ def format_price(price: float, precision: int = 8) -> str:
 def from_subscription_action(action) -> str:
     """Convert SubscriptionAction to MEXC format."""
     from infrastructure.networking.websocket.structs import SubscriptionAction
-    
+
     if action == SubscriptionAction.SUBSCRIBE:
         return "SUBSCRIPTION"
     elif action == SubscriptionAction.UNSUBSCRIBE:
         return "UNSUBSCRIPTION"
     return "SUBSCRIPTION"
 
+
 def rest_to_order(mexc_order_data: MexcOrderResponse) -> Order:
     """Transform MEXC REST order response to unified Order struct."""
-    
+
     # Convert MEXC symbol to unified Symbol
-    symbol =  MexcSymbol.to_symbol(mexc_order_data.symbol)
-    
+    symbol = MexcSymbol.to_symbol(mexc_order_data.symbol)
+
     # Calculate fee from fills if available
     fee = 0.0
     if mexc_order_data.fills:
         fee = sum(float(fill.get('commission', 0)) for fill in mexc_order_data.fills)
-    
+
+    filled_quantity = float(mexc_order_data.executedQty)
+    quantity = float(mexc_order_data.origQty)
+    order_type = to_order_type(mexc_order_data.type)
+
     return Order(
         symbol=symbol,
         side=to_side(mexc_order_data.side),
-        order_type=to_order_type(mexc_order_data.type),
+        order_type=order_type,
         price=float(mexc_order_data.price),
-        quantity=float(mexc_order_data.origQty),
-        filled_quantity=float(mexc_order_data.executedQty),
+        quantity=filled_quantity if order_type == OrderType.MARKET else quantity,
+        filled_quantity=filled_quantity,
         order_id=OrderId(str(mexc_order_data.orderId)),
         status=to_order_status(mexc_order_data.status),
         timestamp=int(mexc_order_data.transactTime),
@@ -172,7 +174,6 @@ def rest_to_order(mexc_order_data: MexcOrderResponse) -> Order:
 def rest_to_withdrawal_status(mexc_status: str) -> WithdrawalStatus:
     """Convert MEXC withdrawal status to unified WithdrawalStatus."""
     return _MEXC_WITHDRAW_STATUS_MAP.get(mexc_status.upper(), WithdrawalStatus.UNKNOWN)
-
 
 
 _WS_ORDER_STATUS_MAPPING = {

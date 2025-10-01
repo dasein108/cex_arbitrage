@@ -140,12 +140,23 @@ class BasePrivateComposite(BaseCompositeExchange[PrivateRestType, PrivateWebsock
         price_ = si.round_quote(price)
         return await self._rest.place_order(symbol, side, OrderType.LIMIT, quantity_, price_, **kwargs)
 
-    async def place_market_order(self, symbol: Symbol, side: Side, quote_quantity: float, **kwargs) -> Order:
+    async def place_market_order(self, symbol: Symbol, side: Side, quote_quantity: float,
+                                 ensure: bool, **kwargs) -> Order:
         """Place a market order via REST API."""
         quote_quantity_ = self.symbols_info.get(symbol).round_quote(quote_quantity)
         # TODO: FIX: infrastructure.exceptions.exchange.ExchangeRestError: (500, 'Futures order placement failed: Futures market orders with quote_quantity require current price. Use quantity parameter instead.')
-        return await self._rest.place_order(symbol, side, OrderType.MARKET,
-                                            quote_quantity=quote_quantity_, **kwargs)
+        order =  await self._rest.place_order(symbol, side, OrderType.MARKET,
+                                                quote_quantity=quote_quantity_, **kwargs)
+
+        if ensure:
+            return await self.get_order(symbol, order.order_id)
+            # # wait until order is no longer open
+            # while True:
+            #     await asyncio.sleep(0.1)
+            #     o = await self.get_active_order(symbol, order.order_id)
+            #     if not o or is_order_done(o):
+            #         break
+        return order
 
     async def cancel_order(self, symbol: Symbol, order_id: OrderId) -> Order:
         """
@@ -177,7 +188,11 @@ class BasePrivateComposite(BaseCompositeExchange[PrivateRestType, PrivateWebsock
         Raises:
             ExchangeError: If order not found or query fails
         """
-        return await self._rest.get_order(symbol, order_id)
+        order = await self._rest.get_order(symbol, order_id)
+
+        await self._update_order(order)
+
+        return order
 
     # Factory methods ELIMINATED - clients injected via constructor
 
@@ -362,12 +377,16 @@ class BasePrivateComposite(BaseCompositeExchange[PrivateRestType, PrivateWebsock
 
     # Initialization
 
-    async def initialize(self, symbols_info: SymbolsInfo) -> None:
+    async def initialize(self, symbols_info: SymbolsInfo, channels: List[WebsocketChannelType]=None) -> None:
         """Initialize base private exchange functionality."""
         # Initialize public functionality first (parent class)
         await super().initialize()
 
         self._symbols_info = symbols_info
+        if not channels:
+            channels = [WebsocketChannelType.ORDER,
+                      WebsocketChannelType.BALANCE,
+                      WebsocketChannelType.EXECUTION]
 
         try:
             # Clients are already injected via constructor - no creation needed
@@ -383,9 +402,7 @@ class BasePrivateComposite(BaseCompositeExchange[PrivateRestType, PrivateWebsock
             if self._ws:
                 self.logger.info(f"{self._tag} Initializing WebSocket client...")
                 await self._ws.initialize()
-                await self._ws.subscribe([WebsocketChannelType.ORDER,
-                                          WebsocketChannelType.BALANCE,
-                                          WebsocketChannelType.EXECUTION])
+                await self._ws.subscribe(channels)
 
             else:
                 self.logger.info(f"{self._tag} No WebSocket client available - skipping WebSocket initialization")

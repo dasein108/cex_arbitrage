@@ -37,7 +37,7 @@ class PublicObservableStreams(ObservableStreamsInterface[PublicObservableName]):
         return self._streams['trades']
 
     @property
-    def book_tickers_stream(self) -> rx.Observable[BookTicker]:
+    def book_tickers_stream(self) -> BehaviorSubject[BookTicker]:
         return self._streams['book_tickers']
 
 class PrivateObservableStreams(ObservableStreamsInterface[PrivateObservableName]):
@@ -54,7 +54,7 @@ class PrivateObservableStreams(ObservableStreamsInterface[PrivateObservableName]
         self._streams[name].on_next(value)
 
     @property
-    def balances_stream(self) -> rx.Observable[AssetBalance]:
+    def balances_stream(self) -> BehaviorSubject[AssetBalance]:
         return self._streams['balances']
 
     @property
@@ -65,3 +65,14 @@ class PrivateObservableStreams(ObservableStreamsInterface[PrivateObservableName]
     def positions_stream(self) -> rx.Observable[Position]:
         return self._streams['positions']
 
+#  3. Create Read-Only BehaviorSubject Wrapper
+# class ReadOnlyBehaviorSubject:
+#   def __init__(self, subject):
+#       self._subject = subject
+#
+#   @property
+#   def value(self):
+#       return self._subject.value
+#
+#   def subscribe(self, ...):
+#       return self._subject.subscribe(...)
