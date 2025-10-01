@@ -41,12 +41,12 @@ from infrastructure.error_handling import RestApiErrorHandler, ErrorContext
 
 # Import direct utility functions
 from exchanges.integrations.gateio.utils import (
-    to_pair, from_side, from_order_type, format_quantity, format_price,
+    from_side, from_order_type, format_quantity, format_price,
     from_time_in_force, to_order_status, rest_spot_to_order
 )
 from exchanges.integrations.gateio.structs.exchange import GateioCurrencyResponse, GateioWithdrawStatusResponse
 from utils import get_current_timestamp
-
+from exchanges.integrations.gateio.services.spot_symbol_mapper import GateioSpotSymbol
 
 from .gateio_base_spot_rest import GateioBaseSpotRestInterface
 
@@ -252,7 +252,7 @@ class GateioPrivateSpotRestInterface(GateioBaseSpotRestInterface, PrivateSpotRes
     
     async def _execute_place_order(self, symbol: Symbol, side: Side, order_type: OrderType, amount: Optional[float], price: Optional[float], quote_quantity: Optional[float], time_in_force: Optional[TimeInForce], new_order_resp_type) -> Order:
         """Execute place order without error handling - clean logic"""
-        pair = to_pair(symbol)
+        pair = GateioSpotSymbol.to_pair(symbol)
         
         # Build order payload
         payload = {
@@ -345,7 +345,7 @@ class GateioPrivateSpotRestInterface(GateioBaseSpotRestInterface, PrivateSpotRes
     
     async def _execute_cancel_order(self, symbol: Symbol, order_id: OrderId) -> Order:
         """Execute cancel order without error handling - clean logic"""
-        pair = to_pair(symbol)
+        pair = GateioSpotSymbol.to_pair(symbol)
         endpoint = f'/spot/orders/{order_id}'
         
         params = {'currency_pair': pair}
@@ -376,7 +376,7 @@ class GateioPrivateSpotRestInterface(GateioBaseSpotRestInterface, PrivateSpotRes
             ExchangeAPIError: If mass cancellation fails
         """
         try:
-            pair = to_pair(symbol)
+            pair = GateioSpotSymbol.to_pair(symbol)
             endpoint = '/spot/orders'
             
             params = {'currency_pair': pair}
@@ -420,7 +420,7 @@ class GateioPrivateSpotRestInterface(GateioBaseSpotRestInterface, PrivateSpotRes
             ExchangeAPIError: If order query fails
         """
         try:
-            pair = to_pair(symbol)
+            pair = GateioSpotSymbol.to_pair(symbol)
             endpoint = f'/spot/orders/{order_id}'
             
             params = {'currency_pair': pair}
@@ -468,7 +468,7 @@ class GateioPrivateSpotRestInterface(GateioBaseSpotRestInterface, PrivateSpotRes
             endpoint = '/spot/orders'
             params = {
                 'status': 'open',
-                'currency_pair': to_pair(symbol)
+                'currency_pair': GateioSpotSymbol.to_pair(symbol)
             }
             
             response_data = await self.request(
