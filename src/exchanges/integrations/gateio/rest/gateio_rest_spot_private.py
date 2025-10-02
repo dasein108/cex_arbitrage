@@ -128,7 +128,7 @@ class GateioPrivateSpotRestInterface(GateioBaseSpotRestInterface, PrivateSpotRes
             ExchangeAPIError: If unable to fetch balance data
         """
         try:
-            endpoint = "/spot/accounts"
+            endpoint = '/spot/accounts'
             
             response_data = await self.request(
                 HTTPMethod.GET,

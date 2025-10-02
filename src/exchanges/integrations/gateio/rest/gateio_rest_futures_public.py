@@ -37,7 +37,7 @@ class GateioPublicFuturesRestInterface(GateioBaseFuturesRestInterface, PublicFut
     - Robust parsing: supports both array and dict payload shapes.
     """
 
-    def __init__(self, config, logger: HFTLoggerInterface = None, **kwargs):
+    def __init__(self, config: ExchangeConfig, logger: HFTLoggerInterface = None, **kwargs):
         """
         Initialize Gate.io public futures REST client with simplified constructor.
         
