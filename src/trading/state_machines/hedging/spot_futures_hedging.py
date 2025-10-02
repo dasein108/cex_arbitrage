@@ -55,14 +55,14 @@ class SpotFuturesHedgingContext(BaseStrategyContext):
     # Symbol information
     spot_symbol: Optional[Symbol] = None
     futures_symbol: Optional[Symbol] = None
-    spot_symbol_info: Optional[SymbolInfo] = None
-    futures_symbol_info: Optional[SymbolInfo] = None
-    
+
     # Position tracking
     spot_order: Optional[Order] = None
     futures_order: Optional[Order] = None
     current_funding_rate: float = 0.0
     position_delta: float = 0.0  # Current position imbalance
+    target_inventory_ratio: float = 0.0  # Target delta neutral ratio
+    current_mid_price: float = 0.0  # Current market mid price cache
     
     # Performance tracking
     funding_payments_received: float = 0.0
@@ -92,17 +92,6 @@ class SpotFuturesHedgingStateMachine(
         """Initialize strategy and transition to market analysis."""
         self.context.logger.info("Initializing spot/futures hedging strategy")
         
-        # Get symbol information
-        self.context.spot_symbol_info = self.context.spot_public_exchange.symbols_info.get(
-            self.context.spot_symbol
-        )
-        self.context.futures_symbol_info = self.context.futures_public_exchange.symbols_info.get(
-            self.context.futures_symbol
-        )
-        
-        if not self.context.spot_symbol_info or not self.context.futures_symbol_info:
-            raise ValueError("Missing symbol information for spot or futures")
-        
         # Check for existing positions and load them
         await self._load_existing_positions()
         
@@ -123,22 +112,24 @@ class SpotFuturesHedgingStateMachine(
     async def _handle_analyzing(self) -> None:
         """Analyze market conditions and funding rates."""
         try:
+            # TODO: disabled
+            self._transition_to_state(StrategyState.EXECUTING)
             # Get current funding rate
-            self.context.current_funding_rate = await self._get_current_funding_rate()
-            
-            self.context.logger.info(
-                f"Current funding rate: {self.context.current_funding_rate:.4f}",
-                target_rate=self.context.target_funding_rate
-            )
-            
-            # Check if funding rate meets our criteria
-            if abs(self.context.current_funding_rate) >= self.context.target_funding_rate:
-                self.context.logger.info("Funding rate opportunity detected")
-                self._transition_to_state(StrategyState.EXECUTING)
-            else:
-                self.context.logger.info("Funding rate below threshold, waiting...")
-                await asyncio.sleep(10.0)  # Wait 10 seconds before re-checking
-                
+            # self.context.current_funding_rate = await self._get_current_funding_rate()
+            #
+            # self.context.logger.info(
+            #     f"Current funding rate: {self.context.current_funding_rate:.4f}",
+            #     target_rate=self.context.target_funding_rate
+            # )
+            #
+            # # Check if funding rate meets our criteria
+            # if abs(self.context.current_funding_rate) >= self.context.target_funding_rate:
+            #     self.context.logger.info("Funding rate opportunity detected")
+            #     self._transition_to_state(StrategyState.EXECUTING)
+            # else:
+            #     self.context.logger.info("Funding rate below threshold, waiting...")
+            #     await asyncio.sleep(10.0)  # Wait 10 seconds before re-checking
+            #
         except Exception as e:
             self._handle_error(e)
     
@@ -167,18 +158,19 @@ class SpotFuturesHedgingStateMachine(
                 self.context.logger.warning("Position imbalance detected, rebalancing needed")
                 self._transition_to_state(StrategyState.ADJUSTING)
             else:
-                # Check funding rate changes
-                current_funding_rate = await self._get_current_funding_rate()
-                
-                # If funding rate becomes unfavorable, close positions
-                if abs(current_funding_rate) < self.context.target_funding_rate * 0.5:
-                    self.context.logger.info("Funding rate no longer attractive, closing positions")
-                    await self._close_all_positions()
-                    self._transition_to_state(StrategyState.COMPLETED)
-                else:
-                    # Continue monitoring
-                    await asyncio.sleep(30.0)  # Check every 30 seconds
-                    
+                pass
+                # # Check funding rate changes
+                # current_funding_rate = await self._get_current_funding_rate()
+                #
+                # # If funding rate becomes unfavorable, close positions
+                # if abs(current_funding_rate) < self.context.target_funding_rate * 0.5:
+                #     self.context.logger.info("Funding rate no longer attractive, closing positions")
+                #     await self._close_all_positions()
+                #     self._transition_to_state(StrategyState.COMPLETED)
+                # else:
+                #     # Continue monitoring
+                #     await asyncio.sleep(30.0)  # Check every 30 seconds
+                #
         except Exception as e:
             self._handle_error(e)
     
@@ -281,9 +273,15 @@ class SpotFuturesHedgingStateMachine(
             self.context.futures_symbol
         )
         
-        # Calculate position values
-        spot_value = self.context.spot_order.filled_quantity * spot_price_info.mid_price
-        futures_value = self.context.futures_order.filled_quantity * futures_price_info.mid_price
+        # Calculate position values using mid price (bid + ask) / 2
+        spot_mid_price = (spot_price_info.bid_price + spot_price_info.ask_price) / 2
+        futures_mid_price = (futures_price_info.bid_price + futures_price_info.ask_price) / 2
+        
+        spot_value = self.context.spot_order.filled_quantity * spot_mid_price
+        futures_value = self.context.futures_order.filled_quantity * futures_mid_price
+        
+        # Update current mid price for futures (used elsewhere)
+        self.context.current_mid_price = futures_mid_price
         
         # Apply position direction
         if self.context.spot_order.side == Side.SELL:
@@ -296,42 +294,8 @@ class SpotFuturesHedgingStateMachine(
         self.context.position_delta = (spot_value + futures_value) / total_position_value
     
     async def _get_current_funding_rate(self) -> float:
-        """Get current funding rate from futures exchange."""
-        try:
-            # Gate.io futures API call for funding rate
-            # Note: This would need the specific API endpoint for funding rates
-            # For now, we'll return a realistic simulation based on market conditions
-            
-            # Get current price to simulate funding rate based on premium
-            spot_price_info = await self._get_current_price(
-                self.context.spot_public_exchange,
-                self.context.spot_symbol
-            )
-            futures_price_info = await self._get_current_price(
-                self.context.futures_public_exchange,
-                self.context.futures_symbol
-            )
-            
-            # Calculate premium as proxy for funding rate
-            premium = (futures_price_info.mid_price - spot_price_info.mid_price) / spot_price_info.mid_price
-            
-            # Simulate realistic funding rate (typically -0.375% to +0.375%)
-            # This is a simplified simulation - real implementation would call API
-            funding_rate = min(max(premium * 8, -0.00375), 0.00375)  # 8-hour funding rate
-            
-            self.context.logger.info(
-                f"Funding rate calculated",
-                spot_price=spot_price_info.mid_price,
-                futures_price=futures_price_info.mid_price,
-                premium=f"{premium*100:.4f}%",
-                funding_rate=f"{funding_rate*100:.4f}%"
-            )
-            
-            return funding_rate
-            
-        except Exception as e:
-            self.context.logger.warning(f"Failed to get funding rate: {e}")
-            return 0.0
+        # ignore at this moment
+        return 0.0
     
     async def _rebalance_reduce_long(self) -> None:
         """Reduce long exposure by adjusting positions."""
@@ -526,6 +490,21 @@ class SpotFuturesHedgingStateMachine(
         self.context.logger.info("Checking for existing positions to resume strategy")
         
         try:
+            # Get current market prices for position valuation
+            spot_price_info = await self._get_current_price(
+                self.context.spot_public_exchange,
+                self.context.spot_symbol
+            )
+            futures_price_info = await self._get_current_price(
+                self.context.futures_public_exchange,
+                self.context.futures_symbol
+            )
+            
+            # Calculate mid prices
+            spot_mid_price = (spot_price_info.bid_price + spot_price_info.ask_price) / 2
+            futures_mid_price = (futures_price_info.bid_price + futures_price_info.ask_price) / 2
+            self.context.current_mid_price = futures_mid_price
+            
             # Check spot exchange for existing balance in the base asset
             base_asset = self.context.spot_symbol.base
             spot_balance = await self.context.spot_private_exchange.get_asset_balance(base_asset, force=True)
@@ -556,7 +535,7 @@ class SpotFuturesHedgingStateMachine(
                 self.context.logger.info(
                     f"Found existing spot balance: {spot_balance.total} {base_asset}"
                 )
-                # Create a mock order to represent the existing balance
+                # Create a mock order to represent the existing balance using current market price
                 self.context.spot_order = Order(
                     symbol=self.context.spot_symbol,
                     order_id="existing_balance",
@@ -564,8 +543,8 @@ class SpotFuturesHedgingStateMachine(
                     order_type=OrderType.MARKET,
                     quantity=spot_balance.total,
                     filled_quantity=spot_balance.total,
-                    price=0.0,  # Will be determined from market data
-                    average_price=0.0,
+                    price=spot_mid_price,
+                    average_price=spot_mid_price,
                     status=OrderStatus.FILLED
                 )
                 has_spot_position = True
@@ -586,6 +565,9 @@ class SpotFuturesHedgingStateMachine(
                 # Create a mock order to represent the existing position
                 # Convert position side to order side (position side is already BUY/SELL)
                 order_side = futures_positions.side
+                # Use entry price if available, otherwise use current market price
+                position_price = futures_positions.entry_price if futures_positions.entry_price else futures_mid_price
+                
                 self.context.futures_order = Order(
                     symbol=self.context.futures_symbol,
                     order_id="existing_position",
@@ -593,8 +575,8 @@ class SpotFuturesHedgingStateMachine(
                     order_type=OrderType.MARKET,
                     quantity=abs(futures_positions.size),
                     filled_quantity=abs(futures_positions.size),
-                    price=futures_positions.entry_price,
-                    average_price=futures_positions.entry_price,
+                    price=position_price,
+                    average_price=position_price,
                     status=OrderStatus.FILLED
                 )
                 has_futures_position = True

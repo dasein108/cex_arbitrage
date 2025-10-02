@@ -156,7 +156,7 @@ def rest_futures_to_order(gateio_order_data) -> Order:
     symbol = GateioFuturesSymbol.to_symbol(gateio_order_data['contract'])
     #Time in ms
     timestamp = int(gateio_order_data['create_time']*1000)
-
+    # { 'fill_price': '0', 'iceberg': 0, 'id': 5066550854254415, 'is_close': False, 'is_liq': False, 'is_reduce_only': False, 'left': 1, 'mkfr': '0.0002', 'pnl': '0', 'pnl_margin': '0', 'price': '0.7216', 'refr': '0', 'refu': 0, 'size': 1, 'status': 'open', 'stp_act': '-', 'stp_id': 0, 'text': 'api', 'tif': 'gtc', 'tkfr': '0.0005', 'update_id': 1, 'update_time': 1759213329.013, 'user': 11789588}
     return Order(
         symbol=symbol,
         side=detect_side_from_size(gateio_order_data['size']),
@@ -165,7 +165,9 @@ def rest_futures_to_order(gateio_order_data) -> Order:
         price=float(gateio_order_data.get('price', '0')),
         order_id=OrderId(str(gateio_order_data['id'])),
         status=to_order_status(gateio_order_data['status']),
-        timestamp=timestamp       
+        timestamp=timestamp,
+        order_type=to_order_type(gateio_order_data.get('type','limit')), # not found ????
+        fee=float(gateio_order_data.get('fee', '0'))
 
     )
 

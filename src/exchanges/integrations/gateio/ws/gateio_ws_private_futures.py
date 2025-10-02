@@ -51,6 +51,7 @@ from exchanges.integrations.gateio.ws.gateio_ws_common import GateioBaseWebsocke
 # Private futures channel mapping for Gate.io
 _PRIVATE_FUTURES_CHANNEL_MAPPING = {
     WebsocketChannelType.ORDER: "futures.orders",
+    WebsocketChannelType.TICKER: "futures.tickers",
     WebsocketChannelType.EXECUTION: "futures.usertrades",
     WebsocketChannelType.BALANCE: "futures.balances",
     WebsocketChannelType.POSITION: "futures.positions",
@@ -78,10 +79,12 @@ class GateioPrivateFuturesWebsocket(GateioBaseWebsocket, PrivateBaseWebsocket):
             "channel": channel_name,
             "event": event
         }
+        if channel in [WebsocketChannelType.TICKER]:
+            raise NotImplementedError("TODO: Implement ticker subscription for futures if needed")
 
         # Add payload for channels that require it
         # futures.orders and futures.positions accept ["!all"] to subscribe to all updates
-        if channel in [WebsocketChannelType.ORDER, WebsocketChannelType.POSITION]:
+        elif channel in [WebsocketChannelType.ORDER, WebsocketChannelType.POSITION]:
             message["payload"] = ["!all"]  # Subscribe to all updates
         # futures.usertrades requires specific contract format like ["user_id", "BTC_USD"]
         elif channel == WebsocketChannelType.EXECUTION:
@@ -166,9 +169,31 @@ class GateioPrivateFuturesWebsocket(GateioBaseWebsocket, PrivateBaseWebsocket):
         
         if not result_data:
             return
-            
+
+        if channel == "futures.tickers":
+            # {
+            #     "contract": "BTC_USD",
+            #     "last": "118.4",
+            #     "change_percentage": "0.77",
+            #     "funding_rate": "-0.000114",
+            #     "funding_rate_indicative": "0.01875",
+            #     "mark_price": "118.35",
+            #     "index_price": "118.36",
+            #     "total_size": "73648",
+            #     "volume_24h": "745487577",
+            #     "volume_24h_btc": "117",
+            #     "volume_24h_usd": "419950",
+            #     "quanto_base_rate": "",
+            #     "volume_24h_quote": "1665006",
+            #     "volume_24h_settle": "178",
+            #     "volume_24h_base": "5526",
+            #     "low_24h": "99.2",
+            #     "high_24h": "132.5"
+            # }
+            self.logger.error(f"TODO: implement ticker handling for Gate.io futures: {result_data}")
+            return
         # Route based on channel type
-        if channel == "futures.balances":
+        elif channel == "futures.balances":
             await self._parse_futures_balance_update(result_data)
         elif channel in ["futures.orders", "futures.orders_v2"]:
             await self._parse_futures_order_update(result_data)

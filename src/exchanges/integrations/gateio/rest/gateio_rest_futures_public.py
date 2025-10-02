@@ -98,6 +98,12 @@ class GateioPublicFuturesRestInterface(GateioBaseFuturesRestInterface, PublicFut
 
                 is_inactive = c.get('status', '') != 'trading' and c.get('trade_status', '') != 'tradable'
 
+                #TODO: save funding rate, for get_funding_rate()
+                # c.get('funding_interval', 0)
+                # c.get('funding_rate', 0)
+                # c.get('funding_next_apply', 0)
+                # funding_rate_indicative, funding_offset, funding_impact_value, funding_cap_ratio
+
                 # Build SymbolInfo (futures)
                 symbol_info = SymbolInfo(
                     symbol=symbol,

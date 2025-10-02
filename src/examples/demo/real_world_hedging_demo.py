@@ -255,7 +255,7 @@ async def main():
     logger = get_logger("hedging_demo")
     
     exchanges = None
-    symbol = "HIFI/USDT"
+    symbol = "ADA/USDT"
     amount = 25
     max_position_imbalance = 0.001
     min_funding_rate = 0.0
