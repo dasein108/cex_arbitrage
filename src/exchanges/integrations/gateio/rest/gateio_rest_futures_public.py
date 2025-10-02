@@ -54,37 +54,6 @@ class GateioPublicFuturesRestInterface(GateioBaseFuturesRestInterface, PublicFut
         self._cache_timestamp: float = 0.0
         self._cache_ttl: float = 300.0  # 5 minutes
 
-    def _extract_contract_precision(self, contract_data: Dict[str, Any]) -> tuple[int, int, float, float]:
-        """
-        Extract common precision/limits from a futures contract entry.
-        Fields differ across endpoints; provide safe defaults.
-        Returns: base_precision, quote_precision, min_quote_amount, min_base_amount
-        """
-        def precision_to_decimals(value) -> int:
-            """Convert precision value to decimal places count."""
-            if isinstance(value, (int, float)):
-                if value == 0:
-                    return 8
-                # Count decimal places from scientific notation
-                precision_str = f"{float(value):.10f}".rstrip('0')
-                if '.' in precision_str:
-                    return len(precision_str.split('.')[1])
-                return 0
-            elif isinstance(value, str):
-                try:
-                    return precision_to_decimals(float(value))
-                except (ValueError, TypeError):
-                    return 8
-            return 8
-
-        base_prec = precision_to_decimals(contract_data.get('order_price_round', contract_data.get('price_precision', 8)))
-        quote_prec = precision_to_decimals(contract_data.get('mark_price_round', contract_data.get('size_precision', 8)))
-
-        min_base = float(contract_data.get('order_size_min', contract_data.get('min_size', 0)))
-        min_quote = float(contract_data.get('min_quote_amount', 0))
-
-        return base_prec, quote_prec, min_quote, min_base
-
     async def get_symbols_info(self) -> Dict[Symbol, SymbolInfo]:
         """
         Get futures contract information and map to SymbolInfo.
@@ -124,7 +93,8 @@ class GateioPublicFuturesRestInterface(GateioBaseFuturesRestInterface, PublicFut
                     filtered_count += 1
                     continue
 
-                base_prec, quote_prec, min_quote, min_base = self._extract_contract_precision(c)
+                quote_prec = base_prec = 2
+                min_base = min_quote =  float(c.get('order_size_min', 3))
 
                 is_inactive = c.get('status', '') != 'trading' and c.get('trade_status', '') != 'tradable'
 
