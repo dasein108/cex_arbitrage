@@ -18,7 +18,7 @@ from .base_rate_limit import BaseExchangeRateLimit
 
 __all__ = [
     # Common
-    "BaseRestInterface",
+    "BaseExchangeRateLimit",
     "PrivateTradingInterface",
     "WithdrawalInterface",
     'PublicSpotRestInterface',

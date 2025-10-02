@@ -22,7 +22,7 @@ from .mixins import (
     RiskManagementMixin
 )
 
-from .factory import StateMachineFactory
+from .factory import StateMachineFactory, StrategyType, state_machine_factory
 
 __all__ = [
     "BaseStrategyStateMachine",
@@ -35,5 +35,7 @@ __all__ = [
     "MarketDataMixin",
     "PerformanceMonitoringMixin",
     "RiskManagementMixin",
-    "StateMachineFactory"
+    "StateMachineFactory",
+    "StrategyType",
+    "state_machine_factory"
 ]

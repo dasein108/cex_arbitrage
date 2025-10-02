@@ -41,20 +41,20 @@ class SimpleArbitrageContext(BaseStrategyContext):
     """Context for simple arbitrage strategy."""
     
     # Exchange connections
-    exchange_a_private: BasePrivateComposite
-    exchange_b_private: BasePrivateComposite
-    exchange_a_public: BasePublicComposite
-    exchange_b_public: BasePublicComposite
+    exchange_a_private: Optional[BasePrivateComposite] = None
+    exchange_b_private: Optional[BasePrivateComposite] = None
+    exchange_a_public: Optional[BasePublicComposite] = None
+    exchange_b_public: Optional[BasePublicComposite] = None
     
     # Trading parameters
-    position_size_usdt: float
+    position_size_usdt: float = 0.0
     min_profit_threshold: float = 0.005  # 0.5% minimum profit
     max_execution_time_ms: float = 5000.0  # 5 seconds max execution time
     slippage_tolerance: float = 0.002  # 0.2% slippage tolerance
     
     # Symbols (same symbol on different exchanges)
-    symbol_a: Symbol  # Symbol on exchange A
-    symbol_b: Symbol  # Symbol on exchange B
+    symbol_a: Optional[Symbol] = None  # Symbol on exchange A
+    symbol_b: Optional[Symbol] = None  # Symbol on exchange B
     symbol_a_info: Optional[SymbolInfo] = None
     symbol_b_info: Optional[SymbolInfo] = None
     

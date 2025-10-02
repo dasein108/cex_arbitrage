@@ -41,20 +41,20 @@ class FuturesFuturesHedgingContext(BaseStrategyContext):
     """Context for futures/futures hedging strategy."""
     
     # Exchange connections
-    exchange_a_private: BasePrivateComposite
-    exchange_b_private: BasePrivateComposite
-    exchange_a_public: BasePublicComposite
-    exchange_b_public: BasePublicComposite
+    exchange_a_private: Optional[BasePrivateComposite] = None
+    exchange_b_private: Optional[BasePrivateComposite] = None
+    exchange_a_public: Optional[BasePublicComposite] = None
+    exchange_b_public: Optional[BasePublicComposite] = None
     
     # Trading parameters
-    position_size_usdt: float
+    position_size_usdt: float = 0.0
     min_spread_threshold: float = 0.005  # 0.5% minimum spread
     max_spread_threshold: float = 0.02   # 2% maximum spread (too good to be true)
     position_timeout_seconds: float = 300.0  # 5 minutes max holding time
     
     # Symbols
-    symbol_a: Symbol  # Long leg
-    symbol_b: Symbol  # Short leg
+    symbol_a: Optional[Symbol] = None  # Long leg
+    symbol_b: Optional[Symbol] = None  # Short leg
     symbol_a_info: Optional[SymbolInfo] = None
     symbol_b_info: Optional[SymbolInfo] = None
     

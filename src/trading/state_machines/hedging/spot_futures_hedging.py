@@ -39,19 +39,19 @@ class SpotFuturesHedgingContext(BaseStrategyContext):
     """Context for spot/futures hedging strategy."""
     
     # Exchange connections
-    spot_private_exchange: BasePrivateComposite
-    futures_private_exchange: BasePrivateComposite
-    spot_public_exchange: BasePublicComposite
-    futures_public_exchange: BasePublicComposite
+    spot_private_exchange: Optional[BasePrivateComposite] = None
+    futures_private_exchange: Optional[BasePrivateComposite] = None
+    spot_public_exchange: Optional[BasePublicComposite] = None
+    futures_public_exchange: Optional[BasePublicComposite] = None
     
     # Trading parameters
-    position_size_usdt: float
+    position_size_usdt: float = 0.0
     target_funding_rate: float = 0.01  # 1% APR minimum
     max_position_imbalance: float = 0.05  # 5% max delta
     
     # Symbol information
-    spot_symbol: Symbol
-    futures_symbol: Symbol
+    spot_symbol: Optional[Symbol] = None
+    futures_symbol: Optional[Symbol] = None
     spot_symbol_info: Optional[SymbolInfo] = None
     futures_symbol_info: Optional[SymbolInfo] = None
     

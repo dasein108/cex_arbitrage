@@ -50,11 +50,11 @@ class MarketMakingContext(BaseStrategyContext):
     """Context for market making strategy."""
     
     # Exchange connections
-    private_exchange: BasePrivateComposite
-    public_exchange: BasePublicComposite
+    private_exchange: Optional[BasePrivateComposite] = None
+    public_exchange: Optional[BasePublicComposite] = None
     
     # Trading parameters
-    base_quantity_usdt: float
+    base_quantity_usdt: float = 0.0
     min_spread_percent: float = 0.001  # 0.1% minimum spread
     max_spread_percent: float = 0.01   # 1% maximum spread
     num_levels: int = 3  # Number of order levels
