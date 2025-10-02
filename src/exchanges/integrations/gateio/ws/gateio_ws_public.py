@@ -74,7 +74,7 @@ class GateioPublicSpotWebsocket(GateioBaseWebsocket, PublicBaseWebsocket):
             channel_name = _SPOT_PUBLIC_CHANNEL_MAPPING.get(ch, None)
 
             if not channel_name:
-                self.logger.warning(f"Unsupported public channel type: {ch}")
+                self.logger.warning(f"Unsupported public channel type: {ch.name}")
                 continue
                 
             message = {

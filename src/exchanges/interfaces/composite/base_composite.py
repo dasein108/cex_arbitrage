@@ -6,7 +6,7 @@ handling connection management, initialization, and state tracking.
 """
 
 from abc import ABC, abstractmethod
-from typing import Optional, Generic
+from typing import Optional, Generic, Any
 
 from exchanges.structs.common import SymbolsInfo
 from config.structs import ExchangeConfig
@@ -276,6 +276,36 @@ class BaseCompositeExchange(Generic[RestClientType, WebSocketClientType], ABC):
         # Track errors
         self.logger.metric("websocket_errors", 1,
                           tags={"exchange": self._config.name})
+
+    def publish(self, channel: str, data: Any) -> None:
+        """
+        Publish event to bound handlers using channel string.
+        
+        This method enables external adapters to receive events without inheritance.
+        Calls _exec_bound_handler internally if BoundHandlerInterface is available.
+        
+        Args:
+            channel: Channel identifier as string (e.g., "book_ticker", "orderbook")
+            data: Event data to publish
+        """
+        # Check if this instance has bound handler interface
+        if hasattr(self, '_exec_bound_handler'):
+            # Convert string channel to appropriate enum for backward compatibility
+            try:
+                import asyncio
+                # Execute bound handler if available
+                if asyncio.iscoroutinefunction(self._exec_bound_handler):
+                    # Create task for async execution
+                    asyncio.create_task(self._exec_bound_handler(channel, data))
+                else:
+                    # Synchronous execution (unlikely but handled)
+                    self._exec_bound_handler(channel, data)
+            except Exception as e:
+                if hasattr(self, 'logger'):
+                    self.logger.error("Error publishing event",
+                                    channel=channel,
+                                    error_type=type(e).__name__,
+                                    error_message=str(e))
 
     @abstractmethod
     async def _refresh_exchange_data(self) -> None:

@@ -22,12 +22,8 @@ from infrastructure.logging import LoggingTimer, HFTLoggerInterface
 from exchanges.utils.exchange_utils import is_order_done
 from exchanges.interfaces.common.binding import BoundHandlerInterface
 from infrastructure.networking.websocket.structs import PrivateWebsocketChannelType, WebsocketChannelType
-from exchanges.interfaces.ractive import PrivateObservableStreams
-
-
 class BasePrivateComposite(BaseCompositeExchange[PrivateRestType, PrivateWebsocketType],
-                           BoundHandlerInterface[PrivateWebsocketChannelType],
-                           PrivateObservableStreams):
+                           BoundHandlerInterface[PrivateWebsocketChannelType]):
     """
     Base private composite exchange interface WITHOUT withdrawal functionality.
     
@@ -60,7 +56,6 @@ class BasePrivateComposite(BaseCompositeExchange[PrivateRestType, PrivateWebsock
             websocket_client: Injected private WebSocket client instance (optional)
             logger: Optional injected HFT logger (auto-created if not provided)
         """
-        PrivateObservableStreams.__init__(self)
         BoundHandlerInterface.__init__(self)
         super().__init__(config=config,
                          rest_client=rest_client,
@@ -521,10 +516,11 @@ class BasePrivateComposite(BaseCompositeExchange[PrivateRestType, PrivateWebsock
             if close_tasks:
                 await asyncio.gather(*close_tasks, return_exceptions=True)
 
+            # Clear bound handlers
+            self.clear_handlers()
+
             # Call parent cleanup
             await super().close()
-
-            self.dispose()
 
             # Reset connection status
             self._rest_connected = False

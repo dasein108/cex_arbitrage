@@ -267,7 +267,7 @@ async def main(exchange_name: str):
             logger.info(f"📋 Recent Orders (showing {len(recent_orders)}):")
             for i, order in enumerate(recent_orders, 1):
                 if isinstance(order, Order):
-                    logger.info(f"   {i}. {order.order_id} - {order.status}")
+                    logger.info(f"   {i}. {order.order_id} - {order.status.name}")
                 else:
                     logger.info(f"   {i}. {order}")
 

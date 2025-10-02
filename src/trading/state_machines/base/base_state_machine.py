@@ -10,10 +10,19 @@ import time
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Optional, Any, Dict
+from typing import Optional, Any, Dict, List, TYPE_CHECKING
 
-from exchanges.structs import Symbol, Order
-from infrastructure.logging import get_logger
+# Use protocols to avoid heavy exchange dependencies
+from .protocols import SymbolProtocol, OrderProtocol, LoggerProtocol
+
+# Only import for type checking, not at runtime
+if TYPE_CHECKING:
+    from exchanges.structs import Symbol, Order
+    from infrastructure.logging import get_logger
+else:
+    # Runtime fallbacks use protocols
+    Symbol = SymbolProtocol
+    Order = OrderProtocol
 
 
 class StrategyState(Enum):
@@ -31,11 +40,11 @@ class StrategyState(Enum):
 class StrategyResult:
     """Standard result structure for all trading strategies."""
     strategy_name: str
-    symbol: Symbol
+    symbol: SymbolProtocol
     success: bool
     profit_usdt: float = 0.0
     execution_time_ms: float = 0.0
-    orders_executed: list[Order] = field(default_factory=list)
+    orders_executed: List[OrderProtocol] = field(default_factory=list)
     error_message: Optional[str] = None
     metadata: Dict[str, Any] = field(default_factory=dict)
 
@@ -52,8 +61,8 @@ class StrategyError(Exception):
 class BaseStrategyContext:
     """Base context for all trading strategies."""
     strategy_name: str
-    symbol: Symbol
-    logger: Any
+    symbol: SymbolProtocol
+    logger: LoggerProtocol
     
     # State management
     current_state: StrategyState = StrategyState.IDLE
@@ -67,8 +76,8 @@ class BaseStrategyContext:
     total_profit_usdt: float = 0.0
     
     # Orders tracking
-    active_orders: list[Order] = field(default_factory=list)
-    completed_orders: list[Order] = field(default_factory=list)
+    active_orders: List[OrderProtocol] = field(default_factory=list)
+    completed_orders: List[OrderProtocol] = field(default_factory=list)
 
 
 class BaseStrategyStateMachine(ABC):

@@ -5,13 +5,32 @@ Provides a centralized factory for instantiating different trading strategy
 state machines with proper configuration and dependencies.
 """
 
-from typing import Dict, Type, Any, Optional
+from typing import Dict, Type, Any, Optional, TYPE_CHECKING
 from enum import Enum
 
-from exchanges.interfaces.composite import BasePrivateComposite, BasePublicComposite
-from exchanges.structs import Symbol
-from infrastructure.logging import get_logger
+# Use protocols to avoid heavy exchange dependencies
+from .protocols import (
+    SymbolProtocol, 
+    PrivateExchangeProtocol,
+    PublicExchangeProtocol,
+    SimpleLogger
+)
 from .base_state_machine import BaseStrategyStateMachine, BaseStrategyContext
+
+# Only import for type checking, not at runtime
+if TYPE_CHECKING:
+    from exchanges.interfaces.composite import BasePrivateComposite, BasePublicComposite
+    from exchanges.structs import Symbol
+    from infrastructure.logging import get_logger
+else:
+    # Runtime fallbacks use protocols
+    BasePrivateComposite = PrivateExchangeProtocol
+    BasePublicComposite = PublicExchangeProtocol
+    Symbol = SymbolProtocol
+    
+    # Simple logger factory for standalone use
+    def get_logger(name: str, **kwargs):
+        return SimpleLogger(name)
 
 
 class StrategyType(Enum):
@@ -42,9 +61,9 @@ class StateMachineFactory:
     def create_strategy(
         self,
         strategy_type: StrategyType,
-        symbol: Symbol,
-        private_exchange: Optional[BasePrivateComposite] = None,
-        public_exchange: Optional[BasePublicComposite] = None,
+        symbol: SymbolProtocol,
+        private_exchange: Optional[PrivateExchangeProtocol] = None,
+        public_exchange: Optional[PublicExchangeProtocol] = None,
         **kwargs
     ) -> BaseStrategyStateMachine:
         """

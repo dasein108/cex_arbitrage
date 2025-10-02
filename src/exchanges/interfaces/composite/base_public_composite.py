@@ -60,11 +60,8 @@ from exchanges.interfaces.composite.types import PublicRestType, PublicWebsocket
 from infrastructure.logging import LoggingTimer, HFTLoggerInterface
 from exchanges.interfaces.common.binding import BoundHandlerInterface
 from infrastructure.networking.websocket.structs import PublicWebsocketChannelType, WebsocketChannelType
-from exchanges.interfaces.ractive import PublicObservableStreams
-
 class BasePublicComposite(BaseCompositeExchange[PublicRestType, PublicWebsocketType],
-                          BoundHandlerInterface[PublicWebsocketChannelType],
-                         PublicObservableStreams):
+                          BoundHandlerInterface[PublicWebsocketChannelType]):
     """
     Base public composite exchange interface for market data operations.
     """
@@ -82,16 +79,12 @@ class BasePublicComposite(BaseCompositeExchange[PublicRestType, PublicWebsocketT
             websocket_client: Injected public WebSocket client instance (optional)
             logger: Optional injected HFT logger (auto-created if not provided)
         """
-        PublicObservableStreams.__init__(self)
         BoundHandlerInterface.__init__(self)
         super().__init__(config,
                          rest_client=rest_client,
                          websocket_client=websocket_client,
                          is_private=False,
                          logger=logger)
-
-
-        self.streams = PublicObservableStreams()
 
         # TODO: remove use handlers or streams
         # bind WebSocket handlers to websocket client events
@@ -467,8 +460,8 @@ class BasePublicComposite(BaseCompositeExchange[PublicRestType, PublicWebsocketT
             if close_tasks:
                 await asyncio.gather(*close_tasks, return_exceptions=True)
 
-            # Cleanup observable streams
-            self.streams.dispose()
+            # Clear bound handlers
+            self.clear_handlers()
 
             # Call parent cleanup
             await super().close()

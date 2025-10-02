@@ -24,6 +24,21 @@ from .mixins import (
 
 from .factory import StateMachineFactory, StrategyType, state_machine_factory
 
+from .protocols import (
+    SymbolProtocol,
+    OrderProtocol,
+    BookTickerProtocol,
+    SymbolInfoProtocol,
+    PrivateExchangeProtocol,
+    PublicExchangeProtocol,
+    LoggerProtocol,
+    SimpleSymbol,
+    SimpleOrder,
+    SimpleBookTicker,
+    SimpleSymbolInfo,
+    SimpleLogger
+)
+
 __all__ = [
     "BaseStrategyStateMachine",
     "BaseStrategyContext", 
@@ -37,5 +52,19 @@ __all__ = [
     "RiskManagementMixin",
     "StateMachineFactory",
     "StrategyType",
-    "state_machine_factory"
+    "state_machine_factory",
+    # Protocols
+    "SymbolProtocol",
+    "OrderProtocol",
+    "BookTickerProtocol",
+    "SymbolInfoProtocol",
+    "PrivateExchangeProtocol",
+    "PublicExchangeProtocol",
+    "LoggerProtocol",
+    # Simple implementations
+    "SimpleSymbol",
+    "SimpleOrder",
+    "SimpleBookTicker",
+    "SimpleSymbolInfo",
+    "SimpleLogger"
 ]

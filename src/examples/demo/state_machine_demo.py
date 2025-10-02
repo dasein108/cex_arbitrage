@@ -13,26 +13,22 @@ from typing import Optional
 # Add src to path for imports
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..'))
 
-from exchanges.structs import Symbol, AssetName
 from trading.state_machines import (
     state_machine_factory,
     StrategyType,
-    StrategyResult
+    StrategyResult,
+    SimpleSymbol,
+    SimpleLogger
 )
-from infrastructure.logging import get_logger
 
 
 async def demo_simple_arbitrage():
     """Demo simple arbitrage strategy execution."""
-    logger = get_logger("arbitrage_demo")
+    logger = SimpleLogger("arbitrage_demo")
     logger.info("Starting simple arbitrage demo")
     
     # Create trading symbol
-    symbol = Symbol(
-        base=AssetName("BTC"), 
-        quote=AssetName("USDT"), 
-        is_futures=False
-    )
+    symbol = SimpleSymbol("BTC", "USDT", is_futures=False)
     
     try:
         # Create arbitrage strategy
@@ -63,14 +59,10 @@ async def demo_simple_arbitrage():
 
 async def demo_market_making():
     """Demo market making strategy execution."""
-    logger = get_logger("market_making_demo")
+    logger = SimpleLogger("market_making_demo")
     logger.info("Starting market making demo")
     
-    symbol = Symbol(
-        base=AssetName("ETH"), 
-        quote=AssetName("USDT"), 
-        is_futures=False
-    )
+    symbol = SimpleSymbol("ETH", "USDT", is_futures=False)
     
     try:
         # Create market making strategy
@@ -95,20 +87,11 @@ async def demo_market_making():
 
 async def demo_spot_futures_hedging():
     """Demo spot/futures hedging strategy execution."""
-    logger = get_logger("hedging_demo")
+    logger = SimpleLogger("hedging_demo")
     logger.info("Starting spot/futures hedging demo")
     
-    spot_symbol = Symbol(
-        base=AssetName("BTC"), 
-        quote=AssetName("USDT"), 
-        is_futures=False
-    )
-    
-    futures_symbol = Symbol(
-        base=AssetName("BTC"), 
-        quote=AssetName("USDT"), 
-        is_futures=True
-    )
+    spot_symbol = SimpleSymbol("BTC", "USDT", is_futures=False)
+    futures_symbol = SimpleSymbol("BTC", "USDT", is_futures=True)
     
     try:
         # Create hedging strategy
@@ -135,20 +118,11 @@ async def demo_spot_futures_hedging():
 
 async def demo_futures_futures_hedging():
     """Demo futures/futures hedging strategy execution."""
-    logger = get_logger("futures_hedging_demo")
+    logger = SimpleLogger("futures_hedging_demo")
     logger.info("Starting futures/futures hedging demo")
     
-    symbol_a = Symbol(
-        base=AssetName("BTC"), 
-        quote=AssetName("USDT"), 
-        is_futures=True
-    )
-    
-    symbol_b = Symbol(
-        base=AssetName("BTC"), 
-        quote=AssetName("USDT"), 
-        is_futures=True
-    )
+    symbol_a = SimpleSymbol("BTC", "USDT", is_futures=True)
+    symbol_b = SimpleSymbol("BTC", "USDT", is_futures=True)
     
     try:
         # Create futures hedging strategy
@@ -176,7 +150,7 @@ async def demo_futures_futures_hedging():
 
 async def show_available_strategies():
     """Show all available strategies."""
-    logger = get_logger("strategies_demo")
+    logger = SimpleLogger("strategies_demo")
     
     available_strategies = state_machine_factory.get_available_strategies()
     
@@ -189,7 +163,7 @@ async def show_available_strategies():
 
 async def main():
     """Run all demo functions."""
-    logger = get_logger("state_machine_demo")
+    logger = SimpleLogger("state_machine_demo")
     
     logger.info("🚀 Starting trading state machines demo")
     
