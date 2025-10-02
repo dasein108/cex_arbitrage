@@ -64,7 +64,7 @@ class MexcPrivateSpotWebsocket(PrivateBaseWebsocket):
         channel_name = _PRIVATE_CHANNEL_MAPPING.get(channel, None)
 
         if channel_name is None:
-            raise ValueError(f"Unsupported private channel type: {channel}")
+            raise ValueError(f"Unsupported private channel type: {channel.name}")
 
         message = {
             "method": method,

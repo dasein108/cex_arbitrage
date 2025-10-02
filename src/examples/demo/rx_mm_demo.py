@@ -3,11 +3,9 @@
 import asyncio
 import sys
 import os
-from typing import Optional, List
-from dataclasses import dataclass, field
-import reactivex as rx
-from reactivex import operators as ops
-from reactivex.disposable import Disposable
+from typing import Optional
+from dataclasses import dataclass
+from enum import Enum
 
 from config.structs import ExchangeConfig
 from exchanges.interfaces.composite import BasePrivateComposite, BasePublicComposite
@@ -15,379 +13,299 @@ from exchanges.interfaces.composite import BasePrivateComposite, BasePublicCompo
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'src'))
 
 from config import get_exchange_config
-from exchanges.utils.exchange_utils import  is_order_filled
+from exchanges.utils.exchange_utils import is_order_filled
 from exchanges.structs import (
     Side, TimeInForce, AssetName, Symbol, Order,
     AssetBalance, BookTicker, SymbolInfo
 )
 from infrastructure.logging import get_logger
-from infrastructure.networking.websocket.structs import WebsocketChannelType
+from infrastructure.networking.websocket.structs import WebsocketChannelType, PublicWebsocketChannelType, \
+    PrivateWebsocketChannelType
 from exchanges.exchange_factory import get_composite_implementation
 
 
-async def execute_market_buy(
-    private_exchange: BasePrivateComposite,
+class MarketMakerState(Enum):
+    """States for the market maker state machine."""
+    IDLE = "idle"
+    BUYING = "buying"
+    PLACING_SELL = "placing_sell"
+    MONITORING_SELL = "monitoring_sell"
+    ADJUSTING_SELL = "adjusting_sell"
+    COMPLETED = "completed"
+    ERROR = "error"
+
+
+@dataclass
+class MarketMakerContext:
+    """Single source of truth for all market maker state."""
+    # Configuration
+    symbol: Symbol
+    symbol_info: SymbolInfo
+    quantity_usdt: float
+    private_exchange: BasePrivateComposite
+    public_exchange: BasePublicComposite
+    logger: any
+    
+    # State
+    current_state: MarketMakerState = MarketMakerState.IDLE
+    
+    # Orders
+    market_buy_order: Optional[Order] = None
+    limit_sell_order: Optional[Order] = None
+    
+    # Market data
+    current_ask_price: Optional[float] = None
+    
+    # Error tracking
+    error: Optional[Exception] = None
+    
+    # Performance tracking
+    adjustment_count: int = 0
+
+
+class MarketMakerStateMachine:
+    """
+    Simple state machine for market making cycle.
+    States: IDLE → BUYING → PLACING_SELL → MONITORING_SELL → [ADJUSTING_SELL] → COMPLETED
+    """
+    
+    def __init__(self, context: MarketMakerContext):
+        self.context = context
+        
+    async def run_cycle(self) -> tuple[Order, Order]:
+        """Execute complete market making cycle."""
+        print("🚀 Starting market making cycle...")
+        
+        try:
+            while self.context.current_state != MarketMakerState.COMPLETED:
+                self.context.logger.info(f"State: {self.context.current_state.value}")
+                
+                if self.context.current_state == MarketMakerState.IDLE:
+                    await self._handle_idle()
+                elif self.context.current_state == MarketMakerState.BUYING:
+                    await self._handle_buying()
+                elif self.context.current_state == MarketMakerState.PLACING_SELL:
+                    await self._handle_placing_sell()
+                elif self.context.current_state == MarketMakerState.MONITORING_SELL:
+                    await self._handle_monitoring_sell()
+                elif self.context.current_state == MarketMakerState.ADJUSTING_SELL:
+                    await self._handle_adjusting_sell()
+                elif self.context.current_state == MarketMakerState.ERROR:
+                    raise self.context.error or RuntimeError("Unknown error occurred")
+                
+                # Small delay to prevent busy loop
+                await asyncio.sleep(0.1)
+            
+            print("✅✅✅ Market making cycle completed successfully!")
+            return self.context.market_buy_order, self.context.limit_sell_order
+            
+        except Exception as e:
+            self.context.error = e
+            self.context.current_state = MarketMakerState.ERROR
+            self.context.logger.error("Market making cycle failed", error=str(e))
+            print(f"❌❌❌ Cycle failed: {e}")
+            raise
+    
+    async def _handle_idle(self):
+        """Get current market price and transition to buying."""
+        print("📊 Getting current market price...")
+        self.context.current_ask_price = await self._get_current_ask_price()
+        self.context.current_state = MarketMakerState.BUYING
+    
+    async def _handle_buying(self):
+        """Execute market buy order."""
+        print(f"🛒 Executing market buy at ask price {self.context.current_ask_price}...")
+        
+        try:
+            order = await self.context.private_exchange.place_market_order(
+                symbol=self.context.symbol,
+                side=Side.BUY,
+                quote_quantity=self.context.quantity_usdt,
+                ensure=True
+            )
+            
+            self.context.market_buy_order = order
+            print(f"📦 Market buy completed: {order}")
+            self.context.current_state = MarketMakerState.PLACING_SELL
+            
+        except Exception as e:
+            self.context.error = e
+            self.context.current_state = MarketMakerState.ERROR
+    
+    async def _handle_placing_sell(self):
+        """Place initial limit sell order."""
+        print(f"📈 Placing limit sell order for quantity: {self.context.market_buy_order.filled_quantity}")
+        
+        try:
+            # Get fresh price for sell order
+            current_ask = await self._get_current_ask_price()
+            sell_price = current_ask - self.context.symbol_info.tick
+            
+            order = await self.context.private_exchange.place_limit_order(
+                symbol=self.context.symbol,
+                side=Side.SELL,
+                quantity=self.context.market_buy_order.filled_quantity,
+                price=sell_price,
+                time_in_force=TimeInForce.GTC
+            )
+            
+            self.context.limit_sell_order = order
+            print(f"✅ Limit sell order placed: {order} at price {sell_price}")
+            self.context.current_state = MarketMakerState.MONITORING_SELL
+            
+        except Exception as e:
+            self.context.error = e
+            self.context.current_state = MarketMakerState.ERROR
+    
+    async def _handle_monitoring_sell(self):
+        """Monitor sell order and market conditions."""
+        try:
+            # Check if order is filled
+            order_status = await self._get_order_status(self.context.limit_sell_order)
+            
+            if is_order_filled(order_status):
+                self.context.limit_sell_order = order_status
+                print(f"💰 Limit sell order FILLED: {order_status}")
+                self.context.current_state = MarketMakerState.COMPLETED
+                return
+            
+            # Check if we need to adjust position
+            current_ask = await self._get_current_ask_price()
+            expected_sell_price = current_ask - self.context.symbol_info.tick
+            
+            # Only adjust if significantly out of position (more than 2 ticks)
+            price_difference = abs(self.context.limit_sell_order.price - expected_sell_price)
+            
+            if price_difference > self.context.symbol_info.tick * 2:
+                print(f"⚠️ Price moved significantly. Current ask: {current_ask}, Our price: {self.context.limit_sell_order.price}")
+                self.context.current_ask_price = current_ask
+                self.context.current_state = MarketMakerState.ADJUSTING_SELL
+            
+            # Wait before next check
+            await asyncio.sleep(1.0)
+            
+        except Exception as e:
+            self.context.error = e
+            self.context.current_state = MarketMakerState.ERROR
+    
+    async def _handle_adjusting_sell(self):
+        """Cancel current order and place new one at better price."""
+        try:
+            print(f"🔄 Adjusting sell order position (adjustment #{self.context.adjustment_count + 1})")
+            
+            # Cancel existing order
+            cancelled_order = await self.context.private_exchange.cancel_order(
+                self.context.limit_sell_order.symbol,
+                self.context.limit_sell_order.order_id
+            )
+            
+            # Check if filled during cancellation
+            if is_order_filled(cancelled_order):
+                self.context.limit_sell_order = cancelled_order
+                print(f"✅✅✅ Order filled during cancellation: {cancelled_order}")
+                self.context.current_state = MarketMakerState.COMPLETED
+                return
+            
+            # Place new order at current market price
+            new_sell_price = self.context.current_ask_price - self.context.symbol_info.tick
+            
+            new_order = await self.context.private_exchange.place_limit_order(
+                symbol=self.context.symbol,
+                side=Side.SELL,
+                quantity=self.context.limit_sell_order.quantity,
+                price=new_sell_price,
+                time_in_force=TimeInForce.GTC
+            )
+            
+            self.context.limit_sell_order = new_order
+            self.context.adjustment_count += 1
+            
+            print(f"✅ New limit sell order placed: {new_order} at price {new_sell_price}")
+            self.context.current_state = MarketMakerState.MONITORING_SELL
+            
+        except Exception as e:
+            self.context.error = e
+            self.context.current_state = MarketMakerState.ERROR
+    
+    async def _get_current_ask_price(self) -> float:
+        """Get current ask price from public exchange."""
+        book_ticker = await self.context.public_exchange.get_book_ticker(self.context.symbol)
+        return book_ticker.ask_price
+    
+    async def _get_order_status(self, order: Order) -> Order:
+        """Get current status of an order."""
+        return await self.context.private_exchange.get_order(order.symbol, order.order_id)
+
+
+async def create_market_maker_context(
+    exchange_config: ExchangeConfig, 
     symbol: Symbol,
     quantity_usdt: float,
-    current_ask_price: float,
     logger
-) -> Order:
-    """
-    Execute a single market buy order.
-    Simple async function - no reactive patterns needed for one-time operation.
+) -> MarketMakerContext:
+    """Create and initialize market maker context."""
     
-    Returns:
-        Executed order
-    """
-    try:
-        print(f"\n🛒 Executing LIVE market buy order at ask price {current_ask_price}...")
-        
-        order = await private_exchange.place_market_order(
-            symbol=symbol,
-            side=Side.BUY,
-            quote_quantity=quantity_usdt,
-            ensure=True
-        )
-        
-        print(f"   ✅ Market buy order placed: {order}")
-        return order
-        
-    except Exception as e:
-        logger.error("Failed to execute market buy", error=str(e))
-        print(f"   ❌ Market buy failed: {e}")
-        raise
-
-
-async def place_sell_order(
-    private_exchange: BasePrivateComposite,
-    symbol: Symbol,
-    symbol_info: SymbolInfo,
-    quantity: float,
-    ask_price: float,
-    logger
-) -> Order:
-    """Place initial limit sell order on top of the book."""
-    try:
-        sell_price = ask_price - symbol_info.tick
-        
-        order = await private_exchange.place_limit_order(
-            symbol=symbol,
-            side=Side.SELL,
-            quantity=quantity,
-            price=sell_price,
-            time_in_force=TimeInForce.GTC
-        )
-        
-        print(f"   ✅ Limit sell order placed: {order} at price {sell_price}")
-        return order
-        
-    except Exception as e:
-        logger.error("Failed to place limit sell", error=str(e))
-        print(f"   ❌ Limit sell placement failed: {e}")
-        raise
-
-
-async def cancel_and_replace_order(
-    private_exchange: BasePrivateComposite,
-    current_order: Order,
-    new_ask_price: float,
-    symbol_info: SymbolInfo,
-    reason: str,
-    logger
-) -> Order:
-    """Cancel current order and place new one at better price."""
-    try:
-        print(f"   ⚠️  {reason}, cancelling order {current_order.order_id}")
-        cancelled_order = await private_exchange.cancel_order(
-            current_order.symbol, 
-            current_order.order_id
-        )
-        
-        # Check if order was filled during cancellation
-        if is_order_filled(cancelled_order):
-            print(f"   ✅✅✅ Limit sell filled during cancel: {cancelled_order}")
-            return cancelled_order
-        
-        # Place new order at new price
-        await asyncio.sleep(0.1)
-        return await place_sell_order(
-            private_exchange=private_exchange,
-            symbol=current_order.symbol,
-            symbol_info=symbol_info,
-            quantity=current_order.quantity,
-            ask_price=new_ask_price,
-            logger=logger
-        )
-        
-    except Exception as e:
-        logger.error("Failed to cancel/replace order", error=str(e))
-        print(f"   ❌ Cancel/replace failed: {e}")
-        raise
-
-
-def create_sell_monitoring_stream(
-    market_buy_order: Order,
-    ask_price_stream: rx.Observable[BookTicker],
-    orders_stream: rx.Observable[Order],
-    private_exchange: BasePrivateComposite,
-    symbol: Symbol,
-    symbol_info: SymbolInfo,
-    logger
-) -> rx.Observable[Order]:
-    """
-    Monitor and manage limit sell order until filled.
-    Uses RxPY where it adds value: combining price updates with order status.
-    """
-    print(f"\n📈 Starting limit sell cycle for quantity: {market_buy_order.filled_quantity}")
-    
-    # Track current sell order state
-    current_sell_order: Optional[Order] = None
-    
-    def handle_price_and_order_update(combined_data):
-        """Process price changes and order updates."""
-        ask_price, order_update = combined_data
-        
-        async def _process_update():
-            nonlocal current_sell_order
-            
-            # Update order state if we received an update for our order
-            if order_update and current_sell_order and order_update.order_id == current_sell_order.order_id:
-                current_sell_order = order_update
-                if is_order_filled(order_update):
-                    print(f"   ✅✅✅ Limit sell order FILLED: {order_update}")
-                    return ("filled", order_update)
-            
-            # Place initial order if none exists
-            if not current_sell_order:
-                order = await place_sell_order(
-                    private_exchange, symbol, symbol_info,
-                    market_buy_order.filled_quantity, ask_price.ask_price, logger
-                )
-                current_sell_order = order
-                return ("placed", order)
-            
-            # Replace order if price moved above us
-            if current_sell_order.price > ask_price.ask_price:
-                order = await cancel_and_replace_order(
-                    private_exchange, current_sell_order, ask_price.ask_price,
-                    symbol_info, "Price moved above us", logger
-                )
-                current_sell_order = order
-                if is_order_filled(order):
-                    return ("filled", order)
-                return ("replaced", order)
-            
-            # Continue monitoring
-            return ("monitoring", current_sell_order)
-        
-        return rx.from_future(asyncio.ensure_future(_process_update()))
-    
-    # Combine price stream with order updates (start with None for initial price)
-    combined_stream = rx.combine_latest(
-        ask_price_stream,
-        orders_stream.pipe(ops.start_with(None))
-    )
-    
-    # Process until order is filled
-    return combined_stream.pipe(
-        ops.flat_map(handle_price_and_order_update),
-        ops.take_while(lambda result: result[0] != "filled", inclusive=True),
-        ops.filter(lambda result: result[0] == "filled"),
-        ops.map(lambda result: result[1])
-    )
-
-
-@dataclass
-class SubscriptionTracker:
-    """Track and cleanup ReactiveX subscriptions."""
-    subscriptions: List[Disposable] = field(default_factory=list)
-    
-    def add(self, subscription: Disposable) -> None:
-        """Add subscription for tracking."""
-        self.subscriptions.append(subscription)
-    
-    def dispose_all(self) -> None:
-        """Dispose all tracked subscriptions."""
-        for sub in self.subscriptions:
-            if sub and not sub.is_disposed:
-                sub.dispose()
-        self.subscriptions.clear()
-
-@dataclass
-class DemoStrategySetup:
-    symbol: Symbol
-    private_exchange: BasePrivateComposite
-    public_exchange: BasePublicComposite  # Add for cleanup
-    symbol_info: SymbolInfo
-    orders_stream: rx.Observable[Order]
-    balance_stream: rx.Observable[AssetBalance]
-    ask_price_stream: rx.Observable[BookTicker]
-    quantity_usdt: float = 3  # Default quantity for buys
-    subscription_tracker: SubscriptionTracker = field(default_factory=SubscriptionTracker)
-
-async def create_strategy_setup(exchange_config: ExchangeConfig, symbol: Symbol,
-                                quantity_usdt: float) -> DemoStrategySetup:
-    private_exchange: BasePrivateComposite = get_composite_implementation(exchange_config, is_private=True)
+    # Create exchange connections
+    private_exchange = get_composite_implementation(exchange_config, is_private=True)
     public_exchange = get_composite_implementation(exchange_config, is_private=False)
 
-    await public_exchange.initialize([symbol], [WebsocketChannelType.BOOK_TICKER])
-    await private_exchange.initialize(public_exchange.symbols_info, [WebsocketChannelType.ORDER,
-                                                                     WebsocketChannelType.BALANCE])
+    # Initialize exchanges (minimal setup - no WebSocket streams needed)
+    await public_exchange.initialize([symbol], [PublicWebsocketChannelType.BOOK_TICKER])  # No WebSocket channels needed
+    await private_exchange.initialize(public_exchange.symbols_info, [PrivateWebsocketChannelType.ORDER,
+                                                                     PrivateWebsocketChannelType.BALANCE])
 
-    await public_exchange.wait_until_connected()
-    await private_exchange.wait_until_connected()
-    await asyncio.sleep(1)
-
+    # Get symbol info
     symbol_info = public_exchange.symbols_info.get(symbol)
-
-    # Setup reactive streams
-    orders_stream = private_exchange.orders_stream.pipe(
-        ops.filter(lambda o: o is not None and o.symbol == symbol)
-    )
-    balance_stream = private_exchange.balances_stream.pipe(
-        ops.filter(lambda b: b is not None and b.asset in [symbol.base, symbol.quote])
-    )
-
-    # stream of top ask price changes for our symbol
-    ask_price_stream = public_exchange.book_tickers_stream.pipe(
-        ops.filter(lambda bt: bt.symbol == symbol),
-        ops.distinct_until_changed(lambda bt: bt.ask_price)
-    )
-    return DemoStrategySetup(
+    
+    return MarketMakerContext(
         symbol=symbol,
-        private_exchange=private_exchange,
-        public_exchange=public_exchange,  # Include for cleanup
         symbol_info=symbol_info,
-        orders_stream=orders_stream,
-        balance_stream=balance_stream,
-        ask_price_stream=ask_price_stream,
-        quantity_usdt=quantity_usdt
+        quantity_usdt=quantity_usdt,
+        private_exchange=private_exchange,
+        public_exchange=public_exchange,
+        logger=logger
     )
 
 
 async def run_market_making_cycle(
-    demo_setup: DemoStrategySetup,
+    exchange_config: ExchangeConfig,
+    symbol: Symbol,
+    quantity_usdt: float,
     logger
 ) -> tuple[Order, Order]:
     """
-    Execute a complete market making cycle: buy -> sell.
-    Simplified sequential logic with RxPY only for ongoing monitoring.
+    Execute a complete market making cycle using state machine.
+    Simple, straightforward implementation with clear state transitions.
     
     Returns:
         tuple of (market_buy_order, limit_sell_order)
     """
-    # Step 1: Get current ask price and execute market buy
-    current_ask_price = await get_current_ask_price(demo_setup.ask_price_stream)
+    # Create context and state machine
+    context = await create_market_maker_context(exchange_config, symbol, quantity_usdt, logger)
+    state_machine = MarketMakerStateMachine(context)
     
-    market_buy_order = await execute_market_buy(
-        private_exchange=demo_setup.private_exchange,
-        symbol=demo_setup.symbol,
-        quantity_usdt=demo_setup.quantity_usdt,
-        current_ask_price=current_ask_price,
-        logger=logger
-    )
-    
-    print(f"📦 Market buy completed: {market_buy_order}")
-    
-    # Step 2: Monitor sell order until filled using reactive patterns
-    # This is where RxPY adds value - ongoing monitoring of price + order state
-    sell_complete_event = asyncio.Event()
-    sell_error: Optional[Exception] = None
-    filled_sell_order: Optional[Order] = None
-    
-    def on_sell_filled(order: Order):
-        nonlocal filled_sell_order
-        print(f"💰 Limit sell completed: {order}")
-        filled_sell_order = order
-        sell_complete_event.set()
-    
-    def on_sell_error(error: Exception):
-        nonlocal sell_error
-        print(f"❌ Error in sell monitoring: {error}")
-        sell_error = error
-        sell_complete_event.set()
-    
-    # Start sell monitoring stream
-    sell_stream = create_sell_monitoring_stream(
-        market_buy_order=market_buy_order,
-        ask_price_stream=demo_setup.ask_price_stream,
-        orders_stream=demo_setup.orders_stream,
-        private_exchange=demo_setup.private_exchange,
-        symbol=demo_setup.symbol,
-        symbol_info=demo_setup.symbol_info,
-        logger=logger
-    )
-    
-    subscription = sell_stream.subscribe(
-        on_next=on_sell_filled,
-        on_error=on_sell_error
-    )
-    
-    demo_setup.subscription_tracker.add(subscription)
-    
-    try:
-        # Wait for sell order to complete
-        await sell_complete_event.wait()
-        
-        if sell_error:
-            raise sell_error
-        
-        if not filled_sell_order:
-            raise RuntimeError("Sell order monitoring completed without result")
-        
-        return market_buy_order, filled_sell_order
-    
-    finally:
-        if subscription and not subscription.is_disposed:
-            subscription.dispose()
+    # Run the cycle
+    return await state_machine.run_cycle()
 
 
-async def get_current_ask_price(ask_price_stream: rx.Observable[BookTicker]) -> float:
-    """Get the current ask price from the stream."""
-    price_future = asyncio.Future()
-    
-    def on_price(book_ticker: BookTicker):
-        if not price_future.done():
-            price_future.set_result(book_ticker.ask_price)
-    
-    def on_error(error):
-        if not price_future.done():
-            price_future.set_exception(error)
-    
-    subscription = ask_price_stream.pipe(ops.take(1)).subscribe(
-        on_next=on_price,
-        on_error=on_error
-    )
-    
-    try:
-        return await price_future
-    finally:
-        if subscription and not subscription.is_disposed:
-            subscription.dispose()
-
-
-async def cleanup_resources(demo_setup: Optional[DemoStrategySetup], logger) -> None:
+async def cleanup_resources(context: Optional[MarketMakerContext], logger) -> None:
     """Properly cleanup all resources to ensure program termination."""
-    if not demo_setup:
-        logger.info("No demo setup to cleanup")
+    if not context:
+        logger.info("No context to cleanup")
         return
         
     try:
         logger.info("Starting resource cleanup...")
         
-        # Dispose all ReactiveX subscriptions first
-        demo_setup.subscription_tracker.dispose_all()
-        logger.info("Disposed all ReactiveX subscriptions")
-        
         # Close exchange connections with timeout
         cleanup_tasks = []
         
-        if demo_setup.private_exchange:
-            cleanup_tasks.append(demo_setup.private_exchange.close())
+        if context.private_exchange:
+            cleanup_tasks.append(context.private_exchange.close())
             logger.info("Closing private exchange...")
         
-        if demo_setup.public_exchange:
-            cleanup_tasks.append(demo_setup.public_exchange.close())
+        if context.public_exchange:
+            cleanup_tasks.append(context.public_exchange.close())
             logger.info("Closing public exchange...")
         
         # Wait for cleanup with timeout
@@ -418,14 +336,11 @@ async def cleanup_resources(demo_setup: Optional[DemoStrategySetup], logger) -> 
 
 async def main(symbol: Symbol, exchange_config: ExchangeConfig, quantity_usdt: float):
     logger = get_logger("rx_mm_demo")
+    context = None
     
     try:
-        # Setup exchanges and streams
-        demo_setup = await create_strategy_setup(exchange_config, symbol, quantity_usdt)
-        
-        # Run complete market making cycle
-        print("🚀 Starting market making cycle...")
-        buy_order, sell_order = await run_market_making_cycle(demo_setup, logger)
+        # Run complete market making cycle with state machine
+        buy_order, sell_order = await run_market_making_cycle(exchange_config, symbol, quantity_usdt, logger)
         
         print(f"\n✅✅✅ Cycle completed successfully!")
         print(f"  Buy order: {buy_order}")
@@ -438,7 +353,7 @@ async def main(symbol: Symbol, exchange_config: ExchangeConfig, quantity_usdt: f
     
     finally:
         print("\n🏁 Finalizing program...")
-        await cleanup_resources(demo_setup if 'demo_setup' in locals() else None, logger)
+        await cleanup_resources(context, logger)
 
 
 if __name__ == "__main__":

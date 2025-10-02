@@ -172,7 +172,12 @@ class BasePrivateComposite(BaseCompositeExchange[PrivateRestType, PrivateWebsock
         Raises:
             ExchangeError: If cancellation fails
         """
-        return await self._rest.cancel_order(symbol, order_id)
+
+        try:
+            return await self._rest.cancel_order(symbol, order_id)
+        except Exception as e:
+            self.logger.error("Order cancellation failed", order_id=order_id, error=str(e))
+            return await self.get_order(symbol, order_id)
 
     async def get_order(self, symbol: Symbol, order_id: OrderId) -> Order:
         """
