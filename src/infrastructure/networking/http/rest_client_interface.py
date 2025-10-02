@@ -329,9 +329,9 @@ class BaseRestClientInterface(ABC):
                              tags={"endpoint": endpoint, "method": method.value, "status": "success"})
             
             # HFT compliance check
-            if duration_ms > 50.0:
-                self.logger.warning(f"HFT latency violation: {duration_ms:.2f}ms > 50ms for {method.value} {endpoint}")
-            
+            # if duration_ms > 50.0:
+            #     self.logger.warning(f"HFT latency violation: {duration_ms:.2f}ms > 50ms for {method.value} {endpoint}")
+            #
             return result
             
         except Exception as e:

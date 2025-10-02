@@ -15,7 +15,7 @@ logging:
       enabled: true                    # Always show logs in console
       color: true                      # Colored output for better readability
       include_context: true            # Show context information
-      min_level: DEBUG                 # Minimum level for console output
+      min_level: INFO                 # Minimum level for console output
 
     # File output settings
     file:

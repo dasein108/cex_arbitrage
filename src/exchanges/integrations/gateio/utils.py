@@ -13,8 +13,10 @@ from enum import Enum
 from exchanges.structs.common import (
     Side, OrderStatus, OrderType, TimeInForce, AssetName, AssetBalance, Order
 )
+from exchanges.structs.enums import WithdrawalStatus
 from exchanges.structs.types import OrderId
 from exchanges.integrations.gateio.services.spot_symbol_mapper import GateioSpotSymbol
+from exchanges.integrations.gateio.services.futures_symbol_mapper import GateioFuturesSymbol
 
 
 # Gate.io -> Unified mappings (these could be module-level constants)
@@ -45,6 +47,22 @@ _GATEIO_TIF_MAP = {
     'gtc': TimeInForce.GTC,
     'ioc': TimeInForce.IOC,
     'fok': TimeInForce.FOK,
+}
+
+_GATEIO_WITHDRAW_STATUS_MAP = {
+    "DONE": WithdrawalStatus.COMPLETED,
+    "CANCEL": WithdrawalStatus.CANCELED,
+    "REQUEST": WithdrawalStatus.PENDING,
+    "PEND": WithdrawalStatus.PENDING,
+    "VERIFY": WithdrawalStatus.PENDING,
+    "MANUAL": WithdrawalStatus.PENDING,
+    "REVIEW": WithdrawalStatus.PENDING,
+    "EXTPEND": WithdrawalStatus.PROCESSING,
+    "PROCES": WithdrawalStatus.PROCESSING,
+    "FAIL": WithdrawalStatus.FAILED,
+    "INVALID": WithdrawalStatus.FAILED,
+    "DMOVE": WithdrawalStatus.PENDING,
+    "BCODE": WithdrawalStatus.PROCESSING,
 }
 
 # Reverse mappings for unified -> Gate.io
@@ -126,11 +144,30 @@ def from_subscription_action(action) -> str:
         return "unsubscribe"
     return "subscribe"
 
+def detect_side_from_size(size: int) -> Side:
+    """Determine side from Gate.io futures size."""
+    return Side.BUY if size > 0 else Side.SELL
 
 
-# TODO: implement for futures, refactor futures_rest, geti rid of fallabacks
+# TODO: implement for futures, refactor futures_rest, get rid of fallabacks
 def rest_futures_to_order(gateio_order_data) -> Order:
-    raise NotImplementedError("Use the defined function below")
+    """Transform Gate.io REST futures order response to unified Order struct."""
+
+    symbol = GateioFuturesSymbol.to_symbol(gateio_order_data['contract'])
+    #Time in ms
+    timestamp = int(gateio_order_data['create_time']*1000)
+
+    return Order(
+        symbol=symbol,
+        side=detect_side_from_size(gateio_order_data['size']),
+        quantity = abs(gateio_order_data['size']),
+        remaining_quantity=float(gateio_order_data.get('left', '0')),
+        price=float(gateio_order_data.get('price', '0')),
+        order_id=OrderId(str(gateio_order_data['id'])),
+        status=to_order_status(gateio_order_data['status']),
+        timestamp=timestamp       
+
+    )
 
 
 def rest_spot_to_order(gateio_order_data) -> Order:
@@ -155,7 +192,9 @@ def rest_spot_to_order(gateio_order_data) -> Order:
         fee=fee
     )
 
-
+def to_withdrawal_status(gateio_status: str) -> WithdrawalStatus:
+    """Convert GATEIO withdrawal status to unified WithdrawalStatus."""
+    return _GATEIO_WITHDRAW_STATUS_MAP.get(gateio_status.upper(), WithdrawalStatus.UNKNOWN)
 
 def reverse_lookup_order_type(gateio_type_str: str) -> OrderType:
     """Reverse lookup for Gate.io order type strings to unified OrderType."""
