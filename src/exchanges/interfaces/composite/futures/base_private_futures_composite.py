@@ -61,10 +61,10 @@ class CompositePrivateFuturesExchange(BasePrivateComposite):
 
     # Key futures extensions - WebSocket handlers
     
-    async def initialize(self, symbols_info: SymbolsInfo) -> None:
+    async def initialize(self, symbols_info: SymbolsInfo, channels: List[PrivateWebsocketType]=None) -> None:
         """Initialize futures exchange with symbols and futures-specific data."""
         # Initialize base private functionality
-        await super().initialize(symbols_info)
+        await super().initialize(symbols_info, channels)
 
         try:
             # Load futures-specific private data

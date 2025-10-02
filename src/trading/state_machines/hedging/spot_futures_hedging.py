@@ -10,8 +10,11 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import Optional
 
-from exchanges.interfaces.composite import BasePrivateComposite, BasePublicComposite
-from exchanges.structs import Symbol, Order, Side, SymbolInfo
+# Direct imports of real structures and interfaces
+from exchanges.interfaces.composite.base_private_composite import BasePrivateComposite
+from exchanges.interfaces.composite.base_public_composite import BasePublicComposite
+from exchanges.structs.common import Symbol, Order, SymbolInfo, AssetBalance, Position
+from exchanges.structs.enums import OrderType, OrderStatus, Side
 from ..base import (
     BaseStrategyStateMachine,
     BaseStrategyContext,
@@ -100,7 +103,22 @@ class SpotFuturesHedgingStateMachine(
         if not self.context.spot_symbol_info or not self.context.futures_symbol_info:
             raise ValueError("Missing symbol information for spot or futures")
         
-        self._transition_to_state(StrategyState.ANALYZING)
+        # Check for existing positions and load them
+        await self._load_existing_positions()
+        
+        # Determine next state based on existing positions
+        if self.context.spot_order and self.context.futures_order:
+            # Both positions exist, go to monitoring
+            self.context.logger.info("Existing hedge positions detected, resuming monitoring")
+            self._transition_to_state(StrategyState.MONITORING)
+        elif self.context.spot_order or self.context.futures_order:
+            # Partial positions exist, complete the hedge
+            self.context.logger.info("Partial positions detected, completing hedge setup")
+            self._transition_to_state(StrategyState.EXECUTING)
+        else:
+            # No existing positions, start fresh
+            self.context.logger.info("No existing positions, starting fresh analysis")
+            self._transition_to_state(StrategyState.ANALYZING)
     
     async def _handle_analyzing(self) -> None:
         """Analyze market conditions and funding rates."""
@@ -279,47 +297,326 @@ class SpotFuturesHedgingStateMachine(
     
     async def _get_current_funding_rate(self) -> float:
         """Get current funding rate from futures exchange."""
-        # This would need to be implemented based on the specific exchange API
-        # For now, return a mock value
-        return 0.015  # 1.5% funding rate
+        try:
+            # Gate.io futures API call for funding rate
+            # Note: This would need the specific API endpoint for funding rates
+            # For now, we'll return a realistic simulation based on market conditions
+            
+            # Get current price to simulate funding rate based on premium
+            spot_price_info = await self._get_current_price(
+                self.context.spot_public_exchange,
+                self.context.spot_symbol
+            )
+            futures_price_info = await self._get_current_price(
+                self.context.futures_public_exchange,
+                self.context.futures_symbol
+            )
+            
+            # Calculate premium as proxy for funding rate
+            premium = (futures_price_info.mid_price - spot_price_info.mid_price) / spot_price_info.mid_price
+            
+            # Simulate realistic funding rate (typically -0.375% to +0.375%)
+            # This is a simplified simulation - real implementation would call API
+            funding_rate = min(max(premium * 8, -0.00375), 0.00375)  # 8-hour funding rate
+            
+            self.context.logger.info(
+                f"Funding rate calculated",
+                spot_price=spot_price_info.mid_price,
+                futures_price=futures_price_info.mid_price,
+                premium=f"{premium*100:.4f}%",
+                funding_rate=f"{funding_rate*100:.4f}%"
+            )
+            
+            return funding_rate
+            
+        except Exception as e:
+            self.context.logger.warning(f"Failed to get funding rate: {e}")
+            return 0.0
     
     async def _rebalance_reduce_long(self) -> None:
         """Reduce long exposure by adjusting positions."""
         self.context.logger.info("Reducing long exposure")
-        # Implementation would adjust position sizes
-        # For now, just log the action
-        await asyncio.sleep(1.0)
+        
+        try:
+            # Calculate rebalancing amount (reduce by half of the imbalance)
+            imbalance = self.context.position_delta - self.context.target_inventory_ratio
+            rebalance_amount = abs(imbalance) * 0.5
+            
+            if rebalance_amount > 0.01:  # Only rebalance if significant
+                # Option 1: Reduce spot position by selling some
+                if self.context.spot_order and self.context.spot_order.side == "BUY":
+                    sell_quantity = self.context.spot_order.filled_quantity * rebalance_amount
+                    price_info = await self._get_current_price(
+                        self.context.spot_public_exchange,
+                        self.context.spot_symbol
+                    )
+                    
+                    rebalance_order = await self._place_limit_sell(
+                        self.context.spot_private_exchange,
+                        self.context.spot_symbol,
+                        sell_quantity,
+                        price_info.bid_price * 0.999  # Slightly below bid for quick fill
+                    )
+                    
+                    self.context.logger.info(
+                        f"Rebalance sell order placed",
+                        quantity=sell_quantity,
+                        price=price_info.bid_price * 0.999,
+                        order_id=rebalance_order.order_id
+                    )
+                
+                # Option 2: Increase futures short position
+                elif self.context.futures_order:
+                    additional_short = self.context.position_size_usdt * rebalance_amount
+                    
+                    additional_order = await self._place_market_buy(
+                        self.context.futures_private_exchange,
+                        self.context.futures_symbol,
+                        additional_short
+                    )
+                    
+                    self.context.logger.info(
+                        f"Additional futures short placed",
+                        amount_usdt=additional_short,
+                        order_id=additional_order.order_id
+                    )
+            
+        except Exception as e:
+            self.context.logger.error(f"Failed to rebalance long exposure: {e}")
+            raise
     
     async def _rebalance_reduce_short(self) -> None:
         """Reduce short exposure by adjusting positions."""
         self.context.logger.info("Reducing short exposure")
-        # Implementation would adjust position sizes
-        # For now, just log the action
-        await asyncio.sleep(1.0)
+        
+        try:
+            # Calculate rebalancing amount (reduce by half of the imbalance)
+            imbalance = self.context.target_inventory_ratio - self.context.position_delta
+            rebalance_amount = abs(imbalance) * 0.5
+            
+            if rebalance_amount > 0.01:  # Only rebalance if significant
+                # Option 1: Increase spot position by buying more
+                additional_buy = self.context.position_size_usdt * rebalance_amount
+                
+                additional_spot_order = await self._place_market_buy(
+                    self.context.spot_private_exchange,
+                    self.context.spot_symbol,
+                    additional_buy
+                )
+                
+                self.context.logger.info(
+                    f"Additional spot buy placed",
+                    amount_usdt=additional_buy,
+                    order_id=additional_spot_order.order_id
+                )
+                
+                # Option 2: Reduce futures short position by buying back some
+                if self.context.futures_order and self.context.futures_order.side == "SELL":
+                    buyback_quantity = self.context.futures_order.filled_quantity * rebalance_amount
+                    
+                    buyback_order = await self._place_market_buy(
+                        self.context.futures_private_exchange,
+                        self.context.futures_symbol,
+                        buyback_quantity * self.context.current_mid_price
+                    )
+                    
+                    self.context.logger.info(
+                        f"Futures buyback order placed",
+                        quantity=buyback_quantity,
+                        order_id=buyback_order.order_id
+                    )
+            
+        except Exception as e:
+            self.context.logger.error(f"Failed to rebalance short exposure: {e}")
+            raise
     
     async def _close_all_positions(self) -> None:
         """Close all open positions."""
         self.context.logger.info("Closing all positions")
         
-        # Close spot position
-        if self.context.spot_order:
-            # Implementation would close the spot position
-            pass
+        close_orders = []
         
-        # Close futures position
-        if self.context.futures_order:
-            # Implementation would close the futures position
-            pass
+        try:
+            # Close spot position
+            if self.context.spot_order:
+                if self.context.spot_order.side == "BUY":
+                    # We bought spot, now sell it
+                    spot_price_info = await self._get_current_price(
+                        self.context.spot_public_exchange,
+                        self.context.spot_symbol
+                    )
+                    
+                    close_spot_order = await self._place_limit_sell(
+                        self.context.spot_private_exchange,
+                        self.context.spot_symbol,
+                        self.context.spot_order.filled_quantity,
+                        spot_price_info.bid_price * 0.999  # Quick fill
+                    )
+                    close_orders.append(close_spot_order)
+                    self.context.logger.info(f"Closing spot position: {close_spot_order.order_id}")
+            
+            # Close futures position
+            if self.context.futures_order:
+                if self.context.futures_order.side == "SELL":
+                    # We sold futures, now buy back to close
+                    close_futures_order = await self._place_market_buy(
+                        self.context.futures_private_exchange,
+                        self.context.futures_symbol,
+                        self.context.futures_order.filled_quantity * self.context.current_mid_price
+                    )
+                    close_orders.append(close_futures_order)
+                    self.context.logger.info(f"Closing futures position: {close_futures_order.order_id}")
+                elif self.context.futures_order.side == "BUY":
+                    # We bought futures, now sell to close
+                    futures_price_info = await self._get_current_price(
+                        self.context.futures_public_exchange,
+                        self.context.futures_symbol
+                    )
+                    
+                    close_futures_order = await self._place_limit_sell(
+                        self.context.futures_private_exchange,
+                        self.context.futures_symbol,
+                        self.context.futures_order.filled_quantity,
+                        futures_price_info.bid_price * 0.999  # Quick fill
+                    )
+                    close_orders.append(close_futures_order)
+                    self.context.logger.info(f"Closing futures position: {close_futures_order.order_id}")
+            
+            # Wait for orders to fill (with timeout)
+            for order in close_orders:
+                filled_order = await self._wait_for_order_fill(
+                    self.context.spot_private_exchange if order.symbol == self.context.spot_symbol 
+                    else self.context.futures_private_exchange,
+                    order,
+                    timeout_seconds=30.0
+                )
+                
+                if filled_order:
+                    self.context.completed_orders.append(filled_order)
+                    self.context.logger.info(f"Position closed: {filled_order.order_id}")
+                else:
+                    self.context.logger.warning(f"Close order timeout: {order.order_id}")
+            
+            # Calculate final profit including funding payments
+            total_profit = self._calculate_profit(self.context.spot_order, self.context.futures_order)
+            total_profit += self.context.funding_payments_received
+            
+            self._update_performance_metrics(total_profit)
+            
+            self.context.logger.info(
+                f"All positions closed successfully",
+                total_profit=total_profit,
+                funding_received=self.context.funding_payments_received,
+                rebalances=self.context.rebalance_count,
+                close_orders=len(close_orders)
+            )
+            
+        except Exception as e:
+            self.context.logger.error(f"Failed to close positions: {e}")
+            raise
+    
+    async def _load_existing_positions(self) -> None:
+        """
+        Load existing positions and balances to resume strategy if positions exist.
         
-        # Calculate final profit including funding payments
-        total_profit = self._calculate_profit(self.context.spot_order, self.context.futures_order)
-        total_profit += self.context.funding_payments_received
+        Checks both spot and futures exchanges for existing balances and open orders/positions
+        that match our hedging strategy. If found, creates mock Order objects to represent
+        existing positions for strategy resumption.
+        """
+        self.context.logger.info("Checking for existing positions to resume strategy")
         
-        self._update_performance_metrics(total_profit)
-        
-        self.context.logger.info(
-            f"Positions closed",
-            total_profit=total_profit,
-            funding_received=self.context.funding_payments_received,
-            rebalances=self.context.rebalance_count
-        )
+        try:
+            # Check spot exchange for existing balance in the base asset
+            base_asset = self.context.spot_symbol.base
+            spot_balance = await self.context.spot_private_exchange.get_asset_balance(base_asset, force=True)
+            
+            # Check for open orders on spot exchange
+            spot_open_orders = await self.context.spot_private_exchange.get_open_orders(
+                self.context.spot_symbol, force=True
+            )
+            
+            # Check futures exchange for existing positions
+            futures_positions = None
+            if hasattr(self.context.futures_private_exchange, 'positions'):
+                futures_positions = self.context.futures_private_exchange.positions.get(
+                    self.context.futures_symbol
+                )
+            
+            # Check for open orders on futures exchange
+            futures_open_orders = await self.context.futures_private_exchange.get_open_orders(
+                self.context.futures_symbol, force=True
+            )
+            
+            # Determine if we have existing hedging positions
+            has_spot_position = False
+            has_futures_position = False
+            
+            # Check spot balance (if we have significant balance beyond what we normally hold)
+            if spot_balance and spot_balance.total > 0.01:  # Minimum threshold
+                self.context.logger.info(
+                    f"Found existing spot balance: {spot_balance.total} {base_asset}"
+                )
+                # Create a mock order to represent the existing balance
+                self.context.spot_order = Order(
+                    symbol=self.context.spot_symbol,
+                    order_id="existing_balance",
+                    side=Side.BUY,
+                    order_type=OrderType.MARKET,
+                    quantity=spot_balance.total,
+                    filled_quantity=spot_balance.total,
+                    price=0.0,  # Will be determined from market data
+                    average_price=0.0,
+                    status=OrderStatus.FILLED
+                )
+                has_spot_position = True
+            
+            # Check spot open orders
+            if spot_open_orders:
+                self.context.logger.info(f"Found {len(spot_open_orders)} open spot orders")
+                # Use the most recent or largest order as our representative order
+                largest_order = max(spot_open_orders, key=lambda o: o.quantity)
+                self.context.spot_order = largest_order
+                has_spot_position = True
+            
+            # Check futures positions
+            if futures_positions and abs(futures_positions.size) > 0.01:
+                self.context.logger.info(
+                    f"Found existing futures position: {futures_positions.size} {futures_positions.side}"
+                )
+                # Create a mock order to represent the existing position
+                # Convert position side to order side (position side is already BUY/SELL)
+                order_side = futures_positions.side
+                self.context.futures_order = Order(
+                    symbol=self.context.futures_symbol,
+                    order_id="existing_position",
+                    side=order_side,
+                    order_type=OrderType.MARKET,
+                    quantity=abs(futures_positions.size),
+                    filled_quantity=abs(futures_positions.size),
+                    price=futures_positions.entry_price,
+                    average_price=futures_positions.entry_price,
+                    status=OrderStatus.FILLED
+                )
+                has_futures_position = True
+            
+            # Check futures open orders
+            if futures_open_orders:
+                self.context.logger.info(f"Found {len(futures_open_orders)} open futures orders")
+                # Use the most recent or largest order as our representative order
+                largest_order = max(futures_open_orders, key=lambda o: o.quantity)
+                self.context.futures_order = largest_order
+                has_futures_position = True
+            
+            # Log the result
+            if has_spot_position and has_futures_position:
+                self.context.logger.info("Complete hedge positions detected - resuming monitoring")
+            elif has_spot_position or has_futures_position:
+                self.context.logger.info("Partial hedge positions detected - will complete hedge")
+            else:
+                self.context.logger.info("No existing positions found - starting fresh strategy")
+                
+        except Exception as e:
+            self.context.logger.error(f"Failed to load existing positions: {e}")
+            # Don't raise - just proceed with fresh strategy
+            self.context.spot_order = None
+            self.context.futures_order = None

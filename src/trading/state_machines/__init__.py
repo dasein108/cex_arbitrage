@@ -39,20 +39,7 @@ from .base import (
     RiskManagementMixin,
     StateMachineFactory,
     StrategyType,
-    state_machine_factory,
-    # Protocols and simple implementations
-    SymbolProtocol,
-    OrderProtocol,
-    BookTickerProtocol,
-    SymbolInfoProtocol,
-    PrivateExchangeProtocol,
-    PublicExchangeProtocol,
-    LoggerProtocol,
-    SimpleSymbol,
-    SimpleOrder,
-    SimpleBookTicker,
-    SimpleSymbolInfo,
-    SimpleLogger
+    state_machine_factory
 )
 
 # Strategy implementations
@@ -131,22 +118,6 @@ __all__ = [
     "StateMachineFactory",
     "StrategyType",
     "state_machine_factory",
-    
-    # Protocols
-    "SymbolProtocol",
-    "OrderProtocol",
-    "BookTickerProtocol",
-    "SymbolInfoProtocol",
-    "PrivateExchangeProtocol",
-    "PublicExchangeProtocol",
-    "LoggerProtocol",
-    
-    # Simple implementations
-    "SimpleSymbol",
-    "SimpleOrder",
-    "SimpleBookTicker",
-    "SimpleSymbolInfo",
-    "SimpleLogger",
     
     # Hedging strategies
     "SpotFuturesHedgingStateMachine",

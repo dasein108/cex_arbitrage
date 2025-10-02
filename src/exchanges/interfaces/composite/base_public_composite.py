@@ -60,6 +60,7 @@ from exchanges.interfaces.composite.types import PublicRestType, PublicWebsocket
 from infrastructure.logging import LoggingTimer, HFTLoggerInterface
 from exchanges.interfaces.common.binding import BoundHandlerInterface
 from infrastructure.networking.websocket.structs import PublicWebsocketChannelType, WebsocketChannelType
+
 class BasePublicComposite(BaseCompositeExchange[PublicRestType, PublicWebsocketType],
                           BoundHandlerInterface[PublicWebsocketChannelType]):
     """

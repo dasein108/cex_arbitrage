@@ -13,6 +13,7 @@ from decimal import Decimal
 from exchanges.structs.common import Symbol
 from exchanges.interfaces.composite.base_public_composite import BasePublicComposite
 from infrastructure.logging import HFTLoggerInterface
+from infrastructure.networking.websocket.structs import PublicWebsocketChannelType
 
 
 class CompositePublicFuturesExchange(BasePublicComposite):
@@ -41,15 +42,16 @@ class CompositePublicFuturesExchange(BasePublicComposite):
         self._tag = f'{config.name}_public_futures'
 
 
-    async def initialize(self, symbols: List[Symbol] = None) -> None:
+    async def initialize(self, symbols: List[Symbol] = None, channels: List[PublicWebsocketChannelType]=None) -> None:
         """
         Initialize futures exchange with symbols and futures-specific data.
         
         Args:
             symbols: Optional list of symbols to track
+            channels: Optional list of WebSocket channels to subscribe to
         """
         # Initialize composite public functionality
-        await super().initialize(symbols)
+        await super().initialize(symbols, channels)
 
         if symbols:
             try:

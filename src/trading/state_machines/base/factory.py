@@ -8,29 +8,12 @@ state machines with proper configuration and dependencies.
 from typing import Dict, Type, Any, Optional, TYPE_CHECKING
 from enum import Enum
 
-# Use protocols to avoid heavy exchange dependencies
-from .protocols import (
-    SymbolProtocol, 
-    PrivateExchangeProtocol,
-    PublicExchangeProtocol,
-    SimpleLogger
-)
+# Direct imports of real interfaces
+from exchanges.interfaces.composite.base_private_composite import BasePrivateComposite
+from exchanges.interfaces.composite.base_public_composite import BasePublicComposite
+from exchanges.structs.common import Symbol
+from infrastructure.logging import get_logger, HFTLoggerInterface
 from .base_state_machine import BaseStrategyStateMachine, BaseStrategyContext
-
-# Only import for type checking, not at runtime
-if TYPE_CHECKING:
-    from exchanges.interfaces.composite import BasePrivateComposite, BasePublicComposite
-    from exchanges.structs import Symbol
-    from infrastructure.logging import get_logger
-else:
-    # Runtime fallbacks use protocols
-    BasePrivateComposite = PrivateExchangeProtocol
-    BasePublicComposite = PublicExchangeProtocol
-    Symbol = SymbolProtocol
-    
-    # Simple logger factory for standalone use
-    def get_logger(name: str, **kwargs):
-        return SimpleLogger(name)
 
 
 class StrategyType(Enum):
@@ -61,9 +44,9 @@ class StateMachineFactory:
     def create_strategy(
         self,
         strategy_type: StrategyType,
-        symbol: SymbolProtocol,
-        private_exchange: Optional[PrivateExchangeProtocol] = None,
-        public_exchange: Optional[PublicExchangeProtocol] = None,
+        symbol: Symbol,
+        private_exchange: Optional[BasePrivateComposite] = None,
+        public_exchange: Optional[BasePublicComposite] = None,
         **kwargs
     ) -> BaseStrategyStateMachine:
         """

@@ -10,37 +10,12 @@ import asyncio
 import time
 from typing import Optional, Dict, Any, TYPE_CHECKING
 
-# Use protocols to avoid heavy exchange dependencies
-from .protocols import (
-    SymbolProtocol, 
-    OrderProtocol, 
-    BookTickerProtocol,
-    PrivateExchangeProtocol,
-    PublicExchangeProtocol
-)
-
-# Only import for type checking, not at runtime
-if TYPE_CHECKING:
-    from exchanges.interfaces.composite import BasePrivateComposite, BasePublicComposite
-    from exchanges.structs import Symbol, Order, Side, BookTicker
-    from exchanges.utils.exchange_utils import is_order_filled
-else:
-    # Runtime fallbacks use protocols
-    BasePrivateComposite = PrivateExchangeProtocol
-    BasePublicComposite = PublicExchangeProtocol
-    Symbol = SymbolProtocol
-    Order = OrderProtocol
-    BookTicker = BookTickerProtocol
-    
-    # Mock is_order_filled for standalone use
-    def is_order_filled(order):
-        """Simple mock implementation for standalone testing."""
-        return hasattr(order, 'filled_quantity') and order.filled_quantity > 0
-    
-    # Mock Side enum for standalone use
-    class Side:
-        BUY = "BUY"
-        SELL = "SELL"
+# Direct imports of real interfaces
+from exchanges.interfaces.composite.base_private_composite import BasePrivateComposite
+from exchanges.interfaces.composite.base_public_composite import BasePublicComposite
+from exchanges.structs.common import Symbol, Order, BookTicker
+from exchanges.structs.enums import Side
+from exchanges.utils.exchange_utils import is_order_filled
 
 
 class StateTransitionMixin:
