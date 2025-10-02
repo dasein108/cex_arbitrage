@@ -61,6 +61,9 @@ class BaseExchangeRateLimit(ABC):
         self._global_semaphore = asyncio.Semaphore(self.global_limit)
         self._global_last_request = 0.0
         self._global_min_delay = self.get_global_min_delay()
+        
+        # Cleanup tracking
+        self._is_shutdown = False
 
     @property
     @abstractmethod
@@ -118,6 +121,10 @@ class BaseExchangeRateLimit(ABC):
 
     async def acquire_permit(self, endpoint: str, request_weight: int = 1) -> bool:
         """Acquire rate limit permit for endpoint."""
+        # Don't allow new permits during shutdown
+        if self._is_shutdown:
+            raise RuntimeError(f"{self.exchange_name} rate limiter is shutdown")
+            
         # Get rate limit context
         context = self.get_rate_limit_context(endpoint)
 
@@ -137,6 +144,7 @@ class BaseExchangeRateLimit(ABC):
             # Release global semaphore on error
             self._global_semaphore.release()
             raise
+
 
     async def _apply_global_rate_limiting(self):
         """Apply global rate limiting delay."""
@@ -200,3 +208,51 @@ class BaseExchangeRateLimit(ABC):
             }
 
         return stats
+
+    async def shutdown(self, timeout: float = 2.0) -> bool:
+        """
+        Shutdown rate limiter and cleanup resources.
+        
+        Args:
+            timeout: Maximum time to wait for cleanup
+            
+        Returns:
+            bool: True if cleanup completed within timeout
+        """
+        self._is_shutdown = True
+        
+        # Force release all semaphores to unblock any waiters
+        await self._force_release_semaphores()
+        
+        self.logger.debug(f"{self.exchange_name} rate limiter shutdown completed")
+        return True
+
+    async def _force_release_semaphores(self) -> None:
+        """Force release all acquired semaphores to prevent blocking."""
+        try:
+            # Release endpoint semaphores
+            for endpoint, semaphore in self._semaphores.items():
+                initial_value = getattr(semaphore, '_initial_value', semaphore._value)
+                while semaphore._value < initial_value:
+                    try:
+                        semaphore.release()
+                    except ValueError:
+                        # Already at maximum capacity
+                        break
+            
+            # Release global semaphore  
+            global_initial = getattr(self._global_semaphore, '_initial_value', self.global_limit)
+            while self._global_semaphore._value < global_initial:
+                try:
+                    self._global_semaphore.release()
+                except ValueError:
+                    # Already at maximum capacity
+                    break
+                    
+        except Exception as e:
+            self.logger.error(f"Error during semaphore cleanup: {e}")
+
+    @property
+    def is_shutdown(self) -> bool:
+        """Check if rate limiter is shutdown."""
+        return self._is_shutdown

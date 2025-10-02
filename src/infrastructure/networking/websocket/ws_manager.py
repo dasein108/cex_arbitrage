@@ -30,6 +30,14 @@ import msgspec
 # HFT Logger Integration
 from infrastructure.logging import get_logger, LoggingTimer
 
+# Centralized task utilities
+from utils.task_utils import (
+    TaskManager, 
+    cancel_tasks_with_timeout, 
+    safe_close_connection,
+    drain_message_queue
+)
+
 class WebSocketManager:
     """
     Dual-path WebSocket manager supporting both legacy and new architectures.
@@ -65,11 +73,9 @@ class WebSocketManager:
         self._websocket: Optional[WebSocketClientProtocol] = None
         self.connection_state = ConnectionState.DISCONNECTED
         
-        # Task management
-        self._connection_task: Optional[asyncio.Task] = None
-        self._reader_task: Optional[asyncio.Task] = None
-        self._processing_task: Optional[asyncio.Task] = None
-
+        # Centralized task management
+        self._task_manager = TaskManager("ws_manager")
+        
         # Control flags
         self._should_reconnect = True
 
@@ -93,10 +99,10 @@ class WebSocketManager:
             with LoggingTimer(self.logger, "ws_manager_initialization") as timer:
                 # Start connection loop (handles reconnection with configured policies)
                 self._should_reconnect = True
-                self._connection_task = asyncio.create_task(self._connection_loop())
+                self._task_manager.create_task(self._connection_loop(), "connection_loop")
                 
                 # Start message processing
-                self._processing_task = asyncio.create_task(self._process_messages())
+                self._task_manager.create_task(self._process_messages(), "message_processing")
 
 
             self.logger.info("WebSocket manager initialized successfully",
@@ -137,69 +143,63 @@ class WebSocketManager:
     async def _connection_loop(self) -> None:
         """
         Main connection loop with direct connection and reconnection.
-        
-        Uses connect_method directly and implements reconnection 
-        using strategy-provided policies.
+        Simplified - relies on while condition for termination.
         """
         reconnect_attempts = 0
         
         while self._should_reconnect:
             try:
                 await self._update_state(ConnectionState.CONNECTING)
-
                 self._websocket = await self.connect_method()
-                
                 await self._update_state(ConnectionState.CONNECTED)
                 
                 # Reset reconnection attempts on successful connection
                 reconnect_attempts = 0
-
 
                 # Authenticate if required
                 auth_success = await self.auth_method() if self.auth_method else True
 
                 if not auth_success:
                     self.logger.error("Authentication failed")
-                    self.logger.metric("ws_auth_failures", 1,
-                                     tags={"exchange": "ws"})
+                    self.logger.metric("ws_auth_failures", 1, tags={"exchange": "ws"})
                     await self._websocket.close()
                     continue
                 
                 # Track successful connection
-                self.logger.metric("ws_connections", 1,
-                                 tags={"exchange": "ws"})
+                self.logger.metric("ws_connections", 1, tags={"exchange": "ws"})
 
                 # Start message reader
-                self._reader_task = asyncio.create_task(self._message_reader())
+                reader_task = self._task_manager.create_task(self._message_reader(), "message_reader")
                 
                 self.logger.info("Direct WebSocket connection established successfully")
                 
                 # Wait for connection to close
-                await self._reader_task
+                await reader_task
                 
             except asyncio.CancelledError:
+                self.logger.debug("Connection loop cancelled")
                 break
             except Exception as e:
-                traceback.print_exc()
-
+                # Only check flag for early termination in error cases
+                if not self._should_reconnect:
+                    break
+                    
                 await self._handle_connection_error(e, reconnect_attempts)
                 reconnect_attempts += 1
         
+        self.logger.debug("Connection loop terminated")
         await self._update_state(ConnectionState.DISCONNECTED)
     
     async def _message_reader(self) -> None:
         """
         Read messages from WebSocket and queue for processing.
-        
-        Direct WebSocket message reading without ws_client layer.
+        Simplified - outer loop handles _should_reconnect.
         """
         try:
             while self.is_connected():
                 try:
                     raw_message = await self._websocket.recv()
-
                     await self._on_raw_message(raw_message)
-
                 except Exception as e:
                     await self._on_reader_error(e)
                     break
@@ -208,7 +208,6 @@ class WebSocketManager:
         except Exception as e:
             self.logger.error(f"Message reader error: {e}")
             await self._on_reader_error(e)
-        pass
 
     
     async def _handle_connection_error(self, error: Exception, attempt: int) -> None:
@@ -307,9 +306,14 @@ class WebSocketManager:
     
     async def _process_messages(self) -> None:
         """Process queued messages using dual-path architecture."""
-        while True:
+        while self._should_reconnect:
             try:
-                raw_message, queue_time = await self._message_queue.get()
+                # Use short timeout to make the queue get operation responsive to shutdown
+                # HFT optimized: 250ms allows fast shutdown while maintaining performance
+                raw_message, queue_time = await asyncio.wait_for(
+                    self._message_queue.get(),
+                    timeout=0.25
+                )
                 processing_start = time.perf_counter()
                 try:
                     await self._raw_message_handler(raw_message)
@@ -331,20 +335,25 @@ class WebSocketManager:
                                        tags={"exchange": "ws"})
                 finally:
                     self._message_queue.task_done()
-                # -----
 
+            except asyncio.TimeoutError:
+                # Timeout allows checking _should_reconnect flag - this is normal during low activity
+                continue
             except asyncio.CancelledError:
+                self.logger.debug("Message processing cancelled")
                 break
             except Exception as e:
-                self.logger.error("Error in message processing loop",
-                                error_type=type(e).__name__,
-                                error_message=str(e))
-                
-                # Track processing loop error metrics
-                self.logger.metric("ws_processing_loop_errors", 1,
-                                 tags={"exchange": "ws"})
-                
-                await asyncio.sleep(0.1)
+                # Only log if not shutting down to reduce noise during cleanup
+                if self._should_reconnect:
+                    self.logger.error("Error in message processing loop",
+                                    error_type=type(e).__name__,
+                                    error_message=str(e))
+                    
+                    # Track processing loop error metrics
+                    self.logger.metric("ws_processing_loop_errors", 1,
+                                     tags={"exchange": "ws"})
+                    
+                    await asyncio.sleep(0.1)
 
     async def _on_reader_error(self, error: Exception) -> None:
         """Handle WebSocket errors with error classification."""
@@ -373,55 +382,43 @@ class WebSocketManager:
             return False
     
     async def close(self) -> None:
-        """Close WebSocket manager and cleanup resources."""
+        """Close WebSocket manager and cleanup resources with centralized utilities."""
         self.logger.info("Closing WebSocket manager...")
 
         try:
             with LoggingTimer(self.logger, "ws_manager_close") as timer:
                 self._should_reconnect = False
                 
-                # Cancel all tasks
-                tasks = [
-                    self._processing_task,
-                    self._connection_task,
-                    self._reader_task
-                ]
+                # Drain pending messages from queue before task cancellation
+                drained_count = await drain_message_queue(
+                    self._message_queue, 
+                    logger=self.logger,
+                    max_drain_count=1000
+                )
+                if drained_count > 0:
+                    self.logger.metric("ws_messages_drained", drained_count, tags={"exchange": "ws"})
                 
-                for task in tasks:
-                    if task and not task.done():
-                        task.cancel()
-                        try:
-                            await task
-                        except asyncio.CancelledError:
-                            pass
+                # Use centralized task cancellation with timeout
+                task_success = await self._task_manager.shutdown(timeout=2.0, logger=self.logger)
+                if not task_success:
+                    self.logger.metric("ws_cancellation_timeouts", 1, tags={"exchange": "ws"})
                 
-                # Close WebSocket connection
-                if self._websocket:
-                    try:
-                        await self._websocket.close()
-                    except Exception as e:
-                        self.logger.error("Error closing WebSocket",
-                                        error_type=type(e).__name__,
-                                        error_message=str(e))
-                    self._websocket = None
+                # Use centralized connection closing with timeout
+                connection_success = await safe_close_connection(
+                    self._websocket, timeout=1.0, logger=self.logger
+                )
+                if not connection_success:
+                    self.logger.metric("ws_close_timeouts", 1, tags={"exchange": "ws"})
                 
-                # Connection cleanup
+                self._websocket = None
                 self.connection_state = ConnectionState.DISCONNECTED
             
-            self.logger.info("WebSocket manager V4 closed",
-                           close_time_ms=timer.elapsed_ms)
-            
-            # Track close metrics
-            self.logger.metric("ws_manager_closes", 1,
-                             tags={"exchange": "ws"})
-            self.logger.metric("ws_close_time_ms", timer.elapsed_ms,
-                             tags={"exchange": "ws"})
+            self.logger.info("WebSocket manager closed", close_time_ms=timer.elapsed_ms)
+            self.logger.metric("ws_manager_closes", 1, tags={"exchange": "ws"})
+            self.logger.metric("ws_close_time_ms", timer.elapsed_ms, tags={"exchange": "ws"})
             
         except Exception as e:
-            self.logger.error("Error closing WebSocket manager V4",
+            self.logger.error("Error closing WebSocket manager",
                             error_type=type(e).__name__,
                             error_message=str(e))
-            
-            # Track close error metrics
-            self.logger.metric("ws_close_errors", 1,
-                             tags={"exchange": "ws"})
+            self.logger.metric("ws_close_errors", 1, tags={"exchange": "ws"})

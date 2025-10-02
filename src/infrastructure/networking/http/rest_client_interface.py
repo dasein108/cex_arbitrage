@@ -354,6 +354,13 @@ class BaseRestClientInterface(ABC):
     
     async def close(self):
         """Clean up resources and close connections."""
+        # Shutdown rate limiter first to prevent new operations
+        if self.rate_limiter and hasattr(self.rate_limiter, 'shutdown'):
+            try:
+                await self.rate_limiter.shutdown()
+            except Exception as e:
+                self.logger.error(f"Error shutting down rate limiter: {e}")
+        
         if self._session and not self._session.closed:
             await self._session.close()
             

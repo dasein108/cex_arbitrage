@@ -23,6 +23,9 @@ from infrastructure.networking.websocket.structs import WebsocketChannelType, Pu
     PrivateWebsocketChannelType
 from exchanges.exchange_factory import get_composite_implementation
 
+# Centralized task utilities
+from utils.task_utils import cancel_tasks_with_timeout
+
 
 class MarketMakerState(Enum):
     """States for the market maker state machine."""
@@ -289,7 +292,7 @@ async def run_market_making_cycle(
 
 
 async def cleanup_resources(context: Optional[MarketMakerContext], logger) -> None:
-    """Properly cleanup all resources to ensure program termination."""
+    """Properly cleanup all resources using centralized utilities."""
     if not context:
         logger.info("No context to cleanup")
         return
@@ -301,35 +304,31 @@ async def cleanup_resources(context: Optional[MarketMakerContext], logger) -> No
         cleanup_tasks = []
         
         if context.private_exchange:
-            cleanup_tasks.append(context.private_exchange.close())
+            cleanup_tasks.append(asyncio.create_task(context.private_exchange.close()))
             logger.info("Closing private exchange...")
         
         if context.public_exchange:
-            cleanup_tasks.append(context.public_exchange.close())
+            cleanup_tasks.append(asyncio.create_task(context.public_exchange.close()))
             logger.info("Closing public exchange...")
         
-        # Wait for cleanup with timeout
+        # Use centralized task cancellation with timeout
         if cleanup_tasks:
-            await asyncio.wait_for(
-                asyncio.gather(*cleanup_tasks, return_exceptions=True),
-                timeout=5.0
-            )
-            logger.info("All exchanges closed successfully")
+            success = await cancel_tasks_with_timeout(cleanup_tasks, timeout=5.0, logger=logger)
+            if success:
+                logger.info("All exchanges closed successfully")
+            else:
+                logger.warning("Some exchanges did not close within timeout")
         
-        # Cancel any remaining background tasks
-        tasks = [t for t in asyncio.all_tasks() if t != asyncio.current_task()]
-        if tasks:
-            logger.info(f"Cancelling {len(tasks)} remaining tasks...")
-            for task in tasks:
-                task.cancel()
-            await asyncio.gather(*tasks, return_exceptions=True)
+        # Cancel any remaining background tasks using centralized utility
+        remaining_tasks = [t for t in asyncio.all_tasks() if t != asyncio.current_task()]
+        if remaining_tasks:
+            logger.info(f"Cancelling {len(remaining_tasks)} remaining tasks...")
+            success = await cancel_tasks_with_timeout(remaining_tasks, timeout=2.0, logger=logger)
+            if not success:
+                logger.warning("Some background tasks did not cancel within timeout")
         
-        # Small delay for final cleanup
-        await asyncio.sleep(0.1)
         logger.info("Resource cleanup completed")
         
-    except asyncio.TimeoutError:
-        logger.warning("Resource cleanup timed out after 5 seconds")
     except Exception as e:
         logger.error(f"Error during resource cleanup: {e}")
 
@@ -339,8 +338,12 @@ async def main(symbol: Symbol, exchange_config: ExchangeConfig, quantity_usdt: f
     context = None
     
     try:
-        # Run complete market making cycle with state machine
-        buy_order, sell_order = await run_market_making_cycle(exchange_config, symbol, quantity_usdt, logger)
+        # Create context and state machine explicitly so we can clean it up
+        context = await create_market_maker_context(exchange_config, symbol, quantity_usdt, logger)
+        state_machine = MarketMakerStateMachine(context)
+        
+        # Run the cycle
+        buy_order, sell_order = await state_machine.run_cycle()
         
         print(f"\n✅✅✅ Cycle completed successfully!")
         print(f"  Buy order: {buy_order}")
