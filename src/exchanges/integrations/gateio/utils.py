@@ -149,6 +149,23 @@ def detect_side_from_size(size: int) -> Side:
     return Side.BUY if size > 0 else Side.SELL
 
 
+def futures_balance_entry(item: Dict) -> AssetBalance:
+    """
+    Normalize futures balance entry into AssetBalance.
+    Works for both dict and list entry.
+    """
+    asset = AssetName(item.get("currency", item.get("asset", "USDT")))
+    total = float(item.get("total", 0))
+    available = float(item.get("available", 0))
+    locked = max(0.0, total - available)
+    
+    return AssetBalance(
+        asset=asset, 
+        available=available, 
+        locked=locked
+
+        )
+
 # TODO: implement for futures, refactor futures_rest, get rid of fallabacks
 def rest_futures_to_order(gateio_order_data) -> Order:
     """Transform Gate.io REST futures order response to unified Order struct."""
