@@ -375,9 +375,11 @@ class BasePrivateComposite(BaseCompositeExchange[PrivateRestType, PrivateWebsock
 
         return AssetBalance(asset=asset, available=0.0, locked=0.0)
 
-    # Initialization
+    def set_symbol_info(self, symbol_info: SymbolsInfo):
+        self._symbols_info = symbol_info
 
-    async def initialize(self, symbols_info: SymbolsInfo, channels: List[WebsocketChannelType]=None) -> None:
+    # Initialization
+    async def initialize(self, symbols_info: Optional[SymbolsInfo] = None, channels: List[WebsocketChannelType]=None) -> None:
         """Initialize base private exchange functionality."""
         # Initialize public functionality first (parent class)
         await super().initialize()

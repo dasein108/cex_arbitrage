@@ -1,20 +1,21 @@
 #!/usr/bin/env python3
 """
-IcebergTask Demo
+IcebergTask Demo with TaskManager
 
-Demonstrates iceberg order execution using the separated domain architecture:
-- Initialize IcebergTask with minimal context (symbol required)
-- Start execution with trading parameters (side, quantities, pricing)
+Demonstrates iceberg order execution using the TaskManager for external loop management:
+- Initialize IcebergTask with context
+- Add task to TaskManager for coordinated execution
+- Monitor execution progress via TaskManager
 - Update parameters during execution
-- Monitor execution progress and completion
+- Demonstrate symbol-based coordination
 - Handle cleanup and graceful shutdown
 
 Key features demonstrated:
-- Partial context update pattern (minimal init, evolve during lifecycle)
-- Separated domain architecture (public/private exchanges)
-- Constructor injection pattern from exchange factory
-- Handler binding pattern for WebSocket channels
+- TaskManager external loop management
+- Symbol-based coordination (same symbol = sequential)
+- Partial context update pattern
 - Real-time parameter updates during execution
+- Task lifecycle management
 - Proper error handling and logging
 
 Usage:
@@ -25,243 +26,165 @@ import asyncio
 from typing import Optional
 import signal
 import sys
+import os
+from pathlib import Path
 
-from config import get_exchange_config, get_logging_config
-from exchanges.utils import get_exchange_enum
-from exchanges.structs.common import Symbol, AssetName, Side
+# Add src to path for imports
+sys.path.insert(0, str(Path(__file__).parent.parent.parent))
+
+# Configure immediate logging for dev environment
+os.environ['ENVIRONMENT'] = 'dev'
+
 from infrastructure.logging import get_logger
+from infrastructure.logging.factory import LoggerFactory
+from infrastructure.logging.structs import (
+    LoggingConfig, ConsoleBackendConfig, PerformanceConfig, RouterConfig
+)
+
+# # Set up immediate logging config
+# immediate_config = LoggingConfig(
+#     environment="dev",
+#     console=ConsoleBackendConfig(
+#         enabled=True,
+#         min_level="DEBUG",
+#         color=True,
+#         include_context=True
+#     ),
+#     performance=PerformanceConfig(
+#         buffer_size=100,         # Small buffer for immediate processing
+#         batch_size=1,            # Process every message immediately
+#         dispatch_interval=0.001  # Very fast dispatch
+#     ),
+#     router=RouterConfig(
+#         default_backends=["console"]
+#     )
+# )
+#
+# # Override factory config for immediate logging
+# LoggerFactory._default_config = immediate_config
+
+from config.config_manager import get_exchange_config
+from exchanges.structs.common import Symbol, AssetName, Side
 from trading.tasks.iceberg_task import IcebergTask, IcebergTaskContext
+from trading.tasks.task_manager import TaskManager
 
 
 class IcebergTaskDemo:
-    """Demonstration of IcebergTask execution with separated domain architecture."""
-    
+    """Demonstration of IcebergTask execution with TaskManager."""
+
     def __init__(self):
         self.logger = get_logger("iceberg_demo")
-        self.task: Optional[IcebergTask] = None
+        self.task_manager: Optional[TaskManager] = None
         self.running = True
-        
+
         # Setup signal handlers for graceful shutdown
         signal.signal(signal.SIGINT, self._signal_handler)
         signal.signal(signal.SIGTERM, self._signal_handler)
-    
+
     def _signal_handler(self, signum, frame):
         """Handle shutdown signals gracefully."""
         self.logger.info(f"Received signal {signum}, initiating graceful shutdown...")
         self.running = False
-    
+
     async def run_demo(self):
         """Main demo execution."""
         try:
             # Configuration
-            exchange_name = "gateio_futures"  # Change to desired exchange
-            
+            exchange_name = "gateio_spot"  # Change to desired exchange
+
             # Get exchange configuration and logging setup
             config = get_exchange_config(exchange_name)
-            logging_config = get_logging_config()
-            logger = get_logger("iceberg_task")
-            
-            # Define trading symbol
-            symbol = Symbol(
-                base=AssetName("ADA"), 
+
+            # Initialize TaskManager
+            self.task_manager = TaskManager(self.logger)
+            await self.task_manager.start()
+
+            # Define trading symbols
+            ada_symbol = Symbol(
+                base=AssetName("ADA"),
                 quote=AssetName("USDT"),
-                is_futures='_futures' in exchange_name.lower()
+                is_futures=False
             )
-            
-            self.logger.info("Starting IcebergTask demo",
-                           exchange=exchange_name, 
-                           symbol=f"{symbol.base}/{symbol.quote}")
-            
-            # Demo 1: Initialize IcebergTask with minimal context (symbol only required)
-            self.logger.info("=== Demo 1: Initialize IcebergTask with minimal context ===")
-            
-            # Create task with minimal context - only symbol is required
-            # Other parameters will be added when starting execution
-            self.task = IcebergTask(
+
+            self.logger.info("Starting IcebergTask demo with TaskManager",
+                             exchange=exchange_name,
+                             symbols=[f"{ada_symbol.base}/{ada_symbol.quote}"])
+
+            # Demo 1: Create and add IcebergTask to TaskManager
+            self.logger.info("=== Demo 1: Create IcebergTask and add to TaskManager ===")
+
+            # Create first task - ADA sell
+            ada_task = IcebergTask(
                 config=config,
-                logger=logger,
-                symbol=symbol,  # Only required field for initialization
-                side=Side.SELL
+                logger=self.logger,
+                task_id="ada_sell_001",
+                context=IcebergTaskContext(
+                    symbol=ada_symbol,
+                    side=Side.BUY,
+                    total_quantity=20.0,
+                    order_quantity=3.0,
+                    offset_ticks=4,
+                    tick_tolerance=8
+                )
             )
-            
-            self.logger.info("IcebergTask initialized with minimal context",
-                           symbol=str(symbol),
-                           context_state="minimal")
-            
-            # Demo 2: Start execution with trading parameters
-            self.logger.info("=== Demo 2: Start execution with trading parameters ===")
-            
-            # Start task with additional context parameters
-            # This demonstrates the partial context update pattern
-            await self.task.start(
-                total_quantity=20.0,     # Total amount to execute
-                order_quantity=3.0,      # Size of each slice
-                offset_ticks=1,           # Price offset from top of book
-                tick_tolerance=2          # Price movement tolerance
-            )
-            
-            self.logger.info("IcebergTask started with trading parameters",
-                           side="SELL",
-                           total_quantity=100.0,
-                           order_quantity=10.0,
-                           offset_ticks=2)
-            
-            # Demo 3: Monitor execution progress
-            self.logger.info("=== Demo 3: Monitor execution progress ===")
-            
-            # Let the task execute for a short period
-            execution_time = 5.0  # seconds
-            self.logger.info(f"Monitoring execution for {execution_time} seconds...")
-            
+
+            await ada_task.start()
+            task_id = await self.task_manager.add_task(ada_task)
+
+            self.logger.info("ADA IcebergTask created and added to TaskManager",
+                             task_id=task_id,
+                             symbol=str(ada_symbol))
+
             start_time = asyncio.get_event_loop().time()
-            while (asyncio.get_event_loop().time() - start_time) < execution_time and self.running:
-                # Check task state and progress
-                if hasattr(self.task.context, 'filled_quantity'):
-                    progress = (self.task.context.filled_quantity / self.task.context.total_quantity) * 100
-                    self.logger.info("Execution progress",
-                                   filled=self.task.context.filled_quantity,
-                                   total=self.task.context.total_quantity,
-                                   progress_pct=f"{progress:.1f}%",
-                                   state=self.task.state.name)
-                else:
-                    self.logger.info("Task state", state=self.task.state.name)
-                
-                await asyncio.sleep(1.0)  # Check every second
-            
-            # Demo 4: Update parameters during execution
-            self.logger.info("=== Demo 4: Update parameters during execution ===")
-            
-            # Demonstrate partial context updates during execution
-            # This shows how to modify iceberg parameters on the fly
-            await self.task.update(
-                order_quantity=15.0,      # Increase slice size
-                offset_ticks=1,           # Move closer to market
-                tick_tolerance=5          # Increase tolerance
-            )
-            
-            self.logger.info("IcebergTask parameters updated during execution",
-                           new_order_quantity=15.0,
-                           new_offset_ticks=1,
-                           new_tick_tolerance=5)
-            
-            # Monitor updated execution for a short period
-            self.logger.info("Monitoring updated execution...")
-            
-            start_time = asyncio.get_event_loop().time()
-            while (asyncio.get_event_loop().time() - start_time) < 3.0 and self.running:
-                if hasattr(self.task.context, 'filled_quantity'):
-                    progress = (self.task.context.filled_quantity / self.task.context.total_quantity) * 100
-                    self.logger.info("Updated execution progress",
-                                   filled=self.task.context.filled_quantity,
-                                   total=self.task.context.total_quantity,
-                                   progress_pct=f"{progress:.1f}%",
-                                   avg_price=getattr(self.task.context, 'avg_price', 0.0),
-                                   state=self.task.state.name)
-                
-                await asyncio.sleep(1.0)
-            
-            # Demo 5: Context serialization/deserialization
-            self.logger.info("=== Demo 5: Context serialization ===")
-            
-            # Demonstrate context persistence
-            context_data = self.task.save_context()
-            self.logger.info("Context serialized",
-                           size_bytes=len(context_data),
-                           preview=context_data[:100].decode('utf-8', errors='ignore'))
-            
-            # Demo 6: Graceful completion
-            self.logger.info("=== Demo 6: Graceful completion ===")
-            
-            # For demo purposes, complete the task rather than waiting for full execution
-            await self.task.pause()
-            self.logger.info("IcebergTask paused for demo completion")
-            
-            await self.task.complete()
-            self.logger.info("IcebergTask marked as completed")
-            
+            while self.task_manager.task_count > 0 and self.running:
+                # Get TaskManager status
+                status = self.task_manager.get_status()
+                self.logger.info("TaskManager status",
+                                 active_tasks=status['active_tasks'],
+                                 total_executions=status['total_executions'],
+                                 runtime=f"{status['runtime_seconds']:.1f}s")
+                await asyncio.sleep(0.1)
+
+
+            final_status = self.task_manager.get_status()
+            self.logger.info("Final TaskManager status",
+                             active_tasks=final_status['active_tasks'],
+                             total_executions=final_status['total_executions'])
+
         except Exception as e:
             self.logger.error("Demo execution failed", error=str(e))
+            await self.logger.flush()
             raise
         finally:
             # Ensure cleanup
-            await self.cleanup()
-    
-    async def cleanup(self):
-        """Clean up resources and connections."""
-        try:
-            if self.task:
-                self.logger.info("Cleaning up IcebergTask...")
-                
-                # Cancel the task if still running
-                if hasattr(self.task, 'state') and self.task.state.name in ['EXECUTING', 'IDLE']:
-                    await self.task.cancel()
-                    self.logger.info("IcebergTask cancelled")
-                
-                # Cleanup exchange connections if available
-                if hasattr(self.task, '_exchange') and self.task._exchange:
-                    try:
-                        # Close public exchange connections
-                        if hasattr(self.task._exchange, 'public'):
-                            public_rest = getattr(self.task._exchange.public, '_rest_client', None)
-                            public_ws = getattr(self.task._exchange.public, '_websocket_client', None)
-                            
-                            if public_rest and hasattr(public_rest, 'close'):
-                                await public_rest.close()
-                                self.logger.info("Public REST client closed")
-                            
-                            if public_ws and hasattr(public_ws, 'close'):
-                                await public_ws.close()
-                                self.logger.info("Public WebSocket client closed")
-                        
-                        # Close private exchange connections
-                        if hasattr(self.task._exchange, 'private'):
-                            private_rest = getattr(self.task._exchange.private, '_rest_client', None)
-                            private_ws = getattr(self.task._exchange.private, '_websocket_client', None)
-                            
-                            if private_rest and hasattr(private_rest, 'close'):
-                                await private_rest.close()
-                                self.logger.info("Private REST client closed")
-                            
-                            if private_ws and hasattr(private_ws, 'close'):
-                                await private_ws.close()
-                                self.logger.info("Private WebSocket client closed")
-                    
-                    except Exception as e:
-                        self.logger.warning("Error during exchange cleanup", error=str(e))
-                
-        except Exception as e:
-            self.logger.error("Cleanup failed", error=str(e))
+            await self.task_manager.stop()
 
 
 async def main():
     """Main demo entry point."""
     demo = IcebergTaskDemo()
-    
+
     try:
         await demo.run_demo()
-        demo.logger.info("🎉 IcebergTask demo completed successfully")
+        demo.logger.info("🎉 IcebergTask demo with TaskManager completed successfully")
         
+        # Small delay to ensure logging is flushed
+        await asyncio.sleep(0.01)
+
     except KeyboardInterrupt:
         demo.logger.info("Demo interrupted by user")
+        await asyncio.sleep(0.01)  # Ensure log is flushed
     except Exception as e:
-        demo.logger.error("Demo failed", error=str(e))
+        if hasattr(demo, 'logger'):
+            demo.logger.error("Demo failed", error=str(e))
+            await asyncio.sleep(0.01)  # Ensure error log is flushed
+        else:
+            print(f"Demo failed: {e}")
         sys.exit(1)
 
 
 if __name__ == "__main__":
-    print("🚀 Starting IcebergTask Demo...")
-    print("📋 This demo will show:")
-    print("   • Minimal context initialization (symbol only)")
-    print("   • Starting execution with trading parameters")
-    print("   • Real-time parameter updates")
-    print("   • Execution progress monitoring")
-    print("   • Context serialization")
-    print("   • Graceful shutdown and cleanup")
-    print()
-    print("⚠️  Note: This demo uses testnet/demo mode for safety")
-    print("📊 For production use, ensure proper risk management")
-    print()
-    
+    print("🚀 Starting IcebergTask Demo with TaskManager...")
     try:
         asyncio.run(main())
     except KeyboardInterrupt:

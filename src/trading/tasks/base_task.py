@@ -2,11 +2,23 @@ import asyncio
 from abc import ABC, abstractmethod
 from typing import Optional, TypeVar, Generic, Type, Dict, Any
 import msgspec
+import time
 
 from config.structs import ExchangeConfig
 from exchanges.structs import Symbol, Side
 from infrastructure.logging import HFTLoggerInterface
 from trading.struct import TradingStrategyState
+
+
+class TaskExecutionResult(msgspec.Struct, frozen=False):
+    """Result from single task execution cycle."""
+    task_id: str  # Unique task identifier
+    should_continue: bool = True  # True if task needs more cycles
+    next_delay: float = 0.1  # Suggested delay before next execution
+    state: TradingStrategyState = TradingStrategyState.IDLE
+    error: Optional[Exception] = None
+    execution_time_ms: float = 0.0
+    metadata: Dict[str, Any] = msgspec.field(default_factory=dict)
 
 
 class TradingTaskContext(msgspec.Struct, frozen=False, kw_only=True):
@@ -66,7 +78,7 @@ class BaseTradingTask(Generic[T], ABC):
     @abstractmethod
     def context_class(self) -> Type[T]:
         """Return the context class for this task.
-        
+
         Subclasses must override this to specify their context type.
         Example:
             @property
@@ -74,12 +86,13 @@ class BaseTradingTask(Generic[T], ABC):
                 return MyTaskContext
         """
         pass
-    
-    def __init__(self, 
+
+    def __init__(self,
                  config: ExchangeConfig, 
                  logger: HFTLoggerInterface,
                  context: Optional[T] = None,
                  delay: float = 0.1,
+                 task_id: Optional[str] = None,
                  **context_kwargs):
         """Initialize task with either a context or context parameters.
         
@@ -96,6 +109,7 @@ class BaseTradingTask(Generic[T], ABC):
         self.state = TradingStrategyState.NOT_STARTED
         self.logger = logger
         self.delay = delay
+        self.task_id = task_id if task_id else f"{self.name}_{id(self)}"
         
         # Initialize context either from provided or create new
             # Validate provided context
@@ -104,11 +118,11 @@ class BaseTradingTask(Generic[T], ABC):
         self.context: T = context
 
 
-        try:
-            self.context = self.context_class(**context_kwargs)
-        except TypeError as e:
-            raise ValueError(f"Failed to create context: {e}")
-        
+        # try:
+        #     self.context = self.context_class(**context_kwargs)
+        # except TypeError as e:
+        #     raise ValueError(f"Failed to create context: {e}")
+        #
         # Build tag from available context fields
         tag_parts = [self.config.name, self.name]
         if hasattr(self.context, 'symbol') and self.context.symbol:
@@ -152,20 +166,13 @@ class BaseTradingTask(Generic[T], ABC):
         self.context = self.context_class.from_json(data)
     
     def _transition(self, new_state: TradingStrategyState) -> None:
-        """Transition to a new state with validation.
+        """Transition to a new state.
         
         Args:
             new_state: Target state to transition to
-            
-        Raises:
-            ValueError: If context is invalid for target state
         """
-
         self.logger.info(f"Transitioning from {self.state} to {new_state}")
         self.state = new_state
-
-        if new_state == TradingStrategyState.IDLE:
-            asyncio.create_task(self._run_cycle())
 
     async def _handle_idle(self):
         """Default idle state handler."""
@@ -193,16 +200,18 @@ class BaseTradingTask(Generic[T], ABC):
         self.logger.error(f"ERROR state for {self._tag}", error=str(self.context.error))
 
     async def start(self, **context_updates):
-        """Start the task with optional context updates.
+        """Initialize the task with optional context updates.
         
         Args:
             **context_updates: Partial context updates to apply before starting
+            
+        Note: This no longer starts an internal loop. Use execute_once() or TaskManager.
         """
         if context_updates:
             self.evolve_context(**context_updates)
         
         self._transition(TradingStrategyState.IDLE)
-
+    
     async def pause(self):
         self.logger.info(f"Pausing task from state {self.state.name}")
         self._transition(TradingStrategyState.PAUSED)
@@ -228,43 +237,71 @@ class BaseTradingTask(Generic[T], ABC):
             self.logger.debug("No updates provided to update() method")
 
 
-    async def _run_cycle(self):
-        """Execute complete task cycle with state management."""
-        self.logger.info(f"🚀 Starting trading cycle {self._tag}...")
-
+    async def execute_once(self) -> TaskExecutionResult:
+        """Execute one cycle of the task state machine.
+        
+        Returns:
+            TaskExecutionResult containing execution metadata and continuation info
+        """
+        start_time = time.time()
+        result = TaskExecutionResult(
+            task_id=self.task_id,
+            state=self.state,
+            next_delay=self.delay
+        )
+        
         try:
-            while self.state not in [TradingStrategyState.COMPLETED, TradingStrategyState.CANCELLED]:
-                # Get handler for current state
-                handler = self._state_handlers.get(self.state)
-                if handler:
-                    await handler()
-                else:
-                    # No handler for this state, transition to next logical state
-                    await self._handle_unhandled_state()
-                    
-                # Allow cooperative multitasking
-                await asyncio.sleep(self.delay)
-
+            # Check if task should continue
+            if self.state in [TradingStrategyState.COMPLETED, TradingStrategyState.CANCELLED]:
+                result.should_continue = False
+                return result
+            
+            # Get handler for current state
+            handler = self._state_handlers.get(self.state)
+            if handler:
+                await handler()
+            else:
+                # No handler for this state
+                await self._handle_unhandled_state()
+            
+            # Update result with current state
+            result.state = self.state
+            
+            # Determine if should continue
+            result.should_continue = self.state not in [
+                TradingStrategyState.COMPLETED,
+                TradingStrategyState.CANCELLED,
+                TradingStrategyState.ERROR
+            ]
+            
+            # Calculate execution time
+            result.execution_time_ms = (time.time() - start_time) * 1000
+            
         except asyncio.CancelledError:
-            self.logger.info(f"Task cancelled: {self._tag}")
+            self.logger.info(f"Task cancelled during execution: {self._tag}")
             self.state = TradingStrategyState.CANCELLED
+            result.should_continue = False
+            result.state = self.state
             raise
+            
         except Exception as e:
+            self.logger.error(f"Task execution failed {self._tag}", error=str(e))
             self.evolve_context(error=e)
             self._transition(TradingStrategyState.ERROR)
-            self.logger.error(f"Task cycle failed {self._tag}", error=str(e))
-            raise
-        finally:
-            self.logger.info(f"Task cycle ended {self._tag} in state {self.state.name}")
+            result.error = e
+            result.should_continue = False
+            result.state = self.state
+        
+        return result
     
     async def _handle_unhandled_state(self):
         """Handle states without explicit handlers.
         
         Subclasses can override to provide custom behavior.
         """
-        self.logger.warning(f"No handler for state {self.state}, waiting...")
+        self.logger.warning(f"No handler for state {self.state}, transitioning to ERROR")
         self._transition(TradingStrategyState.ERROR)
-
+    
     async def stop(self):
         """Stop the task gracefully."""
         self.logger.info(f"Stopping task {self._tag}")

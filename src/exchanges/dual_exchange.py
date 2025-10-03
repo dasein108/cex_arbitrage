@@ -45,7 +45,9 @@ class DualExchange:
             private_channels: Optional list of private WebSocket channels
         """
         await asyncio.gather(*[self.public.initialize(symbols, public_channels),
-                              self.private.initialize(symbols, private_channels)])
+                              self.private.initialize(None, private_channels)])
+        # deferred symbol info
+        self.private.set_symbol_info(self.public.symbols_info)
 
     async def subscribe_symbols(self, symbols: List) -> None:
         """Subscribe to symbols on both public and private exchanges."""
