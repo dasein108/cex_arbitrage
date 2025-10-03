@@ -177,6 +177,7 @@ async def place_order(self, params: OrderParams) -> Order:
 ```
 
 ### 2. Error Handling Pattern
+
 ```python
 async def cancel_order(self, symbol: Symbol, order_id: OrderId) -> Order:
     try:
@@ -188,7 +189,7 @@ async def cancel_order(self, symbol: Symbol, order_id: OrderId) -> Order:
     except ExchangeAPIError as e:
         if e.code == "ORDER_NOT_FOUND":
             # Order already filled or cancelled
-            return await self.get_order(symbol, order_id)
+            return await self.fetch_order(symbol, order_id)
         raise
 ```
 

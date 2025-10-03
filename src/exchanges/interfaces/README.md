@@ -474,7 +474,7 @@ async def test_end_to_end_trading():
     assert order.status == OrderStatus.NEW
 
     # Check order status
-    order_status = await exchange.get_order(symbol, order.order_id)
+    order_status = await exchange.fetch_order(symbol, order.order_id)
     assert order_status.order_id == order.order_id
 
     # Cancel order

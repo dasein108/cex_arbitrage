@@ -61,7 +61,6 @@ class SimpleTaskManagerDemo:
             btc_task = IcebergTask(
                 config=config,
                 logger=self.logger,
-                task_id="btc_sell_001",  # Explicit task_id
                 context=IcebergTaskContext(
                     symbol=btc_symbol,
                     side=Side.SELL,
@@ -76,7 +75,6 @@ class SimpleTaskManagerDemo:
             eth_task = IcebergTask(
                 config=config,
                 logger=self.logger,
-                task_id="eth_buy_001",
                 context=IcebergTaskContext(
                     symbol=eth_symbol,
                     side=Side.BUY,
@@ -91,7 +89,6 @@ class SimpleTaskManagerDemo:
             btc_task2 = IcebergTask(
                 config=config,
                 logger=self.logger,
-                task_id="btc_buy_002",
                 context=IcebergTaskContext(
                     symbol=btc_symbol,
                     side=Side.BUY,
@@ -132,7 +129,6 @@ class SimpleTaskManagerDemo:
             ada_task = IcebergTask(
                 config=config,
                 logger=self.logger,
-                task_id="ada_sell_001",
                 context=IcebergTaskContext(
                     symbol=ada_symbol,
                     side=Side.SELL,

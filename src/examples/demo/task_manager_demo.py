@@ -103,27 +103,10 @@ class TaskManagerDemo:
             total_qty=1000.0, slice_qty=100.0
         )
         
-        # Register tasks with PARALLEL mode (default)
-        btc_id = await self.task_manager.register_task(
-            btc_task, 
-            task_id="btc_sell",
-            execution_mode=ExecutionMode.PARALLEL,
-            priority=10
-        )
-        
-        eth_id = await self.task_manager.register_task(
-            eth_task,
-            task_id="eth_buy", 
-            execution_mode=ExecutionMode.PARALLEL,
-            priority=5
-        )
-        
-        ada_id = await self.task_manager.register_task(
-            ada_task,
-            task_id="ada_sell",
-            execution_mode=ExecutionMode.PARALLEL,
-            priority=8
-        )
+        # Add tasks to manager (TaskManager handles execution automatically)
+        btc_id = await self.task_manager.add_task(btc_task)
+        eth_id = await self.task_manager.add_task(eth_task)  
+        ada_id = await self.task_manager.add_task(ada_task)
         
         self.logger.info(f"Registered 3 parallel tasks: {btc_id}, {eth_id}, {ada_id}")
         self.logger.info("These will execute concurrently as they're on different symbols")
@@ -160,20 +143,9 @@ class TaskManagerDemo:
             total_qty=1.5, slice_qty=0.15
         )
         
-        # Register with SEQUENTIAL mode - they won't conflict
-        buy_id = await self.task_manager.register_task(
-            buy_task,
-            task_id="btc_buy",
-            execution_mode=ExecutionMode.SEQUENTIAL,
-            priority=10  # Higher priority, executes first
-        )
-        
-        sell_id = await self.task_manager.register_task(
-            sell_task,
-            task_id="btc_sell",
-            execution_mode=ExecutionMode.SEQUENTIAL, 
-            priority=5   # Lower priority, waits for buy
-        )
+        # Add tasks to manager (sequential execution on same symbol is automatic)
+        buy_id = await self.task_manager.add_task(buy_task)
+        sell_id = await self.task_manager.add_task(sell_task)
         
         self.logger.info(f"Registered 2 sequential tasks on BTC: {buy_id}, {sell_id}")
         self.logger.info("Buy task (priority=10) will execute before sell task (priority=5)")
@@ -202,7 +174,7 @@ class TaskManagerDemo:
             total_qty=5.0, slice_qty=0.5
         )
         
-        task1_id = await self.task_manager.register_task(task1, task_id="eth_initial")
+        task1_id = await self.task_manager.add_task(task1)
         self.logger.info(f"Started with task: {task1_id}")
         
         await asyncio.sleep(2)
@@ -213,17 +185,13 @@ class TaskManagerDemo:
             total_qty=3.0, slice_qty=0.3
         )
         
-        task2_id = await self.task_manager.register_task(
-            task2, 
-            task_id="eth_added",
-            execution_mode=ExecutionMode.SEQUENTIAL
-        )
+        task2_id = await self.task_manager.add_task(task2)
         self.logger.info(f"Added new task while running: {task2_id}")
         
         await asyncio.sleep(3)
         
         # Remove first task
-        removed = await self.task_manager.unregister_task(task1_id)
+        removed = await self.task_manager.remove_task(task1_id)
         self.logger.info(f"Removed task {task1_id}: {removed}")
         
         # Show remaining tasks

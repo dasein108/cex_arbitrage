@@ -94,7 +94,7 @@ class OrderManagementMixin:
         except Exception as e:
             # Check if order was filled during cancellation attempt
             try:
-                order_status = await private_exchange.get_order(order.symbol, order.order_id)
+                order_status = await private_exchange.fetch_order(order.symbol, order.order_id)
                 if is_order_filled(order_status):
                     return order_status
             except:
@@ -116,7 +116,7 @@ class OrderManagementMixin:
         
         while time.time() - start_time < timeout_seconds:
             try:
-                order_status = await private_exchange.get_order(order.symbol, order.order_id)
+                order_status = await private_exchange.fetch_order(order.symbol, order.order_id)
                 if is_order_filled(order_status):
                     return order_status
                 await asyncio.sleep(check_interval)

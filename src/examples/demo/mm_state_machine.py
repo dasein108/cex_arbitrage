@@ -206,7 +206,7 @@ class SimpleMarketMaker:
         """Monitor sell order and market conditions."""
         try:
             # Check order status
-            order_status = await self.private_exchange.get_order(
+            order_status = await self.private_exchange.fetch_order(
                 self.context.symbol,
                 self.context.sell_order.order_id
             )

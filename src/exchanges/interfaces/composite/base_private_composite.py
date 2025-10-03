@@ -70,11 +70,9 @@ class BasePrivateComposite(BaseCompositeExchange[PrivateRestType, PrivateWebsock
 
         # Private data state (HFT COMPLIANT - no caching of real-time data)
         self._balances: Dict[AssetName, AssetBalance] = {}
-        self._open_orders: Dict[Symbol, Dict[OrderId, Order]] = {}
-
-        # Executed orders state management (HFT-safe caching of completed orders only)
-        self._executed_orders: Dict[Symbol, Dict[OrderId, Order]] = {}
-        self._max_executed_orders_per_symbol = 1000  # Memory management limit
+        # Unified order storage - single source of truth for all orders
+        self._orders: Dict[OrderId, Order] = {}
+        self._max_total_orders = 10000  # Memory management limit for total orders
 
         # Authentication validation
         if not config.has_credentials():
@@ -90,7 +88,14 @@ class BasePrivateComposite(BaseCompositeExchange[PrivateRestType, PrivateWebsock
     @property
     def open_orders(self) -> Dict[Symbol, List[Order]]:
         """Get current open orders (thread-safe)."""
-        return {symbol: list(orders.values()) for symbol, orders in self._open_orders.items()}
+        # Filter orders by status from unified storage
+        open_orders_by_symbol: Dict[Symbol, List[Order]] = {}
+        for order in self._orders.values():
+            if not is_order_done(order):
+                if order.symbol not in open_orders_by_symbol:
+                    open_orders_by_symbol[order.symbol] = []
+                open_orders_by_symbol[order.symbol].append(order)
+        return open_orders_by_symbol
 
     @property
     def executed_orders(self) -> Dict[Symbol, Dict[OrderId, Order]]:
@@ -103,7 +108,14 @@ class BasePrivateComposite(BaseCompositeExchange[PrivateRestType, PrivateWebsock
         Returns:
             Dictionary mapping symbols to executed orders cache
         """
-        return self._executed_orders.copy()
+        # Filter executed orders from unified storage
+        executed_by_symbol: Dict[Symbol, Dict[OrderId, Order]] = {}
+        for order_id, order in self._orders.items():
+            if is_order_done(order):
+                if order.symbol not in executed_by_symbol:
+                    executed_by_symbol[order.symbol] = {}
+                executed_by_symbol[order.symbol][order_id] = order
+        return executed_by_symbol
 
     # Trading operations
 
@@ -123,10 +135,11 @@ class BasePrivateComposite(BaseCompositeExchange[PrivateRestType, PrivateWebsock
         """
         if force:
             await self._load_open_orders(symbol)
+        # Filter open orders from unified storage
+        open_orders = [order for order in self._orders.values() if not is_order_done(order)]
         if symbol:
-            return list(self._open_orders.get(symbol, {}).values())
-        else:
-            return [order for orders in self._open_orders.values() for order in orders.values()]
+            return [order for order in open_orders if order.symbol == symbol]
+        return open_orders
 
     async def place_limit_order(self, symbol: Symbol, side: Side, quantity: float, price: float, **kwargs) -> Order:
         """Place a limit order via REST API."""
@@ -144,7 +157,7 @@ class BasePrivateComposite(BaseCompositeExchange[PrivateRestType, PrivateWebsock
                                                 quote_quantity=quote_quantity_, **kwargs)
 
         if ensure:
-            return await self.get_order(symbol, order.order_id)
+            return await self.fetch_order(symbol, order.order_id)
             # # wait until order is no longer open
             # while True:
             #     await asyncio.sleep(0.1)
@@ -172,9 +185,10 @@ class BasePrivateComposite(BaseCompositeExchange[PrivateRestType, PrivateWebsock
             return await self._rest.cancel_order(symbol, order_id)
         except Exception as e:
             self.logger.error("Order cancellation failed", order_id=order_id, error=str(e))
-            return await self.get_order(symbol, order_id)
 
-    async def get_order(self, symbol: Symbol, order_id: OrderId) -> Order:
+            return await self.fetch_order(symbol, order_id)
+
+    async def fetch_order(self, symbol: Symbol, order_id: OrderId) -> Order:
         """
         Get current status of an order.
         
@@ -231,24 +245,24 @@ class BasePrivateComposite(BaseCompositeExchange[PrivateRestType, PrivateWebsock
 
         try:
             # sync with prev in case of reconnect
-            prev_open_orders = self._open_orders.copy()
+            prev_open_orders = {order_id: order for order_id, order in self._orders.items() 
+                               if not is_order_done(order)}
 
             with LoggingTimer(self.logger, "load_open_orders") as timer:
                 orders = await self._rest.get_open_orders(symbol)
                 for o in orders:
                     # if it was opened before reconnect, remove from forced reload list
-                    if prev_open_orders.get(o.symbol, {}).get(o.order_id):
-                        del prev_open_orders[o.symbol][o.order_id]
+                    if o.order_id in prev_open_orders:
+                        del prev_open_orders[o.order_id]
                     await self._update_order(o)
 
-                # orders that can be filled in-between reconnects, publish  their updates
-                for prev_o_symbol in prev_open_orders.keys():
-                    for prev_o in prev_open_orders[prev_o_symbol].values():
-                        await self._update_order(prev_o)
+                # orders that can be filled in-between reconnects, publish their updates
+                for prev_o in prev_open_orders.values():
+                    await self._update_order(prev_o)
 
-
+            open_order_count = sum(1 for order in self._orders.values() if not is_order_done(order))
             self.logger.info("Open orders loaded",
-                             open_orders_count=sum(len(orders) for orders in self._open_orders.values()),
+                             open_orders_count=open_order_count,
                              load_time_ms=timer.elapsed_ms)
 
         except Exception as e:
@@ -257,52 +271,66 @@ class BasePrivateComposite(BaseCompositeExchange[PrivateRestType, PrivateWebsock
 
     # Order lifecycle management
 
-    def _update_executed_order(self, order: Order):
-        """Update executed orders cache."""
-        if order.symbol not in self._executed_orders:
-            self._executed_orders[order.symbol] = {}
+    def get_order(self, order_id: OrderId) -> Optional[Order]:
+        """Get order by ID from unified storage.
+        
+        Args:
+            order_id: Order identifier
+            
+        Returns:
+            Order object if found, None otherwise
+        """
+        return self._orders.get(order_id)
 
-        self._executed_orders[order.symbol][order.order_id] = order
-        self.logger.info("Order cached in executed orders",
-                         order_id=order.order_id, status=order.status)
+    def remove_order(self, order_id: OrderId) -> bool:
+        """Remove order by ID from unified storage.
+        
+        Args:
+            order_id: Order identifier to remove
+            
+        Returns:
+            True if order was removed, False if not found
+        """
+        if order_id in self._orders:
+            del self._orders[order_id]
+            self.logger.debug("Order removed from storage", order_id=order_id)
+            return True
+        return False
 
-    def _update_open_order(self, order: Order):
-        """Update open orders state."""
-        if order.symbol not in self._open_orders:
-            self._open_orders[order.symbol] = {}
-
-        self._open_orders[order.symbol][order.order_id] = order
-
-        self.logger.debug("Open order updated",
-                          order_id=order.order_id,
-                          status=order.status)
-
-    def _get_open_order(self, symbol: Symbol, order_id: OrderId):
-        """Get open order from local cache."""
-        if symbol in self._open_orders and order_id in self._open_orders[symbol]:
-            return self._open_orders[symbol][order_id]
-        return None
-
-    def _get_executed_order(self, symbol: Symbol, order_id: OrderId):
-        """Get executed order from cache."""
-        if symbol in self._executed_orders and order_id in self._executed_orders[symbol]:
-            return self._executed_orders[symbol][order_id]
-
-    def _remove_open_order(self, order: Order):
-        """Remove order from open orders."""
-        if self._get_open_order(order.symbol, order.order_id):
-            del self._open_orders[order.symbol][order.order_id]
-            self.logger.debug("Open order removed",
-                              order_id=order.order_id,
-                              status=order.status)
+    def get_cached_order(self, symbol: Symbol, order_id: OrderId) -> Optional[Order]:
+        """Get order from local cache (backward compatibility).
+        
+        Args:
+            symbol: Trading symbol (ignored, kept for compatibility)
+            order_id: Order identifier
+            
+        Returns:
+            Order object if found, None otherwise
+        """
+        return self.get_order(order_id)
 
     async def _update_order(self, order: Order):
-        """Update order state based on completion status."""
+        """Update order in unified storage.
+        
+        Args:
+            order: Order object to store/update
+        """
+        # Store in unified storage
+        self._orders[order.order_id] = order
+        
+        # Log status appropriately
         if is_order_done(order):
-            self._remove_open_order(order)
-            self._update_executed_order(order)
+            self.logger.info("Order completed",
+                           order_id=order.order_id, status=order.status)
         else:
-            self._update_open_order(order)
+            self.logger.info("Order updated",
+                            order_id=order.order_id,
+                            status=order.status)
+        
+        # Cleanup old orders if we hit the limit
+        if len(self._orders) > self._max_total_orders:
+            self._cleanup_old_orders()
+        
         # TODO: remove
         await self._exec_bound_handler(PrivateWebsocketChannelType.ORDER, order)
 
@@ -320,17 +348,12 @@ class BasePrivateComposite(BaseCompositeExchange[PrivateRestType, PrivateWebsock
         Returns:
             Order object if found, None otherwise
         """
-        # Step 1: Check open orders first (real-time lookup)
-        order = self._get_open_order(symbol, order_id)
+        # Direct lookup from unified storage
+        order = self.get_order(order_id)
         if order:
-            self.logger.debug("Order found in open orders cache", order_id=order_id, status=order.status)
-            return order
-
-        # Step 2: Check executed orders cache
-        order = self._get_executed_order(symbol, order_id)
-        if order:
-            self.logger.debug("Order found in executed orders cache",
-                              order_id=order_id, status=order.status)
+            status_type = "executed" if is_order_done(order) else "open"
+            self.logger.debug(f"Order found in {status_type} state",
+                            order_id=order_id, status=order.status)
             return order
 
         try:
@@ -413,7 +436,7 @@ class BasePrivateComposite(BaseCompositeExchange[PrivateRestType, PrivateWebsock
                              has_rest=self._rest is not None,
                              has_ws=self._ws is not None,
                              balance_count=len(self._balances),
-                             order_count=sum(len(orders) for orders in self._open_orders.values()))
+                             order_count=sum(1 for order in self._orders.values() if not is_order_done(order)))
 
         except Exception as e:
             self.logger.error(f"Private exchange initialization failed: {e}")
@@ -427,12 +450,7 @@ class BasePrivateComposite(BaseCompositeExchange[PrivateRestType, PrivateWebsock
     async def _order_handler(self, order: Order) -> None:
         """Handle order update event."""
         await self._update_order(order)
-        self.logger.info("order update processed",
-                         exchange=self._exchange_name,
-                         symbol=order.symbol,
-                         order_id=order.order_id,
-                         status=order.status.name,
-                         filled=f"{order.filled_quantity}/{order.quantity}")
+        self.logger.info("order update processed", order)
 
 
     async def _balance_handler(self, balance: AssetBalance) -> None:
@@ -483,26 +501,43 @@ class BasePrivateComposite(BaseCompositeExchange[PrivateRestType, PrivateWebsock
 
         self.logger.debug(f"Updated balance for {asset}: {balance}")
 
-    def _cleanup_executed_orders(self, symbol: Symbol) -> None:
-        """Cleanup executed orders cache for a symbol to prevent memory leaks."""
-        executed_orders = self._executed_orders[symbol]
-        current_size = len(executed_orders)
-        target_size = int(self._max_executed_orders_per_symbol * 0.8)
-
-        if current_size <= target_size:
+    def _cleanup_old_orders(self) -> None:
+        """Cleanup old orders to prevent memory leaks.
+        
+        Removes oldest executed orders when total order count exceeds limit.
+        Keeps all open orders and most recent executed orders.
+        """
+        if len(self._orders) <= self._max_total_orders:
             return
-
-        # Simple cleanup: remove oldest entries (first in dict)
-        orders_list = list(executed_orders.items())
-        orders_to_remove = current_size - target_size
-        for i in range(orders_to_remove):
-            if orders_list:
-                order_id, _ = orders_list.pop(0)
-                del executed_orders[order_id]
-
-        self.logger.debug(f"Cleaned up executed orders cache for {symbol}",
-                          removed=orders_to_remove,
-                          remaining=len(executed_orders))
+            
+        # Separate open and executed orders
+        open_orders = [(oid, o) for oid, o in self._orders.items() if not is_order_done(o)]
+        executed_orders = [(oid, o) for oid, o in self._orders.items() if is_order_done(o)]
+        
+        # Sort executed orders by update time (oldest first)
+        executed_orders.sort(key=lambda x: x[1].update_timestamp or 0)
+        
+        # Calculate how many to remove
+        target_size = int(self._max_total_orders * 0.8)
+        orders_to_keep = target_size - len(open_orders)
+        
+        if orders_to_keep < 0:
+            # Too many open orders, can't cleanup
+            self.logger.warning("Too many open orders, cannot cleanup",
+                              open_count=len(open_orders),
+                              total_limit=self._max_total_orders)
+            return
+            
+        # Keep all open orders and most recent executed orders
+        new_orders = dict(open_orders)
+        new_orders.update(dict(executed_orders[-orders_to_keep:]))
+        
+        removed_count = len(self._orders) - len(new_orders)
+        self._orders = new_orders
+        
+        self.logger.debug("Cleaned up old orders",
+                        removed=removed_count,
+                        remaining=len(self._orders))
 
 
     async def close(self) -> None:

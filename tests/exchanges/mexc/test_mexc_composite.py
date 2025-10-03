@@ -165,7 +165,7 @@ class TestMexcCompositePrivate:
         mock_rest.cancel_order.assert_called_once_with(btc_usdt, "123")
         
         # Test order status
-        await private_exchange.get_order(btc_usdt, "123")
+        await private_exchange.fetch_order(btc_usdt, "123")
         mock_rest.get_order_status.assert_called_once_with(btc_usdt, "123")
 
     async def test_error_handling(self, private_exchange):

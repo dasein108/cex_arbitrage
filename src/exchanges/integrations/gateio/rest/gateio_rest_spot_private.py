@@ -313,20 +313,19 @@ class GateioPrivateSpotRestInterface(GateioBaseSpotRestInterface, PrivateSpotRes
         
         params = {
             'currency_pair': pair, 
-            'order_id': order_id
         }
         try:
             response_data = await self.request(
                 HTTPMethod.DELETE,
-                '/spot/orders',
+                f'/spot/orders/{order_id}',
                 params=params
             )
         except ExchangeRestOrderCancelledFilledOrNotExist as e:
             self.logger.warning(f"Order {order_id} for {symbol.base}/{symbol.quote} already cancelled/filled or does not exist")
             # TODO: warning x2 latency costs
             return await self.get_order(symbol, order_id)
+        print(response_data, params)
 
-        # Transform Gate.io response to unified Order
         order = rest_spot_to_order(response_data)
         
         self.logger.info(f"Cancelled order: {order_id}")

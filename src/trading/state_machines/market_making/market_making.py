@@ -371,14 +371,14 @@ class MarketMakingStateMachine(
         for level in self.context.order_levels:
             if level.buy_order:
                 check_tasks.append(
-                    self.context.private_exchange.get_order(
+                    self.context.private_exchange.fetch_order(
                         level.buy_order.symbol, 
                         level.buy_order.order_id
                     )
                 )
             if level.sell_order:
                 check_tasks.append(
-                    self.context.private_exchange.get_order(
+                    self.context.private_exchange.fetch_order(
                         level.sell_order.symbol,
                         level.sell_order.order_id
                     )

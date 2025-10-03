@@ -32,6 +32,9 @@ class TradingTaskContext(msgspec.Struct, frozen=False, kw_only=True):
     """
     symbol: Symbol  # Required field - no default
     side: Optional[Side] = None
+    state: TradingStrategyState = TradingStrategyState.NOT_STARTED  # Move state into context
+    task_id: str = ""  # Auto-generated task identifier
+    order_id: Optional[str] = None  # Track current order ID
     error: Optional[Exception] = None
     metadata: Dict[str, Any] = msgspec.field(default_factory=dict)
     
@@ -49,6 +52,9 @@ class TradingTaskContext(msgspec.Struct, frozen=False, kw_only=True):
         data = msgspec.structs.asdict(self)
         if data.get('error'):
             data['error'] = str(data['error'])
+        # Convert state enum to value for serialization
+        if data.get('state'):
+            data['state'] = data['state'].value
         return msgspec.json.encode(data)
     
     @classmethod
@@ -58,6 +64,9 @@ class TradingTaskContext(msgspec.Struct, frozen=False, kw_only=True):
         # Reconstruct error if present
         if obj_data.get('error'):
             obj_data['error'] = Exception(obj_data['error'])
+        # Reconstruct state enum from value
+        if obj_data.get('state') is not None:
+            obj_data['state'] = TradingStrategyState(obj_data['state'])
         return cls(**obj_data)
 
 T = TypeVar('T', bound=TradingTaskContext)
@@ -92,30 +101,34 @@ class BaseTradingTask(Generic[T], ABC):
                  logger: HFTLoggerInterface,
                  context: Optional[T] = None,
                  delay: float = 0.1,
-                 task_id: Optional[str] = None,
                  **context_kwargs):
         """Initialize task with either a context or context parameters.
         
         Args:
             config: Exchange configuration
             logger: HFT logger instance
-            context: Pre-built context (if provided, symbol/side/context_kwargs ignored)
-            symbol: Trading symbol (used if context not provided)
-            side: Trading side (used if context not provided)
+            context: Pre-built context (if provided, context_kwargs ignored)
             delay: Delay between state cycles
             **context_kwargs: Additional context fields
         """
         self.config = config
-        self.state = TradingStrategyState.NOT_STARTED
         self.logger = logger
         self.delay = delay
-        self.task_id = task_id if task_id else f"{self.name}_{id(self)}"
         
         # Initialize context either from provided or create new
-            # Validate provided context
+        # Validate provided context
         if not isinstance(context, TradingTaskContext):
             raise TypeError(f"Context must be a TradingTaskContext, got {type(context)}")
         self.context: T = context
+        
+        # Generate task_id if not already set in context
+        if not self.context.task_id:
+            import time
+            timestamp = int(time.time() * 1000)  # milliseconds
+            task_id = f"{timestamp}_{self.name}_{self.context.symbol.base}_{self.context.symbol.quote}"
+            if self.context.side:
+                task_id += f"_{self.context.side.name}"
+            self.evolve_context(task_id=task_id)
 
 
         # try:
@@ -139,6 +152,21 @@ class BaseTradingTask(Generic[T], ABC):
             TradingStrategyState.COMPLETED: self._handle_complete,
             TradingStrategyState.EXECUTING: self._handle_executing,
         }
+
+    @property
+    def state(self) -> TradingStrategyState:
+        """Get current state from context."""
+        return self.context.state
+    
+    @property
+    def task_id(self) -> str:
+        """Get task_id from context."""
+        return self.context.task_id
+    
+    @property
+    def order_id(self) -> Optional[str]:
+        """Get current order_id from context."""
+        return self.context.order_id
 
     def evolve_context(self, **updates) -> None:
         """Update context with new fields.
@@ -171,8 +199,9 @@ class BaseTradingTask(Generic[T], ABC):
         Args:
             new_state: Target state to transition to
         """
-        self.logger.info(f"Transitioning from {self.state} to {new_state}")
-        self.state = new_state
+        old_state = self.context.state
+        self.logger.info(f"Transitioning from {old_state.name} to {new_state.name}")
+        self.evolve_context(state=new_state)
 
     async def _handle_idle(self):
         """Default idle state handler."""
@@ -213,7 +242,7 @@ class BaseTradingTask(Generic[T], ABC):
         self._transition(TradingStrategyState.IDLE)
     
     async def pause(self):
-        self.logger.info(f"Pausing task from state {self.state.name}")
+        self.logger.info(f"Pausing task from state {self.context.state.name}")
         self._transition(TradingStrategyState.PAUSED)
 
     async def update(self, **context_updates):
@@ -227,7 +256,7 @@ class BaseTradingTask(Generic[T], ABC):
             - Required fields (like 'symbol') are preserved from current context
             - Pass field_name=value to update specific fields
         """
-        self.logger.info(f"Updating task in state {self.state.name}")
+        self.logger.info(f"Updating task in state {self.context.state.name}")
         
         if context_updates:
             # Partial updates - evolve existing context
@@ -245,19 +274,19 @@ class BaseTradingTask(Generic[T], ABC):
         """
         start_time = time.time()
         result = TaskExecutionResult(
-            task_id=self.task_id,
-            state=self.state,
+            task_id=self.context.task_id,
+            state=self.context.state,
             next_delay=self.delay
         )
         
         try:
             # Check if task should continue
-            if self.state in [TradingStrategyState.COMPLETED, TradingStrategyState.CANCELLED]:
+            if self.context.state in [TradingStrategyState.COMPLETED, TradingStrategyState.CANCELLED]:
                 result.should_continue = False
                 return result
             
             # Get handler for current state
-            handler = self._state_handlers.get(self.state)
+            handler = self._state_handlers.get(self.context.state)
             if handler:
                 await handler()
             else:
@@ -265,10 +294,10 @@ class BaseTradingTask(Generic[T], ABC):
                 await self._handle_unhandled_state()
             
             # Update result with current state
-            result.state = self.state
+            result.state = self.context.state
             
             # Determine if should continue
-            result.should_continue = self.state not in [
+            result.should_continue = self.context.state not in [
                 TradingStrategyState.COMPLETED,
                 TradingStrategyState.CANCELLED,
                 TradingStrategyState.ERROR
@@ -279,9 +308,9 @@ class BaseTradingTask(Generic[T], ABC):
             
         except asyncio.CancelledError:
             self.logger.info(f"Task cancelled during execution: {self._tag}")
-            self.state = TradingStrategyState.CANCELLED
+            self._transition(TradingStrategyState.CANCELLED)
             result.should_continue = False
-            result.state = self.state
+            result.state = self.context.state
             raise
             
         except Exception as e:
@@ -290,7 +319,7 @@ class BaseTradingTask(Generic[T], ABC):
             self._transition(TradingStrategyState.ERROR)
             result.error = e
             result.should_continue = False
-            result.state = self.state
+            result.state = self.context.state
         
         return result
     
@@ -299,7 +328,7 @@ class BaseTradingTask(Generic[T], ABC):
         
         Subclasses can override to provide custom behavior.
         """
-        self.logger.warning(f"No handler for state {self.state}, transitioning to ERROR")
+        self.logger.warning(f"No handler for state {self.context.state}, transitioning to ERROR")
         self._transition(TradingStrategyState.ERROR)
     
     async def stop(self):

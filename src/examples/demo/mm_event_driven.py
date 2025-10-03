@@ -391,7 +391,7 @@ class EventDrivenMarketMaker:
             try:
                 if self.state.pending_order_id:
                     # Check order status
-                    order = await self.private_exchange.get_order(
+                    order = await self.private_exchange.fetch_order(
                         self.state.symbol,
                         self.state.pending_order_id
                     )

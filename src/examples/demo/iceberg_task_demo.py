@@ -117,7 +117,6 @@ class IcebergTaskDemo:
             ada_task = IcebergTask(
                 config=config,
                 logger=self.logger,
-                task_id="ada_sell_001",
                 context=IcebergTaskContext(
                     symbol=ada_symbol,
                     side=Side.BUY,
@@ -132,14 +131,14 @@ class IcebergTaskDemo:
             task_id = await self.task_manager.add_task(ada_task)
 
             self.logger.info("ADA IcebergTask created and added to TaskManager",
-                             task_id=task_id,
+                             task_id=ada_task.task_id,
                              symbol=str(ada_symbol))
 
             start_time = asyncio.get_event_loop().time()
             while self.task_manager.task_count > 0 and self.running:
                 # Get TaskManager status
                 status = self.task_manager.get_status()
-                self.logger.info("TaskManager status",
+                self.logger.debug("TaskManager status",
                                  active_tasks=status['active_tasks'],
                                  total_executions=status['total_executions'],
                                  runtime=f"{status['runtime_seconds']:.1f}s")

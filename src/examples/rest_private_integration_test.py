@@ -206,7 +206,7 @@ class RestPrivateIntegrationTest:
         test_order_id = "test_nonexistent_order_123456789"
         
         try:
-            result = await self.exchange.get_order(symbol, test_order_id)
+            result = await self.exchange.fetch_order(symbol, test_order_id)
             execution_time = (time.time() - start_time) * 1000
             
             # This should typically fail for non-existent order

@@ -85,6 +85,7 @@ def _update_executed_order(self, order: Order):
 ```
 
 ### Smart Order Lookup
+
 ```python
 async def get_active_order(self, symbol: Symbol, order_id: OrderId) -> Optional[Order]:
     """Intelligent order retrieval with fallback"""
@@ -92,15 +93,15 @@ async def get_active_order(self, symbol: Symbol, order_id: OrderId) -> Optional[
     order = self._get_open_order(symbol, order_id)
     if order:
         return order
-    
+
     # 2. Check executed cache (completed)
     order = self._get_executed_order(symbol, order_id)
     if order:
         return order
-    
+
     # 3. Fallback to REST API
     try:
-        order = await self._private_rest.get_order(symbol, order_id)
+        order = await self._private_rest.fetch_order(symbol, order_id)
         self._update_order(order)
         return order
     except Exception as e:

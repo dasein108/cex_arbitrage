@@ -43,7 +43,6 @@ class IcebergTask(BaseTradingTask[IcebergTaskContext]):
                  config: ExchangeConfig,
                  logger: HFTLoggerInterface,
                  context=None,
-                 task_id=None,
                  **kwargs):
         """Initialize iceberg task.
         
@@ -54,7 +53,7 @@ class IcebergTask(BaseTradingTask[IcebergTaskContext]):
         - order_quantity: Size of each slice
         - offset_ticks: Price offset in ticks
         """
-        super().__init__(config, logger, context, task_id=task_id, **kwargs)
+        super().__init__(config, logger, context, **kwargs)
         self._exchange = DualExchange.get_instance(self.config)
         self._curr_order: Optional[Order] = None
         self._si: Optional[SymbolInfo] = None
@@ -101,10 +100,13 @@ class IcebergTask(BaseTradingTask[IcebergTaskContext]):
                 await self._process_order_execution(order)
             except Exception as e:
                 self.logger.error(f"🚫 Failed to cancel current order {self._tag}", error=str(e))
+                # Clear order references even if cancel failed
+                self._curr_order = None
+                self.evolve_context(order_id=None)
 
     async def _place_order(self):
         """Place limit sell order to top-offset price."""
-        self.logger.info(f"📈 Placing limit {self.context.side} order for quantity: {self.context.order_quantity}")
+        self.logger.info(f"📈 Placing limit {self.context.side.name} order for quantity: {self.context.order_quantity}")
         if self._curr_order:
             self.logger.warning(f"Existing order found, cancelling before placing new one {self._tag}")
             await self._cancel_current_order()
@@ -137,7 +139,7 @@ class IcebergTask(BaseTradingTask[IcebergTaskContext]):
     async def _sync_exchange_order(self) -> Order | None:
         """Get current order from exchange, track updates."""
         if self._curr_order:
-            self._curr_order = await self._exchange.private.get_order(self._curr_order.symbol, self._curr_order.order_id)
+            self._curr_order = await self._exchange.private.get_active_order(self._curr_order.symbol, self._curr_order.order_id)
             return self._curr_order
         else:
             return None
@@ -174,12 +176,16 @@ class IcebergTask(BaseTradingTask[IcebergTaskContext]):
                 # New order cost = order execution price * order filled quantity
                 new_order_cost = order.price * order.filled_quantity
 
-                # Update total filled quantity
-                self.context.filled_quantity += order.filled_quantity
+                # Update total filled quantity and clear order_id in context
+                self.evolve_context(
+                    filled_quantity=self.context.filled_quantity + order.filled_quantity,
+                    order_id=None  # Clear order_id when order is done
+                )
 
                 # Calculate new weighted average price
                 total_cost = previous_cost + new_order_cost
-                self.context.avg_price = total_cost / self.context.filled_quantity if self.context.filled_quantity > 0 else 0.0
+                new_avg_price = total_cost / self.context.filled_quantity if self.context.filled_quantity > 0 else 0.0
+                self.evolve_context(avg_price=new_avg_price)
 
                 self.logger.info(f"✅ Order filled {self._tag}",
                                  order_price=order.price,
@@ -190,7 +196,9 @@ class IcebergTask(BaseTradingTask[IcebergTaskContext]):
             # Clear current order reference
             self._curr_order = None
         else:
+            # Order is still active - sync order_id in context
             self._curr_order = order
+            self.evolve_context(order_id=order.order_id)
 
         # Check if completed
         await self._process_completing()

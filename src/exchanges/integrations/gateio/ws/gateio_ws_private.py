@@ -32,6 +32,7 @@ from typing import Dict, Optional, Any, List, Union
 from websockets import connect
 
 from exchanges.integrations.gateio.services.spot_symbol_mapper import GateioSpotSymbol
+from exchanges.structs import OrderStatus
 from exchanges.structs.common import Order, AssetBalance, Trade, OrderId
 from exchanges.structs.types import AssetName
 from config.structs import ExchangeConfig
@@ -162,6 +163,28 @@ class GateioPrivateSpotWebsocket(GateioBaseWebsocket, PrivateBaseWebsocket):
 
         for order_data in order_list:
             # Convert Gate.io order to unified format
+            order_status = None
+            remaining_quantity = float(order_data.get('left', '0'))
+            filled_quantity = float(order_data.get('filled_amount', '0'))
+            # _GATEIO_ORDER_STATUS_MAP = {
+            #     'open': OrderStatus.NEW,
+            #     'closed': OrderStatus.FILLED,
+            #     'cancelled': OrderStatus.CANCELED,
+            #     'partial': OrderStatus.PARTIALLY_FILLED,
+            #     'filled': OrderStatus.FILLED,
+            #     'new': OrderStatus.NEW,
+            #     'active': OrderStatus.NEW,
+            #     'inactive': OrderStatus.CANCELED,
+            # }
+            if remaining_quantity == 0:
+                order_status = OrderStatus.FILLED
+            elif order_data.get('event') == 'put':
+                order_status = OrderStatus.NEW
+            elif order_data.get('event') == 'update':
+                order_status = OrderStatus.PARTIALLY_FILLED
+            else: # order_data.get('event') == 'finish':
+                order_status = OrderStatus.CANCELED if filled_quantity == 0 else OrderStatus.PARTIALLY_CANCELED
+
             order = Order(
                 order_id=OrderId(order_data.get('id', '')),
                 symbol=to_symbol(order_data.get('currency_pair', '')),
@@ -169,9 +192,9 @@ class GateioPrivateSpotWebsocket(GateioBaseWebsocket, PrivateBaseWebsocket):
                 order_type=to_order_type(order_data.get('type', 'limit')),
                 quantity=float(order_data.get('amount', '0')),
                 price=float(order_data.get('price', '0')) if order_data.get('price') else None,
-                filled_quantity=float(order_data.get('filled_amount', '0')),
-                remaining_quantity=float(order_data.get('left', '0')),
-                status=to_order_status(order_data.get('status', 'open')),
+                filled_quantity=filled_quantity,
+                remaining_quantity=remaining_quantity,
+                status=order_status,
                 timestamp=int(float(order_data.get('create_time', '0')) * 1000)
             )
             await self._exec_bound_handler(PrivateWebsocketChannelType.ORDER, order)

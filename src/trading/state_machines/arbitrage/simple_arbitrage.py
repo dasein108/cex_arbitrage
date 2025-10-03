@@ -355,11 +355,11 @@ class SimpleArbitrageStateMachine(
             sell_exchange = self.context.exchange_b_private
         
         # Get order statuses concurrently
-        buy_status_task = buy_exchange.get_order(
+        buy_status_task = buy_exchange.fetch_order(
             self.context.buy_order.symbol,
             self.context.buy_order.order_id
         )
-        sell_status_task = sell_exchange.get_order(
+        sell_status_task = sell_exchange.fetch_order(
             self.context.sell_order.symbol,
             self.context.sell_order.order_id
         )

@@ -237,7 +237,7 @@ class MarketMakerStateMachine:
     
     async def _get_order_status(self, order: Order) -> Order:
         """Get current status of an order."""
-        return await self.context.private_exchange.get_order(order.symbol, order.order_id)
+        return await self.context.private_exchange.fetch_order(order.symbol, order.order_id)
 
 
 async def create_market_maker_context(
