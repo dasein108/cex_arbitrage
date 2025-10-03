@@ -96,7 +96,7 @@ def test_context_creation():
         return False
 
 def test_strategy_context_creation():
-    """Test creating specific strategy contexts."""
+    """Test creating specific strategy base."""
     try:
         from trading.state_machines.arbitrage import SimpleArbitrageContext
         

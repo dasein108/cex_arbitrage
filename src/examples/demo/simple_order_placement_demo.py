@@ -17,7 +17,7 @@ from typing import Optional, Literal, List
 
 from config import get_exchange_config
 from exchanges.utils import get_exchange_enum
-from exchanges.exchange_factory import create_exchange_component
+from exchanges.exchange_factory import create_rest_client
 from exchanges.structs.common import Symbol, AssetName
 from exchanges.structs import Side, TimeInForce, OrderType
 from infrastructure.logging import get_logger
@@ -43,19 +43,17 @@ async def main():
                    symbol=f"{symbol.base}/{symbol.quote}")
         
         # Create public REST component for market data
-        public_rest = create_exchange_component(
+        public_rest = create_rest_client(
             exchange_enum,
             config=config,
             is_private=False,
-            component_type='rest'
         )
         
         # Create private REST component for trading
-        private_rest = create_exchange_component(
+        private_rest = create_rest_client(
             exchange_enum,
             config=config,
             is_private=True,
-            component_type='rest'
         )
         
         # Get symbol information for minimum quantities

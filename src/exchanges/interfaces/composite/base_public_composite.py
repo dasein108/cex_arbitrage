@@ -214,9 +214,13 @@ class BasePublicComposite(BaseCompositeExchange[PublicRestType, PublicWebsocketT
         3. Create public WebSocket client with handler injection
         4. Start WebSocket subscriptions with error handling
         """
+
         await super().initialize()
 
+        new_symbols = set()
+
         if symbols:
+            new_symbols = set(symbols) - self._active_symbols
             self._active_symbols.update(symbols)
 
         if channels is None:
@@ -239,10 +243,9 @@ class BasePublicComposite(BaseCompositeExchange[PublicRestType, PublicWebsocketT
             self.logger.info(f"{self._tag} Creating public WebSocket client...")
 
             await self._ws.initialize()
-            await self._ws.subscribe(symbol=list(self.active_symbols),
-                                     channel=channels)
 
-            self._initialized = True
+            if new_symbols:
+                await self._ws.subscribe(symbol=list(self.active_symbols), channel=channels)
 
             init_time = (time.perf_counter() - init_start) * 1000
 

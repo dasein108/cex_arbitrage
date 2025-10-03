@@ -82,6 +82,8 @@ class WebSocketManager:
         # Performance tracking
         self.metrics = PerformanceMetrics()
         self.start_time = 0.0
+
+        self._initialized = False
         
         # Message processing
         self._message_queue: asyncio.Queue = asyncio.Queue(
@@ -94,7 +96,9 @@ class WebSocketManager:
         
         """
         self.start_time = time.perf_counter()
-
+        if self._initialized:
+            self.logger.warning("WebSocket manager already initialized")
+            return
         try:
             with LoggingTimer(self.logger, "ws_manager_initialization") as timer:
                 # Start connection loop (handles reconnection with configured policies)
@@ -113,7 +117,8 @@ class WebSocketManager:
                              tags={"exchange": "ws"})
             self.logger.metric("ws_initialization_time_ms", timer.elapsed_ms,
                              tags={"exchange": "ws"})
-            
+
+            self._initialized = True
         except Exception as e:
             self.logger.error("Failed to initialize WebSocket manager V4",
                             error_type=type(e).__name__,
@@ -388,7 +393,7 @@ class WebSocketManager:
         try:
             with LoggingTimer(self.logger, "ws_manager_close") as timer:
                 self._should_reconnect = False
-                
+
                 # Drain pending messages from queue before task cancellation
                 drained_count = await drain_message_queue(
                     self._message_queue, 
@@ -422,3 +427,5 @@ class WebSocketManager:
                             error_type=type(e).__name__,
                             error_message=str(e))
             self.logger.metric("ws_close_errors", 1, tags={"exchange": "ws"})
+        finally:
+            self._initialized = False

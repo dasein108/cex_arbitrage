@@ -71,7 +71,6 @@ def get_composite_implementation(exchange_config: ExchangeConfig, is_private: bo
 
     return composite_class(exchange_config, rest_client, ws_client)
 
-
 # Compatibility functions for old factory interface
 def create_rest_client(exchange: ExchangeEnum, config: ExchangeConfig, is_private: bool = False, **kwargs):
     """Compatibility wrapper for create_rest_client."""
@@ -82,19 +81,6 @@ def create_websocket_client(exchange: ExchangeEnum, config: ExchangeConfig, is_p
     """Compatibility wrapper for create_websocket_client."""
     return get_ws_implementation(config, is_private)
 
-
-def create_exchange_component(exchange: ExchangeEnum, config: ExchangeConfig, component_type: str, is_private: bool = False, **kwargs):
-    """Compatibility wrapper for create_exchange_component."""
-    if component_type == 'rest':
-        return get_rest_implementation(config, is_private)
-    elif component_type == 'websocket':
-        return get_ws_implementation(config, is_private)
-    elif component_type == 'composite':
-        return get_composite_implementation(config, is_private)
-    else:
-        raise ValueError(f"Unsupported component_type: {component_type}")
-
-
 # Symbol mapper (if needed)
 def get_symbol_mapper(exchange: ExchangeEnum):
     """Get symbol mapper for exchange."""
@@ -102,3 +88,4 @@ def get_symbol_mapper(exchange: ExchangeEnum):
     if not symbol_mapper_class:
         raise ValueError(f"No SymbolMapper found for exchange {exchange}")
     return symbol_mapper_class()
+

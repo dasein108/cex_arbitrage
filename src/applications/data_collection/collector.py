@@ -142,13 +142,11 @@ class UnifiedWebSocketManager:
             config = get_exchange_config(exchange.value)
             
             # Check symbol tradability before WebSocket initialization
-            from exchanges.exchange_factory import create_exchange_component
+            from exchanges.exchange_factory import get_composite_implementation
             
             # Create composite exchange for validation
-            composite = create_exchange_component(
-                exchange=exchange,
-                config=config,
-                component_type='composite',
+            composite = get_composite_implementation(
+                exchange_config=config,
                 is_private=False
             )
 

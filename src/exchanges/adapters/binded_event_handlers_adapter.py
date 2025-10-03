@@ -6,11 +6,14 @@ Enables flexible event processing without tight coupling to exchange internals.
 """
 
 import asyncio
-from typing import Dict, List, Callable, Awaitable, Any, Optional, Set
+from typing import Dict, List, Callable, Awaitable, Any, Optional, Set, Union
 from threading import Lock
 
+from infrastructure.networking.websocket.structs import WebsocketChannelType
 from utils.task_utils import cancel_tasks_with_timeout
+from infrastructure.networking.websocket.structs import PublicWebsocketChannelType, PrivateWebsocketChannelType
 
+ChannelType =  Union[str, PublicWebsocketChannelType, PrivateWebsocketChannelType]
 
 class BindedEventHandlersAdapter:
     """
@@ -64,7 +67,7 @@ class BindedEventHandlersAdapter:
         # Internal handler that receives events from exchange
         self._exchange_handler = self._handle_exchange_event
     
-    def bind_to_exchange(self, exchange) -> None:
+    def bind_to_exchange(self, exchange) -> 'BindedEventHandlersAdapter':
         """
         Bind adapter to exchange publish() events.
         
@@ -89,8 +92,11 @@ class BindedEventHandlersAdapter:
             if self.logger:
                 self.logger.info("BindedEventHandlersAdapter bound to exchange",
                                exchange_name=getattr(exchange, '_exchange_name', 'unknown'))
+
+            return self
     
-    def bind(self, channel: str, handler: Callable[[Any], Awaitable[None]]) -> None:
+    def bind(self, channel: ChannelType,
+             handler: Callable[[Any], Awaitable[None]]) -> None:
         """
         Bind handler to channel. Multiple handlers can be bound to the same channel.
         
@@ -129,7 +135,7 @@ class BindedEventHandlersAdapter:
                 handler_count = len(self._channel_handlers[channel])
                 self.logger.debug(f"Handler bound to channel {channel} (total handlers: {handler_count})")
     
-    def unbind(self, channel: str, handler: Callable[[Any], Awaitable[None]]) -> bool:
+    def unbind(self, channel: ChannelType, handler: Callable[[Any], Awaitable[None]]) -> bool:
         """
         Unbind specific handler from channel.
         
@@ -172,7 +178,7 @@ class BindedEventHandlersAdapter:
             except ValueError:
                 return False
     
-    async def _handle_exchange_event(self, channel: str, data: Any) -> None:
+    async def _handle_exchange_event(self, channel: ChannelType, data: Any) -> None:
         """
         Handle events from exchange and dispatch to all bound handlers.
         
@@ -213,7 +219,7 @@ class BindedEventHandlersAdapter:
         # Optional: Wait for all handlers to complete (can be disabled for performance)
         # await asyncio.gather(*tasks, return_exceptions=True)
     
-    async def _execute_handler_safely(self, handler: Callable, data: Any, channel: str) -> None:
+    async def _execute_handler_safely(self, handler: Callable, data: Any, channel: ChannelType) -> None:
         """
         Execute handler with error isolation.
         
@@ -233,7 +239,7 @@ class BindedEventHandlersAdapter:
                                 error_type=type(e).__name__,
                                 error_message=str(e))
     
-    def get_channel_handlers(self, channel: str) -> List[Callable]:
+    def get_channel_handlers(self, channel: ChannelType) -> List[Callable]:
         """
         Get list of handlers for a channel.
         
@@ -246,7 +252,7 @@ class BindedEventHandlersAdapter:
         with self._lock:
             return self._channel_handlers.get(channel, []).copy()
     
-    def get_all_channels(self) -> List[str]:
+    def get_all_channels(self) -> List[ChannelType]:
         """
         Get list of all channels with bound handlers.
         
@@ -256,7 +262,7 @@ class BindedEventHandlersAdapter:
         with self._lock:
             return list(self._channel_handlers.keys())
     
-    def get_handler_count(self, channel: str = None) -> int:
+    def get_handler_count(self, channel: ChannelType = None) -> int:
         """
         Get count of handlers.
         
