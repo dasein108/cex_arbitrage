@@ -91,16 +91,16 @@ class GateioPrivateFuturesRestInterface(
         symbol: Symbol,
         side: Side,
         order_type: OrderType,
-        time_in_force: TimeInForce,
         quantity: Optional[float] = None,
         price: Optional[float] = None,
+        time_in_force: Optional[float] = None,
         quote_quantity: Optional[float] = None,
         stop_price: Optional[float] = None,
         iceberg_qty: Optional[float] = None,
         stp_act: Optional[str] = None,
     ) -> Order:
         """
-        Place a futures order. Uses /futures/usdt/orders.
+        Place a futures order. Uses /futures/usdt/orders.   
         Notes:
           - Uses self._mapper to convert symbol <-> contract and types/sides.
           - For MARKET orders, prefer 'amount' as size (composite units). If quote_quantity given

@@ -173,18 +173,28 @@ def rest_futures_to_order(gateio_order_data) -> Order:
     symbol = GateioFuturesSymbol.to_symbol(gateio_order_data['contract'])
     #Time in ms
     timestamp = int(gateio_order_data['create_time']*1000)
-    # { 'fill_price': '0', 'iceberg': 0, 'id': 5066550854254415, 'is_close': False, 'is_liq': False, 'is_reduce_only': False, 'left': 1, 'mkfr': '0.0002', 'pnl': '0', 'pnl_margin': '0', 'price': '0.7216', 'refr': '0', 'refu': 0, 'size': 1, 'status': 'open', 'stp_act': '-', 'stp_id': 0, 'text': 'api', 'tif': 'gtc', 'tkfr': '0.0005', 'update_id': 1, 'update_time': 1759213329.013, 'user': 11789588}
+    price=float(gateio_order_data.get('price', '0'))
+    remaining_quantity=float(gateio_order_data.get('left', '0'))
+    quantity = float(abs(gateio_order_data['size']))
+    order_type = (
+        OrderType.MARKET 
+        if price == 0 
+        else OrderType.LIMIT)
+    filled_quantity = quantity - remaining_quantity
+    
     return Order(
         symbol=symbol,
-        side=detect_side_from_size(gateio_order_data['size']),
-        quantity = abs(gateio_order_data['size']),
-        remaining_quantity=float(gateio_order_data.get('left', '0')),
-        price=float(gateio_order_data.get('price', '0')),
         order_id=OrderId(str(gateio_order_data['id'])),
+        side=detect_side_from_size(gateio_order_data['size']),
+        order_type=order_type,
+        quantity=quantity,
+        price=price,
+        filled_quantity = filled_quantity,
+        remaining_quantity=remaining_quantity,
         status=to_order_status(gateio_order_data['status']),
         timestamp=timestamp,
-        order_type=to_order_type(gateio_order_data.get('type','limit')), # not found ????
-        fee=float(gateio_order_data.get('fee', '0'))
+        fee=float(gateio_order_data.get('fee', '0')),
+        time_in_force=to_time_in_force(gateio_order_data.get('tif'))
 
     )
 
