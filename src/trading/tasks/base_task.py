@@ -101,54 +101,6 @@ class TaskContext(msgspec.Struct, frozen=False, kw_only=True):
         # Default to string
         return key_str
     
-    def update_dict(self, field_name: str, key: Any, value: Any) -> 'TaskContext':
-        """Update a single key in a dict field.
-        
-        Args:
-            field_name: Name of the dict field to update
-            key: Key in the dict to update
-            value: New value for the key
-            
-        Returns:
-            New context with updated dict field
-            
-        Examples:
-            ctx.update_dict('filled_quantity', Side.BUY, 100.0)
-            ctx.update_dict('order_id', Side.SELL, 'order123')
-        """
-        current_dict = getattr(self, field_name, None)
-        if current_dict is None:
-            updated_dict = {key: value}
-        else:
-            updated_dict = {**current_dict, key: value}
-        
-        return msgspec.structs.replace(self, **{field_name: updated_dict})
-    
-    def update_dicts(self, *updates) -> 'TaskContext':
-        """Update multiple dict fields at once.
-        
-        Args:
-            *updates: Tuples of (field_name, key, value)
-            
-        Returns:
-            New context with all dict fields updated
-            
-        Examples:
-            ctx.update_dicts(
-                ('filled_quantity', Side.BUY, 100.0),
-                ('order_id', Side.BUY, 'order123'),
-                ('avg_price', Side.BUY, 50.5)
-            )
-        """
-        all_updates = {}
-        
-        for field_name, key, value in updates:
-            if field_name not in all_updates:
-                current_dict = getattr(self, field_name, None)
-                all_updates[field_name] = current_dict.copy() if current_dict else {}
-            all_updates[field_name][key] = value
-        
-        return msgspec.structs.replace(self, **all_updates)
 
 
 T = TypeVar('T', bound=TaskContext)
@@ -256,47 +208,6 @@ class BaseTradingTask(Generic[T], ABC):
         """
         self.context = self.context.evolve(**updates)
     
-    def update_dict_field(self, field_name: str, key: Any, value: Any) -> None:
-        """Update a single key in a dict field of the context.
-        
-        This is a more explicit alternative to Django-like syntax.
-        
-        Args:
-            field_name: Name of the dict field to update
-            key: Key in the dict to update (e.g., Side.BUY)
-            value: New value for the key
-            
-        Examples:
-            # Update single dict entry
-            self.update_dict_field('filled_quantity', Side.BUY, 100.0)
-            self.update_dict_field('order_id', Side.SELL, None)
-            
-            # More readable than Django-like for single updates
-            self.update_dict_field('avg_price', order.side, new_price)
-        """
-        self.context = self.context.update_dict(field_name, key, value)
-    
-    def update_dict_fields(self, *updates) -> None:
-        """Update multiple dict fields at once.
-        
-        Args:
-            *updates: Tuples of (field_name, key, value)
-            
-        Examples:
-            # Update multiple dict entries atomically
-            self.update_dict_fields(
-                ('filled_quantity', Side.BUY, 100.0),
-                ('order_id', Side.BUY, 'order123'),
-                ('avg_price', Side.BUY, 50.5)
-            )
-            
-            # Or with dynamic side
-            self.update_dict_fields(
-                ('filled_quantity', order.side, new_quantity),
-                ('order_id', order.side, None)
-            )
-        """
-        self.context = self.context.update_dicts(*updates)
 
 
     def save_context(self) -> str:
@@ -405,8 +316,6 @@ class BaseTradingTask(Generic[T], ABC):
             TaskExecutionResult containing execution metadata and continuation info
         """
         start_time = time.time()
-
-        self.context.reset_save_flag() # Reset save flag at start, set only if changes in task
 
         result = TaskExecutionResult(
             task_id=self.context.task_id,

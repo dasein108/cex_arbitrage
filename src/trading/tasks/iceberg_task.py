@@ -10,6 +10,7 @@ from infrastructure.networking.websocket.structs import PublicWebsocketChannelTy
 from trading.struct import TradingStrategyState
 
 from trading.tasks.base_task import TaskContext, BaseTradingTask
+from trading.tasks.mixins import OrderManagementMixin, OrderProcessingMixin
 from utils import get_decrease_vector, calculate_weighted_price
 
 
@@ -34,7 +35,7 @@ class IcebergTaskContext(TaskContext):
     avg_price: float = 0.0
 
 
-class IcebergTask(BaseTradingTask[IcebergTaskContext]):
+class IcebergTask(BaseTradingTask[IcebergTaskContext], OrderManagementMixin, OrderProcessingMixin):
     """State machine for executing iceberg orders.
     
     Breaks large orders into smaller chunks to minimize market impact.
@@ -85,6 +86,9 @@ class IcebergTask(BaseTradingTask[IcebergTaskContext]):
 
         # Load exchange config and initialize exchange
         self._exchange = self._load_exchange(self.context.exchange_name)
+        # Set config for demo access (ada_task.config.name)
+        from config.config_manager import get_exchange_config
+        self.config = get_exchange_config(self.context.exchange_name.value)
 
         await self._exchange.initialize([self.context.symbol],
                                         public_channels=[PublicWebsocketChannelType.BOOK_TICKER],
@@ -148,12 +152,14 @@ class IcebergTask(BaseTradingTask[IcebergTaskContext]):
     async def _cancel_current_order(self):
         """Cancel the current active order if exists."""
         if self._curr_order:
-            try:
-                order = await self._exchange.private.cancel_order(self.context.symbol, self._curr_order.order_id)
-                self.logger.info(f"🛑 Cancelled current order {self._tag}", order_id=order.order_id)
+            order = await self.cancel_order_safely(
+                self._exchange, 
+                self.context.symbol, 
+                self._curr_order.order_id
+            )
+            if order:
                 await self._process_order_execution(order)
-            except Exception as e:
-                self.logger.error(f"🚫 Failed to cancel current order {self._tag}", error=str(e))
+            else:
                 # Clear order references even if cancel failed
                 self._curr_order = None
                 self.evolve_context(order_id=None)
@@ -161,33 +167,30 @@ class IcebergTask(BaseTradingTask[IcebergTaskContext]):
     async def _place_order(self):
         """Place limit sell order to top-offset price."""
         self.logger.info(f"📈 Placing limit {self.context.side.name} order for quantity: {self.context.order_quantity}")
-        try:
-            # Get fresh price for sale order
-            vector_ticks = get_decrease_vector(self.context.side, self.context.offset_ticks)
-            order_price = self._get_current_top_price() + vector_ticks * self._si.tick
+        
+        # Get fresh price for sale order
+        vector_ticks = get_decrease_vector(self.context.side, self.context.offset_ticks)
+        order_price = self._get_current_top_price() + vector_ticks * self._si.tick
 
-            # adjust to rest unfilled total amount
-            order_quantity = min(self.context.order_quantity,
-                                 self.context.total_quantity - self.context.filled_quantity)
+        # adjust to rest unfilled total amount
+        order_quantity = min(self.context.order_quantity,
+                             self.context.total_quantity - self.context.filled_quantity)
 
-            # adjust with exchange minimums
-            if order_quantity * order_price < self._si.min_quote_quantity:
-                order_quantity = self._si.min_quote_quantity / order_price + 0.01
+        # adjust with exchange minimums
+        order_quantity = self.validate_order_size(self._si, order_quantity, order_price)
 
-            order = await self._exchange.private.place_limit_order(
-                symbol=self.context.symbol,
-                side=self.context.side,
-                quantity=order_quantity,
-                price=order_price,
-                time_in_force=TimeInForce.GTC
-            )
+        order = await self.place_limit_order_safely(
+            self._exchange,
+            self.context.symbol,
+            self.context.side,
+            order_quantity,
+            order_price
+        )
 
+        if order:
             await self._process_order_execution(order)
-
             return True
-        except Exception as e:
-            self.logger.error(f"🚫 Failed to place order {self._tag}", error=str(e))
-
+        else:
             return False
 
     async def _sync_exchange_order(self) -> Order | None:
@@ -220,37 +223,42 @@ class IcebergTask(BaseTradingTask[IcebergTaskContext]):
 
     async def _process_order_execution(self, order: Order):
         """Process filled order and update context."""
+        await self.process_order_execution_base(order)
+        
+        # Check if completed after processing
         if is_order_done(order):
-            if order.filled_quantity > 0:
-                # Calculate weighted average price
-                total_filled_quantity, new_avg_price = calculate_weighted_price(
-                    self.context.avg_price, self.context.filled_quantity,
-                    order.price, order.filled_quantity
-                )
-
-                # Update total filled quantity and clear order_id in context
-                self.evolve_context(
-                    filled_quantity=self.context.filled_quantity + order.filled_quantity,
-                    order_id=None  # Clear order_id when order is done
-                )
-
-                self.evolve_context(avg_price=new_avg_price)
-
-                self.logger.info(f"✅ Order filled {self._tag}",
-                                 order_price=order.price,
-                                 order_filled=order.filled_quantity,
-                                 total_filled=self.context.filled_quantity,
-                                 avg_price=self.context.avg_price)
-
-            # Clear current order reference
-            self._curr_order = None
-
-            # Check if completed
             self._check_completing()
-        else:
-            # Order is still active - sync order_id in context
-            self._curr_order = order
-            self.evolve_context(order_id=order.order_id)
+    
+    async def _handle_completed_order(self, order: Order, exchange_side: Optional[Side] = None):
+        """Handle completed order fills and updates."""
+        if self._should_process_order_fills(order):
+            # Calculate weighted average price
+            total_filled_quantity, new_avg_price = calculate_weighted_price(
+                self.context.avg_price, self.context.filled_quantity,
+                order.price, order.filled_quantity
+            )
+
+            # Update total filled quantity, avg_price, and clear order_id atomically
+            self.evolve_context(
+                filled_quantity=self.context.filled_quantity + order.filled_quantity,
+                order_id=None,  # Clear order_id when order is done
+                avg_price=new_avg_price
+            )
+
+            self.logger.info(f"✅ Order filled {self._tag}",
+                             order_price=order.price,
+                             order_filled=order.filled_quantity,
+                             total_filled=self.context.filled_quantity,
+                             avg_price=self.context.avg_price)
+    
+    def _clear_order_state(self, exchange_side: Optional[Side] = None):
+        """Clear order state after completion."""
+        self._curr_order = None
+    
+    def _update_active_order_state(self, order: Order, exchange_side: Optional[Side] = None):
+        """Update state for active (unfilled) orders."""
+        self._curr_order = order
+        self.evolve_context(order_id=order.order_id)
 
     def _check_completing(self):
         """Check if total quantity has been filled."""
@@ -272,6 +280,7 @@ class IcebergTask(BaseTradingTask[IcebergTaskContext]):
         if not is_completed:
             if self._should_cancel_order():
                 await self._cancel_current_order()
+                # will be replaced at next iteration, can be in one cycle
             else:
                 await self._place_order()
         else:

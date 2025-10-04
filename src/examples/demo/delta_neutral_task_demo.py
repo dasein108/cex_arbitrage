@@ -77,8 +77,8 @@ class DeltaNeutralTaskDemo:
         """Main demo execution."""
         try:
             # Configuration - Use different exchanges for delta neutral strategy
-            buy_exchange = ExchangeEnum.MEXC    # Exchange for BUY side
-            sell_exchange = ExchangeEnum.GATEIO  # Exchange for SELL side
+            buy_exchange = ExchangeEnum.GATEIO    # Exchange for BUY side
+            sell_exchange = ExchangeEnum.GATEIO_FUTURES  # Exchange for SELL side
 
             # Initialize TaskManager with persistence support
             self.task_manager = TaskManager(self.logger, "task_data")

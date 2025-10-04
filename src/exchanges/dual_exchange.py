@@ -26,6 +26,8 @@ class DualExchange:
         self.adapter_private = BindedEventHandlersAdapter(self.logger).bind_to_exchange(self.private)
         self.adapter_public = BindedEventHandlersAdapter(self.logger).bind_to_exchange(self.public)
 
+        self.name = config.name
+
     @staticmethod
     def get_instance(config: ExchangeConfig, logger: HFTLoggerInterface = None) -> 'DualExchange':
         """Get or create a singleton DualExchange instance per exchange enum."""
