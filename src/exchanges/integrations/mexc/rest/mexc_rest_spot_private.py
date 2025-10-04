@@ -34,7 +34,7 @@ from exchanges.structs.enums import TimeInForce, WithdrawalStatus
 from exchanges.structs import OrderType, Side
 from infrastructure.logging import HFTLoggerInterface
 from infrastructure.networking.http.structs import HTTPMethod
-from infrastructure.exceptions.exchange import ExchangeRestError, ExchangeRestOrderCancelledFilledOrNotExist
+from infrastructure.exceptions.exchange import ExchangeRestError, OrderCancelledOrFilled
 from exchanges.interfaces.rest import PrivateSpotRestInterface
 from exchanges.interfaces.rest.interfaces import ListenKeyInterface
 from exchanges.integrations.mexc.structs.exchange import (MexcAccountResponse, MexcOrderResponse,
@@ -269,7 +269,7 @@ class MexcPrivateSpotRestInterface(MexcBaseRestInterface, PrivateSpotRestInterfa
                 '/api/v3/order',
                 params=params
             )
-        except ExchangeRestOrderCancelledFilledOrNotExist as e:
+        except OrderCancelledOrFilled as e:
             self.logger.warning(f"Order {order_id} for {symbol.base}/{symbol.quote} already cancelled/filled or does not exist")
             # TODO: warning x2 latency costs
             return await self.get_order(symbol, order_id)

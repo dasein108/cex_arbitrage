@@ -207,7 +207,7 @@ class IcebergTask(BaseTradingTask[IcebergTaskContext], OrderManagementMixin, Ord
 
     def _should_cancel_order(self):
         if not self._curr_order:
-            return True
+            return False
 
         top_price = self._get_current_top_price()
         order_price = self._curr_order.price
@@ -281,7 +281,7 @@ class IcebergTask(BaseTradingTask[IcebergTaskContext], OrderManagementMixin, Ord
             if self._should_cancel_order():
                 await self._cancel_current_order()
                 # will be replaced at next iteration, can be in one cycle
-            else:
+            elif not self._curr_order:
                 await self._place_order()
         else:
             await self.complete()

@@ -202,7 +202,7 @@ class TaskManager:
                 result = await task.execute_once()
 
                 # Save task context to persistence
-                if result.context and result.context.should_save:
+                if result.context and result.context.should_save_flag:
                     saved = self._persistence.save_context(task.task_id, result.context)
                     if not saved:
                         self.logger.warning(f"Failed to save context for task {task.task_id}")

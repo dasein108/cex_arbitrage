@@ -8,7 +8,7 @@ from exchanges.structs.enums import TimeInForce
 from exchanges.structs import OrderType, Side
 from infrastructure.logging import HFTLoggerInterface
 from infrastructure.networking.http.structs import HTTPMethod
-from infrastructure.exceptions.exchange import ExchangeRestError
+from infrastructure.exceptions.exchange import ExchangeRestError, OrderNotFoundError
 
 from config.structs import ExchangeConfig
 
@@ -155,7 +155,7 @@ class GateioPrivateFuturesRestInterface(
             self.logger.error(f"Failed to place futures order. {str(e)}")
             raise ExchangeRestError(500, f"Futures order placement failed: {str(e)}")
 
-    async def cancel_order(self, symbol: Symbol, order_id: OrderId) -> Order:
+    async def cancel_order(self, symbol: Symbol, order_id: OrderId) -> Order | None:
         """
         Cancel single futures order. DELETE /futures/usdt/orders/{id}?contract=...
         """
@@ -166,7 +166,9 @@ class GateioPrivateFuturesRestInterface(
             response = await self.request(HTTPMethod.DELETE, endpoint, params=params)
 
             return rest_futures_to_order(response)
-
+        except OrderNotFoundError as e:
+            self.logger.error(e)
+            return None
         except Exception as e:
             self.logger.error(f"Failed to cancel futures order {order_id}: {e}")
             raise ExchangeRestError(500, f"Futures order cancellation failed: {str(e)}")
@@ -196,7 +198,7 @@ class GateioPrivateFuturesRestInterface(
             self.logger.error(f"Failed to cancel all futures orders for {symbol}: {e}")
             raise ExchangeRestError(500, f"Futures mass cancellation failed: {str(e)}")
 
-    async def get_order(self, symbol: Symbol, order_id: OrderId) -> Order:
+    async def get_order(self, symbol: Symbol, order_id: OrderId) -> Order | None:
         """
         Query single futures order: GET /futures/usdt/orders/{id}?contract=...
         """
@@ -207,7 +209,9 @@ class GateioPrivateFuturesRestInterface(
             response = await self.request(HTTPMethod.GET, endpoint, params=params)
 
             return rest_futures_to_order(response)
-
+        except OrderNotFoundError as e:
+            self.logger.error(e)
+            return None
         except Exception as e:
             self.logger.error(f"Failed to get futures order {order_id}: {e}")
             raise ExchangeRestError(500, f"Futures order query failed: {str(e)}")

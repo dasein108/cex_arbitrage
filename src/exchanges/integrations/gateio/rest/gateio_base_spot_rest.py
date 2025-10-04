@@ -29,7 +29,7 @@ from urllib.parse import urlencode
 from infrastructure.networking.http.structs import HTTPMethod
 from infrastructure.networking.http.rest_client_interface import BaseRestClientInterface
 from infrastructure.exceptions.exchange import (
-    ExchangeRestError, RateLimitErrorRest, RecvWindowError
+    ExchangeRestError, RateLimitErrorRest, RecvWindowError, OrderNotFoundError
 )
 from infrastructure.decorators.retry import gateio_retry
 from infrastructure.logging import HFTLoggerInterface
@@ -234,6 +234,8 @@ class GateioBaseSpotRestInterface(BaseRestClientInterface):
                 return RecvWindowError(status, f"Gate.io signature validation failed: {message}")
             elif 'TIMESTAMP' in message.upper() and 'EXPIRED' in message.upper():
                 return RecvWindowError(status, f"Gate.io timestamp expired: {message}")
+            elif 'ORDER_NOT_FOUND' in message.upper():
+                return OrderNotFoundError(status, message)
             else:
                 label_info = f" ({label})" if label else ""
                 return ExchangeRestError(status, f"Gate.io API error{label_info}: {message}")

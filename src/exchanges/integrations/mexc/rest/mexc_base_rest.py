@@ -204,7 +204,7 @@ class MexcBaseRestInterface(BaseRestClientInterface):
                 return RecvWindowError(status, f"MEXC timestamp out of recvWindow: {message}")
             else:
                 return ExchangeRestError(status, f"MEXC API error {code}: {message}")
-                
+            #TODO: implement order not found error handling
         except (json.JSONDecodeError, KeyError):
             # Fallback for non-JSON or malformed responses
             if status == 429:

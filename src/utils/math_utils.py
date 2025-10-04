@@ -4,6 +4,13 @@ from exchanges.structs.common import Side
 def get_minimal_step(precision: int) -> float:
     return 10**-precision
 
+def count_decimal_places(number):
+    """Count the number of decimal places."""
+    str_number = str(number)
+    if '.' in str_number:
+        return len(str_number.split('.')[1])
+    return 0
+
 
 def get_decrease_vector(side: Side, tick: int = 1) -> int:
     """Get decrease vector based on side, up for selling, down for buying."""

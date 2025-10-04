@@ -69,13 +69,12 @@ class CompositePrivateFuturesExchange(BasePrivateComposite):
 
     async def cancel_order(self, symbol: Symbol, order_id) -> Order:
         """Cancel an order via REST API."""
-        return await self._rest.cancel_order(symbol, order_id)
+        try:
+            return await self._rest.cancel_order(symbol, order_id)
+        except OrderNotFoundException:
+            self.logger.warning(f"Order {order_id} not found for cancellation on {self._tag}")
+            raise
 
-    async def get_order(self, symbol: Symbol, order_id) -> Order:
-        """Get order status via REST API."""
-        return await self._rest.get_order(symbol, order_id)
-
-    # Futures-specific abstract methods (must be implemented by concrete classes)
 
     async def close_position(
         self,

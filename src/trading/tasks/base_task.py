@@ -34,7 +34,8 @@ class TaskContext(msgspec.Struct, frozen=False, kw_only=True):
     state: TradingStrategyState = TradingStrategyState.NOT_STARTED
     error: Optional[Exception] = None
     metadata: Dict[str, Any] = msgspec.field(default_factory=dict)
-    
+    should_save_flag: bool = True  # Whether to persist this task
+
     def evolve(self, **updates) -> 'TaskContext':
         """Create a new context with updated fields.
         
@@ -51,7 +52,7 @@ class TaskContext(msgspec.Struct, frozen=False, kw_only=True):
         """
         dict_updates = {}
         regular_updates = {}
-        
+        self.should_save_flag = True  # Mark for saving on any evolve
         for key, value in updates.items():
             if '__' in key:
                 # Parse dict field update: field_name__dict_key
@@ -148,6 +149,7 @@ class BaseTradingTask(Generic[T], ABC):
         self.logger = logger
         self.delay = delay
         self.context: T = context
+        self._tag = "not-set"
 
         # Generate task_id if not already set
         if not self.context.task_id:
@@ -165,6 +167,8 @@ class BaseTradingTask(Generic[T], ABC):
             TradingStrategyState.EXECUTING: self._handle_executing,
             TradingStrategyState.ADJUSTING: self._handle_adjusting,
         }
+
+        self._build_tag()
 
     def _build_tag(self) -> None:
         """Build logging tag based on available context fields.
@@ -317,11 +321,13 @@ class BaseTradingTask(Generic[T], ABC):
         """
         start_time = time.time()
 
+        self.context.should_save_flag = False # reset save flag
+
         result = TaskExecutionResult(
             task_id=self.context.task_id,
             context=self.context,
             state=self.context.state,
-            next_delay=self.delay,
+            next_delay=self.delay
         )
         
         try:
@@ -362,6 +368,7 @@ class BaseTradingTask(Generic[T], ABC):
             
         except Exception as e:
             self.logger.error(f"Task execution failed {self._tag}", error=str(e))
+            traceback.print_exc()
             self.evolve_context(error=e)
             self._transition(TradingStrategyState.ERROR)
             result.error = e

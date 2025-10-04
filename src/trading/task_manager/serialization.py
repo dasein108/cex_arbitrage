@@ -28,31 +28,30 @@ class TaskSerializer:
         Returns:
             str: JSON string representation
         """
-        data = msgspec.structs.asdict(context)
+        def _serialize_value(value):
+            """Recursively serialize complex values."""
+            if hasattr(value, 'value'):  # Enum types
+                return value.value
+            elif isinstance(value, Symbol):
+                return {
+                    'base': value.base,
+                    'quote': value.quote,
+                    'is_futures': getattr(value, 'is_futures', False)
+                }
+            elif isinstance(value, Exception):
+                return {
+                    'type': type(value).__name__,
+                    'message': str(value)
+                }
+            elif isinstance(value, dict):
+                return {k: _serialize_value(v) for k, v in value.items()}
+            elif isinstance(value, (list, tuple)):
+                return [_serialize_value(item) for item in value]
+            else:
+                return value
         
-        # Handle Symbol
-        if 'symbol' in data and data['symbol']:
-            data['symbol'] = {
-                'base': data['symbol'].base,
-                'quote': data['symbol'].quote,
-                'is_futures': getattr(data['symbol'], 'is_futures', False)
-            }
-        
-        
-        # Handle enums
-        if 'side' in data and data['side']:
-            data['side'] = data['side'].value if hasattr(data['side'], 'value') else data['side']
-        if 'exchange_name' in data and data['exchange_name']:
-            data['exchange_name'] = data['exchange_name'].value if hasattr(data['exchange_name'], 'value') else data['exchange_name']
-        if 'state' in data and data['state']:
-            data['state'] = data['state'].value if hasattr(data['state'], 'value') else data['state']
-        
-        # Handle Exception
-        if 'error' in data and data['error']:
-            data['error'] = {
-                'type': type(data['error']).__name__,
-                'message': str(data['error'])
-            }
+        # Convert struct to dict and recursively serialize all values
+        data = {k: _serialize_value(v) for k, v in msgspec.structs.asdict(context).items()}
         
         # Add metadata
         data['_persisted_at'] = time.time()

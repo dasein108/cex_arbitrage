@@ -15,9 +15,8 @@ from infrastructure.logging import HFTLoggerInterface
 from infrastructure.networking.http.structs import HTTPMethod
 from config.structs import ExchangeConfig
 from infrastructure.exceptions.exchange import ExchangeRestError
+from utils import get_minimal_step, count_decimal_places
 # Inline utility function to avoid import issues
-def get_minimal_step(precision: int) -> float:
-    return 10**-precision
 
 # Import direct utility functions
 from exchanges.integrations.gateio.services.futures_symbol_mapper import GateioFuturesSymbol
@@ -93,7 +92,8 @@ class GateioPublicFuturesRestInterface(GateioBaseFuturesRestInterface, PublicFut
                     filtered_count += 1
                     continue
 
-                quote_prec = base_prec = 2
+                quote_prec = 2
+                base_prec = count_decimal_places(c.get('order_price_round', '0.01'))
                 min_base = min_quote =  float(c.get('order_size_min', 3))
 
                 is_inactive = c.get('status', '') != 'trading' and c.get('trade_status', '') != 'tradable'
@@ -107,15 +107,16 @@ class GateioPublicFuturesRestInterface(GateioBaseFuturesRestInterface, PublicFut
                 # Build SymbolInfo (futures)
                 symbol_info = SymbolInfo(
                     symbol=symbol,
-                    base_precision=base_prec,
-                    quote_precision=quote_prec,
+                    base_precision=base_prec, # TODO: remove
+                    quote_precision=quote_prec, # TODO: remove
                     min_base_quantity=min_base,
                     min_quote_quantity=min_quote,
                     is_futures=True,
                     maker_commission=float(c.get('maker_fee', 0)) if c.get('maker_fee') else 0.0,
                     taker_commission=float(c.get('taker_fee', 0)) if c.get('taker_fee') else 0.0,
                     inactive=is_inactive,
-                    tick=get_minimal_step(quote_prec),
+                    tick=float(c.get('order_price_round')),
+                    # tick=get_minimal_step(quote_prec),
                     step=get_minimal_step(base_prec),
                 )
                 symbol_info_map[symbol] = symbol_info

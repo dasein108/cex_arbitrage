@@ -30,7 +30,7 @@ from urllib.parse import urlencode
 from infrastructure.networking.http.structs import HTTPMethod
 from infrastructure.networking.http.rest_client_interface import BaseRestClientInterface
 from infrastructure.exceptions.exchange import (
-    ExchangeRestError, RateLimitErrorRest, RecvWindowError
+    ExchangeRestError, RateLimitErrorRest, RecvWindowError, OrderNotFoundError
 )
 from infrastructure.decorators.retry import gateio_retry
 from infrastructure.logging import HFTLoggerInterface
@@ -248,6 +248,8 @@ class GateioBaseFuturesRestInterface(BaseRestClientInterface):
                 return ExchangeRestError(status, f"Gate.io futures insufficient margin: {message}")
             elif 'POSITION' in message.upper() and ('NOT_FOUND' in message.upper() or 'INVALID' in message.upper()):
                 return ExchangeRestError(status, f"Gate.io futures position error: {message}")
+            elif 'ORDER_NOT_FOUND' in message.upper():
+                return OrderNotFoundError(status, f"Gate.io futures order not found: {message}")
             else:
                 label_info = f" ({label})" if label else ""
                 return ExchangeRestError(status, f"Gate.io futures API error{label_info}: {message}")

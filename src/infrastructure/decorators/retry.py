@@ -18,8 +18,8 @@ from typing import Tuple, Type, Union, Callable, Any, Optional
 import time
 import aiohttp
 from ..exceptions.exchange import (
-    ExchangeRestError, RateLimitErrorRest, ExchangeConnectionRestError, 
-    RecvWindowError
+    ExchangeRestError, RateLimitErrorRest, ExchangeConnectionRestError,
+    RecvWindowError, OrderNotFoundError, OrderCancelledOrFilled
 )
 
 
@@ -68,7 +68,8 @@ def retry_decorator(
             for attempt in range(1, max_attempts + 1):
                 try:
                     return await func(*args, **kwargs)
-                    
+                except (OrderNotFoundError, OrderCancelledOrFilled) as e:
+                    raise e
                 except rate_limit_exceptions as e:
                     last_exception = e
                     

@@ -72,7 +72,7 @@ class PrivateTradingInterface(ABC):
         pass
     
     @abstractmethod
-    async def get_order(self, symbol: Symbol, order_id: OrderId) -> Order:
+    async def get_order(self, symbol: Symbol, order_id: OrderId) -> Order | None:
         """Query order status"""
         pass
     

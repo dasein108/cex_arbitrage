@@ -36,7 +36,7 @@ from infrastructure.logging import HFTLoggerInterface
 from infrastructure.networking.http.structs import HTTPMethod
 from exchanges.interfaces.rest import PrivateSpotRestInterface
 from config.structs import ExchangeConfig
-from infrastructure.exceptions.exchange import ExchangeRestError, ExchangeRestOrderCancelledFilledOrNotExist
+from infrastructure.exceptions.exchange import ExchangeRestError, OrderCancelledOrFilled, OrderNotFoundError
 from infrastructure.error_handling import RestApiErrorHandler
 
 # Import direct utility functions
@@ -320,7 +320,7 @@ class GateioPrivateSpotRestInterface(GateioBaseSpotRestInterface, PrivateSpotRes
                 f'/spot/orders/{order_id}',
                 params=params
             )
-        except ExchangeRestOrderCancelledFilledOrNotExist as e:
+        except OrderCancelledOrFilled as e:
             self.logger.warning(f"Order {order_id} for {symbol.base}/{symbol.quote} already cancelled/filled or does not exist")
             # TODO: warning x2 latency costs
             return await self.get_order(symbol, order_id)
@@ -405,7 +405,8 @@ class GateioPrivateSpotRestInterface(GateioBaseSpotRestInterface, PrivateSpotRes
             
             self.logger.debug(f"Retrieved order status: {order_id}")
             return order
-            
+        except OrderNotFoundError as e:
+            self.logger.error(e.message)
         except Exception as e:
             self.logger.error(f"Failed to get order {order_id}: {e}")
             raise ExchangeRestError(500, f"Order query failed: {str(e)}")

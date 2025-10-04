@@ -27,6 +27,8 @@ class DualExchange:
         self.adapter_public = BindedEventHandlersAdapter(self.logger).bind_to_exchange(self.public)
 
         self.name = config.name
+        self.is_futures = config.is_futures
+        self.exchange_enum = config.exchange_enum
 
     @staticmethod
     def get_instance(config: ExchangeConfig, logger: HFTLoggerInterface = None) -> 'DualExchange':
