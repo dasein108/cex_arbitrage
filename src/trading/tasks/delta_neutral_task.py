@@ -1,7 +1,8 @@
 from typing import Optional, Type, Dict, Any
 
+from config.structs import ExchangeConfig
 from exchanges.dual_exchange import DualExchange
-from exchanges.structs import Order, SymbolInfo, ExchangeEnum
+from exchanges.structs import Order, SymbolInfo
 from exchanges.structs.common import Side, TimeInForce
 from exchanges.utils.exchange_utils import is_order_done
 from infrastructure.logging import HFTLoggerInterface
@@ -12,43 +13,45 @@ from trading.tasks.base_task import TaskContext, BaseTradingTask
 from utils import get_decrease_vector
 
 
-class IcebergTaskContext(TaskContext):
-    """Context for iceberg order execution.
+class DeltaNeutralTaskContext(TaskContext):
+    """Context for delta neutral execution.
     
-    Extends TaskContext with iceberg-specific fields for tracking
-    partial fills and order slicing parameters.
+    Extends SingleExchangeTaskContext with delta-neutral specific fields for tracking
+    partial fills on both sides.
     """
     total_quantity: Optional[float] = None
-    order_quantity: Optional[float] = None
-    filled_quantity: float = 0.0
-    offset_ticks: int = 0
-    tick_tolerance: int = 1
-    avg_price: float = 0.0
+    filled_quantity: Dict[Side, float] = {Side.BUY: 0.0, Side.SELL: 0.0}
+    avg_price: Dict[Side, float] = {Side.BUY: 0.0, Side.SELL: 0.0}
 
 
-class IcebergTask(BaseTradingTask[IcebergTaskContext]):
+class DeltaNeutralTask(BaseTradingTask[DeltaNeutralTaskContext]):
     """State machine for executing iceberg orders.
     
     Breaks large orders into smaller chunks to minimize market impact.
     """
-    name: str = "IcebergTask"
+    name: str = "DeltaNeutralTask"
 
     @property
-    def context_class(self) -> Type[IcebergTaskContext]:
+    def context_class(self) -> Type[DeltaNeutralTaskContext]:
         """Return the iceberg context class."""
-        return IcebergTaskContext
+        return DeltaNeutralTaskContext
 
     def __init__(self, 
+                 exchange1: ExchangeConfig,
+                 exchange2: ExchangeConfig,
                  logger: HFTLoggerInterface,
-                 context: IcebergTaskContext,
+                 context=None,
                  **kwargs):
         """Initialize iceberg task.
         
-        Args:
-            logger: HFT logger instance
-            context: IcebergTaskContext with exchange_name, symbol, and iceberg parameters
+        Accepts either a pre-built IcebergTaskContext or individual parameters:
+        - symbol: Trading symbol (required)
+        - side: Buy or sell side (required for execution)
+        - total_quantity: Total amount to execute
+        - order_quantity: Size of each slice
+        - offset_ticks: Price offset in ticks
         """
-        super().__init__(logger, context, **kwargs)
+        super().__init__(config, logger, context, **kwargs)
         self._exchange = DualExchange.get_instance(self.config)
         self._curr_order: Optional[Order] = None
         self._si: Optional[SymbolInfo] = None
@@ -134,8 +137,8 @@ class IcebergTask(BaseTradingTask[IcebergTaskContext]):
     async def _sync_exchange_order(self) -> Order | None:
         """Get current order from exchange, track updates."""
         if self._curr_order:
-            order = await self._exchange.private.get_active_order(self._curr_order.symbol, self._curr_order.order_id)
-            return await self._process_order_execution(order)
+            self._curr_order = await self._exchange.private.get_active_order(self._curr_order.symbol, self._curr_order.order_id)
+            return self._curr_order
         else:
             return None
 
@@ -205,56 +208,6 @@ class IcebergTask(BaseTradingTask[IcebergTaskContext]):
                              total_filled=self.context.filled_quantity,
                              avg_price=self.context.avg_price)
             await self.complete()
-
-    async def restore_from_json(self, json_data: str) -> None:
-        """Restore iceberg task from JSON with order recovery.
-        
-        Extends base recovery to fetch current order from exchange
-        if order_id is present in the saved context.
-        
-        Args:
-            json_data: JSON string containing task context
-        """
-        # First restore basic context (config is automatically reloaded from exchange_name)
-        super().restore_from_json(json_data)
-        
-        # Reinitialize exchange with the reloaded config (if available)
-        if self.config:
-            self._exchange = DualExchange.get_instance(self.config)
-        
-        # If we have an order_id, try to recover the order from exchange
-        if self.context.order_id:
-            try:
-                # Initialize exchange connection
-                await self._exchange.initialize([self.context.symbol])
-                
-                # Try to fetch the order from exchange
-                order = await self._exchange.private.get_active_order(
-                    self.context.symbol, 
-                    self.context.order_id
-                )
-                
-                if order:
-                    self._curr_order = order
-                    self.logger.info(f"✅ Recovered active order {self._tag}", 
-                                   order_id=order.order_id,
-                                   order_price=order.price,
-                                   order_quantity=order.quantity,
-                                   filled_quantity=order.filled_quantity)
-                else:
-                    # Order not found, probably filled or cancelled
-                    self.logger.warning(f"⚠️ Order {self.context.order_id} not found on exchange, marking as completed {self._tag}")
-                    self._curr_order = None
-                    self.evolve_context(order_id=None)
-                    
-            except Exception as e:
-                # Failed to recover order, log and continue
-                self.logger.error(f"🚫 Failed to recover order {self.context.order_id} {self._tag}", error=str(e))
-                self._curr_order = None
-                self.evolve_context(order_id=None)
-        else:
-            # No order_id in context, clear current order
-            self._curr_order = None
 
     async def _handle_executing(self):
         # sync order updates

@@ -66,7 +66,61 @@ class LoggerFactory:
         """Get default config for external use."""
         return cls._get_default_config()
     
-    
+    @classmethod
+    def override_logger(cls, name: str, **overrides) -> bool:
+        """
+        Override logger configuration at runtime.
+
+        Args:
+            name: Logger name to override
+            **overrides: Configuration overrides:
+                - min_level: Change minimum log level (e.g., "ERROR", "WARNING")
+                - enabled: Enable/disable the logger entirely
+                - backend_enabled: Dict of backend names to enable/disable
+
+        Returns:
+            True if logger was found and modified, False otherwise
+
+        Example:
+            # Suppress noisy logger
+            LoggerFactory.override_logger("mexc.websocket", min_level="ERROR")
+
+            # Disable logger completely
+            LoggerFactory.override_logger("debug.component", enabled=False)
+
+            # Disable specific backend
+            LoggerFactory.override_logger("trading", backend_enabled={"file": False})
+        """
+        if name not in cls._cached_loggers:
+            return False
+
+        logger = cls._cached_loggers[name]
+
+        # Override minimum log level for all backends
+        if "min_level" in overrides:
+            from .interfaces import LogLevel
+            level_str = overrides["min_level"].upper()
+            level = LogLevel[level_str] if isinstance(overrides["min_level"], str) else overrides["min_level"]
+
+            for backend in logger.backends:
+                if hasattr(backend, 'min_level'):
+                    backend.min_level = level
+
+        # Enable/disable logger entirely (affects all backends)
+        if "enabled" in overrides:
+            enabled = overrides["enabled"]
+            for backend in logger.backends:
+                backend.enabled = enabled
+
+        # Enable/disable specific backends
+        if "backend_enabled" in overrides:
+            backend_settings = overrides["backend_enabled"]
+            for backend in logger.backends:
+                if backend.name in backend_settings:
+                    backend.enabled = backend_settings[backend.name]
+
+        return True
+
     @classmethod
     def clear_cache(cls) -> None:
         """Clear cached logger instances."""
