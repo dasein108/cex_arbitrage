@@ -1,5 +1,6 @@
 from typing import Optional, Type, Dict, Any
 
+from config.structs import ExchangeConfig
 from exchanges.dual_exchange import DualExchange
 from exchanges.structs import Order, SymbolInfo, ExchangeEnum
 from exchanges.structs.common import Side, TimeInForce
@@ -52,9 +53,16 @@ class IcebergTask(BaseTradingTask[IcebergTaskContext]):
         self._exchange = DualExchange.get_instance(self.config)
         self._curr_order: Optional[Order] = None
         self._si: Optional[SymbolInfo] = None
+        self.config: Optional[ExchangeConfig] = None
+
 
     async def start(self, **kwargs):
         await super().start(**kwargs)
+        # Load exchange config if context has exchange_name
+        # (for SingleExchangeTaskContext and its subclasses)
+
+        self.config = self._load_exchange_config(self.context.exchange_name)
+
         await self._exchange.initialize([self.context.symbol],
                                         public_channels=[PublicWebsocketChannelType.BOOK_TICKER],
                                         private_channels=[PrivateWebsocketChannelType.ORDER,
@@ -219,15 +227,15 @@ class IcebergTask(BaseTradingTask[IcebergTaskContext]):
         super().restore_from_json(json_data)
         
         # Reinitialize exchange with the reloaded config (if available)
-        if self.config:
+        # Reload config if exchange_name is available
+        if self.context.exchange_name:
+            self.config = self._load_exchange_config(self.context.exchange_name)
             self._exchange = DualExchange.get_instance(self.config)
-        
+            await self._exchange.initialize([self.context.symbol])
+
         # If we have an order_id, try to recover the order from exchange
         if self.context.order_id:
             try:
-                # Initialize exchange connection
-                await self._exchange.initialize([self.context.symbol])
-                
                 # Try to fetch the order from exchange
                 order = await self._exchange.private.get_active_order(
                     self.context.symbol, 
@@ -264,3 +272,8 @@ class IcebergTask(BaseTradingTask[IcebergTaskContext]):
             await self._place_order()
         elif self._should_cancel_order():
             await self._cancel_current_order()
+
+    async def cleanup(self):
+        """Clean up exchange resources."""
+        if self._exchange:
+            await self._exchange.close()

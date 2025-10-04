@@ -2,7 +2,7 @@ from typing import Optional, Type, Dict, Any
 
 from config.structs import ExchangeConfig
 from exchanges.dual_exchange import DualExchange
-from exchanges.structs import Order, SymbolInfo
+from exchanges.structs import Order, SymbolInfo, ExchangeEnum
 from exchanges.structs.common import Side, TimeInForce
 from exchanges.utils.exchange_utils import is_order_done
 from infrastructure.logging import HFTLoggerInterface
@@ -11,6 +11,12 @@ from trading.struct import TradingStrategyState
 
 from trading.tasks.base_task import TaskContext, BaseTradingTask
 from utils import get_decrease_vector
+from enum import IntEnum
+
+class Direction(IntEnum):
+    FILL = 1
+    RELEASE = -1
+    NONE = 0
 
 
 class DeltaNeutralTaskContext(TaskContext):
@@ -22,7 +28,12 @@ class DeltaNeutralTaskContext(TaskContext):
     total_quantity: Optional[float] = None
     filled_quantity: Dict[Side, float] = {Side.BUY: 0.0, Side.SELL: 0.0}
     avg_price: Dict[Side, float] = {Side.BUY: 0.0, Side.SELL: 0.0}
-
+    exchange_names = Dict[Side, ExchangeEnum] = {Side.BUY:None, Side.SELL:None}
+    direction: Direction = Direction.NONE
+    order_quantity: Optional[float] = None
+    offset_ticks: Dict[Side, int] = {Side.BUY: 0, Side.SELL: 0} # offset_tick = -1 means MARKET order
+    tick_tolerance: Dict[Side, int] = {Side.BUY: 0, Side.SELL: 0}
+    order_id: Dict[Side, Optional[str]] = {Side.BUY: None, Side.SELL: None}
 
 class DeltaNeutralTask(BaseTradingTask[DeltaNeutralTaskContext]):
     """State machine for executing iceberg orders.
@@ -37,10 +48,8 @@ class DeltaNeutralTask(BaseTradingTask[DeltaNeutralTaskContext]):
         return DeltaNeutralTaskContext
 
     def __init__(self, 
-                 exchange1: ExchangeConfig,
-                 exchange2: ExchangeConfig,
                  logger: HFTLoggerInterface,
-                 context=None,
+                 context: DeltaNeutralTaskContext,
                  **kwargs):
         """Initialize iceberg task.
         
@@ -51,10 +60,11 @@ class DeltaNeutralTask(BaseTradingTask[DeltaNeutralTaskContext]):
         - order_quantity: Size of each slice
         - offset_ticks: Price offset in ticks
         """
-        super().__init__(config, logger, context, **kwargs)
-        self._exchange = DualExchange.get_instance(self.config)
-        self._curr_order: Optional[Order] = None
-        self._si: Optional[SymbolInfo] = None
+        super().__init__(logger, context, **kwargs)
+        self.config: [Side, ExchangeConfig] = {Side.BUY: self._load_exchange_config(self.context.exchange_name), Side.SELL: None}
+        self._exchange: Dict[Side, DualExchange] = DualExchange.get_instance(self.config)
+        self._curr_order: Dict[Side, Optional[Order]] = {Side.BUY: None, Side.SELL: None}
+        self._si: Dict[Side, Optional[SymbolInfo]] =  {Side.BUY: None, Side.SELL: None}
 
     async def start(self, **kwargs):
         await super().start(**kwargs)

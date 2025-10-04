@@ -191,8 +191,23 @@ class IcebergTaskDemo:
             await self.logger.flush()
             raise
         finally:
-            # Ensure cleanup
+            # Comprehensive cleanup in couple lines
+            await self._comprehensive_cleanup()
+
+    async def _comprehensive_cleanup(self):
+        """Complete system cleanup - all resources properly closed."""
+        from exchanges.dual_exchange import DualExchange
+        from infrastructure.logging.hft_logger import HFTLogger
+        
+        # Stop task manager (cleans up all task resources)
+        if self.task_manager:
             await self.task_manager.stop()
+        
+        # Close all exchange connections
+        await DualExchange.cleanup_all()
+        
+        # Shutdown all logger background tasks
+        await HFTLogger.shutdown_all()
 
 
 async def main():

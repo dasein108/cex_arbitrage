@@ -49,14 +49,6 @@ class TaskContext(msgspec.Struct, frozen=False, kw_only=True):
         """Reset the should_save flag after saving."""
         self.should_save = False
 
-    def is_single_exchange(self) -> bool:
-        """Check if this is a single-exchange task."""
-        return self.exchange_name is not None and self.symbol is not None
-    
-    def is_multi_exchange(self) -> bool:
-        """Check if this is a multi-exchange task."""
-        return len(self.exchange_names) > 0 and len(self.symbols) > 0
-    
     def evolve(self, **updates) -> 'TaskContext':
         """Create a new context with updated fields."""
 
@@ -113,12 +105,7 @@ class BaseTradingTask(Generic[T], ABC):
 
         self._should_save = False  # Flag to indicate if context should be persisted
 
-        # Load exchange config if context has exchange_name
-        # (for SingleExchangeTaskContext and its subclasses)
-        self.config: Optional[ExchangeConfig] = None
-        if hasattr(context, 'exchange_name') and context.exchange_name:
-            self.config = self._load_exchange_config(context.exchange_name)
-        
+
         # Generate task_id if not already set
         if not self.context.task_id:
             timestamp = int(time.time() * 1000)  # milliseconds
@@ -147,6 +134,7 @@ class BaseTradingTask(Generic[T], ABC):
             TradingStrategyState.EXECUTING: self._handle_executing,
         }
 
+    @abstractmethod
     def _build_tag(self) -> None:
         """Build logging tag based on available context fields."""
         tag_parts = []
@@ -239,11 +227,7 @@ class BaseTradingTask(Generic[T], ABC):
         """
         # Use centralized serialization
         self.context = TaskSerializer.deserialize_context(json_data, self.context_class)
-        
-        # Reload config if exchange_name is available
-        if self.context.exchange_name:
-            self.config = self._load_exchange_config(self.context.exchange_name)
-        
+
         # Rebuild tag after restoration
         self._build_tag()
     

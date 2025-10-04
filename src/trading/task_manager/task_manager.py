@@ -140,9 +140,26 @@ class TaskManager:
                 except asyncio.CancelledError:
                     pass
         
+        # Clean up all task resources
+        await self._cleanup_task_resources()
+        
         self.logger.info(f"TaskManager stopped",
                         total_executions=self._total_executions,
                         runtime_seconds=time.time() - self._start_time)
+    
+    async def _cleanup_task_resources(self):
+        """Clean up all task resources including exchange connections."""
+        cleanup_tasks = []
+        for task in self._tasks.values():
+            if hasattr(task, 'cleanup'):
+                cleanup_tasks.append(task.cleanup())
+        
+        if cleanup_tasks:
+            await asyncio.gather(*cleanup_tasks, return_exceptions=True)
+        
+        # Clear tasks
+        self._tasks.clear()
+        self._next_execution.clear()
     
     def _get_ready_tasks(self) -> List[BaseTradingTask]:
         """Get tasks ready for execution.

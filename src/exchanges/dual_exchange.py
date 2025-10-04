@@ -84,3 +84,16 @@ class DualExchange:
     async def close(self) -> None:
         """Close both public and private exchanges."""
         await asyncio.gather(*[self.public.close(), self.private.close()])
+
+    @classmethod
+    async def cleanup_all(cls) -> None:
+        """Close all DualExchange instances and clear singleton registry."""
+        close_tasks = []
+        for instance in _DUAL_CLIENTS.values():
+            close_tasks.append(instance.close())
+        
+        if close_tasks:
+            await asyncio.gather(*close_tasks, return_exceptions=True)
+        
+        # Clear singleton registry
+        _DUAL_CLIENTS.clear()
