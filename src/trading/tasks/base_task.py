@@ -1,18 +1,20 @@
 import asyncio
 from abc import ABC, abstractmethod
-from typing import Optional, TypeVar, Generic, Type, Dict, Any
+from typing import Optional, TypeVar, Generic, Type, Dict, Any, List
 import msgspec
 import time
 
 from config.structs import ExchangeConfig
-from exchanges.structs import Symbol, Side
+from exchanges.structs import Symbol, Side, ExchangeEnum
 from infrastructure.logging import HFTLoggerInterface
 from trading.struct import TradingStrategyState
+from trading.task_manager.serialization import TaskSerializer
 
 
-class TaskExecutionResult(msgspec.Struct, frozen=False):
+class TaskExecutionResult(msgspec.Struct, frozen=False, kw_only=True):
     """Result from single task execution cycle."""
     task_id: str  # Unique task identifier
+    context: 'TradingTaskContext'  # Snapshot of task context after execution
     should_continue: bool = True  # True if task needs more cycles
     next_delay: float = 0.1  # Suggested delay before next execution
     state: TradingStrategyState = TradingStrategyState.IDLE
@@ -20,65 +22,59 @@ class TaskExecutionResult(msgspec.Struct, frozen=False):
     execution_time_ms: float = 0.0
     metadata: Dict[str, Any] = msgspec.field(default_factory=dict)
 
-
-class TradingTaskContext(msgspec.Struct, frozen=False, kw_only=True):
-    """Base context for trading tasks with partial update support.
+class TaskContext(msgspec.Struct, frozen=False, kw_only=True):
+    """Unified flexible context for all trading tasks.
     
-    Supports evolution pattern where fields can be added incrementally
-    through the task lifecycle.
-    
-    Note: symbol is REQUIRED and must be provided at initialization.
-    Other fields can be added later via evolve().
+    Supports both single-exchange and multi-exchange scenarios with optional fields.
+    Use exchange_name + symbol for single-exchange tasks, or exchange_names + symbols
+    for multi-exchange tasks.
     """
-    symbol: Symbol  # Required field - no default
-    side: Optional[Side] = None
-    state: TradingStrategyState = TradingStrategyState.NOT_STARTED  # Move state into context
-    task_id: str = ""  # Auto-generated task identifier
-    order_id: Optional[str] = None  # Track current order ID
+    task_id: str = ""
+    state: TradingStrategyState = TradingStrategyState.NOT_STARTED
     error: Optional[Exception] = None
     metadata: Dict[str, Any] = msgspec.field(default_factory=dict)
     
-    def evolve(self, **updates) -> 'TradingTaskContext':
-        """Create a new context with updated fields.
-        
-        Note: This creates a new context with updates applied.
-        Required fields from the original context are preserved.
-        """
-        return msgspec.structs.replace(self, **updates)
+    # Single-exchange fields (use these for single-exchange tasks)
+    exchange_name: Optional[ExchangeEnum] = None
+    symbol: Optional[Symbol] = None
+    side: Optional[Side] = None
+    order_id: Optional[str] = None
     
-    def to_json(self) -> bytes:
-        """Serialize context to JSON bytes."""
-        # Convert non-serializable fields for JSON
-        data = msgspec.structs.asdict(self)
-        if data.get('error'):
-            data['error'] = str(data['error'])
-        # Convert state enum to value for serialization
-        if data.get('state'):
-            data['state'] = data['state'].value
-        return msgspec.json.encode(data)
-    
-    @classmethod
-    def from_json(cls, data: bytes) -> 'TradingTaskContext':
-        """Deserialize context from JSON bytes."""
-        obj_data = msgspec.json.decode(data)
-        # Reconstruct error if present
-        if obj_data.get('error'):
-            obj_data['error'] = Exception(obj_data['error'])
-        # Reconstruct state enum from value
-        if obj_data.get('state') is not None:
-            obj_data['state'] = TradingStrategyState(obj_data['state'])
-        return cls(**obj_data)
+    # Multi-exchange fields (use these for multi-exchange tasks)
+    exchange_names: List[ExchangeEnum] = msgspec.field(default_factory=list)
+    symbols: List[Symbol] = msgspec.field(default_factory=list)
+    should_save: bool = False  # True if context should be persisted
 
-T = TypeVar('T', bound=TradingTaskContext)
+    def reset_save_flag(self) -> None:
+        """Reset the should_save flag after saving."""
+        self.should_save = False
+
+    def is_single_exchange(self) -> bool:
+        """Check if this is a single-exchange task."""
+        return self.exchange_name is not None and self.symbol is not None
+    
+    def is_multi_exchange(self) -> bool:
+        """Check if this is a multi-exchange task."""
+        return len(self.exchange_names) > 0 and len(self.symbols) > 0
+    
+    def evolve(self, **updates) -> 'TaskContext':
+        """Create a new context with updated fields."""
+
+        self.should_save = True  # Mark context for saving on any update
+
+        return msgspec.structs.replace(self, **updates)
+
+
+T = TypeVar('T', bound=TaskContext)
 
 
 class BaseTradingTask(Generic[T], ABC):
-    """Base class for trading tasks with state management and context evolution.
+    """Simplified base class for trading tasks.
     
     Subclasses should:
-    1. Define their own context class extending TradingTaskContext
+    1. Define their own context class extending TaskContext
     2. Override context_class property to return their context type
-    3. Implement state handlers and transitions
+    3. Implement _handle_executing() method
     4. Call evolve_context() to update context during lifecycle
     """
     name: str = "BaseTradingTask"
@@ -97,52 +93,50 @@ class BaseTradingTask(Generic[T], ABC):
         pass
 
     def __init__(self,
-                 config: ExchangeConfig, 
                  logger: HFTLoggerInterface,
-                 context: Optional[T] = None,
-                 delay: float = 0.1,
-                 **context_kwargs):
-        """Initialize task with either a context or context parameters.
+                 context: T,
+                 delay: float = 0.1):
+        """Initialize task with context.
         
         Args:
-            config: Exchange configuration
             logger: HFT logger instance
-            context: Pre-built context (if provided, context_kwargs ignored)
+            context: Trading task context (type depends on task requirements)
             delay: Delay between state cycles
-            **context_kwargs: Additional context fields
         """
-        self.config = config
+        # Validate provided context type
+        if not isinstance(context, TaskContext):
+            raise TypeError(f"Context must be a TaskContext, got {type(context)}")
+        
         self.logger = logger
         self.delay = delay
-        
-        # Initialize context either from provided or create new
-        # Validate provided context
-        if not isinstance(context, TradingTaskContext):
-            raise TypeError(f"Context must be a TradingTaskContext, got {type(context)}")
         self.context: T = context
+
+        self._should_save = False  # Flag to indicate if context should be persisted
+
+        # Load exchange config if context has exchange_name
+        # (for SingleExchangeTaskContext and its subclasses)
+        self.config: Optional[ExchangeConfig] = None
+        if hasattr(context, 'exchange_name') and context.exchange_name:
+            self.config = self._load_exchange_config(context.exchange_name)
         
-        # Generate task_id if not already set in context
+        # Generate task_id if not already set
         if not self.context.task_id:
-            import time
             timestamp = int(time.time() * 1000)  # milliseconds
-            task_id = f"{timestamp}_{self.name}_{self.context.symbol.base}_{self.context.symbol.quote}"
+            # Build task_id based on available context fields
+            task_id_parts = [str(timestamp), self.name]
+            
+            # Add symbol if available
+            if self.context.symbol:
+                task_id_parts.append(f"{self.context.symbol.base}_{self.context.symbol.quote}")
+            
+            # Add side if available
             if self.context.side:
-                task_id += f"_{self.context.side.name}"
-            self.evolve_context(task_id=task_id)
-
-
-        # try:
-        #     self.context = self.context_class(**context_kwargs)
-        # except TypeError as e:
-        #     raise ValueError(f"Failed to create context: {e}")
-        #
-        # Build tag from available context fields
-        tag_parts = [self.config.name, self.name]
-        if hasattr(self.context, 'symbol') and self.context.symbol:
-            tag_parts.append(str(self.context.symbol))
-        if hasattr(self.context, 'side') and self.context.side:
-            tag_parts.append(self.context.side.name)
-        self._tag = "_".join(tag_parts)
+                task_id_parts.append(self.context.side.name)
+            
+            self.evolve_context(task_id="_".join(task_id_parts))
+        
+        # Build tag for logging (flexible based on context type)
+        self._build_tag()
         
         # State handlers mapping
         self._state_handlers = {
@@ -152,6 +146,52 @@ class BaseTradingTask(Generic[T], ABC):
             TradingStrategyState.COMPLETED: self._handle_complete,
             TradingStrategyState.EXECUTING: self._handle_executing,
         }
+
+    def _build_tag(self) -> None:
+        """Build logging tag based on available context fields."""
+        tag_parts = []
+        
+        # Add exchange name if available
+        if self.config:
+            tag_parts.append(self.config.name)
+        
+        tag_parts.append(self.name)
+        
+        # Add symbol if available
+        if self.context.symbol:
+            tag_parts.append(str(self.context.symbol))
+        
+        # Add side if available
+        if self.context.side:
+            tag_parts.append(self.context.side.name)
+        
+        self._tag = "_".join(tag_parts)
+
+    def _load_exchange_config(self, exchange_name: ExchangeEnum) -> ExchangeConfig:
+        """Load exchange configuration from ExchangeEnum.
+        
+        Args:
+            exchange_name: Exchange identifier enum
+            
+        Returns:
+            ExchangeConfig: Loaded exchange configuration
+            
+        Raises:
+            ValueError: If config loading fails
+        """
+        try:
+            from config.config_manager import get_exchange_config
+            # Convert enum to string format expected by config manager
+            # ExchangeEnum.MEXC has value ExchangeName("MEXC_SPOT"), so convert to lowercase
+            if hasattr(exchange_name.value, 'value'):
+                # Handle ExchangeName wrapper
+                config_name = exchange_name.value.value.lower()
+            else:
+                # Handle direct string value
+                config_name = exchange_name.value.lower()
+            return get_exchange_config(config_name)
+        except Exception as e:
+            raise ValueError(f"Failed to load config for {exchange_name}: {e}")
 
     @property
     def state(self) -> TradingStrategyState:
@@ -176,22 +216,36 @@ class BaseTradingTask(Generic[T], ABC):
         """
         self.context = self.context.evolve(**updates)
         
-        # Update tag if symbol or side changed
-        if 'symbol' in updates or 'side' in updates:
-            tag_parts = [self.config.name, self.name]
-            if self.context.symbol:
-                tag_parts.append(str(self.context.symbol))
-            if self.context.side:
-                tag_parts.append(self.context.side.name)
-            self._tag = "_".join(tag_parts)
+        # Rebuild tag if relevant fields changed
+        if any(field in updates for field in ['symbol', 'side', 'exchange_name']):
+            self._build_tag()
     
-    def save_context(self) -> bytes:
-        """Serialize current context to JSON bytes for persistence."""
-        return self.context.to_json()
+    def save_context(self) -> str:
+        """Serialize current context to JSON string for persistence."""
+        return TaskSerializer.serialize_context(self.context)
     
-    def restore_context(self, data: bytes) -> None:
-        """Restore context from serialized JSON bytes."""
-        self.context = self.context_class.from_json(data)
+    def restore_context(self, data: str) -> None:
+        """Restore context from serialized JSON string."""
+        self.context = TaskSerializer.deserialize_context(data, self.context_class)
+    
+    def restore_from_json(self, json_data: str) -> None:
+        """Restore task from JSON string data.
+        
+        Base implementation for task recovery. Subclasses can override
+        to add exchange-specific recovery logic (e.g., order fetching).
+        
+        Args:
+            json_data: JSON string containing task context
+        """
+        # Use centralized serialization
+        self.context = TaskSerializer.deserialize_context(json_data, self.context_class)
+        
+        # Reload config if exchange_name is available
+        if self.context.exchange_name:
+            self.config = self._load_exchange_config(self.context.exchange_name)
+        
+        # Rebuild tag after restoration
+        self._build_tag()
     
     def _transition(self, new_state: TradingStrategyState) -> None:
         """Transition to a new state.
@@ -212,9 +266,8 @@ class BaseTradingTask(Generic[T], ABC):
         self.logger.debug(f"PAUSED state for {self._tag}")
 
     async def _handle_complete(self):
-        """Default paused state handler."""
+        """Default complete state handler."""
         self.logger.debug(f"COMPLETED state for {self._tag}")
-
 
     @abstractmethod
     async def _handle_executing(self):
@@ -253,7 +306,7 @@ class BaseTradingTask(Generic[T], ABC):
             
         Important:
             - Updates are applied to the existing context
-            - Required fields (like 'symbol') are preserved from current context
+            - Required fields are preserved from current context
             - Pass field_name=value to update specific fields
         """
         self.logger.info(f"Updating task in state {self.context.state.name}")
@@ -265,7 +318,6 @@ class BaseTradingTask(Generic[T], ABC):
         else:
             self.logger.debug("No updates provided to update() method")
 
-
     async def execute_once(self) -> TaskExecutionResult:
         """Execute one cycle of the task state machine.
         
@@ -273,10 +325,14 @@ class BaseTradingTask(Generic[T], ABC):
             TaskExecutionResult containing execution metadata and continuation info
         """
         start_time = time.time()
+
+        self.context.reset_save_flag() # Reset save flag at start, set only if changes in task
+
         result = TaskExecutionResult(
             task_id=self.context.task_id,
+            context=self.context,
             state=self.context.state,
-            next_delay=self.delay
+            next_delay=self.delay,
         )
         
         try:
@@ -305,12 +361,14 @@ class BaseTradingTask(Generic[T], ABC):
             
             # Calculate execution time
             result.execution_time_ms = (time.time() - start_time) * 1000
+            result.context = self.context
             
         except asyncio.CancelledError:
             self.logger.info(f"Task cancelled during execution: {self._tag}")
             self._transition(TradingStrategyState.CANCELLED)
             result.should_continue = False
             result.state = self.context.state
+            result.context = self.context
             raise
             
         except Exception as e:
@@ -345,5 +403,3 @@ class BaseTradingTask(Generic[T], ABC):
         """Mark the task as completed."""
         self.logger.info(f"Completing task {self._tag}")
         self._transition(TradingStrategyState.COMPLETED)
-    
-

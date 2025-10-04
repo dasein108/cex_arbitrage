@@ -1,21 +1,25 @@
 #!/usr/bin/env python3
 """
-IcebergTask Demo with TaskManager
+IcebergTask Demo with TaskManager - Refactored for Context-Based Configuration
 
-Demonstrates iceberg order execution using the TaskManager for external loop management:
-- Initialize IcebergTask with context
-- Add task to TaskManager for coordinated execution
-- Monitor execution progress via TaskManager
-- Update parameters during execution
-- Demonstrate symbol-based coordination
-- Handle cleanup and graceful shutdown
+Demonstrates iceberg order execution using the new context-based configuration system:
+- Initialize IcebergTask with exchange_name in context (no config parameter)
+- Dynamic configuration loading from ExchangeEnum
+- Task persistence and recovery capabilities
+- Multiple exchange coordination
+- Add tasks to TaskManager for coordinated execution
+- Monitor execution progress with enhanced statistics
+- Demonstrate persistence cleanup and management
 
 Key features demonstrated:
+- Context-based exchange configuration (NEW)
+- Dynamic config loading from ExchangeEnum (NEW)
+- Task persistence and recovery system (NEW)
+- Multiple exchange task coordination (NEW)
 - TaskManager external loop management
 - Symbol-based coordination (same symbol = sequential)
-- Partial context update pattern
-- Real-time parameter updates during execution
-- Task lifecycle management
+- Enhanced monitoring with persistence statistics
+- Task lifecycle management with automatic persistence
 - Proper error handling and logging
 
 Usage:
@@ -36,10 +40,6 @@ sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 os.environ['ENVIRONMENT'] = 'dev'
 
 from infrastructure.logging import get_logger
-from infrastructure.logging.factory import LoggerFactory
-from infrastructure.logging.structs import (
-    LoggingConfig, ConsoleBackendConfig, PerformanceConfig, RouterConfig
-)
 
 # # Set up immediate logging config
 # immediate_config = LoggingConfig(
@@ -63,10 +63,10 @@ from infrastructure.logging.structs import (
 # # Override factory config for immediate logging
 # LoggerFactory._default_config = immediate_config
 
-from config.config_manager import get_exchange_config
 from exchanges.structs.common import Symbol, AssetName, Side
+from exchanges.structs import ExchangeEnum
 from trading.tasks.iceberg_task import IcebergTask, IcebergTaskContext
-from trading.tasks.task_manager import TaskManager
+from trading.task_manager.task_manager import TaskManager
 
 
 class IcebergTaskDemo:
@@ -89,66 +89,102 @@ class IcebergTaskDemo:
     async def run_demo(self):
         """Main demo execution."""
         try:
-            # Configuration
-            exchange_name = "gateio_spot"  # Change to desired exchange
+            # Configuration - Use ExchangeEnum instead of string
+            exchange_name = ExchangeEnum.GATEIO  # Change to desired exchange
 
-            # Get exchange configuration and logging setup
-            config = get_exchange_config(exchange_name)
+            # Initialize TaskManager with persistence support
+            self.task_manager = TaskManager(self.logger, "task_data")
+            await self.task_manager.start(recover_tasks=True)  # Enable task recovery
+            if self.task_manager.task_count == 0:
+                # Define trading symbols
+                ada_symbol = Symbol(
+                    base=AssetName("ADA"),
+                    quote=AssetName("USDT"),
+                    is_futures=False
+                )
 
-            # Initialize TaskManager
-            self.task_manager = TaskManager(self.logger)
-            await self.task_manager.start()
+                self.logger.info("Starting IcebergTask demo with TaskManager",
+                                 exchange=exchange_name.value,
+                                 symbols=[f"{ada_symbol.base}/{ada_symbol.quote}"])
 
-            # Define trading symbols
-            ada_symbol = Symbol(
-                base=AssetName("ADA"),
-                quote=AssetName("USDT"),
-                is_futures=False
-            )
+                # Demo 1: Create and add IcebergTask to TaskManager
+                self.logger.info("=== Create IcebergTask with context-based configuration ===")
 
-            self.logger.info("Starting IcebergTask demo with TaskManager",
-                             exchange=exchange_name,
-                             symbols=[f"{ada_symbol.base}/{ada_symbol.quote}"])
-
-            # Demo 1: Create and add IcebergTask to TaskManager
-            self.logger.info("=== Demo 1: Create IcebergTask and add to TaskManager ===")
-
-            # Create first task - ADA sell
-            ada_task = IcebergTask(
-                config=config,
-                logger=self.logger,
-                context=IcebergTaskContext(
+                # Create task context with exchange_name (no config parameter needed)
+                ada_context = IcebergTaskContext(
                     symbol=ada_symbol,
-                    side=Side.BUY,
+                    exchange_name=exchange_name,  # Exchange info now in context
+                    side=Side.SELL,
                     total_quantity=20.0,
                     order_quantity=3.0,
                     offset_ticks=4,
                     tick_tolerance=8
                 )
-            )
 
-            await ada_task.start()
-            task_id = await self.task_manager.add_task(ada_task)
+                # Create first task - ADA buy (config loaded automatically from exchange_name)
+                ada_task = IcebergTask(
+                    logger=self.logger,
+                    context=ada_context
+                )
 
-            self.logger.info("ADA IcebergTask created and added to TaskManager",
-                             task_id=ada_task.task_id,
-                             symbol=str(ada_symbol))
+                await ada_task.start()
+                task_id = await self.task_manager.add_task(ada_task)
+
+                self.logger.info("ADA IcebergTask created and added to TaskManager",
+                                 task_id=ada_task.task_id,
+                                 symbol=str(ada_symbol),
+                                 exchange=ada_task.config.name,
+                                 config_loaded_from=ada_context.exchange_name)
+
+            # Show persistence statistics
+            persistence_stats = self.task_manager.get_persistence_stats()
+            self.logger.info("Task persistence statistics", stats=persistence_stats)
 
             start_time = asyncio.get_event_loop().time()
+            status_count = 0
+            
             while self.task_manager.task_count > 0 and self.running:
-                # Get TaskManager status
+                # Get enhanced TaskManager status
                 status = self.task_manager.get_status()
-                self.logger.debug("TaskManager status",
-                                 active_tasks=status['active_tasks'],
-                                 total_executions=status['total_executions'],
-                                 runtime=f"{status['runtime_seconds']:.1f}s")
+                
+                # Log status every 100 iterations (reduce noise)
+                if status_count % 100 == 0:
+                    self.logger.info("TaskManager status",
+                                     active_tasks=status['active_tasks'],
+                                     total_executions=status['total_executions'],
+                                     runtime=f"{status['runtime_seconds']:.1f}s",
+                                     persistence_stats=status.get('persistence_stats', {}))
+                    
+                    # Show individual task status
+                    for task_info in status.get('tasks', []):
+                        self.logger.debug("Task status",
+                                          task_id=task_info['task_id'],
+                                          symbol=task_info['symbol'],
+                                          state=task_info['state'],
+                                          next_exec=f"{task_info['next_execution']:.3f}s")
+                
+                status_count += 1
                 await asyncio.sleep(0.1)
 
-
+            # Demo 5: Final statistics and cleanup demonstration
+            self.logger.info("=== Demo 5: Final statistics and cleanup ===")
+            
             final_status = self.task_manager.get_status()
             self.logger.info("Final TaskManager status",
                              active_tasks=final_status['active_tasks'],
-                             total_executions=final_status['total_executions'])
+                             total_executions=final_status['total_executions'],
+                             runtime=f"{final_status['runtime_seconds']:.1f}s")
+            
+            # Show final persistence statistics
+            final_persistence_stats = self.task_manager.get_persistence_stats()
+            self.logger.info("Final persistence statistics", stats=final_persistence_stats)
+            
+            # Demonstrate cleanup functionality
+            self.logger.info("Demonstrating persistence cleanup...")
+            self.task_manager.cleanup_persistence(max_age_hours=0)  # Clean all for demo
+            
+            after_cleanup_stats = self.task_manager.get_persistence_stats()
+            self.logger.info("Post-cleanup persistence statistics", stats=after_cleanup_stats)
 
         except Exception as e:
             self.logger.error("Demo execution failed", error=str(e))

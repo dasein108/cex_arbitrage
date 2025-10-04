@@ -450,7 +450,7 @@ class BasePrivateComposite(BaseCompositeExchange[PrivateRestType, PrivateWebsock
     async def _order_handler(self, order: Order) -> None:
         """Handle order update event."""
         await self._update_order(order)
-        self.logger.info("order update processed", order)
+        self.logger.info("order update processed", order_id=order.order_id, order=str(order))
 
 
     async def _balance_handler(self, balance: AssetBalance) -> None:

@@ -17,8 +17,7 @@ from config.config_manager import get_exchange_config
 from config.logging.config import get_logger, get_logging_config
 from exchanges.structs.common import Symbol, AssetName, Side
 from trading.tasks.iceberg_task import IcebergTask, IcebergTaskContext
-from trading.tasks.task_manager import TaskManager
-from trading.struct import TradingStrategyState
+from trading.task_manager.task_manager import TaskManager
 
 
 class TaskManagerDemo:
