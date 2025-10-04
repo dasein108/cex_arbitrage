@@ -48,11 +48,38 @@ class CompositePrivateFuturesExchange(BasePrivateComposite):
         """Get current positions (alias for futures_positions)."""
         return self._positions.copy()
 
+    # Trading operations - delegate to REST client
+
+    async def get_balances(self) -> List[Any]:
+        """Get account balances via REST API."""
+        return await self._rest.get_balances()
+
+    async def get_positions(self) -> List[Position]:
+        """Get current positions via REST API."""
+        return await self._rest.get_positions()
+
+    async def get_trading_fees(self, symbol: Symbol) -> Any:
+        """Get trading fees for a symbol via REST API."""
+        return await self._rest.get_trading_fees(symbol)
+
+    async def place_order(self, symbol: Symbol, side, order_type, quantity: Optional[float] = None,
+                         price: Optional[float] = None, **kwargs) -> Order:
+        """Place an order via REST API."""
+        return await self._rest.place_order(symbol, side, order_type, quantity, price, **kwargs)
+
+    async def cancel_order(self, symbol: Symbol, order_id) -> Order:
+        """Cancel an order via REST API."""
+        return await self._rest.cancel_order(symbol, order_id)
+
+    async def get_order(self, symbol: Symbol, order_id) -> Order:
+        """Get order status via REST API."""
+        return await self._rest.get_order(symbol, order_id)
+
     # Futures-specific abstract methods (must be implemented by concrete classes)
 
     async def close_position(
-        self, 
-        symbol: Symbol, 
+        self,
+        symbol: Symbol,
         quantity: Optional[Decimal] = None
     ) -> List[Order]:
         """Close position (partially or completely)."""

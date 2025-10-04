@@ -25,7 +25,7 @@ from exchanges.integrations.gateio.services.spot_symbol_mapper import get_exchan
 
 
 from .gateio_base_futures_rest import GateioBaseFuturesRestInterface
-
+from exchanges.integrations.gateio.utils import to_side
 class GateioPublicFuturesRestInterface(GateioBaseFuturesRestInterface, PublicFuturesRestInterface):
     """
     Gate.io public REST client for futures (USDT-settled) — rewritten in the same
