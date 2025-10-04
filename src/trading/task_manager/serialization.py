@@ -38,26 +38,12 @@ class TaskSerializer:
                 'is_futures': getattr(data['symbol'], 'is_futures', False)
             }
         
-        # Handle multiple symbols for multi-exchange tasks
-        if 'symbols' in data and data['symbols']:
-            data['symbols'] = [
-                {
-                    'base': symbol.base,
-                    'quote': symbol.quote,
-                    'is_futures': getattr(symbol, 'is_futures', False)
-                } for symbol in data['symbols']
-            ]
         
         # Handle enums
         if 'side' in data and data['side']:
             data['side'] = data['side'].value if hasattr(data['side'], 'value') else data['side']
         if 'exchange_name' in data and data['exchange_name']:
             data['exchange_name'] = data['exchange_name'].value if hasattr(data['exchange_name'], 'value') else data['exchange_name']
-        if 'exchange_names' in data and data['exchange_names']:
-            data['exchange_names'] = [
-                enum_val.value if hasattr(enum_val, 'value') else enum_val
-                for enum_val in data['exchange_names']
-            ]
         if 'state' in data and data['state']:
             data['state'] = data['state'].value if hasattr(data['state'], 'value') else data['state']
         
@@ -99,15 +85,6 @@ class TaskSerializer:
                 is_futures=obj_data['symbol'].get('is_futures', False)
             )
         
-        # Reconstruct multiple symbols
-        if 'symbols' in obj_data and obj_data['symbols']:
-            obj_data['symbols'] = [
-                Symbol(
-                    base=symbol_data['base'],
-                    quote=symbol_data['quote'],
-                    is_futures=symbol_data.get('is_futures', False)
-                ) for symbol_data in obj_data['symbols']
-            ]
         
         # Reconstruct enums
         if 'side' in obj_data and obj_data['side'] is not None:
@@ -116,10 +93,6 @@ class TaskSerializer:
         if 'exchange_name' in obj_data and obj_data['exchange_name'] is not None:
             obj_data['exchange_name'] = ExchangeEnum(obj_data['exchange_name'])
         
-        if 'exchange_names' in obj_data and obj_data['exchange_names']:
-            obj_data['exchange_names'] = [
-                ExchangeEnum(enum_val) for enum_val in obj_data['exchange_names']
-            ]
         
         if 'state' in obj_data:
             obj_data['state'] = TradingStrategyState(obj_data['state'])
@@ -146,9 +119,7 @@ class TaskSerializer:
                 'task_id': data.get('task_id', ''),
                 'state': data.get('state', ''),
                 'exchange_name': data.get('exchange_name'),
-                'exchange_names': data.get('exchange_names', []),
                 'symbol': data.get('symbol', {}),
-                'symbols': data.get('symbols', []),
                 'persisted_at': data.get('_persisted_at', 0),
                 'schema_version': data.get('_schema_version', '1.0.0')
             }

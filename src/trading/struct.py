@@ -22,6 +22,7 @@ class TradingStrategyState(IntEnum):
     IDLE = 1
     EXECUTING = 2
     MONITORING = 3
+    ADJUSTING = 4
     COMPLETED = 100
     NOT_STARTED = -1
     CANCELLED = -2

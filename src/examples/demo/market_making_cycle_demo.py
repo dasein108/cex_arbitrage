@@ -9,10 +9,10 @@ import argparse
 import sys
 import os
 import time
-from typing import Optional, Dict, List
+from typing import Optional, Dict
 
 from config import get_exchange_config
-from exchanges.utils.exchange_utils import get_exchange_enum, is_order_done, is_order_filled
+from utils.exchange_utils import get_exchange_enum, is_order_done, is_order_filled
 from infrastructure.networking.websocket.structs import PrivateWebsocketChannelType, PublicWebsocketChannelType
 
 # Add src to path
@@ -20,9 +20,9 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'src'))
 
 from exchanges.interfaces.composite.spot.base_public_spot_composite import CompositePublicSpotExchange
 from exchanges.interfaces.composite.spot.base_private_spot_composite import CompositePrivateSpotExchange
-from exchanges.structs import (Side, TimeInForce, OrderStatus, AssetName, OrderId, Symbol, Order,
-                               AssetBalance, OrderBook, BookTicker, SymbolInfo, ExchangeEnum)
-from infrastructure.logging import get_logger, LoggingTimer
+from exchanges.structs import (Side, TimeInForce, OrderId, Symbol, Order,
+                               AssetBalance, BookTicker, SymbolInfo, ExchangeEnum)
+from infrastructure.logging import get_logger
 from exchanges.exchange_factory import get_composite_implementation, get_symbol_mapper
 from infrastructure.networking.websocket.handlers import PublicWebsocketHandlers, PrivateWebsocketHandlers
 

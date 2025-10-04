@@ -1,4 +1,4 @@
-from exchanges.structs import Order, OrderStatus, Symbol, ExchangeEnum
+from exchanges.structs import Order, OrderStatus, Symbol, ExchangeEnum, Side
 from typing import List
 
 
@@ -49,3 +49,7 @@ def is_order_done(order: Order) -> bool:
 def is_order_filled(order: Order) -> bool:
     """Check if order is completely filled."""
     return order.status in [OrderStatus.FILLED, OrderStatus.PARTIALLY_FILLED, OrderStatus.PARTIALLY_CANCELED]
+
+def flip_side(side: Side) -> Side:
+    """Flip order side."""
+    return Side.BUY if side == Side.SELL else Side.SELL

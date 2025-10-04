@@ -181,7 +181,7 @@ async def main(exchange_name: str):
         config_manager = HftConfig()
         config = config_manager.get_exchange_config(exchange_name.lower())
         # Use unified factory function for private REST clients
-        from exchanges.utils.exchange_utils import get_exchange_enum
+        from utils.exchange_utils import get_exchange_enum
         exchange = get_exchange_enum(exchange_name)
         exchange = create_rest_client(exchange, is_private=True, config=config)
         

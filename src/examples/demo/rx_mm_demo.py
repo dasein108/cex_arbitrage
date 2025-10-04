@@ -13,13 +13,13 @@ from exchanges.interfaces.composite import BasePrivateComposite, BasePublicCompo
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'src'))
 
 from config import get_exchange_config
-from exchanges.utils.exchange_utils import is_order_filled
+from utils.exchange_utils import is_order_filled
 from exchanges.structs import (
     Side, TimeInForce, AssetName, Symbol, Order,
-    AssetBalance, BookTicker, SymbolInfo
+    SymbolInfo
 )
 from infrastructure.logging import get_logger
-from infrastructure.networking.websocket.structs import WebsocketChannelType, PublicWebsocketChannelType, \
+from infrastructure.networking.websocket.structs import PublicWebsocketChannelType, \
     PrivateWebsocketChannelType
 from exchanges.exchange_factory import get_composite_implementation
 

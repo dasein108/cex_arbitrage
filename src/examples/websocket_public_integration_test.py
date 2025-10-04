@@ -473,7 +473,7 @@ async def main():
         sys.exit(EXIT_CODE_CONFIG_ERROR)
     
     # Convert to ExchangeEnum
-    from exchanges.utils.exchange_utils import get_exchange_enum
+    from utils.exchange_utils import get_exchange_enum
     exchange_enum = get_exchange_enum(args.exchange)
     
     # Create test suite

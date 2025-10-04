@@ -1,24 +1,31 @@
-from typing import Optional, Type, Dict, Any
+from typing import Optional, Type
 
 from config.structs import ExchangeConfig
 from exchanges.dual_exchange import DualExchange
 from exchanges.structs import Order, SymbolInfo, ExchangeEnum
-from exchanges.structs.common import Side, TimeInForce
-from exchanges.utils.exchange_utils import is_order_done
+from exchanges.structs.common import Symbol, Side, TimeInForce
+from utils.exchange_utils import is_order_done
 from infrastructure.logging import HFTLoggerInterface
 from infrastructure.networking.websocket.structs import PublicWebsocketChannelType, PrivateWebsocketChannelType
 from trading.struct import TradingStrategyState
 
 from trading.tasks.base_task import TaskContext, BaseTradingTask
-from utils import get_decrease_vector
+from utils import get_decrease_vector, calculate_weighted_price
 
 
 class IcebergTaskContext(TaskContext):
     """Context for iceberg order execution.
     
-    Extends TaskContext with iceberg-specific fields for tracking
-    partial fills and order slicing parameters.
+    Extends TaskContext with exchange-specific fields and iceberg-specific
+    fields for tracking partial fills and order slicing parameters.
     """
+    # Exchange-specific fields
+    exchange_name: ExchangeEnum
+    symbol: Symbol
+    side: Side
+    order_id: Optional[str] = None
+
+    # Iceberg-specific fields
     total_quantity: Optional[float] = None
     order_quantity: Optional[float] = None
     filled_quantity: float = 0.0
@@ -39,7 +46,7 @@ class IcebergTask(BaseTradingTask[IcebergTaskContext]):
         """Return the iceberg context class."""
         return IcebergTaskContext
 
-    def __init__(self, 
+    def __init__(self,
                  logger: HFTLoggerInterface,
                  context: IcebergTaskContext,
                  **kwargs):
@@ -49,26 +56,71 @@ class IcebergTask(BaseTradingTask[IcebergTaskContext]):
             logger: HFT logger instance
             context: IcebergTaskContext with exchange_name, symbol, and iceberg parameters
         """
-        super().__init__(logger, context, **kwargs)
-        self._exchange = DualExchange.get_instance(self.config)
+        # Initialize config first
+        self.config: Optional[ExchangeConfig] = None
         self._curr_order: Optional[Order] = None
         self._si: Optional[SymbolInfo] = None
-        self.config: Optional[ExchangeConfig] = None
+        self._exchange: Optional[DualExchange] = None
 
+        super().__init__(logger, context, **kwargs)
+
+        # Generate more specific task_id if not already set
+        if not context.task_id:
+            import time
+            timestamp = int(time.time() * 1000)
+            task_id_parts = [str(timestamp), self.name]
+
+            # Add symbol
+            if context.symbol:
+                task_id_parts.append(f"{context.symbol.base}_{context.symbol.quote}")
+
+            # Add side
+            if context.side:
+                task_id_parts.append(context.side.name)
+
+            self.evolve_context(task_id="_".join(task_id_parts))
 
     async def start(self, **kwargs):
         await super().start(**kwargs)
-        # Load exchange config if context has exchange_name
-        # (for SingleExchangeTaskContext and its subclasses)
 
-        self.config = self._load_exchange_config(self.context.exchange_name)
+        # Load exchange config and initialize exchange
+        self._exchange = self._load_exchange(self.context.exchange_name)
 
         await self._exchange.initialize([self.context.symbol],
                                         public_channels=[PublicWebsocketChannelType.BOOK_TICKER],
                                         private_channels=[PrivateWebsocketChannelType.ORDER,
-                                                   PrivateWebsocketChannelType.BALANCE])
+                                                          PrivateWebsocketChannelType.BALANCE])
 
         self._si = self._exchange.public.symbols_info[self.context.symbol]
+
+        # handle order recovery after restart
+        if self.context.order_id:
+            try:
+                # Try to fetch the order from exchange
+                order = await self._exchange.private.fetch_order(
+                    self.context.symbol,
+                    self.context.order_id
+                )
+                self._curr_order = order
+                self.logger.info(f"✅ Recovered active order {self._tag}",
+                                 order_id=order.order_id,
+                                 order_price=order.price,
+                                 order_quantity=order.quantity,
+                                 filled_quantity=order.filled_quantity)
+            except Exception as e:
+                self.logger.error(f"🚫 Failed to recover order {self.context.order_id} {self._tag}", error=str(e))
+                self._curr_order = None
+                self.evolve_context(order_id=None)
+
+    def _build_tag(self) -> None:
+        """Build logging tag with exchange-specific fields."""
+        self._tag = (f'{self.name}_{self.context.exchange_name.name}_'
+                     f'{self.context.symbol}_{self.context.side.name}')
+
+    @property
+    def order_id(self) -> Optional[str]:
+        """Get current order_id from context."""
+        return self.context.order_id
 
     async def pause(self):
         """Pause task and cancel any active order."""
@@ -87,7 +139,6 @@ class IcebergTask(BaseTradingTask[IcebergTaskContext]):
         # Apply updates through base class
         await super().update(**context_updates)
 
-        await self._process_completing()
 
     def _get_current_top_price(self) -> float:
         """Get current ask price from public exchange."""
@@ -110,10 +161,6 @@ class IcebergTask(BaseTradingTask[IcebergTaskContext]):
     async def _place_order(self):
         """Place limit sell order to top-offset price."""
         self.logger.info(f"📈 Placing limit {self.context.side.name} order for quantity: {self.context.order_quantity}")
-        if self._curr_order:
-            self.logger.warning(f"Existing order found, cancelling before placing new one {self._tag}")
-            await self._cancel_current_order()
-
         try:
             # Get fresh price for sale order
             vector_ticks = get_decrease_vector(self.context.side, self.context.offset_ticks)
@@ -136,8 +183,12 @@ class IcebergTask(BaseTradingTask[IcebergTaskContext]):
             )
 
             await self._process_order_execution(order)
+
+            return True
         except Exception as e:
             self.logger.error(f"🚫 Failed to place order {self._tag}", error=str(e))
+
+            return False
 
     async def _sync_exchange_order(self) -> Order | None:
         """Get current order from exchange, track updates."""
@@ -172,12 +223,10 @@ class IcebergTask(BaseTradingTask[IcebergTaskContext]):
         if is_order_done(order):
             if order.filled_quantity > 0:
                 # Calculate weighted average price
-                # Previous total cost = previous avg_price * previous filled_quantity
-                previous_filled = self.context.filled_quantity
-                previous_cost = self.context.avg_price * previous_filled if previous_filled > 0 else 0.0
-
-                # New order cost = order execution price * order filled quantity
-                new_order_cost = order.price * order.filled_quantity
+                total_filled_quantity, new_avg_price = calculate_weighted_price(
+                    self.context.avg_price, self.context.filled_quantity,
+                    order.price, order.filled_quantity
+                )
 
                 # Update total filled quantity and clear order_id in context
                 self.evolve_context(
@@ -185,9 +234,6 @@ class IcebergTask(BaseTradingTask[IcebergTaskContext]):
                     order_id=None  # Clear order_id when order is done
                 )
 
-                # Calculate new weighted average price
-                total_cost = previous_cost + new_order_cost
-                new_avg_price = total_cost / self.context.filled_quantity if self.context.filled_quantity > 0 else 0.0
                 self.evolve_context(avg_price=new_avg_price)
 
                 self.logger.info(f"✅ Order filled {self._tag}",
@@ -198,80 +244,39 @@ class IcebergTask(BaseTradingTask[IcebergTaskContext]):
 
             # Clear current order reference
             self._curr_order = None
+
+            # Check if completed
+            self._check_completing()
         else:
             # Order is still active - sync order_id in context
             self._curr_order = order
             self.evolve_context(order_id=order.order_id)
 
-        # Check if completed
-        await self._process_completing()
-
-    async def _process_completing(self):
+    def _check_completing(self):
         """Check if total quantity has been filled."""
         if self.context.filled_quantity >= self.context.total_quantity:
             self.logger.info(f"💰 Iceberg execution completed {self._tag}",
                              total_filled=self.context.filled_quantity,
                              avg_price=self.context.avg_price)
-            await self.complete()
+            return True
 
-    async def restore_from_json(self, json_data: str) -> None:
-        """Restore iceberg task from JSON with order recovery.
-        
-        Extends base recovery to fetch current order from exchange
-        if order_id is present in the saved context.
-        
-        Args:
-            json_data: JSON string containing task context
-        """
-        # First restore basic context (config is automatically reloaded from exchange_name)
-        super().restore_from_json(json_data)
-        
-        # Reinitialize exchange with the reloaded config (if available)
-        # Reload config if exchange_name is available
-        if self.context.exchange_name:
-            self.config = self._load_exchange_config(self.context.exchange_name)
-            self._exchange = DualExchange.get_instance(self.config)
-            await self._exchange.initialize([self.context.symbol])
-
-        # If we have an order_id, try to recover the order from exchange
-        if self.context.order_id:
-            try:
-                # Try to fetch the order from exchange
-                order = await self._exchange.private.get_active_order(
-                    self.context.symbol, 
-                    self.context.order_id
-                )
-                
-                if order:
-                    self._curr_order = order
-                    self.logger.info(f"✅ Recovered active order {self._tag}", 
-                                   order_id=order.order_id,
-                                   order_price=order.price,
-                                   order_quantity=order.quantity,
-                                   filled_quantity=order.filled_quantity)
-                else:
-                    # Order not found, probably filled or cancelled
-                    self.logger.warning(f"⚠️ Order {self.context.order_id} not found on exchange, marking as completed {self._tag}")
-                    self._curr_order = None
-                    self.evolve_context(order_id=None)
-                    
-            except Exception as e:
-                # Failed to recover order, log and continue
-                self.logger.error(f"🚫 Failed to recover order {self.context.order_id} {self._tag}", error=str(e))
-                self._curr_order = None
-                self.evolve_context(order_id=None)
-        else:
-            # No order_id in context, clear current order
-            self._curr_order = None
+        return False
 
     async def _handle_executing(self):
         # sync order updates
         await self._sync_exchange_order()
 
-        if not self._curr_order:
-            await self._place_order()
-        elif self._should_cancel_order():
-            await self._cancel_current_order()
+        # Check if completed
+        is_completed = self._check_completing()
+
+        if not is_completed:
+            if self._should_cancel_order():
+                await self._cancel_current_order()
+            else:
+                await self._place_order()
+        else:
+            await self.complete()
+
 
     async def cleanup(self):
         """Clean up exchange resources."""

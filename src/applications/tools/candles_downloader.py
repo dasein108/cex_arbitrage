@@ -529,7 +529,7 @@ Examples:
     async def download_task():
         try:
             # Convert string exchange name to ExchangeEnum
-            from exchanges.utils.exchange_utils import get_exchange_enum
+            from utils.exchange_utils import get_exchange_enum
             exchange_enum = get_exchange_enum(args.exchange)
             
             csv_path = await downloader.download_candles(

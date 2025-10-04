@@ -11,14 +11,13 @@ from typing import Optional, Dict, Any
 from dataclasses import dataclass, field
 import time
 
-from config.structs import ExchangeConfig
 from exchanges.interfaces.composite import BasePrivateComposite, BasePublicComposite
 from exchanges.structs import (
     Side, TimeInForce, Symbol, Order,
     BookTicker, SymbolInfo
 )
 from infrastructure.logging import get_logger
-from exchanges.utils.exchange_utils import is_order_filled
+from utils.exchange_utils import is_order_filled
 from infrastructure.networking.websocket.structs import WebsocketChannelType
 
 

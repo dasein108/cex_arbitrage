@@ -10,7 +10,7 @@ from typing import Dict, Any, List
 from abc import ABC, abstractmethod
 
 from config.config_manager import HftConfig
-from exchanges.utils.exchange_utils import get_exchange_enum
+from utils.exchange_utils import get_exchange_enum
 from exchanges.exchange_factory import create_rest_client, create_websocket_client
 from ..integration_test_framework import IntegrationTestRunner, TestCategory
 from ..utils.constants import TEST_SYMBOLS, DEFAULT_TEST_TIMEOUT

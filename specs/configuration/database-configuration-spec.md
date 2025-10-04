@@ -194,6 +194,7 @@ class AnalyticsConfig(Struct, frozen=True):
 ```
 
 #### Data Collector Configuration Building
+
 ```python
 def get_data_collector_config(self) -> DataCollectorConfig:
     """
@@ -209,6 +210,7 @@ def get_data_collector_config(self) -> DataCollectorConfig:
         self._data_collector_config = self._build_data_collector_config()
     return self._data_collector_config
 
+
 def _build_data_collector_config(self) -> DataCollectorConfig:
     """
     Build data collector configuration from config data.
@@ -219,13 +221,13 @@ def _build_data_collector_config(self) -> DataCollectorConfig:
     # Import here to avoid circular imports
     from exchanges.structs.common import Symbol
     from exchanges.structs.enums import ExchangeEnum
-    
+
     # Get data_collector section or use defaults
     dc_config = self.config_data.get("data_collector", self._get_default_data_collector_config())
-    
+
     # Parse database config
     db_config = self.get_database_config()
-    
+
     # Parse analytics config
     analytics_data = dc_config.get("analytics", {})
     analytics_config = AnalyticsConfig(
@@ -233,21 +235,21 @@ def _build_data_collector_config(self) -> DataCollectorConfig:
         volume_threshold=float(analytics_data.get("volume_threshold", 1000)),
         spread_alert_threshold=float(analytics_data.get("spread_alert_threshold", 0.1))
     )
-    
+
     # Parse symbols from arbitrage pairs
     symbols = self._parse_symbols_for_data_collector()
-    
+
     # Parse exchanges directly to ExchangeEnum (no normalization needed)
     exchanges = []
     exchange_names = dc_config.get("exchanges", [])
     for exchange_name in exchange_names:
         try:
-            from exchanges.utils.exchange_utils import get_exchange_enum
+            from utils.exchange_utils import get_exchange_enum
             exchange_enum = get_exchange_enum(exchange_name)
             exchanges.append(exchange_enum)
         except ValueError:
             self._logger.warning(f"Unknown exchange '{exchange_name}', skipping")
-    
+
     try:
         return DataCollectorConfig(
             enabled=bool(dc_config.get("enabled", True)),

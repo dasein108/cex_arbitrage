@@ -79,9 +79,7 @@ class DatabaseConfigManager:
         recently consolidated into the main config manager.
         """
         # Import here to avoid circular imports
-        from exchanges.structs.common import Symbol
-        from exchanges.structs.enums import ExchangeEnum
-        
+
         # Get data_collector section or use defaults
         dc_config = self.config_data.get("data_collector", self._get_default_data_collector_config())
         
@@ -104,7 +102,7 @@ class DatabaseConfigManager:
         exchange_names = dc_config.get("exchanges", [])
         for exchange_name in exchange_names:
             try:
-                from exchanges.utils.exchange_utils import get_exchange_enum
+                from utils.exchange_utils import get_exchange_enum
                 exchange_enum = get_exchange_enum(exchange_name)
                 exchanges.append(exchange_enum)
             except ValueError:

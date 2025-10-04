@@ -37,7 +37,7 @@ from examples.integration_test_framework import (
     IntegrationTestRunner, TestCategory, TestStatus, EXIT_CODE_SUCCESS, EXIT_CODE_FAILED_TESTS, EXIT_CODE_ERROR,
     EXIT_CODE_CONFIG_ERROR
 )
-from exchanges.utils.exchange_utils import get_exchange_enum
+from utils.exchange_utils import get_exchange_enum
 
 
 class RestPrivateIntegrationTest:
@@ -439,7 +439,7 @@ async def main():
         sys.exit(EXIT_CODE_CONFIG_ERROR)
     
     # Convert to ExchangeEnum
-    from exchanges.utils.exchange_utils import get_exchange_enum
+    from utils.exchange_utils import get_exchange_enum
     exchange_enum = get_exchange_enum(args.exchange)
     
     # Create test suite

@@ -20,7 +20,7 @@ from typing import List, Dict
 from exchanges.structs.common import Order, AssetBalance, Trade
 from config.config_manager import HftConfig
 from exchanges.exchange_factory import create_websocket_client
-from exchanges.utils.exchange_utils import get_exchange_enum
+from utils.exchange_utils import get_exchange_enum
 from exchanges.consts import DEFAULT_PRIVATE_WEBSOCKET_CHANNELS
 from infrastructure.networking.websocket.structs import WebsocketChannelType
 

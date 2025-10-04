@@ -18,7 +18,7 @@ from exchanges.structs.types import AssetName
 from config.config_manager import HftConfig
 from exchanges.exchange_factory import create_rest_client
 from examples.utils.decorators import rest_api_test
-from exchanges.utils.exchange_utils import get_exchange_enum
+from utils.exchange_utils import get_exchange_enum
 
 
 @rest_api_test("ping")

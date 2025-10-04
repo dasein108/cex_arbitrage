@@ -9,12 +9,14 @@ from exchanges.structs import Symbol, Side, ExchangeEnum
 from infrastructure.logging import HFTLoggerInterface
 from trading.struct import TradingStrategyState
 from trading.task_manager.serialization import TaskSerializer
+from exchanges.dual_exchange import DualExchange
+from config.config_manager import get_exchange_config
 
 
 class TaskExecutionResult(msgspec.Struct, frozen=False, kw_only=True):
     """Result from single task execution cycle."""
     task_id: str  # Unique task identifier
-    context: 'TradingTaskContext'  # Snapshot of task context after execution
+    context: 'TaskContext'  # Snapshot of task context after execution
     should_continue: bool = True  # True if task needs more cycles
     next_delay: float = 0.1  # Suggested delay before next execution
     state: TradingStrategyState = TradingStrategyState.IDLE
@@ -23,38 +25,130 @@ class TaskExecutionResult(msgspec.Struct, frozen=False, kw_only=True):
     metadata: Dict[str, Any] = msgspec.field(default_factory=dict)
 
 class TaskContext(msgspec.Struct, frozen=False, kw_only=True):
-    """Unified flexible context for all trading tasks.
+    """Base context for all trading tasks.
     
-    Supports both single-exchange and multi-exchange scenarios with optional fields.
-    Use exchange_name + symbol for single-exchange tasks, or exchange_names + symbols
-    for multi-exchange tasks.
+    Contains only universal fields that apply to all task types.
+    Task-specific fields should be added in subclasses.
     """
     task_id: str = ""
     state: TradingStrategyState = TradingStrategyState.NOT_STARTED
     error: Optional[Exception] = None
     metadata: Dict[str, Any] = msgspec.field(default_factory=dict)
     
-    # Single-exchange fields (use these for single-exchange tasks)
-    exchange_name: Optional[ExchangeEnum] = None
-    symbol: Optional[Symbol] = None
-    side: Optional[Side] = None
-    order_id: Optional[str] = None
-    
-    # Multi-exchange fields (use these for multi-exchange tasks)
-    exchange_names: List[ExchangeEnum] = msgspec.field(default_factory=list)
-    symbols: List[Symbol] = msgspec.field(default_factory=list)
-    should_save: bool = False  # True if context should be persisted
-
-    def reset_save_flag(self) -> None:
-        """Reset the should_save flag after saving."""
-        self.should_save = False
-
     def evolve(self, **updates) -> 'TaskContext':
-        """Create a new context with updated fields."""
-
-        self.should_save = True  # Mark context for saving on any update
-
-        return msgspec.structs.replace(self, **updates)
+        """Create a new context with updated fields.
+        
+        Supports Django-like syntax for dict field updates:
+        - field__key=value for dict field updates
+        - Regular field=value for normal updates
+        
+        Examples:
+            # Update dict fields
+            ctx.evolve(order_id__buy=None, filled_quantity__sell=100.0)
+            
+            # Mix regular and dict updates
+            ctx.evolve(state=EXECUTING, filled_quantity__buy=50.0)
+        """
+        dict_updates = {}
+        regular_updates = {}
+        
+        for key, value in updates.items():
+            if '__' in key:
+                # Parse dict field update: field_name__dict_key
+                field_name, dict_key_str = key.split('__', 1)
+                
+                # Get current dict or create new one
+                if field_name not in dict_updates:
+                    current_dict = getattr(self, field_name, None)
+                    if current_dict is None:
+                        dict_updates[field_name] = {}
+                    else:
+                        dict_updates[field_name] = current_dict.copy()
+                
+                # Convert string keys to proper types
+                dict_key = self._convert_dict_key(field_name, dict_key_str)
+                
+                # Update the dict
+                dict_updates[field_name][dict_key] = value
+            else:
+                regular_updates[key] = value
+        
+        # Combine all updates
+        all_updates = {**regular_updates, **dict_updates}
+        return msgspec.structs.replace(self, **all_updates)
+    
+    def _convert_dict_key(self, field_name: str, key_str: str):
+        """Convert string key to appropriate type based on field conventions.
+        
+        Override in subclasses to handle specific enum conversions.
+        """
+        # Handle common Side enum conversion
+        if key_str.upper() in ['BUY', 'SELL']:
+            try:
+                from exchanges.structs.common import Side
+                return Side.BUY if key_str.upper() == 'BUY' else Side.SELL
+            except ImportError:
+                pass
+        
+        # Handle numeric keys
+        if key_str.isdigit():
+            return int(key_str)
+        
+        # Handle boolean strings
+        if key_str.lower() in ['true', 'false']:
+            return key_str.lower() == 'true'
+        
+        # Default to string
+        return key_str
+    
+    def update_dict(self, field_name: str, key: Any, value: Any) -> 'TaskContext':
+        """Update a single key in a dict field.
+        
+        Args:
+            field_name: Name of the dict field to update
+            key: Key in the dict to update
+            value: New value for the key
+            
+        Returns:
+            New context with updated dict field
+            
+        Examples:
+            ctx.update_dict('filled_quantity', Side.BUY, 100.0)
+            ctx.update_dict('order_id', Side.SELL, 'order123')
+        """
+        current_dict = getattr(self, field_name, None)
+        if current_dict is None:
+            updated_dict = {key: value}
+        else:
+            updated_dict = {**current_dict, key: value}
+        
+        return msgspec.structs.replace(self, **{field_name: updated_dict})
+    
+    def update_dicts(self, *updates) -> 'TaskContext':
+        """Update multiple dict fields at once.
+        
+        Args:
+            *updates: Tuples of (field_name, key, value)
+            
+        Returns:
+            New context with all dict fields updated
+            
+        Examples:
+            ctx.update_dicts(
+                ('filled_quantity', Side.BUY, 100.0),
+                ('order_id', Side.BUY, 'order123'),
+                ('avg_price', Side.BUY, 50.5)
+            )
+        """
+        all_updates = {}
+        
+        for field_name, key, value in updates:
+            if field_name not in all_updates:
+                current_dict = getattr(self, field_name, None)
+                all_updates[field_name] = current_dict.copy() if current_dict else {}
+            all_updates[field_name][key] = value
+        
+        return msgspec.structs.replace(self, **all_updates)
 
 
 T = TypeVar('T', bound=TaskContext)
@@ -103,27 +197,12 @@ class BaseTradingTask(Generic[T], ABC):
         self.delay = delay
         self.context: T = context
 
-        self._should_save = False  # Flag to indicate if context should be persisted
-
-
         # Generate task_id if not already set
         if not self.context.task_id:
             timestamp = int(time.time() * 1000)  # milliseconds
-            # Build task_id based on available context fields
+            # Build basic task_id - subclasses can override to add specific fields
             task_id_parts = [str(timestamp), self.name]
-            
-            # Add symbol if available
-            if self.context.symbol:
-                task_id_parts.append(f"{self.context.symbol.base}_{self.context.symbol.quote}")
-            
-            # Add side if available
-            if self.context.side:
-                task_id_parts.append(self.context.side.name)
-            
             self.evolve_context(task_id="_".join(task_id_parts))
-        
-        # Build tag for logging (flexible based on context type)
-        self._build_tag()
         
         # State handlers mapping
         self._state_handlers = {
@@ -132,54 +211,17 @@ class BaseTradingTask(Generic[T], ABC):
             TradingStrategyState.ERROR: self._handle_error,
             TradingStrategyState.COMPLETED: self._handle_complete,
             TradingStrategyState.EXECUTING: self._handle_executing,
+            TradingStrategyState.ADJUSTING: self._handle_adjusting,
         }
 
-    @abstractmethod
     def _build_tag(self) -> None:
-        """Build logging tag based on available context fields."""
-        tag_parts = []
-        
-        # Add exchange name if available
-        if self.config:
-            tag_parts.append(self.config.name)
-        
-        tag_parts.append(self.name)
-        
-        # Add symbol if available
-        if self.context.symbol:
-            tag_parts.append(str(self.context.symbol))
-        
-        # Add side if available
-        if self.context.side:
-            tag_parts.append(self.context.side.name)
-        
-        self._tag = "_".join(tag_parts)
+        """Build logging tag based on available context fields.
 
-    def _load_exchange_config(self, exchange_name: ExchangeEnum) -> ExchangeConfig:
-        """Load exchange configuration from ExchangeEnum.
-        
-        Args:
-            exchange_name: Exchange identifier enum
-            
-        Returns:
-            ExchangeConfig: Loaded exchange configuration
-            
-        Raises:
-            ValueError: If config loading fails
+        Base implementation uses task name. Subclasses can override
+        to add task-specific fields to the tag.
         """
-        try:
-            from config.config_manager import get_exchange_config
-            # Convert enum to string format expected by config manager
-            # ExchangeEnum.MEXC has value ExchangeName("MEXC_SPOT"), so convert to lowercase
-            if hasattr(exchange_name.value, 'value'):
-                # Handle ExchangeName wrapper
-                config_name = exchange_name.value.value.lower()
-            else:
-                # Handle direct string value
-                config_name = exchange_name.value.lower()
-            return get_exchange_config(config_name)
-        except Exception as e:
-            raise ValueError(f"Failed to load config for {exchange_name}: {e}")
+        self._tag = self.name
+
 
     @property
     def state(self) -> TradingStrategyState:
@@ -191,23 +233,72 @@ class BaseTradingTask(Generic[T], ABC):
         """Get task_id from context."""
         return self.context.task_id
     
-    @property
-    def order_id(self) -> Optional[str]:
-        """Get current order_id from context."""
-        return self.context.order_id
-
     def evolve_context(self, **updates) -> None:
         """Update context with new fields.
         
+        Supports Django-like syntax for dict field updates:
+        - field__key=value for dict field updates  
+        - Regular field=value for normal updates
+        
+        Examples:
+            # Update dict fields
+            self.evolve_context(order_id__buy=None, filled_quantity__sell=100.0)
+            
+            # Mix regular and dict updates
+            self.evolve_context(state=EXECUTING, avg_price__buy=50.5)
+            
+            # Dynamic key construction
+            side_key = 'buy' if order.side == Side.BUY else 'sell'
+            self.evolve_context(**{f'filled_quantity__{side_key}': new_quantity})
+        
         Args:
-            **updates: Fields to update in the context
+            **updates: Fields to update, supporting Django-like dict notation
         """
         self.context = self.context.evolve(**updates)
-        
-        # Rebuild tag if relevant fields changed
-        if any(field in updates for field in ['symbol', 'side', 'exchange_name']):
-            self._build_tag()
     
+    def update_dict_field(self, field_name: str, key: Any, value: Any) -> None:
+        """Update a single key in a dict field of the context.
+        
+        This is a more explicit alternative to Django-like syntax.
+        
+        Args:
+            field_name: Name of the dict field to update
+            key: Key in the dict to update (e.g., Side.BUY)
+            value: New value for the key
+            
+        Examples:
+            # Update single dict entry
+            self.update_dict_field('filled_quantity', Side.BUY, 100.0)
+            self.update_dict_field('order_id', Side.SELL, None)
+            
+            # More readable than Django-like for single updates
+            self.update_dict_field('avg_price', order.side, new_price)
+        """
+        self.context = self.context.update_dict(field_name, key, value)
+    
+    def update_dict_fields(self, *updates) -> None:
+        """Update multiple dict fields at once.
+        
+        Args:
+            *updates: Tuples of (field_name, key, value)
+            
+        Examples:
+            # Update multiple dict entries atomically
+            self.update_dict_fields(
+                ('filled_quantity', Side.BUY, 100.0),
+                ('order_id', Side.BUY, 'order123'),
+                ('avg_price', Side.BUY, 50.5)
+            )
+            
+            # Or with dynamic side
+            self.update_dict_fields(
+                ('filled_quantity', order.side, new_quantity),
+                ('order_id', order.side, None)
+            )
+        """
+        self.context = self.context.update_dicts(*updates)
+
+
     def save_context(self) -> str:
         """Serialize current context to JSON string for persistence."""
         return TaskSerializer.serialize_context(self.context)
@@ -230,7 +321,7 @@ class BaseTradingTask(Generic[T], ABC):
 
         # Rebuild tag after restoration
         self._build_tag()
-    
+
     def _transition(self, new_state: TradingStrategyState) -> None:
         """Transition to a new state.
         
@@ -260,6 +351,11 @@ class BaseTradingTask(Generic[T], ABC):
         Subclasses must implement this to define execution logic.
         """
         pass
+
+    async def _handle_adjusting(self):
+        """Default adjusting state handler."""
+        # Actual for arbitrage/delta neutral tasks
+        self.logger.debug(f"ADJUSTING state for {self._tag}")
 
     async def _handle_error(self):
         """Default error state handler."""
@@ -387,3 +483,21 @@ class BaseTradingTask(Generic[T], ABC):
         """Mark the task as completed."""
         self.logger.info(f"Completing task {self._tag}")
         self._transition(TradingStrategyState.COMPLETED)
+
+    def _load_exchange(self, exchange_name: ExchangeEnum) -> DualExchange:
+        """Load exchange configuration from ExchangeEnum.
+
+        Args:
+            exchange_name: Exchange identifier enum
+
+        Returns:
+            ExchangeConfig: Loaded exchange configuration
+
+        Raises:
+            ValueError: If config loading fails
+        """
+        try:
+            config = get_exchange_config(exchange_name.value)
+            return DualExchange(config, self.logger)
+        except Exception as e:
+            raise ValueError(f"Failed to load config for {exchange_name}: {e}")

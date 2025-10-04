@@ -7,8 +7,7 @@ which are only needed for spot exchanges.
 """
 
 import asyncio
-from abc import abstractmethod, ABC
-from typing import Dict, List, Optional, Any
+from typing import Dict, List, Optional
 from exchanges.structs.common import (
     Symbol, AssetBalance, Order, SymbolsInfo
 )
@@ -19,7 +18,7 @@ from infrastructure.exceptions.system import InitializationError
 from exchanges.interfaces.composite.base_composite import BaseCompositeExchange
 from exchanges.interfaces.composite.types import PrivateRestType, PrivateWebsocketType
 from infrastructure.logging import LoggingTimer, HFTLoggerInterface
-from exchanges.utils.exchange_utils import is_order_done
+from utils.exchange_utils import is_order_done
 from exchanges.interfaces.common.binding import BoundHandlerInterface
 from infrastructure.networking.websocket.structs import PrivateWebsocketChannelType, WebsocketChannelType
 class BasePrivateComposite(BaseCompositeExchange[PrivateRestType, PrivateWebsocketType],
@@ -188,7 +187,7 @@ class BasePrivateComposite(BaseCompositeExchange[PrivateRestType, PrivateWebsock
 
             return await self.fetch_order(symbol, order_id)
 
-    async def fetch_order(self, symbol: Symbol, order_id: OrderId) -> Order:
+    async def fetch_order(self, symbol: Symbol, order_id: OrderId) -> Order | None:
         """
         Get current status of an order.
         
@@ -202,11 +201,15 @@ class BasePrivateComposite(BaseCompositeExchange[PrivateRestType, PrivateWebsock
         Raises:
             ExchangeError: If order not found or query fails
         """
-        order = await self._rest.get_order(symbol, order_id)
+        try:
+            order = await self._rest.get_order(symbol, order_id)
 
-        await self._update_order(order)
+            await self._update_order(order)
 
-        return order
+            return order
+        except Exception as e:
+            self.logger.error("Failed to fetch order status", order_id=order_id, error=str(e))
+            return None
 
     # Factory methods ELIMINATED - clients injected via constructor
 

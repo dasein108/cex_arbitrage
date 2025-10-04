@@ -17,7 +17,7 @@ import time
 from typing import Dict, Any
 
 from exchanges.exchange_factory import create_websocket_client, create_public_handlers
-from exchanges.utils.exchange_utils import get_exchange_enum
+from utils.exchange_utils import get_exchange_enum
 
 from ..base.integration_test_base import IntegrationTestBase, WebSocketIntegrationTestMixin
 from ..integration_test_framework import TestCategory, TestStatus, EXIT_CODE_SUCCESS, EXIT_CODE_FAILED_TESTS, EXIT_CODE_ERROR, EXIT_CODE_CONFIG_ERROR
@@ -41,7 +41,7 @@ class WebSocketIntegrationTest(IntegrationTestBase, WebSocketIntegrationTestMixi
                 raise ValueError(f"{self.exchange_name} API credentials are required for private WebSocket testing")
             
             from exchanges.exchange_factory import create_websocket_client, create_private_handlers
-            from exchanges.utils.exchange_utils import get_exchange_enum
+            from utils.exchange_utils import get_exchange_enum
             
             exchange_enum = get_exchange_enum(self.exchange_name)
             

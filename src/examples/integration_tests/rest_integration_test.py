@@ -40,7 +40,7 @@ class RestIntegrationTest(IntegrationTestBase, RestIntegrationTestMixin):
                 raise ValueError(f"{self.exchange_name} API credentials are required for private testing")
             
             from exchanges.exchange_factory import create_rest_client
-            from exchanges.utils.exchange_utils import get_exchange_enum
+            from utils.exchange_utils import get_exchange_enum
             
             exchange_enum = get_exchange_enum(self.exchange_name)
             self.private_exchange = create_rest_client(
