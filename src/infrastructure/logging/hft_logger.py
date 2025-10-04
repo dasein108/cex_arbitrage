@@ -9,6 +9,7 @@ HFT COMPLIANT: No blocking operations, minimal allocation overhead.
 
 import asyncio
 import logging
+import os
 import time
 from typing import Dict, List, Optional, Any, Union
 import weakref
@@ -81,8 +82,34 @@ class HFTLogger(HFTLoggerInterface):
         # Python logging compatibility
         self._py_logger = logging.getLogger(name)
         
+        # Set propagate=True by default in DEV environment for easier debugging
+        environment = os.getenv('ENVIRONMENT', 'dev').lower()
+        if environment in ('dev', 'development', 'local', 'test'):
+            self._py_logger.propagate = True
+        
         # Register for cleanup
         HFTLogger._instances.add(self)
+    
+    def _convert_level_to_python(self, level: LogLevel) -> int:
+        """Convert HFT LogLevel to Python logging level."""
+        mapping = {
+            LogLevel.DEBUG: logging.DEBUG,
+            LogLevel.INFO: logging.INFO,
+            LogLevel.WARNING: logging.WARNING,
+            LogLevel.ERROR: logging.ERROR,
+            LogLevel.CRITICAL: logging.CRITICAL
+        }
+        return mapping.get(level, logging.INFO)
+    
+    @property
+    def propagate(self) -> bool:
+        """Get propagation setting from underlying Python logger."""
+        return self._py_logger.propagate
+
+    @propagate.setter  
+    def propagate(self, value: bool) -> None:
+        """Set propagation on underlying Python logger."""
+        self._py_logger.propagate = value
     
     def _start_dispatch_task(self) -> None:
         """Start the async dispatch task if event loop is available."""
@@ -221,13 +248,21 @@ class HFTLogger(HFTLoggerInterface):
                     symbol=symbol
                 )
             
-            # Add to buffer (non-blocking)
-            if not self._buffer.put_nowait(record):
-                # Buffer full - this is a problem but don't block
-                print(f"HFTLogger buffer full, dropped message: {msg[:50]}")
+            # Immediate propagation for errors/critical (real-time requirement)
+            immediate_propagated = False
+            if level.value >= LogLevel.WARNING.value and self._py_logger.propagate:
+                py_level = self._convert_level_to_python(level)
+                self._py_logger.log(py_level, msg, extra=full_context)
+                immediate_propagated = True
+            
+            # Add to buffer only if not immediately propagated to avoid double logging
+            if not immediate_propagated:
+                if not self._buffer.put_nowait(record):
+                    # Buffer full - this is a problem but don't block
+                    print(f"HFTLogger buffer full, dropped message: {msg[:50]}")
             
             # Ensure dispatch task is running (async) or dispatch synchronously
-            if not self._task_started or self._dispatch_task is None or self._dispatch_task.done():
+            if not immediate_propagated and (not self._task_started or self._dispatch_task is None or self._dispatch_task.done()):
                 self._start_dispatch_task()
                 
                 # If no async task started, dispatch synchronously for simple scripts
