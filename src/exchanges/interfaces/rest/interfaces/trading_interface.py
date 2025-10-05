@@ -62,7 +62,7 @@ class PrivateTradingInterface(ABC):
         pass
     
     @abstractmethod
-    async def cancel_order(self, symbol: Symbol, order_id: OrderId) -> Order:
+    async def cancel_order(self, symbol: Symbol, order_id: OrderId) -> Order | None:
         """Cancel an active order"""
         pass
     
