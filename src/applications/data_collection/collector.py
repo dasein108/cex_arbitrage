@@ -1,14 +1,15 @@
 """
-Data Collector - Unified WebSocket Manager and Main Orchestrator
+Data Collector - Modern Separated Domain Architecture
 
-Manages real-time data collection from multiple exchanges using WebSocket connections.
-Provides unified interface for MEXC and Gate.io book ticker data collection.
+Manages real-time data collection from multiple exchanges using the modern separated domain
+architecture with BindedEventHandlersAdapter pattern for flexible event handling.
 
-REFACTORED: Uses new architecture patterns (Sep 2025):
-- Constructor Injection: WebSocket clients created without handlers, then bound directly using client.bind()
-- Handler Binding Pattern: Uses .bind(channel, handler) method for type-safe channel-to-method connection
-- Explicit Channel Types: Uses PublicWebsocketChannelType enum instead of WEBSOCKET_CHANNELS constants
-- Eliminates Handler Creation Overhead: No more PublicWebsocketHandlers objects passed to factory
+Architecture (Oct 2025):
+- Separated Domain Pattern: Public exchanges for market data only
+- BindedEventHandlersAdapter: Modern event binding with .bind() method
+- Constructor Injection: REST/WebSocket clients injected via constructors
+- HFT Compliance: Sub-millisecond latency targets, no real-time data caching
+- msgspec.Struct: All data modeling uses structured types
 """
 
 import asyncio
@@ -17,13 +18,13 @@ from typing import Dict, List, Optional, Set, Callable, Awaitable
 from dataclasses import dataclass
 
 from exchanges.structs import Symbol, BookTicker, Trade, ExchangeEnum
-from exchanges.exchange_factory import create_websocket_client
+from exchanges.exchange_factory import get_composite_implementation
+from exchanges.adapters import BindedEventHandlersAdapter
+from infrastructure.networking.websocket.structs import PublicWebsocketChannelType
 from db import BookTickerSnapshot
 from db.models import TradeSnapshot
 from .analytics import RealTimeAnalytics, ArbitrageOpportunity
-# Removed: from .consts import WEBSOCKET_CHANNELS - using direct channel types now
 from config.config_manager import get_exchange_config
-# HFT Logger Integration
 from infrastructure.logging import get_logger, LoggingTimer
 
 
@@ -45,40 +46,47 @@ class TradeCache:
 
 class UnifiedWebSocketManager:
     """
-    Unified WebSocket manager for collecting book ticker data from multiple exchanges.
+    Unified WebSocket manager using modern separated domain architecture.
     
-    REFACTORED: Uses new architecture patterns for WebSocket client management:
-    - Constructor Injection: Creates WebSocket clients without pre-bound handlers
-    - Handler Binding Pattern: Uses client.bind() to connect channels to handlers
-    - Explicit Channel Types: Uses PublicWebsocketChannelType enum for type safety
+    Architecture (Oct 2025):
+    - Separated Domain Pattern: Uses CompositePublicExchange for market data only
+    - BindedEventHandlersAdapter: Modern event binding with .bind() method
+    - Constructor Injection: Dependencies injected via constructors
+    - HFT Optimized: Sub-millisecond latency targets
     
     Features:
-    - Manages connections to MEXC and Gate.io WebSockets
-    - Maintains in-memory cache of latest book ticker data
-    - Provides unified interface for subscribing to symbols
-    - Routes updates to registered handlers via direct binding
+    - Manages connections to multiple exchanges via composite pattern
+    - Uses BindedEventHandlersAdapter for flexible event handling
+    - Maintains in-memory cache following HFT caching policy
+    - Provides unified interface for symbol subscription
     """
 
     def __init__(
             self,
             exchanges: List[ExchangeEnum],
-            handlers: Optional[PublicWebsocketHandlers] = None
+            book_ticker_handler: Optional[Callable[[ExchangeEnum, Symbol, BookTicker], Awaitable[None]]] = None,
+            trade_handler: Optional[Callable[[ExchangeEnum, Symbol, Trade], Awaitable[None]]] = None
     ):
         """
-        Initialize unified WebSocket manager.
+        Initialize unified WebSocket manager with modern architecture.
         
         Args:
             exchanges: List of exchange enums to connect to
-            handlers: PublicWebsocketHandlers object containing callback functions
+            book_ticker_handler: Callback for book ticker updates
+            trade_handler: Callback for trade updates
         """
         self.exchanges = exchanges
-        self.handlers = handlers or PublicWebsocketHandlers()
+        self.book_ticker_handler = book_ticker_handler
+        self.trade_handler = trade_handler
 
         # HFT Logging
         self.logger = get_logger('data_collector.websocket_manager')
 
-        # Exchange WebSocket clients
-        self._exchange_clients: Dict[ExchangeEnum, any] = {}
+        # Exchange composite clients (separated domain architecture)
+        self._exchange_composites: Dict[ExchangeEnum, any] = {}
+        
+        # Event handler adapters for each exchange
+        self._event_adapters: Dict[ExchangeEnum, BindedEventHandlersAdapter] = {}
 
         # Book ticker cache: {exchange_symbol: BookTickerCache}
         self._book_ticker_cache: Dict[str, BookTickerCache] = {}
@@ -88,10 +96,10 @@ class UnifiedWebSocketManager:
         self._total_data_processed = 0
 
         # Log initialization
-        self.logger.info("UnifiedWebSocketManager initialized",
+        self.logger.info("UnifiedWebSocketManager initialized with modern architecture",
                          exchanges=[e.value for e in exchanges],
-                         has_book_ticker_handler=self.handlers.book_ticker_handler is not None,
-                         has_trade_handler=self.handlers.trade_handler is not None)
+                         has_book_ticker_handler=book_ticker_handler is not None,
+                         has_trade_handler=trade_handler is not None)
 
         # Trade cache: {exchange_symbol: List[TradeCache]} (keep recent trades)
         self._trade_cache: Dict[str, List[TradeCache]] = {}
@@ -126,12 +134,13 @@ class UnifiedWebSocketManager:
 
     async def _initialize_exchange_client(self, exchange: ExchangeEnum, symbols: List[Symbol]) -> None:
         """
-        Initialize WebSocket client for a specific exchange using new architecture patterns.
+        Initialize composite exchange client using modern separated domain architecture.
         
-        REFACTORED: Uses constructor injection + direct handler binding pattern:
-        1. Create WebSocket client without handlers (constructor injection)
-        2. Bind handlers directly to client using .bind() method
-        3. Use explicit channel types instead of constants
+        Modern Pattern (Oct 2025):
+        1. Create CompositePublicExchange via factory (constructor injection)
+        2. Create BindedEventHandlersAdapter and bind to exchange
+        3. Bind event handlers using .bind() method
+        4. Initialize and subscribe to symbols
         
         Args:
             exchange: Exchange enum (ExchangeEnum.MEXC, ExchangeEnum.GATEIO, etc.)
@@ -141,83 +150,67 @@ class UnifiedWebSocketManager:
             # Create exchange configuration
             config = get_exchange_config(exchange.value)
             
-            # Check symbol tradability before WebSocket initialization
-            from exchanges.exchange_factory import get_composite_implementation
-            
-            # Create composite exchange for validation
+            # Create composite public exchange (separated domain architecture)
             composite = get_composite_implementation(
                 exchange_config=config,
-                is_private=False
+                is_private=False  # Pure market data domain
             )
 
-            # Initialize to load symbol info
-            await composite.initialize()
+            # Create event handler adapter
+            adapter = BindedEventHandlersAdapter(self.logger).bind_to_exchange(composite)
             
-            # Check each symbol and log errors for untradable ones
-            for symbol in symbols:
-                try:
-                    if not await composite.is_tradable(symbol):
-                        self.logger.error(f"Symbol {symbol.base}/{symbol.quote} is not tradable on {exchange.value}")
-                except Exception as e:
-                    self.logger.error(f"Error checking symbol {symbol.base}/{symbol.quote} on {exchange.value}: {e}")
+            # Bind event handlers using modern .bind() pattern
+            if self.book_ticker_handler:
+                adapter.bind(PublicWebsocketChannelType.BOOK_TICKER, 
+                           lambda book_ticker: self._handle_book_ticker_update(exchange, book_ticker.symbol, book_ticker))
             
-            # Close composite
-            await composite.close()
-                
+            if self.trade_handler:
+                adapter.bind(PublicWebsocketChannelType.PUB_TRADE, 
+                           lambda trade: self._handle_trades_update(exchange, trade.symbol, [trade]))
 
-            # Create WebSocket client using new constructor injection pattern
-            # No handlers passed to factory - we'll bind them directly
-            client = create_websocket_client(
-                exchange=exchange,
-                config=config,
-                is_private=False
-            )
-            
-            # NEW PATTERN: Bind handlers directly to client using .bind() method
-            from infrastructure.networking.websocket.structs import PublicWebsocketChannelType
-            client.bind(PublicWebsocketChannelType.BOOK_TICKER, 
-                       lambda book_ticker: self._handle_book_ticker_update(exchange, book_ticker.symbol, book_ticker))
-            client.bind(PublicWebsocketChannelType.PUB_TRADE, 
-                       lambda trade: self._handle_trades_update(exchange, trade.symbol, [trade]))
-
-            # Store client and initialize
-            self._exchange_clients[exchange] = client
+            # Store composite and adapter
+            self._exchange_composites[exchange] = composite
+            self._event_adapters[exchange] = adapter
             self._active_symbols[exchange] = set()
             self._connected[exchange] = False
 
-            # Initialize connection and subscribe to symbols using new pattern
-            with LoggingTimer(self.logger, "websocket_initialization") as timer:
-                await client.initialize()
-                # NEW PATTERN: Subscribe using channel types instead of constants
-                from infrastructure.networking.websocket.structs import PublicWebsocketChannelType
+            # Initialize composite with symbols and channels
+            with LoggingTimer(self.logger, "composite_initialization") as timer:
                 channels = [PublicWebsocketChannelType.BOOK_TICKER, PublicWebsocketChannelType.PUB_TRADE]
-                await client.subscribe(symbols, channels)
+                await composite.initialize(symbols, channels)
+                
+                # Check symbol tradability after initialization
+                for symbol in symbols:
+                    try:
+                        if not await composite.is_tradable(symbol):
+                            self.logger.error(f"Symbol {symbol.base}/{symbol.quote} is not tradable on {exchange.value}")
+                    except Exception as e:
+                        self.logger.error(f"Error checking symbol {symbol.base}/{symbol.quote} on {exchange.value}: {e}")
 
                 self._active_symbols[exchange].update(symbols)
-
                 self._connected[exchange] = True
 
-            self.logger.info("WebSocket initialized successfully",
+            self.logger.info("Composite exchange initialized successfully",
                              exchange=exchange.value,
                              symbols_count=len(symbols),
                              initialization_time_ms=timer.elapsed_ms)
 
             # Track successful initialization metrics
-            self.logger.metric("websocket_initializations", 1,
+            self.logger.metric("composite_initializations", 1,
                                tags={"exchange": exchange.value, "status": "success"})
 
-            self.logger.metric("websocket_symbols_subscribed", len(symbols),
+            self.logger.metric("symbols_subscribed", len(symbols),
                                tags={"exchange": exchange.value})
 
         except Exception as e:
-            self.logger.error("Failed to initialize WebSocket",
+            self.logger.error("Failed to initialize composite exchange",
                               exchange=exchange.value,
                               error_type=type(e).__name__,
                               error_message=str(e),
                               symbols_count=len(symbols))
 
             # Track initialization failures
-            self.logger.metric("websocket_initializations", 1,
+            self.logger.metric("composite_initializations", 1,
                                tags={"exchange": exchange.value, "status": "error"})
 
             self._connected[exchange] = False
@@ -261,10 +254,9 @@ class UnifiedWebSocketManager:
                                tags={"exchange": exchange.value, "operation": "book_ticker"})
 
             # Call registered handler if available
-            if self.handlers.book_ticker_handler:
+            if self.book_ticker_handler:
                 with LoggingTimer(self.logger, "book_ticker_handler") as handler_timer:
-                    # Create a partial function that includes exchange and symbol context
-                    await self._call_external_book_ticker_handler(exchange, symbol, book_ticker)
+                    await self.book_ticker_handler(exchange, symbol, book_ticker)
 
                 self.logger.metric("handler_processing_time_us", handler_timer.elapsed_ms * 1000,
                                    tags={"exchange": exchange.value, "handler": "book_ticker"})
@@ -296,23 +288,6 @@ class UnifiedWebSocketManager:
             import traceback
             self.logger.debug("Full traceback", traceback=traceback.format_exc())
 
-    async def _call_external_book_ticker_handler(self, exchange: ExchangeEnum, symbol: Symbol, book_ticker: BookTicker) -> None:
-        """
-        Call the external book ticker handler with exchange and symbol context.
-        
-        This is a bridge method that passes context directly as parameters.
-        """
-        # Call the handler with exchange, symbol, and book_ticker data
-        await self.handlers.book_ticker_handler(exchange, symbol, book_ticker)
-
-    async def _call_external_trades_handler(self, exchange: ExchangeEnum, symbol: Symbol, trade: Trade) -> None:
-        """
-        Call the external trades handler with exchange and symbol context.
-        
-        This is a bridge method that passes context directly as parameters.
-        """
-        # Call the handler with exchange, symbol, and trade data
-        await self.handlers.trade_handler(exchange, symbol, trade)
 
 
     async def _handle_trades_update(self, exchange: ExchangeEnum, symbol: Symbol, trades: List[Trade]) -> None:
@@ -345,9 +320,9 @@ class UnifiedWebSocketManager:
                 self._trade_cache[cache_key] = self._trade_cache[cache_key][-100:]
 
             # Call registered handler for each trade if available
-            if self.handlers.trade_handler:
+            if self.trade_handler:
                 for trade in trades:
-                    await self._call_external_trades_handler(exchange, symbol, trade)
+                    await self.trade_handler(exchange, symbol, trade)
         except Exception as e:
             self.logger.error(f"Error handling trades update for {symbol}: {e}")
 
@@ -362,12 +337,11 @@ class UnifiedWebSocketManager:
             return
 
         try:
-            for exchange, client in self._exchange_clients.items():
+            for exchange, composite in self._exchange_composites.items():
                 if self._connected[exchange]:
                     # Use channel types for subscription
-                    from infrastructure.networking.websocket.structs import PublicWebsocketChannelType
                     channels = [PublicWebsocketChannelType.BOOK_TICKER, PublicWebsocketChannelType.PUB_TRADE]
-                    await client.subscribe(symbols, channels)
+                    await composite.subscribe_symbols(symbols)
                     self._active_symbols[exchange].update(symbols)
 
             self.logger.info(f"Added {len(symbols)} symbols to all exchanges")
@@ -387,12 +361,10 @@ class UnifiedWebSocketManager:
             return
 
         try:
-            for exchange, client in self._exchange_clients.items():
+            for exchange, composite in self._exchange_composites.items():
                 if self._connected[exchange]:
-                    # Use channel types for unsubscription
-                    from infrastructure.networking.websocket.structs import PublicWebsocketChannelType
-                    channels = [PublicWebsocketChannelType.BOOK_TICKER, PublicWebsocketChannelType.PUB_TRADE]
-                    await client.unsubscribe(symbols, channels)
+                    # Use composite pattern for unsubscription
+                    await composite.unsubscribe_symbols(symbols)
                     self._active_symbols[exchange].difference_update(symbols)
 
             # Remove from cache
@@ -603,27 +575,36 @@ class UnifiedWebSocketManager:
         }
 
     async def close(self) -> None:
-        """Close all WebSocket connections."""
+        """Close all composite exchange connections."""
         try:
-            self.logger.info("Closing all WebSocket connections")
+            self.logger.info("Closing all composite exchange connections")
 
-            # Close all exchange clients
-            for exchange, client in self._exchange_clients.items():
+            # Dispose event adapters first
+            for exchange, adapter in self._event_adapters.items():
                 try:
-                    await client.close()
+                    await adapter.dispose()
+                except Exception as e:
+                    self.logger.error(f"Error disposing adapter for {exchange}: {e}")
+
+            # Close all composite exchanges
+            for exchange, composite in self._exchange_composites.items():
+                try:
+                    await composite.close()
                     self._connected[exchange] = False
                 except Exception as e:
-                    self.logger.error(f"Error closing {exchange} WebSocket: {e}")
+                    self.logger.error(f"Error closing {exchange} composite: {e}")
 
-            # Clear cache
+            # Clear caches and state
             self._book_ticker_cache.clear()
             self._trade_cache.clear()
             self._active_symbols.clear()
+            self._exchange_composites.clear()
+            self._event_adapters.clear()
 
-            self.logger.info("All WebSocket connections closed")
+            self.logger.info("All composite exchange connections closed")
 
         except Exception as e:
-            self.logger.error(f"Error during WebSocket cleanup: {e}")
+            self.logger.error(f"Error during composite exchange cleanup: {e}")
 
 
 class SnapshotScheduler:
@@ -803,20 +784,15 @@ class DataCollector:
             self.logger.info("Database connection pool initialized")
 
             # Initialize analytics engine
-            from applications.data_collection.analytics import RealTimeAnalytics
+            from .analytics import RealTimeAnalytics
             self.analytics = RealTimeAnalytics(self.config.analytics)
             self.logger.info("Analytics engine initialized")
 
-            # Initialize WebSocket manager using new constructor injection pattern
-            # Pass handlers directly to constructor - internal implementation will use .bind()
-            handlers = PublicWebsocketHandlers(
-                book_ticker_handler=self._handle_external_book_ticker,
-                trade_handler=self._handle_external_trade
-            )
-
+            # Initialize WebSocket manager using modern architecture
             self.ws_manager = UnifiedWebSocketManager(
                 exchanges=self.config.exchanges,
-                handlers=handlers
+                book_ticker_handler=self._handle_external_book_ticker,
+                trade_handler=self._handle_external_trade
             )
             self.logger.info(f"WebSocket manager created for {len(self.config.exchanges)} exchanges")
 
@@ -886,7 +862,7 @@ class DataCollector:
                 await self.ws_manager.close()
 
             # Close database connection pool
-            from db.connection import DatabaseManager
+            from db import DatabaseManager
             db_manager = DatabaseManager()
             await db_manager.close()
             self.logger.info("Database connection pool closed")
@@ -899,7 +875,7 @@ class DataCollector:
 
     async def _handle_book_ticker_update(self, exchange: ExchangeEnum, symbol: Symbol, book_ticker: BookTicker) -> None:
         """
-        Handle book ticker updates from WebSocket manager.
+        Handle book ticker updates from WebSocket manager (legacy compatibility).
         
         Routes updates to analytics engine.
         """
@@ -911,26 +887,26 @@ class DataCollector:
 
     async def _handle_trades_update(self, exchange: ExchangeEnum, symbol: Symbol, trades: List[Trade]) -> None:
         """
-        Handle trade updates from WebSocket manager.
+        Handle trade updates from WebSocket manager (legacy compatibility).
 
         Routes updates to analytics engine.
         """
         try:
             if self.analytics:
-                pass
-                # Analytics might have a trades handler method
-                # Process each trade if analytics supports it
-                # for trade in trades:
-                #     pass  # Add analytics trade handling if needed
+                # Analytics trade handling would go here when implemented
+                for trade in trades:
+                    # Future: add analytics.on_trade_update when available
+                    pass
 
         except Exception as e:
             self.logger.error(f"Error handling trades update: {e}")
 
     async def _handle_external_book_ticker(self, exchange: ExchangeEnum, symbol: Symbol, book_ticker: BookTicker) -> None:
         """
-        External handler for book ticker updates with explicit exchange and symbol parameters.
+        External handler for book ticker updates using modern architecture.
         
-        This method receives book ticker data along with exchange and symbol context.
+        This method receives book ticker data with exchange and symbol context
+        from the BindedEventHandlersAdapter pattern.
         """
         try:
             if self.analytics:
@@ -940,9 +916,10 @@ class DataCollector:
 
     async def _handle_external_trade(self, exchange: ExchangeEnum, symbol: Symbol, trade: Trade) -> None:
         """
-        External handler for trade updates with explicit exchange and symbol parameters.
+        External handler for trade updates using modern architecture.
         
-        This method receives trade data along with exchange and symbol context.
+        This method receives trade data with exchange and symbol context
+        from the BindedEventHandlersAdapter pattern.
         """
         try:
             # Process individual trade if analytics supports it

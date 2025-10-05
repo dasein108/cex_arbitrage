@@ -1,1 +1,0 @@
-# Trading utilities for exchange implementations

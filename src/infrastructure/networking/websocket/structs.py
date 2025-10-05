@@ -77,28 +77,6 @@ class SubscriptionAction(IntEnum):
     UNSUBSCRIBE = 2
 
 
-@dataclass(frozen=True)
-class ConnectionContext:
-    """Connection configuration for WebSocket clients."""
-    url: str
-    headers: Dict[str, str]
-    auth_required: bool = False
-    auth_params: Optional[Dict[str, Any]] = None
-    ping_interval: float = 30
-    ping_timeout: float = 10
-    max_reconnect_attempts: int = 10
-    reconnect_delay: float = 1.0
-    ping_message: Optional[str] = None
-
-
-@dataclass(frozen=True)
-class SubscriptionContext:
-    """Subscription configuration for specific symbols."""
-    channels: List[str]
-    parameters: Dict[str, Any] = None
-    subscription_id: Optional[str] = None
-
-
 @dataclass
 class ParsedMessage:
     """Parsed WebSocket message with routing information."""

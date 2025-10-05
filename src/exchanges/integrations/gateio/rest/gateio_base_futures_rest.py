@@ -195,7 +195,6 @@ class GateioBaseFuturesRestInterface(BaseRestClientInterface):
                     'headers': auth_headers,
                     'params': params or {},
                     'data': request_body,
-                    'send_as_text': True  # Flag to indicate raw text data
                 }
             else:
                 # Send original data object for JSON encoding by aiohttp
