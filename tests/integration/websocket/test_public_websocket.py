@@ -486,8 +486,8 @@ if __name__ == "__main__":
     import sys
     
     symbols = [
-        Symbol(base=AssetName('BTC'), quote=AssetName('USDT'), is_futures=False),
-        Symbol(base=AssetName('ETH'), quote=AssetName('USDT'), is_futures=False)
+        Symbol(base=AssetName('BTC'), quote=AssetName('USDT')),
+        Symbol(base=AssetName('ETH'), quote=AssetName('USDT'))
     ]
     
     exchange_name = sys.argv[1] if len(sys.argv) > 1 else "mexc_spot"

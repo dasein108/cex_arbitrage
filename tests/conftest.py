@@ -31,16 +31,16 @@ def event_loop():
 def test_symbols() -> List[Symbol]:
     """Standard test symbols for exchange testing."""
     return [
-        Symbol(base=AssetName('BTC'), quote=AssetName('USDT'), is_futures=False),
-        Symbol(base=AssetName('ETH'), quote=AssetName('USDT'), is_futures=False),
-        Symbol(base=AssetName('BNB'), quote=AssetName('USDT'), is_futures=False),
+        Symbol(base=AssetName('BTC'), quote=AssetName('USDT')),
+        Symbol(base=AssetName('ETH'), quote=AssetName('USDT')),
+        Symbol(base=AssetName('BNB'), quote=AssetName('USDT')),
     ]
 
 
 @pytest.fixture
 def test_symbol() -> Symbol:
     """Single test symbol for basic tests."""
-    return Symbol(base=AssetName('BTC'), quote=AssetName('USDT'), is_futures=False)
+    return Symbol(base=AssetName('BTC'), quote=AssetName('USDT'))
 
 
 @pytest.fixture(params=["mexc", "gateio"])

@@ -202,7 +202,7 @@ class RestPrivateIntegrationTest:
     async def test_get_order_status(self) -> Dict[str, Any]:
         """Test order status retrieval (expects failure for non-existent order)."""
         start_time = time.time()
-        symbol = Symbol(base=AssetName('BTC'), quote=AssetName('USDT'), is_futures=False)
+        symbol = Symbol(base=AssetName('BTC'), quote=AssetName('USDT'))
         test_order_id = "test_nonexistent_order_123456789"
         
         try:
@@ -250,7 +250,7 @@ class RestPrivateIntegrationTest:
     async def test_place_order_simulation(self) -> Dict[str, Any]:
         """Test order placement (designed to fail safely)."""
         start_time = time.time()
-        symbol = Symbol(base=AssetName('ADA'), quote=AssetName('USDT'), is_futures=False)
+        symbol = Symbol(base=AssetName('ADA'), quote=AssetName('USDT'))
         
         try:
             # Place a small order with unrealistic price to trigger rejection
@@ -307,7 +307,7 @@ class RestPrivateIntegrationTest:
     async def test_cancel_order_simulation(self) -> Dict[str, Any]:
         """Test order cancellation (expects failure for non-existent order)."""
         start_time = time.time()
-        symbol = Symbol(base=AssetName('BTC'), quote=AssetName('USDT'), is_futures=False)
+        symbol = Symbol(base=AssetName('BTC'), quote=AssetName('USDT'))
         test_order_id = "test_nonexistent_cancel_123456789"
         
         try:

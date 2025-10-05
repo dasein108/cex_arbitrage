@@ -35,8 +35,7 @@ class TaskSerializer:
             elif isinstance(value, Symbol):
                 return {
                     'base': value.base,
-                    'quote': value.quote,
-                    'is_futures': getattr(value, 'is_futures', False)
+                    'quote': value.quote
                 }
             elif isinstance(value, Exception):
                 return {
@@ -80,8 +79,7 @@ class TaskSerializer:
         if 'symbol' in obj_data and obj_data['symbol']:
             obj_data['symbol'] = Symbol(
                 base=obj_data['symbol']['base'],
-                quote=obj_data['symbol']['quote'],
-                is_futures=obj_data['symbol'].get('is_futures', False)
+                quote=obj_data['symbol']['quote']
             )
         
         

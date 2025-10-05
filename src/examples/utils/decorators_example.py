@@ -57,7 +57,7 @@ async def new_check_server_time(exchange, exchange_name: str):
 @test_method("Custom API Test", print_result=True, capture_timing=True)
 async def custom_api_test(exchange, exchange_name: str):
     """Example of custom test method decorator."""
-    symbol = Symbol(base=AssetName('BTC'), quote=AssetName('USDT'), is_futures=False)
+    symbol = Symbol(base=AssetName('BTC'), quote=AssetName('USDT'))
     orderbook = await exchange.get_orderbook(symbol, limit=5)
     
     return {

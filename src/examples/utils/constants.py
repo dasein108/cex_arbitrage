@@ -9,16 +9,16 @@ from exchanges.structs.types import AssetName
 
 # Standard test symbols used across all demos and tests
 TEST_SYMBOLS = [
-    Symbol(base=AssetName('BTC'), quote=AssetName('USDT'), is_futures=False),
-    Symbol(base=AssetName('ETH'), quote=AssetName('USDT'), is_futures=False),
+    Symbol(base=AssetName('BTC'), quote=AssetName('USDT')),
+    Symbol(base=AssetName('ETH'), quote=AssetName('USDT')),
 ]
 
 # Additional symbols for comprehensive testing
 EXTENDED_TEST_SYMBOLS = [
-    Symbol(base=AssetName('BTC'), quote=AssetName('USDT'), is_futures=False),
-    Symbol(base=AssetName('ETH'), quote=AssetName('USDT'), is_futures=False),
-    Symbol(base=AssetName('BNB'), quote=AssetName('USDT'), is_futures=False),
-    Symbol(base=AssetName('ADA'), quote=AssetName('USDT'), is_futures=False),
+    Symbol(base=AssetName('BTC'), quote=AssetName('USDT')),
+    Symbol(base=AssetName('ETH'), quote=AssetName('USDT')),
+    Symbol(base=AssetName('BNB'), quote=AssetName('USDT')),
+    Symbol(base=AssetName('ADA'), quote=AssetName('USDT')),
 ]
 
 # Timeout constants

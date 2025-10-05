@@ -63,8 +63,7 @@ class GateioSymbolMapper(SymbolMapperInterface):
                 if quote in self._quote_assets:
                     return Symbol(
                         base=AssetName(base),
-                        quote=AssetName(quote),
-                        is_futures=False
+                        quote=AssetName(quote)
                     )
         
         # Fallback: Try suffix matching for pairs without underscore
@@ -74,8 +73,7 @@ class GateioSymbolMapper(SymbolMapperInterface):
                 if base and base != pair:  # Ensure exchanges is not empty and different
                     return Symbol(
                         base=AssetName(base),
-                        quote=AssetName(quote),
-                        is_futures=False
+                        quote=AssetName(quote)
                     )
         
         raise ValueError(f"Unrecognized Gate.io pair format: {pair}. Expected format: BASE_QUOTE. Supported quotes: {self._quote_assets}")

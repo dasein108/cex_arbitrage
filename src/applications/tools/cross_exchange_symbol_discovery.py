@@ -87,7 +87,6 @@ async def fetch_mexc_futures_symbols() -> Dict[Symbol, SymbolInfo]:
                         symbol = Symbol(
                             base=AssetName(base_coin),
                             quote=AssetName(quote_coin),
-                            is_futures=True
                         )
                         
                         # Extract trading parameters

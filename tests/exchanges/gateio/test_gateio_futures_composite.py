@@ -21,8 +21,8 @@ from infrastructure.logging import HFTLoggerInterface
 def sample_symbols():
     """Sample futures symbols for testing."""
     return [
-        Symbol(base=AssetName('BTC'), quote=AssetName('USDT'), is_futures=True),
-        Symbol(base=AssetName('ETH'), quote=AssetName('USDT'), is_futures=True)
+        Symbol(base=AssetName('BTC'), quote=AssetName('USDT')),
+        Symbol(base=AssetName('ETH'), quote=AssetName('USDT'))
     ]
 
 
@@ -95,7 +95,7 @@ class TestGateioFuturesCompositePublicExchange:
     @pytest.mark.asyncio
     async def test_funding_rate_methods(self, public_exchange):
         """Test futures-specific funding rate methods."""
-        symbol = Symbol(base=AssetName('BTC'), quote=AssetName('USDT'), is_futures=True)
+        symbol = Symbol(base=AssetName('BTC'), quote=AssetName('USDT'))
         
         # Mock REST client
         mock_rest = AsyncMock()
@@ -124,7 +124,7 @@ class TestGateioFuturesCompositePublicExchange:
     @pytest.mark.asyncio
     async def test_mark_price_methods(self, public_exchange):
         """Test futures-specific mark price methods."""
-        symbol = Symbol(base=AssetName('BTC'), quote=AssetName('USDT'), is_futures=True)
+        symbol = Symbol(base=AssetName('BTC'), quote=AssetName('USDT'))
         
         # Mock REST client
         mock_rest = AsyncMock()
@@ -216,7 +216,7 @@ class TestGateioFuturesCompositePrivateExchange:
     @pytest.mark.asyncio
     async def test_leverage_management(self, private_exchange):
         """Test leverage setting and getting."""
-        symbol = Symbol(base=AssetName('BTC'), quote=AssetName('USDT'), is_futures=True)
+        symbol = Symbol(base=AssetName('BTC'), quote=AssetName('USDT'))
         
         # Mock REST client
         mock_rest = AsyncMock()
@@ -241,7 +241,7 @@ class TestGateioFuturesCompositePrivateExchange:
     @pytest.mark.asyncio
     async def test_futures_order_placement(self, private_exchange):
         """Test futures order placement with advanced options."""
-        symbol = Symbol(base=AssetName('BTC'), quote=AssetName('USDT'), is_futures=True)
+        symbol = Symbol(base=AssetName('BTC'), quote=AssetName('USDT'))
         
         # Mock REST client
         mock_rest = AsyncMock()
@@ -282,7 +282,7 @@ class TestGateioFuturesCompositePrivateExchange:
     @pytest.mark.asyncio
     async def test_position_closing(self, private_exchange):
         """Test position closing functionality."""
-        symbol = Symbol(base=AssetName('BTC'), quote=AssetName('USDT'), is_futures=True)
+        symbol = Symbol(base=AssetName('BTC'), quote=AssetName('USDT'))
         
         # Mock REST client
         mock_rest = AsyncMock()
@@ -334,7 +334,7 @@ class TestGateioFuturesCompositePrivateExchange:
     @pytest.mark.asyncio
     async def test_position_handler(self, private_exchange):
         """Test position update handler."""
-        symbol = Symbol(base=AssetName('BTC'), quote=AssetName('USDT'), is_futures=True)
+        symbol = Symbol(base=AssetName('BTC'), quote=AssetName('USDT'))
         
         # Create position update
         position = Position(
@@ -356,7 +356,7 @@ class TestGateioFuturesCompositePrivateExchange:
     def test_trading_stats_futures(self, private_exchange):
         """Test trading stats for futures private exchange."""
         # Add some mock data
-        symbol = Symbol(base=AssetName('BTC'), quote=AssetName('USDT'), is_futures=True)
+        symbol = Symbol(base=AssetName('BTC'), quote=AssetName('USDT'))
         private_exchange._leverage_settings[symbol] = {'leverage': 10}
         private_exchange._margin_info[symbol] = {'available_margin': Decimal('1000')}
         
@@ -369,7 +369,7 @@ class TestGateioFuturesCompositePrivateExchange:
             unrealized_pnl=Decimal('50'),
             timestamp=1234567890
         )
-        short_symbol = Symbol(base=AssetName('ETH'), quote=AssetName('USDT'), is_futures=True)
+        short_symbol = Symbol(base=AssetName('ETH'), quote=AssetName('USDT'))
         short_position = Position(
             symbol=short_symbol,
             quantity=Decimal('-0.3'),  # Short

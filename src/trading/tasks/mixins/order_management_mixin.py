@@ -10,7 +10,6 @@ from exchanges.dual_exchange import DualExchange
 from exchanges.structs import Order, Symbol, SymbolInfo
 from exchanges.structs.common import Side, TimeInForce
 from infrastructure.logging import HFTLoggerInterface
-from utils import to_futures_symbol
 
 
 class OrderManagementMixin(ABC):
@@ -108,8 +107,6 @@ class OrderManagementMixin(ABC):
             Uses GTC (Good Till Cancelled) time in force for HFT requirements.
         """
         try:
-            # TODO: refactor
-            symbol = to_futures_symbol(symbol) if exchange.is_futures else symbol
             symbol_info = exchange.public.symbols_info[symbol]
             adjusted_quantity = self.validate_order_size(symbol_info, quantity, price)
             

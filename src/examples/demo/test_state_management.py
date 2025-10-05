@@ -46,7 +46,7 @@ async def test_state_management():
     logger.info("🧪 Testing state management in trading tasks")
     
     config = get_exchange_config("gateio_spot")
-    symbol = Symbol(base=AssetName('BTC'), quote=AssetName('USDT'), is_futures=False)
+    symbol = Symbol(base=AssetName('BTC'), quote=AssetName('USDT'))
     
     # Test 1: Context initialization
     logger.info("=== Test 1: Context Initialization ===")

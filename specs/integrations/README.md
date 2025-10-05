@@ -125,7 +125,7 @@ gateio_public, gateio_private = await factory.create_exchange_pair(
 # Gate.io Futures Integration
 gateio_futures_public = await factory.create_public_exchange(
     exchange_name='gateio_futures',
-    symbols=[Symbol('BTC', 'USDT', is_futures=True)]
+    symbols=[Symbol('BTC', 'USDT')]
 )
 
 gateio_futures_private = await factory.create_private_exchange(
@@ -165,18 +165,18 @@ await private_exchange.cancel_order(Symbol('BTC', 'USDT'), order.order_id)
 
 ```python
 # Futures position management
-await futures_private.set_leverage(Symbol('BTC', 'USDT', is_futures=True), 10)
+await futures_private.set_leverage(Symbol('BTC', 'USDT'), 10)
 
 position_order = await futures_private.place_futures_order(
-    symbol=Symbol('BTC', 'USDT', is_futures=True),
+    symbol=Symbol('BTC', 'USDT'),
     side='buy',
     order_type='limit',
     quantity=Decimal('0.1'),
     price=Decimal('45000')
 )
 
-positions = await futures_private.get_positions(Symbol('BTC', 'USDT', is_futures=True))
-await futures_private.close_position(Symbol('BTC', 'USDT', is_futures=True))
+positions = await futures_private.get_positions(Symbol('BTC', 'USDT'))
+await futures_private.close_position(Symbol('BTC', 'USDT'))
 ```
 
 ## Performance Characteristics

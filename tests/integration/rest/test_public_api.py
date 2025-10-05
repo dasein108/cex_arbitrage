@@ -167,7 +167,7 @@ class PublicAPIIntegrationTest:
     async def test_get_orderbook(self) -> Dict[str, Any]:
         """Test orderbook retrieval with market data validation."""
         start_time = time.perf_counter()
-        symbol = Symbol(base=AssetName('BTC'), quote=AssetName('USDT'), is_futures=False)
+        symbol = Symbol(base=AssetName('BTC'), quote=AssetName('USDT'))
         
         try:
             result = await self.exchange.get_orderbook(symbol, limit=10)
@@ -239,7 +239,7 @@ class PublicAPIIntegrationTest:
     async def test_get_recent_trades(self) -> Dict[str, Any]:
         """Test recent trades retrieval with trade data validation."""
         start_time = time.perf_counter()
-        symbol = Symbol(base=AssetName('BTC'), quote=AssetName('USDT'), is_futures=False)
+        symbol = Symbol(base=AssetName('BTC'), quote=AssetName('USDT'))
         
         try:
             result = await self.exchange.get_recent_trades(symbol, limit=10)

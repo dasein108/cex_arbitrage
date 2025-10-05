@@ -133,8 +133,7 @@ class MexcPublicSpotRestInterface(MexcBaseRestInterface, PublicSpotRestInterface
         for mexc_symbol in exchange_info.symbols:
             symbol = Symbol(
                 base=AssetName(mexc_symbol.baseAsset),
-                quote=AssetName(mexc_symbol.quoteAsset),
-                is_futures=False
+                quote=AssetName(mexc_symbol.quoteAsset)
             )
             
             base_prec, quote_prec, min_quote, min_base = self._extract_symbol_precision(mexc_symbol)
@@ -145,7 +144,6 @@ class MexcPublicSpotRestInterface(MexcBaseRestInterface, PublicSpotRestInterface
                 quote_precision=quote_prec,
                 min_base_quantity=min_base,
                 min_quote_quantity=min_quote,
-                is_futures=False,
                 maker_commission=float(mexc_symbol.makerCommission),
                 taker_commission=float(mexc_symbol.takerCommission),
                 inactive=mexc_symbol.status != '1',

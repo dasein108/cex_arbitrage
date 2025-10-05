@@ -38,12 +38,12 @@ class GateioFuturesSymbolMapper(SymbolMapperInterface):
         if len(parts) == 2:
             base, quote = parts
             if quote in self._quote_assets:
-                return Symbol(base=AssetName(base), quote=AssetName(quote), is_futures=True)
+                return Symbol(base=AssetName(base), quote=AssetName(quote))
         
         elif len(parts) == 3:
             base, quote, expiry = parts
             if quote in self._quote_assets:
-                symbol = Symbol(base=AssetName(base), quote=AssetName(quote), is_futures=True)
+                symbol = Symbol(base=AssetName(base), quote=AssetName(quote))
                 if hasattr(symbol, "expiry"):
                     symbol.expiry = expiry
                 return symbol

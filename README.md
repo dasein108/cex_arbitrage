@@ -365,9 +365,9 @@ def binance_public_exchange():
 def binance_test_symbols():
     """Binance-specific test symbols."""
     return [
-        Symbol(base=AssetName('BTC'), quote=AssetName('USDT'), is_futures=False),
-        Symbol(base=AssetName('ETH'), quote=AssetName('USDT'), is_futures=False),
-        Symbol(base=AssetName('BNB'), quote=AssetName('USDT'), is_futures=False),
+        Symbol(base=AssetName('BTC'), quote=AssetName('USDT')),
+        Symbol(base=AssetName('ETH'), quote=AssetName('USDT')),
+        Symbol(base=AssetName('BNB'), quote=AssetName('USDT')),
     ]
 ```
 

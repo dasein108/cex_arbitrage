@@ -227,8 +227,8 @@ async def main(exchange_name: str):
 
         # Test symbols - use common trading pairs
         symbols = [
-            Symbol(base=AssetName('BTC'), quote=AssetName('USDT'), is_futures=False),
-            Symbol(base=AssetName('ETH'), quote=AssetName('USDT'), is_futures=False)
+            Symbol(base=AssetName('BTC'), quote=AssetName('USDT')),
+            Symbol(base=AssetName('ETH'), quote=AssetName('USDT'))
         ]
 
         logger.info("🔌 Testing WebSocket factory architecture",

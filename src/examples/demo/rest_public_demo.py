@@ -64,7 +64,7 @@ async def check_get_exchange_info(exchange, exchange_name: str):
 @rest_api_test("orderbook")
 async def check_get_orderbook(exchange, exchange_name: str):
     """Check get_orderbook method."""
-    symbol = Symbol(base=AssetName('BTC'), quote=AssetName('USDT'), is_futures=False)
+    symbol = Symbol(base=AssetName('BTC'), quote=AssetName('USDT'))
     result = await exchange.get_orderbook(symbol, limit=5)
     
     # Structure the result
@@ -84,7 +84,7 @@ async def check_get_orderbook(exchange, exchange_name: str):
 @rest_api_test("recent_trades")
 async def check_get_recent_trades(exchange, exchange_name: str):
     """Check get_recent_trades method.""" 
-    symbol = Symbol(base=AssetName('BTC'), quote=AssetName('USDT'), is_futures=False)
+    symbol = Symbol(base=AssetName('BTC'), quote=AssetName('USDT'))
     result = await exchange.get_recent_trades(symbol, limit=5)
     
     # Structure the trade data
@@ -108,7 +108,7 @@ async def check_get_recent_trades(exchange, exchange_name: str):
 @rest_api_test("historical_trades")
 async def check_get_historical_trades(exchange, exchange_name: str):
     """Check get_historical_trades method."""
-    symbol = Symbol(base=AssetName('BTC'), quote=AssetName('USDT'), is_futures=False)
+    symbol = Symbol(base=AssetName('BTC'), quote=AssetName('USDT'))
     
     # Test with 24 hour time range
     now_ms = int(time.time() * 1000)
@@ -151,7 +151,7 @@ async def check_get_historical_trades(exchange, exchange_name: str):
 @rest_api_test("ticker_info")
 async def check_get_ticker_info(exchange, exchange_name: str):
     """Check get_ticker_info method."""
-    symbol = Symbol(base=AssetName('BTC'), quote=AssetName('USDT'), is_futures=False)
+    symbol = Symbol(base=AssetName('BTC'), quote=AssetName('USDT'))
     
     # Test single symbol ticker
     single_result = await exchange.get_ticker_info(symbol)

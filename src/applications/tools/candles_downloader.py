@@ -134,7 +134,6 @@ class CandlesDownloader:
                 return Symbol(
                     base=AssetName(parts[0]),
                     quote=AssetName(parts[1]),
-                    is_futures=False
                 )
         
         # Handle concatenated format (try common quote assets)
@@ -145,7 +144,6 @@ class CandlesDownloader:
                 return Symbol(
                     base=AssetName(base),
                     quote=AssetName(quote), 
-                    is_futures=False
                 )
         
         raise ValueError(f"Unable to parse symbol: {symbol_str}")

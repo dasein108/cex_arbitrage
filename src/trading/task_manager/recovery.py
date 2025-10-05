@@ -79,8 +79,7 @@ class TaskRecovery:
             # Reconstruct required fields for minimal context
             symbol = Symbol(
                 base=symbol_data['base'],
-                quote=symbol_data['quote'],
-                is_futures=symbol_data.get('is_futures', False)
+                quote=symbol_data['quote']
             )
             
             # Handle legacy data without exchange_name

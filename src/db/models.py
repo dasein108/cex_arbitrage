@@ -85,7 +85,6 @@ class BookTickerSnapshot(msgspec.Struct):
         return Symbol(
             base=AssetName(self.symbol_base),
             quote=AssetName(self.symbol_quote),
-            is_futures=False
         )
     
     def get_spread(self) -> float:
@@ -234,7 +233,6 @@ class TradeSnapshot(msgspec.Struct):
         return Symbol(
             base=AssetName(self.symbol_base),
             quote=AssetName(self.symbol_quote),
-            is_futures=False
         )
     
     def to_trade_struct(self) -> "Trade":

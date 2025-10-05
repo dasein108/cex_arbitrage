@@ -458,7 +458,7 @@ class UnifiedWebSocketManager:
                         # Determine if futures based on exchange type
                         exchange_enum = ExchangeEnum(exchange)
                         is_futures = exchange_enum in [ExchangeEnum.GATEIO_FUTURES]
-                        symbol = Symbol(base=AssetName(base), quote=AssetName(quote), is_futures=is_futures)
+                        symbol = Symbol(base=AssetName(base), quote=AssetName(quote))
                         self.logger.debug(f"Created fallback symbol: {symbol}")
                     else:
                         # Skip this entry if we can't parse it

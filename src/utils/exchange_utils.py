@@ -34,12 +34,6 @@ def get_exchange_enum(exchange_name: str) -> ExchangeEnum:
         supported = [e.value for e in ExchangeEnum]
         raise ValueError(f"Exchange '{exchange_name}' is not supported. Supported exchanges: {supported}")
 
-def to_futures_symbol(symbols: Symbol | List[Symbol]) -> Symbol | List[Symbol]:
-        """Fix symbols for futures format if needed."""
-        if isinstance(symbols, Symbol):
-            return Symbol(symbols.base, symbols.quote, is_futures=True)
-
-        return [Symbol(s.base,s.quote, is_futures=True) for s in symbols]
 
 def is_order_done(order: Order) -> bool:
     """Check if order is done (filled or cancelled)."""

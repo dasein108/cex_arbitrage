@@ -88,8 +88,7 @@ class DeltaNeutralTaskDemo:
                 # Define trading symbols
                 ada_symbol = Symbol(
                     base=AssetName("ADA"),
-                    quote=AssetName("USDT"),
-                    is_futures=False
+                    quote=AssetName("USDT")
                 )
 
                 self.logger.info("Starting DeltaNeutralTask demo with TaskManager",

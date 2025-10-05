@@ -60,7 +60,7 @@ async def check_get_asset_balance(exchange: PrivateSpotRestInterface, exchange_n
 async def check_place_order(exchange: PrivateSpotRestInterface, exchange_name: str):
     """Check place_order method."""
     print(f"\n=== {exchange_name.upper()} PLACE ORDER CHECK ===")
-    symbol = Symbol(base=AssetName('ADA'), quote=AssetName('USDT'), is_futures=False)
+    symbol = Symbol(base=AssetName('ADA'), quote=AssetName('USDT'))
     
     try:
         # Place a small limit buy order (this will likely fail due to insufficient funds or invalid price)
@@ -113,7 +113,7 @@ async def check_get_open_orders(exchange: PrivateSpotRestInterface, exchange_nam
 async def check_get_order(exchange: PrivateSpotRestInterface, exchange_name: str):
     """Check get_order method."""
     print(f"\n=== {exchange_name.upper()} GET ORDER CHECK ===")
-    symbol = Symbol(base=AssetName('BTC'), quote=AssetName('USDT'), is_futures=False)
+    symbol = Symbol(base=AssetName('BTC'), quote=AssetName('USDT'))
     order_id = "123456789"  # This will likely fail as order doesn't exist
     
     try:
@@ -136,7 +136,7 @@ async def check_get_order(exchange: PrivateSpotRestInterface, exchange_name: str
 async def check_cancel_order(exchange: PrivateSpotRestInterface, exchange_name: str):
     """Check cancel_order method."""
     print(f"\n=== {exchange_name.upper()} CANCEL ORDER CHECK ===")
-    symbol = Symbol(base=AssetName('BTC'), quote=AssetName('USDT'), is_futures=False)
+    symbol = Symbol(base=AssetName('BTC'), quote=AssetName('USDT'))
     order_id = "123456789"  # This will likely fail as order doesn't exist
     
     try:
@@ -154,7 +154,7 @@ async def check_cancel_order(exchange: PrivateSpotRestInterface, exchange_name: 
 async def check_cancel_all_orders(exchange: PrivateSpotRestInterface, exchange_name: str):
     """Check cancel_all_orders method."""
     print(f"\n=== {exchange_name.upper()} CANCEL ALL ORDERS CHECK ===")
-    symbol = Symbol(base=AssetName('BTC'), quote=AssetName('USDT'), is_futures=False)
+    symbol = Symbol(base=AssetName('BTC'), quote=AssetName('USDT'))
     
     try:
         result = await exchange.cancel_all_orders(symbol)

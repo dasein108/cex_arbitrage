@@ -27,7 +27,6 @@ class Symbol(Struct, frozen=True):
     """Trading symbol with composite and quote assets."""
     base: AssetName
     quote: AssetName
-    is_futures: bool = False
     
     def __str__(self) -> str:
         """String representation for compatibility."""
@@ -109,12 +108,12 @@ class SymbolInfo(Struct, frozen=True):
     quote_precision: int
     min_base_quantity: float
     min_quote_quantity: float
-    is_futures: bool = False
     maker_commission: float = 0.0
     taker_commission: float = 0.0
     inactive: bool = False
     tick: float = 0.0  # Minimum price increment
     step: float = 0.0  # Minimum quantity increment
+    is_futures: bool = False
 
     def round_quote(self, amount: float) -> float:
         """Round price to the symbol's price/quote precision."""

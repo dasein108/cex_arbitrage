@@ -174,8 +174,8 @@ class WebSocketPublicIntegrationTest:
         try:
             # Test symbols for connection
             test_symbols = [
-                Symbol(base=AssetName('BTC'), quote=AssetName('USDT'), is_futures=False),
-                Symbol(base=AssetName('ETH'), quote=AssetName('USDT'), is_futures=False)
+                Symbol(base=AssetName('BTC'), quote=AssetName('USDT')),
+                Symbol(base=AssetName('ETH'), quote=AssetName('USDT'))
             ]
             
             # Initialize connection

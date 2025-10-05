@@ -98,7 +98,6 @@ class DataCollectorCLI:
                     symbol = Symbol(
                         base=AssetName(base.upper()),
                         quote=AssetName(quote.upper()),
-                        is_futures=False
                     )
                     symbols.append(symbol)
                 
@@ -150,7 +149,6 @@ class DataCollectorCLI:
         """
         try:
             # Initialize core config and load data collector config
-            core_config = HftConfig()
             config = get_data_collector_config()
             
             print("Data Collector Configuration:")

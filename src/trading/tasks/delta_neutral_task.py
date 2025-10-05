@@ -13,7 +13,7 @@ from trading.struct import TradingStrategyState
 
 from trading.tasks.base_task import TaskContext, BaseTradingTask
 from trading.tasks.mixins import OrderManagementMixin, OrderProcessingMixin
-from utils import get_decrease_vector, flip_side, calculate_weighted_price, to_futures_symbol
+from utils import get_decrease_vector, flip_side, calculate_weighted_price
 from enum import IntEnum
 
 
@@ -87,8 +87,7 @@ class DeltaNeutralTask(BaseTradingTask[DeltaNeutralTaskContext], OrderManagement
                                                   public_channels=[PublicWebsocketChannelType.BOOK_TICKER],
                                                   private_channels=[PrivateWebsocketChannelType.ORDER,
                                                                     PrivateWebsocketChannelType.BALANCE])
-            symbol = to_futures_symbol(self.context.symbol) if self._exchange[side].is_futures else self.context.symbol
-            self._si[side] = self._exchange[side].public.symbols_info[symbol]
+            self._si[side] = self._exchange[side].public.symbols_info[self.context.symbol]
             order_id = self.context.order_id[side]
             if order_id:
                 self._curr_order[side] = await self._exchange[side].private.fetch_order(self.context.symbol,

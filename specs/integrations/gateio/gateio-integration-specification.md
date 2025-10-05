@@ -1022,7 +1022,7 @@ gateio_spot_private = await factory.create_private_exchange(
 # Futures public exchange (futures market data)
 gateio_futures_public = await factory.create_public_exchange(
     exchange_name='gateio_futures',
-    symbols=[Symbol('BTC', 'USDT', is_futures=True)]
+    symbols=[Symbol('BTC', 'USDT')]
 )
 
 # Futures private exchange (futures trading)
@@ -1077,20 +1077,20 @@ async def gateio_futures_trading_example():
     # Initialize futures exchanges
     futures_public, futures_private = await factory.create_exchange_pair(
         exchange_name='gateio_futures',
-        symbols=[Symbol('BTC', 'USDT', is_futures=True)]
+        symbols=[Symbol('BTC', 'USDT')]
     )
 
     # Get futures market data
-    orderbook = await futures_public.get_orderbook(Symbol('BTC', 'USDT', is_futures=True))
-    funding_rate = await futures_public.get_funding_rate(Symbol('BTC', 'USDT', is_futures=True))
-    mark_price = await futures_public.get_mark_price(Symbol('BTC', 'USDT', is_futures=True))
+    orderbook = await futures_public.get_orderbook(Symbol('BTC', 'USDT'))
+    funding_rate = await futures_public.get_funding_rate(Symbol('BTC', 'USDT'))
+    mark_price = await futures_public.get_mark_price(Symbol('BTC', 'USDT'))
 
     # Set leverage
-    await futures_private.set_leverage(Symbol('BTC', 'USDT', is_futures=True), 10)
+    await futures_private.set_leverage(Symbol('BTC', 'USDT'), 10)
 
     # Open long position
     long_order = await futures_private.place_futures_order(
-        symbol=Symbol('BTC', 'USDT', is_futures=True),
+        symbol=Symbol('BTC', 'USDT'),
         side='buy',
         order_type='limit',
         quantity=Decimal('0.1'),
@@ -1098,14 +1098,14 @@ async def gateio_futures_trading_example():
     )
 
     # Monitor position
-    positions = await futures_private.get_positions(Symbol('BTC', 'USDT', is_futures=True))
+    positions = await futures_private.get_positions(Symbol('BTC', 'USDT'))
     for position in positions:
         if position.quantity_usdt > 0:
             print(f"Long position: {position.quantity_usdt} @ {position.entry_price}")
 
     # Close position
     close_orders = await futures_private.close_position(
-        Symbol('BTC', 'USDT', is_futures=True)
+        Symbol('BTC', 'USDT')
     )
 ```
 
@@ -1117,36 +1117,36 @@ async def gateio_advanced_futures_example():
     
     futures_public, futures_private = await factory.create_exchange_pair(
         exchange_name='gateio_futures',
-        symbols=[Symbol('BTC', 'USDT', is_futures=True)]
+        symbols=[Symbol('BTC', 'USDT')]
     )
     
     # Monitor funding rates
     funding_history = await futures_public.get_funding_rate_history(
-        Symbol('BTC', 'USDT', is_futures=True), limit=24
+        Symbol('BTC', 'USDT'), limit=24
     )
     
     # Track liquidations
     liquidations = await futures_public.get_liquidation_orders(
-        Symbol('BTC', 'USDT', is_futures=True), limit=100
+        Symbol('BTC', 'USDT'), limit=100
     )
     
     # Get open interest
     open_interest = await futures_public.get_open_interest(
-        Symbol('BTC', 'USDT', is_futures=True)
+        Symbol('BTC', 'USDT')
     )
     
     # Risk management
     leverage_info = await futures_private.get_leverage(
-        Symbol('BTC', 'USDT', is_futures=True)
+        Symbol('BTC', 'USDT')
     )
     
     margin_info = await futures_private.get_margin_info(
-        Symbol('BTC', 'USDT', is_futures=True)
+        Symbol('BTC', 'USDT')
     )
     
     # Place reduce-only order
     reduce_order = await futures_private.place_futures_order(
-        symbol=Symbol('BTC', 'USDT', is_futures=True),
+        symbol=Symbol('BTC', 'USDT'),
         side='sell',
         order_type='limit',
         quantity=Decimal('0.05'),
@@ -1187,13 +1187,13 @@ async def test_gateio_futures_integration():
     # Test futures public domain
     futures_public = await factory.create_public_exchange('gateio_futures', symbols)
 
-    funding_rate = await futures_public.get_funding_rate(Symbol('BTC', 'USDT', is_futures=True))
+    funding_rate = await futures_public.get_funding_rate(Symbol('BTC', 'USDT'))
     assert funding_rate is not None
 
     # Test futures private domain
     futures_private = await factory.create_private_exchange('gateio_futures')
 
-    leverage_info = await futures_private.get_leverage(Symbol('BTC', 'USDT', is_futures=True))
+    leverage_info = await futures_private.get_leverage(Symbol('BTC', 'USDT'))
     assert leverage_info is not None
 ```
 
@@ -1218,7 +1218,7 @@ async def benchmark_gateio_performance():
     futures_public = await factory.create_public_exchange('gateio_futures', symbols)
     
     start = time.time()
-    await futures_public.get_funding_rate(Symbol('BTC', 'USDT', is_futures=True))
+    await futures_public.get_funding_rate(Symbol('BTC', 'USDT'))
     futures_latency = time.time() - start
     assert futures_latency < 0.020  # <20ms target
     

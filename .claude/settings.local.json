@@ -83,7 +83,8 @@
       "Bash(mkdir:*)",
       "Bash(mv:*)",
       "Read(/Users/dasein/dev/cex_artifrage/ai-docs/**)",
-      "Bash(export:*)"
+      "Bash(export:*)",
+      "WebFetch(domain:jcristharif.com)"
     ],
     "deny": [],
     "ask": [],

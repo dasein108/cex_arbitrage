@@ -163,7 +163,7 @@ class RestPublicIntegrationTest:
     async def test_get_orderbook(self) -> Dict[str, Any]:
         """Test orderbook retrieval."""
         start_time = time.time()
-        symbol = Symbol(base=AssetName('BTC'), quote=AssetName('USDT'), is_futures=False)
+        symbol = Symbol(base=AssetName('BTC'), quote=AssetName('USDT'))
         
         try:
             result = await self.exchange.get_orderbook(symbol, limit=5)
@@ -221,7 +221,7 @@ class RestPublicIntegrationTest:
     async def test_get_recent_trades(self) -> Dict[str, Any]:
         """Test recent trades retrieval."""
         start_time = time.time()
-        symbol = Symbol(base=AssetName('BTC'), quote=AssetName('USDT'), is_futures=False)
+        symbol = Symbol(base=AssetName('BTC'), quote=AssetName('USDT'))
         
         try:
             result = await self.exchange.get_recent_trades(symbol, limit=5)
@@ -264,7 +264,7 @@ class RestPublicIntegrationTest:
     async def test_get_historical_trades(self) -> Dict[str, Any]:
         """Test historical trades retrieval."""
         start_time = time.time()
-        symbol = Symbol(base=AssetName('BTC'), quote=AssetName('USDT'), is_futures=False)
+        symbol = Symbol(base=AssetName('BTC'), quote=AssetName('USDT'))
         
         try:
             # Test with timestamp filtering (24 hours ago to now)
@@ -326,7 +326,7 @@ class RestPublicIntegrationTest:
     async def test_get_ticker_info(self) -> Dict[str, Any]:
         """Test ticker info retrieval."""
         start_time = time.time()
-        symbol = Symbol(base=AssetName('BTC'), quote=AssetName('USDT'), is_futures=False)
+        symbol = Symbol(base=AssetName('BTC'), quote=AssetName('USDT'))
         
         try:
             # Test single symbol ticker
