@@ -14,7 +14,7 @@ import sys
 from exchanges.structs.common import Symbol
 from exchanges.structs.types import AssetName
 from exchanges.structs.enums import TimeInForce
-from exchanges.structs import OrderType, Side
+from exchanges.structs import OrderType, Side, OrderId
 from exchanges.interfaces.rest import PrivateSpotRestInterface
 from config.config_manager import HftConfig
 from exchanges.exchange_factory import create_rest_client
@@ -68,7 +68,7 @@ async def check_place_order(exchange: PrivateSpotRestInterface, exchange_name: s
             symbol=symbol,
             side=Side.BUY,
             order_type=OrderType.LIMIT,
-            quantity=3,
+            quantity=10,
             price=0.8,
             time_in_force=TimeInForce.GTC
         )
@@ -81,7 +81,8 @@ async def check_place_order(exchange: PrivateSpotRestInterface, exchange_name: s
         print(f"  Price: {result.price}")
         print(f"  Status: {result.status}")
         print(f"  Timestamp: {result.timestamp}")
-        
+
+        return result
     except Exception as e:
         print(f"Error: {e}")
 
@@ -133,12 +134,11 @@ async def check_get_order(exchange: PrivateSpotRestInterface, exchange_name: str
         print(f"Error: {e}")
 
 
-async def check_cancel_order(exchange: PrivateSpotRestInterface, exchange_name: str):
+async def check_cancel_order(exchange: PrivateSpotRestInterface, exchange_name: str, order_id: OrderId):
     """Check cancel_order method."""
     print(f"\n=== {exchange_name.upper()} CANCEL ORDER CHECK ===")
     symbol = Symbol(base=AssetName('BTC'), quote=AssetName('USDT'))
-    order_id = "123456789"  # This will likely fail as order doesn't exist
-    
+
     try:
         result = await exchange.cancel_order(symbol, order_id)
         print(f"Cancelled order:")
@@ -190,8 +190,10 @@ async def main(exchange_name: str):
         await check_get_asset_balance(exchange, exchange_name)
         await check_get_open_orders(exchange, exchange_name)
         await check_get_order(exchange, exchange_name)
-        await check_place_order(exchange, exchange_name)
-        await check_cancel_order(exchange, exchange_name)
+        o = await check_place_order(exchange, exchange_name)
+        print ('OPEN', await exchange.get_open_orders())
+        print('BY ID', await exchange.get_order(o.symbol, o.order_id))
+        await check_cancel_order(exchange, exchange_name, o.order_id)
         await check_cancel_all_orders(exchange, exchange_name)
 
         await exchange.close()
