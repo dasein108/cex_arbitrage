@@ -20,6 +20,10 @@ class OrderCancelledOrFilled(ExchangeRestError):
         self.is_filled = "filled" in message.lower()
         self.is_cancelled = "cancelled" in message.lower()
 
+
+class TooManyRequestsError(ExchangeRestError):
+    pass
+
 class RateLimitErrorRest(ExchangeRestError):
     def __init__(self, code: int, message: str, api_code: int | None = None, retry_after: int | None = None) -> None:
         super().__init__(code, message, api_code)
@@ -31,18 +35,6 @@ class RateLimitErrorRest(ExchangeRestError):
 
 class RecvWindowError(ExchangeRestError):
     """Exception for timestamp/recvWindow validation errors."""
-    pass
-
-class TradingDisabled(ExchangeRestError):
-    pass
-
-class InsufficientPosition(ExchangeRestError):
-    pass
-
-class OversoldException(ExchangeRestError):
-    pass
-
-class UnknownException(ExchangeRestError):
     pass
 
 

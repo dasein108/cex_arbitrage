@@ -17,8 +17,9 @@ HFT COMPLIANCE: Maintains <50ms latency targets with reduced overhead.
 import time
 import hashlib
 import hmac
-import json
 from typing import Any, Dict, Optional
+
+import msgspec
 from urllib.parse import urlencode
 
 from config.structs import ExchangeConfig
@@ -27,6 +28,7 @@ from infrastructure.networking.http.base_rest_client import BaseRestClientInterf
 from infrastructure.exceptions.exchange import (
     ExchangeRestError, RateLimitErrorRest, RecvWindowError
 )
+from exchanges.integrations.mexc.structs.exchange import MexcErrorResponse
 from infrastructure.decorators.retry import mexc_retry
 from infrastructure.logging import HFTLoggerInterface
 
@@ -176,9 +178,10 @@ class MexcBaseRestInterface(BaseRestClientInterface):
     
     def _handle_error(self, status: int, response_text: str) -> Exception:
         """
-        Direct MEXC error handling implementation.
+        Direct MEXC error handling implementation using msgspec.Struct.
         
         Parses MEXC-specific error responses and maps to appropriate exceptions.
+        Follows struct-first policy for HFT performance compliance.
         
         Args:
             status: HTTP status code
@@ -188,10 +191,10 @@ class MexcBaseRestInterface(BaseRestClientInterface):
             Appropriate exception instance
         """
         try:
-            # Try to parse JSON error response
-            error_data = json.loads(response_text)
-            code = error_data.get('code', status)
-            message = error_data.get('msg', response_text)
+            # Parse using msgspec.Struct for HFT performance
+            error_response = msgspec.json.decode(response_text, type=MexcErrorResponse)
+            code = error_response.code if error_response.code is not None else status
+            message = error_response.msg if error_response.msg is not None else response_text
             
             # MEXC-specific error code mapping
             if code == 700002:
@@ -205,7 +208,7 @@ class MexcBaseRestInterface(BaseRestClientInterface):
             else:
                 return ExchangeRestError(status, f"MEXC API error {code}: {message}")
             #TODO: implement order not found error handling
-        except (json.JSONDecodeError, KeyError):
+        except (msgspec.DecodeError, msgspec.ValidationError):
             # Fallback for non-JSON or malformed responses
             if status == 429:
                 return RateLimitErrorRest(status, f"MEXC rate limit: {response_text}")

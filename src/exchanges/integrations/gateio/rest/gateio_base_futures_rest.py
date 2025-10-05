@@ -23,8 +23,9 @@ HFT COMPLIANCE: Maintains <50ms latency targets with reduced overhead.
 import time
 import hashlib
 import hmac
-import json
 from typing import Any, Dict, Optional
+
+import msgspec
 from urllib.parse import urlencode
 
 from infrastructure.networking.http.structs import HTTPMethod
@@ -32,6 +33,7 @@ from infrastructure.networking.http.base_rest_client import BaseRestClientInterf
 from infrastructure.exceptions.exchange import (
     ExchangeRestError, RateLimitErrorRest, RecvWindowError, OrderNotFoundError
 )
+from exchanges.integrations.gateio.structs.exchange import GateioErrorResponse
 from infrastructure.decorators.retry import gateio_retry
 from infrastructure.logging import HFTLoggerInterface
 
@@ -219,9 +221,10 @@ class GateioBaseFuturesRestInterface(BaseRestClientInterface):
     
     def _handle_error(self, status: int, response_text: str) -> Exception:
         """
-        Direct Gate.io futures error handling implementation.
+        Direct Gate.io futures error handling implementation using msgspec.Struct.
         
         Parses Gate.io-specific error responses with futures-specific context.
+        Follows struct-first policy for HFT performance compliance.
         
         Args:
             status: HTTP status code
@@ -231,10 +234,10 @@ class GateioBaseFuturesRestInterface(BaseRestClientInterface):
             Appropriate exception instance
         """
         try:
-            # Try to parse JSON error response
-            error_data = json.loads(response_text)
-            message = error_data.get('message', response_text)
-            label = error_data.get('label', '')
+            # Parse using msgspec.Struct for HFT performance
+            error_response = msgspec.json.decode(response_text, type=GateioErrorResponse)
+            message = error_response.message if error_response.message is not None else response_text
+            label = error_response.label if error_response.label is not None else ""
             
             # Gate.io futures-specific error handling
             if status == 429 or 'RATE_LIMIT' in message.upper():
@@ -253,7 +256,7 @@ class GateioBaseFuturesRestInterface(BaseRestClientInterface):
                 label_info = f" ({label})" if label else ""
                 return ExchangeRestError(status, f"Gate.io futures API error{label_info}: {message}")
                 
-        except (json.JSONDecodeError, KeyError):
+        except (msgspec.DecodeError, msgspec.ValidationError):
             # Fallback for non-JSON or malformed responses
             if status == 429:
                 return RateLimitErrorRest(status, f"Gate.io futures rate limit: {response_text}")
