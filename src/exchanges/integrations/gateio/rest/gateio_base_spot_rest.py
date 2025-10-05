@@ -27,7 +27,7 @@ from typing import Any, Dict, Optional
 from urllib.parse import urlencode
 
 from infrastructure.networking.http.structs import HTTPMethod
-from infrastructure.networking.http.rest_client_interface import BaseRestClientInterface
+from infrastructure.networking.http.base_rest_client import BaseRestClientInterface
 from infrastructure.exceptions.exchange import (
     ExchangeRestError, RateLimitErrorRest, RecvWindowError, OrderNotFoundError
 )

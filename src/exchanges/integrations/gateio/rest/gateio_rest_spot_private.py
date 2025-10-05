@@ -37,7 +37,6 @@ from infrastructure.networking.http.structs import HTTPMethod
 from exchanges.interfaces.rest import PrivateSpotRestInterface
 from config.structs import ExchangeConfig
 from infrastructure.exceptions.exchange import ExchangeRestError, OrderCancelledOrFilled, OrderNotFoundError
-from infrastructure.error_handling import RestApiErrorHandler
 
 # Import direct utility functions
 from exchanges.integrations.gateio.utils import (

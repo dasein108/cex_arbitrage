@@ -25,6 +25,7 @@ from config.structs import ExchangeConfig
 from infrastructure.logging import HFTLoggerInterface, get_logger
 from infrastructure.decorators.retry import retry_decorator
 from exchanges.interfaces.rest import BaseExchangeRateLimit
+
 class BaseRestClientInterface(ABC):
     """
     Abstract base class for exchange REST implementations.
