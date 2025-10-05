@@ -243,19 +243,7 @@ class GateioBaseSpotRestInterface(BaseRestClientInterface):
             error_response = msgspec.json.decode(response_text, type=GateioErrorResponse)
             message = error_response.message if error_response.message is not None else response_text
             label = error_response.label if error_response.label is not None else ""
-            
-            # HTTP status code based categorization first
-            if status == 429:
-                return TooManyRequestsError(status, f"Gate.io rate limit exceeded: {message}")
-            elif status == 401:
-                return AuthenticationError(status, f"Gate.io authentication failed: {message}")
-            elif status == 403:
-                return InsufficientPermissionsError(status, f"Gate.io forbidden: {message}")
-            elif status == 404:
-                return ExchangeRestError(status, f"Gate.io not found: {message}")
-            elif status >= 500:
-                return ExchangeServerError(status, f"Gate.io server error: {message}")
-            
+
             # === AUTHENTICATION & AUTHORIZATION ERRORS (Non-retryable) ===
             
             # Authentication failures
@@ -405,11 +393,21 @@ class GateioBaseSpotRestInterface(BaseRestClientInterface):
                 return OrderNotFoundError(status, f"Gate.io order not found: {message}")
             elif 'TRADING' in message.upper() and 'DISABLED' in message.upper():
                 return TradingDisabledError(status, f"Gate.io trading disabled: {message}")
+            # HTTP status code based categorization last to avoid 404, 401 wrong status processing
+            elif status == 429:
+                return TooManyRequestsError(status, f"Gate.io rate limit exceeded: {message}")
+            elif status == 401:
+                return AuthenticationError(status, f"Gate.io authentication failed: {message}")
+            elif status == 403:
+                return InsufficientPermissionsError(status, f"Gate.io forbidden: {message}")
+            elif status == 404:
+                return ExchangeRestError(status, f"Gate.io not found: {message}")
+            elif status >= 500:
+                return ExchangeServerError(status, f"Gate.io server error: {message}")
             else:
                 # Generic error with label information for debugging
                 label_info = f" [Label: {label}]" if label else ""
                 return ExchangeRestError(status, f"Gate.io spot API error{label_info}: {message}")
-                
         except (msgspec.DecodeError, msgspec.ValidationError):
             # Fallback for non-JSON or malformed responses
             if status == 429:

@@ -254,18 +254,7 @@ class GateioBaseFuturesRestInterface(BaseRestClientInterface):
             message = error_response.message if error_response.message is not None else response_text
             label = error_response.label if error_response.label is not None else ""
             
-            # HTTP status code based categorization first
-            if status == 429:
-                return TooManyRequestsError(status, f"Gate.io futures rate limit exceeded: {message}")
-            elif status == 401:
-                return AuthenticationError(status, f"Gate.io futures authentication failed: {message}")
-            elif status == 403:
-                return InsufficientPermissionsError(status, f"Gate.io futures forbidden: {message}")
-            elif status == 404:
-                return ExchangeRestError(status, f"Gate.io futures not found: {message}")
-            elif status >= 500:
-                return ExchangeServerError(status, f"Gate.io futures server error: {message}")
-            
+
             # === AUTHENTICATION & AUTHORIZATION ERRORS (Non-retryable) ===
             
             # Authentication failures
@@ -446,11 +435,23 @@ class GateioBaseFuturesRestInterface(BaseRestClientInterface):
                 return RiskControlError(status, f"Gate.io futures liquidation risk: {message}")
             elif 'CONTRACT' in message.upper() and 'NOT_FOUND' in message.upper():
                 return InvalidSymbolError(status, f"Gate.io futures contract not found: {message}")
+
+            # HTTP status code based categorization first
+            elif status == 429:
+                return TooManyRequestsError(status, f"Gate.io futures rate limit exceeded: {message}")
+            elif status == 401:
+                return AuthenticationError(status, f"Gate.io futures authentication failed: {message}")
+            elif status == 403:
+                return InsufficientPermissionsError(status, f"Gate.io futures forbidden: {message}")
+            elif status == 404:
+                return ExchangeRestError(status, f"Gate.io futures not found: {message}")
+            elif status >= 500:
+                return ExchangeServerError(status, f"Gate.io futures server error: {message}")
             else:
                 # Generic error with label information for debugging
                 label_info = f" [Label: {label}]" if label else ""
                 return ExchangeRestError(status, f"Gate.io futures API error{label_info}: {message}")
-                
+
         except (msgspec.DecodeError, msgspec.ValidationError):
             # Fallback for non-JSON or malformed responses
             if status == 429:

@@ -107,7 +107,7 @@ class DeltaNeutralTaskDemo:
                         Side.BUY: buy_exchange,   # MEXC for buying
                         Side.SELL: sell_exchange  # GATEIO for selling
                     },
-                    total_quantity=21.0,  # Total delta neutral quantity
+                    total_quantity=30.0,  # Total delta neutral quantity
                     order_quantity=3.0,   # Size of each execution slice
                     offset_ticks={
                         Side.BUY: 3,     # BUY orders 3 ticks above bid

@@ -131,7 +131,6 @@ exchanges:
     secret_key: "${GATEIO_SECRET_KEY}"  # Same credentials as spot but separate configuration
     base_url: "https://api.gateio.ws/api/v4"  # Same REST API endpoint for futures
     websocket_url: "wss://fx-ws.gateio.ws/v4/ws/usdt/"  # Dedicated futures WebSocket (USDT perpetual)
-    websocket_delivery_url: "wss://fx-ws.gateio.ws/v4/ws/delivery/"  # Delivery futures WebSocket
     enabled: true
     
     # REST Transport Configuration (HFT-optimized for Gate.io Futures)
