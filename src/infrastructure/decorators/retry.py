@@ -19,7 +19,12 @@ import time
 import aiohttp
 from ..exceptions.exchange import (
     ExchangeRestError, RateLimitErrorRest, ExchangeConnectionRestError,
-    RecvWindowError, OrderNotFoundError, OrderCancelledOrFilled
+    RecvWindowError, OrderNotFoundError, OrderCancelledOrFilled, TooManyRequestsError,
+    AuthenticationError, InvalidParameterError, InvalidApiKeyError, SignatureError,
+    InsufficientPermissionsError, IpNotWhitelistedError, InvalidSymbolError,
+    TradingDisabledError, OrderSizeError, PositionLimitError, RiskControlError,
+    InsufficientBalanceError, ExchangeServerError, ServiceUnavailableError,
+    MaintenanceError, ExchangeTimeoutError
 )
 
 
@@ -29,8 +34,14 @@ def retry_decorator(
     base_delay: float = 0.1,
     max_delay: float = 5.0,
     exceptions: Optional[Tuple[Type[Exception], ...]] = None,
-    rate_limit_exceptions: Tuple[Type[Exception], ...] = (RateLimitErrorRest,),
-    recv_window_exceptions: Tuple[Type[Exception], ...] = (RecvWindowError,)
+    rate_limit_exceptions: Tuple[Type[Exception], ...] = (RateLimitErrorRest, TooManyRequestsError),
+    recv_window_exceptions: Tuple[Type[Exception], ...] = (RecvWindowError,),
+    non_retryable_exceptions: Tuple[Type[Exception], ...] = (
+        AuthenticationError, InvalidParameterError, InvalidApiKeyError, SignatureError,
+        InsufficientPermissionsError, IpNotWhitelistedError, InvalidSymbolError,
+        TradingDisabledError, OrderSizeError, PositionLimitError, RiskControlError,
+        InsufficientBalanceError, OrderNotFoundError, OrderCancelledOrFilled
+    )
 ):
     """
     Configurable retry decorator for REST requests with HFT optimization.
@@ -46,18 +57,23 @@ def retry_decorator(
         exceptions: Network/connection exceptions to retry
         rate_limit_exceptions: Rate limit exceptions (special handling)
         recv_window_exceptions: Timestamp sync exceptions (special handling)
+        non_retryable_exceptions: Business logic errors that should never be retried
         
     Returns:
         Decorated async function with retry logic
     """
     import aiohttp  # Import here to avoid circular imports
     
-    # Default exceptions if not provided
+    # Default retryable exceptions if not provided
     if exceptions is None:
         exceptions = (
             aiohttp.ClientConnectionError, 
             asyncio.TimeoutError,
-            ExchangeConnectionRestError
+            ExchangeConnectionRestError,
+            ExchangeServerError,
+            ServiceUnavailableError,
+            MaintenanceError,
+            ExchangeTimeoutError
         )
     
     def decorator(func: Callable) -> Callable:
@@ -68,7 +84,9 @@ def retry_decorator(
             for attempt in range(1, max_attempts + 1):
                 try:
                     return await func(*args, **kwargs)
-                except (OrderNotFoundError, OrderCancelledOrFilled) as e:
+                except non_retryable_exceptions as e:
+                    # Never retry business logic errors
+                    logging.debug(f"Non-retryable error encountered: {type(e).__name__}: {e}")
                     raise e
                 except rate_limit_exceptions as e:
                     last_exception = e
@@ -188,7 +206,7 @@ class RetryContext:
 # Exchange-specific retry decorators
 
 def mexc_retry(max_attempts: int = 3):
-    """MEXC-specific retry decorator with optimized settings."""
+    """MEXC-specific retry decorator with optimized settings and comprehensive error handling."""
     return retry_decorator(
         max_attempts=max_attempts,
         backoff="exponential",
@@ -197,13 +215,25 @@ def mexc_retry(max_attempts: int = 3):
         exceptions=(
             aiohttp.ClientConnectionError,
             asyncio.TimeoutError,
-            ExchangeConnectionRestError
+            ExchangeConnectionRestError,
+            ExchangeServerError,
+            ServiceUnavailableError,
+            MaintenanceError,
+            ExchangeTimeoutError
+        ),
+        rate_limit_exceptions=(TooManyRequestsError, RateLimitErrorRest),
+        recv_window_exceptions=(RecvWindowError,),
+        non_retryable_exceptions=(
+            AuthenticationError, InvalidParameterError, InvalidApiKeyError, SignatureError,
+            InsufficientPermissionsError, IpNotWhitelistedError, InvalidSymbolError,
+            TradingDisabledError, OrderSizeError, PositionLimitError, RiskControlError,
+            InsufficientBalanceError, OrderNotFoundError, OrderCancelledOrFilled
         )
     )
 
 
 def gateio_retry(max_attempts: int = 3):
-    """Gate.io-specific retry decorator with longer delays."""
+    """Gate.io-specific retry decorator with longer delays and comprehensive error handling."""
     return retry_decorator(
         max_attempts=max_attempts,
         backoff="exponential", 
@@ -212,6 +242,18 @@ def gateio_retry(max_attempts: int = 3):
         exceptions=(
             aiohttp.ClientConnectionError,
             asyncio.TimeoutError,
-            ExchangeConnectionRestError
+            ExchangeConnectionRestError,
+            ExchangeServerError,
+            ServiceUnavailableError,
+            MaintenanceError,
+            ExchangeTimeoutError
+        ),
+        rate_limit_exceptions=(TooManyRequestsError, RateLimitErrorRest),
+        recv_window_exceptions=(RecvWindowError,),
+        non_retryable_exceptions=(
+            AuthenticationError, InvalidParameterError, InvalidApiKeyError, SignatureError,
+            InsufficientPermissionsError, IpNotWhitelistedError, InvalidSymbolError,
+            TradingDisabledError, OrderSizeError, PositionLimitError, RiskControlError,
+            InsufficientBalanceError, OrderNotFoundError, OrderCancelledOrFilled
         )
     )

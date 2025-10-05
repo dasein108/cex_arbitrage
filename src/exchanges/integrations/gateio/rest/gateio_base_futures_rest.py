@@ -23,6 +23,7 @@ HFT COMPLIANCE: Maintains <50ms latency targets with reduced overhead.
 import time
 import hashlib
 import hmac
+import json
 from typing import Any, Dict, Optional
 
 import msgspec
@@ -31,7 +32,13 @@ from urllib.parse import urlencode
 from infrastructure.networking.http.structs import HTTPMethod
 from infrastructure.networking.http.base_rest_client import BaseRestClientInterface
 from infrastructure.exceptions.exchange import (
-    ExchangeRestError, RateLimitErrorRest, RecvWindowError, OrderNotFoundError
+    ExchangeRestError, RateLimitErrorRest, RecvWindowError, OrderNotFoundError,
+    AuthenticationError, InvalidApiKeyError, SignatureError, InsufficientPermissionsError,
+    IpNotWhitelistedError, InvalidParameterError, OrderCancelledOrFilled,
+    InsufficientBalanceError, InvalidSymbolError, TradingDisabledError,
+    OrderSizeError, PositionLimitError, RiskControlError, AccountError,
+    TransferError, MaintenanceError, ServiceUnavailableError, ExchangeServerError,
+    ExchangeConnectionRestError, TooManyRequestsError
 )
 from exchanges.integrations.gateio.structs.exchange import GateioErrorResponse
 from infrastructure.decorators.retry import gateio_retry
@@ -221,17 +228,25 @@ class GateioBaseFuturesRestInterface(BaseRestClientInterface):
     
     def _handle_error(self, status: int, response_text: str) -> Exception:
         """
-        Direct Gate.io futures error handling implementation using msgspec.Struct.
+        Comprehensive Gate.io futures error handling implementation using msgspec.Struct.
         
-        Parses Gate.io-specific error responses with futures-specific context.
-        Follows struct-first policy for HFT performance compliance.
+        Maps Gate.io-specific error labels and messages to appropriate exceptions
+        based on the official Gate.io API documentation, with extensive futures-specific
+        error handling for margin, positions, leverage, and risk management operations.
+        
+        Futures-Specific Error Categories:
+        - Contract & Symbol Validation (Non-retryable)
+        - Position Management (Non-retryable)
+        - Leverage & Margin (Non-retryable)
+        - Risk Control & Liquidation (Non-retryable)
+        - Futures-specific Trading Operations (Non-retryable)
         
         Args:
             status: HTTP status code
             response_text: Response body text
             
         Returns:
-            Appropriate exception instance
+            Appropriate exception instance for proper retry logic categorization
         """
         try:
             # Parse using msgspec.Struct for HFT performance
@@ -239,27 +254,213 @@ class GateioBaseFuturesRestInterface(BaseRestClientInterface):
             message = error_response.message if error_response.message is not None else response_text
             label = error_response.label if error_response.label is not None else ""
             
-            # Gate.io futures-specific error handling
-            if status == 429 or 'RATE_LIMIT' in message.upper():
-                return RateLimitErrorRest(status, f"Gate.io futures rate limit exceeded: {message}")
+            # HTTP status code based categorization first
+            if status == 429:
+                return TooManyRequestsError(status, f"Gate.io futures rate limit exceeded: {message}")
+            elif status == 401:
+                return AuthenticationError(status, f"Gate.io futures authentication failed: {message}")
+            elif status == 403:
+                return InsufficientPermissionsError(status, f"Gate.io futures forbidden: {message}")
+            elif status == 404:
+                return ExchangeRestError(status, f"Gate.io futures not found: {message}")
+            elif status >= 500:
+                return ExchangeServerError(status, f"Gate.io futures server error: {message}")
+            
+            # === AUTHENTICATION & AUTHORIZATION ERRORS (Non-retryable) ===
+            
+            # Authentication failures
+            if label == "INVALID_CREDENTIALS":
+                return AuthenticationError(status, f"Invalid credentials: {message}")
+            elif label == "INVALID_KEY":
+                return InvalidApiKeyError(status, f"Invalid API key: {message}")
+            elif label == "INVALID_SIGNATURE":
+                return SignatureError(status, f"Invalid signature: {message}")
+            elif label == "REQUEST_EXPIRED":
+                return RecvWindowError(status, f"Request timestamp expired: {message}")
+            elif label == "MISSING_REQUIRED_HEADER":
+                return AuthenticationError(status, f"Missing required header: {message}")
+            
+            # Authorization failures
+            elif label == "IP_FORBIDDEN":
+                return IpNotWhitelistedError(status, f"IP not whitelisted: {message}")
+            elif label == "READ_ONLY":
+                return InsufficientPermissionsError(status, f"API key is read-only: {message}")
+            elif label == "FORBIDDEN":
+                return InsufficientPermissionsError(status, f"No permission for operation: {message}")
+            
+            # === PARAMETER VALIDATION ERRORS (Non-retryable) ===
+            
+            # Request format errors
+            elif label in ["INVALID_PARAM_VALUE", "INVALID_PROTOCOL", "INVALID_ARGUMENT", 
+                          "INVALID_REQUEST_BODY", "MISSING_REQUIRED_PARAM", "BAD_REQUEST",
+                          "INVALID_CONTENT_TYPE", "NOT_ACCEPTABLE", "METHOD_NOT_ALLOWED"]:
+                return InvalidParameterError(status, f"Invalid request parameter: {message}")
+            elif label == "NOT_FOUND":
+                return ExchangeRestError(status, f"Endpoint not found: {message}")
+            elif label == "INVALID_CLIENT_ORDER_ID":
+                return InvalidParameterError(status, f"Invalid client order ID: {message}")
+            
+            # === FUTURES-SPECIFIC CONTRACT & SYMBOL VALIDATION (Non-retryable) ===
+            
+            elif label == "CONTRACT_NOT_FOUND":
+                return InvalidSymbolError(status, f"Futures contract not found: {message}")
+            elif label in ["INVALID_CURRENCY", "INVALID_CURRENCY_PAIR"]:
+                return InvalidSymbolError(status, f"Invalid futures trading pair: {message}")
+            elif label == "INVALID_PRECISION":
+                return InvalidParameterError(status, f"Invalid precision: {message}")
+            
+            # === FUTURES TRADING & ORDER OPERATION ERRORS (Non-retryable) ===
+            
+            # Order management
+            elif label == "ORDER_NOT_FOUND":
+                return OrderNotFoundError(status, f"Futures order not found: {message}")
+            elif label in ["ORDER_CLOSED", "ORDER_CANCELLED"]:
+                return OrderCancelledOrFilled(status, f"Futures order already closed/cancelled: {message}")
+            elif label == "ORDER_EXISTS":
+                return ExchangeRestError(status, f"Futures order already exists: {message}")
+            elif label == "CANCEL_FAIL":
+                return ExchangeRestError(status, f"Futures order cancel failed: {message}")
+            
+            # Order size and quantity validation
+            elif label in ["AMOUNT_TOO_LITTLE", "AMOUNT_TOO_MUCH"]:
+                return OrderSizeError(status, f"Invalid futures order amount: {message}")
+            elif label == "QUANTITY_NOT_ENOUGH":
+                return OrderSizeError(status, f"Futures quantity not enough: {message}")
+            
+            # Trading restrictions
+            elif label == "TRADE_RESTRICTED":
+                return TradingDisabledError(status, f"Futures trading restricted: {message}")
+            elif label == "TRADING_DISABLED":
+                return TradingDisabledError(status, f"Futures trading disabled: {message}")
+            
+            # Order execution specific errors
+            elif label == "POC_FILL_IMMEDIATELY":
+                return ExchangeRestError(status, f"POC futures order would fill immediately: {message}")
+            elif label == "FOK_NOT_FILL":
+                return ExchangeRestError(status, f"FOK futures order cannot be filled completely: {message}")
+            elif label == "INCREASE_POSITION":
+                return ExchangeRestError(status, f"POC order will increase position: {message}")
+            
+            # === FUTURES BALANCE & MARGIN ERRORS (Non-retryable) ===
+            
+            # Balance errors
+            elif label in ["INSUFFICIENT_AVAILABLE", "BALANCE_NOT_ENOUGH"]:
+                return InsufficientBalanceError(status, f"Insufficient futures balance: {message}")
+            elif label == "FUTURES_BALANCE_NOT_ENOUGH":
+                return InsufficientBalanceError(status, f"Insufficient futures balance: {message}")
+            elif label == "TOO_MUCH_FUTURES_AVAILABLE":
+                return RiskControlError(status, f"Futures balance exceeds maximum: {message}")
+            elif label == "MARGIN_BALANCE_NOT_ENOUGH":
+                return InsufficientBalanceError(status, f"Insufficient margin balance: {message}")
+            
+            # === FUTURES LEVERAGE & RISK MANAGEMENT (Non-retryable) ===
+            
+            # Leverage control
+            elif label in ["LEVERAGE_TOO_HIGH", "LEVERAGE_TOO_LOW"]:
+                return RiskControlError(status, f"Futures leverage error: {message}")
+            elif label == "INITIAL_MARGIN_TOO_LOW":
+                return RiskControlError(status, f"Initial margin too low: {message}")
+            
+            # Risk control and liquidation
+            elif label == "LIQUIDATE_IMMEDIATELY":
+                return RiskControlError(status, f"Operation may cause liquidation: {message}")
+            elif label == "RISK_LIMIT_EXCEEDED":
+                return PositionLimitError(status, f"Risk limit exceeded: {message}")
+            
+            # === FUTURES POSITION MANAGEMENT ERRORS (Non-retryable) ===
+            
+            # Position state errors
+            elif label == "POSITION_NOT_FOUND":
+                return ExchangeRestError(status, f"Position not found: {message}")
+            elif label == "POSITION_EMPTY":
+                return ExchangeRestError(status, f"Position is empty: {message}")
+            elif label == "POSITION_IN_LIQUIDATION":
+                return RiskControlError(status, f"Position is being liquidated: {message}")
+            elif label == "POSITION_IN_CLOSE":
+                return ExchangeRestError(status, f"Position is closing: {message}")
+            
+            # Position mode and operation restrictions
+            elif label == "POSITION_DUAL_MODE":
+                return ExchangeRestError(status, f"Operation forbidden in dual-mode: {message}")
+            elif label == "POSITION_HOLDING":
+                return ExchangeRestError(status, f"Operation forbidden with holding position: {message}")
+            elif label == "POSITION_CROSS_MARGIN":
+                return ExchangeRestError(status, f"Margin updating not allowed in cross margin: {message}")
+            
+            # === ACCOUNT & TRANSFER ERRORS (Mixed retryability) ===
+            
+            # Account errors
+            elif label == "ACCOUNT_LOCKED":
+                return AccountError(status, f"Futures account is locked: {message}")
+            elif label in ["SUB_ACCOUNT_NOT_FOUND", "SUB_ACCOUNT_LOCKED"]:
+                return AccountError(status, f"Sub-account error: {message}")
+            elif label in ["MARGIN_BALANCE_EXCEPTION", "ACCOUNT_EXCEPTION"]:
+                return AccountError(status, f"Futures account exception: {message}")
+            elif label == "USER_NOT_FOUND":
+                return AccountError(status, f"User not found: {message}")
+            
+            # Transfer operations
+            elif label in ["MARGIN_TRANSFER_FAILED", "SUB_ACCOUNT_TRANSFER_FAILED"]:
+                return TransferError(status, f"Futures transfer failed: {message}")
+            elif label in ["INVALID_WITHDRAW_ID", "INVALID_WITHDRAW_CANCEL_STATUS"]:
+                return InvalidParameterError(status, f"Invalid withdrawal operation: {message}")
+            
+            # === BATCH OPERATION ERRORS (Non-retryable) ===
+            
+            elif label in ["TOO_MANY_CURRENCY_PAIRS", "TOO_MANY_ORDERS", "MIXED_ACCOUNT_TYPE"]:
+                return InvalidParameterError(status, f"Batch operation error: {message}")
+            elif label == "NO_MERGEABLE_ORDERS":
+                return ExchangeRestError(status, f"No mergeable orders found: {message}")
+            elif label == "DUPLICATE_REQUEST":
+                return ExchangeRestError(status, f"Duplicate request: {message}")
+            
+            # === SYSTEM & SERVICE ERRORS (Retryable) ===
+            
+            # System availability
+            elif label in ["INTERNAL", "SERVER_ERROR"]:
+                return ExchangeServerError(status, f"Internal server error: {message}")
+            elif label == "ORDER_BOOK_NOT_FOUND":
+                return ServiceUnavailableError(status, f"Insufficient liquidity: {message}")
+            elif label == "FAILED_RETRIEVE_ASSETS":
+                return ServiceUnavailableError(status, f"Failed to retrieve assets: {message}")
+            
+            # === FALLBACK PATTERNS FOR LEGACY MESSAGE FORMATS ===
+            
+            elif 'RATE_LIMIT' in message.upper() or 'TOO_MANY_REQUESTS' in message.upper():
+                return TooManyRequestsError(status, f"Gate.io futures rate limit: {message}")
             elif 'INVALID_SIGNATURE' in message.upper() or 'SIGNATURE_INVALID' in message.upper():
-                return RecvWindowError(status, f"Gate.io futures signature validation failed: {message}")
+                return SignatureError(status, f"Gate.io futures signature validation failed: {message}")
             elif 'TIMESTAMP' in message.upper() and 'EXPIRED' in message.upper():
                 return RecvWindowError(status, f"Gate.io futures timestamp expired: {message}")
-            elif 'INSUFFICIENT' in message.upper() and 'MARGIN' in message.upper():
-                return ExchangeRestError(status, f"Gate.io futures insufficient margin: {message}")
-            elif 'POSITION' in message.upper() and ('NOT_FOUND' in message.upper() or 'INVALID' in message.upper()):
+            elif 'INSUFFICIENT' in message.upper() and ('BALANCE' in message.upper() or 'MARGIN' in message.upper()):
+                return InsufficientBalanceError(status, f"Gate.io futures insufficient balance/margin: {message}")
+            elif 'POSITION' in message.upper() and ('NOT_FOUND' in message.upper() or 'INVALID' in message.upper() or 'EMPTY' in message.upper()):
                 return ExchangeRestError(status, f"Gate.io futures position error: {message}")
             elif 'ORDER_NOT_FOUND' in message.upper():
                 return OrderNotFoundError(status, f"Gate.io futures order not found: {message}")
+            elif 'TRADING' in message.upper() and 'DISABLED' in message.upper():
+                return TradingDisabledError(status, f"Gate.io futures trading disabled: {message}")
+            elif 'LEVERAGE' in message.upper() and ('HIGH' in message.upper() or 'EXCEED' in message.upper() or 'LOW' in message.upper()):
+                return RiskControlError(status, f"Gate.io futures leverage error: {message}")
+            elif 'LIQUIDAT' in message.upper():
+                return RiskControlError(status, f"Gate.io futures liquidation risk: {message}")
+            elif 'CONTRACT' in message.upper() and 'NOT_FOUND' in message.upper():
+                return InvalidSymbolError(status, f"Gate.io futures contract not found: {message}")
             else:
-                label_info = f" ({label})" if label else ""
+                # Generic error with label information for debugging
+                label_info = f" [Label: {label}]" if label else ""
                 return ExchangeRestError(status, f"Gate.io futures API error{label_info}: {message}")
                 
         except (msgspec.DecodeError, msgspec.ValidationError):
             # Fallback for non-JSON or malformed responses
             if status == 429:
-                return RateLimitErrorRest(status, f"Gate.io futures rate limit: {response_text}")
+                return TooManyRequestsError(status, f"Gate.io futures rate limit: {response_text}")
+            elif status >= 500:
+                return ExchangeServerError(status, f"Gate.io futures server error {status}: {response_text}")
+            elif status == 401:
+                return AuthenticationError(status, f"Gate.io futures authentication error: {response_text}")
+            elif status == 403:
+                return InsufficientPermissionsError(status, f"Gate.io futures forbidden: {response_text}")
             else:
                 return ExchangeRestError(status, f"Gate.io futures HTTP {status}: {response_text}")
     

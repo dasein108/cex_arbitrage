@@ -26,7 +26,12 @@ from config.structs import ExchangeConfig
 from infrastructure.networking.http.structs import HTTPMethod
 from infrastructure.networking.http.base_rest_client import BaseRestClientInterface
 from infrastructure.exceptions.exchange import (
-    ExchangeRestError, RateLimitErrorRest, RecvWindowError
+    ExchangeRestError, RateLimitErrorRest, RecvWindowError, TooManyRequestsError,
+    InvalidApiKeyError, SignatureError, InvalidParameterError, OrderNotFoundError,
+    InsufficientBalanceError, InvalidSymbolError, TradingDisabledError, OrderSizeError,
+    PositionLimitError, RiskControlError, AccountError, TransferError, WithdrawalError,
+    MaintenanceError, ServiceUnavailableError, ExchangeServerError, AuthenticationError,
+    InsufficientPermissionsError, IpNotWhitelistedError
 )
 from exchanges.integrations.mexc.structs.exchange import MexcErrorResponse
 from infrastructure.decorators.retry import mexc_retry
@@ -178,9 +183,9 @@ class MexcBaseRestInterface(BaseRestClientInterface):
     
     def _handle_error(self, status: int, response_text: str) -> Exception:
         """
-        Direct MEXC error handling implementation using msgspec.Struct.
+        Comprehensive MEXC error handling implementation using msgspec.Struct.
         
-        Parses MEXC-specific error responses and maps to appropriate exceptions.
+        Maps MEXC-specific error codes to appropriate exception types for proper retry logic.
         Follows struct-first policy for HFT performance compliance.
         
         Args:
@@ -188,7 +193,7 @@ class MexcBaseRestInterface(BaseRestClientInterface):
             response_text: Response body text
             
         Returns:
-            Appropriate exception instance
+            Appropriate exception instance based on MEXC error codes
         """
         try:
             # Parse using msgspec.Struct for HFT performance
@@ -196,22 +201,102 @@ class MexcBaseRestInterface(BaseRestClientInterface):
             code = error_response.code if error_response.code is not None else status
             message = error_response.msg if error_response.msg is not None else response_text
             
-            # MEXC-specific error code mapping
-            if code == 700002:
-                return RecvWindowError(status, f"MEXC signature validation failed: {message}")
-            elif code == 700001:
-                return RecvWindowError(status, f"MEXC timestamp out of recvWindow: {message}")
-            elif status == 429 or code == 429:
-                return RateLimitErrorRest(status, f"MEXC rate limit exceeded: {message}")
-            elif code == -1021:
-                return RecvWindowError(status, f"MEXC timestamp out of recvWindow: {message}")
+            # Comprehensive MEXC error code mapping based on official documentation
+            
+            # Rate Limiting Errors (Retryable with backoff)
+            if status == 429 or code == 429:
+                return TooManyRequestsError(status, f"MEXC rate limit exceeded: {message}", code)
+            
+            # Authentication and Authorization Errors (Non-retryable)
+            elif code in [400, 700001, 700002, 700003]:
+                if code == 400:
+                    return InvalidApiKeyError(status, f"MEXC API key required: {message}", code)
+                elif code in [700001, 700002]:
+                    return SignatureError(status, f"MEXC signature validation failed: {message}", code)
+                elif code == 700003:
+                    return RecvWindowError(status, f"MEXC timestamp outside recvWindow: {message}", code)
+            elif code in [401, 403, 700006, 700007, 10072]:
+                if code in [401, 403]:
+                    return AuthenticationError(status, f"MEXC access denied: {message}", code)
+                elif code == 700006:
+                    return IpNotWhitelistedError(status, f"MEXC IP not whitelisted: {message}", code)
+                elif code == 700007:
+                    return InsufficientPermissionsError(status, f"MEXC no permission for endpoint: {message}", code)
+                elif code == 10072:
+                    return InvalidApiKeyError(status, f"MEXC invalid access key: {message}", code)
+            
+            # Parameter and Validation Errors (Non-retryable)
+            elif code in [33333, 44444, 700004, 700005, 700008, 10015, 10095, 10096, 10097, 10102, 10222]:
+                return InvalidParameterError(status, f"MEXC parameter error: {message}", code)
+            
+            # Order-related Errors (Non-retryable)
+            elif code in [-2011, 22222, 700004]:
+                if code == -2011:
+                    return OrderNotFoundError(status, f"MEXC unknown order: {message}", code)
+                elif code == 22222:
+                    return OrderNotFoundError(status, f"MEXC order not found: {message}", code)
+            
+            # Balance and Position Errors (Non-retryable)
+            elif code in [10101, 30004, 30005]:
+                if code == 10101:
+                    return InsufficientBalanceError(status, f"MEXC insufficient balance: {message}", code)
+                elif code in [30004, 30005]:
+                    return InsufficientBalanceError(status, f"MEXC insufficient position: {message}", code)
+            
+            # Symbol and Trading Errors (Non-retryable)
+            elif code in [10007, 30014, 30021, 10232]:
+                return InvalidSymbolError(status, f"MEXC invalid symbol: {message}", code)
+            elif code in [30000, 30016, 30018, 30019, 30020]:
+                return TradingDisabledError(status, f"MEXC trading disabled: {message}", code)
+            elif code in [30001, 30041]:
+                return TradingDisabledError(status, f"MEXC order type not allowed: {message}", code)
+            
+            # Order Size and Limit Errors (Non-retryable)
+            elif code in [30002, 30003, 30029, 30032]:
+                if code in [30002, 30003]:
+                    return OrderSizeError(status, f"MEXC order size violation: {message}", code)
+                elif code in [30029, 30032]:
+                    return PositionLimitError(status, f"MEXC position limit exceeded: {message}", code)
+            elif code in [30027, 30028]:
+                return PositionLimitError(status, f"MEXC position limit reached: {message}", code)
+            
+            # Risk Control Errors (Non-retryable)
+            elif code in [10098, 60005, 70011, 10265]:
+                return RiskControlError(status, f"MEXC risk control: {message}", code)
+            
+            # Account Errors (Mixed)
+            elif code in [10001, 10099, 730100, 730000, 730001, 730002, 730003]:
+                return AccountError(status, f"MEXC account error: {message}", code)
+            
+            # Transfer and Withdrawal Errors (Mixed)
+            elif code in [10100, 10103, 10200, 10201, 10202, 10206, 10211]:
+                return TransferError(status, f"MEXC transfer error: {message}", code)
+            elif code in [10212, 10216, 10219, 10268]:
+                return WithdrawalError(status, f"MEXC withdrawal error: {message}", code)
+            
+            # Server Errors (Retryable)
+            elif status in [500, 502, 503, 504] or code in [500, 503, 504, 20002]:
+                if status == 503 or code == 503:
+                    return ServiceUnavailableError(status, f"MEXC service unavailable: {message}", code)
+                else:
+                    return ExchangeServerError(status, f"MEXC server error: {message}", code)
+            
+            # System and Subsystem Errors (Mixed)
+            elif code in [20001, 10259]:
+                return MaintenanceError(status, f"MEXC system error: {message}", code)
+            
+            # Catch-all for unmapped errors
             else:
-                return ExchangeRestError(status, f"MEXC API error {code}: {message}")
-            #TODO: implement order not found error handling
+                return ExchangeRestError(status, f"MEXC API error {code}: {message}", code)
+                
         except (msgspec.DecodeError, msgspec.ValidationError):
             # Fallback for non-JSON or malformed responses
             if status == 429:
-                return RateLimitErrorRest(status, f"MEXC rate limit: {response_text}")
+                return TooManyRequestsError(status, f"MEXC rate limit: {response_text}")
+            elif status in [500, 502, 503, 504]:
+                return ExchangeServerError(status, f"MEXC server error: {response_text}")
+            elif status in [401, 403]:
+                return AuthenticationError(status, f"MEXC authentication error: {response_text}")
             else:
                 return ExchangeRestError(status, f"MEXC HTTP {status}: {response_text}")
     

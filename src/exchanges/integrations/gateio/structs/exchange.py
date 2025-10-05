@@ -92,8 +92,8 @@ class GateioOrderResponse(msgspec.Struct):
 
 class GateioErrorResponse(msgspec.Struct):
     """Gate.io error response structure."""
-    label: str
-    message: str
+    label: Optional[str] = None
+    message: Optional[str] = None
 
 
 # WebSocket-specific structures for HFT orderbook processing
