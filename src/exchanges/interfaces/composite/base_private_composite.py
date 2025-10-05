@@ -14,6 +14,7 @@ from exchanges.structs.common import (
 from exchanges.structs.types import AssetName, OrderId
 from exchanges.structs import Side, Trade, OrderType
 from config.structs import ExchangeConfig
+from infrastructure.exceptions.exchange import OrderNotFoundError
 from infrastructure.exceptions.system import InitializationError
 from exchanges.interfaces.composite.base_composite import BaseCompositeExchange
 from exchanges.interfaces.composite.types import PrivateRestType, PrivateWebsocketType
@@ -182,7 +183,7 @@ class BasePrivateComposite(BaseCompositeExchange[PrivateRestType, PrivateWebsock
 
         try:
             return await self._rest.cancel_order(symbol, order_id)
-        except Exception as e:
+        except OrderNotFoundError as e:
             self.logger.error("Order cancellation failed", order_id=order_id, error=str(e))
 
             return await self.fetch_order(symbol, order_id)
@@ -207,7 +208,7 @@ class BasePrivateComposite(BaseCompositeExchange[PrivateRestType, PrivateWebsock
             await self._update_order(order)
 
             return order
-        except Exception as e:
+        except OrderNotFoundError as e:
             self.logger.error("Failed to fetch order status", order_id=order_id, error=str(e))
             return None
 
