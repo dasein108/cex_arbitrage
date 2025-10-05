@@ -31,7 +31,7 @@ services:
       sh -c "
       echo 'Starting in development mode with mounted source...' &&
       while true; do
-        python src/data_collector/run.py;
+        python src/applications/data_collection/run.py;
         echo 'Restarting after exit...';
         sleep 2;
       done

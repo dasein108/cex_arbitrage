@@ -26,11 +26,16 @@ echo_error() { echo -e "${RED}❌ $1${NC}"; }
 sync_code() {
     echo_info "Syncing code to server..."
     
+    # Ensure we're using correct paths regardless of where script is run from
+    SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+    PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
+    EXCLUDE_FILE="$SCRIPT_DIR/.rsync-exclude"
+    
     rsync -avz --progress \
-        --exclude-from=.rsync-exclude \
+        --exclude-from="$EXCLUDE_FILE" \
         -e "ssh -i $SSH_KEY" \
         -v \
-        "$LOCAL_PATH/" \
+        "$PROJECT_ROOT/" \
         "root@$SERVER:$REMOTE_PATH/"
         
     echo_success "Code synced"
@@ -223,6 +228,65 @@ EOF
     echo_success "Docker image rebuilt successfully"
 }
 
+cleanup_production() {
+    echo_info "Cleaning up production server obsolete files..."
+    
+    ssh -i "$SSH_KEY" "root@$SERVER" << 'EOF'
+cd /opt/arbitrage
+
+echo "Removing incorrectly placed files from src/..."
+# Remove files that should be in root
+if [ -f "src/PROJECT_GUIDES.md" ]; then
+    echo "Removing src/PROJECT_GUIDES.md (should be in root)"
+    rm -f src/PROJECT_GUIDES.md
+fi
+
+if [ -f "src/main.py" ]; then
+    echo "Removing src/main.py (should be in root)"
+    rm -f src/main.py
+fi
+
+echo "Removing obsolete directories from src/..."
+# Remove directories that no longer exist in current codebase
+for dir in cex core arbitrage interfaces data_collector structs tools; do
+    if [ -d "src/$dir" ]; then
+        echo "Removing obsolete directory: src/$dir"
+        rm -rf "src/$dir"
+    fi
+done
+
+# Remove obsolete files from root that shouldn't be there
+echo "Removing obsolete files from root..."
+for file in ARCHITECTURE_DIAGRAM.md COMPLETE_LOGGER_MIGRATION_PLAN.md \
+           COMPONENT_INTERFACE_MAPPING.md EXCHANGE_INTEGRATION_GUIDE.md \
+           IMPLEMENTATION_CHECKLIST.md LOGGER_INJECTION_IMPLEMENTATION.md \
+           LOGGER_INJECTION_PLAN.md LOGGING_PLAN.md MICROSTRUCTURE_ARBITRAGE.md \
+           STRATEGY_LOGGER_INJECTION_PLAN.md data_collector_plan.md \
+           generic_rest_response.md test_logger_injection.py test_logging_system.py \
+           db_analysis_20250923_092330.txt docker_analysis_20250923_092403.txt \
+           docker-compose.optimized.yml docker-compose.yml \
+           automated_maintenance.sh maintenance_config.conf monitor_config.conf \
+           space_monitor.sh; do
+    if [ -f "$file" ]; then
+        echo "Removing obsolete file: $file"
+        rm -f "$file"
+    fi
+done
+
+# Remove obsolete directories from root
+for dir in PRD archive emergency infra; do
+    if [ -d "$dir" ]; then
+        echo "Removing obsolete directory: $dir"
+        rm -rf "$dir"
+    fi
+done
+
+echo "✅ Production cleanup complete"
+EOF
+
+    echo_success "Production server cleaned up"
+}
+
 case "${1:-deploy}" in
     "deploy")
         sync_code
@@ -237,19 +301,32 @@ case "${1:-deploy}" in
     "sync")
         sync_code
         ;;
+    "cleanup")
+        cleanup_production
+        ;;
+    "fix")
+        echo_info "Running complete fix: cleanup + sync + update"
+        cleanup_production
+        sync_code
+        update_only
+        ;;
     *)
-        echo "Usage: $0 {deploy|update|rebuild|sync}"
+        echo "Usage: $0 {deploy|update|rebuild|sync|cleanup|fix}"
         echo ""
         echo "Commands:"
         echo "  deploy  - Full deployment (sync + setup + deploy + rebuild)"
         echo "  update  - Update code/config and restart collector (no rebuild)"
         echo "  rebuild - Rebuild Docker image with new dependencies"
         echo "  sync    - Sync code only (no restart)"
+        echo "  cleanup - Remove obsolete files from production server"
+        echo "  fix     - Complete fix (cleanup + sync + update)"
         echo ""
         echo "Examples:"
+        echo "  ./deploy.sh fix             # Fix current deployment issues"
         echo "  ./deploy.sh update          # Quick update for code/config changes"
         echo "  ./deploy.sh rebuild         # Rebuild image after dependency changes"
         echo "  ./deploy.sh deploy          # Full deployment for new servers"
+        echo "  ./deploy.sh cleanup         # Clean obsolete files only"
         exit 1
         ;;
 esac

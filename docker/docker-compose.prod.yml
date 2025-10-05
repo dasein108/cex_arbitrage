@@ -27,7 +27,6 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./init-db.sql:/docker-entrypoint-initdb.d/init-db.sql:ro
-      - ./postgres-prod.conf:/etc/postgresql/postgresql.conf:ro
       - ./backups:/backups
     
     # Remove port exposure for security (internal access only)
@@ -53,6 +52,7 @@ services:
 
   # Data collector optimized for minimal memory usage
   data_collector:
+    command: ["python", "src/applications/data_collection/run.py"]
     environment:
       # Database credentials
       POSTGRES_HOST: database
@@ -122,7 +122,7 @@ services:
       - "8080:80"
     
     volumes:
-      - pgladmin_data:/var/lib/pgadmin
+      - pgadmin_data:/var/lib/pgadmin
     
     # Disabled by default - enable with: docker-compose --profile admin up pgadmin
     profiles:
@@ -200,24 +200,29 @@ services:
   #   restart: unless-stopped
 
 # Production volumes with backup support
+# For local testing, we'll use Docker managed volumes
+# For true production deployment, these should be bind mounts to persistent storage
 volumes:
   postgres_data:
     driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: /opt/arbitrage/data/postgres
+    # Production: bind mount to persistent storage
+    # driver_opts:
+    #   type: none
+    #   o: bind
+    #   device: /opt/arbitrage/data/postgres
   
   pgadmin_data:
     driver: local
-    driver_opts:
-      type: none  
-      o: bind
-      device: /opt/arbitrage/data/pgadmin
+    # Production: bind mount to persistent storage
+    # driver_opts:
+    #   type: none  
+    #   o: bind
+    #   device: /opt/arbitrage/data/pgadmin
   
   grafana_data:
     driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: /opt/arbitrage/data/grafana
+    # Production: bind mount to persistent storage
+    # driver_opts:
+    #   type: none
+    #   o: bind
+    #   device: /opt/arbitrage/data/grafana

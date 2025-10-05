@@ -309,7 +309,6 @@ class GateioPrivateSpotRestInterface(GateioBaseSpotRestInterface, PrivateSpotRes
             self.logger.warning(f"Order {order_id} for {symbol.base}/{symbol.quote} already cancelled/filled or does not exist")
             # TODO: warning x2 latency costs
             return await self.get_order(symbol, order_id)
-        print(response_data, params)
 
         order = rest_spot_to_order(response_data)
         

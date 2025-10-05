@@ -112,6 +112,106 @@ class TaskRecovery:
             self.logger.error(f"Failed to recover IcebergTask {task_id}", error=str(e))
             return None
     
+    async def recover_delta_neutral_task(self, task_id: str, json_data: str) -> Optional['DeltaNeutralTask']:
+        """Recover a DeltaNeutralTask from JSON data.
+        
+        Args:
+            task_id: Task identifier
+            json_data: JSON string containing task context
+            
+        Returns:
+            Optional[DeltaNeutralTask]: Recovered task or None if failed
+        """
+        try:
+            from trading.tasks.delta_neutral_task import DeltaNeutralTask, DeltaNeutralTaskContext, Direction
+            from exchanges.structs import Symbol, ExchangeEnum, Side
+            
+            # Parse JSON data to extract required fields
+            context_data = json.loads(json_data)
+            symbol_data = context_data.get('symbol', {})
+            exchange_names_data = context_data.get('exchange_names', {})
+            
+            # Reconstruct required fields for minimal context
+            symbol = Symbol(
+                base=symbol_data['base'],
+                quote=symbol_data['quote']
+            )
+            
+            # Reconstruct exchange_names dict with Side enum keys
+            exchange_names = {}
+            for side_value, exchange_value in exchange_names_data.items():
+                try:
+                    # Handle both string names and numeric values
+                    if isinstance(side_value, str):
+                        # Try enum name first (e.g., "BUY")
+                        try:
+                            side_key = Side[side_value]  # e.g., "BUY" -> Side.BUY
+                        except KeyError:
+                            # Try converting string numeric to int (e.g., "1" -> 1)
+                            if side_value.isdigit():
+                                side_key = Side(int(side_value))  # e.g., "1" -> 1 -> Side.BUY
+                            else:
+                                raise ValueError(f"Cannot convert '{side_value}' to Side enum")
+                    else:
+                        side_key = Side(side_value)  # numeric value
+                    exchange_names[side_key] = ExchangeEnum(exchange_value) if exchange_value else None
+                except (ValueError, KeyError) as e:
+                    self.logger.warning(f"Invalid side value {side_value} in exchange_names for task {task_id}: {e}")
+                    continue
+            
+            # Handle legacy data - default to MEXC for both sides if missing
+            if not exchange_names:
+                exchange_names = {Side.BUY: ExchangeEnum.MEXC, Side.SELL: ExchangeEnum.MEXC}
+                self.logger.warning(f"Missing exchange_names in persisted task {task_id}, defaulting to MEXC for both sides")
+            
+            # Reconstruct other dict fields with defaults
+            filled_quantity = {}
+            avg_price = {}
+            offset_ticks = {}
+            tick_tolerance = {}
+            order_id = {}
+            
+            for side in [Side.BUY, Side.SELL]:
+                # Try both enum name and value for backward compatibility
+                side_key = side.name if side.name in context_data.get('filled_quantity', {}) else str(side.value)
+                filled_quantity[side] = context_data.get('filled_quantity', {}).get(side_key, 0.0)
+                avg_price[side] = context_data.get('avg_price', {}).get(side_key, 0.0)
+                offset_ticks[side] = context_data.get('offset_ticks', {}).get(side_key, 0)
+                tick_tolerance[side] = context_data.get('tick_tolerance', {}).get(side_key, 1)
+                order_id[side] = context_data.get('order_id', {}).get(side_key, None)
+            
+            # Handle direction enum
+            direction_value = context_data.get('direction', Direction.NONE.value)
+            if isinstance(direction_value, int):
+                direction = Direction(direction_value)
+            else:
+                direction = Direction.NONE
+            
+            # Create minimal context for task initialization
+            context = DeltaNeutralTaskContext(
+                symbol=symbol,
+                exchange_names=exchange_names,
+                total_quantity=context_data.get('total_quantity', 0.0),
+                order_quantity=context_data.get('order_quantity', 0.0),
+                filled_quantity=filled_quantity,
+                avg_price=avg_price,
+                direction=direction,
+                offset_ticks=offset_ticks,
+                tick_tolerance=tick_tolerance,
+                order_id=order_id
+            )
+            
+            task = DeltaNeutralTask(self.logger, context)
+            
+            # Restore full state from JSON
+            await task.restore_from_json(json_data)
+            
+            return task
+            
+        except Exception as e:
+            self.logger.error(f"Failed to recover DeltaNeutralTask {task_id}", error=str(e))
+            return None
+    
     async def recover_task_by_type(self, task_id: str, json_data: str, task_type: str) -> Optional['BaseTradingTask']:
         """Recover a task based on its type.
         
@@ -125,6 +225,8 @@ class TaskRecovery:
         """
         if task_type == "IcebergTask":
             return await self.recover_iceberg_task(task_id, json_data)
+        elif task_type == "DeltaNeutralTask":
+            return await self.recover_delta_neutral_task(task_id, json_data)
         else:
             self.logger.warning(f"Unknown task type {task_type} for task {task_id}")
             return None

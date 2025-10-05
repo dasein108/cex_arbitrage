@@ -14,6 +14,7 @@ from exchanges.structs.common import Symbol, Order, Position, SymbolsInfo
 from exchanges.interfaces.composite.base_private_composite import BasePrivateComposite
 from exchanges.interfaces.composite.types import PrivateRestType, PrivateWebsocketType
 from infrastructure.logging import HFTLoggerInterface
+from infrastructure.exceptions.exchange import ExchangeRestError, OrderNotFoundError
 
 
 class CompositePrivateFuturesExchange(BasePrivateComposite):
@@ -71,7 +72,7 @@ class CompositePrivateFuturesExchange(BasePrivateComposite):
         """Cancel an order via REST API."""
         try:
             return await self._rest.cancel_order(symbol, order_id)
-        except OrderNotFoundException:
+        except OrderNotFoundError:
             self.logger.warning(f"Order {order_id} not found for cancellation on {self._tag}")
             raise
 

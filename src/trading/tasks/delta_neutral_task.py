@@ -324,6 +324,7 @@ class DeltaNeutralTask(BaseTradingTask[DeltaNeutralTaskContext], OrderManagement
                 await self._cancel_side_order(side)
             elif not self._curr_order[side]:
                 await self._place_order(side)
+        pass
 
     async def _handle_adjusting(self):
         """Default adjusting state handler."""

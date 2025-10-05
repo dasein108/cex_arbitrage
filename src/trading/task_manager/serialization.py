@@ -90,9 +90,79 @@ class TaskSerializer:
         if 'exchange_name' in obj_data and obj_data['exchange_name'] is not None:
             obj_data['exchange_name'] = ExchangeEnum(obj_data['exchange_name'])
         
+        # Reconstruct DeltaNeutralTask dict fields with Side enum keys
+        if 'exchange_names' in obj_data and obj_data['exchange_names']:
+            exchange_names_dict = {}
+            for side_value, exchange_value in obj_data['exchange_names'].items():
+                if isinstance(side_value, str):
+                    side_key = Side(side_value)
+                else:
+                    side_key = Side(side_value)
+                exchange_names_dict[side_key] = ExchangeEnum(exchange_value) if exchange_value else None
+            obj_data['exchange_names'] = exchange_names_dict
+        
+        if 'filled_quantity' in obj_data and obj_data['filled_quantity']:
+            filled_quantity_dict = {}
+            for side_value, quantity in obj_data['filled_quantity'].items():
+                if isinstance(side_value, str):
+                    side_key = Side(side_value)
+                else:
+                    side_key = Side(side_value)
+                filled_quantity_dict[side_key] = quantity
+            obj_data['filled_quantity'] = filled_quantity_dict
+        
+        if 'avg_price' in obj_data and obj_data['avg_price']:
+            avg_price_dict = {}
+            for side_value, price in obj_data['avg_price'].items():
+                if isinstance(side_value, str):
+                    side_key = Side(side_value)
+                else:
+                    side_key = Side(side_value)
+                avg_price_dict[side_key] = price
+            obj_data['avg_price'] = avg_price_dict
+        
+        if 'offset_ticks' in obj_data and obj_data['offset_ticks']:
+            offset_ticks_dict = {}
+            for side_value, ticks in obj_data['offset_ticks'].items():
+                if isinstance(side_value, str):
+                    side_key = Side(side_value)
+                else:
+                    side_key = Side(side_value)
+                offset_ticks_dict[side_key] = ticks
+            obj_data['offset_ticks'] = offset_ticks_dict
+        
+        if 'tick_tolerance' in obj_data and obj_data['tick_tolerance']:
+            tick_tolerance_dict = {}
+            for side_value, tolerance in obj_data['tick_tolerance'].items():
+                if isinstance(side_value, str):
+                    side_key = Side(side_value)
+                else:
+                    side_key = Side(side_value)
+                tick_tolerance_dict[side_key] = tolerance
+            obj_data['tick_tolerance'] = tick_tolerance_dict
+        
+        if 'order_id' in obj_data and obj_data['order_id']:
+            order_id_dict = {}
+            for side_value, order_id in obj_data['order_id'].items():
+                if isinstance(side_value, str):
+                    side_key = Side(side_value)
+                else:
+                    side_key = Side(side_value)
+                order_id_dict[side_key] = order_id
+            obj_data['order_id'] = order_id_dict
         
         if 'state' in obj_data:
             obj_data['state'] = TradingStrategyState(obj_data['state'])
+        
+        # Handle direction enum for DeltaNeutralTask (avoid circular import)
+        if 'direction' in obj_data and obj_data['direction'] is not None:
+            try:
+                # Import Direction only when needed to avoid circular import
+                from trading.tasks.delta_neutral_task import Direction
+                obj_data['direction'] = Direction(obj_data['direction'])
+            except ImportError:
+                # If import fails, leave as is - the specific task recovery will handle it
+                pass
         
         # Reconstruct Exception
         if 'error' in obj_data and obj_data['error']:

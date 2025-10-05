@@ -3,6 +3,7 @@
 Provides reusable order management operations that eliminate code duplication
 across trading tasks while maintaining HFT performance requirements.
 """
+import traceback
 from typing import Optional
 from abc import ABC
 
@@ -59,6 +60,7 @@ class OrderManagementMixin(ABC):
         except Exception as e:
             tag_str = f"{self._tag} {tag}".strip()
             self.logger.error(f"🚫 Failed to cancel order {tag_str}", error=str(e))
+            traceback.print_exc()
             return None
     
     def validate_order_size(self, symbol_info: SymbolInfo, quantity: float, price: float) -> float:
