@@ -115,7 +115,6 @@ class OrderManagementMixin(ABC):
                 side=side,
                 quantity=adjusted_quantity,
                 price=price,
-                time_in_force=TimeInForce.GTC
             )
             
             tag_str = f"{self._tag} {tag}".strip()

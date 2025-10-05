@@ -13,6 +13,7 @@ Key Features:
 """
 
 import asyncio
+import json
 import time
 from abc import ABC, abstractmethod
 from typing import Dict, Any, Optional
@@ -255,22 +256,33 @@ class BaseRestClientInterface(ABC):
 
             # Build URL
             url = f"{self.config.base_url}{endpoint}"
-            
-            # Send data as JSON object (aiohttp will encode)
-            async with self._session.request(
-                method.value, url,
-                params=final_params,
-                json=final_data,
-                headers=final_headers
-            ) as response:
-                response_text = await response.text()
 
-                # Handle errors
-                if response.status >= 400:
-                    raise self._handle_error(response.status, response_text)
+            if final_data:
+                encoded_data = json.dumps(final_data, separators=(',', ':'))
+                async with self._session.request(
+                    method.value, url,
+                    params=final_params,
+                    data=encoded_data,
+                    headers=final_headers
+                ) as response:
+                    response_text = await response.text()
 
-                # Parse and return response
-                return self._parse_response(response_text)
+                    if response.status >= 400:
+                        raise self._handle_error(response.status, response_text)
+
+                    return self._parse_response(response_text)
+            else:
+                async with self._session.request(
+                    method.value, url,
+                    params=final_params,
+                    headers=final_headers
+                ) as response:
+                    response_text = await response.text()
+
+                    if response.status >= 400:
+                        raise self._handle_error(response.status, response_text)
+
+                    return self._parse_response(response_text)
                 
         finally:
             self.rate_limiter.release_permit(endpoint)

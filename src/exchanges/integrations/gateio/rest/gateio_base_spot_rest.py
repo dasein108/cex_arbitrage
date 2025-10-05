@@ -185,23 +185,13 @@ class GateioBaseSpotRestInterface(BaseRestClientInterface):
             self.logger.metric("gateio_auth_time_us", auth_time_us,
                               tags={"endpoint": endpoint})
             
-            # Return properly formatted data for aiohttp
-            # When request_body exists (JSON string), we need to send it as raw text data
-            # When request_body is empty, send original data as JSON object
-            if request_body:
-                # Send pre-encoded JSON string as raw text data
-                return {
-                    'headers': auth_headers,
-                    'params': params or {},
-                    'data': request_body,
-                }
-            else:
-                # Send original data object for JSON encoding by aiohttp
-                return {
-                    'headers': auth_headers,
-                    'params': params or {},
-                    'data': data
-                }
+            # Return authentication data with original dict
+            # aiohttp will encode using json_serialize parameter (compact format matching signature)
+            return {
+                'headers': auth_headers,
+                'params': params or {},
+                'data': data  # Original dict - aiohttp will encode with separators=(',',':')
+            }
             
         except Exception as e:
             self.logger.error(

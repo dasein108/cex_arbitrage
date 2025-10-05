@@ -90,7 +90,7 @@ class IcebergTaskDemo:
         """Main demo execution."""
         try:
             # Configuration - Use ExchangeEnum instead of string
-            exchange_name = ExchangeEnum.GATEIO  # Change to desired exchange
+            exchange_name = ExchangeEnum.GATEIO_FUTURES  # Change to desired exchange
 
             # Initialize TaskManager with persistence support
             self.task_manager = TaskManager(self.logger, "task_data")
@@ -100,7 +100,7 @@ class IcebergTaskDemo:
                 ada_symbol = Symbol(
                     base=AssetName("ADA"),
                     quote=AssetName("USDT"),
-                    is_futures=False
+                    is_futures=True
                 )
 
                 self.logger.info("Starting IcebergTask demo with TaskManager",
@@ -114,8 +114,8 @@ class IcebergTaskDemo:
                 ada_context = IcebergTaskContext(
                     symbol=ada_symbol,
                     exchange_name=exchange_name,  # Exchange info now in context
-                    side=Side.SELL,
-                    total_quantity=20.0,
+                    side=Side.BUY,
+                    total_quantity=10.0,
                     order_quantity=3.0,
                     offset_ticks=4,
                     tick_tolerance=8

@@ -88,8 +88,6 @@
     ],
     "deny": [],
     "ask": [],
-    "additionalDirectories": [
-      "/private/tmp"
-    ]
+    "additionalDirectories": ["/private/tmp"]
   }
 }
