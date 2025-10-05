@@ -64,8 +64,8 @@ class BindedEventHandlersAdapter:
         # Track active handler tasks for cleanup
         self._active_tasks: Set[asyncio.Task] = set()
         
-        # Internal handler that receives events from exchange
-        self._exchange_handler = self._handle_exchange_event
+        # Track wrapper functions for each channel (for proper unbinding)
+        self._channel_wrappers: Dict[str, Callable] = {}
     
     def bind_to_exchange(self, exchange) -> 'BindedEventHandlersAdapter':
         """
@@ -121,7 +121,14 @@ class BindedEventHandlersAdapter:
                 # Bind to exchange for this channel if we're connected
                 if self._bound_to_exchange and self._exchange:
                     try:
-                        self._exchange.bind(channel, self._exchange_handler)
+                        # Create wrapper that captures the channel and provides correct signature
+                        def channel_handler(data):
+                            return self._handle_exchange_event(channel, data)
+                        
+                        # Store wrapper for proper unbinding later
+                        self._channel_wrappers[channel] = channel_handler
+                        
+                        self._exchange.bind(channel, channel_handler)
                         if self.logger:
                             self.logger.debug(f"Bound to exchange channel: {channel}")
                     except Exception as e:
@@ -162,9 +169,13 @@ class BindedEventHandlersAdapter:
                     
                     if self._bound_to_exchange and self._exchange and hasattr(self._exchange, 'unbind'):
                         try:
-                            self._exchange.unbind(channel, self._exchange_handler)
-                            if self.logger:
-                                self.logger.debug(f"Unbound from exchange channel: {channel}")
+                            # Use the stored wrapper for proper unbinding
+                            wrapper = self._channel_wrappers.get(channel)
+                            if wrapper:
+                                self._exchange.unbind(channel, wrapper)
+                                del self._channel_wrappers[channel]
+                                if self.logger:
+                                    self.logger.debug(f"Unbound from exchange channel: {channel}")
                         except Exception as e:
                             if self.logger:
                                 self.logger.warning(f"Could not unbind from exchange channel {channel}: {e}")
@@ -310,17 +321,20 @@ class BindedEventHandlersAdapter:
             
             # Unbind from exchange for all channels
             if self._bound_to_exchange and self._exchange and hasattr(self._exchange, 'unbind'):
-                channels_to_unbind = list(self._channel_handlers.keys())
+                channels_to_unbind = list(self._channel_wrappers.keys())
                 for channel in channels_to_unbind:
                     try:
-                        self._exchange.unbind(channel, self._exchange_handler)
+                        wrapper = self._channel_wrappers.get(channel)
+                        if wrapper:
+                            self._exchange.unbind(channel, wrapper)
                     except Exception as e:
                         if self.logger:
                             self.logger.warning(f"Error unbinding from channel {channel}: {e}")
                         success = False
             
-            # Clear all handlers
+            # Clear all handlers and wrappers
             self._channel_handlers.clear()
+            self._channel_wrappers.clear()
             self._bound_to_exchange = False
             self._exchange = None
             
