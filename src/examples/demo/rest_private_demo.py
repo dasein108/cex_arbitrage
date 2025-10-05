@@ -68,8 +68,8 @@ async def check_place_order(exchange: PrivateSpotRestInterface, exchange_name: s
             symbol=symbol,
             side=Side.BUY,
             order_type=OrderType.LIMIT,
-            quantity=0.01,
-            price=3000.0,
+            quantity=3,
+            price=0.8,
             time_in_force=TimeInForce.GTC
         )
         print(f"Order placed:")
@@ -209,7 +209,7 @@ async def main(exchange_name: str):
 
 
 if __name__ == "__main__":
-    exchange_name = sys.argv[1] if len(sys.argv) > 1 else "mexc_spot"
+    exchange_name = sys.argv[1] if len(sys.argv) > 1 else "gateio_futures"
 
     try:
         asyncio.run(main(exchange_name))

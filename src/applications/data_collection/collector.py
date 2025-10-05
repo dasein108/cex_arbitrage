@@ -177,17 +177,29 @@ class UnifiedWebSocketManager:
             # Initialize composite with symbols and channels
             with LoggingTimer(self.logger, "composite_initialization") as timer:
                 channels = [PublicWebsocketChannelType.BOOK_TICKER, PublicWebsocketChannelType.PUB_TRADE]
-                await composite.initialize(symbols, channels)
                 
-                # Check symbol tradability after initialization
+                # Filter tradable symbols before subscription
+                tradable_symbols = []
+                non_tradable_symbols = []
+                
                 for symbol in symbols:
                     try:
-                        if not await composite.is_tradable(symbol):
-                            self.logger.error(f"Symbol {symbol.base}/{symbol.quote} is not tradable on {exchange.value}")
+                        if await composite.is_tradable(symbol):
+                            tradable_symbols.append(symbol)
+                        else:
+                            non_tradable_symbols.append(symbol)
+                            self.logger.warning(f"Symbol {symbol.base}/{symbol.quote} not tradable on {exchange.value}, excluding from subscription")
                     except Exception as e:
-                        self.logger.error(f"Error checking symbol {symbol.base}/{symbol.quote} on {exchange.value}: {e}")
-
-                self._active_symbols[exchange].update(symbols)
+                        non_tradable_symbols.append(symbol)
+                        self.logger.error(f"Error checking tradability for {symbol.base}/{symbol.quote} on {exchange.value}: {e}")
+                
+                # Send Telegram notification for non-tradable symbols
+                if non_tradable_symbols:
+                    await self._notify_non_tradable_symbols(exchange, non_tradable_symbols)
+                
+                # Initialize with only tradable symbols
+                await composite.initialize(tradable_symbols, channels)
+                self._active_symbols[exchange].update(tradable_symbols)
                 self._connected[exchange] = True
 
             self.logger.info("Composite exchange initialized successfully",
@@ -199,7 +211,7 @@ class UnifiedWebSocketManager:
             self.logger.metric("composite_initializations", 1,
                                tags={"exchange": exchange.value, "status": "success"})
 
-            self.logger.metric("symbols_subscribed", len(symbols),
+            self.logger.metric("symbols_subscribed", len(tradable_symbols),
                                tags={"exchange": exchange.value})
 
         except Exception as e:
@@ -215,6 +227,19 @@ class UnifiedWebSocketManager:
 
             self._connected[exchange] = False
             raise
+
+    async def _notify_non_tradable_symbols(self, exchange: ExchangeEnum, symbols: List[Symbol]) -> None:
+        """Send Telegram notification for non-tradable symbols."""
+        try:
+            from infrastructure.networking.telegram import send_to_telegram
+            
+            symbol_list = ", ".join([f"{s.base}/{s.quote}" for s in symbols])
+            message = f"🚫 Non-tradable symbols excluded from {exchange.value}:\n{symbol_list}"
+            
+            await send_to_telegram(message)
+            self.logger.info(f"Sent Telegram notification for {len(symbols)} non-tradable symbols on {exchange.value}")
+        except Exception as e:
+            self.logger.error(f"Failed to send Telegram notification: {e}")
 
     async def _handle_book_ticker_update(self, exchange: ExchangeEnum, symbol: Symbol, book_ticker: BookTicker) -> None:
         """

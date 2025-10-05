@@ -95,7 +95,10 @@ class TaskSerializer:
             exchange_names_dict = {}
             for side_value, exchange_value in obj_data['exchange_names'].items():
                 if isinstance(side_value, str):
-                    side_key = Side(side_value)
+                    if side_value.isdigit():
+                        side_key = Side(int(side_value))  # e.g., "1" -> 1 -> Side.BUY
+                    else:
+                        side_key = Side[side_value]  # e.g., "BUY" -> Side.BUY
                 else:
                     side_key = Side(side_value)
                 exchange_names_dict[side_key] = ExchangeEnum(exchange_value) if exchange_value else None
@@ -105,7 +108,10 @@ class TaskSerializer:
             filled_quantity_dict = {}
             for side_value, quantity in obj_data['filled_quantity'].items():
                 if isinstance(side_value, str):
-                    side_key = Side(side_value)
+                    if side_value.isdigit():
+                        side_key = Side(int(side_value))  # e.g., "1" -> 1 -> Side.BUY
+                    else:
+                        side_key = Side[side_value]  # e.g., "BUY" -> Side.BUY
                 else:
                     side_key = Side(side_value)
                 filled_quantity_dict[side_key] = quantity
@@ -115,7 +121,10 @@ class TaskSerializer:
             avg_price_dict = {}
             for side_value, price in obj_data['avg_price'].items():
                 if isinstance(side_value, str):
-                    side_key = Side(side_value)
+                    if side_value.isdigit():
+                        side_key = Side(int(side_value))  # e.g., "1" -> 1 -> Side.BUY
+                    else:
+                        side_key = Side[side_value]  # e.g., "BUY" -> Side.BUY
                 else:
                     side_key = Side(side_value)
                 avg_price_dict[side_key] = price
@@ -125,7 +134,10 @@ class TaskSerializer:
             offset_ticks_dict = {}
             for side_value, ticks in obj_data['offset_ticks'].items():
                 if isinstance(side_value, str):
-                    side_key = Side(side_value)
+                    if side_value.isdigit():
+                        side_key = Side(int(side_value))  # e.g., "1" -> 1 -> Side.BUY
+                    else:
+                        side_key = Side[side_value]  # e.g., "BUY" -> Side.BUY
                 else:
                     side_key = Side(side_value)
                 offset_ticks_dict[side_key] = ticks
@@ -135,7 +147,10 @@ class TaskSerializer:
             tick_tolerance_dict = {}
             for side_value, tolerance in obj_data['tick_tolerance'].items():
                 if isinstance(side_value, str):
-                    side_key = Side(side_value)
+                    if side_value.isdigit():
+                        side_key = Side(int(side_value))  # e.g., "1" -> 1 -> Side.BUY
+                    else:
+                        side_key = Side[side_value]  # e.g., "BUY" -> Side.BUY
                 else:
                     side_key = Side(side_value)
                 tick_tolerance_dict[side_key] = tolerance
@@ -145,7 +160,10 @@ class TaskSerializer:
             order_id_dict = {}
             for side_value, order_id in obj_data['order_id'].items():
                 if isinstance(side_value, str):
-                    side_key = Side(side_value)
+                    if side_value.isdigit():
+                        side_key = Side(int(side_value))  # e.g., "1" -> 1 -> Side.BUY
+                    else:
+                        side_key = Side[side_value]  # e.g., "BUY" -> Side.BUY
                 else:
                     side_key = Side(side_value)
                 order_id_dict[side_key] = order_id

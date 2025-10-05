@@ -104,7 +104,7 @@ class TaskRecovery:
             task = IcebergTask(self.logger, context)
             
             # Restore full state from JSON
-            await task.restore_from_json(json_data)
+            task.restore_from_json(json_data)
             
             return task
             
@@ -171,14 +171,29 @@ class TaskRecovery:
             tick_tolerance = {}
             order_id = {}
             
+            # Helper function to get value from dict with Side keys that may be serialized as strings
+            def get_side_value(data_dict: dict, side: Side, default):
+                """Get value from dict where Side keys may be serialized as strings."""
+                # Try enum name first (e.g., "BUY")
+                if side.name in data_dict:
+                    return data_dict[side.name]
+                # Try string representation of enum value (e.g., "1")
+                if str(side.value) in data_dict:
+                    return data_dict[str(side.value)]
+                # Try direct enum value (e.g., 1)
+                if side.value in data_dict:
+                    return data_dict[side.value]
+                # Try the enum itself as key
+                if side in data_dict:
+                    return data_dict[side]
+                return default
+
             for side in [Side.BUY, Side.SELL]:
-                # Try both enum name and value for backward compatibility
-                side_key = side.name if side.name in context_data.get('filled_quantity', {}) else str(side.value)
-                filled_quantity[side] = context_data.get('filled_quantity', {}).get(side_key, 0.0)
-                avg_price[side] = context_data.get('avg_price', {}).get(side_key, 0.0)
-                offset_ticks[side] = context_data.get('offset_ticks', {}).get(side_key, 0)
-                tick_tolerance[side] = context_data.get('tick_tolerance', {}).get(side_key, 1)
-                order_id[side] = context_data.get('order_id', {}).get(side_key, None)
+                filled_quantity[side] = get_side_value(context_data.get('filled_quantity', {}), side, 0.0)
+                avg_price[side] = get_side_value(context_data.get('avg_price', {}), side, 0.0)
+                offset_ticks[side] = get_side_value(context_data.get('offset_ticks', {}), side, 0)
+                tick_tolerance[side] = get_side_value(context_data.get('tick_tolerance', {}), side, 1)
+                order_id[side] = get_side_value(context_data.get('order_id', {}), side, None)
             
             # Handle direction enum
             direction_value = context_data.get('direction', Direction.NONE.value)
@@ -204,7 +219,7 @@ class TaskRecovery:
             task = DeltaNeutralTask(self.logger, context)
             
             # Restore full state from JSON
-            await task.restore_from_json(json_data)
+            task.restore_from_json(json_data)
             
             return task
             
