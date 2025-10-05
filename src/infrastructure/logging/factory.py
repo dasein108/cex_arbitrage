@@ -148,43 +148,51 @@ class LoggerFactory:
     def _load_default_config(cls) -> LoggingConfig:
         """Convert config manager format to LoggingConfig struct."""
         # Delayed import to avoid circular dependency
-        from config import get_logging_config, HftConfig
-        
-        logging_config = get_logging_config()
-        
-        # Convert config manager format to struct format
-        struct_data = {
-            'environment': os.getenv('ENVIRONMENT', 'dev')
-        }
-        
-        # Map backends to individual config objects
-        backends = logging_config.get('backends', {})
-        
-        if 'console' in backends and backends['console'].get('enabled', False):
-            struct_data['console'] = ConsoleBackendConfig(
-                enabled=True,
-                min_level=backends['console'].get('min_level', 'DEBUG'),
-                color=backends['console'].get('color', True),
-                include_context=backends['console'].get('include_context', True)
-            )
-        
-        if 'file' in backends and backends['file'].get('enabled', False):
-            struct_data['file'] = FileBackendConfig(
-                enabled=True,
-                min_level=backends['file'].get('min_level', 'INFO'),
-                path=backends['file'].get('path', 'logs/hft.log'),
-                format='text'
-            )
-        
-        # Performance config from hft_settings
-        hft_settings = logging_config.get('hft_settings', {})
-        if hft_settings:
-            struct_data['performance'] = PerformanceConfig(
-                buffer_size=hft_settings.get('ring_buffer_size', 10000),
-                batch_size=hft_settings.get('batch_size', 50)
-            )
+        try:
+            from config import get_logging_config, HftConfig
+            logging_config = get_logging_config()
             
-        return LoggingConfig(**struct_data)
+            # Convert config manager format to struct format
+            struct_data = {
+                'environment': os.getenv('ENVIRONMENT', 'dev')
+            }
+            
+            # Map backends to individual config objects
+            backends = logging_config.get('backends', {})
+            
+            if 'console' in backends and backends['console'].get('enabled', False):
+                struct_data['console'] = ConsoleBackendConfig(
+                    enabled=True,
+                    min_level=backends['console'].get('min_level', 'DEBUG'),
+                    color=backends['console'].get('color', True),
+                    include_context=backends['console'].get('include_context', True)
+                )
+            
+            if 'file' in backends and backends['file'].get('enabled', False):
+                struct_data['file'] = FileBackendConfig(
+                    enabled=True,
+                    min_level=backends['file'].get('min_level', 'INFO'),
+                    path=backends['file'].get('path', 'logs/hft.log'),
+                    format='text'
+                )
+            
+            # Performance config from hft_settings
+            hft_settings = logging_config.get('hft_settings', {})
+            if hft_settings:
+                struct_data['performance'] = PerformanceConfig(
+                    buffer_size=hft_settings.get('ring_buffer_size', 10000),
+                    batch_size=hft_settings.get('batch_size', 50)
+                )
+                
+            return LoggingConfig(**struct_data)
+            
+        except ImportError as e:
+            # If circular import occurs, fall back to environment-based default
+            environment = os.getenv('ENVIRONMENT', 'dev')
+            if environment == 'prod':
+                return LoggingConfig.default_production()
+            else:
+                return LoggingConfig.default_development()
 
 
 # Simplified convenience functions
