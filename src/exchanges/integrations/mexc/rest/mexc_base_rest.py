@@ -230,8 +230,8 @@ class MexcBaseRestInterface(BaseRestClientInterface):
                 return InvalidParameterError(status, f"MEXC parameter error: {message}", code)
             
             # Order-related Errors (Non-retryable)
-            elif code in [-2011, 22222, 700004]:
-                if code == -2011:
+            elif code in [-2011, -2013, 22222, 700004]:
+                if code == -2011 or code == -2013:
                     return OrderNotFoundError(status, f"MEXC unknown order: {message}", code)
                 elif code == 22222:
                     return OrderNotFoundError(status, f"MEXC order not found: {message}", code)
