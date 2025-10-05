@@ -14,8 +14,8 @@ from abc import ABC
 
 from infrastructure.networking.websocket.structs import ParsedMessage, MessageType
 from infrastructure.exceptions.unified import (
-    UnifiedParsingError, 
-    UnifiedSubscriptionError, 
+    WebsocketParsingError,
+    WebsocketSubscriptionError,
     ErrorType
 )
 
@@ -105,7 +105,7 @@ class BaseMessageErrorHandler(ABC):
         error_info = self._extract_error_info(message)
         
         # Create unified error
-        error = UnifiedSubscriptionError(
+        error = WebsocketSubscriptionError(
             exchange=self.exchange_name,
             message=f"Subscription failed: {error_info['message']}",
             channel=channel,
@@ -150,7 +150,7 @@ class BaseMessageErrorHandler(ABC):
             ParsedMessage with standardized error information
         """
         # Create unified parsing error
-        error = UnifiedParsingError(
+        error = WebsocketParsingError(
             exchange=self.exchange_name,
             message=f"Failed to parse {context}: {str(exception)}",
             channel=channel,

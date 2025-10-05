@@ -10,7 +10,7 @@ HFT COMPLIANT: Fast configuration loading with validation caching.
 from infrastructure.logging import get_logger
 from typing import Dict, Any, List, Optional
 from config.config_manager import config
-from infrastructure.exceptions.exchange import ConfigurationError
+from infrastructure.exceptions.system import ConfigurationError
 from archive.trading.arbitrage.types import (
     ArbitrageConfig, RiskLimits, OpportunityType, ArbitragePairMap
 )

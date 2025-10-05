@@ -41,8 +41,7 @@ from .structures import ArbitrageConfig
 from exchanges.structs.common import AssetBalance
 from exchanges.interfaces.composite import CompositePrivateSpotExchange
 from exchanges.structs.types import ExchangeName
-from infrastructure.exceptions.exchange import BalanceManagementError
-
+from infrastructure.exceptions.trading import BalanceManagementError
 
 logger = get_logger('arbitrage.balance')
 

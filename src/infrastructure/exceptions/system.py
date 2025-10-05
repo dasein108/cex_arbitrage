@@ -1,3 +1,4 @@
+from typing import Optional
 
 
 class BaseSystemError(Exception):
@@ -7,3 +8,11 @@ class BaseSystemError(Exception):
 
 class InitializationError(BaseSystemError):
     pass
+
+
+class ConfigurationError(Exception):
+    """Configuration-specific exception for setup errors."""
+
+    def __init__(self, message: str, setting_name: Optional[str] = None):
+        self.setting_name = setting_name
+        super().__init__(message)

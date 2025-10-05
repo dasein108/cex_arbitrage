@@ -18,7 +18,7 @@ from ..structs import (
 )
 from exchanges.structs.enums import ExchangeEnum
 from exchanges.structs.types import ExchangeName
-from infrastructure.exceptions.exchange import ConfigurationError
+from infrastructure.exceptions.system import ConfigurationError
 
 
 class ExchangeConfigManager:

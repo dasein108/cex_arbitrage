@@ -48,8 +48,7 @@ from exchanges.structs.common import Symbol
 from exchanges.structs.enums import OrderSide
 from exchanges.interfaces.composite import CompositePrivateSpotExchange
 from exchanges.structs.types import ExchangeName
-from infrastructure.exceptions.exchange import PositionManagementError
-
+from infrastructure.exceptions.trading import PositionManagementError
 
 logger = get_logger('arbitrage.position')
 

@@ -43,7 +43,7 @@ from .aggregator import MarketDataAggregator
 
 from exchanges.structs.common import Symbol, OrderBook
 from exchanges.structs.types import ExchangeName
-from infrastructure.exceptions.exchange import ArbitrageDetectionError
+from infrastructure.exceptions.trading import ArbitrageDetectionError
 
 logger = get_logger('arbitrage.detector')
 

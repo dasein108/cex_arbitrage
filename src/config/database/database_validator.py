@@ -11,7 +11,7 @@ import asyncio
 import logging
 from typing import List, Dict, Any, Optional
 from ..structs import DatabaseConfig
-from infrastructure.exceptions.exchange import ConfigurationError
+from infrastructure.exceptions.system import ConfigurationError
 
 
 class DatabaseConfigValidator:

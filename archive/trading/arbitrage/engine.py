@@ -45,7 +45,7 @@ from .aggregator import MarketDataAggregator
 
 from exchanges.interfaces.composite.spot.base_private_spot_composite import CompositePrivateSpotExchange
 from infrastructure.error_handling import TradingErrorHandler, ErrorContext
-from infrastructure.exceptions.exchange import ArbitrageEngineError
+from infrastructure.exceptions.trading import ArbitrageEngineError
 
 # HFT Logger Integration
 from infrastructure.logging import get_exchange_logger, HFTLoggerInterface

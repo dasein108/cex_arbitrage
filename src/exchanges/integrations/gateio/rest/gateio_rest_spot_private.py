@@ -75,13 +75,6 @@ class GateioPrivateSpotRestInterface(GateioBaseSpotRestInterface, PrivateSpotRes
             from infrastructure.logging import get_exchange_logger
             logger = get_exchange_logger('gateio', 'rest.private')
         self.logger = logger
-        
-        # Initialize composition-based error handler
-        self._rest_error_handler = RestApiErrorHandler(
-            logger=self.logger,
-            max_retries=3,
-            base_delay=1.0
-        )
 
     async def get_assets_info(self) -> Dict[AssetName, AssetInfo]:
         """
@@ -97,13 +90,6 @@ class GateioPrivateSpotRestInterface(GateioBaseSpotRestInterface, PrivateSpotRes
             ExchangeAPIError: If unable to fetch currency information
         """
         return await self.get_currency_info()
-
-    
-    def _handle_gateio_exception(self, status_code: int, message: str) -> ExchangeRestError:
-        """Handle Gate.io specific exceptions."""
-        return ExchangeRestError(f"Gate.io error {status_code}: {message}")
-
-    # Authentication is now handled automatically by the transport system
 
     async def get_balances(self) -> List[AssetBalance]:
         """

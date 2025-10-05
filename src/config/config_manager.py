@@ -45,7 +45,7 @@ from dotenv import load_dotenv
 from dataclasses import dataclass
 
 from exchanges.structs.enums import ExchangeEnum
-from infrastructure.exceptions.exchange import ConfigurationError
+from infrastructure.exceptions.system import ConfigurationError
 from .structs import ExchangeCredentials, NetworkConfig, RateLimitConfig, WebSocketConfig, ExchangeConfig, \
     RestTransportConfig, DatabaseConfig, AnalyticsConfig, DataCollectorConfig
 

@@ -94,37 +94,18 @@ class UnifiedExchangeRestError(ExchangeRestError):
         return f"[{self.correlation_id}] {self.exchange}/{self.error_type.value}: {self.message}"
 
 
-class UnifiedParsingError(UnifiedExchangeRestError):
+class WebsocketParsingError(UnifiedExchangeRestError):
     """Error during message parsing operations."""
     
     def __init__(self, exchange: str, message: str, **kwargs):
         super().__init__(exchange, ErrorType.PARSING, message, **kwargs)
 
 
-class UnifiedSubscriptionError(UnifiedExchangeRestError):
+class WebsocketSubscriptionError(UnifiedExchangeRestError):
     """Error during subscription operations."""
     
     def __init__(self, exchange: str, message: str, **kwargs):
         super().__init__(exchange, ErrorType.SUBSCRIPTION, message, **kwargs)
 
 
-class UnifiedConnectionError(UnifiedExchangeRestError):
-    """Error during connection operations."""
-    
-    def __init__(self, exchange: str, message: str, **kwargs):
-        super().__init__(exchange, ErrorType.CONNECTION, message, **kwargs)
 
-
-class UnifiedValidationError(UnifiedExchangeRestError):
-    """Error during validation operations."""
-    
-    def __init__(self, exchange: str, message: str, **kwargs):
-        super().__init__(exchange, ErrorType.VALIDATION, message, **kwargs)
-
-
-class UnifiedRateLimitError(UnifiedExchangeRestError):
-    """Error due to rate limiting."""
-    
-    def __init__(self, exchange: str, message: str, retry_after: Optional[int] = None, **kwargs):
-        super().__init__(exchange, ErrorType.RATE_LIMIT, message, **kwargs)
-        self.retry_after = retry_after

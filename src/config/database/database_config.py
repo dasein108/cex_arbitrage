@@ -12,7 +12,7 @@ import os
 import logging
 from typing import Dict, Any, Optional, List
 from ..structs import DatabaseConfig, AnalyticsConfig, DataCollectorConfig
-from infrastructure.exceptions.exchange import ConfigurationError
+from infrastructure.exceptions.system import ConfigurationError
 
 
 class DatabaseConfigManager:

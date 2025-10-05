@@ -51,7 +51,7 @@ from exchanges.structs.enums import OrderSide
 from exchanges.structs import OrderType
 from exchanges.interfaces.composite import CompositePrivateSpotExchange
 from exchanges.structs.types import ExchangeName
-from infrastructure.exceptions.exchange import OrderExecutionError
+from infrastructure.exceptions.trading import OrderExecutionError
 
 logger = get_logger('arbitrage.orchestrator')
 

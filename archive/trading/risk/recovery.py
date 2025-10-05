@@ -47,7 +47,7 @@ from exchanges.structs.common import Symbol
 from exchanges.structs.enums import OrderSide
 from exchanges.interfaces.composite import CompositePrivateSpotExchange
 from exchanges.structs.types import ExchangeName
-from infrastructure.exceptions.exchange import RecoveryError
+from infrastructure.exceptions.trading import RecoveryError
 
 logger = get_logger('arbitrage.recovery')
 

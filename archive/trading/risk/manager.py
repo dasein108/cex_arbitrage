@@ -43,8 +43,7 @@ from .structures import (
 
 from exchanges.structs.common import Symbol
 from exchanges.structs.types import ExchangeName
-from infrastructure.exceptions.exchange import RiskManagementError
-
+from infrastructure.exceptions.trading import RiskManagementError
 
 logger = get_logger('arbitrage.risk')
 

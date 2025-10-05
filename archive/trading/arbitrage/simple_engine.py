@@ -20,7 +20,7 @@ from exchanges.interfaces.composite import CompositePrivateSpotExchange
 from exchanges.structs.common import Symbol
 from exchanges.structs.types import ExchangeName, AssetName
 from exchanges.structs.enums import ExchangeStatus
-from infrastructure.exceptions.exchange import ArbitrageDetectionError
+from infrastructure.exceptions.trading import ArbitrageDetectionError
 
 logger = get_logger('arbitrage.simple_engine')
 

@@ -1,6 +1,3 @@
-from typing import Optional
-
-
 class ExchangeRestError(Exception):
     def __init__(self, code: int, message: str, api_code: int | None = None) -> None:
         self.api_code = api_code
@@ -18,6 +15,8 @@ class OrderNotFoundError(ExchangeRestError):
 class OrderCancelledOrFilled(ExchangeRestError):
     def __init__(self, code: int, message: str, api_code: int | None = None) -> None:
         super().__init__(code, message, api_code)
+
+        # TODO: this prob is to broad
         self.is_filled = "filled" in message.lower()
         self.is_cancelled = "cancelled" in message.lower()
 
@@ -34,8 +33,6 @@ class RecvWindowError(ExchangeRestError):
     """Exception for timestamp/recvWindow validation errors."""
     pass
 
-
-
 class TradingDisabled(ExchangeRestError):
     pass
 
@@ -48,45 +45,4 @@ class OversoldException(ExchangeRestError):
 class UnknownException(ExchangeRestError):
     pass
 
-class ArbitrageEngineError(Exception):
-    pass
 
-class ExchangeError(Exception):
-    pass
-
-# Arbitrage-specific exceptions
-class ArbitrageDetectionError(ArbitrageEngineError):
-    """Error during arbitrage opportunity detection."""
-    pass
-
-class BalanceManagementError(ArbitrageEngineError):
-    """Error in balance management operations."""
-    pass
-
-class PositionManagementError(ArbitrageEngineError):
-    """Error in position management operations."""
-    pass
-
-class OrderExecutionError(ArbitrageEngineError):
-    """Error during order execution."""
-    pass
-
-class RecoveryError(ArbitrageEngineError):
-    """Error during recovery operations."""
-    pass
-
-class RiskManagementError(ArbitrageEngineError):
-    """Error in risk management operations."""
-    pass
-
-class StateTransitionError(ArbitrageEngineError):
-    """Error during state transitions."""
-    pass
-
-
-class ConfigurationError(Exception):
-    """Configuration-specific exception for setup errors."""
-
-    def __init__(self, message: str, setting_name: Optional[str] = None):
-        self.setting_name = setting_name
-        super().__init__(message)
