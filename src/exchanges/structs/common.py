@@ -114,6 +114,7 @@ class SymbolInfo(Struct, frozen=True):
     tick: float = 0.0  # Minimum price increment
     step: float = 0.0  # Minimum quantity increment
     is_futures: bool = False
+    quanto_multiplier: Optional[float] = None  # For futures
 
     def round_quote(self, amount: float) -> float:
         """Round price to the symbol's price/quote precision."""

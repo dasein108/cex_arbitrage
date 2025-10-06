@@ -57,11 +57,10 @@ async def check_get_asset_balance(exchange: PrivateSpotRestInterface, exchange_n
         print(f"Error: {e}")
 
 
-async def check_place_order(exchange: PrivateSpotRestInterface, exchange_name: str):
+async def check_place_order(exchange: PrivateSpotRestInterface, exchange_name: str, symbol: Symbol = None):
     """Check place_order method."""
     print(f"\n=== {exchange_name.upper()} PLACE ORDER CHECK ===")
-    symbol = Symbol(base=AssetName('ADA'), quote=AssetName('USDT'))
-    
+
     try:
         # Place a small limit buy order (this will likely fail due to insufficient funds or invalid price)
         result = await exchange.place_order(
@@ -87,12 +86,12 @@ async def check_place_order(exchange: PrivateSpotRestInterface, exchange_name: s
         print(f"Error: {e}")
 
 
-async def check_get_open_orders(exchange: PrivateSpotRestInterface, exchange_name: str):
+async def check_get_open_orders(exchange: PrivateSpotRestInterface, exchange_name: str, symbol: Symbol = None):
     """Check get_open_orders method."""
     print(f"\n=== {exchange_name.upper()} GET OPEN ORDERS CHECK ===")
     
     try:
-        result = await exchange.get_open_orders()
+        result = await exchange.get_open_orders(symbol)
         print(f"Open orders count: {len(result)}")
         
         # Show first 3 open orders
@@ -184,13 +183,14 @@ async def main(exchange_name: str):
         from utils.exchange_utils import get_exchange_enum
         exchange = get_exchange_enum(exchange_name)
         exchange = create_rest_client(exchange, is_private=True, config=config)
-        
+        symbol = Symbol(base=AssetName('ADA'), quote=AssetName('USDT'))
+
         # Execute all private API checks
         await check_get_account_balance(exchange, exchange_name)
         await check_get_asset_balance(exchange, exchange_name)
-        await check_get_open_orders(exchange, exchange_name)
+        await check_get_open_orders(exchange, exchange_name, symbol)
         await check_get_order(exchange, exchange_name)
-        o = await check_place_order(exchange, exchange_name)
+        o = await check_place_order(exchange, exchange_name, symbol)
         print ('OPEN', await exchange.get_open_orders())
         print('BY ID', await exchange.get_order(o.symbol, o.order_id))
         await check_cancel_order(exchange, exchange_name, o.order_id)
@@ -211,7 +211,7 @@ async def main(exchange_name: str):
 
 
 if __name__ == "__main__":
-    exchange_name = sys.argv[1] if len(sys.argv) > 1 else "gateio_futures"
+    exchange_name = sys.argv[1] if len(sys.argv) > 1 else "gateio_spot"
 
     try:
         asyncio.run(main(exchange_name))

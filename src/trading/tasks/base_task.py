@@ -231,11 +231,18 @@ class BaseTradingTask(Generic[T], ABC):
         Args:
             json_data: JSON string containing task context
         """
-        # Use centralized serialization
-        self.context = TaskSerializer.deserialize_context(json_data, self.context_class)
+        try:
+            # Use centralized serialization
+            self.context = TaskSerializer.deserialize_context(json_data, self.context_class)
 
-        # Rebuild tag after restoration
-        self._build_tag()
+            # Rebuild tag after restoration
+            self._build_tag()
+        except Exception as e:
+            # Log the error but don't crash - let the recovery method handle the failure
+            if hasattr(self, 'logger'):
+                self.logger.error(f"Failed to restore context from JSON", error=str(e))
+            # Re-raise the exception so the recovery method knows it failed
+            raise
 
     def _transition(self, new_state: TradingStrategyState) -> None:
         """Transition to a new state.

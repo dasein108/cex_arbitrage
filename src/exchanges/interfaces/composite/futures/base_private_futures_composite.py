@@ -66,7 +66,12 @@ class CompositePrivateFuturesExchange(BasePrivateComposite):
     async def place_order(self, symbol: Symbol, side, order_type, quantity: Optional[float] = None,
                          price: Optional[float] = None, **kwargs) -> Order:
         """Place an order via REST API."""
-        return await self._rest.place_order(symbol, side, order_type, quantity, price, **kwargs)
+        quanto_multiplier = self._symbols_info[symbol].quanto_multiplier
+        if quanto_multiplier:
+            adjusted_quantity = quantity / self._symbols_info[symbol].quanto_multiplier
+        else:
+            adjusted_quantity = quantity
+        return await self._rest.place_order(symbol, side, order_type, adjusted_quantity, price, **kwargs)
 
     async def cancel_order(self, symbol: Symbol, order_id) -> Order:
         """Cancel an order via REST API."""

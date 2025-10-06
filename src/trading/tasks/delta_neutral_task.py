@@ -80,6 +80,9 @@ class DeltaNeutralTask(BaseTradingTask[DeltaNeutralTaskContext], OrderManagement
         self._si: Dict[Side, Optional[SymbolInfo]] = {Side.BUY: None, Side.SELL: None}
 
     async def start(self, **kwargs):
+        if self.context is None:
+            raise ValueError("Cannot start task: context is None (likely deserialization failed)")
+        
         await super().start(**kwargs)
         for side, exchange in self.context.exchange_names.items():
 
@@ -92,6 +95,8 @@ class DeltaNeutralTask(BaseTradingTask[DeltaNeutralTaskContext], OrderManagement
             if order_id:
                 self._curr_order[side] = await self._exchange[side].private.fetch_order(self.context.symbol,
                                                                                         order_id)
+
+        pass
 
     async def pause(self):
         """Pause task and cancel any active order."""

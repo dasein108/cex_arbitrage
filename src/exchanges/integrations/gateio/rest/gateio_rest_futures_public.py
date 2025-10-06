@@ -118,6 +118,7 @@ class GateioPublicFuturesRestInterface(GateioBaseFuturesRestInterface, PublicFut
                     tick=float(c.get('order_price_round')),
                     # tick=get_minimal_step(quote_prec),
                     step=get_minimal_step(base_prec),
+                    quanto_multiplier=float(c.get('quanto_multiplier', 1))
                 )
                 symbol_info_map[symbol] = symbol_info
 

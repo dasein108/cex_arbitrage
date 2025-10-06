@@ -422,7 +422,8 @@ class GateioPrivateSpotRestInterface(GateioBaseSpotRestInterface, PrivateSpotRes
             endpoint = '/spot/orders'
             params = {
                 'status': 'open',
-                'currency_pair': GateioSpotSymbol.to_pair(symbol)
+                'currency_pair': GateioSpotSymbol.to_pair(symbol),
+                'limit': 100    # Maximum limit for open orders
             }
             
             response_data = await self.request(
