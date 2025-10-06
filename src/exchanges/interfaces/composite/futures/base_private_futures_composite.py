@@ -11,7 +11,7 @@ from typing import Dict, List, Optional, Any
 from decimal import Decimal
 
 from exchanges.structs import Side
-from exchanges.structs.common import Symbol, Order, Position, SymbolsInfo
+from exchanges.structs.common import Symbol, Order, Position, SymbolsInfo, OrderId
 from exchanges.interfaces.composite.base_private_composite import BasePrivateComposite
 from exchanges.interfaces.composite.types import PrivateRestType, PrivateWebsocketType
 from infrastructure.logging import HFTLoggerInterface
@@ -125,7 +125,7 @@ class CompositePrivateFuturesExchange(BasePrivateComposite):
             raise ValueError(f"Symbol info or quanto multiplier not found for {symbol}")
         return contracts * symbol_info.quanto_multiplier
 
-    async def _update_order(self, order: Order | None) -> Order:
+    async def _update_order(self, order: Order | None, order_id: OrderId | None = None) -> Order | None:
         """
         Override to adjust order quantities from contracts to base currency.
         This is necessary for futures exchanges where orders are often specified
@@ -133,12 +133,13 @@ class CompositePrivateFuturesExchange(BasePrivateComposite):
         :param order:
         :return:
         """
-        order.filled_quantity = self.contracts_to_base_quantity(order.symbol, order.filled_quantity)
-        order.quantity = self.contracts_to_base_quantity(order.symbol, order.quantity)
-        order.remaining_quantity = self.contracts_to_base_quantity(order.symbol, order.remaining_quantity)
+        if order:
+            order.filled_quantity = self.contracts_to_base_quantity(order.symbol, order.filled_quantity)
+            order.quantity = self.contracts_to_base_quantity(order.symbol, order.quantity)
+            order.remaining_quantity = self.contracts_to_base_quantity(order.symbol, order.remaining_quantity)
 
         # call base implementation to handle side effects properly
-        return await super()._update_order(order)
+        return await super()._update_order(order, order_id)
 
 
 

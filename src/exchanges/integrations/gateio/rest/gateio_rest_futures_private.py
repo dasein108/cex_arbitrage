@@ -93,7 +93,7 @@ class GateioPrivateFuturesRestInterface(
         order_type: OrderType,
         quantity: Optional[float] = None,
         price: Optional[float] = None,
-        time_in_force: Optional[float] = None,
+        time_in_force: Optional[TimeInForce] = None,
         quote_quantity: Optional[float] = None,
         stop_price: Optional[float] = None,
         iceberg_qty: Optional[float] = None,
@@ -106,54 +106,50 @@ class GateioPrivateFuturesRestInterface(
           - For MARKET orders, prefer 'amount' as size (composite units). If quote_quantity given
             and price provided, compute size = quote_quantity / price.
         """
-        try:
-            contract = GateioFuturesSymbol.to_pair(symbol)
-            payload: dict[str, Any] = {"contract": contract}
+        contract = GateioFuturesSymbol.to_pair(symbol)
+        payload: dict[str, Any] = {"contract": contract}
 
-            if quantity is not None:
-                base_qty = float(quantity)
-            elif quote_quantity is not None:
-                if price is None:
-                    self.logger.error("Quote_quantity requires price to compute quantity")
-                    raise ExchangeRestError(400, "Quote_quantity requires price to compute quantity")
-                base_qty = float(quote_quantity) / float(price)
-            else:
-                self.logger.error("Either quantity or quote_quantity must be provided")
-                raise ExchangeRestError(400, "Either quantity or quote_quantity must be provided")
+        if quantity is not None:
+            base_qty = float(quantity)
+        elif quote_quantity is not None:
+            if price is None:
+                self.logger.error("Quote_quantity requires price to compute quantity")
+                raise ExchangeRestError(400, "Quote_quantity requires price to compute quantity")
+            base_qty = float(quote_quantity) / float(price)
+        else:
+            self.logger.error("Either quantity or quote_quantity must be provided")
+            raise ExchangeRestError(400, "Either quantity or quote_quantity must be provided")
 
-            signed_qty = base_qty if side == Side.BUY else -abs(base_qty)
-            payload["size"] = int(signed_qty)  # API expects integer
+        signed_qty = base_qty if side == Side.BUY else -abs(base_qty)
+        payload["size"] = int(signed_qty)  # API expects integer
 
-            if order_type in (OrderType.MARKET, OrderType.STOP_MARKET):
-                payload["price"] = "0"
-            else:
-                if price is None:
-                    self.logger.error(f"{order_type.name} requires price")
-                    raise ExchangeRestError(400, f"{order_type.name} requires price")
-                payload["price"] = format_price(price)
+        if order_type in (OrderType.MARKET, OrderType.STOP_MARKET):
+            payload["price"] = "0"
+            time_in_force = TimeInForce.FOK  # Enforce FOK for market orders
+        else:
+            if price is None:
+                self.logger.error(f"{order_type.name} requires price")
+                raise ExchangeRestError(400, f"{order_type.name} requires price")
+            payload["price"] = format_price(price)
 
-            if order_type in (OrderType.STOP_LIMIT, OrderType.STOP_MARKET) and stop_price is None:
-                self.logger.error(f"{order_type.name} requires stop_price")
-                raise ExchangeRestError(400, f"{order_type.name} requires stop_price")
-            if stop_price is not None:
-                payload["stop"] = format_price(stop_price)
+        if order_type in (OrderType.STOP_LIMIT, OrderType.STOP_MARKET) and stop_price is None:
+            self.logger.error(f"{order_type.name} requires stop_price")
+            raise ExchangeRestError(400, f"{order_type.name} requires stop_price")
+        if stop_price is not None:
+            payload["stop"] = format_price(stop_price)
 
-            payload["tif"] = from_time_in_force(time_in_force)
+        payload["tif"] = from_time_in_force(time_in_force)
 
-            if iceberg_qty is not None:
-                payload["iceberg"] = format_quantity(iceberg_qty)
-            if stp_act:
-                payload["stp_act"] = stp_act
+        if iceberg_qty is not None:
+            payload["iceberg"] = format_quantity(iceberg_qty)
+        if stp_act:
+            payload["stp_act"] = stp_act
 
-            endpoint = "/futures/usdt/orders"
-            response = await self.request(HTTPMethod.POST, endpoint, data=payload)
-            order = rest_futures_to_order(response)
-            self.logger.info(f"Placed futures order {order.order_id}")
-            return order
-
-        except Exception as e:
-            self.logger.error(f"Failed to place futures order. {str(e)}")
-            raise ExchangeRestError(500, f"Futures order placement failed: {str(e)}")
+        endpoint = "/futures/usdt/orders"
+        response = await self.request(HTTPMethod.POST, endpoint, data=payload)
+        order = rest_futures_to_order(response)
+        self.logger.info(f"Placed futures order {order.order_id}")
+        return order
 
     async def cancel_order(self, symbol: Symbol, order_id: OrderId) -> Order | None:
         """

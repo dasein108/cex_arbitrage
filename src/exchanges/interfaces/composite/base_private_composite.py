@@ -186,7 +186,7 @@ class BasePrivateComposite(BaseCompositeExchange[PrivateRestType, PrivateWebsock
 
         try:
             order =  await self._rest.cancel_order(symbol, order_id)
-            return await self._update_order(order)
+            return await self._update_order(order, order_id)
         except OrderNotFoundError as e:
             self.logger.error("Order cancellation failed", order_id=order_id, error=str(e))
             self.remove_order(order_id)
@@ -209,7 +209,7 @@ class BasePrivateComposite(BaseCompositeExchange[PrivateRestType, PrivateWebsock
         try:
             order = await self._rest.get_order(symbol, order_id)
             if order:
-                return await self._update_order(order)
+                return await self._update_order(order, order_id)
 
             return None
         except OrderNotFoundError as e:
@@ -318,13 +318,17 @@ class BasePrivateComposite(BaseCompositeExchange[PrivateRestType, PrivateWebsock
         """
         return self.get_order(order_id)
 
-    async def _update_order(self, order: Order | None) -> Order:
+    async def _update_order(self, order: Order | None, order_id: OrderId | None = None) -> Order | None:
         """Update order in unified storage.
         
         Args:
             order: Order object to store/update
         """
         # Store in unified storage
+        if not order:
+            self.logger.warning("No order provided for update", order_id=order_id)
+            return None
+
         self._orders[order.order_id] = order
 
         # Log status appropriately

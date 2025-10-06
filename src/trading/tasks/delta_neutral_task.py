@@ -75,14 +75,14 @@ class DeltaNeutralTask(BaseTradingTask[DeltaNeutralTaskContext], OrderManagement
         super().__init__(logger, context, **kwargs)
         self._exchange: Dict[Side, DualExchange] = {side: self._load_exchange(exchange)
                                                     for side, exchange in self.context.exchange_names.items()}
-        
+
         self._curr_order: Dict[Side, Optional[Order]] = {Side.BUY: None, Side.SELL: None}
         self._si: Dict[Side, Optional[SymbolInfo]] = {Side.BUY: None, Side.SELL: None}
 
     async def start(self, **kwargs):
         if self.context is None:
             raise ValueError("Cannot start task: context is None (likely deserialization failed)")
-        
+
         await super().start(**kwargs)
         for side, exchange in self.context.exchange_names.items():
 
@@ -134,10 +134,10 @@ class DeltaNeutralTask(BaseTradingTask[DeltaNeutralTaskContext], OrderManagement
         """
         # side_key = 'buy' if side == Side.BUY else 'sell'
         context_updates = {}
-        
+
         for field, value in updates.items():
             context_updates[f'{field}__{side.name}'] = value
-        
+
         self.evolve_context(**context_updates)
 
     def _get_current_top_price(self, side: Side) -> float:
@@ -174,8 +174,9 @@ class DeltaNeutralTask(BaseTradingTask[DeltaNeutralTaskContext], OrderManagement
 
     async def _place_order(self, side: Side):
         """Place limit sell order to top-offset price."""
-        imbalance_quantity = self.context.filled_quantity[side] - self.context.filled_quantity[flip_side(side)]
-        has_imbalance = imbalance_quantity < self._get_min_quantity(side)
+        flip_side_filled_quantity = self.context.filled_quantity[flip_side(side)]
+        imbalance_quantity = flip_side_filled_quantity - self.context.filled_quantity[side]
+        has_imbalance = imbalance_quantity > self._get_min_quantity(side)
         try:
             # has imbalance immediately adjust
             if has_imbalance:
@@ -197,7 +198,7 @@ class DeltaNeutralTask(BaseTradingTask[DeltaNeutralTaskContext], OrderManagement
             else:
                 quantity_to_fill = self._get_quantity_to_fill(side)
                 if quantity_to_fill == 0:
-                    self.logger.info(f"ℹ️ No more quantity to fill for {side.name}, skipping order placement.")
+                    # self.logger.info(f"ℹ️ No more quantity to fill for {side.name}, skipping order placement.")
                     return
 
                 offset_ticks = self.context.offset_ticks[side]
@@ -286,7 +287,7 @@ class DeltaNeutralTask(BaseTradingTask[DeltaNeutralTaskContext], OrderManagement
                                  order_filled=order.filled_quantity,
                                  total_filled=self.context.filled_quantity,
                                  avg_price=self.context.avg_price)
-            
+
             # Clear order state
             self._curr_order[exchange_side] = None
         else:
@@ -316,7 +317,9 @@ class DeltaNeutralTask(BaseTradingTask[DeltaNeutralTaskContext], OrderManagement
     def _check_completing(self):
         """Check if total quantity has been filled."""
         # max min order size tolerance
-        is_complete = self._get_quantity_to_fill(Side.BUY) == 0 and self._get_quantity_to_fill(Side.SELL) == 0
+
+        is_complete = (self._get_quantity_to_fill(Side.BUY) < self._get_min_quantity(Side.BUY)
+                       and self._get_quantity_to_fill(Side.SELL) < self._get_min_quantity(Side.SELL))
         if is_complete:
             self.logger.info(f"🎉 DeltaNeutralTask completed {self._tag}",
                              total_filled=self.context.filled_quantity,

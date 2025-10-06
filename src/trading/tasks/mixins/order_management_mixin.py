@@ -55,7 +55,7 @@ class OrderManagementMixin(ABC):
             tag = tag or exchange.name
             order = await exchange.private.cancel_order(symbol, order_id)
             tag_str = f"{self._tag} {tag}".strip()
-            self.logger.info(f"🛑 Cancelled order {tag_str}", order_id=order.order_id)
+            self.logger.info(f"🛑 Cancelled order {tag_str}", order_id=order_id)
             return order
         except Exception as e:
             tag_str = f"{self._tag} {tag}".strip()
