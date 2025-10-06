@@ -48,7 +48,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 # Configure immediate logging for dev environment
 os.environ['ENVIRONMENT'] = 'dev'
 
-from infrastructure.logging import get_logger
+from infrastructure.logging import get_logger, LoggerFactory
 
 from exchanges.structs.common import Symbol, AssetName, Side
 from exchanges.structs import ExchangeEnum
@@ -126,6 +126,11 @@ class DeltaNeutralTaskDemo:
 
                 await ada_task.start()
                 task_id = await self.task_manager.add_task(ada_task)
+                
+                # Disable noisy GATEIO loggers after exchange instances are created
+                LoggerFactory.override_logger("GATEIO_SPOT.ws.private", enabled=False)
+                LoggerFactory.override_logger("GATEIO_SPOT.ws.public", enabled=False)
+                LoggerFactory.override_logger("GATEIO_SPOT.GATEIO_SPOT_private", enabled=False)
 
                 self.logger.info("ADA DeltaNeutralTask created and added to TaskManager",
                                  task_id=ada_task.task_id,

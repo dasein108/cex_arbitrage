@@ -6,7 +6,7 @@ from infrastructure.networking.websocket.structs import PublicWebsocketChannelTy
 from .exchange_factory import get_composite_implementation
 from typing import List, Optional, Awaitable, Callable, Dict
 from exchanges.adapters import BindedEventHandlersAdapter
-from exchanges.structs import Order, AssetBalance, BookTicker, Position, ExchangeEnum
+from exchanges.structs import Order, AssetBalance, BookTicker, Position, ExchangeEnum, Symbol
 
 _DUAL_CLIENTS: Dict[ExchangeEnum, 'DualExchange']  = {}
 
@@ -101,3 +101,12 @@ class DualExchange:
         
         # Clear singleton registry
         _DUAL_CLIENTS.clear()
+
+    def round_base_to_contracts(self, symbol: Symbol, base_quantity: float) -> float:
+        """Convert base currency quantity to contract quantity."""
+        if hasattr(self.private, 'round_base_to_contracts'):
+            return self.private.round_base_to_contracts(symbol, base_quantity)
+
+        raise NotImplemented(f"Not implemented - round_base_to_contracts for {self.name}")
+
+

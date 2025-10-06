@@ -111,20 +111,23 @@ class OrderManagementMixin(ABC):
             Uses GTC (Good Till Cancelled) time in force for HFT requirements.
         """
         try:
-            symbol_info = exchange.public.symbols_info[symbol]
-            adjusted_quantity = self.validate_order_size(symbol_info, quantity, price)
+            # symbol_info = exchange.public.symbols_info[symbol]
+            # if not exchange.is_futures:
+            #     adjusted_quantity = self.validate_order_size(symbol_info, quantity, price)
+            # else:
+            #     adjusted_quantity = quantity
             
             order = await exchange.private.place_limit_order(
                 symbol=symbol,
                 side=side,
-                quantity=adjusted_quantity,
+                quantity=quantity,
                 price=price,
             )
             
             tag_str = f"{self._tag} {tag}".strip()
             self.logger.info(f"📈 Placed {side.name} order {tag_str}", 
                            order_id=order.order_id, 
-                           quantity=adjusted_quantity, 
+                           quantity=quantity,
                            price=price)
             return order
             

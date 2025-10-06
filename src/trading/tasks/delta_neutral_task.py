@@ -183,6 +183,11 @@ class DeltaNeutralTask(BaseTradingTask[DeltaNeutralTaskContext], OrderManagement
                 self.logger.info(f"📈 Placing MARKET to adjust imbalance "
                                  f" {side.name} order for quantity: {imbalance_quantity}")
                 has_fill = await self._cancel_side_order(side)
+                quote_quantity = abs(imbalance_quantity) / self._get_current_top_price(side)
+
+                # round to contracts if futures
+                if self._exchange[side].is_futures:
+                    quote_quantity = self._exchange[side].round_base_to_contracts(self.context.symbol, quote_quantity)
 
                 # if got some fills need to recalc imbalance during next cycle
                 if not has_fill:
@@ -191,7 +196,7 @@ class DeltaNeutralTask(BaseTradingTask[DeltaNeutralTaskContext], OrderManagement
                         symbol=self.context.symbol,
                         side=side,
                         price=self._get_current_top_price(side),
-                        quote_quantity=abs(imbalance_quantity)/self._get_current_top_price(side)
+                        quote_quantity=quote_quantity
                     )
 
                     await self._process_order_execution(side, order)
@@ -212,6 +217,11 @@ class DeltaNeutralTask(BaseTradingTask[DeltaNeutralTaskContext], OrderManagement
                 order_quantity = min(self.context.order_quantity, quantity_to_fill)
                 # adjust with exchange minimums
                 order_quantity = await self._adjust_to_min_quantity(side, order_price, order_quantity)
+
+                # round to contracts if futures
+                if self._exchange[side].is_futures:
+                    order_quantity = self._exchange[side].round_base_to_contracts(self.context.symbol, order_quantity)
+
 
                 order = await self.place_limit_order_safely(
                     self._exchange[side],

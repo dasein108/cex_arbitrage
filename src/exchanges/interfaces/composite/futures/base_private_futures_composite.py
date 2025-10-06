@@ -141,6 +141,14 @@ class CompositePrivateFuturesExchange(BasePrivateComposite):
         # call base implementation to handle side effects properly
         return await super()._update_order(order, order_id)
 
+    def round_base_to_contracts(self, symbol: Symbol, base_quantity: float) -> float:
+        """Convert base currency quantity to contract quantity."""
+        symbol_info = self._symbols_info.get(symbol)
+        if not symbol_info or not symbol_info.quanto_multiplier:
+            raise ValueError(f"Symbol info or quanto multiplier not found for {symbol}")
+
+        return min(round(base_quantity / symbol_info.quanto_multiplier), 1)
+
 
 
 

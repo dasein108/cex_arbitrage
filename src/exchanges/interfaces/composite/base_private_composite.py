@@ -144,7 +144,7 @@ class BasePrivateComposite(BaseCompositeExchange[PrivateRestType, PrivateWebsock
     async def place_limit_order(self, symbol: Symbol, side: Side, quantity: float, price: float, **kwargs) -> Order:
         """Place a limit order via REST API."""
         si = self.symbols_info.get(symbol)
-        quantity_ = si.adjust_quantity(quantity)
+        quantity_ = si.round_base(quantity)
         price_ = si.round_quote(price)
         order = await self._rest.place_order(symbol, side, OrderType.LIMIT, quantity_, price_, **kwargs)
         return await self._update_order(order)
@@ -153,7 +153,7 @@ class BasePrivateComposite(BaseCompositeExchange[PrivateRestType, PrivateWebsock
                                  price: Optional[float]=None,
                                  ensure: bool=True, **kwargs) -> Order:
         """Place a market order via REST API."""
-        quote_quantity_ = self.symbols_info.get(symbol).adjust_quantity(quote_quantity)
+        quote_quantity_ = self.symbols_info.get(symbol).round_quote(quote_quantity)
         # TODO: FIX: infrastructure.exceptions.exchange.ExchangeRestError: (500, 'Futures order placement failed: Futures market orders with quote_quantity require current price. Use quantity parameter instead.')
         order =  await self._rest.place_order(symbol, side, OrderType.MARKET,
                                                 price=price,
