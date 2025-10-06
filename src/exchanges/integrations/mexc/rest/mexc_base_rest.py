@@ -181,7 +181,7 @@ class MexcBaseRestInterface(BaseRestClientInterface):
                               tags={"endpoint": endpoint, "error": type(e).__name__})
             raise
     
-    def _handle_error(self, status: int, response_text: str) -> Exception:
+    def _handle_error(self, status: int, response_text: str, params: Any = None) -> Exception:
         """
         Comprehensive MEXC error handling implementation using msgspec.Struct.
         
@@ -227,7 +227,7 @@ class MexcBaseRestInterface(BaseRestClientInterface):
             
             # Parameter and Validation Errors (Non-retryable)
             elif code in [33333, 44444, 700004, 700005, 700008, 10015, 10095, 10096, 10097, 10102, 10222]:
-                return InvalidParameterError(status, f"MEXC parameter error: {message}", code)
+                return InvalidParameterError(status, f"MEXC parameter error: {message} \r\n{params}", code)
             
             # Order-related Errors (Non-retryable)
             elif code in [-2011, -2013, 22222, 700004]:

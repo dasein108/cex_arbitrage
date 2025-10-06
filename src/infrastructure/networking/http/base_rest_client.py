@@ -141,7 +141,7 @@ class BaseRestClientInterface(ABC):
         pass
     
     @abstractmethod
-    def _handle_error(self, status: int, response_text: str) -> Exception:
+    def _handle_error(self, status: int, response_text: str, params: Any = None) -> Exception:
         """
         Handle exchange-specific error responses.
         
@@ -280,7 +280,7 @@ class BaseRestClientInterface(ABC):
                     response_text = await response.text()
 
                     if response.status >= 400:
-                        raise self._handle_error(response.status, response_text)
+                        raise self._handle_error(response.status, response_text, params=final_params)
 
                     return self._parse_response(response_text)
                 

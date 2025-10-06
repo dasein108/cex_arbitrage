@@ -144,16 +144,19 @@ class BasePrivateComposite(BaseCompositeExchange[PrivateRestType, PrivateWebsock
     async def place_limit_order(self, symbol: Symbol, side: Side, quantity: float, price: float, **kwargs) -> Order:
         """Place a limit order via REST API."""
         si = self.symbols_info.get(symbol)
-        quantity_ = si.round_base(quantity)
+        quantity_ = si.adjust_quantity(quantity)
         price_ = si.round_quote(price)
-        return await self._rest.place_order(symbol, side, OrderType.LIMIT, quantity_, price_, **kwargs)
+        order = await self._rest.place_order(symbol, side, OrderType.LIMIT, quantity_, price_, **kwargs)
+        return await self._update_order(order)
 
     async def place_market_order(self, symbol: Symbol, side: Side, quote_quantity: float,
-                                 ensure: bool, **kwargs) -> Order:
+                                 price: Optional[float]=None,
+                                 ensure: bool=True, **kwargs) -> Order:
         """Place a market order via REST API."""
-        quote_quantity_ = self.symbols_info.get(symbol).round_quote(quote_quantity)
+        quote_quantity_ = self.symbols_info.get(symbol).adjust_quantity(quote_quantity)
         # TODO: FIX: infrastructure.exceptions.exchange.ExchangeRestError: (500, 'Futures order placement failed: Futures market orders with quote_quantity require current price. Use quantity parameter instead.')
         order =  await self._rest.place_order(symbol, side, OrderType.MARKET,
+                                                price=price,
                                                 quote_quantity=quote_quantity_, **kwargs)
 
         if ensure:
@@ -164,7 +167,7 @@ class BasePrivateComposite(BaseCompositeExchange[PrivateRestType, PrivateWebsock
             #     o = await self.get_active_order(symbol, order.order_id)
             #     if not o or is_order_done(o):
             #         break
-        return order
+        return await self._update_order(order)
 
     async def cancel_order(self, symbol: Symbol, order_id: OrderId) -> Order:
         """
@@ -182,10 +185,11 @@ class BasePrivateComposite(BaseCompositeExchange[PrivateRestType, PrivateWebsock
         """
 
         try:
-            return await self._rest.cancel_order(symbol, order_id)
+            order =  await self._rest.cancel_order(symbol, order_id)
+            return await self._update_order(order)
         except OrderNotFoundError as e:
             self.logger.error("Order cancellation failed", order_id=order_id, error=str(e))
-
+            self.remove_order(order_id)
             return await self.fetch_order(symbol, order_id)
 
     async def fetch_order(self, symbol: Symbol, order_id: OrderId) -> Order | None:
@@ -204,12 +208,13 @@ class BasePrivateComposite(BaseCompositeExchange[PrivateRestType, PrivateWebsock
         """
         try:
             order = await self._rest.get_order(symbol, order_id)
+            if order:
+                return await self._update_order(order)
 
-            await self._update_order(order)
-
-            return order
+            return None
         except OrderNotFoundError as e:
             self.logger.error("Failed to fetch order status", order_id=order_id, error=str(e))
+            self.remove_order(order_id)
             return None
 
     # Factory methods ELIMINATED - clients injected via constructor
@@ -313,7 +318,7 @@ class BasePrivateComposite(BaseCompositeExchange[PrivateRestType, PrivateWebsock
         """
         return self.get_order(order_id)
 
-    async def _update_order(self, order: Order):
+    async def _update_order(self, order: Order | None) -> Order:
         """Update order in unified storage.
         
         Args:
@@ -321,7 +326,7 @@ class BasePrivateComposite(BaseCompositeExchange[PrivateRestType, PrivateWebsock
         """
         # Store in unified storage
         self._orders[order.order_id] = order
-        
+
         # Log status appropriately
         if is_order_done(order):
             self.logger.info("Order completed",
@@ -331,14 +336,12 @@ class BasePrivateComposite(BaseCompositeExchange[PrivateRestType, PrivateWebsock
                             order_id=order.order_id,
                             status=order.status)
         
-        # Cleanup old orders if we hit the limit
-        if len(self._orders) > self._max_total_orders:
-            self._cleanup_old_orders()
-        
         # TODO: remove
         await self._exec_bound_handler(PrivateWebsocketChannelType.ORDER, order)
 
         self.publish('orders', order)
+
+        return order
 
 
     async def get_active_order(self, symbol: Symbol, order_id: OrderId) -> Optional[Order]:
@@ -362,8 +365,7 @@ class BasePrivateComposite(BaseCompositeExchange[PrivateRestType, PrivateWebsock
 
         try:
             with LoggingTimer(self.logger, f"get_order_fallback_{symbol}"):
-                order = await self._rest.get_order(symbol, order_id)
-                await self._update_order(order)
+                order = await self.fetch_order(symbol, order_id)
                 return order
 
         except Exception as e:
@@ -453,8 +455,8 @@ class BasePrivateComposite(BaseCompositeExchange[PrivateRestType, PrivateWebsock
 
     async def _order_handler(self, order: Order) -> None:
         """Handle order update event."""
-        await self._update_order(order)
-        self.logger.info("order update processed", order_id=order.order_id, order=str(order))
+        o = await self._update_order(order)
+        self.logger.info("order update processed", order_id=order.order_id, order=str(o))
 
 
     async def _balance_handler(self, balance: AssetBalance) -> None:
@@ -504,45 +506,6 @@ class BasePrivateComposite(BaseCompositeExchange[PrivateRestType, PrivateWebsock
         self.publish('balances', balance)
 
         self.logger.debug(f"Updated balance for {asset}: {balance}")
-
-    def _cleanup_old_orders(self) -> None:
-        """Cleanup old orders to prevent memory leaks.
-        
-        Removes oldest executed orders when total order count exceeds limit.
-        Keeps all open orders and most recent executed orders.
-        """
-        if len(self._orders) <= self._max_total_orders:
-            return
-            
-        # Separate open and executed orders
-        open_orders = [(oid, o) for oid, o in self._orders.items() if not is_order_done(o)]
-        executed_orders = [(oid, o) for oid, o in self._orders.items() if is_order_done(o)]
-        
-        # Sort executed orders by update time (oldest first)
-        executed_orders.sort(key=lambda x: x[1].update_timestamp or 0)
-        
-        # Calculate how many to remove
-        target_size = int(self._max_total_orders * 0.8)
-        orders_to_keep = target_size - len(open_orders)
-        
-        if orders_to_keep < 0:
-            # Too many open orders, can't cleanup
-            self.logger.warning("Too many open orders, cannot cleanup",
-                              open_count=len(open_orders),
-                              total_limit=self._max_total_orders)
-            return
-            
-        # Keep all open orders and most recent executed orders
-        new_orders = dict(open_orders)
-        new_orders.update(dict(executed_orders[-orders_to_keep:]))
-        
-        removed_count = len(self._orders) - len(new_orders)
-        self._orders = new_orders
-        
-        self.logger.debug("Cleaned up old orders",
-                        removed=removed_count,
-                        remaining=len(self._orders))
-
 
     async def close(self) -> None:
         """Close private exchange connections."""

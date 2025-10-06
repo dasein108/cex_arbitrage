@@ -10,6 +10,7 @@ from abc import abstractmethod
 from typing import Dict, List, Optional, Any
 from decimal import Decimal
 
+from exchanges.structs import Side
 from exchanges.structs.common import Symbol, Order, Position, SymbolsInfo
 from exchanges.interfaces.composite.base_private_composite import BasePrivateComposite
 from exchanges.interfaces.composite.types import PrivateRestType, PrivateWebsocketType
@@ -63,23 +64,23 @@ class CompositePrivateFuturesExchange(BasePrivateComposite):
         """Get trading fees for a symbol via REST API."""
         return await self._rest.get_trading_fees(symbol)
 
-    async def place_order(self, symbol: Symbol, side, order_type, quantity: Optional[float] = None,
-                         price: Optional[float] = None, **kwargs) -> Order:
-        """Place an order via REST API."""
-        quanto_multiplier = self._symbols_info[symbol].quanto_multiplier
-        if quanto_multiplier:
-            adjusted_quantity = quantity / self._symbols_info[symbol].quanto_multiplier
-        else:
-            adjusted_quantity = quantity
-        return await self._rest.place_order(symbol, side, order_type, adjusted_quantity, price, **kwargs)
+    # async def place_order(self, symbol: Symbol, side, order_type, quantity: Optional[float] = None,
+    #                      price: Optional[float] = None, **kwargs) -> Order:
+    #     """Place an order via REST API."""
+    #     quanto_multiplier = self._symbols_info[symbol].quanto_multiplier
+    #     if quanto_multiplier:
+    #         adjusted_quantity = quantity / self._symbols_info[symbol].quanto_multiplier
+    #     else:
+    #         adjusted_quantity = quantity
+    #     return await self._rest.place_order(symbol, side, order_type, adjusted_quantity, price, **kwargs)
 
-    async def cancel_order(self, symbol: Symbol, order_id) -> Order:
-        """Cancel an order via REST API."""
-        try:
-            return await self._rest.cancel_order(symbol, order_id)
-        except OrderNotFoundError:
-            self.logger.warning(f"Order {order_id} not found for cancellation on {self._tag}")
-            raise
+    # async def cancel_order(self, symbol: Symbol, order_id) -> Order:
+    #     """Cancel an order via REST API."""
+    #     try:
+    #         return await self._rest.cancel_order(symbol, order_id)
+    #     except OrderNotFoundError:
+    #         self.logger.warning(f"Order {order_id} not found for cancellation on {self._tag}")
+    #         raise
 
 
     async def close_position(
@@ -93,7 +94,7 @@ class CompositePrivateFuturesExchange(BasePrivateComposite):
 
     # Key futures extensions - WebSocket handlers
     
-    async def initialize(self, symbols_info: SymbolsInfo, channels: List[PrivateWebsocketType]=None) -> None:
+    async def initialize(self, symbols_info: SymbolsInfo = None, channels: List[PrivateWebsocketType]=None) -> None:
         """Initialize futures exchange with symbols and futures-specific data."""
         # Initialize base private functionality
         await super().initialize(symbols_info, channels)
@@ -117,13 +118,30 @@ class CompositePrivateFuturesExchange(BasePrivateComposite):
         self._positions[position.symbol] = position
         self.logger.debug(f"Updated futures position for {position.symbol}: {position}")
 
+    def contracts_to_base_quantity(self, symbol: Symbol, contracts: float) -> float:
+        """Convert contract quantity to base currency quantity."""
+        symbol_info = self._symbols_info.get(symbol)
+        if not symbol_info or not symbol_info.quanto_multiplier:
+            raise ValueError(f"Symbol info or quanto multiplier not found for {symbol}")
+        return contracts * symbol_info.quanto_multiplier
 
-    # Enhanced trading stats with position metrics
-    def get_trading_stats(self) -> Dict[str, Any]:
-        """Get trading stats including position metrics."""
-        base_stats = super().get_trading_stats()
-        base_stats['active_positions'] = len(self._positions)
-        return base_stats
+    async def _update_order(self, order: Order | None) -> Order:
+        """
+        Override to adjust order quantities from contracts to base currency.
+        This is necessary for futures exchanges where orders are often specified
+        in contract units rather than base currency units.
+        :param order:
+        :return:
+        """
+        order.filled_quantity = self.contracts_to_base_quantity(order.symbol, order.filled_quantity)
+        order.quantity = self.contracts_to_base_quantity(order.symbol, order.quantity)
+        order.remaining_quantity = self.contracts_to_base_quantity(order.symbol, order.remaining_quantity)
+
+        # call base implementation to handle side effects properly
+        return await super()._update_order(order)
+
+
+
 
 
 

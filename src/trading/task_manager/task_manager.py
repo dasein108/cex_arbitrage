@@ -5,6 +5,7 @@ Provides centralized orchestration of trading tasks with automatic lifecycle man
 
 import asyncio
 import time
+import traceback
 from collections import defaultdict
 from typing import Dict, List, Optional
 from infrastructure.logging import HFTLoggerInterface
@@ -316,6 +317,7 @@ class TaskManager:
                         
                 except Exception as e:
                     self.logger.error(f"Failed to recover task {task_id}", error=str(e))
+                    traceback.print_exc()
                     recovery_results.append((task_id, None))
             
             # Log recovery statistics

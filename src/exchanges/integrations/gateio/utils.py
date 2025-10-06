@@ -181,7 +181,19 @@ def rest_futures_to_order(gateio_order_data) -> Order:
         if price == 0 
         else OrderType.LIMIT)
     filled_quantity = quantity - remaining_quantity
-    
+
+    order_status = gateio_order_data.get('status', '').lower()
+
+    if order_status in ['closed', 'finished']:
+        if remaining_quantity == 0:
+            order_status = OrderStatus.FILLED
+        elif filled_quantity > 0:
+            order_status = OrderStatus.PARTIALLY_FILLED
+        else:
+            order_status = OrderStatus.CANCELED
+    else:
+        order_status = OrderStatus.NEW
+
     return Order(
         symbol=symbol,
         order_id=OrderId(str(gateio_order_data['id'])),
@@ -191,7 +203,7 @@ def rest_futures_to_order(gateio_order_data) -> Order:
         price=price,
         filled_quantity = filled_quantity,
         remaining_quantity=remaining_quantity,
-        status=to_order_status(gateio_order_data['status']),
+        status=order_status,
         timestamp=timestamp,
         fee=float(gateio_order_data.get('fee', '0')),
         time_in_force=to_time_in_force(gateio_order_data.get('tif'))

@@ -375,6 +375,7 @@ class BaseTradingTask(Generic[T], ABC):
             
         except Exception as e:
             self.logger.error(f"Task execution failed {self._tag}", error=str(e))
+            import traceback
             traceback.print_exc()
             self.evolve_context(error=e)
             self._transition(TradingStrategyState.ERROR)

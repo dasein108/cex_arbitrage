@@ -251,7 +251,7 @@ class GateioPrivateSpotRestInterface(GateioBaseSpotRestInterface, PrivateSpotRes
                     if quantity is None or price is None:
                         raise ValueError("Market buy orders require quote_quantity or (quantity + price)")
                     quote_quantity = quantity * price
-                payload['quantity'] = format_quantity(quote_quantity)
+                payload['amount'] = format_quantity(quote_quantity)
             else:
                 # Market sell: specify exchanges quantity
                 if quantity is None:
@@ -356,7 +356,7 @@ class GateioPrivateSpotRestInterface(GateioBaseSpotRestInterface, PrivateSpotRes
             self.logger.error(f"Failed to cancel all orders for {symbol}: {e}")
             raise ExchangeRestError(500, f"Mass order cancellation failed: {str(e)}")
     
-    async def get_order(self, symbol: Symbol, order_id: OrderId) -> Order:
+    async def get_order(self, symbol: Symbol, order_id: OrderId) -> Order | None:
         """
         Query order status.
         
@@ -391,6 +391,7 @@ class GateioPrivateSpotRestInterface(GateioBaseSpotRestInterface, PrivateSpotRes
             return order
         except OrderNotFoundError as e:
             self.logger.error(e.message)
+            return None
         except Exception as e:
             self.logger.error(f"Failed to get order {order_id}: {e}")
             raise ExchangeRestError(500, f"Order query failed: {str(e)}")

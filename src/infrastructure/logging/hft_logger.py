@@ -252,7 +252,7 @@ class HFTLogger(HFTLoggerInterface):
             immediate_propagated = False
             if level.value >= LogLevel.WARNING.value and self._py_logger.propagate:
                 py_level = self._convert_level_to_python(level)
-                self._py_logger.log(py_level, msg + f"\r\n{full_context}")
+                self._py_logger.log(py_level, str(msg) + f"\r\n{str(full_context)}")
                 immediate_propagated = True
             
             # Add to buffer only if not immediately propagated to avoid double logging

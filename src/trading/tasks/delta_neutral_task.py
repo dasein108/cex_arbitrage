@@ -12,7 +12,7 @@ from infrastructure.networking.websocket.structs import PublicWebsocketChannelTy
 from trading.struct import TradingStrategyState
 
 from trading.tasks.base_task import TaskContext, BaseTradingTask
-from trading.tasks.mixins import OrderManagementMixin, OrderProcessingMixin
+from trading.tasks.mixins import OrderManagementMixin
 from utils import get_decrease_vector, flip_side, calculate_weighted_price
 from enum import IntEnum
 
@@ -41,7 +41,7 @@ class DeltaNeutralTaskContext(TaskContext):
     order_id: Dict[Side, Optional[str]] = msgspec.field(default_factory=lambda: {Side.BUY: None, Side.SELL: None})
 
 
-class DeltaNeutralTask(BaseTradingTask[DeltaNeutralTaskContext], OrderManagementMixin, OrderProcessingMixin):
+class DeltaNeutralTask(BaseTradingTask[DeltaNeutralTaskContext], OrderManagementMixin):
     """State machine for executing iceberg orders.
     
     Breaks large orders into smaller chunks to minimize market impact.
@@ -98,9 +98,12 @@ class DeltaNeutralTask(BaseTradingTask[DeltaNeutralTaskContext], OrderManagement
 
         pass
 
+    async def cancel_all(self):
+        await asyncio.gather(self._cancel_side_order(Side.SELL), self._cancel_side_order(Side.BUY))
+
     async def pause(self):
         """Pause task and cancel any active order."""
-        await asyncio.gather(self._cancel_side_order(Side.SELL), self._cancel_side_order(Side.BUY))
+        await self.cancel_all()
         await super().pause()
 
     async def update(self, **context_updates):
@@ -110,7 +113,7 @@ class DeltaNeutralTask(BaseTradingTask[DeltaNeutralTaskContext], OrderManagement
             **context_updates: Partial updates (total_quantity, order_quantity, offset_ticks, etc.)
         """
         # Cancel current order before updating parameters
-        await asyncio.gather(self._cancel_side_order(Side.SELL), self._cancel_side_order(Side.BUY))
+        await self.cancel_all()
         # Apply updates through base class
         await super().update(**context_updates)
 
@@ -142,8 +145,10 @@ class DeltaNeutralTask(BaseTradingTask[DeltaNeutralTaskContext], OrderManagement
         book_ticker = self._exchange[side].public._book_ticker[self.context.symbol]
         return book_ticker.ask_price if side == Side.SELL else book_ticker.bid_price
 
-    async def _cancel_side_order(self, exchange_side: Side):
-        """Cancel the current active order if exists."""
+    async def _cancel_side_order(self, exchange_side: Side) ->bool:
+        """Cancel the current active order if exists.
+        Returns True if there was a fill, False otherwise.
+        """
         if self._curr_order[exchange_side]:
             order = await self.cancel_order_safely(
                 self._exchange[exchange_side],
@@ -151,12 +156,17 @@ class DeltaNeutralTask(BaseTradingTask[DeltaNeutralTaskContext], OrderManagement
                 self._curr_order[exchange_side].order_id,
                 exchange_side.name
             )
+            has_fill = False
+
             if order:
+                has_fill = order.filled_quantity > 0
                 await self._process_order_execution(exchange_side, order)
             else:
                 # Clear order references even if cancel failed
                 self._curr_order[exchange_side] = None
                 self._evolve_side_context(exchange_side, order_id=None)
+
+            return has_fill
 
     async def _adjust_to_min_quantity(self, side: Side, price: float, quantity: float) -> float:
         """Adjust order quantity and price to meet exchange minimums."""
@@ -164,20 +174,26 @@ class DeltaNeutralTask(BaseTradingTask[DeltaNeutralTaskContext], OrderManagement
 
     async def _place_order(self, side: Side):
         """Place limit sell order to top-offset price."""
-        imbalance_quantity = self.context.filled_quantity[flip_side(side)] - self.context.filled_quantity[side]
-        has_imbalance = imbalance_quantity > self._get_min_quantity(side)
+        imbalance_quantity = self.context.filled_quantity[side] - self.context.filled_quantity[flip_side(side)]
+        has_imbalance = imbalance_quantity < self._get_min_quantity(side)
         try:
             # has imbalance immediately adjust
             if has_imbalance:
                 self.logger.info(f"📈 Placing MARKET to adjust imbalance "
                                  f" {side.name} order for quantity: {imbalance_quantity}")
-                order = await self._exchange[side].private.place_order(
-                    symbol=self.context.symbol,
-                    side=side,
-                    order_type=OrderType.MARKET,
-                    quantity=imbalance_quantity
-                )
-                await self._process_order_execution(side, order)
+                has_fill = await self._cancel_side_order(side)
+
+                # if got some fills need to recalc imbalance during next cycle
+                if not has_fill:
+                    # place market order to adjust imbalance
+                    order = await self._exchange[side].private.place_market_order(
+                        symbol=self.context.symbol,
+                        side=side,
+                        price=self._get_current_top_price(side),
+                        quote_quantity=abs(imbalance_quantity)/self._get_current_top_price(side)
+                    )
+
+                    await self._process_order_execution(side, order)
             else:
                 quantity_to_fill = self._get_quantity_to_fill(side)
                 if quantity_to_fill == 0:
@@ -209,14 +225,17 @@ class DeltaNeutralTask(BaseTradingTask[DeltaNeutralTaskContext], OrderManagement
                     await self._process_order_execution(side, order)
         except Exception as e:
             self.logger.error(f"🚫 Failed to place order {self._tag}", error=str(e))
+            import traceback
+            traceback.print_exc()
 
     async def _sync_exchange_order(self, side: Side) -> Order | None:
         """Get current order from exchange, track updates."""
         curr_order = self._curr_order[side]
 
         if curr_order:
-            self._curr_order[side] = await self._exchange[side].private.get_active_order(self.context.symbol,
+            updated_order = await self._exchange[side].private.get_active_order(self.context.symbol,
                                                                                    curr_order.order_id)
+            await self._process_order_execution(side, updated_order)
             return self._curr_order[side]
         else:
             return None
@@ -239,52 +258,41 @@ class DeltaNeutralTask(BaseTradingTask[DeltaNeutralTaskContext], OrderManagement
 
         if should_cancel:
             self.logger.info(
-                f"⚠️ Price moved significantly. Current {side}: {top_price}, "
+                f"⚠️ Price moved significantly. Current {side.name}: {top_price}, "
                 f"Our price: {order_price}")
 
         return should_cancel
 
     async def _process_order_execution(self, exchange_side: Side, order: Order):
-        """Process filled order and update context."""
-        await self.process_order_execution_base(order, exchange_side)
-    
-    async def _handle_completed_order(self, order: Order, exchange_side: Optional[Side] = None):
-        """Handle completed order fills and updates."""
-        if exchange_side is None:
-            raise ValueError("exchange_side is required for DeltaNeutralTask")
+        """Process filled order and update context for specific exchange side."""
+        if is_order_done(order):
+            # Handle completed order
+            if order.filled_quantity > 0:
+                # Calculate weighted average price
+                new_filled_quantity, new_avg_price = calculate_weighted_price(
+                        self.context.avg_price[exchange_side],
+                        self.context.filled_quantity[exchange_side],
+                        order.price,
+                        order.filled_quantity)
+
+                self._evolve_side_context(exchange_side,
+                    filled_quantity=new_filled_quantity,
+                    order_id=None,
+                    avg_price=new_avg_price
+                )
+
+                self.logger.info(f"✅ Order filled {order.side.name} {self._tag}",
+                                 order_price=order.price,
+                                 order_filled=order.filled_quantity,
+                                 total_filled=self.context.filled_quantity,
+                                 avg_price=self.context.avg_price)
             
-        if self._should_process_order_fills(order):
-            # Calculate weighted average price
-            new_filled_quantity, new_avg_price = calculate_weighted_price(
-                    self.context.avg_price[exchange_side],
-                    self.context.filled_quantity[exchange_side],
-                    order.price,
-                    order.filled_quantity)
-
-            self._evolve_side_context(exchange_side,
-                filled_quantity=new_filled_quantity,
-                order_id=None,
-                avg_price=new_avg_price
-            )
-
-            self.logger.info(f"✅ Order filled {order.side.name} {self._tag}",
-                             order_price=order.price,
-                             order_filled=order.filled_quantity,
-                             total_filled=self.context.filled_quantity,
-                             avg_price=self.context.avg_price)
-    
-    def _clear_order_state(self, exchange_side: Optional[Side] = None):
-        """Clear order state after completion."""
-        if exchange_side is None:
-            raise ValueError("exchange_side is required for DeltaNeutralTask")
-        self._curr_order[exchange_side] = None
-    
-    def _update_active_order_state(self, order: Order, exchange_side: Optional[Side] = None):
-        """Update state for active (unfilled) orders."""
-        if exchange_side is None:
-            raise ValueError("exchange_side is required for DeltaNeutralTask")
-        self._curr_order[exchange_side] = order
-        self._evolve_side_context(exchange_side, order_id=order.order_id)
+            # Clear order state
+            self._curr_order[exchange_side] = None
+        else:
+            # Update active order state
+            self._curr_order[exchange_side] = order
+            self._evolve_side_context(exchange_side, order_id=order.order_id)
 
 
     def _buy_sell_imbalance(self):
@@ -338,5 +346,5 @@ class DeltaNeutralTask(BaseTradingTask[DeltaNeutralTaskContext], OrderManagement
 
     async def complete(self):
         """Complete the task and clean up."""
-        await asyncio.gather(self._cancel_side_order(Side.SELL), self._cancel_side_order(Side.BUY))
+        await self.cancel_all()
         await super().complete()

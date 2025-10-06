@@ -60,8 +60,10 @@ class OrderManagementMixin(ABC):
         except Exception as e:
             tag_str = f"{self._tag} {tag}".strip()
             self.logger.error(f"🚫 Failed to cancel order {tag_str}", error=str(e))
+            import traceback
             traceback.print_exc()
-            return None
+            order = await exchange.private.fetch_order(symbol, order_id)
+            return order
     
     def validate_order_size(self, symbol_info: SymbolInfo, quantity: float, price: float) -> float:
         """Validate and adjust order size to meet exchange minimums.
@@ -129,6 +131,8 @@ class OrderManagementMixin(ABC):
         except Exception as e:
             tag_str = f"{self._tag} {tag}".strip()
             self.logger.error(f"🚫 Failed to place order {tag_str}", error=str(e))
+            import traceback
+            traceback.print_exc()
             return None
     
     def get_minimum_order_quantity(self, symbol_info: SymbolInfo, current_price: float) -> float:

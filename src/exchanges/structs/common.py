@@ -124,6 +124,13 @@ class SymbolInfo(Struct, frozen=True):
         """Round quantity to the symbol's base precision."""
         return round(quantity, self.base_precision)
 
+    def adjust_quantity(self, quantity: float) -> float:
+        """Adjust quantity to meet minimum and step size requirements."""
+        if  self.is_futures and self.quanto_multiplier:
+            return self.round_base(quantity / self.quanto_multiplier)
+
+        return self.round_base(quantity)
+
 # Type alias for collections
 SymbolsInfo = Dict[Symbol, SymbolInfo]
 

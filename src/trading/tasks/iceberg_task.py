@@ -10,7 +10,7 @@ from infrastructure.networking.websocket.structs import PublicWebsocketChannelTy
 from trading.struct import TradingStrategyState
 
 from trading.tasks.base_task import TaskContext, BaseTradingTask
-from trading.tasks.mixins import OrderManagementMixin, OrderProcessingMixin
+from trading.tasks.mixins import OrderManagementMixin
 from utils import get_decrease_vector, calculate_weighted_price
 
 
@@ -35,7 +35,7 @@ class IcebergTaskContext(TaskContext):
     avg_price: float = 0.0
 
 
-class IcebergTask(BaseTradingTask[IcebergTaskContext], OrderManagementMixin, OrderProcessingMixin):
+class IcebergTask(BaseTradingTask[IcebergTaskContext], OrderManagementMixin):
     """State machine for executing iceberg orders.
     
     Breaks large orders into smaller chunks to minimize market impact.
@@ -223,42 +223,37 @@ class IcebergTask(BaseTradingTask[IcebergTaskContext], OrderManagementMixin, Ord
 
     async def _process_order_execution(self, order: Order):
         """Process filled order and update context."""
-        await self.process_order_execution_base(order)
-        
-        # Check if completed after processing
         if is_order_done(order):
+            # Handle completed order
+            if order.filled_quantity > 0:
+                # Calculate weighted average price
+                total_filled_quantity, new_avg_price = calculate_weighted_price(
+                    self.context.avg_price, self.context.filled_quantity,
+                    order.price, order.filled_quantity
+                )
+
+                # Update total filled quantity, avg_price, and clear order_id atomically
+                self.evolve_context(
+                    filled_quantity=self.context.filled_quantity + order.filled_quantity,
+                    order_id=None,  # Clear order_id when order is done
+                    avg_price=new_avg_price
+                )
+
+                self.logger.info(f"✅ Order filled {self._tag}",
+                                 order_price=order.price,
+                                 order_filled=order.filled_quantity,
+                                 total_filled=self.context.filled_quantity,
+                                 avg_price=self.context.avg_price)
+            
+            # Clear order state
+            self._curr_order = None
+            
+            # Check if iceberg execution is complete
             self._check_completing()
-    
-    async def _handle_completed_order(self, order: Order, exchange_side: Optional[Side] = None):
-        """Handle completed order fills and updates."""
-        if self._should_process_order_fills(order):
-            # Calculate weighted average price
-            total_filled_quantity, new_avg_price = calculate_weighted_price(
-                self.context.avg_price, self.context.filled_quantity,
-                order.price, order.filled_quantity
-            )
-
-            # Update total filled quantity, avg_price, and clear order_id atomically
-            self.evolve_context(
-                filled_quantity=self.context.filled_quantity + order.filled_quantity,
-                order_id=None,  # Clear order_id when order is done
-                avg_price=new_avg_price
-            )
-
-            self.logger.info(f"✅ Order filled {self._tag}",
-                             order_price=order.price,
-                             order_filled=order.filled_quantity,
-                             total_filled=self.context.filled_quantity,
-                             avg_price=self.context.avg_price)
-    
-    def _clear_order_state(self, exchange_side: Optional[Side] = None):
-        """Clear order state after completion."""
-        self._curr_order = None
-    
-    def _update_active_order_state(self, order: Order, exchange_side: Optional[Side] = None):
-        """Update state for active (unfilled) orders."""
-        self._curr_order = order
-        self.evolve_context(order_id=order.order_id)
+        else:
+            # Update active order state
+            self._curr_order = order
+            self.evolve_context(order_id=order.order_id)
 
     def _check_completing(self):
         """Check if total quantity has been filled."""

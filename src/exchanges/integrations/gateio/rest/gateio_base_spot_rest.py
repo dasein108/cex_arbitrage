@@ -206,7 +206,7 @@ class GateioBaseSpotRestInterface(BaseRestClientInterface):
                               tags={"endpoint": endpoint, "error": type(e).__name__})
             raise
     
-    def _handle_error(self, status: int, response_text: str) -> Exception:
+    def _handle_error(self, status: int, response_text: str, params: Any = None) -> Exception:
         """
         Comprehensive Gate.io spot error handling implementation using msgspec.Struct.
         
@@ -262,7 +262,7 @@ class GateioBaseSpotRestInterface(BaseRestClientInterface):
             elif label in ["INVALID_PARAM_VALUE", "INVALID_PROTOCOL", "INVALID_ARGUMENT", 
                           "INVALID_REQUEST_BODY", "MISSING_REQUIRED_PARAM", "BAD_REQUEST",
                           "INVALID_CONTENT_TYPE", "NOT_ACCEPTABLE", "METHOD_NOT_ALLOWED"]:
-                return InvalidParameterError(status, f"Invalid request parameter: {message}")
+                return InvalidParameterError(status, f"Invalid request parameter: {message} \r\n{params}")
             elif label == "NOT_FOUND":
                 return ExchangeRestError(status, f"Endpoint not found: {message}")
             elif label == "INVALID_CLIENT_ORDER_ID":

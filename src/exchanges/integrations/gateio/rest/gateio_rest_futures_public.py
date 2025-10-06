@@ -94,7 +94,9 @@ class GateioPublicFuturesRestInterface(GateioBaseFuturesRestInterface, PublicFut
 
                 quote_prec = 2
                 base_prec = count_decimal_places(c.get('order_price_round', '0.01'))
-                min_base = min_quote =  float(c.get('order_size_min', 3))
+                quanto_multiplier = float(c.get('quanto_multiplier', 1))
+
+                min_base = min_quote =  float(c.get('order_size_min', 3)) * quanto_multiplier
 
                 is_inactive = c.get('status', '') != 'trading' and c.get('trade_status', '') != 'tradable'
 
@@ -103,7 +105,6 @@ class GateioPublicFuturesRestInterface(GateioBaseFuturesRestInterface, PublicFut
                 # c.get('funding_rate', 0)
                 # c.get('funding_next_apply', 0)
                 # funding_rate_indicative, funding_offset, funding_impact_value, funding_cap_ratio
-
                 # Build SymbolInfo (futures)
                 symbol_info = SymbolInfo(
                     symbol=symbol,
@@ -118,7 +119,7 @@ class GateioPublicFuturesRestInterface(GateioBaseFuturesRestInterface, PublicFut
                     tick=float(c.get('order_price_round')),
                     # tick=get_minimal_step(quote_prec),
                     step=get_minimal_step(base_prec),
-                    quanto_multiplier=float(c.get('quanto_multiplier', 1))
+                    quanto_multiplier=quanto_multiplier
                 )
                 symbol_info_map[symbol] = symbol_info
 
