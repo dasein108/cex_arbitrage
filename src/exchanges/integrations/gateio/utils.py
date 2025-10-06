@@ -174,12 +174,14 @@ def rest_futures_to_order(gateio_order_data) -> Order:
     #Time in ms
     timestamp = int(gateio_order_data['create_time']*1000)
     price=float(gateio_order_data.get('price', '0'))
-    remaining_quantity=float(gateio_order_data.get('left', '0'))
-    quantity = float(abs(gateio_order_data['size']))
+    remaining_quantity=abs(gateio_order_data.get('left', '0'))
+    quantity = abs(gateio_order_data['size'])
     order_type = (
         OrderType.MARKET 
         if price == 0 
         else OrderType.LIMIT)
+
+
     filled_quantity = quantity - remaining_quantity
 
     order_status = gateio_order_data.get('status', '').lower()

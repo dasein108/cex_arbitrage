@@ -10,7 +10,6 @@ from infrastructure.networking.websocket.structs import PublicWebsocketChannelTy
 from trading.struct import TradingStrategyState
 
 from trading.tasks.base_task import TaskContext, BaseTradingTask
-from trading.tasks.mixins import OrderManagementMixin
 from utils import get_decrease_vector, calculate_weighted_price
 
 
@@ -35,7 +34,7 @@ class IcebergTaskContext(TaskContext):
     avg_price: float = 0.0
 
 
-class IcebergTask(BaseTradingTask[IcebergTaskContext], OrderManagementMixin):
+class IcebergTask(BaseTradingTask[IcebergTaskContext, TradingStrategyState]):
     """State machine for executing iceberg orders.
     
     Breaks large orders into smaller chunks to minimize market impact.
@@ -142,7 +141,69 @@ class IcebergTask(BaseTradingTask[IcebergTaskContext], OrderManagementMixin):
 
         # Apply updates through base class
         await super().update(**context_updates)
-
+    
+    def _validate_order_size(self, symbol_info: SymbolInfo, quantity: float, price: float) -> float:
+        """Validate and adjust order size to meet exchange minimums."""
+        min_quote_qty = symbol_info.min_quote_quantity
+        if quantity * price < min_quote_qty:
+            return min_quote_qty / price + 0.01
+        return quantity
+    
+    def _get_minimum_order_quantity(self, symbol_info: SymbolInfo, current_price: float) -> float:
+        """Get minimum order quantity based on exchange requirements."""
+        return symbol_info.min_quote_quantity / current_price
+    
+    async def _cancel_order_safely_dual(
+        self, 
+        exchange: DualExchange, 
+        symbol: Symbol, 
+        order_id: str,
+        tag: str = ""
+    ) -> Optional[Order]:
+        """Safely cancel order with consistent error handling."""
+        try:
+            tag = tag or exchange.name
+            order = await exchange.private.cancel_order(symbol, order_id)
+            tag_str = f"{self._tag} {tag}".strip()
+            self.logger.info(f"🛑 Cancelled order {tag_str}", order_id=order_id)
+            return order
+        except Exception as e:
+            tag_str = f"{self._tag} {tag}".strip()
+            self.logger.error(f"🚫 Failed to cancel order {tag_str}", error=str(e))
+            try:
+                order = await exchange.private.fetch_order(symbol, order_id)
+                return order
+            except Exception:
+                return None
+    
+    async def _place_limit_order_safely_dual(
+        self,
+        exchange: DualExchange,
+        symbol: Symbol,
+        side: Side,
+        quantity: float,
+        price: float,
+        tag: str = ""
+    ) -> Optional[Order]:
+        """Place limit order with validation and error handling."""
+        try:
+            order = await exchange.private.place_limit_order(
+                symbol=symbol,
+                side=side,
+                quantity=quantity,
+                price=price,
+            )
+            
+            tag_str = f"{self._tag} {tag}".strip()
+            self.logger.info(f"📈 Placed {side.name} order {tag_str}", 
+                        order_id=order.order_id,
+                        order=str(order))
+            return order
+            
+        except Exception as e:
+            tag_str = f"{self._tag} {tag}".strip()
+            self.logger.error(f"🚫 Failed to place order {tag_str}", error=str(e))
+            return None
 
     def _get_current_top_price(self) -> float:
         """Get current ask price from public exchange."""
@@ -152,7 +213,7 @@ class IcebergTask(BaseTradingTask[IcebergTaskContext], OrderManagementMixin):
     async def _cancel_current_order(self):
         """Cancel the current active order if exists."""
         if self._curr_order:
-            order = await self.cancel_order_safely(
+            order = await self._cancel_order_safely_dual(
                 self._exchange, 
                 self.context.symbol, 
                 self._curr_order.order_id
@@ -177,9 +238,9 @@ class IcebergTask(BaseTradingTask[IcebergTaskContext], OrderManagementMixin):
                              self.context.total_quantity - self.context.filled_quantity)
 
         # adjust with exchange minimums
-        order_quantity = self.validate_order_size(self._si, order_quantity, order_price)
+        order_quantity = self._validate_order_size(self._si, order_quantity, order_price)
 
-        order = await self.place_limit_order_safely(
+        order = await self._place_limit_order_safely_dual(
             self._exchange,
             self.context.symbol,
             self.context.side,

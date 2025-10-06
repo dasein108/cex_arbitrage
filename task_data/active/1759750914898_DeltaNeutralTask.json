@@ -1,0 +1,40 @@
+{
+  "symbol": {
+    "base": "ADA",
+    "quote": "USDT"
+  },
+  "total_quantity": 30.0,
+  "filled_quantity": {
+    "1": 0.0,
+    "2": 0.0
+  },
+  "avg_price": {
+    "1": 0.0,
+    "2": 0.0
+  },
+  "exchange_names": {
+    "1": "GATEIO_SPOT",
+    "2": "GATEIO_FUTURES"
+  },
+  "direction": 0,
+  "order_quantity": 10.0,
+  "offset_ticks": {
+    "1": 3,
+    "2": 4
+  },
+  "tick_tolerance": {
+    "1": 6,
+    "2": 8
+  },
+  "order_id": {
+    "1": "930213868472",
+    "2": "5066550874656070"
+  },
+  "task_id": "1759750914898_DeltaNeutralTask",
+  "state": 2,
+  "error": null,
+  "metadata": {},
+  "should_save_flag": true,
+  "_persisted_at": 1759750943.891916,
+  "_schema_version": "1.0.0"
+}

@@ -1,6 +1,7 @@
 import asyncio
 from abc import ABC, abstractmethod
-from typing import Optional, TypeVar, Generic, Type, Dict, Any, List
+from typing import Optional, TypeVar, Generic, Type, Dict, Any, List, Union
+from enum import IntEnum
 import msgspec
 import time
 
@@ -105,9 +106,10 @@ class TaskContext(msgspec.Struct, frozen=False, kw_only=True):
 
 
 T = TypeVar('T', bound=TaskContext)
+StateT = TypeVar('StateT', bound=IntEnum)
 
 
-class BaseTradingTask(Generic[T], ABC):
+class BaseTradingTask(Generic[T, StateT], ABC):
     """Simplified base class for trading tasks.
     
     Subclasses should:
@@ -158,17 +160,46 @@ class BaseTradingTask(Generic[T], ABC):
             task_id_parts = [str(timestamp), self.name]
             self.evolve_context(task_id="_".join(task_id_parts))
         
-        # State handlers mapping
-        self._state_handlers = {
-            TradingStrategyState.IDLE: self._handle_idle,
-            TradingStrategyState.PAUSED: self._handle_paused,
-            TradingStrategyState.ERROR: self._handle_error,
-            TradingStrategyState.COMPLETED: self._handle_complete,
-            TradingStrategyState.EXECUTING: self._handle_executing,
-            TradingStrategyState.ADJUSTING: self._handle_adjusting,
-        }
+        # Build state handlers - base handlers + extended handlers
+        self._state_handlers = self._build_state_handlers()
 
         self._build_tag()
+    
+    def _build_state_handlers(self) -> Dict[Union[TradingStrategyState, StateT], str]:
+        """Build state handler mapping with base and extended states."""
+        # Base state handlers (always available)
+        base_handlers = {
+            TradingStrategyState.IDLE: '_handle_idle',
+            TradingStrategyState.PAUSED: '_handle_paused',
+            TradingStrategyState.ERROR: '_handle_error',
+            TradingStrategyState.COMPLETED: '_handle_complete',
+            TradingStrategyState.EXECUTING: '_handle_executing',
+            TradingStrategyState.ADJUSTING: '_handle_adjusting',
+        }
+        
+        # Add extended state handlers from subclass
+        extended_handlers = self.get_extended_state_handlers()
+        
+        # Combine both
+        all_handlers = {**base_handlers, **extended_handlers}
+        return all_handlers
+    
+    def get_extended_state_handlers(self) -> Dict[StateT, str]:
+        """Override in subclasses to add task-specific state handlers.
+        
+        Returns:
+            Dict mapping custom states to handler method names
+        """
+        return {}
+    
+    def get_state_handlers(self) -> Dict[Union[TradingStrategyState, StateT], str]:
+        """Get complete state handler mapping (for external use)."""
+        return self._state_handlers
+    
+    async def _handle_unhandled_state(self):
+        """Handle unknown states."""
+        self.logger.error(f"No handler for state {self.context.state}")
+        self._transition(TradingStrategyState.ERROR)
 
     def _build_tag(self) -> None:
         """Build logging tag based on available context fields.
@@ -180,7 +211,7 @@ class BaseTradingTask(Generic[T], ABC):
 
 
     @property
-    def state(self) -> TradingStrategyState:
+    def state(self) -> Union[TradingStrategyState, StateT]:
         """Get current state from context."""
         return self.context.state
     
@@ -244,14 +275,14 @@ class BaseTradingTask(Generic[T], ABC):
             # Re-raise the exception so the recovery method knows it failed
             raise
 
-    def _transition(self, new_state: TradingStrategyState) -> None:
+    def _transition(self, new_state: Union[TradingStrategyState, StateT]) -> None:
         """Transition to a new state.
         
         Args:
             new_state: Target state to transition to
         """
         old_state = self.context.state
-        self.logger.info(f"Transitioning from {old_state.name} to {new_state.name}")
+        self.logger.debug(f"Transitioning from {old_state.name} to {new_state.name}")
         self.evolve_context(state=new_state)
 
     async def _handle_idle(self):
@@ -344,8 +375,9 @@ class BaseTradingTask(Generic[T], ABC):
                 return result
             
             # Get handler for current state
-            handler = self._state_handlers.get(self.context.state)
-            if handler:
+            handler_name = self._state_handlers.get(self.context.state)
+            if handler_name and hasattr(self, handler_name):
+                handler = getattr(self, handler_name)
                 await handler()
             else:
                 # No handler for this state

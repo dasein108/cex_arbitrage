@@ -128,9 +128,6 @@ class DeltaNeutralTaskDemo:
                 task_id = await self.task_manager.add_task(ada_task)
                 
                 # Disable noisy GATEIO loggers after exchange instances are created
-                LoggerFactory.override_logger("GATEIO_SPOT.ws.private", enabled=False)
-                LoggerFactory.override_logger("GATEIO_SPOT.ws.public", enabled=False)
-                LoggerFactory.override_logger("GATEIO_SPOT.GATEIO_SPOT_private", enabled=False)
 
                 self.logger.info("ADA DeltaNeutralTask created and added to TaskManager",
                                  task_id=ada_task.task_id,
@@ -147,14 +144,26 @@ class DeltaNeutralTaskDemo:
 
             start_time = asyncio.get_event_loop().time()
             status_count = 0
+
+            # Disable noisy GATEIO loggers by setting minimum level to ERROR
+            logger_names = [
+                "GATEIO_SPOT.ws.private", "GATEIO_SPOT.ws.public", "GATEIO_SPOT.GATEIO_SPOT_private",
+                "GATEIO_FUTURES.ws.private", "GATEIO_FUTURES.ws.public", 
+                "GATEIO_FUTURES.GATEIO_FUTURES_private", "GATEIO_FUTURES.GATEIO_FUTURES_public",
+                "gateio.rest.private", "rest.client.gateio_futures"
+            ]
             
+            for logger_name in logger_names:
+                # Use min_level instead of enabled=False which might be more reliable
+                LoggerFactory.override_logger(logger_name, min_level="ERROR")
+
             while self.task_manager.task_count > 0 and self.running:
                 # Get enhanced TaskManager status
                 status = self.task_manager.get_status()
                 
                 # Log status every 100 iterations (reduce noise)
                 if status_count % 100 == 0:
-                    self.logger.info("TaskManager status",
+                    self.logger.debug("TaskManager status",
                                      active_tasks=status['active_tasks'],
                                      total_executions=status['total_executions'],
                                      runtime=f"{status['runtime_seconds']:.1f}s",
@@ -237,6 +246,9 @@ async def main():
             await asyncio.sleep(0.01)  # Ensure error log is flushed
         else:
             print(f"Delta neutral demo failed: {e}")
+
+        import traceback
+        traceback.print_exc()
         sys.exit(1)
 
 

@@ -568,6 +568,3 @@ class GateioPublicFuturesRestInterface(GateioBaseFuturesRestInterface, PublicFut
 
     async def close(self):
         self.logger.info("Closed Gate.io futures public client")
-
-    def __repr__(self) -> str:
-        return f"GateioPublicFuturesRest(base_url={self.base_url})"
