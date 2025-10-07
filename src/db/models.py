@@ -12,6 +12,113 @@ import msgspec
 from exchanges.structs.common import Symbol
 
 
+class Exchange(msgspec.Struct):
+    """
+    Exchange reference data structure.
+    
+    Represents supported cryptocurrency exchanges with their
+    configuration and metadata for normalized database operations.
+    """
+    # Required fields first
+    name: str                                    # MEXC_SPOT, GATEIO_SPOT, etc.
+    enum_value: str                              # Maps to ExchangeEnum
+    display_name: str                            # User-friendly name
+    market_type: str                             # SPOT, FUTURES, OPTIONS
+    
+    # Optional fields with defaults
+    id: Optional[int] = None
+    is_active: bool = True
+    base_url: Optional[str] = None
+    websocket_url: Optional[str] = None
+    rate_limit_requests_per_second: Optional[int] = None
+    precision_default: int = 8
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
+    
+    def to_exchange_enum(self) -> "ExchangeEnum":
+        """
+        Convert to ExchangeEnum for application use.
+        
+        Returns:
+            ExchangeEnum corresponding to this exchange
+        """
+        from exchanges.structs.enums import ExchangeEnum
+        
+        # Map enum_value string to ExchangeEnum
+        for enum_item in ExchangeEnum:
+            if str(enum_item.value) == self.enum_value:
+                return enum_item
+        
+        raise ValueError(f"No ExchangeEnum found for value: {self.enum_value}")
+    
+    @classmethod
+    def from_exchange_enum(cls, exchange_enum: "ExchangeEnum", **kwargs) -> "Exchange":
+        """
+        Create Exchange from ExchangeEnum with default values.
+        
+        Args:
+            exchange_enum: ExchangeEnum to convert
+            **kwargs: Additional field overrides
+            
+        Returns:
+            Exchange instance with enum-based defaults
+        """
+        name = str(exchange_enum.value)
+        
+        # Default configurations per exchange
+        defaults = {
+            "MEXC_SPOT": {
+                "display_name": "MEXC Spot Trading",
+                "market_type": "SPOT",
+                "base_url": "https://api.mexc.com",
+                "websocket_url": "wss://wbs.mexc.com/ws",
+                "rate_limit_requests_per_second": 100
+            },
+            "GATEIO_SPOT": {
+                "display_name": "Gate.io Spot Trading", 
+                "market_type": "SPOT",
+                "base_url": "https://api.gateio.ws",
+                "websocket_url": "wss://api.gateio.ws/ws/v4/",
+                "rate_limit_requests_per_second": 100
+            },
+            "GATEIO_FUTURES": {
+                "display_name": "Gate.io Futures Trading",
+                "market_type": "FUTURES", 
+                "base_url": "https://api.gateio.ws",
+                "websocket_url": "wss://fx-ws.gateio.ws/v4/ws/",
+                "rate_limit_requests_per_second": 100
+            }
+        }
+        
+        config = defaults.get(name, {})
+        config.update(kwargs)
+        
+        return cls(
+            name=name,
+            enum_value=name,
+            **config
+        )
+    
+    def get_rate_limit_delay(self) -> float:
+        """
+        Calculate delay between requests to respect rate limits.
+        
+        Returns:
+            Delay in seconds between requests
+        """
+        if self.rate_limit_requests_per_second:
+            return 1.0 / self.rate_limit_requests_per_second
+        return 0.01  # Default 100 requests/second
+    
+    def is_futures_exchange(self) -> bool:
+        """Check if this is a futures trading exchange."""
+        return self.market_type == "FUTURES"
+    
+    def is_spot_exchange(self) -> bool:
+        """Check if this is a spot trading exchange."""
+        return self.market_type == "SPOT"
+
+
 class BookTickerSnapshot(msgspec.Struct):
     """
     Book ticker snapshot data structure.

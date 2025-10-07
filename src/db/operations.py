@@ -12,7 +12,7 @@ from collections import defaultdict
 import time
 
 from .connection import get_db_manager
-from .models import BookTickerSnapshot, TradeSnapshot
+from .models import BookTickerSnapshot, TradeSnapshot, Exchange
 from exchanges.structs.common import Symbol
 
 
@@ -863,3 +863,397 @@ async def get_trade_database_stats() -> Dict[str, Any]:
     except Exception as e:
         logger.error(f"Failed to retrieve trade database stats: {e}")
         return {}
+
+
+# Exchange Operations
+# High-performance exchange lookup functions for normalized database operations
+
+async def get_exchange_by_enum(exchange_enum: "ExchangeEnum") -> Optional[Exchange]:
+    """
+    Get exchange by ExchangeEnum value.
+    
+    Args:
+        exchange_enum: ExchangeEnum to look up
+        
+    Returns:
+        Exchange instance or None if not found
+    """
+    from exchanges.structs.enums import ExchangeEnum
+    
+    db = get_db_manager()
+    
+    query = """
+        SELECT id, name, enum_value, display_name, market_type, is_active,
+               base_url, websocket_url, rate_limit_requests_per_second,
+               precision_default, created_at, updated_at
+        FROM exchanges 
+        WHERE enum_value = $1 AND is_active = true
+    """
+    
+    try:
+        row = await db.fetchrow(query, str(exchange_enum.value))
+        
+        if row:
+            return Exchange(
+                name=row['name'],
+                enum_value=row['enum_value'],
+                display_name=row['display_name'],
+                market_type=row['market_type'],
+                id=row['id'],
+                is_active=row['is_active'],
+                base_url=row['base_url'],
+                websocket_url=row['websocket_url'],
+                rate_limit_requests_per_second=row['rate_limit_requests_per_second'],
+                precision_default=row['precision_default'],
+                created_at=row['created_at'],
+                updated_at=row['updated_at']
+            )
+        
+        return None
+        
+    except Exception as e:
+        logger.error(f"Failed to get exchange by enum {exchange_enum}: {e}")
+        raise
+
+
+async def get_exchange_by_id(exchange_id: int) -> Optional[Exchange]:
+    """
+    Get exchange by database ID.
+    
+    Args:
+        exchange_id: Database primary key
+        
+    Returns:
+        Exchange instance or None if not found
+    """
+    db = get_db_manager()
+    
+    query = """
+        SELECT id, name, enum_value, display_name, market_type, is_active,
+               base_url, websocket_url, rate_limit_requests_per_second,
+               precision_default, created_at, updated_at
+        FROM exchanges 
+        WHERE id = $1
+    """
+    
+    try:
+        row = await db.fetchrow(query, exchange_id)
+        
+        if row:
+            return Exchange(
+                name=row['name'],
+                enum_value=row['enum_value'],
+                display_name=row['display_name'],
+                market_type=row['market_type'],
+                id=row['id'],
+                is_active=row['is_active'],
+                base_url=row['base_url'],
+                websocket_url=row['websocket_url'],
+                rate_limit_requests_per_second=row['rate_limit_requests_per_second'],
+                precision_default=row['precision_default'],
+                created_at=row['created_at'],
+                updated_at=row['updated_at']
+            )
+        
+        return None
+        
+    except Exception as e:
+        logger.error(f"Failed to get exchange by id {exchange_id}: {e}")
+        raise
+
+
+async def get_all_active_exchanges() -> List[Exchange]:
+    """
+    Get all active exchanges.
+    
+    Returns:
+        List of active Exchange instances
+    """
+    db = get_db_manager()
+    
+    query = """
+        SELECT id, name, enum_value, display_name, market_type, is_active,
+               base_url, websocket_url, rate_limit_requests_per_second,
+               precision_default, created_at, updated_at
+        FROM exchanges 
+        WHERE is_active = true
+        ORDER BY name
+    """
+    
+    try:
+        rows = await db.fetch(query)
+        
+        exchanges = []
+        for row in rows:
+            exchange = Exchange(
+                name=row['name'],
+                enum_value=row['enum_value'],
+                display_name=row['display_name'],
+                market_type=row['market_type'],
+                id=row['id'],
+                is_active=row['is_active'],
+                base_url=row['base_url'],
+                websocket_url=row['websocket_url'],
+                rate_limit_requests_per_second=row['rate_limit_requests_per_second'],
+                precision_default=row['precision_default'],
+                created_at=row['created_at'],
+                updated_at=row['updated_at']
+            )
+            exchanges.append(exchange)
+        
+        logger.debug(f"Retrieved {len(exchanges)} active exchanges")
+        return exchanges
+        
+    except Exception as e:
+        logger.error(f"Failed to get active exchanges: {e}")
+        raise
+
+
+async def get_exchanges_by_market_type(market_type: str) -> List[Exchange]:
+    """
+    Get exchanges filtered by market type.
+    
+    Args:
+        market_type: Market type filter (SPOT, FUTURES, OPTIONS)
+        
+    Returns:
+        List of Exchange instances for the market type
+    """
+    db = get_db_manager()
+    
+    query = """
+        SELECT id, name, enum_value, display_name, market_type, is_active,
+               base_url, websocket_url, rate_limit_requests_per_second,
+               precision_default, created_at, updated_at
+        FROM exchanges 
+        WHERE market_type = $1 AND is_active = true
+        ORDER BY name
+    """
+    
+    try:
+        rows = await db.fetch(query, market_type.upper())
+        
+        exchanges = []
+        for row in rows:
+            exchange = Exchange(
+                name=row['name'],
+                enum_value=row['enum_value'],
+                display_name=row['display_name'],
+                market_type=row['market_type'],
+                id=row['id'],
+                is_active=row['is_active'],
+                base_url=row['base_url'],
+                websocket_url=row['websocket_url'],
+                rate_limit_requests_per_second=row['rate_limit_requests_per_second'],
+                precision_default=row['precision_default'],
+                created_at=row['created_at'],
+                updated_at=row['updated_at']
+            )
+            exchanges.append(exchange)
+        
+        logger.debug(f"Retrieved {len(exchanges)} {market_type} exchanges")
+        return exchanges
+        
+    except Exception as e:
+        logger.error(f"Failed to get {market_type} exchanges: {e}")
+        raise
+
+
+# Exchange CRUD Operations
+# Complete Create, Read, Update, Delete operations for Exchange management
+
+async def insert_exchange(exchange: Exchange) -> int:
+    """
+    Insert a new exchange record.
+    
+    Args:
+        exchange: Exchange instance to insert
+        
+    Returns:
+        Database ID of inserted exchange
+        
+    Raises:
+        ValueError: If exchange data is invalid
+        DatabaseError: If insert fails
+    """
+    db = get_db_manager()
+    
+    # Validate required fields
+    if not exchange.name or not exchange.enum_value:
+        raise ValueError("Exchange name and enum_value are required")
+    
+    query = """
+        INSERT INTO exchanges (
+            name, enum_value, display_name, market_type, is_active,
+            base_url, websocket_url, rate_limit_requests_per_second, precision_default
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+        RETURNING id
+    """
+    
+    try:
+        exchange_id = await db.fetchval(
+            query,
+            exchange.name,
+            exchange.enum_value,
+            exchange.display_name,
+            exchange.market_type,
+            exchange.is_active,
+            exchange.base_url,
+            exchange.websocket_url,
+            exchange.rate_limit_requests_per_second,
+            exchange.precision_default
+        )
+        
+        logger.info(f"Inserted exchange {exchange.name} with ID {exchange_id}")
+        return exchange_id
+        
+    except Exception as e:
+        logger.error(f"Failed to insert exchange {exchange.name}: {e}")
+        raise
+
+
+async def update_exchange(exchange_id: int, updates: Dict[str, Any]) -> bool:
+    """
+    Update exchange record with provided fields.
+    
+    Args:
+        exchange_id: Exchange ID to update
+        updates: Dictionary of field updates
+        
+    Returns:
+        True if update successful, False if exchange not found
+        
+    Raises:
+        DatabaseError: If update fails
+    """
+    db = get_db_manager()
+    
+    if not updates:
+        return True  # No updates needed
+    
+    # Build dynamic update query
+    set_clauses = []
+    params = []
+    param_counter = 1
+    
+    for field, value in updates.items():
+        set_clauses.append(f"{field} = ${param_counter}")
+        params.append(value)
+        param_counter += 1
+    
+    # Always update the updated_at timestamp
+    set_clauses.append(f"updated_at = ${param_counter}")
+    params.append(datetime.utcnow())
+    param_counter += 1
+    
+    # Add WHERE clause parameter
+    params.append(exchange_id)
+    
+    query = f"""
+        UPDATE exchanges 
+        SET {', '.join(set_clauses)}
+        WHERE id = ${param_counter}
+    """
+    
+    try:
+        result = await db.execute(query, *params)
+        
+        # Check if any rows were updated
+        updated = result.endswith('1')  # UPDATE command returns "UPDATE n"
+        
+        if updated:
+            logger.info(f"Updated exchange {exchange_id} with fields: {list(updates.keys())}")
+        else:
+            logger.warning(f"No exchange found with ID {exchange_id}")
+        
+        return updated
+        
+    except Exception as e:
+        logger.error(f"Failed to update exchange {exchange_id}: {e}")
+        raise
+
+
+async def deactivate_exchange(exchange_id: int) -> bool:
+    """
+    Deactivate an exchange (soft delete).
+    
+    Args:
+        exchange_id: Exchange ID to deactivate
+        
+    Returns:
+        True if deactivation successful, False if exchange not found
+    """
+    return await update_exchange(exchange_id, {'is_active': False})
+
+
+async def activate_exchange(exchange_id: int) -> bool:
+    """
+    Reactivate an exchange.
+    
+    Args:
+        exchange_id: Exchange ID to activate
+        
+    Returns:
+        True if activation successful, False if exchange not found
+    """
+    return await update_exchange(exchange_id, {'is_active': True})
+
+
+async def get_exchange_stats() -> Dict[str, Any]:
+    """
+    Get exchange statistics for monitoring.
+    
+    Returns:
+        Dictionary with exchange statistics
+    """
+    db = get_db_manager()
+    
+    queries = {
+        'total_exchanges': "SELECT COUNT(*) FROM exchanges",
+        'active_exchanges': "SELECT COUNT(*) FROM exchanges WHERE is_active = true",
+        'spot_exchanges': "SELECT COUNT(*) FROM exchanges WHERE market_type = 'SPOT' AND is_active = true",
+        'futures_exchanges': "SELECT COUNT(*) FROM exchanges WHERE market_type = 'FUTURES' AND is_active = true",
+        'latest_update': "SELECT MAX(updated_at) FROM exchanges"
+    }
+    
+    stats = {}
+    
+    try:
+        for key, query in queries.items():
+            result = await db.fetchval(query)
+            stats[key] = result
+        
+        # Add exchange list
+        active_exchanges = await get_all_active_exchanges()
+        stats['exchange_list'] = [ex.name for ex in active_exchanges]
+        
+        return stats
+        
+    except Exception as e:
+        logger.error(f"Failed to retrieve exchange stats: {e}")
+        return {}
+
+
+async def ensure_exchanges_populated() -> None:
+    """
+    Ensure all ExchangeEnum values are present in the database.
+    Creates missing exchanges with default configurations.
+    """
+    from exchanges.structs.enums import ExchangeEnum
+    
+    db = get_db_manager()
+    
+    # Get existing exchanges
+    existing_exchanges = await get_all_active_exchanges()
+    existing_enum_values = {ex.enum_value for ex in existing_exchanges}
+    
+    # Check each ExchangeEnum value
+    for exchange_enum in ExchangeEnum:
+        enum_value = str(exchange_enum.value)
+        
+        if enum_value not in existing_enum_values:
+            logger.info(f"Creating missing exchange for {enum_value}")
+            
+            # Create exchange with defaults
+            exchange = Exchange.from_exchange_enum(exchange_enum)
+            await insert_exchange(exchange)

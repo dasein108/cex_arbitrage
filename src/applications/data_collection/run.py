@@ -14,10 +14,7 @@ import traceback
 from pathlib import Path
 from typing import Optional
 
-# Add src to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent))
-
-# Import exchanges to trigger factory registrations
 
 from applications.data_collection.collector import DataCollector
 from config.config_manager import get_data_collector_config
