@@ -87,8 +87,7 @@ class BasePublicComposite(BaseCompositeExchange[PublicRestType, PublicWebsocketT
                          is_private=False,
                          logger=logger)
 
-        # TODO: remove use handlers or streams
-        # bind WebSocket handlers to websocket client events
+        # Bind WebSocket handlers to websocket client events for data processing
         websocket_client.bind(PublicWebsocketChannelType.BOOK_TICKER, self._handle_book_ticker)
         websocket_client.bind(PublicWebsocketChannelType.ORDERBOOK, self._handle_orderbook)
         websocket_client.bind(PublicWebsocketChannelType.TICKER, self._handle_ticker)
@@ -323,8 +322,6 @@ class BasePublicComposite(BaseCompositeExchange[PublicRestType, PublicWebsocketT
             self._update_orderbook(orderbook.symbol, orderbook, OrderbookUpdateType.DIFF)
             self._track_operation("orderbook_update")
 
-            # TODO: remove
-            await self._exec_bound_handler(PublicWebsocketChannelType.ORDERBOOK, orderbook)
 
         except Exception as e:
             self.logger.error("Error handling direct orderbook", error=str(e))
@@ -339,8 +336,6 @@ class BasePublicComposite(BaseCompositeExchange[PublicRestType, PublicWebsocketT
 
             self.publish("tickers", ticker)  # Publish to streams
 
-            # TODO: remove
-            await self._exec_bound_handler(PublicWebsocketChannelType.TICKER, ticker)
 
         except Exception as e:
             self.logger.error("Error handling direct ticker", error=str(e))
@@ -354,8 +349,6 @@ class BasePublicComposite(BaseCompositeExchange[PublicRestType, PublicWebsocketT
 
             self.publish("trades", trade)  # Publish to streams
 
-            # TODO: remove
-            await self._exec_bound_handler(PublicWebsocketChannelType.PUB_TRADE, trade)
 
         except Exception as e:
             self.logger.error("Error handling direct trade", error=str(e))
@@ -371,7 +364,6 @@ class BasePublicComposite(BaseCompositeExchange[PublicRestType, PublicWebsocketT
             start_time = time.perf_counter()
 
             # Validate data freshness for HFT compliance
-            # TODO: Not sure that this is needed ??
             if not self._validate_data_timestamp(book_ticker.timestamp):
                 self.logger.warning("Stale book ticker data ignored",
                                     symbol=book_ticker.symbol)
@@ -401,8 +393,6 @@ class BasePublicComposite(BaseCompositeExchange[PublicRestType, PublicWebsocketT
 
             self.publish("book_tickers", book_ticker)  # Publish to streams
 
-            # TODO: remove
-            await self._exec_bound_handler(PublicWebsocketChannelType.BOOK_TICKER, book_ticker)
 
         except Exception as e:
             self.logger.error("Error handling book ticker event",
@@ -430,7 +420,7 @@ class BasePublicComposite(BaseCompositeExchange[PublicRestType, PublicWebsocketT
             for symbol in self._active_symbols:
                 refresh_tasks.append(self._load_orderbook_snapshot(symbol))
 
-            # TODO: refresh tickers, if needed in future
+            # Ticker refresh not required - real-time updates via WebSocket
 
             results = await asyncio.gather(*refresh_tasks, return_exceptions=True)
 

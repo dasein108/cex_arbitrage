@@ -119,6 +119,137 @@ class Exchange(msgspec.Struct):
         return self.market_type == "SPOT"
 
 
+class Symbol(msgspec.Struct):
+    """
+    Symbol reference data structure.
+    
+    Represents trading pairs across exchanges with their configuration
+    and metadata for normalized database operations.
+    """
+    # Required fields first
+    exchange_id: int                                 # Foreign key to exchanges table
+    symbol_base: str                                # Base asset (BTC, ETH, etc.)
+    symbol_quote: str                               # Quote asset (USDT, BTC, etc.)
+    exchange_symbol: str                            # Exchange-specific symbol format
+    
+    # Optional fields with defaults
+    id: Optional[int] = None
+    is_active: bool = True
+    is_futures: bool = False
+    min_order_size: Optional[float] = None
+    max_order_size: Optional[float] = None
+    price_precision: int = 8
+    quantity_precision: int = 8
+    tick_size: Optional[float] = None
+    step_size: Optional[float] = None
+    min_notional: Optional[float] = None
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
+    
+    @classmethod
+    def from_symbol_and_exchange(
+        cls, 
+        exchange_id: int,
+        symbol: "Symbol",  # From exchanges.structs.common
+        exchange_symbol: str,
+        **kwargs
+    ) -> "Symbol":
+        """
+        Create Symbol from exchange ID and Symbol struct.
+        
+        Args:
+            exchange_id: Database exchange ID
+            symbol: Symbol object from exchanges.structs.common
+            exchange_symbol: Exchange-specific symbol format
+            **kwargs: Additional field overrides
+            
+        Returns:
+            Symbol instance
+        """
+        return cls(
+            exchange_id=exchange_id,
+            symbol_base=str(symbol.base),
+            symbol_quote=str(symbol.quote),
+            exchange_symbol=exchange_symbol,
+            is_futures=symbol.is_futures if hasattr(symbol, 'is_futures') else False,
+            **kwargs
+        )
+    
+    def to_common_symbol(self) -> "Symbol":
+        """
+        Convert to common Symbol struct.
+        
+        Returns:
+            Symbol object from exchanges.structs.common
+        """
+        from exchanges.structs.types import AssetName
+        from exchanges.structs.common import Symbol as CommonSymbol
+        
+        return CommonSymbol(
+            base=AssetName(self.symbol_base),
+            quote=AssetName(self.symbol_quote),
+            is_futures=self.is_futures
+        )
+    
+    def get_symbol_string(self) -> str:
+        """
+        Get standardized symbol string.
+        
+        Returns:
+            Symbol string (e.g., 'BTCUSDT')
+        """
+        return f"{self.symbol_base}{self.symbol_quote}"
+    
+    def get_market_type(self) -> str:
+        """
+        Get market type for this symbol.
+        
+        Returns:
+            'FUTURES' if futures symbol, 'SPOT' otherwise
+        """
+        return "FUTURES" if self.is_futures else "SPOT"
+    
+    def is_valid_order_size(self, quantity: float) -> bool:
+        """
+        Check if order quantity meets symbol constraints.
+        
+        Args:
+            quantity: Order quantity to validate
+            
+        Returns:
+            True if quantity is valid
+        """
+        if self.min_order_size and quantity < self.min_order_size:
+            return False
+        if self.max_order_size and quantity > self.max_order_size:
+            return False
+        return True
+    
+    def round_price(self, price: float) -> float:
+        """
+        Round price to symbol precision.
+        
+        Args:
+            price: Raw price value
+            
+        Returns:
+            Price rounded to symbol precision
+        """
+        return round(price, self.price_precision)
+    
+    def round_quantity(self, quantity: float) -> float:
+        """
+        Round quantity to symbol precision.
+        
+        Args:
+            quantity: Raw quantity value
+            
+        Returns:
+            Quantity rounded to symbol precision
+        """
+        return round(quantity, self.quantity_precision)
+
+
 class BookTickerSnapshot(msgspec.Struct):
     """
     Book ticker snapshot data structure.

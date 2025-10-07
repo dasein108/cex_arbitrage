@@ -1,4 +1,5 @@
 # Core configuration and enums
+from typing import Union
 from config.structs import ExchangeConfig
 from exchanges.structs.enums import ExchangeEnum
 
@@ -71,7 +72,11 @@ SYMBOL_MAPPER_MAP = {
     ExchangeEnum.GATEIO_FUTURES: GateioFuturesSymbolMapper,
 }
 
-def get_rest_implementation(exchange_config: ExchangeConfig, is_private: bool):
+def get_rest_implementation(exchange_config: ExchangeConfig, is_private: bool) -> Union[
+    MexcPublicSpotRestInterface, MexcPrivateSpotRestInterface,
+    GateioPublicSpotRestInterface, GateioPrivateSpotRestInterface,
+    GateioPublicFuturesRestInterface, GateioPrivateFuturesRestInterface
+]:
     """
     Get REST client implementation for specified exchange and access type.
     
@@ -93,7 +98,11 @@ def get_rest_implementation(exchange_config: ExchangeConfig, is_private: bool):
 
     return impl_class(exchange_config)
 
-def get_ws_implementation(exchange_config: ExchangeConfig, is_private: bool):
+def get_ws_implementation(exchange_config: ExchangeConfig, is_private: bool) -> Union[
+    MexcPublicSpotWebsocket, MexcPrivateSpotWebsocket,
+    GateioPublicSpotWebsocket, GateioPrivateSpotWebsocket,
+    GateioPublicFuturesWebsocket, GateioPrivateFuturesWebsocket
+]:
     """
     Get WebSocket client implementation for specified exchange and access type.
     
@@ -115,7 +124,10 @@ def get_ws_implementation(exchange_config: ExchangeConfig, is_private: bool):
     return impl_class(exchange_config)
 
 
-def get_composite_implementation(exchange_config: ExchangeConfig, is_private: bool):
+def get_composite_implementation(exchange_config: ExchangeConfig, is_private: bool) -> Union[
+    CompositePublicSpotExchange, CompositePrivateSpotExchange,
+    CompositePublicFuturesExchange, CompositePrivateFuturesExchange
+]:
     """
     Get composite exchange implementation with injected REST and WebSocket clients.
     
@@ -140,7 +152,11 @@ def get_composite_implementation(exchange_config: ExchangeConfig, is_private: bo
 
     return composite_class(exchange_config, rest_client, ws_client)
 
-def create_rest_client(exchange: ExchangeEnum, config: ExchangeConfig, is_private: bool = False, **kwargs):
+def create_rest_client(exchange: ExchangeEnum, config: ExchangeConfig, is_private: bool = False, **kwargs) -> Union[
+    MexcPublicSpotRestInterface, MexcPrivateSpotRestInterface,
+    GateioPublicSpotRestInterface, GateioPrivateSpotRestInterface,
+    GateioPublicFuturesRestInterface, GateioPrivateFuturesRestInterface
+]:
     """
     Compatibility wrapper for legacy create_rest_client interface.
     
@@ -156,7 +172,11 @@ def create_rest_client(exchange: ExchangeEnum, config: ExchangeConfig, is_privat
     return get_rest_implementation(config, is_private)
 
 
-def create_websocket_client(exchange: ExchangeEnum, config: ExchangeConfig, is_private: bool = False, **kwargs):
+def create_websocket_client(exchange: ExchangeEnum, config: ExchangeConfig, is_private: bool = False, **kwargs) -> Union[
+    MexcPublicSpotWebsocket, MexcPrivateSpotWebsocket,
+    GateioPublicSpotWebsocket, GateioPrivateSpotWebsocket,
+    GateioPublicFuturesWebsocket, GateioPrivateFuturesWebsocket
+]:
     """
     Compatibility wrapper for legacy create_websocket_client interface.
     
@@ -171,7 +191,7 @@ def create_websocket_client(exchange: ExchangeEnum, config: ExchangeConfig, is_p
     """
     return get_ws_implementation(config, is_private)
 
-def get_symbol_mapper(exchange: ExchangeEnum):
+def get_symbol_mapper(exchange: ExchangeEnum) -> Union[MexcSymbolMapper, GateioSymbolMapper, GateioFuturesSymbolMapper]:
     """
     Get symbol mapper instance for specified exchange.
     

@@ -616,8 +616,8 @@ class GateioPublicSpotRestInterface(GateioBaseSpotRestInterface, PublicSpotRestI
         klines = []
         try:
             pair = GateioSpotSymbol.to_pair(symbol)
-            from exchanges.integrations.gateio.services.spot_symbol_mapper import get_exchange_interval
-            interval = get_exchange_interval(timeframe)
+            from exchanges.integrations.gateio.utils import to_kline_interval
+            interval = to_kline_interval(timeframe)
             
             params = {
                 'currency_pair': pair,

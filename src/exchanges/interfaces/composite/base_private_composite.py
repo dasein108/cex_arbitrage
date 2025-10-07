@@ -153,9 +153,22 @@ class BasePrivateComposite(BaseCompositeExchange[PrivateRestType, PrivateWebsock
                                  price: Optional[float]=None,
                                  ensure: bool=True, **kwargs) -> Order:
         """Place a market order via REST API."""
-        quote_quantity_ = self.symbols_info.get(symbol).round_quote(quote_quantity)
-        # TODO: FIX: infrastructure.exceptions.exchange.ExchangeRestError: (500, 'Futures order placement failed: Futures market orders with quote_quantity require current price. Use quantity parameter instead.')
-        order =  await self._rest.place_order(symbol, side, OrderType.MARKET,
+        si = self.symbols_info.get(symbol)
+        quote_quantity_ = si.round_quote(quote_quantity)
+        
+        # For futures markets, convert quote_quantity to base quantity
+        # Futures market orders require quantity parameter instead of quote_quantity
+        if self.config.is_futures:
+            if price is None:
+                raise ValueError("Futures market orders require price parameter for quote_quantity conversion")
+            base_quantity = quote_quantity_ / price
+            quantity_ = si.round_base(base_quantity)
+            order = await self._rest.place_order(symbol, side, OrderType.MARKET,
+                                                price=price,
+                                                quantity=quantity_, **kwargs)
+        else:
+            # Spot markets can use quote_quantity directly
+            order = await self._rest.place_order(symbol, side, OrderType.MARKET,
                                                 price=price,
                                                 quote_quantity=quote_quantity_, **kwargs)
 

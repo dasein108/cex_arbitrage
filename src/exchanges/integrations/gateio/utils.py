@@ -13,7 +13,7 @@ from enum import Enum
 from exchanges.structs.common import (
     Side, OrderStatus, OrderType, TimeInForce, AssetName, AssetBalance, Order
 )
-from exchanges.structs.enums import WithdrawalStatus
+from exchanges.structs.enums import WithdrawalStatus, KlineInterval
 from exchanges.structs.types import OrderId
 from exchanges.integrations.gateio.services.spot_symbol_mapper import GateioSpotSymbol
 from exchanges.integrations.gateio.services.futures_symbol_mapper import GateioFuturesSymbol
@@ -66,6 +66,21 @@ _GATEIO_WITHDRAW_STATUS_MAP = {
 }
 
 # Reverse mappings for unified -> Gate.io
+# Gate.io Kline Interval Mapping (moved from symbol mapper)
+_GATEIO_KLINE_INTERVAL_MAP = {
+    KlineInterval.MINUTE_1: "1m",
+    KlineInterval.MINUTE_5: "5m",
+    KlineInterval.MINUTE_15: "15m",
+    KlineInterval.MINUTE_30: "30m",
+    KlineInterval.HOUR_1: "1h",
+    KlineInterval.HOUR_4: "4h",
+    KlineInterval.HOUR_12: "12h",
+    KlineInterval.DAY_1: "1d",
+    KlineInterval.WEEK_1: "7d",
+    KlineInterval.MONTH_1: "30d"
+}
+
+# Reverse mappings for unified -> Gate.io
 _UNIFIED_TO_GATEIO_STATUS = {v: k for k, v in _GATEIO_ORDER_STATUS_MAP.items()}
 _UNIFIED_TO_GATEIO_SIDE = {v: k for k, v in _GATEIO_SIDE_MAP.items()}
 _UNIFIED_TO_GATEIO_TYPE = {v: k for k, v in _GATEIO_ORDER_TYPE_MAP.items()}
@@ -111,6 +126,17 @@ def to_time_in_force(gateio_tif: str) -> TimeInForce:
 def from_time_in_force(unified_tif: TimeInForce) -> str:
     """Convert unified TimeInForce to Gate.io format."""
     return _UNIFIED_TO_GATEIO_TIF.get(unified_tif, 'gtc')
+
+
+def to_kline_interval(interval: KlineInterval) -> str:
+    """Convert unified KlineInterval to Gate.io format."""
+    return _GATEIO_KLINE_INTERVAL_MAP.get(interval, "1m")
+
+
+def from_kline_interval(gateio_interval: str) -> KlineInterval:
+    """Convert Gate.io interval string to unified KlineInterval."""
+    reverse_map = {v: k for k, v in _GATEIO_KLINE_INTERVAL_MAP.items()}
+    return reverse_map.get(gateio_interval, KlineInterval.MINUTE_1)
 
 
 # Symbol mapping via direct singleton access

@@ -12,7 +12,7 @@ from collections import defaultdict
 import time
 
 from .connection import get_db_manager
-from .models import BookTickerSnapshot, TradeSnapshot, Exchange
+from .models import BookTickerSnapshot, TradeSnapshot, Exchange, Symbol as DBSymbol
 from exchanges.structs.common import Symbol
 
 
@@ -1257,3 +1257,662 @@ async def ensure_exchanges_populated() -> None:
             # Create exchange with defaults
             exchange = Exchange.from_exchange_enum(exchange_enum)
             await insert_exchange(exchange)
+
+
+# ================================================================================================
+# Symbol Operations
+# High-performance symbol lookup and management for HFT operations
+# ================================================================================================
+
+async def get_symbol_by_id(symbol_id: int) -> Optional[DBSymbol]:
+    """
+    Get symbol by database ID.
+    
+    Args:
+        symbol_id: Symbol database ID
+        
+    Returns:
+        Symbol instance or None if not found
+    """
+    db = get_db_manager()
+    
+    query = """
+        SELECT id, exchange_id, symbol_base, symbol_quote, exchange_symbol,
+               is_active, is_futures, min_order_size, max_order_size,
+               price_precision, quantity_precision, tick_size, step_size,
+               min_notional, created_at, updated_at
+        FROM symbols
+        WHERE id = $1
+    """
+    
+    try:
+        row = await db.fetchrow(query, symbol_id)
+        
+        if not row:
+            return None
+        
+        return DBSymbol(
+            id=row['id'],
+            exchange_id=row['exchange_id'],
+            symbol_base=row['symbol_base'],
+            symbol_quote=row['symbol_quote'],
+            exchange_symbol=row['exchange_symbol'],
+            is_active=row['is_active'],
+            is_futures=row['is_futures'],
+            min_order_size=row['min_order_size'],
+            max_order_size=row['max_order_size'],
+            price_precision=row['price_precision'],
+            quantity_precision=row['quantity_precision'],
+            tick_size=row['tick_size'],
+            step_size=row['step_size'],
+            min_notional=row['min_notional'],
+            created_at=row['created_at'],
+            updated_at=row['updated_at']
+        )
+        
+    except Exception as e:
+        logger.error(f"Failed to get symbol by ID {symbol_id}: {e}")
+        raise
+
+
+async def get_symbol_by_exchange_and_pair(
+    exchange_id: int, 
+    symbol_base: str, 
+    symbol_quote: str
+) -> Optional[DBSymbol]:
+    """
+    Get symbol by exchange ID and base/quote pair.
+    
+    Args:
+        exchange_id: Exchange database ID
+        symbol_base: Base asset (e.g., 'BTC')
+        symbol_quote: Quote asset (e.g., 'USDT')
+        
+    Returns:
+        Symbol instance or None if not found
+    """
+    db = get_db_manager()
+    
+    query = """
+        SELECT id, exchange_id, symbol_base, symbol_quote, exchange_symbol,
+               is_active, is_futures, min_order_size, max_order_size,
+               price_precision, quantity_precision, tick_size, step_size,
+               min_notional, created_at, updated_at
+        FROM symbols
+        WHERE exchange_id = $1 
+          AND symbol_base = $2 
+          AND symbol_quote = $3
+          AND is_active = true
+    """
+    
+    try:
+        row = await db.fetchrow(query, exchange_id, symbol_base.upper(), symbol_quote.upper())
+        
+        if not row:
+            return None
+        
+        return DBSymbol(
+            id=row['id'],
+            exchange_id=row['exchange_id'],
+            symbol_base=row['symbol_base'],
+            symbol_quote=row['symbol_quote'],
+            exchange_symbol=row['exchange_symbol'],
+            is_active=row['is_active'],
+            is_futures=row['is_futures'],
+            min_order_size=row['min_order_size'],
+            max_order_size=row['max_order_size'],
+            price_precision=row['price_precision'],
+            quantity_precision=row['quantity_precision'],
+            tick_size=row['tick_size'],
+            step_size=row['step_size'],
+            min_notional=row['min_notional'],
+            created_at=row['created_at'],
+            updated_at=row['updated_at']
+        )
+        
+    except Exception as e:
+        logger.error(f"Failed to get symbol for exchange {exchange_id}, {symbol_base}/{symbol_quote}: {e}")
+        raise
+
+
+async def get_symbols_by_exchange(exchange_id: int, active_only: bool = True) -> List[DBSymbol]:
+    """
+    Get all symbols for a specific exchange.
+    
+    Args:
+        exchange_id: Exchange database ID
+        active_only: Only return active symbols
+        
+    Returns:
+        List of Symbol instances
+    """
+    db = get_db_manager()
+    
+    base_query = """
+        SELECT id, exchange_id, symbol_base, symbol_quote, exchange_symbol,
+               is_active, is_futures, min_order_size, max_order_size,
+               price_precision, quantity_precision, tick_size, step_size,
+               min_notional, created_at, updated_at
+        FROM symbols
+        WHERE exchange_id = $1
+    """
+    
+    if active_only:
+        query = base_query + " AND is_active = true"
+    else:
+        query = base_query
+    
+    query += " ORDER BY symbol_base, symbol_quote"
+    
+    try:
+        rows = await db.fetch(query, exchange_id)
+        
+        symbols = [
+            DBSymbol(
+                id=row['id'],
+                exchange_id=row['exchange_id'],
+                symbol_base=row['symbol_base'],
+                symbol_quote=row['symbol_quote'],
+                exchange_symbol=row['exchange_symbol'],
+                is_active=row['is_active'],
+                is_futures=row['is_futures'],
+                min_order_size=row['min_order_size'],
+                max_order_size=row['max_order_size'],
+                price_precision=row['price_precision'],
+                quantity_precision=row['quantity_precision'],
+                tick_size=row['tick_size'],
+                step_size=row['step_size'],
+                min_notional=row['min_notional'],
+                created_at=row['created_at'],
+                updated_at=row['updated_at']
+            )
+            for row in rows
+        ]
+        
+        logger.debug(f"Retrieved {len(symbols)} symbols for exchange {exchange_id}")
+        return symbols
+        
+    except Exception as e:
+        logger.error(f"Failed to get symbols for exchange {exchange_id}: {e}")
+        raise
+
+
+async def get_all_active_symbols() -> List[DBSymbol]:
+    """
+    Get all active symbols across all exchanges.
+    
+    Returns:
+        List of active Symbol instances
+    """
+    db = get_db_manager()
+    
+    query = """
+        SELECT s.id, s.exchange_id, s.symbol_base, s.symbol_quote, s.exchange_symbol,
+               s.is_active, s.is_futures, s.min_order_size, s.max_order_size,
+               s.price_precision, s.quantity_precision, s.tick_size, s.step_size,
+               s.min_notional, s.created_at, s.updated_at
+        FROM symbols s
+        JOIN exchanges e ON s.exchange_id = e.id
+        WHERE s.is_active = true AND e.is_active = true
+        ORDER BY e.name, s.symbol_base, s.symbol_quote
+    """
+    
+    try:
+        rows = await db.fetch(query)
+        
+        symbols = [
+            DBSymbol(
+                id=row['id'],
+                exchange_id=row['exchange_id'],
+                symbol_base=row['symbol_base'],
+                symbol_quote=row['symbol_quote'],
+                exchange_symbol=row['exchange_symbol'],
+                is_active=row['is_active'],
+                is_futures=row['is_futures'],
+                min_order_size=row['min_order_size'],
+                max_order_size=row['max_order_size'],
+                price_precision=row['price_precision'],
+                quantity_precision=row['quantity_precision'],
+                tick_size=row['tick_size'],
+                step_size=row['step_size'],
+                min_notional=row['min_notional'],
+                created_at=row['created_at'],
+                updated_at=row['updated_at']
+            )
+            for row in rows
+        ]
+        
+        logger.debug(f"Retrieved {len(symbols)} active symbols")
+        return symbols
+        
+    except Exception as e:
+        logger.error(f"Failed to get all active symbols: {e}")
+        raise
+
+
+async def get_symbols_by_market_type(market_type: str, active_only: bool = True) -> List[DBSymbol]:
+    """
+    Get symbols filtered by market type (SPOT/FUTURES).
+    
+    Args:
+        market_type: 'SPOT' or 'FUTURES'
+        active_only: Only return active symbols
+        
+    Returns:
+        List of Symbol instances
+    """
+    db = get_db_manager()
+    
+    base_query = """
+        SELECT s.id, s.exchange_id, s.symbol_base, s.symbol_quote, s.exchange_symbol,
+               s.is_active, s.is_futures, s.min_order_size, s.max_order_size,
+               s.price_precision, s.quantity_precision, s.tick_size, s.step_size,
+               s.min_notional, s.created_at, s.updated_at
+        FROM symbols s
+        JOIN exchanges e ON s.exchange_id = e.id
+        WHERE e.market_type = $1
+    """
+    
+    conditions = []
+    if active_only:
+        conditions.append("s.is_active = true AND e.is_active = true")
+    
+    if conditions:
+        base_query += " AND " + " AND ".join(conditions)
+    
+    query = base_query + " ORDER BY e.name, s.symbol_base, s.symbol_quote"
+    
+    try:
+        rows = await db.fetch(query, market_type.upper())
+        
+        symbols = [
+            DBSymbol(
+                id=row['id'],
+                exchange_id=row['exchange_id'],
+                symbol_base=row['symbol_base'],
+                symbol_quote=row['symbol_quote'],
+                exchange_symbol=row['exchange_symbol'],
+                is_active=row['is_active'],
+                is_futures=row['is_futures'],
+                min_order_size=row['min_order_size'],
+                max_order_size=row['max_order_size'],
+                price_precision=row['price_precision'],
+                quantity_precision=row['quantity_precision'],
+                tick_size=row['tick_size'],
+                step_size=row['step_size'],
+                min_notional=row['min_notional'],
+                created_at=row['created_at'],
+                updated_at=row['updated_at']
+            )
+            for row in rows
+        ]
+        
+        logger.debug(f"Retrieved {len(symbols)} {market_type} symbols")
+        return symbols
+        
+    except Exception as e:
+        logger.error(f"Failed to get {market_type} symbols: {e}")
+        raise
+
+
+# ================================================================================================
+# Symbol CRUD Operations
+# Complete Create, Read, Update, Delete operations for Symbol management
+# ================================================================================================
+
+async def insert_symbol(symbol: DBSymbol) -> int:
+    """
+    Insert a new symbol record.
+    
+    Args:
+        symbol: Symbol instance to insert
+        
+    Returns:
+        Database ID of inserted symbol
+        
+    Raises:
+        ValueError: If symbol data is invalid
+        DatabaseError: If insert fails
+    """
+    db = get_db_manager()
+    
+    # Validate required fields
+    if not symbol.exchange_id or not symbol.symbol_base or not symbol.symbol_quote:
+        raise ValueError("Symbol exchange_id, symbol_base, and symbol_quote are required")
+    
+    query = """
+        INSERT INTO symbols (
+            exchange_id, symbol_base, symbol_quote, exchange_symbol, is_active, is_futures,
+            min_order_size, max_order_size, price_precision, quantity_precision,
+            tick_size, step_size, min_notional
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+        RETURNING id
+    """
+    
+    try:
+        symbol_id = await db.fetchval(
+            query,
+            symbol.exchange_id,
+            symbol.symbol_base.upper(),
+            symbol.symbol_quote.upper(),
+            symbol.exchange_symbol,
+            symbol.is_active,
+            symbol.is_futures,
+            symbol.min_order_size,
+            symbol.max_order_size,
+            symbol.price_precision,
+            symbol.quantity_precision,
+            symbol.tick_size,
+            symbol.step_size,
+            symbol.min_notional
+        )
+        
+        logger.info(f"Inserted symbol {symbol.symbol_base}/{symbol.symbol_quote} for exchange {symbol.exchange_id} with ID {symbol_id}")
+        return symbol_id
+        
+    except Exception as e:
+        logger.error(f"Failed to insert symbol {symbol.symbol_base}/{symbol.symbol_quote}: {e}")
+        raise
+
+
+async def update_symbol(symbol_id: int, updates: Dict[str, Any]) -> bool:
+    """
+    Update symbol record with provided fields.
+    
+    Args:
+        symbol_id: Symbol ID to update
+        updates: Dictionary of field updates
+        
+    Returns:
+        True if update successful, False if symbol not found
+        
+    Raises:
+        DatabaseError: If update fails
+    """
+    db = get_db_manager()
+    
+    if not updates:
+        return True  # No updates needed
+    
+    # Build dynamic update query
+    set_clauses = []
+    params = []
+    param_counter = 1
+    
+    for field, value in updates.items():
+        set_clauses.append(f"{field} = ${param_counter}")
+        params.append(value)
+        param_counter += 1
+    
+    # Always update the updated_at timestamp
+    set_clauses.append(f"updated_at = ${param_counter}")
+    params.append(datetime.utcnow())
+    param_counter += 1
+    
+    # Add WHERE clause parameter
+    params.append(symbol_id)
+    
+    query = f"""
+        UPDATE symbols 
+        SET {', '.join(set_clauses)}
+        WHERE id = ${param_counter}
+    """
+    
+    try:
+        result = await db.execute(query, *params)
+        
+        # Check if any rows were updated
+        updated = result.endswith('1')  # UPDATE command returns "UPDATE n"
+        
+        if updated:
+            logger.info(f"Updated symbol {symbol_id} with fields: {list(updates.keys())}")
+        else:
+            logger.warning(f"No symbol found with ID {symbol_id}")
+        
+        return updated
+        
+    except Exception as e:
+        logger.error(f"Failed to update symbol {symbol_id}: {e}")
+        raise
+
+
+async def deactivate_symbol(symbol_id: int) -> bool:
+    """
+    Deactivate a symbol (soft delete).
+    
+    Args:
+        symbol_id: Symbol ID to deactivate
+        
+    Returns:
+        True if deactivation successful, False if symbol not found
+    """
+    return await update_symbol(symbol_id, {'is_active': False})
+
+
+async def activate_symbol(symbol_id: int) -> bool:
+    """
+    Reactivate a symbol.
+    
+    Args:
+        symbol_id: Symbol ID to activate
+        
+    Returns:
+        True if activation successful, False if symbol not found
+    """
+    return await update_symbol(symbol_id, {'is_active': True})
+
+
+async def bulk_insert_symbols(symbols: List[DBSymbol]) -> List[int]:
+    """
+    Insert multiple symbols efficiently using batch operations.
+    
+    Args:
+        symbols: List of Symbol instances to insert
+        
+    Returns:
+        List of database IDs for inserted symbols
+        
+    Raises:
+        DatabaseError: If bulk insert fails
+    """
+    if not symbols:
+        return []
+    
+    db = get_db_manager()
+    
+    # Prepare data for bulk insert
+    records = []
+    for symbol in symbols:
+        records.append((
+            symbol.exchange_id,
+            symbol.symbol_base.upper(),
+            symbol.symbol_quote.upper(),
+            symbol.exchange_symbol,
+            symbol.is_active,
+            symbol.is_futures,
+            symbol.min_order_size,
+            symbol.max_order_size,
+            symbol.price_precision,
+            symbol.quantity_precision,
+            symbol.tick_size,
+            symbol.step_size,
+            symbol.min_notional
+        ))
+    
+    columns = [
+        'exchange_id', 'symbol_base', 'symbol_quote', 'exchange_symbol',
+        'is_active', 'is_futures', 'min_order_size', 'max_order_size',
+        'price_precision', 'quantity_precision', 'tick_size', 'step_size', 'min_notional'
+    ]
+    
+    try:
+        # Use COPY for maximum performance
+        result_count = await db.copy_records_to_table('symbols', records, columns)
+        
+        logger.info(f"Bulk inserted {result_count} symbols")
+        
+        # Since COPY doesn't return IDs, we need to fetch them
+        # This is a trade-off between performance and returning IDs
+        # For HFT systems, we often don't need the IDs immediately
+        return []  # Return empty list for now, can be enhanced if needed
+        
+    except Exception as e:
+        logger.error(f"Failed to bulk insert {len(symbols)} symbols: {e}")
+        raise
+
+
+async def get_symbol_stats() -> Dict[str, Any]:
+    """
+    Get symbol statistics for monitoring.
+    
+    Returns:
+        Dictionary with symbol statistics
+    """
+    db = get_db_manager()
+    
+    queries = {
+        'total_symbols': "SELECT COUNT(*) FROM symbols",
+        'active_symbols': "SELECT COUNT(*) FROM symbols WHERE is_active = true",
+        'spot_symbols': "SELECT COUNT(*) FROM symbols s JOIN exchanges e ON s.exchange_id = e.id WHERE e.market_type = 'SPOT' AND s.is_active = true",
+        'futures_symbols': "SELECT COUNT(*) FROM symbols s JOIN exchanges e ON s.exchange_id = e.id WHERE e.market_type = 'FUTURES' AND s.is_active = true",
+        'latest_update': "SELECT MAX(updated_at) FROM symbols"
+    }
+    
+    stats = {}
+    
+    try:
+        for key, query in queries.items():
+            result = await db.fetchval(query)
+            stats[key] = result
+        
+        # Add exchange breakdown
+        exchange_breakdown_query = """
+            SELECT e.name, COUNT(s.id) as symbol_count
+            FROM exchanges e
+            LEFT JOIN symbols s ON e.id = s.exchange_id AND s.is_active = true
+            WHERE e.is_active = true
+            GROUP BY e.name
+            ORDER BY symbol_count DESC
+        """
+        
+        breakdown_rows = await db.fetch(exchange_breakdown_query)
+        stats['symbols_by_exchange'] = {
+            row['name']: row['symbol_count'] for row in breakdown_rows
+        }
+        
+        return stats
+        
+    except Exception as e:
+        logger.error(f"Failed to retrieve symbol stats: {e}")
+        return {}
+
+
+async def populate_symbols_from_existing_data() -> int:
+    """
+    Populate symbols table from existing book_ticker_snapshots data.
+    
+    Returns:
+        Number of symbols populated
+    """
+    db = get_db_manager()
+    
+    # Extract unique symbols from existing data
+    extract_query = """
+        SELECT DISTINCT 
+            bts.exchange,
+            bts.symbol_base,
+            bts.symbol_quote
+        FROM book_ticker_snapshots bts
+        WHERE NOT EXISTS (
+            SELECT 1 FROM symbols s 
+            JOIN exchanges e ON s.exchange_id = e.id 
+            WHERE e.name = CONCAT(bts.exchange, '_SPOT')
+              AND s.symbol_base = bts.symbol_base 
+              AND s.symbol_quote = bts.symbol_quote
+        )
+        ORDER BY bts.exchange, bts.symbol_base, bts.symbol_quote
+    """
+    
+    try:
+        unique_symbols = await db.fetch(extract_query)
+        logger.info(f"Found {len(unique_symbols)} unique symbols to populate")
+        
+        inserted_count = 0
+        
+        for row in unique_symbols:
+            exchange_name = f"{row['exchange']}_SPOT"
+            
+            # Get exchange ID
+            exchange = await get_exchange_by_enum_value(exchange_name)
+            if not exchange:
+                logger.warning(f"Exchange {exchange_name} not found, skipping symbol {row['symbol_base']}/{row['symbol_quote']}")
+                continue
+            
+            # Create symbol
+            symbol = DBSymbol(
+                exchange_id=exchange.id,
+                symbol_base=row['symbol_base'],
+                symbol_quote=row['symbol_quote'],
+                exchange_symbol=f"{row['symbol_base']}{row['symbol_quote']}",  # Default format
+                is_active=True,
+                is_futures=False  # From book_ticker_snapshots, likely spot
+            )
+            
+            try:
+                await insert_symbol(symbol)
+                inserted_count += 1
+            except Exception as e:
+                logger.warning(f"Failed to insert symbol {row['symbol_base']}/{row['symbol_quote']} for {exchange_name}: {e}")
+        
+        logger.info(f"Successfully populated {inserted_count} symbols from existing data")
+        return inserted_count
+        
+    except Exception as e:
+        logger.error(f"Failed to populate symbols from existing data: {e}")
+        raise
+
+
+async def get_exchange_by_enum_value(enum_value: str) -> Optional[Exchange]:
+    """
+    Helper function to get exchange by enum value.
+    
+    Args:
+        enum_value: Exchange enum value (e.g., 'MEXC_SPOT')
+        
+    Returns:
+        Exchange instance or None if not found
+    """
+    db = get_db_manager()
+    
+    query = """
+        SELECT id, name, enum_value, display_name, market_type, is_active,
+               base_url, websocket_url, rate_limit_requests_per_second, 
+               precision_default, created_at, updated_at
+        FROM exchanges
+        WHERE enum_value = $1 AND is_active = true
+    """
+    
+    try:
+        row = await db.fetchrow(query, enum_value)
+        
+        if not row:
+            return None
+        
+        return Exchange(
+            id=row['id'],
+            name=row['name'],
+            enum_value=row['enum_value'],
+            display_name=row['display_name'],
+            market_type=row['market_type'],
+            is_active=row['is_active'],
+            base_url=row['base_url'],
+            websocket_url=row['websocket_url'],
+            rate_limit_requests_per_second=row['rate_limit_requests_per_second'],
+            precision_default=row['precision_default'],
+            created_at=row['created_at'],
+            updated_at=row['updated_at']
+        )
+        
+    except Exception as e:
+        logger.error(f"Failed to get exchange by enum value {enum_value}: {e}")
+        raise

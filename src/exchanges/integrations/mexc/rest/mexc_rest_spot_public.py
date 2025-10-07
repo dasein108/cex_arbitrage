@@ -493,7 +493,7 @@ class MexcPublicSpotRestInterface(MexcBaseRestInterface, PublicSpotRestInterface
             ExchangeAPIError: If unable to fetch kline data
         """
         from exchanges.integrations.mexc.utils import to_pair
-        from exchanges.integrations.mexc.services.symbol_mapper import from_kline_interval
+        from exchanges.integrations.mexc.utils import from_kline_interval
         pair = to_pair(symbol)
         interval = from_kline_interval(timeframe)
         
