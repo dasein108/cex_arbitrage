@@ -4,7 +4,7 @@ Logging configuration manager.
 Simplified logging config manager with "trust config, fail fast" philosophy.
 """
 
-from typing import Dict, Any, Optional
+from typing import Dict, Any
 
 
 class LoggingConfigManager:

@@ -50,7 +50,6 @@ class MexcSymbolMapper(SymbolMapperInterface):
                     return Symbol(
                         base=AssetName(base),
                         quote=AssetName(quote),
-                        is_futures=False
                     )
         
         raise ValueError(f"Unrecognized MEXC pair format: {pair}. Supported quotes: {self._quote_assets}")

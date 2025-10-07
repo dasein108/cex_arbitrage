@@ -340,8 +340,6 @@ class BasePrivateComposite(BaseCompositeExchange[PrivateRestType, PrivateWebsock
                             order_id=order.order_id,
                             status=order.status)
         
-        # TODO: remove
-        await self._exec_bound_handler(PrivateWebsocketChannelType.ORDER, order)
 
         self.publish('orders', order)
 
@@ -482,8 +480,6 @@ class BasePrivateComposite(BaseCompositeExchange[PrivateRestType, PrivateWebsock
                          is_maker=trade.is_maker)
 
         # await self.publish('trades', trade)
-        # TODO: remove
-        await self._exec_bound_handler(PrivateWebsocketChannelType.EXECUTION, trade)
 
     # Data refresh and utilities
 
@@ -504,8 +500,6 @@ class BasePrivateComposite(BaseCompositeExchange[PrivateRestType, PrivateWebsock
         """Update internal balance state."""
         self._balances[asset] = balance
 
-        # TODO: remove
-        await self._exec_bound_handler(PrivateWebsocketChannelType.BALANCE, balance)
 
         self.publish('balances', balance)
 

@@ -13,7 +13,6 @@ import re
 from exchanges.integrations.mexc.structs.exchange import (
     MexcOrderResponse
 )
-from exchanges.structs import OrderStatus, OrderType
 from exchanges.structs.common import (
     Side, OrderStatus, OrderType, TimeInForce, Order, Symbol
 )

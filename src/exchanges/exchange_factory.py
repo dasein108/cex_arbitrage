@@ -1,13 +1,43 @@
-from exchanges.integrations.gateio.services.futures_symbol_mapper import GateioFuturesSymbolMapper
-from exchanges.integrations.gateio.services.spot_symbol_mapper import GateioSymbolMapper
-from exchanges.integrations.mexc.rest import *
-from exchanges.integrations.gateio.rest import *
-from exchanges.integrations.mexc.services.symbol_mapper import MexcSymbolMapper
-from exchanges.integrations.mexc.ws import *
-from exchanges.integrations.gateio.ws import *
+# Core configuration and enums
 from config.structs import ExchangeConfig
 from exchanges.structs.enums import ExchangeEnum
-from exchanges.interfaces.composite import *
+
+# Composite interfaces
+from exchanges.interfaces.composite import (
+    CompositePublicSpotExchange,
+    CompositePrivateSpotExchange,
+    CompositePublicFuturesExchange,
+    CompositePrivateFuturesExchange
+)
+
+# MEXC REST interfaces
+from exchanges.integrations.mexc.rest import MexcPublicSpotRestInterface, MexcPrivateSpotRestInterface
+
+# MEXC WebSocket interfaces
+from exchanges.integrations.mexc.ws import MexcPublicSpotWebsocket, MexcPrivateSpotWebsocket
+
+# MEXC services
+from exchanges.integrations.mexc.services.symbol_mapper import MexcSymbolMapper
+
+# Gate.io REST interfaces
+from exchanges.integrations.gateio.rest import (
+    GateioPublicSpotRestInterface,
+    GateioPrivateSpotRestInterface,
+    GateioPublicFuturesRestInterface,
+    GateioPrivateFuturesRestInterface
+)
+
+# Gate.io WebSocket interfaces
+from exchanges.integrations.gateio.ws import (
+    GateioPublicSpotWebsocket,
+    GateioPrivateSpotWebsocket,
+    GateioPublicFuturesWebsocket,
+    GateioPrivateFuturesWebsocket
+)
+
+# Gate.io services
+from exchanges.integrations.gateio.services.futures_symbol_mapper import GateioFuturesSymbolMapper
+from exchanges.integrations.gateio.services.spot_symbol_mapper import GateioSymbolMapper
 
 EXCHANGE_REST_MAP = {
     (ExchangeEnum.MEXC, False): MexcPublicSpotRestInterface,
