@@ -367,7 +367,6 @@ make docs
 - **docker-compose.dev.yml**: Development environment overrides
 - **docker-compose.prod.yml**: Production environment configuration
 - **docker-compose.local-monitoring.yml**: Local monitoring stack
-- **docker-compose.prometheus.yml**: Prometheus monitoring (optional)
 
 ### Environment Files
 - **.env.local**: Local development environment variables
@@ -376,7 +375,6 @@ make docs
 
 ### Database Configuration
 - **init-db.sql**: Database initialization schema
-- **optimize-db.sql**: Database performance optimizations
 - **postgres-prod.conf/**: Production PostgreSQL configuration
 
 ### Grafana Configuration

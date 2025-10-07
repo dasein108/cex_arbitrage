@@ -138,7 +138,6 @@ balances                # Account balance tracking
 - **Continuous Aggregates**: Pre-computed OHLCV and spread analytics
 - **Optimized Indexes**: Sub-millisecond query performance
 
-#### **`optimize-db.sql` - Resource Optimization**
 **4GB server optimizations**:
 - Compression policies for space efficiency
 - Chunk size optimization for memory usage
@@ -265,8 +264,8 @@ docker-compose -f docker-compose.local-monitoring.yml up -d
 ### **Key Files to Maintain**
 - ✅ All deployment scripts (deploy.sh, start-dev.sh, rebuild.sh, cleanup-server.sh)
 - ✅ All Docker Compose files
-- ✅ Database schema files (init-db.sql, optimize-db.sql)
-- ✅ Grafana/Prometheus configurations
+- ✅ Database schema files (init-db.sql)
+- ✅ Grafana configurations
 
 ### **Server Configuration**
 - **Target**: 31.192.233.13 (4GB VPS)
