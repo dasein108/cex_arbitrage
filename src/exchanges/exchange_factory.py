@@ -28,6 +28,9 @@ from exchanges.integrations.gateio.rest import (
     GateioPrivateFuturesRestInterface
 )
 
+# Gate.io composite exchanges
+from exchanges.integrations.gateio.gateio_private_futures_exchange import GateioPrivateFuturesExchange
+
 # Gate.io WebSocket interfaces
 from exchanges.integrations.gateio.ws import (
     GateioPublicSpotWebsocket,
@@ -64,6 +67,11 @@ COMPOSITE_AGNOSTIC_MAP = {
     (False, True): CompositePrivateSpotExchange,
     (True, False): CompositePublicFuturesExchange,
     (True, True): CompositePrivateFuturesExchange,
+}
+
+# Exchange-specific futures composite mappings
+FUTURES_COMPOSITE_MAP = {
+    ExchangeEnum.GATEIO_FUTURES: GateioPrivateFuturesExchange,
 }
 
 SYMBOL_MAPPER_MAP = {
@@ -124,9 +132,10 @@ def get_ws_implementation(exchange_config: ExchangeConfig, is_private: bool) -> 
     return impl_class(exchange_config)
 
 
-def get_composite_implementation(exchange_config: ExchangeConfig, is_private: bool) -> Union[
+def get_composite_implementation(exchange_config: ExchangeConfig, is_private: bool, settle: str = "usdt") -> Union[
     CompositePublicSpotExchange, CompositePrivateSpotExchange,
-    CompositePublicFuturesExchange, CompositePrivateFuturesExchange
+    CompositePublicFuturesExchange, CompositePrivateFuturesExchange,
+    GateioPrivateFuturesExchange
 ]:
     """
     Get composite exchange implementation with injected REST and WebSocket clients.
@@ -134,6 +143,7 @@ def get_composite_implementation(exchange_config: ExchangeConfig, is_private: bo
     Args:
         exchange_config: Exchange configuration containing credentials and settings
         is_private: Whether to return private (authenticated) or public composite exchange
+        settle: Settlement currency for futures ("usdt" or "btc")
         
     Returns:
         Configured composite exchange instance with injected REST and WebSocket clients
@@ -141,6 +151,19 @@ def get_composite_implementation(exchange_config: ExchangeConfig, is_private: bo
     Raises:
         ValueError: If no composite implementation exists for the exchange/access type combination
     """
+    # Check for exchange-specific futures implementations first
+    if is_private and exchange_config.is_futures and exchange_config.exchange_enum in FUTURES_COMPOSITE_MAP:
+        futures_class = FUTURES_COMPOSITE_MAP[exchange_config.exchange_enum]
+        ws_client = get_ws_implementation(exchange_config, is_private)
+        rest_client = get_rest_implementation(exchange_config, is_private)
+        
+        # For Gate.io futures, pass settlement currency
+        if exchange_config.exchange_enum == ExchangeEnum.GATEIO_FUTURES:
+            return futures_class(exchange_config, rest_client, ws_client, settle=settle)
+        else:
+            return futures_class(exchange_config, rest_client, ws_client)
+    
+    # Fall back to generic composite implementations
     ws_client = get_ws_implementation(exchange_config, is_private)
     rest_client = get_rest_implementation(exchange_config, is_private)
     is_futures = exchange_config.is_futures
@@ -208,4 +231,24 @@ def get_symbol_mapper(exchange: ExchangeEnum) -> Union[MexcSymbolMapper, GateioS
     if not symbol_mapper_class:
         raise ValueError(f"No SymbolMapper found for exchange {exchange}")
     return symbol_mapper_class()
+
+
+def create_gateio_futures_exchange(exchange_config: ExchangeConfig, settle: str = "usdt") -> GateioPrivateFuturesExchange:
+    """
+    Convenience function to create Gate.io futures exchange with settlement currency support.
+    
+    Args:
+        exchange_config: Gate.io futures exchange configuration
+        settle: Settlement currency ("usdt" or "btc")
+        
+    Returns:
+        Configured Gate.io private futures exchange
+        
+    Raises:
+        ValueError: If exchange_config is not for Gate.io futures
+    """
+    if exchange_config.exchange_enum != ExchangeEnum.GATEIO_FUTURES:
+        raise ValueError(f"Expected GATEIO_FUTURES, got {exchange_config.exchange_enum}")
+    
+    return get_composite_implementation(exchange_config, is_private=True, settle=settle)
 

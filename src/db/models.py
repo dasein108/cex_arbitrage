@@ -7,9 +7,16 @@ Optimized for HFT requirements with zero-copy serialization.
 
 from datetime import datetime
 from typing import Optional
+from enum import IntEnum
 import msgspec
 
 from exchanges.structs.common import Symbol
+
+
+class SymbolType(IntEnum):
+    """Symbol type enumeration for database storage."""
+    SPOT = 0
+    FUTURES = 1
 
 
 class Exchange(msgspec.Struct):
@@ -18,22 +25,16 @@ class Exchange(msgspec.Struct):
     
     Represents supported cryptocurrency exchanges with their
     configuration and metadata for normalized database operations.
+    Simplified to store only essential identification fields.
     """
-    # Required fields first
+    # Required fields
     name: str                                    # MEXC_SPOT, GATEIO_SPOT, etc.
     enum_value: str                              # Maps to ExchangeEnum
     display_name: str                            # User-friendly name
     market_type: str                             # SPOT, FUTURES, OPTIONS
     
-    # Optional fields with defaults
+    # Optional database ID
     id: Optional[int] = None
-    is_active: bool = True
-    base_url: Optional[str] = None
-    websocket_url: Optional[str] = None
-    rate_limit_requests_per_second: Optional[int] = None
-    precision_default: int = 8
-    created_at: Optional[datetime] = None
-    updated_at: Optional[datetime] = None
     
     def to_exchange_enum(self) -> "ExchangeEnum":
         """
@@ -104,10 +105,8 @@ class Exchange(msgspec.Struct):
         Calculate delay between requests to respect rate limits.
         
         Returns:
-            Delay in seconds between requests
+            Default delay (exchange-specific config should be used elsewhere)
         """
-        if self.rate_limit_requests_per_second:
-            return 1.0 / self.rate_limit_requests_per_second
         return 0.01  # Default 100 requests/second
     
     def is_futures_exchange(self) -> bool:
@@ -125,26 +124,18 @@ class Symbol(msgspec.Struct):
     
     Represents trading pairs across exchanges with their configuration
     and metadata for normalized database operations.
+    Simplified to store only essential identification fields.
     """
-    # Required fields first
+    # Required fields first (part of unique key)
     exchange_id: int                                 # Foreign key to exchanges table
     symbol_base: str                                # Base asset (BTC, ETH, etc.)
     symbol_quote: str                               # Quote asset (USDT, BTC, etc.)
+    symbol_type: SymbolType                         # SPOT or FUTURES
     exchange_symbol: str                            # Exchange-specific symbol format
     
-    # Optional fields with defaults
+    # Optional fields
     id: Optional[int] = None
-    is_active: bool = True
-    is_futures: bool = False
-    min_order_size: Optional[float] = None
-    max_order_size: Optional[float] = None
-    price_precision: int = 8
-    quantity_precision: int = 8
-    tick_size: Optional[float] = None
-    step_size: Optional[float] = None
-    min_notional: Optional[float] = None
-    created_at: Optional[datetime] = None
-    updated_at: Optional[datetime] = None
+    is_active: bool = True                          # Whether symbol is currently traded
     
     @classmethod
     def from_symbol_and_exchange(
@@ -170,8 +161,8 @@ class Symbol(msgspec.Struct):
             exchange_id=exchange_id,
             symbol_base=str(symbol.base),
             symbol_quote=str(symbol.quote),
+            symbol_type=SymbolType.FUTURES if (hasattr(symbol, 'is_futures') and symbol.is_futures) else SymbolType.SPOT,
             exchange_symbol=exchange_symbol,
-            is_futures=symbol.is_futures if hasattr(symbol, 'is_futures') else False,
             **kwargs
         )
     
@@ -187,8 +178,7 @@ class Symbol(msgspec.Struct):
         
         return CommonSymbol(
             base=AssetName(self.symbol_base),
-            quote=AssetName(self.symbol_quote),
-            is_futures=self.is_futures
+            quote=AssetName(self.symbol_quote)
         )
     
     def get_symbol_string(self) -> str:
@@ -207,7 +197,25 @@ class Symbol(msgspec.Struct):
         Returns:
             'FUTURES' if futures symbol, 'SPOT' otherwise
         """
-        return "FUTURES" if self.is_futures else "SPOT"
+        return "FUTURES" if self.symbol_type == SymbolType.FUTURES else "SPOT"
+    
+    def is_futures(self) -> bool:
+        """
+        Check if this is a futures symbol.
+        
+        Returns:
+            True if symbol type is FUTURES
+        """
+        return self.symbol_type == SymbolType.FUTURES
+    
+    def is_spot(self) -> bool:
+        """
+        Check if this is a spot symbol.
+        
+        Returns:
+            True if symbol type is SPOT
+        """
+        return self.symbol_type == SymbolType.SPOT
     
     def is_valid_order_size(self, quantity: float) -> bool:
         """
@@ -217,37 +225,33 @@ class Symbol(msgspec.Struct):
             quantity: Order quantity to validate
             
         Returns:
-            True if quantity is valid
+            True (constraints should be checked elsewhere)
         """
-        if self.min_order_size and quantity < self.min_order_size:
-            return False
-        if self.max_order_size and quantity > self.max_order_size:
-            return False
         return True
     
     def round_price(self, price: float) -> float:
         """
-        Round price to symbol precision.
+        Round price to default precision.
         
         Args:
             price: Raw price value
             
         Returns:
-            Price rounded to symbol precision
+            Price rounded to default precision
         """
-        return round(price, self.price_precision)
+        return round(price, 8)  # Default precision
     
     def round_quantity(self, quantity: float) -> float:
         """
-        Round quantity to symbol precision.
+        Round quantity to default precision.
         
         Args:
             quantity: Raw quantity value
             
         Returns:
-            Quantity rounded to symbol precision
+            Quantity rounded to default precision
         """
-        return round(quantity, self.quantity_precision)
+        return round(quantity, 8)  # Default precision
 
 
 class BookTickerSnapshot(msgspec.Struct):
@@ -255,14 +259,10 @@ class BookTickerSnapshot(msgspec.Struct):
     Book ticker snapshot data structure.
     
     Represents the best bid/ask prices and quantities at a specific moment.
-    Optimized for high-frequency storage and retrieval.
+    Optimized for high-frequency storage and retrieval using normalized symbol_id.
     """
     # Database fields
-
-    # Exchange and symbol
-    exchange: str
-    symbol_base: str
-    symbol_quote: str
+    symbol_id: int                              # Foreign key to symbols table
     
     # Book ticker data
     bid_price: float
@@ -276,10 +276,9 @@ class BookTickerSnapshot(msgspec.Struct):
     id: Optional[int] = None
 
     @classmethod
-    def from_symbol_and_data(
+    def from_symbol_id_and_data(
         cls,
-        exchange: str,
-        symbol: Symbol,
+        symbol_id: int,
         bid_price: float,
         bid_qty: float,
         ask_price: float,
@@ -287,11 +286,10 @@ class BookTickerSnapshot(msgspec.Struct):
         timestamp: datetime
     ) -> "BookTickerSnapshot":
         """
-        Create BookTickerSnapshot from symbol and ticker data.
+        Create BookTickerSnapshot from symbol ID and ticker data.
         
         Args:
-            exchange: Exchange identifier (MEXC, GATEIO, etc.)
-            symbol: Symbol object with composite/quote assets
+            symbol_id: Database symbol ID
             bid_price: Best bid price
             bid_qty: Best bid quantity
             ask_price: Best ask price
@@ -302,9 +300,7 @@ class BookTickerSnapshot(msgspec.Struct):
             BookTickerSnapshot instance
         """
         return cls(
-            exchange=exchange.upper(),
-            symbol_base=str(symbol.base),
-            symbol_quote=str(symbol.quote),
+            symbol_id=symbol_id,
             bid_price=bid_price,
             bid_qty=bid_qty,
             ask_price=ask_price,
@@ -354,19 +350,144 @@ class BookTickerSnapshot(msgspec.Struct):
         return (self.bid_price + self.ask_price) / 2
 
 
+class NormalizedBookTickerSnapshot(msgspec.Struct):
+    """
+    Normalized book ticker snapshot using foreign key relationships.
+    
+    Uses exchange_id and symbol_id instead of string-based identification
+    for optimal database performance and referential integrity.
+    """
+    # Foreign key relationships
+    exchange_id: int                                # Foreign key to exchanges table
+    symbol_id: int                                  # Foreign key to symbols table
+    
+    # Book ticker data
+    bid_price: float
+    bid_qty: float
+    ask_price: float
+    ask_qty: float
+    
+    # Timing
+    timestamp: datetime
+    created_at: Optional[datetime] = None
+    id: Optional[int] = None
+    
+    @classmethod
+    def from_legacy_snapshot(
+        cls,
+        legacy_snapshot: "BookTickerSnapshot",
+        exchange_id: int,
+        symbol_id: int
+    ) -> "NormalizedBookTickerSnapshot":
+        """
+        Create normalized snapshot from legacy snapshot.
+        
+        Args:
+            legacy_snapshot: Legacy BookTickerSnapshot
+            exchange_id: Resolved exchange database ID
+            symbol_id: Resolved symbol database ID
+            
+        Returns:
+            NormalizedBookTickerSnapshot instance
+        """
+        return cls(
+            exchange_id=exchange_id,
+            symbol_id=symbol_id,
+            bid_price=legacy_snapshot.bid_price,
+            bid_qty=legacy_snapshot.bid_qty,
+            ask_price=legacy_snapshot.ask_price,
+            ask_qty=legacy_snapshot.ask_qty,
+            timestamp=legacy_snapshot.timestamp,
+            created_at=legacy_snapshot.created_at,
+            id=legacy_snapshot.id
+        )
+    
+    def get_spread(self) -> float:
+        """Calculate bid-ask spread."""
+        return self.ask_price - self.bid_price
+    
+    def get_spread_percentage(self) -> float:
+        """Calculate bid-ask spread as percentage."""
+        mid_price = (self.bid_price + self.ask_price) / 2
+        return (self.get_spread() / mid_price) * 100 if mid_price > 0 else 0.0
+    
+    def get_mid_price(self) -> float:
+        """Calculate mid price."""
+        return (self.bid_price + self.ask_price) / 2
+
+
+class NormalizedTradeSnapshot(msgspec.Struct):
+    """
+    Normalized trade snapshot using foreign key relationships.
+    
+    Uses exchange_id and symbol_id instead of string-based identification
+    for optimal database performance and referential integrity.
+    """
+    # Foreign key relationships
+    exchange_id: int                                # Foreign key to exchanges table
+    symbol_id: int                                  # Foreign key to symbols table
+    
+    # Trade data
+    price: float
+    quantity: float
+    side: str                                       # 'buy' or 'sell'
+    timestamp: datetime
+    
+    # Optional fields
+    trade_id: Optional[str] = None
+    created_at: Optional[datetime] = None
+    id: Optional[int] = None
+    quote_quantity: Optional[float] = None
+    is_buyer: Optional[bool] = None
+    is_maker: Optional[bool] = None
+    
+    @classmethod
+    def from_legacy_snapshot(
+        cls,
+        legacy_snapshot: "TradeSnapshot",
+        exchange_id: int,
+        symbol_id: int
+    ) -> "NormalizedTradeSnapshot":
+        """
+        Create normalized snapshot from legacy snapshot.
+        
+        Args:
+            legacy_snapshot: Legacy TradeSnapshot
+            exchange_id: Resolved exchange database ID
+            symbol_id: Resolved symbol database ID
+            
+        Returns:
+            NormalizedTradeSnapshot instance
+        """
+        return cls(
+            exchange_id=exchange_id,
+            symbol_id=symbol_id,
+            price=legacy_snapshot.price,
+            quantity=legacy_snapshot.quantity,
+            side=legacy_snapshot.side,
+            timestamp=legacy_snapshot.timestamp,
+            trade_id=legacy_snapshot.trade_id,
+            created_at=legacy_snapshot.created_at,
+            id=legacy_snapshot.id,
+            quote_quantity=legacy_snapshot.quote_quantity,
+            is_buyer=legacy_snapshot.is_buyer,
+            is_maker=legacy_snapshot.is_maker
+        )
+    
+    def get_notional_value(self) -> float:
+        """Calculate trade notional value."""
+        return self.price * self.quantity
+
+
 class TradeSnapshot(msgspec.Struct):
     """
     Trade data snapshot structure.
     
     Represents individual trade execution data from exchanges.
-    Optimized for high-frequency trade storage and analysis.
+    Optimized for high-frequency trade storage and analysis using normalized symbol_id.
     """
     # Database fields
-    
-    # Exchange and symbol (required)
-    exchange: str
-    symbol_base: str
-    symbol_quote: str
+    symbol_id: int                              # Foreign key to symbols table
     
     # Trade data (required)
     price: float
@@ -383,16 +504,16 @@ class TradeSnapshot(msgspec.Struct):
     is_maker: Optional[bool] = None
     
     @classmethod
-    def from_trade_struct(
+    def from_symbol_id_and_trade(
         cls,
-        exchange: str,
+        symbol_id: int,
         trade: "Trade"  # Import from structs.common
     ) -> "TradeSnapshot":
         """
-        Create TradeSnapshot from Trade struct.
+        Create TradeSnapshot from symbol ID and Trade struct.
         
         Args:
-            exchange: Exchange identifier (MEXC, GATEIO, etc.)
+            symbol_id: Database symbol ID
             trade: Trade struct from structs.common
             
         Returns:
@@ -401,9 +522,7 @@ class TradeSnapshot(msgspec.Struct):
         from exchanges.structs import Side
 
         return cls(
-            exchange=exchange.upper(),
-            symbol_base=str(trade.symbol.base),
-            symbol_quote=str(trade.symbol.quote),
+            symbol_id=symbol_id,
             price=trade.price,
             quantity=trade.quantity,
             side='buy' if trade.side == Side.BUY else 'sell',

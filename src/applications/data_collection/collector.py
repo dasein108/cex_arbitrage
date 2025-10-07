@@ -22,7 +22,7 @@ from exchanges.exchange_factory import get_composite_implementation
 from exchanges.adapters import BindedEventHandlersAdapter
 from infrastructure.networking.websocket.structs import PublicWebsocketChannelType
 from db import BookTickerSnapshot
-from db.models import TradeSnapshot
+from db.models import TradeSnapshot, NormalizedBookTickerSnapshot, NormalizedTradeSnapshot
 from .analytics import RealTimeAnalytics, ArbitrageOpportunity
 from config.config_manager import get_exchange_config
 from infrastructure.logging import get_logger, LoggingTimer
@@ -468,26 +468,33 @@ class UnifiedWebSocketManager:
                         break
 
                 if symbol is None:
-                    # Create a fallback symbol by parsing the symbol string
+                    # Try to resolve symbol using database cache with exchange_symbol lookup
                     self.logger.debug(
-                        f"Symbol not found in active symbols: {symbol_str} for exchange {exchange}, creating fallback")
+                        f"Symbol not found in active symbols: {symbol_str} for exchange {exchange}, trying database cache")
 
-                    # Parse symbol string directly without prefixes
-                    # Try to parse symbol string manually as fallback
-                    if len(symbol_str) >= 6 and symbol_str.endswith('USDT'):
-                        from exchanges.structs.common import Symbol
-                        from exchanges.structs.types import AssetName
-                        from exchanges.structs import ExchangeEnum
-                        base = symbol_str[:-4]  # Remove USDT
-                        quote = 'USDT'
-                        # Determine if futures based on exchange type
+                    try:
+                        from exchanges.structs.enums import ExchangeEnum
+                        from db.cache_operations import cached_resolve_symbol_by_exchange_string
+                        
+                        # Parse exchange enum and resolve symbol from database cache
                         exchange_enum = ExchangeEnum(exchange)
-                        is_futures = exchange_enum in [ExchangeEnum.GATEIO_FUTURES]
-                        symbol = Symbol(base=AssetName(base), quote=AssetName(quote))
-                        self.logger.debug(f"Created fallback symbol: {symbol}")
-                    else:
-                        # Skip this entry if we can't parse it
-                        self.logger.warning(f"Cannot parse symbol: {symbol_str}")
+                        db_symbol = cached_resolve_symbol_by_exchange_string(exchange_enum, symbol_str)
+                        
+                        if db_symbol:
+                            # Create Symbol object from database symbol
+                            from exchanges.structs.common import Symbol
+                            from exchanges.structs.types import AssetName
+                            symbol = Symbol(
+                                base=AssetName(db_symbol.symbol_base), 
+                                quote=AssetName(db_symbol.symbol_quote)
+                            )
+                            self.logger.debug(f"Resolved symbol from database cache: {symbol}")
+                        else:
+                            # Skip this entry if we can't resolve it
+                            self.logger.warning(f"Cannot resolve symbol from cache: {symbol_str} on {exchange}")
+                            continue
+                    except Exception as e:
+                        self.logger.warning(f"Error resolving symbol {symbol_str} on {exchange}: {e}")
                         continue
 
                 snapshot = BookTickerSnapshot.from_symbol_and_data(
@@ -785,6 +792,83 @@ class DataCollector:
 
         self.logger.info(f"Data collector initialized with {len(self.config.symbols)} symbols")
 
+    async def _perform_symbol_synchronization(self) -> None:
+        """
+        Perform symbol synchronization on startup.
+        
+        Synchronizes exchanges and symbols with the database:
+        1. Ensures all configured exchanges exist in database
+        2. Fetches symbol information from exchange APIs
+        3. Adds new symbols, updates existing ones, marks delisted as inactive
+        """
+        try:
+            self.logger.info("Starting symbol synchronization process")
+            
+            # Import synchronization services
+            from db.symbol_sync import get_symbol_sync_service
+            from db.exchange_sync import get_exchange_sync_service
+            
+            # Get configured exchanges from config
+            exchanges_to_sync = self.config.exchanges
+            self.logger.info(f"Synchronizing {len(exchanges_to_sync)} exchanges: {[e.value for e in exchanges_to_sync]}")
+            
+            # Sync exchanges first (ensure they exist in database)
+            exchange_sync = get_exchange_sync_service()
+            exchanges = await exchange_sync.sync_exchanges(exchanges_to_sync)
+            self.logger.info(f"Exchange synchronization completed: {len(exchanges)} exchanges synchronized")
+            
+            # Sync symbols for all exchanges
+            symbol_sync = get_symbol_sync_service()
+            symbol_stats = await symbol_sync.sync_all_exchanges(exchanges_to_sync)
+            
+            # Log detailed synchronization results
+            total_stats = symbol_stats.get('_totals', {})
+            self.logger.info(
+                f"Symbol synchronization completed: "
+                f"Added={total_stats.get('added', 0)}, "
+                f"Updated={total_stats.get('updated', 0)}, "
+                f"Deactivated={total_stats.get('deactivated', 0)}, "
+                f"Errors={total_stats.get('errors', 0)}"
+            )
+            
+            # Log per-exchange statistics
+            for exchange_name, stats in symbol_stats.items():
+                if exchange_name != '_totals':
+                    self.logger.info(
+                        f"Exchange {exchange_name}: Added={stats.get('added', 0)}, "
+                        f"Updated={stats.get('updated', 0)}, Deactivated={stats.get('deactivated', 0)}, "
+                        f"Errors={stats.get('errors', 0)}"
+                    )
+            
+            # Send notification for significant changes
+            if total_stats.get('added', 0) > 0 or total_stats.get('deactivated', 0) > 0:
+                await self._notify_symbol_changes(total_stats)
+                
+        except Exception as e:
+            self.logger.error(f"Symbol synchronization failed: {e}")
+            import traceback
+            self.logger.error(traceback.format_exc())
+            # Don't re-raise - allow data collector to start even if sync fails
+            
+    async def _notify_symbol_changes(self, stats: dict) -> None:
+        """Send notification for significant symbol changes."""
+        try:
+            from infrastructure.networking.telegram import send_to_telegram
+            
+            added = stats.get('added', 0)
+            deactivated = stats.get('deactivated', 0)
+            
+            message = "📈 Symbol synchronization completed:\n"
+            if added > 0:
+                message += f"➕ {added} new symbols added\n"
+            if deactivated > 0:
+                message += f"❌ {deactivated} symbols deactivated\n"
+            
+            await send_to_telegram(message)
+            self.logger.info("Sent Telegram notification for symbol changes")
+        except Exception as e:
+            self.logger.error(f"Failed to send symbol change notification: {e}")
+
     async def initialize(self) -> None:
         """Initialize all components."""
         try:
@@ -807,6 +891,14 @@ class DataCollector:
             db_manager = DatabaseManager()
             await db_manager.initialize(self.config.database)
             self.logger.info("Database connection pool initialized")
+            
+            # Perform symbol synchronization on startup
+            await self._perform_symbol_synchronization()
+            
+            # Initialize symbol cache for normalized schema operations
+            from db.cache_warming import warm_symbol_cache
+            await warm_symbol_cache()
+            self.logger.info("Symbol cache warmed for normalized schema operations")
 
             # Initialize analytics engine
             from .analytics import RealTimeAnalytics
@@ -956,66 +1048,173 @@ class DataCollector:
 
     async def _handle_snapshot_storage(self, snapshots: List[BookTickerSnapshot]) -> None:
         """
-        Handle snapshot storage to database.
-        
+        Handle snapshot storage to database using normalized schema with exchange_symbol lookups.
+
+        Uses modern cache operations with exchange_symbol resolution for optimal performance.
+
         Args:
-            snapshots: List of snapshots to store
+            snapshots: List of legacy snapshots to store
         """
         try:
             if not snapshots:
                 self.logger.debug("No snapshots to store")
                 return
 
-            self.logger.debug(f"Storing {len(snapshots)} snapshots to database...")
+            self.logger.debug(f"Converting {len(snapshots)} legacy snapshots to normalized format...")
 
-            # Store snapshots in database using batch insert
-            from db.operations import insert_book_ticker_snapshots_batch
+            # Convert legacy snapshots to normalized format using exchange_symbol lookups
+            from db.cache_operations import cached_resolve_symbol_by_exchange_string
+            from exchanges.structs.enums import ExchangeEnum
+            
+            normalized_snapshots = []
+            skipped_count = 0
+            
+            for snapshot in snapshots:
+                try:
+                    # Parse exchange enum from snapshot
+                    try:
+                        exchange_enum = ExchangeEnum(snapshot.exchange)
+                    except ValueError:
+                        self.logger.warning(f"Invalid exchange enum: {snapshot.exchange}")
+                        skipped_count += 1
+                        continue
+                    
+                    # Create exchange_symbol from snapshot data
+                    exchange_symbol = f"{snapshot.symbol_base}{snapshot.symbol_quote}".upper()
+                    
+                    # Resolve symbol using exchange_symbol lookup (modern approach)
+                    symbol = cached_resolve_symbol_by_exchange_string(exchange_enum, exchange_symbol)
+                    if not symbol:
+                        self.logger.warning(
+                            f"Symbol not found in cache: {exchange_symbol} on {snapshot.exchange}"
+                        )
+                        skipped_count += 1
+                        continue
+                    
+                    # Create normalized snapshot using symbol.exchange_id and symbol.id
+                    normalized_snapshot = NormalizedBookTickerSnapshot.from_legacy_snapshot(
+                        snapshot, symbol.exchange_id, symbol.id
+                    )
+                    normalized_snapshots.append(normalized_snapshot)
+                    
+                except Exception as e:
+                    self.logger.error(
+                        f"Error converting snapshot {snapshot.exchange} {exchange_symbol}: {e}"
+                    )
+                    skipped_count += 1
+                    continue
+            
+            if skipped_count > 0:
+                self.logger.warning(f"Skipped {skipped_count} snapshots during normalization")
+            
+            if not normalized_snapshots:
+                self.logger.warning("No valid normalized snapshots to store")
+                return
+
+            # Store normalized snapshots in database using batch insert
+            from db.operations import insert_normalized_book_ticker_snapshots_batch
 
             start_time = datetime.now()
-            count = await insert_book_ticker_snapshots_batch(snapshots)
+            count = await insert_normalized_book_ticker_snapshots_batch(normalized_snapshots)
             storage_duration = (datetime.now() - start_time).total_seconds() * 1000
 
             self.logger.debug(
-                f"Successfully stored {count} snapshots in {storage_duration:.1f}ms"
+                f"Successfully stored {count} normalized snapshots in {storage_duration:.1f}ms "
+                f"(converted from {len(snapshots)} legacy snapshots, {skipped_count} skipped)"
             )
 
             # Log sample of what was stored for verification
-            if snapshots:
-                sample = snapshots[0]
+            if normalized_snapshots:
+                sample = normalized_snapshots[0]
                 self.logger.debug(
-                    f"Sample stored: {sample.exchange} {sample.symbol_base}/{sample.symbol_quote} "
-                    f"@ {sample.timestamp} - bid={sample.bid_price} ask={sample.ask_price}"
+                    f"Sample normalized snapshot stored: exchange_id={sample.exchange_id} "
+                    f"symbol_id={sample.symbol_id} @ {sample.timestamp} - "
+                    f"bid={sample.bid_price} ask={sample.ask_price}"
                 )
 
         except Exception as e:
-            self.logger.error(f"Error storing snapshots: {e}")
+            self.logger.error(f"Error storing normalized snapshots: {e}")
             import traceback
             self.logger.error(traceback.format_exc())
 
     async def _handle_trade_storage(self, trade_snapshots: List[TradeSnapshot]) -> None:
         """
-        Handle trade snapshot storage to database.
-        
+        Handle trade snapshot storage to database using normalized schema with exchange_symbol lookups.
+
+        Uses modern cache operations with exchange_symbol resolution for optimal performance.
+
         Args:
-            trade_snapshots: List of trade snapshots to store
+            trade_snapshots: List of legacy trade snapshots to store
         """
         try:
             if not trade_snapshots:
                 return
 
-            # Store trade snapshots in database using batch insert
-            from db.operations import insert_trade_snapshots_batch
+            self.logger.debug(f"Converting {len(trade_snapshots)} legacy trade snapshots to normalized format...")
+            
+            # Convert legacy trade snapshots to normalized format using exchange_symbol lookups
+            from db.cache_operations import cached_resolve_symbol_by_exchange_string
+            from exchanges.structs.enums import ExchangeEnum
+            
+            normalized_trades = []
+            skipped_count = 0
+            
+            for trade_snapshot in trade_snapshots:
+                try:
+                    # Parse exchange enum from trade snapshot
+                    try:
+                        exchange_enum = ExchangeEnum(trade_snapshot.exchange)
+                    except ValueError:
+                        self.logger.warning(f"Invalid exchange enum: {trade_snapshot.exchange}")
+                        skipped_count += 1
+                        continue
+                    
+                    # Create exchange_symbol from trade snapshot data
+                    exchange_symbol = f"{trade_snapshot.symbol_base}{trade_snapshot.symbol_quote}".upper()
+                    
+                    # Resolve symbol using exchange_symbol lookup (modern approach)
+                    symbol = cached_resolve_symbol_by_exchange_string(exchange_enum, exchange_symbol)
+                    if not symbol:
+                        self.logger.warning(
+                            f"Symbol not found in cache: {exchange_symbol} on {trade_snapshot.exchange}"
+                        )
+                        skipped_count += 1
+                        continue
+                    
+                    # Create normalized trade snapshot using symbol.exchange_id and symbol.id
+                    normalized_trade = NormalizedTradeSnapshot.from_legacy_snapshot(
+                        trade_snapshot, symbol.exchange_id, symbol.id
+                    )
+                    normalized_trades.append(normalized_trade)
+                    
+                except Exception as e:
+                    self.logger.error(
+                        f"Error converting trade snapshot {trade_snapshot.exchange} {exchange_symbol}: {e}"
+                    )
+                    skipped_count += 1
+                    continue
+            
+            if skipped_count > 0:
+                self.logger.warning(f"Skipped {skipped_count} trade snapshots during normalization")
+            
+            if not normalized_trades:
+                self.logger.warning("No valid normalized trade snapshots to store")
+                return
+
+            # Store normalized trade snapshots in database using batch insert
+            from db.operations import insert_normalized_trade_snapshots_batch
 
             start_time = datetime.now()
-            count = await insert_trade_snapshots_batch(trade_snapshots)
+            count = await insert_normalized_trade_snapshots_batch(normalized_trades)
             storage_duration = (datetime.now() - start_time).total_seconds() * 1000
 
             self.logger.debug(
-                f"Stored {count} trade snapshots in {storage_duration:.1f}ms"
+                f"Stored {count} normalized trade snapshots in {storage_duration:.1f}ms "
+                f"(converted from {len(trade_snapshots)} legacy trades, {skipped_count} skipped)"
             )
 
         except Exception as e:
-            self.logger.error(f"Error storing trade snapshots: {e}")
+            self.logger.error(f"Error storing normalized trade snapshots: {e}")
 
     def get_status(self) -> Dict[str, any]:
         """

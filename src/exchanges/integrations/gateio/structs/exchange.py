@@ -194,3 +194,102 @@ class GateioChainResponse(msgspec.Struct):
     withdraw_max: str
     deposit_min: Optional[str] = None
     confirmations: Optional[int] = None
+
+
+# Gate.io Futures API structures
+
+
+
+class GateioFuturesContractResponse(msgspec.Struct):
+    """Gate.io futures contract information response."""
+    name: str
+    type: str
+    quanto_multiplier: str
+    leverage_min: str
+    leverage_max: str
+    maintenance_rate: str
+    mark_type: str
+    mark_price: str
+    index_price: str
+    last_price: str
+    maker_fee_rate: str
+    taker_fee_rate: str
+    order_price_round: str
+    mark_price_round: str
+    funding_rate: str
+    funding_interval: int
+    order_size_min: int
+    order_size_max: int
+    order_price_deviate: str
+    ref_discount_rate: str
+    ref_rebate_rate: str
+    orderbook_id: int
+    trade_id: int
+    trade_size: str
+    position_size: str
+    config_change_time: Optional[int] = None
+    in_delisting: bool = False
+
+
+class GateioFuturesAccountResponse(msgspec.Struct):
+    """Gate.io futures account response structure."""
+    total: str
+    unrealised_pnl: str
+    position_margin: str
+    order_margin: str
+    available: str
+    point: str
+    currency: str
+    in_dual_mode: bool = False
+    enable_credit: bool = True
+    position_initial_margin: Optional[str] = None
+    maintenance_margin: Optional[str] = None
+    bonus: Optional[str] = None
+    enable_bonus: Optional[bool] = None
+    cross_order_margin: Optional[str] = None
+    cross_initial_margin: Optional[str] = None
+    cross_maintenance_margin: Optional[str] = None
+    cross_unrealised_pnl: Optional[str] = None
+    cross_available: Optional[str] = None
+
+
+# Futures WebSocket channel structures
+
+class GateioFuturesOrderbookResult(msgspec.Struct):
+    """Gate.io futures WebSocket orderbook result structure."""
+    t: int  # Event time
+    e: str  # Event type: "depthUpdate"
+    E: int  # Event time
+    s: str  # Contract: "BTC_USDT"
+    U: int  # First update ID
+    u: int  # Final update ID
+    b: List[List[str]]  # Bids: [[price, size], ...]
+    a: List[List[str]]  # Asks: [[price, size], ...]
+
+
+class GateioFuturesOrderbookMessage(msgspec.Struct):
+    """Gate.io futures WebSocket orderbook message structure."""
+    time: int
+    time_ms: int
+    channel: str  # "futures.order_book_update"
+    event: str  # "update"
+    result: GateioFuturesOrderbookResult
+
+
+class GateioFuturesTradeResult(msgspec.Struct):
+    """Gate.io futures WebSocket trade result structure."""
+    id: int
+    create_time: str
+    create_time_ms: str
+    contract: str
+    size: str  # Can be negative for sell orders
+    price: str
+
+
+class GateioFuturesTradeMessage(msgspec.Struct):
+    """Gate.io futures WebSocket trade message structure."""
+    time: int
+    time_ms: int
+    channel: str  # "futures.trades"
+    event: str  # "update"
+    result: List[GateioFuturesTradeResult]

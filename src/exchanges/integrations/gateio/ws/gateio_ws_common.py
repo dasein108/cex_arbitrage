@@ -148,8 +148,7 @@ class GateioBaseWebsocket(BaseWebsocketInterface):
             self.logger.info(f"Successfully subscribed/unsubscribed to Gate.io private futures channel: {channel}")
         else:
             error_msg = error.get("message", "Unknown error")
-            self.logger.error(f"Gate.io private futures subscription error for channel {channel}: {error_msg}"
-                              f"\r\n{message}")
+            self.logger.error(f"Gate.io private futures subscription error for channel {channel}: {error_msg}")
 
     async def _handle_auth_response(self, message: Dict[str, Any]) -> None:
         """Handle Gate.io futures authentication response."""
