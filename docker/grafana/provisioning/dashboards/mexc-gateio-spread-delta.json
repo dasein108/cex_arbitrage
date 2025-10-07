@@ -1,0 +1,325 @@
+{
+  "annotations": {
+    "list": [
+      {
+        "builtIn": 1,
+        "datasource": "-- Grafana --",
+        "enable": true,
+        "hide": true,
+        "iconColor": "rgba(0, 211, 255, 1)",
+        "name": "Annotations & Alerts",
+        "type": "dashboard"
+      }
+    ]
+  },
+  "editable": true,
+  "gnetId": null,
+  "graphTooltip": 0,
+  "id": null,
+  "links": [],
+  "panels": [
+    {
+      "datasource": "PostgreSQL-Arbitrage",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisLabel": "Price Delta (%)",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "drawStyle": "line",
+            "fillOpacity": 20,
+            "gradientMode": "none",
+            "hideFrom": {
+              "tooltip": false,
+              "viz": false,
+              "legend": false
+            },
+            "lineInterpolation": "linear",
+            "lineWidth": 2,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "auto",
+            "spanNulls": false,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 2
+              }
+            ]
+          },
+          "unit": "percent"
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": ".*Arbitrage.*"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "fixed",
+                  "fixedColor": "red"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "gridPos": {
+        "h": 12,
+        "w": 24,
+        "x": 0,
+        "y": 0
+      },
+      "id": 1,
+      "options": {
+        "legend": {
+          "calcs": ["lastNotNull", "max"],
+          "displayMode": "table",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "single"
+        }
+      },
+      "pluginVersion": "8.0.0",
+      "targets": [
+        {
+          "format": "time_series",
+          "group": [],
+          "metricColumn": "none",
+          "rawQuery": true,
+          "rawSql": "WITH price_data AS (\n  SELECT \n    bts.timestamp,\n    s.symbol_base || '/' || s.symbol_quote AS symbol,\n    e.enum_value as exchange,\n    AVG((bts.bid_price + bts.ask_price) / 2) as mid_price\n  FROM book_ticker_snapshots bts\n  JOIN symbols s ON bts.symbol_id = s.id\n  JOIN exchanges e ON s.exchange_id = e.id\n  WHERE \n    $__timeFilter(bts.timestamp)\n    AND e.enum_value IN ('MEXC_SPOT', 'GATEIO_SPOT')\n  GROUP BY bts.timestamp, s.symbol_base, s.symbol_quote, e.enum_value\n),\ncross_exchange AS (\n  SELECT \n    m.timestamp,\n    m.symbol,\n    m.mid_price as mexc_price,\n    g.mid_price as gateio_price,\n    CASE \n      WHEN g.mid_price > 0 THEN \n        ((m.mid_price - g.mid_price) / g.mid_price * 100)\n      ELSE 0\n    END as price_delta_pct\n  FROM \n    (SELECT * FROM price_data WHERE exchange = 'MEXC_SPOT') m\n  INNER JOIN \n    (SELECT * FROM price_data WHERE exchange = 'GATEIO_SPOT') g\n  ON m.timestamp = g.timestamp AND m.symbol = g.symbol\n  WHERE ABS(((m.mid_price - g.mid_price) / g.mid_price * 100)) > 0.1\n)\nSELECT\n  $__timeGroupAlias(timestamp, $__interval),\n  symbol as metric,\n  AVG(price_delta_pct) as \"Price Delta %\"\nFROM cross_exchange\nGROUP BY 1, 2\nORDER BY 1",
+          "refId": "A"
+        }
+      ],
+      "title": "MEXC-GATEIO Price Delta by Symbol",
+      "type": "timeseries"
+    },
+    {
+      "datasource": "PostgreSQL-Arbitrage",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "custom": {
+            "align": "auto",
+            "displayMode": "auto"
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 1
+              },
+              {
+                "color": "red",
+                "value": 2
+              }
+            ]
+          },
+          "unit": "percent"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 12
+      },
+      "id": 2,
+      "options": {
+        "showHeader": true,
+        "sortBy": [
+          {
+            "desc": true,
+            "displayName": "Max Delta %"
+          }
+        ]
+      },
+      "pluginVersion": "8.0.0",
+      "targets": [
+        {
+          "format": "table",
+          "group": [],
+          "metricColumn": "none",
+          "rawQuery": true,
+          "rawSql": "WITH recent_spreads AS (\n  SELECT \n    s.symbol_base || '/' || s.symbol_quote AS symbol,\n    e.enum_value as exchange,\n    AVG((bts.bid_price + bts.ask_price) / 2) as avg_mid_price,\n    MAX(bts.timestamp) as last_update\n  FROM book_ticker_snapshots bts\n  JOIN symbols s ON bts.symbol_id = s.id  \n  JOIN exchanges e ON s.exchange_id = e.id\n  WHERE \n    bts.timestamp > NOW() - INTERVAL '5 minutes'\n    AND e.enum_value IN ('MEXC_SPOT', 'GATEIO_SPOT')\n  GROUP BY s.symbol_base, s.symbol_quote, e.enum_value\n)\nSELECT \n  m.symbol,\n  m.avg_mid_price as \"MEXC Price\",\n  g.avg_mid_price as \"GATEIO Price\",\n  CASE \n    WHEN g.avg_mid_price > 0 THEN \n      ABS((m.avg_mid_price - g.avg_mid_price) / g.avg_mid_price * 100)\n    ELSE 0\n  END as \"Max Delta %\",\n  GREATEST(m.last_update, g.last_update) as \"Last Update\"\nFROM \n  (SELECT * FROM recent_spreads WHERE exchange = 'MEXC_SPOT') m\nINNER JOIN \n  (SELECT * FROM recent_spreads WHERE exchange = 'GATEIO_SPOT') g\nON m.symbol = g.symbol\nWHERE ABS((m.avg_mid_price - g.avg_mid_price) / g.avg_mid_price * 100) > 0.1\nORDER BY \"Max Delta %\" DESC\nLIMIT 20",
+          "refId": "A"
+        }
+      ],
+      "title": "Current Arbitrage Opportunities",
+      "type": "table"
+    },
+    {
+      "datasource": "PostgreSQL-Arbitrage",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 5
+              },
+              {
+                "color": "red",
+                "value": 10
+              }
+            ]
+          },
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 6,
+        "x": 12,
+        "y": 12
+      },
+      "id": 3,
+      "options": {
+        "orientation": "auto",
+        "reduceOptions": {
+          "values": false,
+          "calcs": ["lastNotNull"],
+          "fields": ""
+        },
+        "showThresholdLabels": false,
+        "showThresholdMarkers": true,
+        "text": {}
+      },
+      "pluginVersion": "8.0.0",
+      "targets": [
+        {
+          "format": "table",
+          "group": [],
+          "metricColumn": "none",
+          "rawQuery": true,
+          "rawSql": "WITH recent_data AS (\n  SELECT \n    s.symbol_base || '/' || s.symbol_quote AS symbol,\n    e.enum_value as exchange,\n    AVG((bts.bid_price + bts.ask_price) / 2) as mid_price\n  FROM book_ticker_snapshots bts\n  JOIN symbols s ON bts.symbol_id = s.id\n  JOIN exchanges e ON s.exchange_id = e.id\n  WHERE \n    bts.timestamp > NOW() - INTERVAL '5 minutes'\n    AND e.enum_value IN ('MEXC_SPOT', 'GATEIO_SPOT')\n  GROUP BY s.symbol_base, s.symbol_quote, e.enum_value\n)\nSELECT COUNT(DISTINCT m.symbol) as value\nFROM \n  (SELECT * FROM recent_data WHERE exchange = 'MEXC_SPOT') m\nINNER JOIN \n  (SELECT * FROM recent_data WHERE exchange = 'GATEIO_SPOT') g\nON m.symbol = g.symbol\nWHERE ABS((m.mid_price - g.mid_price) / g.mid_price * 100) > 1.0",
+          "refId": "A"
+        }
+      ],
+      "title": "Active Arbitrage Pairs",
+      "type": "stat"
+    },
+    {
+      "datasource": "PostgreSQL-Arbitrage",
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 2
+              },
+              {
+                "color": "red",
+                "value": 5
+              }
+            ]
+          },
+          "unit": "percent"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 6,
+        "x": 18,
+        "y": 12
+      },
+      "id": 4,
+      "options": {
+        "orientation": "auto",
+        "reduceOptions": {
+          "values": false,
+          "calcs": ["lastNotNull"],
+          "fields": ""
+        },
+        "showThresholdLabels": false,
+        "showThresholdMarkers": true,
+        "text": {}
+      },
+      "pluginVersion": "8.0.0",
+      "targets": [
+        {
+          "format": "table",
+          "group": [],
+          "metricColumn": "none",
+          "rawQuery": true,
+          "rawSql": "WITH recent_data AS (\n  SELECT \n    s.symbol_base || '/' || s.symbol_quote AS symbol,\n    e.enum_value as exchange,\n    AVG((bts.bid_price + bts.ask_price) / 2) as mid_price\n  FROM book_ticker_snapshots bts\n  JOIN symbols s ON bts.symbol_id = s.id\n  JOIN exchanges e ON s.exchange_id = e.id\n  WHERE \n    bts.timestamp > NOW() - INTERVAL '5 minutes'\n    AND e.enum_value IN ('MEXC_SPOT', 'GATEIO_SPOT')\n  GROUP BY s.symbol_base, s.symbol_quote, e.enum_value\n)\nSELECT \n  MAX(ABS((m.mid_price - g.mid_price) / g.mid_price * 100)) as value\nFROM \n  (SELECT * FROM recent_data WHERE exchange = 'MEXC_SPOT') m\nINNER JOIN \n  (SELECT * FROM recent_data WHERE exchange = 'GATEIO_SPOT') g\nON m.symbol = g.symbol",
+          "refId": "A"
+        }
+      ],
+      "title": "Max Spread Delta",
+      "type": "stat"
+    }
+  ],
+  "refresh": "5s",
+  "schemaVersion": 27,
+  "style": "dark",
+  "tags": ["arbitrage", "spread", "mexc", "gateio"],
+  "templating": {
+    "list": []
+  },
+  "time": {
+    "from": "now-1h",
+    "to": "now"
+  },
+  "timepicker": {
+    "refresh_intervals": ["5s", "10s", "30s", "1m", "5m", "15m", "30m", "1h", "2h", "1d"]
+  },
+  "timezone": "",
+  "title": "MEXC-GATEIO SPREAD DELTA",
+  "uid": "mexc-gateio-spread-delta",
+  "version": 1
+}

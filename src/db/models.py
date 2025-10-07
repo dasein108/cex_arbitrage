@@ -18,13 +18,10 @@ class BookTickerSnapshot(msgspec.Struct):
     
     Represents the best bid/ask prices and quantities at a specific moment.
     Optimized for high-frequency storage and retrieval.
+    Works with normalized database schema using symbol_id foreign keys.
     """
-    # Database fields
-
-    # Exchange and symbol
-    exchange: str
-    symbol_base: str
-    symbol_quote: str
+    # Database fields (normalized schema)
+    symbol_id: int
     
     # Book ticker data
     bid_price: float
@@ -36,6 +33,11 @@ class BookTickerSnapshot(msgspec.Struct):
     timestamp: datetime
     created_at: Optional[datetime] = None
     id: Optional[int] = None
+    
+    # Transient fields for convenience (not stored in DB)
+    exchange: Optional[str] = None
+    symbol_base: Optional[str] = None
+    symbol_quote: Optional[str] = None
 
     @classmethod
     def from_symbol_and_data(
@@ -46,32 +48,39 @@ class BookTickerSnapshot(msgspec.Struct):
         bid_qty: float,
         ask_price: float,
         ask_qty: float,
-        timestamp: datetime
+        timestamp: datetime,
+        symbol_id: Optional[int] = None
     ) -> "BookTickerSnapshot":
         """
         Create BookTickerSnapshot from symbol and ticker data.
         
         Args:
             exchange: Exchange identifier (MEXC, GATEIO, etc.)
-            symbol: Symbol object with composite/quote assets
+            symbol: Symbol object with base/quote assets
             bid_price: Best bid price
             bid_qty: Best bid quantity
             ask_price: Best ask price
             ask_qty: Best ask quantity
             timestamp: Exchange timestamp
+            symbol_id: Database symbol_id (required for normalized schema)
             
         Returns:
             BookTickerSnapshot instance
         """
+        if symbol_id is None:
+            raise ValueError("symbol_id is required for normalized database schema")
+            
         return cls(
-            exchange=exchange.upper(),
-            symbol_base=str(symbol.base),
-            symbol_quote=str(symbol.quote),
+            symbol_id=symbol_id,
             bid_price=bid_price,
             bid_qty=bid_qty,
             ask_price=ask_price,
             ask_qty=ask_qty,
-            timestamp=timestamp
+            timestamp=timestamp,
+            # Store transient fields for convenience
+            exchange=exchange.upper(),
+            symbol_base=str(symbol.base),
+            symbol_quote=str(symbol.quote)
         )
     
     def to_symbol(self) -> Symbol:
@@ -79,8 +88,11 @@ class BookTickerSnapshot(msgspec.Struct):
         Convert back to Symbol object.
         
         Returns:
-            Symbol object reconstructed from composite/quote strings
+            Symbol object reconstructed from transient base/quote strings
         """
+        if not self.symbol_base or not self.symbol_quote:
+            raise ValueError("symbol_base and symbol_quote must be populated to create Symbol object")
+            
         from exchanges.structs.types import AssetName
         return Symbol(
             base=AssetName(self.symbol_base),

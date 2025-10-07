@@ -1,20 +1,33 @@
 # CEX Arbitrage - Development Tools
-# Simple Makefile for code formatting and maintenance
+# Simple Makefile for code formatting, maintenance, and deployment
 
-.PHONY: help install format lint clean check-all
+.PHONY: help install format lint clean check-all format-deploy quick-format
 
 # Default target
 help:
-	@echo "CEX Arbitrage Development Tools"
+	@echo "🚀 CEX Arbitrage Development Tools"
 	@echo ""
-	@echo "Available commands:"
+	@echo "📦 Dependencies:"
 	@echo "  make install      - Install production dependencies only"
 	@echo "  make install-dev  - Install development dependencies only"
 	@echo "  make install-all  - Install all dependencies (prod + dev)"
+	@echo ""
+	@echo "🔧 Code Quality:"
 	@echo "  make format       - Format all Python code (black + isort + autoflake)"
 	@echo "  make lint         - Run linting (ruff + mypy)"
 	@echo "  make clean        - Remove unused imports and variables"
 	@echo "  make check-all    - Run all code quality checks"
+	@echo ""
+	@echo "🚀 Deployment (see docker/Makefile):"
+	@echo "  cd docker && make deploy     - Full deployment to production server"
+	@echo "  cd docker && make sync       - Quick sync with smart restart"
+	@echo "  cd docker && make update     - Update code/config and restart services"
+	@echo "  cd docker && make deploy-fix - Complete fix (cleanup + sync + update)"
+	@echo ""
+	@echo "💡 Quick Development Workflow:"
+	@echo "  make format                   # Format all Python code"
+	@echo "  make quick-format             # Fast formatting (black + isort only)"
+	@echo "  cd docker && make sync        # Deploy formatted code to production"
 	@echo ""
 
 # Install dependencies
@@ -69,3 +82,10 @@ quick-format:
 	isort src/ tests/ examples/
 	black src/ tests/ examples/ --line-length 120
 	@echo "✅ Quick format complete!"
+
+# Combined workflow commands
+format-deploy:
+	@echo "🚀 Formatting code and deploying..."
+	@make format
+	@cd docker && make sync
+	@echo "✅ Code formatted and deployed!"

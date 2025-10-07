@@ -100,7 +100,6 @@ class IcebergTaskDemo:
                 ada_symbol = Symbol(
                     base=AssetName("ADA"),
                     quote=AssetName("USDT"),
-                    is_futures=True
                 )
 
                 self.logger.info("Starting IcebergTask demo with TaskManager",

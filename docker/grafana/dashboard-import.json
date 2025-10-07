@@ -69,7 +69,7 @@
             "group": [],
             "metricColumn": "none",
             "rawQuery": true,
-            "rawSql": "SELECT COUNT(*) as value FROM book_ticker_snapshots WHERE timestamp > NOW() - INTERVAL '1 hour'",
+            "rawSql": "SELECT COUNT(*) as value FROM book_ticker_snapshots bts WHERE bts.timestamp > NOW() - INTERVAL '1 hour'",
             "refId": "A"
           }
         ],
@@ -117,7 +117,7 @@
             "group": [],
             "metricColumn": "none",
             "rawQuery": true,
-            "rawSql": "SELECT \n  exchange,\n  COUNT(DISTINCT symbol_base || '/' || symbol_quote) as symbols,\n  COUNT(*) as records,\n  MAX(timestamp) as latest_update\nFROM book_ticker_snapshots\nWHERE timestamp > NOW() - INTERVAL '5 minutes'\nGROUP BY exchange\nORDER BY exchange",
+            "rawSql": "SELECT \n  e.enum_value as exchange,\n  COUNT(DISTINCT s.symbol_base || '/' || s.symbol_quote) as symbols,\n  COUNT(*) as records,\n  MAX(bts.timestamp) as latest_update\nFROM book_ticker_snapshots bts\nJOIN symbols s ON bts.symbol_id = s.id\nJOIN exchanges e ON s.exchange_id = e.id\nWHERE bts.timestamp > NOW() - INTERVAL '5 minutes'\nGROUP BY e.enum_value\nORDER BY e.enum_value",
             "refId": "A"
           }
         ],
@@ -196,7 +196,7 @@
             "group": [],
             "metricColumn": "none",
             "rawQuery": true,
-            "rawSql": "SELECT\n  timestamp as time,\n  exchange || '_' || symbol_base || '_' || symbol_quote AS series,\n  AVG(bid_price) AS value\nFROM book_ticker_snapshots\nWHERE\n  timestamp > NOW() - INTERVAL '30 minutes'\nGROUP BY timestamp, exchange, symbol_base, symbol_quote\nORDER BY timestamp",
+            "rawSql": "SELECT\n  bts.timestamp as time,\n  e.enum_value || '_' || s.symbol_base || '_' || s.symbol_quote AS series,\n  AVG(bts.bid_price) AS value\nFROM book_ticker_snapshots bts\nJOIN symbols s ON bts.symbol_id = s.id\nJOIN exchanges e ON s.exchange_id = e.id\nWHERE\n  bts.timestamp > NOW() - INTERVAL '30 minutes'\nGROUP BY bts.timestamp, e.enum_value, s.symbol_base, s.symbol_quote\nORDER BY bts.timestamp",
             "refId": "A"
           }
         ],

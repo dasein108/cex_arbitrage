@@ -319,4 +319,6 @@ class MexcPrivateSpotWebsocket(PrivateBaseWebsocket):
             self.logger.error(f"Error parsing private message: {e}",
                               exchange="mexc",
                               error_type="message_parse_error")
+            import traceback
+            traceback.print_exc()
 

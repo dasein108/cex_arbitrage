@@ -74,6 +74,8 @@ class MexcPublicSpotWebsocket(PublicBaseWebsocket):
             self.logger.error(f"Error parsing private message: {e}",
                               exchange="mexc",
                               error_type="message_parse_error")
+            import traceback
+            traceback.print_exc()
 
     def _prepare_subscription_message(self, action: SubscriptionAction, symbol: Symbol, channel: WebsocketChannelType,
                                       **kwargs) -> Dict[str, Any]:

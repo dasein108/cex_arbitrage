@@ -1,352 +1,505 @@
-# 🚀 CEX Arbitrage Docker Deployment
+# CEX Arbitrage Deployment System
 
-Simple deployment system for CEX Arbitrage with both local development and production environments.
+Comprehensive Docker-based deployment system for the high-frequency trading (HFT) arbitrage engine. This system supports both local development/monitoring and production deployment with full automation.
+
+## 🚀 Quick Start
+
+```bash
+# Local development monitoring
+make local-monitoring     # Start Grafana + PgAdmin → connects to remote DB
+
+# Production deployment
+make deploy              # Full production deployment
+make deploy-sync         # Quick sync with smart restart
+make deploy-update       # Quick updates after code changes
+make deploy-fix          # Complete fix (cleanup + sync + update)
+```
 
 ## 📋 Table of Contents
-- [Quick Start](#-quick-start)
-- [Local Development](#-local-development)
-- [Production Deployment](#-production-deployment)
-- [Database Management](#-database-management)
-- [Monitoring](#-monitoring)
-- [Troubleshooting](#-troubleshooting)
+
+- [System Architecture](#system-architecture)
+- [Local Development](#local-development)
+- [Production Deployment](#production-deployment)
+- [Container Management](#container-management)
+- [Monitoring & Access](#monitoring--access)
+- [Maintenance & Cleanup](#maintenance--cleanup)
+- [Development Tools](#development-tools)
+- [Configuration Files](#configuration-files)
+- [Troubleshooting](#troubleshooting)
+
+## 🏗️ System Architecture
+
+### Local Development Setup
+- **Grafana**: Web-based analytics and monitoring (localhost:3000)
+- **PgAdmin**: PostgreSQL administration tool (localhost:8080)
+- **Remote Database**: Connects to production database on 31.192.233.13:5432
+
+### Production Environment
+- **Database**: PostgreSQL with TimescaleDB for time-series data
+- **Data Collector**: High-performance arbitrage data collection service
+- **Monitoring**: Optional Grafana and PgAdmin services
+- **Networking**: Optimized for 4GB server with memory management
 
 ---
 
-## ⚡ Quick Start
+## 🏠 Local Development
 
-### Local Development
+### Start Local Monitoring
 ```bash
-cd docker
-docker-compose -f docker-compose.yml -f docker-compose.dev.yml up -d
+make local-monitoring
 ```
+**What it does:**
+- Starts Grafana and PgAdmin containers locally
+- Connects to remote production database (31.192.233.13:5432)
+- Provides web interfaces for monitoring and database management
+- Uses docker-compose.local-monitoring.yml configuration
 
-### Production Deployment
+**Access URLs:**
+- Grafana: http://localhost:3000 (admin/local_grafana_2024)
+- PgAdmin: http://localhost:8080 (admin@localhost.com/local_pgadmin_2024)
+
+### Full Development Environment
 ```bash
-cd docker
-./deploy.sh deploy
+make dev
 ```
+**What it does:**
+- Runs start-dev.sh script for complete development setup
+- Includes database, data collector, and monitoring services
+- Uses development configuration with debug logging
+- Suitable for local testing and development
 
----
-
-## 🔧 Local Development
-
-### Prerequisites
-- Docker & Docker Compose installed
-- 4GB RAM minimum
-- 10GB free disk space
-
-### Setup
-
-1. **Navigate to docker directory:**
+### Stop Local Services
 ```bash
-cd cex_arbitrage/docker
+make stop-local
 ```
-
-2. **Start services with hot-reload:**
-```bash
-# Start all services including monitoring
-COMPOSE_PROFILES=admin,monitoring docker-compose -f docker-compose.yml -f docker-compose.dev.yml up -d
-```
-
-3. **Access services locally:**
-
-| Service | URL | Credentials |
-|---------|-----|-------------|
-| **Grafana** | http://localhost:3000 | admin / dev_grafana |
-| **PgAdmin** | http://localhost:8080 | admin@example.com / dev_admin |
-| **PostgreSQL** | localhost:5432 | arbitrage_user / dev_password_2024 |
-
-### Development Features
-- ✅ **Hot Reload**: Source code mounted as volume - changes apply instantly
-- ✅ **Debug Logging**: Enhanced logging with DEBUG level
-- ✅ **All Ports Exposed**: Direct access to all services
-- ✅ **Auto-Restart**: Services restart on crash
-
-### Development Commands
-```bash
-# View logs
-docker-compose -f docker-compose.yml -f docker-compose.dev.yml logs -f data_collector
-
-# Restart service
-docker-compose -f docker-compose.yml -f docker-compose.dev.yml restart data_collector
-
-# Stop all
-docker-compose -f docker-compose.yml -f docker-compose.dev.yml down
-
-# Database shell
-docker exec -it arbitrage_db psql -U arbitrage_user -d arbitrage_data
-```
+**What it does:**
+- Stops all local monitoring containers
+- Stops development environment containers
+- Cleans up running arbitrage-related containers
+- Preserves data volumes for next startup
 
 ---
 
 ## 🚀 Production Deployment
 
-### Server Configuration
-- **Server IP**: 31.192.233.13
-- **SSH Key**: ~/.ssh/deploy_ci
-- **Path**: /opt/arbitrage
-
-### One-Command Deployment
-
-The `deploy.sh` script handles everything:
-
+### Full Deployment
 ```bash
-# Full deployment (first time)
-./deploy.sh deploy
-
-# Update code only
-./deploy.sh update
-
-# Sync code without deploying
-./deploy.sh sync
+make deploy
+# OR use the legacy alias from root directory:
+# cd .. && make deploy (redirects to docker/make deploy)
 ```
+**What it does:**
+- Syncs code from local machine to production server (31.192.233.13)
+- Installs Docker and Docker Compose if needed
+- Sets up swap space for memory optimization
+- Generates secure passwords in .env.prod
+- Creates required data directories with proper permissions
+- Initializes database schema with constraints
+- Starts core services (database + data collector)
+- Provides instructions for optional monitoring services
 
-### What Deploy Script Does
+### Quick Update
+```bash
+make update
+# OR use the deployment alias:
+make deploy-update
+```
+**What it does:**
+- Syncs code changes to production server
+- Performs smart auto-restart of running services
+- Executes comprehensive service restart cycle
+- Reloads configuration without full redeployment
+- Ideal for code changes and configuration updates
 
-1. **Syncs code** via rsync (excludes .git, __pycache__, .venv, etc.)
-2. **Installs Docker** and Docker Compose if needed
-3. **Generates secure passwords** automatically
-4. **Initializes database** with schema from `init-db.sql`
-5. **Starts all services** with production configuration
+### Rebuild Images
+```bash
+make rebuild
+```
+**What it does:**
+- Syncs latest code to server
+- Stops data collector service
+- Rebuilds Docker image with --no-cache flag
+- Incorporates new dependencies and code changes
+- Restarts data collector with fresh image
+- Use after dependency changes in requirements.txt
 
-### Production Access
-
-After deployment, access services at:
-
-| Service | URL | Notes |
-|---------|-----|-------|
-| **Grafana** | http://31.192.233.13:3000 | Monitoring dashboard |
-| **PgAdmin** | http://31.192.233.13:8080 | Database management |
-
-Check `.env.prod` on server for generated passwords.
-
-### Production Features
-- ✅ **Resource Limits**: CPU/Memory constraints
-- ✅ **Health Checks**: Automatic recovery
-- ✅ **Log Rotation**: Prevent disk filling
-- ✅ **No Exposed Database**: Internal access only
+### Smart Sync
+```bash
+make sync
+# OR use the deployment alias:
+make deploy-sync
+```
+**What it does:**
+- Syncs code files to production server using rsync
+- Automatically detects running services
+- Restarts only active services (skips stopped ones)
+- Provides fast iteration cycle for development
+- Includes safety checks for Docker Compose availability
 
 ---
 
-## 🗄️ Database Management
+## 🔧 Container Management
 
-### Schema Initialization
-
-Database schema is automatically initialized from `init-db.sql` which includes:
-- TimescaleDB hypertables for time-series data
-- Optimized indexes for query performance
-- 30-day data retention policy
-- Continuous aggregates for 1-minute and 5-minute intervals
-
-### Schema Updates
-
-Apply safe schema updates from `schema-updates.sql`:
-
+### Local Container Rebuild
 ```bash
-# On server
-cd /opt/arbitrage/docker
-docker exec -i $(docker-compose -f docker-compose.yml -f docker-compose.prod.yml ps -q database) \
-  psql -U arbitrage_user -d arbitrage_data < schema-updates.sql
+make rebuild-local
 ```
+**What it does:**
+- Executes rebuild.sh restart-local command
+- Rebuilds local development containers
+- Restarts services with fresh images
+- Maintains data persistence across rebuilds
 
-### Database Commands
-
+### Server Container Rebuild
 ```bash
-# Check data collection
-docker exec arbitrage_db psql -U arbitrage_user -d arbitrage_data -c \
-  "SELECT exchange, COUNT(*) as records, MAX(timestamp) as latest 
-   FROM book_ticker_snapshots 
-   WHERE timestamp > NOW() - INTERVAL '5 minutes' 
-   GROUP BY exchange;"
-
-# Database size
-docker exec arbitrage_db psql -U arbitrage_user -d arbitrage_data -c \
-  "SELECT pg_size_pretty(pg_database_size('arbitrage_data'));"
-
-# Backup database
-docker exec arbitrage_db pg_dump -U arbitrage_user -d arbitrage_data | gzip > backup_$(date +%Y%m%d).sql.gz
+make rebuild-server
 ```
+**What it does:**
+- Executes rebuild.sh restart-server command
+- Rebuilds containers on production server
+- Handles remote Docker operations
+- Ensures service availability during rebuild
+
+### View Logs
+```bash
+make logs
+```
+**What it does:**
+- Shows data collector logs from production server
+- Displays latest 50 log entries
+- Provides real-time insight into system operation
+- Uses rebuild.sh logs command for log access
+
+### Check Status
+```bash
+make status
+```
+**What it does:**
+- Shows container status and health information
+- Displays service availability and resource usage
+- Provides overview of system operational state
+- Uses rebuild.sh status command for comprehensive status
+
+### Container List
+```bash
+make ps
+```
+**What it does:**
+- Shows formatted table of Docker containers
+- Displays container names, status, and port mappings
+- Filters for arbitrage-related containers
+- Includes both local and production container status
 
 ---
 
-## 📊 Monitoring
+## 🧹 Maintenance & Cleanup
 
-### Grafana Dashboard
-
-1. Access Grafana (see URLs above)
-2. Login with credentials
-3. Navigate to Dashboards → Browse
-4. View "Arbitrage Data Monitoring"
-
-### PgAdmin Database Management
-
-1. Access PgAdmin (see URLs above)
-2. Login with credentials
-3. Add server connection:
-   - **Host**: `database`
-   - **Port**: `5432`
-   - **Database**: `arbitrage_data`
-   - **Username**: `arbitrage_user`
-   - **Password**: (from .env or .env.prod)
-
-### Health Checks
-
+### Clean Local Resources
 ```bash
-# Check all services
-docker ps --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"
-
-# Test database connection
-docker exec arbitrage_db pg_isready -U arbitrage_user
-
-# View collector logs
-docker logs arbitrage_collector --tail 50
+make clean
 ```
+**What it does:**
+- Removes unused Docker containers and images
+- Cleans up local development artifacts
+- Frees disk space used by Docker
+- Uses rebuild.sh clean command for thorough cleanup
 
----
+### Clean Server Resources
+```bash
+make clean-server
+```
+**What it does:**
+- Executes cleanup-server.sh all command
+- Removes obsolete files and containers on server
+- Cleans up log files and temporary data
+- Optimizes server disk usage
+
+### Clean Docker on Server
+```bash
+make clean-docker-server
+```
+**What it does:**
+- Executes cleanup-server.sh docker command
+- Specifically targets Docker resources on server
+- Removes unused images, containers, and volumes
+- Preserves active services and persistent data
+
+### Analyze Database
+```bash
+make analyze-db
+```
+**What it does:**
+- Executes cleanup-server.sh database command
+- Analyzes PostgreSQL database space usage
+- Shows table sizes, index usage, and performance metrics
+- Identifies optimization opportunities
+
+### Deep Server Analysis
+```bash
+make analyze-server
+```
+**What it does:**
+- Executes cleanup-server.sh analyze command
+- Comprehensive server performance analysis
+- Shows disk usage, memory consumption, CPU utilization
+- Provides detailed system health report
+
+## 📊 Monitoring & Access
+
+### Open Grafana
+```bash
+make grafana
+```
+**What it does:**
+- Opens Grafana web interface in default browser
+- Provides login credentials (admin/local_grafana_2024)
+- Works on macOS, Linux, and Windows
+- Fallback instruction if browser doesn't open automatically
+
+### Open PgAdmin
+```bash
+make pgadmin
+```
+**What it does:**
+- Opens PgAdmin web interface in default browser
+- Provides login credentials (admin@localhost.com/local_pgadmin_2024)
+- Cross-platform browser opening
+- Manual URL provided if automatic opening fails
+
+### Production Monitoring
+```bash
+make prod-monitoring
+```
+**What it does:**
+- Starts Grafana service on production server
+- Uses SSH to execute remote Docker commands
+- Enables production monitoring dashboard access
+- Uses monitoring profile for resource optimization
+
+### Production Admin
+```bash
+make prod-admin
+```
+**What it does:**
+- Starts PgAdmin service on production server
+- Provides database administration access for production
+- Uses admin profile for controlled access
+- Enables remote database management
+
+### Production Status
+```bash
+make prod-status
+```
+**What it does:**
+- Shows status of all production services
+- Uses SSH to query remote Docker Compose
+- Displays service health and availability
+- Provides overview of production system state
+
+### Production Logs
+```bash
+make prod-logs
+```
+**What it does:**
+- Shows latest 50 entries from production data collector
+- Uses SSH to access remote container logs
+- Provides real-time production system monitoring
+- Essential for troubleshooting production issues
+
+## 🔧 Development Tools
+
+### Configuration Validation
+```bash
+make config-check
+```
+**What it does:**
+- Validates all Docker Compose configuration files
+- Checks base, development, production, and monitoring configs
+- Uses docker-compose config --quiet for validation
+- Ensures configuration integrity before deployment
+
+### Environment Setup
+```bash
+make setup-env
+```
+**What it does:**
+- Creates .env.local file with default values
+- Sets up Grafana and PgAdmin passwords
+- Provides template for database connection
+- Ensures local environment is properly configured
+
+### Debug Information
+```bash
+make debug
+```
+**What it does:**
+- Shows comprehensive system debug information
+- Displays Docker and Docker Compose versions
+- Lists running containers and their status
+- Shows network and volume information
+- Essential for troubleshooting deployment issues
+
+### Reset Local Environment
+```bash
+make reset
+```
+**What it does:**
+- ⚠️ **DANGER**: Completely resets local environment
+- Stops and removes all arbitrage containers
+- Removes all data volumes (irreversible)
+- Requires confirmation before execution
+- Use only when complete reset is needed
+
+### Documentation
+```bash
+make docs
+```
+**What it does:**
+- Shows deployment documentation overview
+- Displays first 20 lines of DEPLOYMENT_GUIDE.md
+- Provides quick access to setup instructions
+- References this README.md for complete documentation
+
+## 📁 Configuration Files
+
+### Docker Compose Files
+- **docker-compose.yml**: Base service definitions
+- **docker-compose.dev.yml**: Development environment overrides
+- **docker-compose.prod.yml**: Production environment configuration
+- **docker-compose.local-monitoring.yml**: Local monitoring stack
+- **docker-compose.prometheus.yml**: Prometheus monitoring (optional)
+
+### Environment Files
+- **.env.local**: Local development environment variables
+- **.env.prod**: Production environment variables (server-side)
+- **.env.local-monitoring**: Local monitoring configuration
+
+### Database Configuration
+- **init-db.sql**: Database initialization schema
+- **optimize-db.sql**: Database performance optimizations
+- **postgres-prod.conf/**: Production PostgreSQL configuration
+
+### Grafana Configuration
+- **grafana/provisioning/**: Auto-provisioning configuration
+- **grafana/dashboards/**: Dashboard definitions
+- **grafana/provisioning/datasources/**: Data source connections
+
+### Scripts
+- **deploy.sh**: Main deployment automation script
+- **rebuild.sh**: Container rebuild and management
+- **cleanup-server.sh**: Server maintenance and cleanup
+- **start-dev.sh**: Development environment startup
 
 ## 🚨 Troubleshooting
 
-### Docker Compose Not Found
+### Common Issues
 
-If you see `docker-compose: command not found`:
-
+#### 1. Docker Compose Not Found
 ```bash
-# Install via curl
+# Install Docker Compose
 curl -L "https://github.com/docker/compose/releases/latest/download/docker-compose-$(uname -s)-$(uname -m)" -o /usr/local/bin/docker-compose
 chmod +x /usr/local/bin/docker-compose
-
-# Or install via pip
-pip3 install docker-compose
 ```
 
-### Database Connection Failed
-
+#### 2. Permission Denied
 ```bash
-# Check if database is running
-docker ps | grep database
+# Fix Docker permissions
+sudo usermod -aG docker $USER
+# Logout and login again
+```
 
-# Check database logs
-docker logs arbitrage_db --tail 50
+#### 3. Port Already in Use
+```bash
+# Check what's using the port
+sudo lsof -i :3000  # For Grafana
+sudo lsof -i :8080  # For PgAdmin
+
+# Stop conflicting services
+make stop-local
+```
+
+#### 4. Database Connection Issues
+```bash
+# Check database connectivity
+make debug
+make prod-status
 
 # Verify environment variables
-cat .env.prod  # Production
-cat .env       # Development
+cat .env.local
 ```
 
-### Data Collector Not Working
+#### 5. Memory Issues (4GB Server)
+```bash
+# Check server memory usage
+make analyze-server
+
+# Clean up unused resources
+make clean-server
+```
+
+### Debug Commands
 
 ```bash
-# Check collector logs
-docker logs arbitrage_collector --tail 100
+# Comprehensive system check
+make debug
 
-# Verify API credentials in .env.prod
-grep -E "MEXC_|GATEIO_" .env.prod
+# Validate configurations
+make config-check
 
-# Restart collector
-docker-compose -f docker-compose.yml -f docker-compose.prod.yml restart data_collector
+# Check container status
+make ps
+
+# View logs
+make logs
+make prod-logs
+
+# Server analysis
+make analyze-server
+make analyze-db
 ```
 
-### Services Not Starting
+### Recovery Procedures
 
+#### Local Environment Recovery
 ```bash
-# Check disk space
-df -h
+# Soft reset - stop and restart
+make stop-local
+make local-monitoring
 
-# Check memory
-free -h
-
-# Clean Docker resources
-docker system prune -a
-
-# Restart all services
-docker-compose -f docker-compose.yml -f docker-compose.prod.yml down
-docker-compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+# Hard reset - complete cleanup
+make reset  # ⚠️ DANGER: Removes all data
+make setup-env
+make local-monitoring
 ```
 
-### PgAdmin: No Servers Configured
-
-Manually add server with:
-- **Host**: `database` (not localhost!)
-- **Port**: `5432`
-- **Database**: `arbitrage_data`
-- **Username**: `arbitrage_user`
-- **Password**: Check `.env` or `.env.prod`
-
----
-
-## 📁 File Structure
-
-```
-docker/
-├── deploy.sh                 # Main deployment script (KISS-compliant)
-├── legacy/                   # Deprecated scripts (DO NOT USE)
-├── docker-compose.yml        # Base configuration
-├── docker-compose.dev.yml    # Development overrides
-├── docker-compose.prod.yml   # Production configuration
-├── Dockerfile               # Data collector image
-├── init-db.sql             # Database schema
-├── schema-updates.sql      # Schema migrations
-├── generate-passwords.sh   # Password generator
-├── .env                    # Development environment
-├── .env.prod              # Production environment (generated)
-└── .rsync-exclude         # Rsync exclusion patterns
-```
-
----
-
-## 🔐 Security
-
-### Development
-- Uses default passwords for convenience
-- All services exposed on localhost
-- Debug logging enabled
-
-### Production
-- Auto-generated secure passwords
-- Database not exposed externally
-- Resource limits applied
-- Log rotation configured
-
-### Important Files
-- **Never commit** `.env.prod` to version control
-- **Keep backups** of production passwords
-- **Rotate passwords** quarterly
-
----
-
-## 🔄 Updating
-
-### Update Code Only
+#### Production Recovery
 ```bash
-# From local machine
-./deploy.sh update
+# Quick fix for most issues
+make deploy-fix  # From root Makefile
+
+# Or step by step
+make clean-server
+make sync
+make update
 ```
 
-This will:
-1. Sync latest code to server
-2. Restart data collector
-3. Keep database and monitoring running
+## 🔗 Related Documentation
 
-### Update Everything
-```bash
-# Full redeployment
-./deploy.sh deploy
-```
-
----
+- **DEPLOYMENT_GUIDE.md**: Detailed deployment instructions
+- **../PROJECT_GUIDES.md**: Development guidelines and patterns
+- **../CLAUDE.md**: System architecture overview
+- **../Makefile**: Root-level development commands
 
 ## 📞 Support
 
-For issues:
-1. Check logs: `docker logs [container_name]`
-2. Verify environment variables
-3. Check service health: `docker ps`
-4. Review troubleshooting section above
+For issues and questions:
+1. Check this documentation first
+2. Run `make debug` for system diagnostics
+3. Review logs with `make logs` or `make prod-logs`
+4. Use `make config-check` to validate configurations
+5. Try `make deploy-fix` for common production issues
 
-**Remember**: Keep your production passwords secure!
+---
 
-
-## Remote grafana
-```
-docker-compose --env-file .env.local-monitoring -f docker-compose.local-monitoring.yml up
-```
+*Last Updated: October 2025*
+*System Version: HFT Arbitrage Engine v2.0 with Smart Sync*

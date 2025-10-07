@@ -65,7 +65,7 @@ class UnifiedWebSocketManager:
             self,
             exchanges: List[ExchangeEnum],
             book_ticker_handler: Optional[Callable[[ExchangeEnum, Symbol, BookTicker], Awaitable[None]]] = None,
-            trade_handler: Optional[Callable[[ExchangeEnum, Symbol, Trade], Awaitable[None]]] = None
+            trade_handler: Optional[Callable[[ExchangeEnum, Symbol, Trade], Awaitable[None]]] = None  # NOTE: Trade handling disabled for performance
     ):
         """
         Initialize unified WebSocket manager with modern architecture.
@@ -164,9 +164,10 @@ class UnifiedWebSocketManager:
                 adapter.bind(PublicWebsocketChannelType.BOOK_TICKER, 
                            lambda book_ticker: self._handle_book_ticker_update(exchange, book_ticker.symbol, book_ticker))
             
-            if self.trade_handler:
-                adapter.bind(PublicWebsocketChannelType.PUB_TRADE, 
-                           lambda trade: self._handle_trades_update(exchange, trade.symbol, [trade]))
+            # Trade handler binding disabled for performance optimization
+            # if self.trade_handler:
+            #     adapter.bind(PublicWebsocketChannelType.PUB_TRADE, 
+            #                lambda trade: self._handle_trades_update(exchange, trade.symbol, [trade]))
 
             # Store composite and adapter
             self._exchange_composites[exchange] = composite
@@ -175,8 +176,9 @@ class UnifiedWebSocketManager:
             self._connected[exchange] = False
 
             # Initialize composite with symbols and channels
+            # NOTE: Trade subscription disabled for performance optimization - only collecting book tickers
             with LoggingTimer(self.logger, "composite_initialization") as timer:
-                channels = [PublicWebsocketChannelType.BOOK_TICKER, PublicWebsocketChannelType.PUB_TRADE]
+                channels = [PublicWebsocketChannelType.BOOK_TICKER]  # Removed PUB_TRADE for performance
                 
                 # Filter tradable symbols before subscription
                 tradable_symbols = []
@@ -289,7 +291,7 @@ class UnifiedWebSocketManager:
             self._total_data_processed += 1
 
             # Log periodic performance stats
-            if self._total_messages_received % 1000 == 0:
+            if self._total_messages_received % 10000 == 0:
                 self.logger.info("Performance checkpoint",
                                  messages_received=self._total_messages_received,
                                  data_processed=self._total_data_processed,
@@ -364,8 +366,8 @@ class UnifiedWebSocketManager:
         try:
             for exchange, composite in self._exchange_composites.items():
                 if self._connected[exchange]:
-                    # Use channel types for subscription
-                    channels = [PublicWebsocketChannelType.BOOK_TICKER, PublicWebsocketChannelType.PUB_TRADE]
+                    # Use channel types for subscription - trade subscription disabled for performance
+                    channels = [PublicWebsocketChannelType.BOOK_TICKER]  # Removed PUB_TRADE for performance
                     await composite.subscribe_symbols(symbols)
                     self._active_symbols[exchange].update(symbols)
 
@@ -443,7 +445,7 @@ class UnifiedWebSocketManager:
 
         return parts[0], parts[1]
 
-    def get_all_cached_tickers(self) -> List[BookTickerSnapshot]:
+    async def get_all_cached_tickers(self) -> List[BookTickerSnapshot]:
         """
         Get all cached book tickers as BookTickerSnapshot objects.
         
@@ -451,8 +453,11 @@ class UnifiedWebSocketManager:
             List of BookTickerSnapshot objects
         """
         snapshots = []
+        
+        # Create a copy to avoid "dictionary changed size during iteration"
+        cached_items = list(self._book_ticker_cache.items())
 
-        for cache_key, cache_entry in self._book_ticker_cache.items():
+        for cache_key, cache_entry in cached_items:
             try:
                 # Parse exchange and symbol from cache key
                 exchange, symbol_str = self._parse_cache_key(cache_key)
@@ -480,15 +485,20 @@ class UnifiedWebSocketManager:
                         from exchanges.structs import ExchangeEnum
                         base = symbol_str[:-4]  # Remove USDT
                         quote = 'USDT'
-                        # Determine if futures based on exchange type
-                        exchange_enum = ExchangeEnum(exchange)
-                        is_futures = exchange_enum in [ExchangeEnum.GATEIO_FUTURES]
                         symbol = Symbol(base=AssetName(base), quote=AssetName(quote))
                         self.logger.debug(f"Created fallback symbol: {symbol}")
                     else:
                         # Skip this entry if we can't parse it
                         self.logger.warning(f"Cannot parse symbol: {symbol_str}")
                         continue
+
+                # Get symbol ID from database
+                from db.symbol_manager import get_symbol_id
+                symbol_id = await get_symbol_id(exchange.upper(), symbol)
+                
+                if symbol_id is None:
+                    self.logger.warning(f"Could not get symbol_id for {exchange} {symbol.base}/{symbol.quote}")
+                    continue
 
                 snapshot = BookTickerSnapshot.from_symbol_and_data(
                     exchange=exchange.upper(),
@@ -497,7 +507,8 @@ class UnifiedWebSocketManager:
                     bid_qty=cache_entry.ticker.bid_quantity,
                     ask_price=cache_entry.ticker.ask_price,
                     ask_qty=cache_entry.ticker.ask_quantity,
-                    timestamp=cache_entry.last_updated
+                    timestamp=cache_entry.last_updated,
+                    symbol_id=symbol_id
                 )
                 snapshots.append(snapshot)
 
@@ -690,8 +701,8 @@ class SnapshotScheduler:
     async def _take_snapshot(self) -> None:
         """Take a snapshot of all cached book ticker and trade data."""
         try:
-            # Get all cached tickers
-            ticker_snapshots = self.ws_manager.get_all_cached_tickers()
+            # Get all cached tickers (now async due to symbol_id lookups)
+            ticker_snapshots = await self.ws_manager.get_all_cached_tickers()
 
             # Get all cached trades
             trade_snapshots = self.ws_manager.get_all_cached_trades()
@@ -814,10 +825,11 @@ class DataCollector:
             self.logger.info("Analytics engine initialized")
 
             # Initialize WebSocket manager using modern architecture
+            # NOTE: Trade handler disabled for performance - only collecting book tickers
             self.ws_manager = UnifiedWebSocketManager(
                 exchanges=self.config.exchanges,
                 book_ticker_handler=self._handle_external_book_ticker,
-                trade_handler=self._handle_external_trade
+                trade_handler=None  # Disabled for performance optimization
             )
             self.logger.info(f"WebSocket manager created for {len(self.config.exchanges)} exchanges")
 
@@ -831,11 +843,12 @@ class DataCollector:
             self.logger.info(f"Connection status: {connection_status}")
 
             # Initialize snapshot scheduler with database handler
+            # NOTE: Trade handler disabled since trade collection is disabled
             self.scheduler = SnapshotScheduler(
                 ws_manager=self.ws_manager,
                 interval_seconds=self.config.snapshot_interval,
                 snapshot_handler=self._handle_snapshot_storage,
-                trade_handler=self._handle_trade_storage
+                trade_handler=None  # Disabled since trade collection is disabled
             )
             self.logger.info(f"Snapshot scheduler initialized with {self.config.snapshot_interval}s interval")
 

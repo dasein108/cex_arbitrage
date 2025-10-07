@@ -13,6 +13,7 @@ import time
 
 from .connection import get_db_manager
 from .models import BookTickerSnapshot, TradeSnapshot
+from .symbol_manager import get_symbol_id, get_symbol_details
 from exchanges.structs.common import Symbol
 
 
@@ -59,14 +60,14 @@ def _cleanup_timestamp_cache():
         logger.debug(f"Cleaned {total_removed} old timestamps from deduplication cache")
 
 
-def _is_duplicate_timestamp(exchange: str, symbol_base: str, symbol_quote: str, timestamp: datetime) -> bool:
+def _is_duplicate_timestamp(symbol_id: int, timestamp: datetime) -> bool:
     """
-    Check if this timestamp has been seen recently for this exchange/symbol.
+    Check if this timestamp has been seen recently for this symbol_id.
     
     Returns:
         True if this is a duplicate timestamp that should be skipped
     """
-    key = (exchange, symbol_base, symbol_quote)
+    key = (symbol_id,)
     
     # Check if we've seen this exact timestamp recently
     if timestamp in _timestamp_cache[key]:
@@ -82,7 +83,7 @@ async def insert_book_ticker_snapshot(snapshot: BookTickerSnapshot) -> int:
     Insert a single BookTicker snapshot.
     
     Args:
-        snapshot: BookTickerSnapshot to insert
+        snapshot: BookTickerSnapshot to insert (must have valid symbol_id)
         
     Returns:
         Database ID of inserted record
@@ -94,19 +95,15 @@ async def insert_book_ticker_snapshot(snapshot: BookTickerSnapshot) -> int:
     
     query = """
         INSERT INTO book_ticker_snapshots (
-            exchange, symbol_base, symbol_quote,
-            bid_price, bid_qty, ask_price, ask_qty,
-            timestamp
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+            symbol_id, bid_price, bid_qty, ask_price, ask_qty, timestamp
+        ) VALUES ($1, $2, $3, $4, $5, $6)
         RETURNING id
     """
     
     try:
         record_id = await db.fetchval(
             query,
-            snapshot.exchange,
-            snapshot.symbol_base,
-            snapshot.symbol_quote,
+            snapshot.symbol_id,
             snapshot.bid_price,
             snapshot.bid_qty,
             snapshot.ask_price,
@@ -114,7 +111,7 @@ async def insert_book_ticker_snapshot(snapshot: BookTickerSnapshot) -> int:
             snapshot.timestamp
         )
         
-        logger.debug(f"Inserted book ticker snapshot {record_id} for {snapshot.exchange} {snapshot.symbol_base}/{snapshot.symbol_quote}")
+        logger.debug(f"Inserted book ticker snapshot {record_id} for symbol_id {snapshot.symbol_id}")
         return record_id
         
     except Exception as e:
@@ -149,8 +146,7 @@ async def insert_book_ticker_snapshots_batch(snapshots: List[BookTickerSnapshot]
     cache_hits = 0
     
     for snapshot in snapshots:
-        if not _is_duplicate_timestamp(snapshot.exchange, snapshot.symbol_base, 
-                                      snapshot.symbol_quote, snapshot.timestamp):
+        if not _is_duplicate_timestamp(snapshot.symbol_id, snapshot.timestamp):
             filtered_snapshots.append(snapshot)
         else:
             cache_hits += 1
@@ -164,7 +160,7 @@ async def insert_book_ticker_snapshots_batch(snapshots: List[BookTickerSnapshot]
     # Deduplicate remaining snapshots in memory
     unique_snapshots = {}
     for snapshot in filtered_snapshots:
-        key = (snapshot.exchange, snapshot.symbol_base, snapshot.symbol_quote, snapshot.timestamp)
+        key = (snapshot.symbol_id, snapshot.timestamp)
         # Keep the latest one if duplicate timestamps exist
         if key not in unique_snapshots:
             unique_snapshots[key] = snapshot
@@ -172,7 +168,7 @@ async def insert_book_ticker_snapshots_batch(snapshots: List[BookTickerSnapshot]
             # Compare and keep the one with most recent created_at or bid/ask prices
             existing = unique_snapshots[key]
             if hasattr(snapshot, 'created_at') and hasattr(existing, 'created_at'):
-                if snapshot.created_at > existing.created_at:
+                if snapshot.created_at and existing.created_at and snapshot.created_at > existing.created_at:
                     unique_snapshots[key] = snapshot
     
     deduplicated_snapshots = list(unique_snapshots.values())
@@ -189,11 +185,9 @@ async def insert_book_ticker_snapshots_batch(snapshots: List[BookTickerSnapshot]
     # Use individual upserts in transaction for reliability
     query = """
         INSERT INTO book_ticker_snapshots (
-            exchange, symbol_base, symbol_quote,
-            bid_price, bid_qty, ask_price, ask_qty,
-            timestamp
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-        ON CONFLICT (timestamp, exchange, symbol_base, symbol_quote)
+            symbol_id, bid_price, bid_qty, ask_price, ask_qty, timestamp
+        ) VALUES ($1, $2, $3, $4, $5, $6)
+        ON CONFLICT (symbol_id, timestamp)
         DO UPDATE SET
             bid_price = EXCLUDED.bid_price,
             bid_qty = EXCLUDED.bid_qty,
@@ -208,9 +202,7 @@ async def insert_book_ticker_snapshots_batch(snapshots: List[BookTickerSnapshot]
                 for snapshot in deduplicated_snapshots:
                     await conn.execute(
                         query,
-                        snapshot.exchange,
-                        snapshot.symbol_base,
-                        snapshot.symbol_quote,
+                        snapshot.symbol_id,
                         snapshot.bid_price,
                         snapshot.bid_qty,
                         snapshot.ask_price,

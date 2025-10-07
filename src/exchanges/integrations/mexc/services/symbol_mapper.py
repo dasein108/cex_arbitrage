@@ -49,8 +49,7 @@ class MexcSymbolMapper(SymbolMapperInterface):
                 if base:  # Ensure exchanges is not empty
                     return Symbol(
                         base=AssetName(base),
-                        quote=AssetName(quote),
-                        is_futures=False
+                        quote=AssetName(quote)
                     )
         
         raise ValueError(f"Unrecognized MEXC pair format: {pair}. Supported quotes: {self._quote_assets}")

@@ -22,6 +22,7 @@ from .operations import (
 )
 from .models import BookTickerSnapshot
 from .migrations import run_migrations
+from .symbol_manager import get_symbol_id, get_symbol_details, clear_symbol_cache
 from config.structs import DatabaseConfig
 
 __all__ = [
@@ -34,5 +35,8 @@ __all__ = [
     'get_latest_book_ticker_snapshots',
     'get_book_ticker_history',
     'BookTickerSnapshot',
-    'run_migrations'
+    'run_migrations',
+    'get_symbol_id',
+    'get_symbol_details',
+    'clear_symbol_cache'
 ]

@@ -39,6 +39,29 @@ sync_code() {
         "root@$SERVER:$REMOTE_PATH/"
         
     echo_success "Code synced"
+    
+    # Auto-restart services after sync unless explicitly disabled
+    if [ "${SKIP_RESTART:-false}" != "true" ]; then
+        echo_info "Auto-restarting services after code sync..."
+        ssh -i "$SSH_KEY" "root@$SERVER" << 'EOF'
+cd /opt/arbitrage/docker
+
+# Verify Docker Compose is available
+if ! command -v docker-compose &> /dev/null; then
+    echo "⚠️  Docker Compose not found - skipping restart"
+    exit 0
+fi
+
+# Check if services are running before restarting
+if docker-compose --env-file .env.prod -f docker-compose.yml -f docker-compose.prod.yml ps --services --filter "status=running" | grep -q "data_collector"; then
+    echo "Restarting data collector with updated code..."
+    docker-compose --env-file .env.prod -f docker-compose.yml -f docker-compose.prod.yml restart data_collector
+    echo "✅ Data collector restarted"
+else
+    echo "ℹ️  Data collector not running - no restart needed"
+fi
+EOF
+    fi
 }
 
 deploy_server() {
@@ -179,8 +202,11 @@ EOF
 
 update_only() {
     echo_info "Updating code and configuration..."
+    
+    # Sync code with auto-restart (default behavior)
     sync_code
     
+    # Additional restart logic for comprehensive update
     ssh -i "$SSH_KEY" "root@$SERVER" << 'EOF'
 cd /opt/arbitrage/docker
 
@@ -190,14 +216,15 @@ if ! command -v docker-compose &> /dev/null; then
     exit 1
 fi
 
-echo "Restarting data collector with fresh configuration..."
-# Use restart to ensure config volume is properly reloaded
-docker-compose --env-file .env.prod -f docker-compose.yml -f docker-compose.prod.yml restart data_collector
+echo "Performing comprehensive service restart for full configuration reload..."
+# Full restart cycle for comprehensive update
+docker-compose --env-file .env.prod -f docker-compose.yml -f docker-compose.prod.yml stop data_collector
+docker-compose --env-file .env.prod -f docker-compose.yml -f docker-compose.prod.yml up -d data_collector
 
-echo "✅ Collector restarted with new configuration"
+echo "✅ Comprehensive update complete with full service restart"
 EOF
 
-    echo_success "Update complete - configuration reloaded"
+    echo_success "Update complete - full configuration reloaded"
 }
 
 rebuild_image() {
@@ -301,6 +328,9 @@ case "${1:-deploy}" in
     "sync")
         sync_code
         ;;
+    "sync-only")
+        SKIP_RESTART=true sync_code
+        ;;
     "cleanup")
         cleanup_production
         ;;
@@ -311,22 +341,31 @@ case "${1:-deploy}" in
         update_only
         ;;
     *)
-        echo "Usage: $0 {deploy|update|rebuild|sync|cleanup|fix}"
+        echo "Usage: $0 {deploy|update|rebuild|sync|sync-only|cleanup|fix}"
         echo ""
         echo "Commands:"
-        echo "  deploy  - Full deployment (sync + setup + deploy + rebuild)"
-        echo "  update  - Update code/config and restart collector (no rebuild)"
-        echo "  rebuild - Rebuild Docker image with new dependencies"
-        echo "  sync    - Sync code only (no restart)"
-        echo "  cleanup - Remove obsolete files from production server"
-        echo "  fix     - Complete fix (cleanup + sync + update)"
+        echo "  deploy    - Full deployment (sync + setup + deploy + rebuild)"
+        echo "  update    - Update code/config and restart collector (no rebuild)"
+        echo "  rebuild   - Rebuild Docker image with new dependencies"
+        echo "  sync      - Sync code and auto-restart services (smart restart)"
+        echo "  sync-only - Sync code without restarting services"
+        echo "  cleanup   - Remove obsolete files from production server"
+        echo "  fix       - Complete fix (cleanup + sync + update)"
+        echo ""
+        echo "Smart Sync Features:"
+        echo "  • 'sync' automatically restarts services after code changes"
+        echo "  • Only restarts running services (skips stopped services)"
+        echo "  • Use 'sync-only' to disable auto-restart behavior"
+        echo "  • Use SKIP_RESTART=true with any command to disable restarts"
         echo ""
         echo "Examples:"
         echo "  ./deploy.sh fix             # Fix current deployment issues"
-        echo "  ./deploy.sh update          # Quick update for code/config changes"
+        echo "  ./deploy.sh sync            # Quick code update with smart restart"
+        echo "  ./deploy.sh sync-only       # Sync code without restart"
+        echo "  ./deploy.sh update          # Update with full restart logic"
         echo "  ./deploy.sh rebuild         # Rebuild image after dependency changes"
         echo "  ./deploy.sh deploy          # Full deployment for new servers"
-        echo "  ./deploy.sh cleanup         # Clean obsolete files only"
+        echo "  SKIP_RESTART=true ./deploy.sh sync  # Sync without restart"
         exit 1
         ;;
 esac

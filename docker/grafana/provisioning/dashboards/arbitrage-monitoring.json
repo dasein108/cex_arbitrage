@@ -91,7 +91,7 @@
           "group": [],
           "metricColumn": "none",
           "rawQuery": true,
-          "rawSql": "SELECT\n  $__timeGroupAlias(timestamp, $__interval),\n  exchange || '_' || symbol_base || '_' || symbol_quote AS metric,\n  AVG(bid_price) AS bid_price\nFROM book_ticker_snapshots\nWHERE\n  $__timeFilter(timestamp)\nGROUP BY 1, 2\nORDER BY 1",
+          "rawSql": "SELECT\n  $__timeGroupAlias(bts.timestamp, $__interval),\n  e.enum_value || '_' || s.symbol_base || '_' || s.symbol_quote AS metric,\n  AVG(bts.bid_price) AS bid_price\nFROM book_ticker_snapshots bts\nJOIN symbols s ON bts.symbol_id = s.id\nJOIN exchanges e ON s.exchange_id = e.id\nWHERE\n  $__timeFilter(bts.timestamp)\nGROUP BY 1, 2, e.enum_value, s.symbol_base, s.symbol_quote\nORDER BY 1",
           "refId": "A",
           "select": [
             [
@@ -160,7 +160,7 @@
           "group": [],
           "metricColumn": "none",
           "rawQuery": true,
-          "rawSql": "SELECT COUNT(*) as total_records\nFROM book_ticker_snapshots\nWHERE timestamp > NOW() - INTERVAL '1 hour'",
+          "rawSql": "SELECT COUNT(*) as total_records\nFROM book_ticker_snapshots bts\nWHERE bts.timestamp > NOW() - INTERVAL '1 hour'",
           "refId": "A",
           "select": [
             [
@@ -224,7 +224,7 @@
           "group": [],
           "metricColumn": "none",
           "rawQuery": true,
-          "rawSql": "SELECT \n  exchange,\n  COUNT(DISTINCT symbol_base || '/' || symbol_quote) as symbols,\n  COUNT(*) as records,\n  MAX(timestamp) as latest_update\nFROM book_ticker_snapshots\nWHERE timestamp > NOW() - INTERVAL '5 minutes'\nGROUP BY exchange\nORDER BY exchange",
+          "rawSql": "SELECT \n  e.enum_value as exchange,\n  COUNT(DISTINCT s.symbol_base || '/' || s.symbol_quote) as symbols,\n  COUNT(*) as records,\n  MAX(bts.timestamp) as latest_update\nFROM book_ticker_snapshots bts\nJOIN symbols s ON bts.symbol_id = s.id\nJOIN exchanges e ON s.exchange_id = e.id\nWHERE bts.timestamp > NOW() - INTERVAL '5 minutes'\nGROUP BY e.enum_value\nORDER BY e.enum_value",
           "refId": "A",
           "select": [
             [
@@ -320,7 +320,7 @@
           "group": [],
           "metricColumn": "none",
           "rawQuery": true,
-          "rawSql": "SELECT\n  $__timeGroupAlias(timestamp, $__interval),\n  exchange || '_' || symbol_base || '_' || symbol_quote AS metric,\n  AVG((ask_price - bid_price) / bid_price * 100) AS spread_percentage\nFROM book_ticker_snapshots\nWHERE\n  $__timeFilter(timestamp)\nGROUP BY 1, 2\nORDER BY 1",
+          "rawSql": "SELECT\n  $__timeGroupAlias(bts.timestamp, $__interval),\n  e.enum_value || '_' || s.symbol_base || '_' || s.symbol_quote AS metric,\n  AVG((bts.ask_price - bts.bid_price) / bts.bid_price * 100) AS spread_percentage\nFROM book_ticker_snapshots bts\nJOIN symbols s ON bts.symbol_id = s.id\nJOIN exchanges e ON s.exchange_id = e.id\nWHERE\n  $__timeFilter(bts.timestamp)\nGROUP BY 1, 2, e.enum_value, s.symbol_base, s.symbol_quote\nORDER BY 1",
           "refId": "A",
           "select": [
             [
@@ -416,7 +416,7 @@
           "group": [],
           "metricColumn": "none",
           "rawQuery": true,
-          "rawSql": "SELECT\n  $__timeGroupAlias(timestamp, '1m'),\n  COUNT(*) AS records_per_minute\nFROM book_ticker_snapshots\nWHERE\n  $__timeFilter(timestamp)\nGROUP BY 1\nORDER BY 1",
+          "rawSql": "SELECT\n  $__timeGroupAlias(bts.timestamp, '1m'),\n  COUNT(*) AS records_per_minute\nFROM book_ticker_snapshots bts\nWHERE\n  $__timeFilter(bts.timestamp)\nGROUP BY 1\nORDER BY 1",
           "refId": "A",
           "select": [
             [
