@@ -308,18 +308,78 @@ class BookTickerSnapshot(msgspec.Struct):
             timestamp=timestamp
         )
     
+    @classmethod
+    def from_symbol_and_data(
+        cls,
+        exchange: str,
+        symbol: "Symbol",  # From exchanges.structs.common
+        bid_price: float,
+        bid_qty: float,
+        ask_price: float,
+        ask_qty: float,
+        timestamp: datetime
+    ) -> "BookTickerSnapshot":
+        """
+        Create BookTickerSnapshot from exchange/symbol data (legacy compatibility).
+        
+        This method is provided for backward compatibility but requires symbol resolution.
+        Use from_symbol_id_and_data for better performance.
+        
+        Args:
+            exchange: Exchange identifier (e.g., 'MEXC', 'GATEIO_FUTURES')
+            symbol: Symbol object with base/quote assets
+            bid_price: Best bid price
+            bid_qty: Best bid quantity
+            ask_price: Best ask price
+            ask_qty: Best ask quantity
+            timestamp: Exchange timestamp
+            
+        Returns:
+            BookTickerSnapshot instance with resolved symbol_id
+            
+        Raises:
+            ValueError: If symbol cannot be resolved to symbol_id
+        """
+        from exchanges.structs.enums import ExchangeEnum
+        from db.cache_operations import cached_resolve_symbol_by_exchange_string
+        
+        # Parse exchange enum
+        try:
+            exchange_enum = ExchangeEnum(exchange)
+        except ValueError:
+            raise ValueError(f"Invalid exchange: {exchange}")
+        
+        # Create exchange_symbol from symbol data
+        exchange_symbol = f"{symbol.base}{symbol.quote}".upper()
+        
+        # Resolve symbol using exchange_symbol lookup
+        db_symbol = cached_resolve_symbol_by_exchange_string(exchange_enum, exchange_symbol)
+        if not db_symbol:
+            raise ValueError(f"Cannot resolve symbol {exchange_symbol} on {exchange}")
+        
+        return cls(
+            symbol_id=db_symbol.id,
+            bid_price=bid_price,
+            bid_qty=bid_qty,
+            ask_price=ask_price,
+            ask_qty=ask_qty,
+            timestamp=timestamp
+        )
+    
     def to_symbol(self) -> Symbol:
         """
-        Convert back to Symbol object.
+        Convert back to Symbol object using database cache lookup.
         
         Returns:
-            Symbol object reconstructed from composite/quote strings
+            Symbol object reconstructed from symbol_id
         """
-        from exchanges.structs.types import AssetName
-        return Symbol(
-            base=AssetName(self.symbol_base),
-            quote=AssetName(self.symbol_quote),
-        )
+        from db.cache_operations import cached_get_symbol_by_id
+        
+        db_symbol = cached_get_symbol_by_id(self.symbol_id)
+        if not db_symbol:
+            raise ValueError(f"Cannot resolve symbol_id {self.symbol_id} from cache")
+        
+        return db_symbol.to_common_symbol()
     
     def get_spread(self) -> float:
         """
@@ -548,11 +608,14 @@ class TradeSnapshot(msgspec.Struct):
         is_maker: Optional[bool] = None
     ) -> "TradeSnapshot":
         """
-        Create TradeSnapshot from individual components.
+        Create TradeSnapshot from individual components (legacy compatibility).
+        
+        This method is provided for backward compatibility but requires symbol resolution.
+        Use from_symbol_id_and_trade for better performance.
         
         Args:
-            exchange: Exchange identifier
-            symbol: Symbol object with composite/quote assets
+            exchange: Exchange identifier (e.g., 'MEXC', 'GATEIO_FUTURES')
+            symbol: Symbol object with base/quote assets
             price: Trade execution price
             quantity: Trade quantity
             side: Trade side ('buy' or 'sell')
@@ -563,17 +626,35 @@ class TradeSnapshot(msgspec.Struct):
             is_maker: Optional maker flag
             
         Returns:
-            TradeSnapshot instance
+            TradeSnapshot instance with resolved symbol_id
+            
+        Raises:
+            ValueError: If symbol cannot be resolved to symbol_id
         """
+        from exchanges.structs.enums import ExchangeEnum
+        from db.cache_operations import cached_resolve_symbol_by_exchange_string
+        
+        # Parse exchange enum
+        try:
+            exchange_enum = ExchangeEnum(exchange)
+        except ValueError:
+            raise ValueError(f"Invalid exchange: {exchange}")
+        
+        # Create exchange_symbol from symbol data
+        exchange_symbol = f"{symbol.base}{symbol.quote}".upper()
+        
+        # Resolve symbol using exchange_symbol lookup
+        db_symbol = cached_resolve_symbol_by_exchange_string(exchange_enum, exchange_symbol)
+        if not db_symbol:
+            raise ValueError(f"Cannot resolve symbol {exchange_symbol} on {exchange}")
+        
         return cls(
-            exchange=exchange.upper(),
-            symbol_base=str(symbol.base),
-            symbol_quote=str(symbol.quote),
+            symbol_id=db_symbol.id,
             price=price,
             quantity=quantity,
             side=side.lower(),
-            trade_id=trade_id,
             timestamp=timestamp,
+            trade_id=trade_id,
             quote_quantity=quote_quantity,
             is_buyer=is_buyer,
             is_maker=is_maker
@@ -581,16 +662,18 @@ class TradeSnapshot(msgspec.Struct):
     
     def to_symbol(self) -> Symbol:
         """
-        Convert back to Symbol object.
+        Convert back to Symbol object using database cache lookup.
         
         Returns:
-            Symbol object reconstructed from composite/quote strings
+            Symbol object reconstructed from symbol_id
         """
-        from exchanges.structs.types import AssetName
-        return Symbol(
-            base=AssetName(self.symbol_base),
-            quote=AssetName(self.symbol_quote),
-        )
+        from db.cache_operations import cached_get_symbol_by_id
+        
+        db_symbol = cached_get_symbol_by_id(self.symbol_id)
+        if not db_symbol:
+            raise ValueError(f"Cannot resolve symbol_id {self.symbol_id} from cache")
+        
+        return db_symbol.to_common_symbol()
     
     def to_trade_struct(self) -> "Trade":
         """
@@ -625,11 +708,17 @@ class TradeSnapshot(msgspec.Struct):
     
     def get_symbol_string(self) -> str:
         """
-        Get symbol as string for database queries.
+        Get symbol as string using database cache lookup.
         
         Returns:
             Symbol string (e.g., 'BTCUSDT')
         """
-        return f"{self.symbol_base}{self.symbol_quote}"
+        from db.cache_operations import cached_get_symbol_by_id
+        
+        db_symbol = cached_get_symbol_by_id(self.symbol_id)
+        if not db_symbol:
+            raise ValueError(f"Cannot resolve symbol_id {self.symbol_id} from cache")
+        
+        return db_symbol.get_symbol_string()
 
 

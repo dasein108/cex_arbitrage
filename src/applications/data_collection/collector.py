@@ -445,10 +445,10 @@ class UnifiedWebSocketManager:
 
     def get_all_cached_tickers(self) -> List[BookTickerSnapshot]:
         """
-        Get all cached book tickers as BookTickerSnapshot objects.
+        Get all cached book tickers as normalized BookTickerSnapshot objects.
         
         Returns:
-            List of BookTickerSnapshot objects
+            List of BookTickerSnapshot objects with symbol_id (normalized approach)
         """
         snapshots = []
 
@@ -457,49 +457,15 @@ class UnifiedWebSocketManager:
                 # Parse exchange and symbol from cache key
                 exchange, symbol_str = self._parse_cache_key(cache_key)
 
-                # Find the original Symbol object more efficiently
-                symbol = None
-                for active_symbols in self._active_symbols.values():
-                    for sym in active_symbols:
-                        if str(sym) == symbol_str:
-                            symbol = sym
-                            break
-                    if symbol:
-                        break
+                # Resolve symbol_id directly using database cache (normalized approach)
+                symbol_id = self._resolve_symbol_id_from_cache(exchange, symbol_str)
+                if symbol_id is None:
+                    self.logger.warning(f"Cannot resolve symbol_id from cache: {symbol_str} on {exchange}")
+                    continue
 
-                if symbol is None:
-                    # Try to resolve symbol using database cache with exchange_symbol lookup
-                    self.logger.debug(
-                        f"Symbol not found in active symbols: {symbol_str} for exchange {exchange}, trying database cache")
-
-                    try:
-                        from exchanges.structs.enums import ExchangeEnum
-                        from db.cache_operations import cached_resolve_symbol_by_exchange_string
-                        
-                        # Parse exchange enum and resolve symbol from database cache
-                        exchange_enum = ExchangeEnum(exchange)
-                        db_symbol = cached_resolve_symbol_by_exchange_string(exchange_enum, symbol_str)
-                        
-                        if db_symbol:
-                            # Create Symbol object from database symbol
-                            from exchanges.structs.common import Symbol
-                            from exchanges.structs.types import AssetName
-                            symbol = Symbol(
-                                base=AssetName(db_symbol.symbol_base), 
-                                quote=AssetName(db_symbol.symbol_quote)
-                            )
-                            self.logger.debug(f"Resolved symbol from database cache: {symbol}")
-                        else:
-                            # Skip this entry if we can't resolve it
-                            self.logger.warning(f"Cannot resolve symbol from cache: {symbol_str} on {exchange}")
-                            continue
-                    except Exception as e:
-                        self.logger.warning(f"Error resolving symbol {symbol_str} on {exchange}: {e}")
-                        continue
-
-                snapshot = BookTickerSnapshot.from_symbol_and_data(
-                    exchange=exchange.upper(),
-                    symbol=symbol,
+                # Create normalized snapshot directly with symbol_id
+                snapshot = BookTickerSnapshot.from_symbol_id_and_data(
+                    symbol_id=symbol_id,
                     bid_price=cache_entry.ticker.bid_price,
                     bid_qty=cache_entry.ticker.bid_quantity,
                     ask_price=cache_entry.ticker.ask_price,
@@ -514,12 +480,54 @@ class UnifiedWebSocketManager:
 
         return snapshots
 
+    def _resolve_symbol_id_from_cache(self, exchange: str, symbol_str: str) -> Optional[int]:
+        """
+        Resolve symbol_id from database cache using exchange and symbol string.
+        
+        Handles both slash format (BTC/USDT) and exchange format (BTCUSDT).
+        
+        Args:
+            exchange: Exchange identifier (e.g., 'MEXC_SPOT')
+            symbol_str: Symbol string (e.g., 'BTCUSDT' or 'BTC/USDT')
+            
+        Returns:
+            symbol_id if found, None otherwise
+        """
+        try:
+            from exchanges.structs.enums import ExchangeEnum
+            from db.cache_operations import cached_resolve_symbol_by_exchange_string
+            
+            # Parse exchange enum
+            exchange_enum = ExchangeEnum(exchange)
+            
+            # Try direct resolution first (for exchange format like 'BTCUSDT')
+            db_symbol = cached_resolve_symbol_by_exchange_string(exchange_enum, symbol_str)
+            if db_symbol:
+                self.logger.debug(f"Resolved symbol_id {db_symbol.id} for {symbol_str} on {exchange}")
+                return db_symbol.id
+            
+            # If slash format (e.g., 'BTC/USDT'), convert to exchange format
+            if '/' in symbol_str:
+                parts = symbol_str.split('/')
+                if len(parts) == 2:
+                    exchange_symbol = f"{parts[0]}{parts[1]}"  # BTC/USDT -> BTCUSDT
+                    db_symbol = cached_resolve_symbol_by_exchange_string(exchange_enum, exchange_symbol)
+                    if db_symbol:
+                        self.logger.debug(f"Resolved symbol_id {db_symbol.id} for {symbol_str} (converted to {exchange_symbol}) on {exchange}")
+                        return db_symbol.id
+            
+            return None
+            
+        except Exception as e:
+            self.logger.warning(f"Error resolving symbol_id for {symbol_str} on {exchange}: {e}")
+            return None
+
     def get_all_cached_trades(self) -> List[TradeSnapshot]:
         """
-        Get all cached trades as TradeSnapshot objects.
+        Get all cached trades as normalized TradeSnapshot objects.
         
         Returns:
-            List of TradeSnapshot objects
+            List of TradeSnapshot objects with symbol_id (normalized approach)
         """
         snapshots = []
 
@@ -528,10 +536,16 @@ class UnifiedWebSocketManager:
                 # Parse exchange and symbol from cache key
                 exchange, symbol_str = self._parse_cache_key(cache_key)
 
-                # Convert each cached trade to TradeSnapshot
+                # Resolve symbol_id directly using database cache (normalized approach)
+                symbol_id = self._resolve_symbol_id_from_cache(exchange, symbol_str)
+                if symbol_id is None:
+                    self.logger.warning(f"Cannot resolve symbol_id from cache for trades: {symbol_str} on {exchange}")
+                    continue
+
+                # Convert each cached trade to normalized TradeSnapshot
                 for trade_cache in trade_cache_list:
-                    snapshot = TradeSnapshot.from_trade_struct(
-                        exchange=exchange.upper(),
+                    snapshot = TradeSnapshot.from_symbol_id_and_trade(
+                        symbol_id=symbol_id,
                         trade=trade_cache.trade
                     )
                     snapshots.append(snapshot)
@@ -1048,87 +1062,45 @@ class DataCollector:
 
     async def _handle_snapshot_storage(self, snapshots: List[BookTickerSnapshot]) -> None:
         """
-        Handle snapshot storage to database using normalized schema with exchange_symbol lookups.
+        Handle snapshot storage to database using normalized schema.
 
-        Uses modern cache operations with exchange_symbol resolution for optimal performance.
+        The snapshots are already normalized with symbol_id, so we can store them directly.
 
         Args:
-            snapshots: List of legacy snapshots to store
+            snapshots: List of normalized BookTickerSnapshot objects with symbol_id
         """
         try:
             if not snapshots:
                 self.logger.debug("No snapshots to store")
                 return
 
-            self.logger.debug(f"Converting {len(snapshots)} legacy snapshots to normalized format...")
+            self.logger.debug(f"Storing {len(snapshots)} normalized snapshots to database...")
 
-            # Convert legacy snapshots to normalized format using exchange_symbol lookups
-            from db.cache_operations import cached_resolve_symbol_by_exchange_string
-            from exchanges.structs.enums import ExchangeEnum
-            
-            normalized_snapshots = []
-            skipped_count = 0
-            
-            for snapshot in snapshots:
-                try:
-                    # Parse exchange enum from snapshot
-                    try:
-                        exchange_enum = ExchangeEnum(snapshot.exchange)
-                    except ValueError:
-                        self.logger.warning(f"Invalid exchange enum: {snapshot.exchange}")
-                        skipped_count += 1
-                        continue
-                    
-                    # Create exchange_symbol from snapshot data
-                    exchange_symbol = f"{snapshot.symbol_base}{snapshot.symbol_quote}".upper()
-                    
-                    # Resolve symbol using exchange_symbol lookup (modern approach)
-                    symbol = cached_resolve_symbol_by_exchange_string(exchange_enum, exchange_symbol)
-                    if not symbol:
-                        self.logger.warning(
-                            f"Symbol not found in cache: {exchange_symbol} on {snapshot.exchange}"
-                        )
-                        skipped_count += 1
-                        continue
-                    
-                    # Create normalized snapshot using symbol.exchange_id and symbol.id
-                    normalized_snapshot = NormalizedBookTickerSnapshot.from_legacy_snapshot(
-                        snapshot, symbol.exchange_id, symbol.id
-                    )
-                    normalized_snapshots.append(normalized_snapshot)
-                    
-                except Exception as e:
-                    self.logger.error(
-                        f"Error converting snapshot {snapshot.exchange} {exchange_symbol}: {e}"
-                    )
-                    skipped_count += 1
-                    continue
-            
-            if skipped_count > 0:
-                self.logger.warning(f"Skipped {skipped_count} snapshots during normalization")
-            
-            if not normalized_snapshots:
-                self.logger.warning("No valid normalized snapshots to store")
-                return
-
-            # Store normalized snapshots in database using batch insert
-            from db.operations import insert_normalized_book_ticker_snapshots_batch
+            # Store snapshots using normalized batch insert (snapshots have symbol_id)
+            from db.operations import insert_book_ticker_snapshot
 
             start_time = datetime.now()
-            count = await insert_normalized_book_ticker_snapshots_batch(normalized_snapshots)
+            count = 0
+            
+            # Use individual inserts for normalized snapshots
+            for snapshot in snapshots:
+                try:
+                    await insert_book_ticker_snapshot(snapshot)
+                    count += 1
+                except Exception as e:
+                    self.logger.warning(f"Failed to insert snapshot for symbol_id {snapshot.symbol_id}: {e}")
+                    
             storage_duration = (datetime.now() - start_time).total_seconds() * 1000
 
             self.logger.debug(
-                f"Successfully stored {count} normalized snapshots in {storage_duration:.1f}ms "
-                f"(converted from {len(snapshots)} legacy snapshots, {skipped_count} skipped)"
+                f"Successfully stored {count} snapshots in {storage_duration:.1f}ms"
             )
 
             # Log sample of what was stored for verification
-            if normalized_snapshots:
-                sample = normalized_snapshots[0]
+            if snapshots:
+                sample = snapshots[0]
                 self.logger.debug(
-                    f"Sample normalized snapshot stored: exchange_id={sample.exchange_id} "
-                    f"symbol_id={sample.symbol_id} @ {sample.timestamp} - "
+                    f"Sample snapshot stored: symbol_id={sample.symbol_id} @ {sample.timestamp} - "
                     f"bid={sample.bid_price} ask={sample.ask_price}"
                 )
 
@@ -1139,82 +1111,41 @@ class DataCollector:
 
     async def _handle_trade_storage(self, trade_snapshots: List[TradeSnapshot]) -> None:
         """
-        Handle trade snapshot storage to database using normalized schema with exchange_symbol lookups.
+        Handle trade snapshot storage to database using normalized schema.
 
-        Uses modern cache operations with exchange_symbol resolution for optimal performance.
+        The trade snapshots are already normalized with symbol_id, so we can store them directly.
 
         Args:
-            trade_snapshots: List of legacy trade snapshots to store
+            trade_snapshots: List of normalized TradeSnapshot objects with symbol_id
         """
         try:
             if not trade_snapshots:
                 return
 
-            self.logger.debug(f"Converting {len(trade_snapshots)} legacy trade snapshots to normalized format...")
-            
-            # Convert legacy trade snapshots to normalized format using exchange_symbol lookups
-            from db.cache_operations import cached_resolve_symbol_by_exchange_string
-            from exchanges.structs.enums import ExchangeEnum
-            
-            normalized_trades = []
-            skipped_count = 0
-            
-            for trade_snapshot in trade_snapshots:
-                try:
-                    # Parse exchange enum from trade snapshot
-                    try:
-                        exchange_enum = ExchangeEnum(trade_snapshot.exchange)
-                    except ValueError:
-                        self.logger.warning(f"Invalid exchange enum: {trade_snapshot.exchange}")
-                        skipped_count += 1
-                        continue
-                    
-                    # Create exchange_symbol from trade snapshot data
-                    exchange_symbol = f"{trade_snapshot.symbol_base}{trade_snapshot.symbol_quote}".upper()
-                    
-                    # Resolve symbol using exchange_symbol lookup (modern approach)
-                    symbol = cached_resolve_symbol_by_exchange_string(exchange_enum, exchange_symbol)
-                    if not symbol:
-                        self.logger.warning(
-                            f"Symbol not found in cache: {exchange_symbol} on {trade_snapshot.exchange}"
-                        )
-                        skipped_count += 1
-                        continue
-                    
-                    # Create normalized trade snapshot using symbol.exchange_id and symbol.id
-                    normalized_trade = NormalizedTradeSnapshot.from_legacy_snapshot(
-                        trade_snapshot, symbol.exchange_id, symbol.id
-                    )
-                    normalized_trades.append(normalized_trade)
-                    
-                except Exception as e:
-                    self.logger.error(
-                        f"Error converting trade snapshot {trade_snapshot.exchange} {exchange_symbol}: {e}"
-                    )
-                    skipped_count += 1
-                    continue
-            
-            if skipped_count > 0:
-                self.logger.warning(f"Skipped {skipped_count} trade snapshots during normalization")
-            
-            if not normalized_trades:
-                self.logger.warning("No valid normalized trade snapshots to store")
-                return
+            self.logger.debug(f"Storing {len(trade_snapshots)} normalized trade snapshots to database...")
 
-            # Store normalized trade snapshots in database using batch insert
-            from db.operations import insert_normalized_trade_snapshots_batch
+            # Store trade snapshots using normalized individual inserts (they have symbol_id)
+            from db.operations import insert_trade_snapshot
 
             start_time = datetime.now()
-            count = await insert_normalized_trade_snapshots_batch(normalized_trades)
+            count = 0
+            
+            # Use individual inserts for normalized trade snapshots
+            for trade_snapshot in trade_snapshots:
+                try:
+                    await insert_trade_snapshot(trade_snapshot)
+                    count += 1
+                except Exception as e:
+                    self.logger.warning(f"Failed to insert trade snapshot for symbol_id {trade_snapshot.symbol_id}: {e}")
+                    
             storage_duration = (datetime.now() - start_time).total_seconds() * 1000
 
             self.logger.debug(
-                f"Stored {count} normalized trade snapshots in {storage_duration:.1f}ms "
-                f"(converted from {len(trade_snapshots)} legacy trades, {skipped_count} skipped)"
+                f"Successfully stored {count} trade snapshots in {storage_duration:.1f}ms"
             )
 
         except Exception as e:
-            self.logger.error(f"Error storing normalized trade snapshots: {e}")
+            self.logger.error(f"Error storing trade snapshots: {e}")
 
     def get_status(self) -> Dict[str, any]:
         """

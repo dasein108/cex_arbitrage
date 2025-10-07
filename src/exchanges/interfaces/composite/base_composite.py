@@ -6,11 +6,13 @@ handling connection management, initialization, and state tracking.
 """
 
 from abc import ABC, abstractmethod
-from typing import Optional, Generic, Any
+from typing import Optional, Generic, Any, Union
 
 from exchanges.structs.common import SymbolsInfo
 from config.structs import ExchangeConfig
-from infrastructure.networking.websocket.structs import ConnectionState
+from infrastructure.networking.websocket.structs import (
+    ConnectionState, PublicWebsocketChannelType, PrivateWebsocketChannelType
+)
 from .types import RestClientType, WebSocketClientType
 
 # HFT Logger Integration
@@ -277,15 +279,15 @@ class BaseCompositeExchange(Generic[RestClientType, WebSocketClientType], ABC):
         self.logger.metric("websocket_errors", 1,
                           tags={"exchange": self._config.name})
 
-    def publish(self, channel: str, data: Any) -> None:
+    def publish(self, channel: Union[PublicWebsocketChannelType, PrivateWebsocketChannelType], data: Any) -> None:
         """
-        Publish event to bound handlers using channel string.
+        Publish event to bound handlers using enum channel types.
         
         This method enables external adapters to receive events without inheritance.
         Calls _exec_bound_handler internally if BoundHandlerInterface is available.
         
         Args:
-            channel: Channel identifier as string (e.g., "book_ticker", "orderbook")
+            channel: Channel enum type (PublicWebsocketChannelType or PrivateWebsocketChannelType)
             data: Event data to publish
         """
         # Check if this instance has bound handler interface

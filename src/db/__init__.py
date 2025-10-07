@@ -17,7 +17,6 @@ Key Features:
 from .connection import DatabaseManager, get_db_manager, initialize_database, close_database
 from .operations import (
     insert_book_ticker_snapshot,
-    insert_book_ticker_snapshots_batch,
     get_book_ticker_snapshots,
     get_latest_book_ticker_snapshots,
     get_book_ticker_history,

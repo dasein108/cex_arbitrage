@@ -117,113 +117,6 @@ async def insert_book_ticker_snapshot(snapshot: BookTickerSnapshot) -> int:
         logger.error(f"Failed to insert book ticker snapshot: {e}")
         raise
 
-
-async def insert_book_ticker_snapshots_batch(snapshots: List[BookTickerSnapshot]) -> int:
-    """
-    Insert multiple BookTicker snapshots efficiently with upsert logic.
-    
-    Uses ON CONFLICT DO UPDATE to handle duplicates gracefully.
-    Includes both in-memory deduplication and timestamp cache checking.
-    
-    Args:
-        snapshots: List of BookTickerSnapshot objects
-        
-    Returns:
-        Number of records inserted/updated
-        
-    Raises:
-        DatabaseError: If batch insert fails
-    """
-    if not snapshots:
-        return 0
-    
-    # Clean up cache periodically
-    _cleanup_timestamp_cache()
-    
-    # Filter out known duplicate timestamps using cache
-    filtered_snapshots = []
-    cache_hits = 0
-    
-    for snapshot in snapshots:
-        if not _is_duplicate_timestamp(snapshot.exchange, snapshot.symbol_base, 
-                                      snapshot.symbol_quote, snapshot.timestamp):
-            filtered_snapshots.append(snapshot)
-        else:
-            cache_hits += 1
-    
-    if cache_hits > 0:
-        logger.debug(f"Cache filtered {cache_hits} duplicate timestamps")
-    
-    if not filtered_snapshots:
-        return 0
-    
-    # Deduplicate remaining snapshots in memory
-    unique_snapshots = {}
-    for snapshot in filtered_snapshots:
-        key = (snapshot.exchange, snapshot.symbol_base, snapshot.symbol_quote, snapshot.timestamp)
-        # Keep the latest one if duplicate timestamps exist
-        if key not in unique_snapshots:
-            unique_snapshots[key] = snapshot
-        else:
-            # Compare and keep the one with most recent created_at or bid/ask prices
-            existing = unique_snapshots[key]
-            if hasattr(snapshot, 'created_at') and hasattr(existing, 'created_at'):
-                if snapshot.created_at > existing.created_at:
-                    unique_snapshots[key] = snapshot
-    
-    deduplicated_snapshots = list(unique_snapshots.values())
-    
-    if not deduplicated_snapshots:
-        return 0
-    
-    if len(snapshots) != len(deduplicated_snapshots):
-        logger.debug(f"Total deduplication: {len(snapshots)} -> {len(deduplicated_snapshots)} snapshots (cache: {cache_hits}, memory: {len(filtered_snapshots) - len(deduplicated_snapshots)})")
-    
-    db = get_db_manager()
-    count = 0
-    
-    # Use individual upserts in transaction for reliability
-    query = """
-        INSERT INTO book_ticker_snapshots (
-            symbol_id, bid_price, bid_qty, ask_price, ask_qty, timestamp
-        ) VALUES ($1, $2, $3, $4, $5, $6)
-        ON CONFLICT (symbol_id, timestamp)
-        DO UPDATE SET
-            bid_price = EXCLUDED.bid_price,
-            bid_qty = EXCLUDED.bid_qty,
-            ask_price = EXCLUDED.ask_price,
-            ask_qty = EXCLUDED.ask_qty,
-            created_at = NOW()
-    """
-    
-    try:
-        async with db.pool.acquire() as conn:
-            async with conn.transaction():
-                for snapshot in deduplicated_snapshots:
-                    await conn.execute(
-                        query,
-                        snapshot.exchange,
-                        snapshot.symbol_base,
-                        snapshot.symbol_quote,
-                        snapshot.bid_price,
-                        snapshot.bid_qty,
-                        snapshot.ask_price,
-                        snapshot.ask_qty,
-                        snapshot.timestamp
-                    )
-                    count += 1
-        
-        logger.debug(f"Batch upsert processed {count} snapshots")
-        return count
-        
-    except Exception as e:
-        logger.error(f"Failed to batch upsert book ticker snapshots: {e}")
-        raise
-
-
-
-
-
 async def get_book_ticker_snapshots(
     exchange: Optional[str] = None,
     symbol_base: Optional[str] = None,
@@ -234,11 +127,11 @@ async def get_book_ticker_snapshots(
     offset: int = 0
 ) -> List[BookTickerSnapshot]:
     """
-    Retrieve BookTicker snapshots with flexible filtering.
+    Retrieve BookTicker snapshots with flexible filtering using normalized schema.
     
     Args:
         exchange: Filter by exchange (optional)
-        symbol_base: Filter by composite asset (optional)
+        symbol_base: Filter by base asset (optional)
         symbol_quote: Filter by quote asset (optional)
         timestamp_from: Start time filter (optional)
         timestamp_to: End time filter (optional)
@@ -246,37 +139,37 @@ async def get_book_ticker_snapshots(
         offset: Number of records to skip
         
     Returns:
-        List of BookTickerSnapshot objects
+        List of BookTickerSnapshot objects with symbol_id
     """
     db = get_db_manager()
     
-    # Build dynamic WHERE clause
+    # Build dynamic WHERE clause using JOINs for normalized schema
     where_conditions = []
     params = []
     param_counter = 1
     
     if exchange:
-        where_conditions.append(f"exchange = ${param_counter}")
+        where_conditions.append(f"e.enum_value = ${param_counter}")
         params.append(exchange.upper())
         param_counter += 1
     
     if symbol_base:
-        where_conditions.append(f"symbol_base = ${param_counter}")
+        where_conditions.append(f"s.symbol_base = ${param_counter}")
         params.append(symbol_base.upper())
         param_counter += 1
     
     if symbol_quote:
-        where_conditions.append(f"symbol_quote = ${param_counter}")
+        where_conditions.append(f"s.symbol_quote = ${param_counter}")
         params.append(symbol_quote.upper())
         param_counter += 1
     
     if timestamp_from:
-        where_conditions.append(f"timestamp >= ${param_counter}")
+        where_conditions.append(f"bts.timestamp >= ${param_counter}")
         params.append(timestamp_from)
         param_counter += 1
     
     if timestamp_to:
-        where_conditions.append(f"timestamp <= ${param_counter}")
+        where_conditions.append(f"bts.timestamp <= ${param_counter}")
         params.append(timestamp_to)
         param_counter += 1
     
@@ -286,12 +179,13 @@ async def get_book_ticker_snapshots(
     where_clause = "WHERE " + " AND ".join(where_conditions) if where_conditions else ""
     
     query = f"""
-        SELECT id, exchange, symbol_base, symbol_quote,
-               bid_price, bid_qty, ask_price, ask_qty,
-               timestamp, created_at
-        FROM book_ticker_snapshots
+        SELECT bts.id, bts.symbol_id, bts.bid_price, bts.bid_qty, 
+               bts.ask_price, bts.ask_qty, bts.timestamp, bts.created_at
+        FROM book_ticker_snapshots bts
+        JOIN symbols s ON bts.symbol_id = s.id
+        JOIN exchanges e ON s.exchange_id = e.id
         {where_clause}
-        ORDER BY timestamp DESC, id DESC
+        ORDER BY bts.timestamp DESC, bts.id DESC
         LIMIT ${param_counter} OFFSET ${param_counter + 1}
     """
     
@@ -301,9 +195,7 @@ async def get_book_ticker_snapshots(
         snapshots = [
             BookTickerSnapshot(
                 id=row['id'],
-                exchange=row['exchange'],
-                symbol_base=row['symbol_base'],
-                symbol_quote=row['symbol_quote'],
+                symbol_id=row['symbol_id'],
                 bid_price=float(row['bid_price']),
                 bid_qty=float(row['bid_qty']),
                 ask_price=float(row['ask_price']),
@@ -314,7 +206,7 @@ async def get_book_ticker_snapshots(
             for row in rows
         ]
         
-        logger.debug(f"Retrieved {len(snapshots)} book ticker snapshots")
+        logger.debug(f"Retrieved {len(snapshots)} normalized book ticker snapshots")
         return snapshots
         
     except Exception as e:
@@ -328,11 +220,11 @@ async def get_latest_book_ticker_snapshots(
     symbol_quote: Optional[str] = None
 ) -> Dict[str, BookTickerSnapshot]:
     """
-    Get the latest BookTicker snapshot for each exchange/symbol combination.
+    Get the latest BookTicker snapshot for each exchange/symbol combination using normalized schema.
     
     Args:
         exchange: Filter by exchange (optional)
-        symbol_base: Filter by composite asset (optional)
+        symbol_base: Filter by base asset (optional)
         symbol_quote: Filter by quote asset (optional)
         
     Returns:
@@ -340,36 +232,39 @@ async def get_latest_book_ticker_snapshots(
     """
     db = get_db_manager()
     
-    # Build dynamic WHERE clause
+    # Build dynamic WHERE clause using JOINs for normalized schema
     where_conditions = []
     params = []
     param_counter = 1
     
     if exchange:
-        where_conditions.append(f"exchange = ${param_counter}")
+        where_conditions.append(f"e.enum_value = ${param_counter}")
         params.append(exchange.upper())
         param_counter += 1
     
     if symbol_base:
-        where_conditions.append(f"symbol_base = ${param_counter}")
+        where_conditions.append(f"s.symbol_base = ${param_counter}")
         params.append(symbol_base.upper())
         param_counter += 1
     
     if symbol_quote:
-        where_conditions.append(f"symbol_quote = ${param_counter}")
+        where_conditions.append(f"s.symbol_quote = ${param_counter}")
         params.append(symbol_quote.upper())
         param_counter += 1
     
     where_clause = "WHERE " + " AND ".join(where_conditions) if where_conditions else ""
     
     query = f"""
-        SELECT DISTINCT ON (exchange, symbol_base, symbol_quote)
-               id, exchange, symbol_base, symbol_quote,
-               bid_price, bid_qty, ask_price, ask_qty,
-               timestamp, created_at
-        FROM book_ticker_snapshots
+        SELECT DISTINCT ON (e.enum_value, s.symbol_base, s.symbol_quote)
+               bts.id, bts.symbol_id, e.enum_value as exchange, 
+               s.symbol_base, s.symbol_quote,
+               bts.bid_price, bts.bid_qty, bts.ask_price, bts.ask_qty,
+               bts.timestamp, bts.created_at
+        FROM book_ticker_snapshots bts
+        JOIN symbols s ON bts.symbol_id = s.id
+        JOIN exchanges e ON s.exchange_id = e.id
         {where_clause}
-        ORDER BY exchange, symbol_base, symbol_quote, timestamp DESC
+        ORDER BY e.enum_value, s.symbol_base, s.symbol_quote, bts.timestamp DESC
     """
     
     try:
@@ -379,9 +274,7 @@ async def get_latest_book_ticker_snapshots(
         for row in rows:
             snapshot = BookTickerSnapshot(
                 id=row['id'],
-                exchange=row['exchange'],
-                symbol_base=row['symbol_base'],
-                symbol_quote=row['symbol_quote'],
+                symbol_id=row['symbol_id'],
                 bid_price=float(row['bid_price']),
                 bid_qty=float(row['bid_qty']),
                 ask_price=float(row['ask_price']),
@@ -390,10 +283,10 @@ async def get_latest_book_ticker_snapshots(
                 created_at=row['created_at']
             )
             
-            key = f"{snapshot.exchange}_{snapshot.symbol_base}_{snapshot.symbol_quote}"
+            key = f"{row['exchange']}_{row['symbol_base']}_{row['symbol_quote']}"
             latest_snapshots[key] = snapshot
         
-        logger.debug(f"Retrieved {len(latest_snapshots)} latest book ticker snapshots")
+        logger.debug(f"Retrieved {len(latest_snapshots)} latest normalized book ticker snapshots")
         return latest_snapshots
         
     except Exception as e:
@@ -408,7 +301,7 @@ async def get_book_ticker_history(
     sample_interval_minutes: int = 1
 ) -> List[BookTickerSnapshot]:
     """
-    Get historical BookTicker data for a specific exchange/symbol.
+    Get historical BookTicker data for a specific exchange/symbol using normalized schema.
     
     Args:
         exchange: Exchange identifier
@@ -423,26 +316,28 @@ async def get_book_ticker_history(
     
     timestamp_from = datetime.utcnow() - timedelta(hours=hours_back)
     
-    # Use window function to sample data at intervals
+    # Use window function to sample data at intervals with normalized schema
     query = """
-        SELECT id, exchange, symbol_base, symbol_quote,
-               bid_price, bid_qty, ask_price, ask_qty,
-               timestamp, created_at
+        SELECT sampled.id, sampled.symbol_id, sampled.bid_price, sampled.bid_qty,
+               sampled.ask_price, sampled.ask_qty, sampled.timestamp, sampled.created_at
         FROM (
-            SELECT *,
+            SELECT bts.id, bts.symbol_id, bts.bid_price, bts.bid_qty,
+                   bts.ask_price, bts.ask_qty, bts.timestamp, bts.created_at,
                    ROW_NUMBER() OVER (
                        PARTITION BY 
-                           DATE_TRUNC('minute', timestamp) / $5
-                       ORDER BY timestamp DESC
+                           FLOOR(EXTRACT(EPOCH FROM bts.timestamp) / (60 * $4))
+                       ORDER BY bts.timestamp DESC
                    ) as rn
-            FROM book_ticker_snapshots
-            WHERE exchange = $1 
-              AND symbol_base = $2 
-              AND symbol_quote = $3
-              AND timestamp >= $4
+            FROM book_ticker_snapshots bts
+            JOIN symbols s ON bts.symbol_id = s.id
+            JOIN exchanges e ON s.exchange_id = e.id
+            WHERE e.enum_value = $1 
+              AND s.symbol_base = $2 
+              AND s.symbol_quote = $3
+              AND bts.timestamp >= $5
         ) sampled
-        WHERE rn = 1
-        ORDER BY timestamp ASC
+        WHERE sampled.rn = 1
+        ORDER BY sampled.timestamp ASC
     """
     
     try:
@@ -451,16 +346,14 @@ async def get_book_ticker_history(
             exchange.upper(),
             str(symbol.base).upper(),
             str(symbol.quote).upper(),
-            timestamp_from,
-            sample_interval_minutes
+            sample_interval_minutes,
+            timestamp_from
         )
         
         snapshots = [
             BookTickerSnapshot(
                 id=row['id'],
-                exchange=row['exchange'],
-                symbol_base=row['symbol_base'],
-                symbol_quote=row['symbol_quote'],
+                symbol_id=row['symbol_id'],
                 bid_price=float(row['bid_price']),
                 bid_qty=float(row['bid_qty']),
                 ask_price=float(row['ask_price']),
@@ -471,7 +364,7 @@ async def get_book_ticker_history(
             for row in rows
         ]
         
-        logger.debug(f"Retrieved {len(snapshots)} historical book ticker snapshots for {exchange} {symbol.base}/{symbol.quote}")
+        logger.debug(f"Retrieved {len(snapshots)} historical normalized book ticker snapshots for {exchange} {symbol.base}/{symbol.quote}")
         return snapshots
         
     except Exception as e:
@@ -521,8 +414,17 @@ async def get_database_stats() -> Dict[str, Any]:
     
     queries = {
         'total_snapshots': "SELECT COUNT(*) FROM book_ticker_snapshots",
-        'exchanges': "SELECT COUNT(DISTINCT exchange) FROM book_ticker_snapshots",
-        'symbols': "SELECT COUNT(DISTINCT symbol_base || '/' || symbol_quote) FROM book_ticker_snapshots",
+        'exchanges': """
+            SELECT COUNT(DISTINCT e.enum_value) 
+            FROM book_ticker_snapshots bts
+            JOIN symbols s ON bts.symbol_id = s.id
+            JOIN exchanges e ON s.exchange_id = e.id
+        """,
+        'symbols': """
+            SELECT COUNT(DISTINCT s.symbol_base || '/' || s.symbol_quote) 
+            FROM book_ticker_snapshots bts
+            JOIN symbols s ON bts.symbol_id = s.id
+        """,
         'latest_timestamp': "SELECT MAX(timestamp) FROM book_ticker_snapshots",
         'oldest_timestamp': "SELECT MIN(timestamp) FROM book_ticker_snapshots",
         'table_size': """

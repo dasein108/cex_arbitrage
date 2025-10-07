@@ -7,7 +7,7 @@ which are only needed for spot exchanges.
 """
 
 import asyncio
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Any
 from exchanges.structs.common import (
     Symbol, AssetBalance, Order, SymbolsInfo
 )
@@ -77,6 +77,37 @@ class BasePrivateComposite(BaseCompositeExchange[PrivateRestType, PrivateWebsock
         # Authentication validation
         if not config.has_credentials():
             self.logger.error("No API credentials provided - trading operations will fail")
+
+    # ========================================
+    # Type-Safe Channel Publishing (Phase 1)
+    # ========================================
+    
+    def publish(self, channel: PrivateWebsocketChannelType, data: Any) -> None:
+        """
+        Type-safe publish method for private channels using enum types.
+        
+        Args:
+            channel: Private channel enum type
+                   - PrivateWebsocketChannelType.EXECUTION: Trade execution updates
+                   - PrivateWebsocketChannelType.BALANCE: Account balance updates  
+                   - PrivateWebsocketChannelType.ORDER: Order status updates
+                   - PrivateWebsocketChannelType.POSITION: Position updates (futures only)
+            data: Event data to publish
+        """
+        # Convert enum to string for internal publishing
+        if hasattr(self, '_exec_bound_handler'):
+            try:
+                import asyncio
+                if asyncio.iscoroutinefunction(self._exec_bound_handler):
+                    asyncio.create_task(self._exec_bound_handler(channel, data))
+                else:
+                    self._exec_bound_handler(channel, data)
+            except Exception as e:
+                if hasattr(self, 'logger'):
+                    self.logger.error("Error publishing event",
+                                    channel=channel,
+                                    error_type=type(e).__name__,
+                                    error_message=str(e))
 
     # Properties for private data
 
@@ -354,7 +385,7 @@ class BasePrivateComposite(BaseCompositeExchange[PrivateRestType, PrivateWebsock
                             status=order.status)
         
 
-        self.publish('orders', order)
+        self.publish(PrivateWebsocketChannelType.ORDER, order)
 
         return order
 
@@ -514,7 +545,7 @@ class BasePrivateComposite(BaseCompositeExchange[PrivateRestType, PrivateWebsock
         self._balances[asset] = balance
 
 
-        self.publish('balances', balance)
+        self.publish(PrivateWebsocketChannelType.BALANCE, balance)
 
         self.logger.debug(f"Updated balance for {asset}: {balance}")
 

@@ -109,6 +109,37 @@ class BasePublicComposite(BaseCompositeExchange[PublicRestType, PublicWebsocketT
         self._book_ticker_latency_sum = 0.0
 
     # Factory methods ELIMINATED - clients injected via constructor
+    
+    # ========================================
+    # Type-Safe Channel Publishing (Phase 1)
+    # ========================================
+    
+    def publish(self, channel: PublicWebsocketChannelType, data: Any) -> None:
+        """
+        Type-safe publish method for public channels using enum types.
+        
+        Args:
+            channel: Public channel enum type
+                   - PublicWebsocketChannelType.ORDERBOOK: Orderbook updates
+                   - PublicWebsocketChannelType.PUB_TRADE: Trade updates  
+                   - PublicWebsocketChannelType.BOOK_TICKER: Best bid/ask updates
+                   - PublicWebsocketChannelType.TICKER: 24hr ticker statistics
+            data: Event data to publish
+        """
+        # Convert enum to string for internal publishing
+        if hasattr(self, '_exec_bound_handler'):
+            try:
+                import asyncio
+                if asyncio.iscoroutinefunction(self._exec_bound_handler):
+                    asyncio.create_task(self._exec_bound_handler(channel, data))
+                else:
+                    self._exec_bound_handler(channel, data)
+            except Exception as e:
+                if hasattr(self, 'logger'):
+                    self.logger.error("Error publishing event",
+                                    channel=channel,
+                                    error_type=type(e).__name__,
+                                    error_message=str(e))
 
     # ========================================
     # Properties and Abstract Methods
@@ -289,7 +320,7 @@ class BasePublicComposite(BaseCompositeExchange[PublicRestType, PublicWebsocketT
 
                 self._book_ticker[symbol] = book_ticker
                 self._book_ticker_update[symbol] = time.perf_counter()
-                self.publish("book_tickers", book_ticker)  # Publish to streams
+                self.publish(PublicWebsocketChannelType.BOOK_TICKER, book_ticker)  # Publish to streams
 
         except Exception as e:
             self.logger.error(f"Failed to load orderbook snapshot for {symbol}: {e}")
@@ -334,7 +365,7 @@ class BasePublicComposite(BaseCompositeExchange[PublicRestType, PublicWebsocketT
             self._last_update_time = time.perf_counter()
             self._track_operation("ticker_update")
 
-            self.publish("tickers", ticker)  # Publish to streams
+            self.publish(PublicWebsocketChannelType.TICKER, ticker)  # Publish to streams
 
 
         except Exception as e:
@@ -347,7 +378,7 @@ class BasePublicComposite(BaseCompositeExchange[PublicRestType, PublicWebsocketT
             self._track_operation("trade_update")
             self.logger.debug(f"Trade event processed", symbol=trade.symbol, exchange=self._exchange_name)
 
-            self.publish("trades", trade)  # Publish to streams
+            self.publish(PublicWebsocketChannelType.PUB_TRADE, trade)  # Publish to streams
 
 
         except Exception as e:
@@ -391,7 +422,7 @@ class BasePublicComposite(BaseCompositeExchange[PublicRestType, PublicWebsocketT
                               ask_price=book_ticker.ask_price,
                               processing_time_us=processing_time)
 
-            self.publish("book_tickers", book_ticker)  # Publish to streams
+            self.publish(PublicWebsocketChannelType.BOOK_TICKER, book_ticker)  # Publish to streams
 
 
         except Exception as e:
