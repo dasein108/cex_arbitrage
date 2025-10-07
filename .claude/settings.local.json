@@ -85,7 +85,15 @@
       "Read(/Users/dasein/dev/cex_artifrage/ai-docs/**)",
       "Bash(export:*)",
       "WebFetch(domain:jcristharif.com)",
-      "Bash(make:*)"
+      "Bash(make:*)",
+      "Bash(./01_investigate_disk_space.sh:*)",
+      "Bash(./02_emergency_cleanup.sh:*)",
+      "Bash(./devops_refactoring/scripts/02_emergency_cleanup.sh:*)",
+      "Bash(devops_refactoring/scripts/02_emergency_cleanup.sh)",
+      "Bash(./03_database_optimization.sh:*)",
+      "Bash(./04_setup_monitoring.sh:*)",
+      "Bash(./scripts/validate_phase1_refactoring.sh:*)",
+      "Bash(CEX_PROJECT_ROOT=/custom/path python -c \"\nimport os\nfrom pathlib import Path\n\ndef guess_file_paths(file_name: str) -> list:\n    project_root = os.getenv(''CEX_PROJECT_ROOT'')\n    paths = []\n    if project_root:\n        paths.append(Path(project_root) / file_name)\n    paths.extend([\n        Path.cwd() / file_name,\n        Path.home() / file_name\n    ])\n    return paths\n\npaths = guess_file_paths(''config.yaml'')\nprint(f''✅ Environment variable override works: {len(paths)} paths generated'')\nfor i, path in enumerate(paths, 1):\n    print(f''  {i}. {path}'')\n\")"
     ],
     "deny": [],
     "ask": [],
