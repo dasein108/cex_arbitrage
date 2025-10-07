@@ -3,7 +3,10 @@
     "list": [
       {
         "builtIn": 1,
-        "datasource": "-- Grafana --",
+        "datasource": {
+          "type": "grafana",
+          "uid": "-- Grafana --"
+        },
         "enable": true,
         "hide": true,
         "iconColor": "rgba(0, 211, 255, 1)",
@@ -13,32 +16,40 @@
     ]
   },
   "editable": true,
-  "gnetId": null,
+  "fiscalYearStartMonth": 0,
   "graphTooltip": 0,
-  "id": null,
+  "id": 2,
   "links": [],
   "panels": [
     {
-      "datasource": "PostgreSQL-Arbitrage",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "P7753CF3F04BFBBE7"
+      },
       "fieldConfig": {
         "defaults": {
           "color": {
             "mode": "palette-classic"
           },
           "custom": {
-            "axisLabel": "Price Delta (%)",
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
             "axisPlacement": "auto",
             "barAlignment": 0,
-            "drawStyle": "line",
-            "fillOpacity": 20,
+            "barWidthFactor": 0.6,
+            "drawStyle": "points",
+            "fillOpacity": 0,
             "gradientMode": "none",
             "hideFrom": {
+              "legend": false,
               "tooltip": false,
-              "viz": false,
-              "legend": false
+              "viz": false
             },
+            "insertNulls": false,
             "lineInterpolation": "linear",
-            "lineWidth": 2,
+            "lineWidth": 1,
             "pointSize": 5,
             "scaleDistribution": {
               "type": "linear"
@@ -59,67 +70,390 @@
             "steps": [
               {
                 "color": "green",
-                "value": null
+                "value": 0
               },
               {
                 "color": "red",
-                "value": 2
+                "value": 80
               }
             ]
-          },
-          "unit": "percent"
+          }
         },
         "overrides": [
           {
             "matcher": {
               "id": "byRegexp",
-              "options": ".*Arbitrage.*"
+              "options": "/.*/"
+            },
+            "properties": []
+          }
+        ]
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 16,
+        "x": 0,
+        "y": 0
+      },
+      "id": 5,
+      "options": {
+        "legend": {
+          "calcs": [],
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "hideZeros": false,
+          "mode": "single",
+          "sort": "none"
+        }
+      },
+      "pluginVersion": "12.1.1",
+      "targets": [
+        {
+          "editorMode": "code",
+          "format": "time_series",
+          "rawQuery": true,
+          "rawSql": "SELECT\n  ts.timestamp::timestamptz AS \"time\",\n  e.enum_value::text AS \"series\", \n  ts.price::numeric AS \"value\"\nFROM trade_snapshots ts\nJOIN symbols s ON ts.symbol_id = s.id\nJOIN exchanges e ON s.exchange_id = e.id\nWHERE\n  ts.timestamp > NOW() - INTERVAL '30 minutes'\n  AND s.symbol_base = '$symbol_base'\n  AND  ts.price IS NOT NULL\nORDER BY \"time\"\n",
+          "refId": "A",
+          "sql": {
+            "columns": [
+              {
+                "parameters": [],
+                "type": "function"
+              }
+            ],
+            "groupBy": [
+              {
+                "property": {
+                  "type": "string"
+                },
+                "type": "groupBy"
+              }
+            ],
+            "limit": 50
+          }
+        }
+      ],
+      "title": "New panel",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "P7753CF3F04BFBBE7"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "fillOpacity": 80,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "lineWidth": 1,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": 0
+              },
+              {
+                "color": "red",
+                "value": 80
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 8,
+        "x": 16,
+        "y": 0
+      },
+      "id": 2,
+      "options": {
+        "barRadius": 0,
+        "barWidth": 0.97,
+        "fullHighlight": false,
+        "groupWidth": 0.7,
+        "legend": {
+          "calcs": [],
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "orientation": "auto",
+        "showValue": "auto",
+        "stacking": "none",
+        "tooltip": {
+          "hideZeros": false,
+          "mode": "single",
+          "sort": "none"
+        },
+        "xTickLabelRotation": 0,
+        "xTickLabelSpacing": 0
+      },
+      "pluginVersion": "12.1.1",
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "P7753CF3F04BFBBE7"
+          },
+          "editorMode": "code",
+          "format": "table",
+          "rawQuery": true,
+          "rawSql": "-- For a stat panel showing current spreads\nSELECT\n  e.enum_value as exchange,\n  AVG((bts.ask_price - bts.bid_price) / bts.bid_price * 100) AS avg_spread,\n  MIN((bts.ask_price - bts.bid_price) / bts.bid_price * 100) AS min_spread,\n  MAX((bts.ask_price - bts.bid_price) / bts.bid_price * 100) AS max_spread\nFROM book_ticker_snapshots bts\nJOIN symbols s ON bts.symbol_id = s.id\nJOIN exchanges e ON s.exchange_id = e.id\nWHERE\n  bts.timestamp > NOW() - INTERVAL '1 minute'\n  AND s.symbol_base = '$symbol_base'\n  AND s.symbol_quote = 'USDT'\n  AND bts.bid_price > 0 \n  AND bts.ask_price > 0\nGROUP BY e.enum_value\nORDER BY avg_spread, min_spread, max_spread",
+          "refId": "A",
+          "sql": {
+            "columns": [
+              {
+                "parameters": [],
+                "type": "function"
+              }
+            ],
+            "groupBy": [
+              {
+                "property": {
+                  "type": "string"
+                },
+                "type": "groupBy"
+              }
+            ],
+            "limit": 50
+          }
+        }
+      ],
+      "title": "EXCHANGE SPREADS",
+      "type": "barchart"
+    },
+    {
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "P7753CF3F04BFBBE7"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "barWidthFactor": 0.6,
+            "drawStyle": "line",
+            "fillOpacity": 0,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "insertNulls": false,
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "auto",
+            "spanNulls": true,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": 0
+              },
+              {
+                "color": "red",
+                "value": 80
+              }
+            ]
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": "/GATEIO_SPOT.*/"
             },
             "properties": [
               {
                 "id": "color",
                 "value": {
-                  "mode": "fixed",
-                  "fixedColor": "red"
+                  "mode": "continuous-YlRd"
                 }
               }
             ]
+          },
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": "/BID.*/"
+            },
+            "properties": [
+              {
+                "id": "custom.lineStyle",
+                "value": {
+                  "dash": [
+                    10,
+                    10
+                  ],
+                  "fill": "dash"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": "/MEXC.*/"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "continuous-BlPu"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": "/.*_TRADES/"
+            },
+            "properties": [
+              {
+                "id": "custom.showPoints",
+                "value": "always"
+              },
+              {
+                "id": "custom.lineWidth",
+                "value": 0
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": "/.*_GATEIO_FUTURES/"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "continuous-reds"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": "/.*/"
+            },
+            "properties": []
           }
         ]
       },
       "gridPos": {
-        "h": 12,
-        "w": 24,
+        "h": 11,
+        "w": 16,
         "x": 0,
-        "y": 0
+        "y": 8
       },
-      "id": 1,
+      "id": 3,
+      "interval": "5s",
       "options": {
         "legend": {
-          "calcs": ["lastNotNull", "max"],
-          "displayMode": "table",
-          "placement": "bottom"
+          "calcs": [],
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
         },
         "tooltip": {
-          "mode": "single"
+          "hideZeros": false,
+          "mode": "single",
+          "sort": "none"
         }
       },
-      "pluginVersion": "8.0.0",
+      "pluginVersion": "12.1.1",
       "targets": [
         {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "P7753CF3F04BFBBE7"
+          },
+          "editorMode": "code",
           "format": "time_series",
-          "group": [],
-          "metricColumn": "none",
           "rawQuery": true,
-          "rawSql": "WITH price_data AS (\n  SELECT \n    bts.timestamp,\n    s.symbol_base || '/' || s.symbol_quote AS symbol,\n    e.enum_value as exchange,\n    AVG((bts.bid_price + bts.ask_price) / 2) as mid_price\n  FROM book_ticker_snapshots bts\n  JOIN symbols s ON bts.symbol_id = s.id\n  JOIN exchanges e ON s.exchange_id = e.id\n  WHERE \n    $__timeFilter(bts.timestamp)\n    AND e.enum_value IN ('MEXC_SPOT', 'GATEIO_SPOT')\n  GROUP BY bts.timestamp, s.symbol_base, s.symbol_quote, e.enum_value\n),\ncross_exchange AS (\n  SELECT \n    m.timestamp,\n    m.symbol,\n    m.mid_price as mexc_price,\n    g.mid_price as gateio_price,\n    CASE \n      WHEN g.mid_price > 0 THEN \n        ((m.mid_price - g.mid_price) / g.mid_price * 100)\n      ELSE 0\n    END as price_delta_pct\n  FROM \n    (SELECT * FROM price_data WHERE exchange = 'MEXC_SPOT') m\n  INNER JOIN \n    (SELECT * FROM price_data WHERE exchange = 'GATEIO_SPOT') g\n  ON m.timestamp = g.timestamp AND m.symbol = g.symbol\n  WHERE ABS(((m.mid_price - g.mid_price) / g.mid_price * 100)) > 0.1\n)\nSELECT\n  $__timeGroupAlias(timestamp, $__interval),\n  symbol as metric,\n  AVG(price_delta_pct) as \"Price Delta %\"\nFROM cross_exchange\nGROUP BY 1, 2\nORDER BY 1",
-          "refId": "A"
+          "rawSql": "WITH combined_data AS (\n  -- Bid prices lines\n  SELECT\n    bts.timestamp::timestamp as time,\n    e.enum_value || '_BID'::text AS series,\n    AVG(bts.bid_price)::float AS value,\n    'line' as display_type\n  FROM book_ticker_snapshots bts\n  JOIN symbols s ON bts.symbol_id = s.id\n  JOIN exchanges e ON s.exchange_id = e.id\n  WHERE\n    bts.timestamp > NOW() - INTERVAL '30 minutes'\n    AND s.symbol_base = '$symbol_base'\n     AND bts.bid_price > 0\n  GROUP BY bts.timestamp, e.enum_value\n\n  UNION ALL\n\n  -- Ask prices lines\n  SELECT\n    bts.timestamp::timestamp as time,\n    e.enum_value || '_ASK'::text AS series,\n    AVG(bts.ask_price)::float AS value,\n    'line' as display_type\n  FROM book_ticker_snapshots bts\n  JOIN symbols s ON bts.symbol_id = s.id\n  JOIN exchanges e ON s.exchange_id = e.id\n  WHERE\n    bts.timestamp > NOW() - INTERVAL '30 minutes'\n    AND s.symbol_base = '$symbol_base'\n      AND bts.ask_price > 0\n  GROUP BY bts.timestamp, e.enum_value\n\n  UNION ALL\n\n  -- Trade points (dots)\n  SELECT\n    ts.timestamp::timestamp as time,\n    e.enum_value || '_TRADES'::text AS series,\n    ts.price::float AS value,\n    'dots' as display_type\n  FROM trade_snapshots ts\n  JOIN symbols s ON ts.symbol_id = s.id\n  JOIN exchanges e ON s.exchange_id = e.id\n  WHERE\n    ts.timestamp > NOW() - INTERVAL '30 minutes'\n    AND s.symbol_base = '$symbol_base'\n     AND ts.price IS NOT NULL\n)\nSELECT \n  time,\n  series,\n  value\nFROM combined_data\nWHERE series IS NOT NULL\nORDER BY time, series",
+          "refId": "A",
+          "sql": {
+            "columns": [
+              {
+                "parameters": [],
+                "type": "function"
+              }
+            ],
+            "groupBy": [
+              {
+                "property": {
+                  "type": "string"
+                },
+                "type": "groupBy"
+              }
+            ],
+            "limit": 50
+          }
         }
       ],
-      "title": "MEXC-GATEIO Price Delta by Symbol",
+      "title": "BID-ASK",
       "type": "timeseries"
     },
     {
-      "datasource": "PostgreSQL-Arbitrage",
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "P7753CF3F04BFBBE7"
+      },
       "fieldConfig": {
         "defaults": {
           "color": {
@@ -127,7 +461,11 @@
           },
           "custom": {
             "align": "auto",
-            "displayMode": "auto"
+            "cellOptions": {
+              "type": "auto"
+            },
+            "inspect": false,
+            "minWidth": 50
           },
           "mappings": [],
           "thresholds": {
@@ -135,191 +473,222 @@
             "steps": [
               {
                 "color": "green",
-                "value": null
-              },
-              {
-                "color": "yellow",
-                "value": 1
+                "value": 0
               },
               {
                 "color": "red",
-                "value": 2
+                "value": 80
               }
             ]
-          },
-          "unit": "percent"
+          }
         },
         "overrides": []
       },
       "gridPos": {
         "h": 8,
-        "w": 12,
-        "x": 0,
-        "y": 12
-      },
-      "id": 2,
-      "options": {
-        "showHeader": true,
-        "sortBy": [
-          {
-            "desc": true,
-            "displayName": "Max Delta %"
-          }
-        ]
-      },
-      "pluginVersion": "8.0.0",
-      "targets": [
-        {
-          "format": "table",
-          "group": [],
-          "metricColumn": "none",
-          "rawQuery": true,
-          "rawSql": "WITH recent_spreads AS (\n  SELECT \n    s.symbol_base || '/' || s.symbol_quote AS symbol,\n    e.enum_value as exchange,\n    AVG((bts.bid_price + bts.ask_price) / 2) as avg_mid_price,\n    MAX(bts.timestamp) as last_update\n  FROM book_ticker_snapshots bts\n  JOIN symbols s ON bts.symbol_id = s.id  \n  JOIN exchanges e ON s.exchange_id = e.id\n  WHERE \n    bts.timestamp > NOW() - INTERVAL '5 minutes'\n    AND e.enum_value IN ('MEXC_SPOT', 'GATEIO_SPOT')\n  GROUP BY s.symbol_base, s.symbol_quote, e.enum_value\n)\nSELECT \n  m.symbol,\n  m.avg_mid_price as \"MEXC Price\",\n  g.avg_mid_price as \"GATEIO Price\",\n  CASE \n    WHEN g.avg_mid_price > 0 THEN \n      ABS((m.avg_mid_price - g.avg_mid_price) / g.avg_mid_price * 100)\n    ELSE 0\n  END as \"Max Delta %\",\n  GREATEST(m.last_update, g.last_update) as \"Last Update\"\nFROM \n  (SELECT * FROM recent_spreads WHERE exchange = 'MEXC_SPOT') m\nINNER JOIN \n  (SELECT * FROM recent_spreads WHERE exchange = 'GATEIO_SPOT') g\nON m.symbol = g.symbol\nWHERE ABS((m.avg_mid_price - g.avg_mid_price) / g.avg_mid_price * 100) > 0.1\nORDER BY \"Max Delta %\" DESC\nLIMIT 20",
-          "refId": "A"
-        }
-      ],
-      "title": "Current Arbitrage Opportunities",
-      "type": "table"
-    },
-    {
-      "datasource": "PostgreSQL-Arbitrage",
-      "fieldConfig": {
-        "defaults": {
-          "color": {
-            "mode": "thresholds"
-          },
-          "mappings": [],
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "green",
-                "value": null
-              },
-              {
-                "color": "yellow",
-                "value": 5
-              },
-              {
-                "color": "red",
-                "value": 10
-              }
-            ]
-          },
-          "unit": "short"
-        },
-        "overrides": []
-      },
-      "gridPos": {
-        "h": 4,
-        "w": 6,
-        "x": 12,
-        "y": 12
-      },
-      "id": 3,
-      "options": {
-        "orientation": "auto",
-        "reduceOptions": {
-          "values": false,
-          "calcs": ["lastNotNull"],
-          "fields": ""
-        },
-        "showThresholdLabels": false,
-        "showThresholdMarkers": true,
-        "text": {}
-      },
-      "pluginVersion": "8.0.0",
-      "targets": [
-        {
-          "format": "table",
-          "group": [],
-          "metricColumn": "none",
-          "rawQuery": true,
-          "rawSql": "WITH recent_data AS (\n  SELECT \n    s.symbol_base || '/' || s.symbol_quote AS symbol,\n    e.enum_value as exchange,\n    AVG((bts.bid_price + bts.ask_price) / 2) as mid_price\n  FROM book_ticker_snapshots bts\n  JOIN symbols s ON bts.symbol_id = s.id\n  JOIN exchanges e ON s.exchange_id = e.id\n  WHERE \n    bts.timestamp > NOW() - INTERVAL '5 minutes'\n    AND e.enum_value IN ('MEXC_SPOT', 'GATEIO_SPOT')\n  GROUP BY s.symbol_base, s.symbol_quote, e.enum_value\n)\nSELECT COUNT(DISTINCT m.symbol) as value\nFROM \n  (SELECT * FROM recent_data WHERE exchange = 'MEXC_SPOT') m\nINNER JOIN \n  (SELECT * FROM recent_data WHERE exchange = 'GATEIO_SPOT') g\nON m.symbol = g.symbol\nWHERE ABS((m.mid_price - g.mid_price) / g.mid_price * 100) > 1.0",
-          "refId": "A"
-        }
-      ],
-      "title": "Active Arbitrage Pairs",
-      "type": "stat"
-    },
-    {
-      "datasource": "PostgreSQL-Arbitrage",
-      "fieldConfig": {
-        "defaults": {
-          "color": {
-            "mode": "thresholds"
-          },
-          "mappings": [],
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "green",
-                "value": null
-              },
-              {
-                "color": "yellow",
-                "value": 2
-              },
-              {
-                "color": "red",
-                "value": 5
-              }
-            ]
-          },
-          "unit": "percent"
-        },
-        "overrides": []
-      },
-      "gridPos": {
-        "h": 4,
-        "w": 6,
-        "x": 18,
-        "y": 12
+        "w": 8,
+        "x": 16,
+        "y": 8
       },
       "id": 4,
       "options": {
-        "orientation": "auto",
-        "reduceOptions": {
-          "values": false,
-          "calcs": ["lastNotNull"],
-          "fields": ""
+        "cellHeight": "sm",
+        "footer": {
+          "countRows": false,
+          "fields": "",
+          "reducer": [
+            "sum"
+          ],
+          "show": false
         },
-        "showThresholdLabels": false,
-        "showThresholdMarkers": true,
-        "text": {}
+        "showHeader": true
       },
-      "pluginVersion": "8.0.0",
+      "pluginVersion": "12.1.1",
       "targets": [
         {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "P7753CF3F04BFBBE7"
+          },
+          "editorMode": "code",
           "format": "table",
-          "group": [],
-          "metricColumn": "none",
           "rawQuery": true,
-          "rawSql": "WITH recent_data AS (\n  SELECT \n    s.symbol_base || '/' || s.symbol_quote AS symbol,\n    e.enum_value as exchange,\n    AVG((bts.bid_price + bts.ask_price) / 2) as mid_price\n  FROM book_ticker_snapshots bts\n  JOIN symbols s ON bts.symbol_id = s.id\n  JOIN exchanges e ON s.exchange_id = e.id\n  WHERE \n    bts.timestamp > NOW() - INTERVAL '5 minutes'\n    AND e.enum_value IN ('MEXC_SPOT', 'GATEIO_SPOT')\n  GROUP BY s.symbol_base, s.symbol_quote, e.enum_value\n)\nSELECT \n  MAX(ABS((m.mid_price - g.mid_price) / g.mid_price * 100)) as value\nFROM \n  (SELECT * FROM recent_data WHERE exchange = 'MEXC_SPOT') m\nINNER JOIN \n  (SELECT * FROM recent_data WHERE exchange = 'GATEIO_SPOT') g\nON m.symbol = g.symbol",
-          "refId": "A"
+          "rawSql": "WITH latest_prices AS (\n  -- Get the most recent price for each exchange\n  SELECT DISTINCT ON (e.enum_value, s.symbol_quote)\n    e.enum_value as exchange,\n    s.symbol_base,\n    s.symbol_quote,\n    bts.bid_price,\n    bts.ask_price,\n    bts.timestamp\n  FROM book_ticker_snapshots bts\n  JOIN symbols s ON bts.symbol_id = s.id\n  JOIN exchanges e ON s.exchange_id = e.id\n  WHERE\n    bts.timestamp > NOW() - INTERVAL '1 minute'\n    AND s.symbol_base = '$symbol_base'\n   AND bts.bid_price > 0 \n    AND bts.ask_price > 0\n  ORDER BY e.enum_value, s.symbol_quote, bts.timestamp DESC\n),\nspreads AS (\n  -- Calculate spreads for all exchange pairs\n  SELECT\n    e1.exchange || ' → ' || e2.exchange as \"Exchange Pair\",\n    ROUND(e1.bid_price::numeric, 6) as \"Sell Price (Bid)\",\n    ROUND(e2.ask_price::numeric, 6) as \"Buy Price (Ask)\",\n    ROUND(((e1.bid_price - e2.ask_price) / e2.ask_price * 100)::numeric, 3) as \"Spread %\",\n    CASE \n      WHEN (e1.bid_price - e2.ask_price) > 0 THEN '✅ Profitable'\n      ELSE '❌ Loss'\n    END as \"Status\"\n  FROM latest_prices e1\n  CROSS JOIN latest_prices e2\n  WHERE \n    e1.symbol_quote = e2.symbol_quote\n    AND e1.exchange != e2.exchange\n)\nSELECT * FROM spreads\nORDER BY \"Spread %\" DESC",
+          "refId": "A",
+          "sql": {
+            "columns": [
+              {
+                "parameters": [],
+                "type": "function"
+              }
+            ],
+            "groupBy": [
+              {
+                "property": {
+                  "type": "string"
+                },
+                "type": "groupBy"
+              }
+            ],
+            "limit": 50
+          }
         }
       ],
-      "title": "Max Spread Delta",
-      "type": "stat"
+      "title": "New panel",
+      "type": "table"
+    },
+    {
+      "datasource": {
+        "type": "grafana-postgresql-datasource",
+        "uid": "P7753CF3F04BFBBE7"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "barWidthFactor": 0.6,
+            "drawStyle": "line",
+            "fillOpacity": 0,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "insertNulls": false,
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "auto",
+            "spanNulls": false,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "fieldMinMax": false,
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": 0
+              },
+              {
+                "color": "red",
+                "value": 80
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 7,
+        "w": 16,
+        "x": 0,
+        "y": 19
+      },
+      "id": 1,
+      "options": {
+        "legend": {
+          "calcs": [],
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "hideZeros": false,
+          "mode": "single",
+          "sort": "none"
+        }
+      },
+      "pluginVersion": "12.1.1",
+      "targets": [
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "P7753CF3F04BFBBE7"
+          },
+          "refId": "A"
+        },
+        {
+          "datasource": {
+            "type": "grafana-postgresql-datasource",
+            "uid": "P7753CF3F04BFBBE7"
+          },
+          "editorMode": "code",
+          "format": "time_series",
+          "hide": false,
+          "rawQuery": true,
+          "rawSql": "WITH exchange_prices AS (\n  SELECT\n    DATE_TRUNC('second', bts.timestamp) as time_bucket,\n    e.enum_value as exchange,\n    s.symbol_base,\n    s.symbol_quote,\n    AVG(bts.bid_price) as bid_price,\n    AVG(bts.ask_price) as ask_price\n  FROM book_ticker_snapshots bts\n  JOIN symbols s ON bts.symbol_id = s.id\n  JOIN exchanges e ON s.exchange_id = e.id\n  WHERE\n    bts.timestamp > NOW() - INTERVAL '30 minutes' \n    AND s.symbol_base = '$symbol_base'\n    AND e.enum_value IN ('MEXC_SPOT', 'GATEIO_SPOT')\n    AND bts.bid_price > 0 \n    AND bts.ask_price > 0\n  GROUP BY DATE_TRUNC('second', bts.timestamp), e.enum_value, s.symbol_base, s.symbol_quote\n)\nSELECT * FROM (\n  SELECT\n    e1.time_bucket as time,\n    e1.exchange || '_BID_to_' || e2.exchange || '_ASK' as series,\n    ((e1.bid_price - e2.ask_price) / e2.ask_price * 100) as value\n  FROM exchange_prices e1\n  JOIN exchange_prices e2 \n    ON e1.time_bucket = e2.time_bucket\n    AND e1.symbol_base = e2.symbol_base\n    AND e1.symbol_quote = e2.symbol_quote\n    AND e1.exchange != e2.exchange\n  \n  UNION ALL\n  \n  SELECT\n    e1.time_bucket as time,\n    e1.exchange || '_ASK_to_' || e2.exchange || '_BID' as series,\n    ((e2.bid_price - e1.ask_price) / e1.ask_price * 100) as value\n  FROM exchange_prices e1\n  JOIN exchange_prices e2 \n    ON e1.time_bucket = e2.time_bucket\n    AND e1.symbol_base = e2.symbol_base\n    AND e1.symbol_quote = e2.symbol_quote\n    AND e1.exchange != e2.exchange\n) all_spreads\nWHERE value > 0  -- Only show profitable arbitrage\nORDER BY time, series",
+          "refId": "B",
+          "sql": {
+            "columns": [
+              {
+                "parameters": [],
+                "type": "function"
+              }
+            ],
+            "groupBy": [
+              {
+                "property": {
+                  "type": "string"
+                },
+                "type": "groupBy"
+              }
+            ],
+            "limit": 50
+          }
+        }
+      ],
+      "title": "Spreads Tradable",
+      "type": "timeseries"
     }
   ],
+  "preload": false,
   "refresh": "5s",
-  "schemaVersion": 27,
-  "style": "dark",
-  "tags": ["arbitrage", "spread", "mexc", "gateio"],
+  "schemaVersion": 41,
+  "tags": [],
   "templating": {
-    "list": []
+    "list": [
+      {
+        "current": {
+          "text": "AI16Z",
+          "value": "AI16Z"
+        },
+        "definition": " SELECT DISTINCT s.symbol_base \n   FROM book_ticker_snapshots bts\n   JOIN symbols s ON bts.symbol_id = s.id\n   JOIN exchanges e ON s.exchange_id = e.id\n   WHERE bts.timestamp > NOW() - INTERVAL '1 hour'\n    ORDER BY s.symbol_base",
+        "name": "symbol_base",
+        "options": [],
+        "query": " SELECT DISTINCT s.symbol_base \n   FROM book_ticker_snapshots bts\n   JOIN symbols s ON bts.symbol_id = s.id\n   JOIN exchanges e ON s.exchange_id = e.id\n   WHERE bts.timestamp > NOW() - INTERVAL '1 hour'\n      ORDER BY s.symbol_base",
+        "refresh": 1,
+        "regex": "",
+        "type": "query"
+      }
+    ]
   },
   "time": {
-    "from": "now-1h",
-    "to": "now"
+    "from": "2025-10-07T09:31:53.905Z",
+    "to": "2025-10-07T09:57:35.159Z"
   },
-  "timepicker": {
-    "refresh_intervals": ["5s", "10s", "30s", "1m", "5m", "15m", "30m", "1h", "2h", "1d"]
-  },
-  "timezone": "",
+  "timepicker": {},
+  "timezone": "browser",
   "title": "MEXC-GATEIO SPREAD DELTA",
-  "uid": "mexc-gateio-spread-delta",
-  "version": 1
+  "uid": "76b195c1-4bb2-4f9d-a844-d7e7a0c5c2f2",
+  "version": 6
 }
