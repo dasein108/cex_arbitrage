@@ -31,16 +31,15 @@ from datetime import datetime
 src_path = Path(__file__).parent.parent
 sys.path.insert(0, str(src_path))
 
-# Import exchange components
-from exchanges.structs import ExchangeEnum, Symbol, SymbolInfo
+# Import exchange components using simplified factory pattern
+from exchanges.structs.enums import ExchangeEnum
+from exchanges.structs.common import Symbol, SymbolInfo
 from config.config_manager import HftConfig
-from exchanges.integrations.mexc.public_exchange import MexcPublicExchange
-from exchanges.integrations.gateio.public_exchange import GateioPublicExchange
-from exchanges.integrations.gateio.public_futures_exchange import GateioPublicFuturesExchange
+from exchanges.exchange_factory import get_rest_implementation
 
-# Import existing analysis components
-from archive.trading import ArbitrageDataPipeline
-from archive.trading import SpreadAnalyzer
+# Import analysis components from local implementations
+from arbitrage_data_pipeline import ArbitrageDataPipeline
+from spread_analyzer import SpreadAnalyzer
 
 # Import shared utilities (DRY compliance)
 from applications.tools.shared_utils import (
@@ -120,15 +119,12 @@ class SymbolDiscoveryService:
             return self._process_discovery_results(symbol_data, filter_major_coins)
     
     def _create_exchange_client(self, exchange_enum: ExchangeEnum, exchange_config):
-        """Create exchange client using standard constructors."""
-        if exchange_enum == ExchangeEnum.MEXC:
-            return MexcPublicExchange(config=exchange_config)
-        elif exchange_enum == ExchangeEnum.GATEIO:
-            return GateioPublicExchange(config=exchange_config)
-        elif exchange_enum == ExchangeEnum.GATEIO_FUTURES:
-            return GateioPublicFuturesExchange(config=exchange_config)
-        else:
-            raise ValueError(f"Unsupported exchange: {exchange_enum.value}")
+        """Create exchange client using simplified factory with constructor injection."""
+        # Use simplified factory pattern for public market data (symbol discovery)
+        return get_rest_implementation(
+            exchange_config=exchange_config,
+            is_private=False  # Symbol discovery uses public market data
+        )
     
     async def _fetch_exchange_symbols(self, config: Dict) -> Dict[Symbol, SymbolInfo]:
         """

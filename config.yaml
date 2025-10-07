@@ -245,7 +245,7 @@ arbitrage:
   # Symbol details are auto-discovered from exchanges using get_exchange_info()
   arbitrage_pairs:
     - id: "wai_usdt_spot_arb"
-      base_asset: "WAI"
+      base_asset: "BROCCOLI"
       quote_asset: "USDT"
       opportunity_type: "SPOT_SPOT"  # Cross-exchange spot arbitrage
       min_profit_bps: 30  # Minimum 0.30% profit to execute
@@ -269,7 +269,7 @@ arbitrage:
 #      is_enabled: true
 #      priority: 3
     - id: "aiot_usdt_spot_arb"
-      base_asset: "AIOT"
+      base_asset: "NODE"
       quote_asset: "USDT"
       opportunity_type: "SPOT_SPOT"
       min_profit_bps: 40  # Higher for volatile asset
@@ -302,7 +302,7 @@ arbitrage:
 #      is_enabled: true
 #      priority: 8
     - id: "myx_usdt_spot_arb"
-      base_asset: "MYX"
+      base_asset: "VVV"
       quote_asset: "USDT"
       opportunity_type: "SPOT_SPOT"
       min_profit_bps: 50
@@ -366,7 +366,7 @@ arbitrage:
       is_enabled: true
       priority: 12
     - id: "lever_usdt_spot_arb"
-      base_asset: "LEVER"
+      base_asset: "BICO"
       quote_asset: "USDT"
       opportunity_type: "SPOT_SPOT"
       min_profit_bps: 50

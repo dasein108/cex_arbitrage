@@ -27,7 +27,8 @@ from pathlib import Path
 src_path = Path(__file__).parent.parent
 sys.path.insert(0, str(src_path))
 
-from archive.trading import SpreadAnalyzer
+# Import SpreadAnalyzer from local implementation
+from spread_analyzer import SpreadAnalyzer
 
 
 def analyze_arbitrage_opportunities(

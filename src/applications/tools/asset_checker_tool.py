@@ -26,7 +26,7 @@ from pathlib import Path
 from typing import Dict, List, Set, Optional
 import yaml
 
-from exchanges.interfaces import PublicSpotRestInterface, PrivateSpotRestInterface
+# Removed old interface imports - using factory pattern
 
 # Add parent directories to path for imports
 project_root = Path(__file__).parent.parent.parent  # Points to src/
@@ -44,6 +44,10 @@ class AssetStatusChecker:
 
     def __init__(self):
         self.config = HftConfig()
+        
+        # Setup HFT logging for better performance and consistency
+        from infrastructure.logging.factory import get_logger
+        self.logger = get_logger('AssetStatusChecker')
 
         # Configure exchanges to check (easily configurable)
         self.exchanges = [ExchangeEnum.MEXC, ExchangeEnum.GATEIO]  # Add exchanges here
@@ -68,10 +72,11 @@ class AssetStatusChecker:
         for exchange_enum in self.exchanges:
             exchange_config = self.config.get_exchange_config(exchange_enum.value)
 
-            # Create private composite exchange using factory
+            # Create private REST client using simplified factory for get_assets_info
+            # NOTE: get_assets_info requires private authentication per separated domain architecture
             self.exchange_instances[exchange_enum] = get_rest_implementation(
                 exchange_config=exchange_config,
-                is_private=True
+                is_private=True  # Assets info requires private interface in separated domain architecture
             )
 
     def get_coins_from_config(self) -> Set[str]:

@@ -31,13 +31,12 @@ from pathlib import Path
 from typing import Dict, List, Optional, Any, Tuple
 import logging
 
-# Import exchange classes directly
+# Import exchange factory for simplified factory pattern
 from config.config_manager import HftConfig
-from exchanges.structs import ExchangeEnum, Symbol, Kline, AssetName
-from exchanges.structs.enums import KlineInterval
-from exchanges.integrations.mexc.public_exchange import MexcPublicExchange
-from exchanges.integrations.gateio.public_exchange import GateioPublicExchange
-from exchanges.integrations.gateio.public_futures_exchange import GateioPublicFuturesExchange
+from exchanges.structs.enums import ExchangeEnum, KlineInterval
+from exchanges.structs.common import Symbol, Kline
+from exchanges.structs.types import AssetName
+from exchanges.exchange_factory import get_composite_implementation
 
 
 # Import exchange modules to trigger auto-registration
@@ -97,18 +96,9 @@ class CandlesDownloader:
         # Initialize configuration manager
         self.config = HftConfig()
         
-        # Setup logging
-        self.logger = logging.getLogger(__name__)
-        self.logger.setLevel(logging.INFO)
-        
-        # Create console handler if no handlers exist
-        if not self.logger.handlers:
-            console_handler = logging.StreamHandler()
-            formatter = logging.Formatter(
-                '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-            )
-            console_handler.setFormatter(formatter)
-            self.logger.addHandler(console_handler)
+        # Setup HFT logging for better performance
+        from infrastructure.logging.factory import get_logger
+        self.logger = get_logger('CandlesDownloader')
         
         self.logger.info(f"CandlesDownloader initialized with output directory: {self.output_dir}")
     
@@ -312,15 +302,12 @@ class CandlesDownloader:
                 writer.writerow(row)
     
     def _create_exchange_client(self, exchange: ExchangeEnum, config):
-        """Create exchange client using standard constructors."""
-        if exchange == ExchangeEnum.MEXC:
-            return MexcPublicExchange(config=config)
-        elif exchange == ExchangeEnum.GATEIO:
-            return GateioPublicExchange(config=config)
-        elif exchange == ExchangeEnum.GATEIO_FUTURES:
-            return GateioPublicFuturesExchange(config=config)
-        else:
-            raise ValueError(f"Unsupported exchange: {exchange.value}")
+        """Create exchange client using simplified factory with constructor injection."""
+        # Use simplified factory pattern for public market data (candles/klines)
+        return get_composite_implementation(
+            exchange_config=config,
+            is_private=False  # Candles/klines are public market data
+        )
     
     def _log_completion_stats(self, klines: List, csv_path: Path) -> None:
         """Log completion statistics."""
@@ -527,8 +514,15 @@ Examples:
     async def download_task():
         try:
             # Convert string exchange name to ExchangeEnum
-            from utils.exchange_utils import get_exchange_enum
-            exchange_enum = get_exchange_enum(args.exchange)
+            # Use direct mapping instead of external utility
+            exchange_map = {
+                'mexc': ExchangeEnum.MEXC,
+                'gateio': ExchangeEnum.GATEIO, 
+                'gateio_futures': ExchangeEnum.GATEIO_FUTURES
+            }
+            exchange_enum = exchange_map.get(args.exchange)
+            if not exchange_enum:
+                raise ValueError(f"Unsupported exchange: {args.exchange}")
             
             csv_path = await downloader.download_candles(
                 exchange=exchange_enum,

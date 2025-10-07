@@ -32,10 +32,11 @@ project_root = Path(__file__).parent.parent  # Now points to src/
 sys.path.insert(0, str(project_root))
 
 # Direct imports from src directory
-from exchanges.structs import Symbol, SymbolInfo, ExchangeEnum, ExchangeName, AssetName
-from exchanges.integrations.mexc.rest.mexc_rest_spot_public import MexcPublicSpotRestInterface
-from exchanges.integrations.gateio.rest.gateio_rest_spot_public import GateioPublicSpotRestInterface
-from exchanges.integrations.gateio.rest.gateio_rest_futures_public import GateioPublicFuturesRestInterface
+from exchanges.structs.common import Symbol, SymbolInfo
+from exchanges.structs.enums import ExchangeEnum
+from exchanges.structs.types import ExchangeName, AssetName
+from exchanges.exchange_factory import get_rest_implementation
+from config.config_manager import HftConfig
 from infrastructure.exceptions.exchange import ExchangeRestError
 
 
@@ -204,22 +205,29 @@ class SymbolDiscoveryEngine:
     
     def __init__(self, logger: Optional[logging.Logger] = None):
         """Initialize discovery engine with optional logger"""
-        self.logger = logger or logging.getLogger(__name__)
+        if logger is None:
+            # Use HFT logging system for better performance
+            from infrastructure.logging.factory import get_logger
+            self.logger = get_logger('SymbolDiscoveryEngine')
+        else:
+            self.logger = logger
         self.exchanges: Dict[str, Any] = {}
+        self.config_manager = HftConfig()
     
     def _create_exchange_client(self, exchange_market: ExchangeMarket):
-        """Factory method to create exchange clients"""
-        if exchange_market.exchange == ExchangeEnum.MEXC and exchange_market.market == MarketType.SPOT:
-            return MexcPublicSpotRestInterface()
-        elif exchange_market.exchange == ExchangeEnum.MEXC and exchange_market.market == MarketType.FUTURES:
+        """Factory method to create exchange clients using simplified factory"""
+        if exchange_market.exchange == ExchangeEnum.MEXC and exchange_market.market == MarketType.FUTURES:
             # Return None for MEXC futures - we'll handle this specially
             return None
-        elif exchange_market.exchange == ExchangeEnum.GATEIO and exchange_market.market == MarketType.SPOT:
-            return GateioPublicSpotRestInterface()
-        elif exchange_market.exchange == ExchangeEnum.GATEIO and exchange_market.market == MarketType.FUTURES:
-            return GateioPublicFuturesRestInterface()
+        
+        # Get exchange configuration
+        if exchange_market.exchange == ExchangeEnum.GATEIO and exchange_market.market == MarketType.FUTURES:
+            exchange_config = self.config_manager.get_exchange_config("gateio_futures")
         else:
-            raise ValueError(f"Unsupported exchange/market: {exchange_market}")
+            exchange_config = self.config_manager.get_exchange_config(exchange_market.exchange.value.lower())
+        
+        # Use simplified factory pattern for public market data
+        return get_rest_implementation(exchange_config, is_private=False)
     
     async def _fetch_exchange_info(self, exchange_market: ExchangeMarket) -> Dict[Symbol, SymbolInfo]:
         """
@@ -843,13 +851,10 @@ class DiscoveryCLI:
         self.output_manager = OutputManager()
     
     def _setup_logging(self):
-        """Configure logging for CLI"""
-        logging.basicConfig(
-            level=logging.INFO,
-            format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-            datefmt='%Y-%m-%d %H:%M:%S'
-        )
-        self.logger = logging.getLogger('SymbolDiscovery')
+        """Configure HFT logging for CLI"""
+        # Use HFT logging system for better performance and consistency
+        from infrastructure.logging.factory import get_logger
+        self.logger = get_logger('SymbolDiscovery')
     
     async def run(self,
                  output_format: OutputFormat = OutputFormat.DETAILED,
