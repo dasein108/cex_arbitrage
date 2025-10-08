@@ -127,9 +127,36 @@ CREATE TABLE IF NOT EXISTS trade_snapshots (
     PRIMARY KEY (timestamp, symbol_id, id)
 );
 
+-- Funding rate snapshots table - NORMALIZED SCHEMA (matches FundingRateSnapshot model)
+CREATE TABLE IF NOT EXISTS funding_rate_snapshots (
+    id BIGSERIAL,
+    timestamp TIMESTAMPTZ NOT NULL,
+    symbol_id INTEGER NOT NULL REFERENCES symbols(id),  -- Foreign key to symbols table
+    
+    -- Funding rate data
+    funding_rate NUMERIC(12,8) NOT NULL,  -- Current funding rate (e.g., 0.00010000 for 0.01%)
+    funding_time BIGINT NOT NULL,         -- Next funding time (Unix timestamp in milliseconds)
+    
+    -- Metadata
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    
+    -- HFT Performance Constraints
+    CONSTRAINT chk_funding_rate_bounds CHECK (funding_rate >= -1.0 AND funding_rate <= 1.0),
+    CONSTRAINT chk_funding_time_valid CHECK (funding_time > 0),
+    CONSTRAINT chk_funding_timestamp_valid CHECK (timestamp >= '2020-01-01'::timestamptz),
+    
+    -- Optimized primary key for time-series partitioning
+    PRIMARY KEY (timestamp, symbol_id)
+);
+
 -- Convert to hypertable (optimized)  
 SELECT create_hypertable('trade_snapshots', 'timestamp',
     chunk_time_interval => INTERVAL '30 minutes',
+    if_not_exists => TRUE);
+
+-- Convert funding rate snapshots to hypertable (optimized for funding rate collection)
+SELECT create_hypertable('funding_rate_snapshots', 'timestamp', 
+    chunk_time_interval => INTERVAL '1 hour',  -- Hourly chunks for funding data
     if_not_exists => TRUE);
 
 -- =============================================================================
@@ -265,6 +292,25 @@ CREATE INDEX IF NOT EXISTS idx_trade_snapshots_side_time
 CREATE INDEX IF NOT EXISTS idx_trade_snapshots_recent 
     ON trade_snapshots(timestamp DESC) WHERE timestamp > NOW() - INTERVAL '1 hour';
 
+-- HFT-optimized indexes for funding_rate_snapshots
+CREATE INDEX IF NOT EXISTS idx_funding_rates_symbol_time 
+    ON funding_rate_snapshots(symbol_id, timestamp DESC);
+    
+CREATE INDEX IF NOT EXISTS idx_funding_rates_time_symbol 
+    ON funding_rate_snapshots(timestamp DESC, symbol_id);
+
+-- Index for recent funding rates (most common query pattern)
+CREATE INDEX IF NOT EXISTS idx_funding_rates_recent 
+    ON funding_rate_snapshots(timestamp DESC) WHERE timestamp > NOW() - INTERVAL '24 hours';
+
+-- Index for funding rate range queries (analytics)
+CREATE INDEX IF NOT EXISTS idx_funding_rates_rate_range 
+    ON funding_rate_snapshots(funding_rate) WHERE ABS(funding_rate) > 0.0001;
+
+-- Index for funding time queries (next funding events)
+CREATE INDEX IF NOT EXISTS idx_funding_rates_funding_time 
+    ON funding_rate_snapshots(funding_time);
+
 -- Indexes for arbitrage_opportunities table (normalized)
 CREATE INDEX IF NOT EXISTS idx_arbitrage_opps_symbol_time 
     ON arbitrage_opportunities(symbol_id, timestamp DESC);
@@ -345,6 +391,9 @@ SELECT add_retention_policy('book_ticker_snapshots', INTERVAL '7 days', if_not_e
 SELECT add_retention_policy('orderbook_depth', INTERVAL '7 days', if_not_exists => TRUE);
 SELECT add_retention_policy('trade_snapshots', INTERVAL '7 days', if_not_exists => TRUE);
 
+-- Funding rates: Keep 90 days for analysis and backtesting
+SELECT add_retention_policy('funding_rate_snapshots', INTERVAL '90 days', if_not_exists => TRUE);
+
 -- Metrics and analytics: Keep 30 days
 SELECT add_retention_policy('order_flow_metrics', INTERVAL '30 days', if_not_exists => TRUE);
 
@@ -389,6 +438,7 @@ ALTER TABLE symbols OWNER TO arbitrage_user;
 ALTER TABLE book_ticker_snapshots OWNER TO arbitrage_user;
 ALTER TABLE orderbook_depth OWNER TO arbitrage_user;
 ALTER TABLE trade_snapshots OWNER TO arbitrage_user;
+ALTER TABLE funding_rate_snapshots OWNER TO arbitrage_user;
 ALTER TABLE arbitrage_opportunities OWNER TO arbitrage_user;
 ALTER TABLE order_flow_metrics OWNER TO arbitrage_user;
 ALTER TABLE collector_status OWNER TO arbitrage_user;
@@ -405,6 +455,7 @@ COMMENT ON TABLE exchanges IS 'Supported cryptocurrency exchanges with enum valu
 COMMENT ON TABLE symbols IS 'Trading symbols normalized by exchange with foreign key relationships';
 COMMENT ON TABLE book_ticker_snapshots IS 'L1 orderbook snapshots optimized for HFT sub-millisecond queries';
 COMMENT ON TABLE trade_snapshots IS 'Individual trade executions with normalized symbol references';
+COMMENT ON TABLE funding_rate_snapshots IS 'Funding rate snapshots for futures contracts with normalized symbol references';
 COMMENT ON TABLE arbitrage_opportunities IS 'Detected arbitrage opportunities with exchange relationships';
 COMMENT ON TABLE order_flow_metrics IS 'Order flow imbalance calculations for market analysis';
 COMMENT ON TABLE collector_status IS 'Real-time system monitoring and health checks';

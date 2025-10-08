@@ -128,6 +128,119 @@ class BookTickerSnapshot(msgspec.Struct):
         return (self.bid_price + self.ask_price) / 2
 
 
+class FundingRateSnapshot(msgspec.Struct):
+    """
+    Funding rate snapshot data structure.
+    
+    Represents funding rate data for futures contracts at specific moments.
+    Optimized for regular funding rate collection and analysis.
+    """
+    # Database fields (normalized schema)
+    symbol_id: int
+    
+    # Funding rate data
+    funding_rate: float  # Current funding rate (e.g., 0.0001 for 0.01%)
+    funding_time: int    # Next funding time (Unix timestamp in milliseconds)
+    
+    # Timing
+    timestamp: datetime
+    created_at: Optional[datetime] = None
+    id: Optional[int] = None
+    
+    # Transient fields for convenience (not stored in DB)
+    exchange: Optional[str] = None
+    symbol_base: Optional[str] = None
+    symbol_quote: Optional[str] = None
+    
+    @classmethod
+    def from_symbol_and_data(
+        cls,
+        exchange: str,
+        symbol: Symbol,
+        funding_rate: float,
+        funding_time: Optional[int],
+        timestamp: datetime,
+        symbol_id: Optional[int] = None
+    ) -> "FundingRateSnapshot":
+        """
+        Create FundingRateSnapshot from symbol and funding data.
+        
+        Args:
+            exchange: Exchange identifier (GATEIO_FUTURES, etc.)
+            symbol: Symbol object with base/quote assets
+            funding_rate: Current funding rate (decimal, e.g., 0.0001)
+            funding_time: Next funding time (Unix timestamp in milliseconds)
+            timestamp: Collection timestamp
+            symbol_id: Database symbol_id (required for normalized schema)
+            
+        Returns:
+            FundingRateSnapshot instance
+        """
+        if symbol_id is None:
+            raise ValueError("symbol_id is required for normalized database schema")
+        
+        # Handle None or invalid funding_time values
+        # Database constraint requires funding_time > 0
+        if funding_time is None or funding_time <= 0:
+            # Use current timestamp + 8 hours as fallback (typical funding interval)
+            import time
+            funding_time = int(time.time() * 1000) + (8 * 60 * 60 * 1000)
+            
+        return cls(
+            symbol_id=symbol_id,
+            funding_rate=funding_rate,
+            funding_time=funding_time,
+            timestamp=timestamp,
+            # Store transient fields for convenience
+            exchange=exchange.upper(),
+            symbol_base=str(symbol.base),
+            symbol_quote=str(symbol.quote)
+        )
+    
+    def to_symbol(self) -> Symbol:
+        """
+        Convert back to Symbol object.
+        
+        Returns:
+            Symbol object reconstructed from transient base/quote strings
+        """
+        if not self.symbol_base or not self.symbol_quote:
+            raise ValueError("symbol_base and symbol_quote must be populated to create Symbol object")
+            
+        from exchanges.structs.types import AssetName
+        return Symbol(
+            base=AssetName(self.symbol_base),
+            quote=AssetName(self.symbol_quote),
+        )
+    
+    def get_funding_rate_percentage(self) -> float:
+        """
+        Get funding rate as percentage.
+        
+        Returns:
+            Funding rate as percentage (e.g., 0.01 for 0.01%)
+        """
+        return self.funding_rate * 100
+    
+    def get_funding_rate_bps(self) -> float:
+        """
+        Get funding rate in basis points.
+        
+        Returns:
+            Funding rate in basis points (e.g., 1.0 for 0.01%)
+        """
+        return self.funding_rate * 10000
+    
+    def get_funding_datetime(self) -> datetime:
+        """
+        Convert funding_time to datetime object.
+        
+        Returns:
+            Funding time as datetime
+        """
+        return datetime.fromtimestamp(self.funding_time / 1000)
+
+
 class TradeSnapshot(msgspec.Struct):
     """
     Trade data snapshot structure.

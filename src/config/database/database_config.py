@@ -169,6 +169,22 @@ class DatabaseConfigManager:
                 symbol = Symbol(base, quote)
                 symbols.append(symbol)
         
+        # Always add default futures symbols for funding rate collection
+        # These are needed regardless of arbitrage pairs configuration
+        default_futures_symbols = [
+            ("BTC", "USDT"),  # Most liquid futures pair
+            ("ETH", "USDT"),  # Second most liquid
+            ("BNB", "USDT"),  # Popular altcoin futures
+            ("SOL", "USDT"),  # High-volume futures pair
+            ("DOGE", "USDT")  # Meme coin with good futures volume
+        ]
+        
+        for base, quote in default_futures_symbols:
+            futures_symbol = Symbol(base, quote)
+            # Add futures symbol if not already present
+            if futures_symbol not in symbols:
+                symbols.append(futures_symbol)
+        
         return symbols
     
     def _get_default_data_collector_config(self) -> Dict[str, Any]:

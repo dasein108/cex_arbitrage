@@ -13,16 +13,18 @@ Architecture (Oct 2025):
 """
 
 import asyncio
-from datetime import datetime
-from typing import Dict, List, Optional, Set, Callable, Awaitable
+from datetime import datetime, timezone
+from typing import Dict, List, Optional, Set, Callable, Awaitable, Union
 from dataclasses import dataclass
 
+from exchanges.interfaces.composite.futures.base_public_futures_composite import CompositePublicFuturesExchange
+from exchanges.interfaces.composite.spot.base_public_spot_composite import CompositePublicSpotExchange
 from exchanges.structs import Symbol, BookTicker, Trade, ExchangeEnum
 from exchanges.exchange_factory import get_composite_implementation
 from exchanges.adapters import BindedEventHandlersAdapter
 from infrastructure.networking.websocket.structs import PublicWebsocketChannelType
 from db import BookTickerSnapshot
-from db.models import TradeSnapshot
+from db.models import TradeSnapshot, FundingRateSnapshot
 from .analytics import RealTimeAnalytics, ArbitrageOpportunity
 from config.config_manager import get_exchange_config
 from infrastructure.logging import get_logger, LoggingTimer
@@ -40,6 +42,14 @@ class BookTickerCache:
 class TradeCache:
     """In-memory cache for trade data."""
     trade: Trade
+    last_updated: datetime
+    exchange: str
+
+
+@dataclass
+class FundingRateCache:
+    """In-memory cache for funding rate data."""
+    funding_rate_snapshot: FundingRateSnapshot
     last_updated: datetime
     exchange: str
 
@@ -83,7 +93,8 @@ class UnifiedWebSocketManager:
         self.logger = get_logger('data_collector.websocket_manager')
 
         # Exchange composite clients (separated domain architecture)
-        self._exchange_composites: Dict[ExchangeEnum, any] = {}
+        self._exchange_composites: Dict[ExchangeEnum,
+        Union[CompositePublicSpotExchange, CompositePublicFuturesExchange]] = {}
         
         # Event handler adapters for each exchange
         self._event_adapters: Dict[ExchangeEnum, BindedEventHandlersAdapter] = {}
@@ -104,11 +115,18 @@ class UnifiedWebSocketManager:
         # Trade cache: {exchange_symbol: List[TradeCache]} (keep recent trades)
         self._trade_cache: Dict[str, List[TradeCache]] = {}
 
+        # Funding rate cache: {exchange_symbol: FundingRateCache}
+        self._funding_rate_cache: Dict[str, FundingRateCache] = {}
+
         # Active symbols per exchange
         self._active_symbols: Dict[ExchangeEnum, Set[Symbol]] = {}
 
         # Connection status
         self._connected: Dict[ExchangeEnum, bool] = {}
+        
+        # Background task for funding rate collection
+        self._funding_rate_sync_task: Optional[asyncio.Task] = None
+        self._funding_rate_sync_interval = 5 * 60  # 5 minutes in seconds
 
         self.logger.info(f"Initialized unified WebSocket manager for exchanges: {exchanges}")
 
@@ -125,6 +143,9 @@ class UnifiedWebSocketManager:
             # Initialize exchange clients
             for exchange in self.exchanges:
                 await self._initialize_exchange_client(exchange, symbols)
+
+            # Start funding rate sync task for futures exchanges
+            await self._start_funding_rate_sync()
 
             self.logger.info("All WebSocket connections initialized successfully")
 
@@ -164,6 +185,13 @@ class UnifiedWebSocketManager:
                 adapter.bind(PublicWebsocketChannelType.BOOK_TICKER, 
                            lambda book_ticker: self._handle_book_ticker_update(exchange, book_ticker.symbol, book_ticker))
             
+            # Bind TICKER handler for futures exchanges to collect funding rates
+            config = get_exchange_config(exchange.value)
+            if config.is_futures:
+                adapter.bind(PublicWebsocketChannelType.TICKER, 
+                           lambda ticker: self._handle_ticker_update(exchange, ticker))
+                self.logger.info(f"Bound TICKER handler for futures exchange {exchange.value}")
+            
             # Trade handler binding disabled for performance optimization
             # if self.trade_handler:
             #     adapter.bind(PublicWebsocketChannelType.PUB_TRADE, 
@@ -178,7 +206,14 @@ class UnifiedWebSocketManager:
             # Initialize composite with symbols and channels
             # NOTE: Trade subscription disabled for performance optimization - only collecting book tickers
             with LoggingTimer(self.logger, "composite_initialization") as timer:
-                channels = [PublicWebsocketChannelType.BOOK_TICKER]  # Removed PUB_TRADE for performance
+                channels = [PublicWebsocketChannelType.BOOK_TICKER]  # Core market data
+                
+                # Add TICKER channel for futures exchanges to collect funding rates
+                config = get_exchange_config(exchange.value)
+                if config.is_futures:
+                    channels.append(PublicWebsocketChannelType.TICKER)
+                    self.logger.info(f"Added TICKER channel for futures exchange {exchange.value}")
+                # Removed PUB_TRADE for performance
                 
                 # Filter tradable symbols before subscription
                 tradable_symbols = []
@@ -353,6 +388,171 @@ class UnifiedWebSocketManager:
         except Exception as e:
             self.logger.error(f"Error handling trades update for {symbol}: {e}")
 
+    async def _handle_ticker_update(self, exchange: ExchangeEnum, ticker_data: any) -> None:
+        """
+        Handle ticker updates from futures exchanges to extract funding rate data.
+        
+        Args:
+            exchange: Exchange enum (should be a futures exchange)
+            ticker_data: Ticker data containing funding rate information
+        """
+        try:
+            # Only process futures exchanges
+            config = get_exchange_config(exchange.value)
+            if not config.is_futures:
+                return
+                
+            # Extract symbol from ticker data
+            # The exact format depends on exchange implementation
+            symbol = getattr(ticker_data, 'symbol', None)
+            if not symbol:
+                self.logger.warning(f"No symbol found in ticker data from {exchange.value}")
+                return
+                
+            # Extract funding rate data from ticker
+            funding_rate = getattr(ticker_data, 'funding_rate', None)
+            funding_time = getattr(ticker_data, 'funding_time', None)
+            
+            if funding_rate is not None and funding_time is not None:
+                # Validate funding_time to prevent database constraint violation
+                if funding_time <= 0:
+                    self.logger.warning(f"Invalid funding_time ({funding_time}) for {exchange.value} {symbol}, skipping")
+                    return
+                
+                # Create funding rate snapshot
+                current_time = datetime.now(timezone.utc)
+                
+                # Get symbol_id for database storage
+                from db.symbol_manager import get_symbol_id
+                symbol_id = await get_symbol_id(exchange.value, symbol)
+                
+                if symbol_id:
+                    funding_snapshot = FundingRateSnapshot(
+                        symbol_id=symbol_id,
+                        funding_rate=float(funding_rate),
+                        funding_time=int(funding_time),
+                        timestamp=current_time,
+                        exchange=exchange.value
+                    )
+                    
+                    # Update cache
+                    cache_key = f"{exchange.value}_{symbol}"
+                    cache_entry = FundingRateCache(
+                        funding_rate_snapshot=funding_snapshot,
+                        last_updated=current_time,
+                        exchange=exchange.value
+                    )
+                    self._funding_rate_cache[cache_key] = cache_entry
+                    
+                    self.logger.debug(f"Updated funding rate cache for {symbol}: rate={funding_rate}, time={funding_time}")
+                else:
+                    self.logger.warning(f"Could not get symbol_id for {exchange.value} {symbol.base}/{symbol.quote}")
+                    
+        except Exception as e:
+            self.logger.error(f"Error handling ticker update from {exchange.value}: {e}")
+            import traceback
+            self.logger.error(traceback.format_exc())
+
+    async def _start_funding_rate_sync(self) -> None:
+        """Start the background funding rate sync task."""
+        if self._funding_rate_sync_task and not self._funding_rate_sync_task.done():
+            return  # Already running
+            
+        self._funding_rate_sync_task = asyncio.create_task(self._background_funding_rate_sync())
+        self.logger.info("Started background funding rate sync task")
+
+    async def _background_funding_rate_sync(self) -> None:
+        """Background task to sync funding rates every 5 minutes."""
+        while True:
+            try:
+                await self._sync_funding_rates()
+                await asyncio.sleep(self._funding_rate_sync_interval)
+            except asyncio.CancelledError:
+                self.logger.info("Background funding rate sync task cancelled")
+                break
+            except Exception as e:
+                self.logger.error("Error in background funding rate sync", error=str(e))
+                # Continue running even if sync fails
+
+    async def _sync_funding_rates(self) -> None:
+        """Sync funding rates for all active futures symbols."""
+        try:
+            with LoggingTimer(self.logger, "funding_rate_sync") as timer:
+                for exchange, composite in self._exchange_composites.items():
+                    if not self._connected[exchange]:
+                        continue
+                        
+                    # Only collect from futures exchanges
+                    if exchange != ExchangeEnum.GATEIO_FUTURES:
+                        continue
+                        
+                    active_symbols = self._active_symbols.get(exchange, set())
+                    ticker = await composite.rest_client.get_ticker_info()
+
+                    for symbol in active_symbols:
+                        try:
+                            # Check if the REST client supports funding rates
+                            # if not hasattr(composite._rest, 'get_historical_funding_rate'):
+                            #     continue
+                            #
+                            # # Get funding rate data
+                            # funding_data = await composite._rest.get_historical_funding_rate(symbol)
+                            #
+                            # if not funding_data:
+                            #     continue
+                            #
+                            # # Extract funding rate and time
+                            # funding_rate = float(funding_data.get('r', 0)) if funding_data.get('r') else None
+                            # funding_time = int(funding_data.get('t', 0)) if funding_data.get('t') else None
+                            #
+                            # if funding_rate is None or funding_time is None:
+                            #     continue
+                            
+                            # Get symbol ID from database
+                            from db.symbol_manager import get_symbol_id
+                            symbol_id = await get_symbol_id(exchange.value, symbol)
+                            funding_rate = ticker[symbol].funding_rate
+                            funding_time = ticker[symbol].funding_time
+                            
+                            # Note: funding_time validation is handled in FundingRateSnapshot.from_symbol_and_data()
+                            # The model will automatically use a fallback value if funding_time is None or invalid
+
+                            if symbol_id is None:
+                                self.logger.warning(f"Could not get symbol_id for {exchange.value} {symbol}")
+                                continue
+
+                            # Create funding rate snapshot
+                            funding_snapshot = FundingRateSnapshot.from_symbol_and_data(
+                                exchange=exchange.value,
+                                symbol=symbol,
+                                funding_rate=funding_rate,
+                                funding_time=funding_time,
+                                timestamp=datetime.now(),
+                                symbol_id=symbol_id
+                            )
+                            
+                            # Cache the snapshot
+                            cache_key = f"{exchange.value}_{symbol}"
+                            self._funding_rate_cache[cache_key] = FundingRateCache(
+                                funding_rate_snapshot=funding_snapshot,
+                                last_updated=datetime.now(),
+                                exchange=exchange.value
+                            )
+                            
+                            self.logger.debug(f"Cached funding rate for {symbol}: {funding_rate}")
+                            
+                        except Exception as e:
+                            self.logger.error(f"Failed to sync funding rate for {exchange.value} {symbol}: {e}")
+                            continue
+                            
+                synced_count = len(self._funding_rate_cache)
+                self.logger.info("Funding rate sync completed",
+                               symbols_synced=synced_count,
+                               sync_time_ms=timer.elapsed_ms)
+                               
+        except Exception as e:
+            self.logger.error("Failed to sync funding rates", error=str(e))
+
     async def add_symbols(self, symbols: List[Symbol]) -> None:
         """
         Add symbols to all active exchanges.
@@ -367,9 +567,10 @@ class UnifiedWebSocketManager:
             for exchange, composite in self._exchange_composites.items():
                 if self._connected[exchange]:
                     # Use channel types for subscription - trade subscription disabled for performance
-                    channels = [PublicWebsocketChannelType.BOOK_TICKER]  # Removed PUB_TRADE for performance
-                    await composite.subscribe_symbols(symbols)
-                    self._active_symbols[exchange].update(symbols)
+                    channels = [PublicWebsocketChannelType.BOOK_TICKER]
+                    for s in symbols:
+                        await composite.add_symbol(s)
+                        self._active_symbols[exchange].update(symbols)
 
             self.logger.info(f"Added {len(symbols)} symbols to all exchanges")
 
@@ -391,8 +592,9 @@ class UnifiedWebSocketManager:
             for exchange, composite in self._exchange_composites.items():
                 if self._connected[exchange]:
                     # Use composite pattern for unsubscription
-                    await composite.unsubscribe_symbols(symbols)
-                    self._active_symbols[exchange].difference_update(symbols)
+                    for s in symbols:
+                        await composite.remove_symbol(s)
+                        self._active_symbols[exchange].difference_update(symbols)
 
             # Remove from cache
             for symbol in symbols:
@@ -545,6 +747,27 @@ class UnifiedWebSocketManager:
 
         return snapshots
 
+    async def get_all_cached_funding_rates(self) -> List[FundingRateSnapshot]:
+        """
+        Get all cached funding rates as FundingRateSnapshot objects.
+        
+        Returns:
+            List of FundingRateSnapshot objects
+        """
+        snapshots = []
+        
+        # Create a copy to avoid "dictionary changed size during iteration"
+        cached_items = list(self._funding_rate_cache.items())
+        
+        for cache_key, cache_entry in cached_items:
+            try:
+                snapshots.append(cache_entry.funding_rate_snapshot)
+            except Exception as e:
+                self.logger.error(f"Error processing cached funding rate {cache_key}: {e}")
+                continue
+        
+        return snapshots
+
     def get_connection_status(self) -> Dict[str, bool]:
         """
         Get connection status for all exchanges.
@@ -596,6 +819,17 @@ class UnifiedWebSocketManager:
             except Exception as e:
                 self.logger.warning(f"Error parsing trade cache key {cache_key}: {e}")
 
+        # Count cached funding rates by exchange
+        funding_rates_by_exchange = {}
+        total_cached_funding_rates = 0
+        for cache_key, funding_cache in self._funding_rate_cache.items():
+            try:
+                exchange, _ = self._parse_cache_key(cache_key)
+                funding_rates_by_exchange[exchange] = funding_rates_by_exchange.get(exchange, 0) + 1
+                total_cached_funding_rates += 1
+            except Exception as e:
+                self.logger.warning(f"Error parsing funding rate cache key {cache_key}: {e}")
+
         # Add detailed cache keys for debugging
         cache_keys = list(self._book_ticker_cache.keys())
 
@@ -604,6 +838,8 @@ class UnifiedWebSocketManager:
             "tickers_by_exchange": by_exchange,
             "total_cached_trades": total_cached_trades,
             "trades_by_exchange": trades_by_exchange,
+            "total_cached_funding_rates": total_cached_funding_rates,
+            "funding_rates_by_exchange": funding_rates_by_exchange,
             "connected_exchanges": sum(1 for connected in self._connected.values() if connected),
             "total_exchanges": len(self._connected),
             "sample_cache_keys": cache_keys[:5],  # Show first 5 cache keys for debugging
@@ -614,6 +850,15 @@ class UnifiedWebSocketManager:
         """Close all composite exchange connections."""
         try:
             self.logger.info("Closing all composite exchange connections")
+
+            # Cancel funding rate sync task
+            if self._funding_rate_sync_task and not self._funding_rate_sync_task.done():
+                self._funding_rate_sync_task.cancel()
+                try:
+                    await self._funding_rate_sync_task
+                except asyncio.CancelledError:
+                    pass
+                self.logger.info("Background funding rate sync task cancelled")
 
             # Dispose event adapters first
             for exchange, adapter in self._event_adapters.items():
@@ -633,6 +878,7 @@ class UnifiedWebSocketManager:
             # Clear caches and state
             self._book_ticker_cache.clear()
             self._trade_cache.clear()
+            self._funding_rate_cache.clear()
             self._active_symbols.clear()
             self._exchange_composites.clear()
             self._event_adapters.clear()
@@ -655,7 +901,8 @@ class SnapshotScheduler:
             ws_manager: UnifiedWebSocketManager,
             interval_seconds: float = 1,
             snapshot_handler: Optional[Callable[[List[BookTickerSnapshot]], Awaitable[None]]] = None,
-            trade_handler: Optional[Callable[[List[TradeSnapshot]], Awaitable[None]]] = None
+            trade_handler: Optional[Callable[[List[TradeSnapshot]], Awaitable[None]]] = None,
+            funding_rate_handler: Optional[Callable[[List[FundingRateSnapshot]], Awaitable[None]]] = None
     ):
         """
         Initialize snapshot scheduler.
@@ -664,11 +911,14 @@ class SnapshotScheduler:
             ws_manager: WebSocket manager to get data from
             interval_seconds: Snapshot interval in seconds
             snapshot_handler: Handler for snapshot data
+            trade_handler: Handler for trade data
+            funding_rate_handler: Handler for funding rate data
         """
         self.ws_manager = ws_manager
         self.interval_seconds = interval_seconds
         self.snapshot_handler = snapshot_handler
         self.trade_handler = trade_handler
+        self.funding_rate_handler = funding_rate_handler
 
         self.logger = get_logger('data_collector.snapshot_scheduler')
         self._running = False
@@ -706,6 +956,9 @@ class SnapshotScheduler:
 
             # Get all cached trades
             trade_snapshots = self.ws_manager.get_all_cached_trades()
+            
+            # Get all cached funding rates
+            funding_rate_snapshots = await self.ws_manager.get_all_cached_funding_rates()
 
             # Enhanced debugging
             cache_stats = self.ws_manager.get_cache_statistics()
@@ -714,10 +967,11 @@ class SnapshotScheduler:
                 f"Connected: {cache_stats['connected_exchanges']}/{cache_stats['total_exchanges']}, "
                 f"Cached tickers: {cache_stats['total_cached_tickers']}, "
                 f"Retrieved tickers: {len(ticker_snapshots)}, "
-                f"Retrieved trades: {len(trade_snapshots)}"
+                f"Retrieved trades: {len(trade_snapshots)}, "
+                f"Retrieved funding rates: {len(funding_rate_snapshots)}"
             )
 
-            if not ticker_snapshots and not trade_snapshots:
+            if not ticker_snapshots and not trade_snapshots and not funding_rate_snapshots:
                 # Log more details about why no data
                 if cache_stats['total_cached_tickers'] > 0:
                     self.logger.warning(
@@ -742,10 +996,15 @@ class SnapshotScheduler:
                 await self.trade_handler(trade_snapshots)
                 self.logger.debug("Trade_handler completed successfully")
 
+            if self.funding_rate_handler and funding_rate_snapshots:
+                self.logger.debug(f"Calling funding_rate_handler with {len(funding_rate_snapshots)} funding rates")
+                await self.funding_rate_handler(funding_rate_snapshots)
+                self.logger.debug("Funding_rate_handler completed successfully")
+
             # Log snapshot statistics
             self.logger.info(
                 f"Snapshot #{self._snapshot_count:03d}: "
-                f"Processed {len(ticker_snapshots)} tickers, {len(trade_snapshots)} trades from "
+                f"Processed {len(ticker_snapshots)} tickers, {len(trade_snapshots)} trades, {len(funding_rate_snapshots)} funding rates from "
                 f"{cache_stats['connected_exchanges']}/{cache_stats['total_exchanges']} exchanges"
             )
 
@@ -761,7 +1020,8 @@ class SnapshotScheduler:
             "snapshot_count": self._snapshot_count,
             "interval_seconds": self.interval_seconds,
             "has_ticker_handler": self.snapshot_handler is not None,
-            "has_trade_handler": self.trade_handler is not None
+            "has_trade_handler": self.trade_handler is not None,
+            "has_funding_rate_handler": self.funding_rate_handler is not None
         }
 
 
@@ -848,7 +1108,8 @@ class DataCollector:
                 ws_manager=self.ws_manager,
                 interval_seconds=self.config.snapshot_interval,
                 snapshot_handler=self._handle_snapshot_storage,
-                trade_handler=None  # Disabled since trade collection is disabled
+                trade_handler=None,  # Disabled since trade collection is disabled
+                funding_rate_handler=self._handle_funding_rate_storage
             )
             self.logger.info(f"Snapshot scheduler initialized with {self.config.snapshot_interval}s interval")
 
@@ -1029,6 +1290,41 @@ class DataCollector:
 
         except Exception as e:
             self.logger.error(f"Error storing trade snapshots: {e}")
+
+    async def _handle_funding_rate_storage(self, funding_rate_snapshots: List[FundingRateSnapshot]) -> None:
+        """
+        Handle funding rate snapshot storage to database.
+        
+        Args:
+            funding_rate_snapshots: List of funding rate snapshots to store
+        """
+        try:
+            if not funding_rate_snapshots:
+                return
+
+            # Store funding rate snapshots in database using batch insert
+            from db.operations import insert_funding_rate_snapshots_batch
+
+            start_time = datetime.now()
+            count = await insert_funding_rate_snapshots_batch(funding_rate_snapshots)
+            storage_duration = (datetime.now() - start_time).total_seconds() * 1000
+
+            self.logger.debug(
+                f"Stored {count} funding rate snapshots in {storage_duration:.1f}ms"
+            )
+
+            # Log sample of what was stored for verification
+            if funding_rate_snapshots:
+                sample = funding_rate_snapshots[0]
+                self.logger.debug(
+                    f"Sample funding rate stored: {sample.exchange} {sample.symbol_base}/{sample.symbol_quote} "
+                    f"@ {sample.timestamp} - rate={sample.funding_rate} next_time={sample.next_funding_time}"
+                )
+
+        except Exception as e:
+            self.logger.error(f"Error storing funding rate snapshots: {e}")
+            import traceback
+            self.logger.error(traceback.format_exc())
 
     def get_status(self) -> Dict[str, any]:
         """

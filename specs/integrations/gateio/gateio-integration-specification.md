@@ -128,13 +128,14 @@ status = await private_exchange.get_withdrawal_status(withdrawal_id)
 - **Futures Data Management**: Funding rates, mark prices, index prices
 
 **Extended Capabilities**:
+
 ```python
 # Standard futures market data
 await futures_public.get_orderbook(symbol)
 await futures_public.get_recent_trades(symbol)
 
 # Futures-specific data
-funding_rate = await futures_public.get_funding_rate(symbol)
+funding_rate = await futures_public.get_historical_funding_rate(symbol)
 funding_history = await futures_public.get_funding_rate_history(symbol)
 mark_price = await futures_public.get_mark_price(symbol)
 index_price = await futures_public.get_index_price(symbol)
@@ -1082,7 +1083,7 @@ async def gateio_futures_trading_example():
 
     # Get futures market data
     orderbook = await futures_public.get_orderbook(Symbol('BTC', 'USDT'))
-    funding_rate = await futures_public.get_funding_rate(Symbol('BTC', 'USDT'))
+    funding_rate = await futures_public.get_historical_funding_rate(Symbol('BTC', 'USDT'))
     mark_price = await futures_public.get_mark_price(Symbol('BTC', 'USDT'))
 
     # Set leverage
@@ -1187,7 +1188,7 @@ async def test_gateio_futures_integration():
     # Test futures public domain
     futures_public = await factory.create_public_exchange('gateio_futures', symbols)
 
-    funding_rate = await futures_public.get_funding_rate(Symbol('BTC', 'USDT'))
+    funding_rate = await futures_public.get_historical_funding_rate(Symbol('BTC', 'USDT'))
     assert funding_rate is not None
 
     # Test futures private domain
@@ -1203,25 +1204,25 @@ async def test_gateio_futures_integration():
 async def benchmark_gateio_performance():
     """Benchmark Gate.io performance."""
     import time
-    
+
     factory = FullExchangeFactory()
-    
+
     # Spot performance test
     spot_public = await factory.create_public_exchange('gateio_spot', symbols)
-    
+
     start = time.time()
     await spot_public.get_orderbook(Symbol('BTC', 'USDT'))
     spot_latency = time.time() - start
     assert spot_latency < 0.015  # <15ms target
-    
+
     # Futures performance test
     futures_public = await factory.create_public_exchange('gateio_futures', symbols)
-    
+
     start = time.time()
-    await futures_public.get_funding_rate(Symbol('BTC', 'USDT'))
+    await futures_public.get_historical_funding_rate(Symbol('BTC', 'USDT'))
     futures_latency = time.time() - start
     assert futures_latency < 0.020  # <20ms target
-    
+
     # Symbol conversion test
     start = time.time()
     for _ in range(1000):

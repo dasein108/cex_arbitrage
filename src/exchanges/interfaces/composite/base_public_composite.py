@@ -50,9 +50,9 @@ See also:
 
 import asyncio
 import time
-from typing import Dict, List, Optional, Callable, Awaitable, Set, Any
+from typing import Dict, List, Optional, Callable, Awaitable, Set, Any, Union
 
-from exchanges.structs.common import (Symbol, SymbolsInfo, OrderBook, BookTicker, Ticker, Trade)
+from exchanges.structs.common import (Symbol, SymbolsInfo, OrderBook, BookTicker, Ticker, Trade, FuturesTicker)
 from exchanges.structs.enums import OrderbookUpdateType
 from infrastructure.exceptions.system import InitializationError
 from exchanges.interfaces.composite.base_composite import BaseCompositeExchange
@@ -95,7 +95,7 @@ class BasePublicComposite(BaseCompositeExchange[PublicRestType, PublicWebsocketT
         websocket_client.bind(PublicWebsocketChannelType.PUB_TRADE, self._handle_trade)
 
         self._orderbooks: Dict[Symbol, OrderBook] = {}
-        self._tickers: Dict[Symbol, Ticker] = {}
+        self._tickers: Dict[Symbol, Union[Ticker, FuturesTicker]] = {}
 
         # NEW: Enhanced best bid/ask state management (HFT CRITICAL)
         self._book_ticker: Dict[Symbol, BookTicker] = {}
@@ -108,6 +108,10 @@ class BasePublicComposite(BaseCompositeExchange[PublicRestType, PublicWebsocketT
         # Performance tracking for HFT compliance (NEW)
         self._book_ticker_update_count = 0
         self._book_ticker_latency_sum = 0.0
+        
+        # Background ticker syncing (NEW)
+        self._ticker_sync_task: Optional[asyncio.Task] = None
+        self._ticker_sync_interval = 2 * 60 * 60  # 2 hours in seconds
 
     # Factory methods ELIMINATED - clients injected via constructor
 
@@ -247,6 +251,11 @@ class BasePublicComposite(BaseCompositeExchange[PublicRestType, PublicWebsocketT
             if new_symbols:
                 await self._ws.subscribe(symbol=list(self.active_symbols), channel=channels)
 
+            # Start background ticker sync task
+            if not self._ticker_sync_task or self._ticker_sync_task.done():
+                self._ticker_sync_task = asyncio.create_task(self._background_ticker_sync())
+                self.logger.info("Started background ticker sync task")
+
             init_time = (time.perf_counter() - init_start) * 1000
 
             self.logger.info(f"{self._tag} public initialization completed",
@@ -255,7 +264,9 @@ class BasePublicComposite(BaseCompositeExchange[PublicRestType, PublicWebsocketT
                              hft_compliant=init_time < 100.0,
                              has_rest=self._rest is not None,
                              has_ws=self._ws is not None,
-                             orderbook_count=len(self._orderbooks))
+                             orderbook_count=len(self._orderbooks),
+                             ticker_count=len(self._tickers),
+                             ticker_sync_active=self._ticker_sync_task is not None and not self._ticker_sync_task.done())
 
         except Exception as e:
             self.logger.error(f"Public exchange initialization failed: {e}")
@@ -329,11 +340,18 @@ class BasePublicComposite(BaseCompositeExchange[PublicRestType, PublicWebsocketT
         except Exception as e:
             self.logger.error("Error handling direct orderbook", error=str(e))
 
-    async def _handle_ticker(self, ticker: Ticker) -> None:
+    async def _handle_ticker(self, ticker: Union[Ticker, FuturesTicker]) -> None:
         """Handle ticker updates from WebSocket (direct data object)."""
         try:
-            # Update internal ticker state
-            self._tickers[ticker.symbol] = ticker
+            # hack for futures ticker
+            if isinstance(ticker, FuturesTicker) and ticker.symbol in self._tickers:
+                # Preserve funding time for futures tickers
+                funding_time = self._tickers[ticker.symbol].funding_time
+                self._tickers[ticker.symbol] = ticker
+                self._tickers[ticker.symbol].funding_time = funding_time
+            else:
+                self._tickers[ticker.symbol] = ticker
+
             self._last_update_time = time.perf_counter()
             self._track_operation("ticker_update")
 
@@ -373,7 +391,7 @@ class BasePublicComposite(BaseCompositeExchange[PublicRestType, PublicWebsocketT
             # Validate data freshness for HFT compliance
             # TODO: Not sure that this is needed ??
             if not self._validate_data_timestamp(book_ticker.timestamp):
-                self.logger.warning("Stale book ticker data ignored",
+                self.logger.debug("Stale book ticker data ignored",
                                     symbol=book_ticker.symbol)
                 return
 
@@ -420,6 +438,43 @@ class BasePublicComposite(BaseCompositeExchange[PublicRestType, PublicWebsocketT
         """
         return self._book_ticker.get(symbol)
 
+    async def _sync_tickers(self) -> None:
+        """Sync ticker data for all active symbols."""
+        if not self._rest:
+            return
+            
+        try:
+            with LoggingTimer(self.logger, "ticker_sync") as timer:
+                # Sync tickers for all active symbols
+                # For futures exchanges that support FuturesTicker
+                tickers = await self._rest.get_ticker_info()
+                for symbol, ticker in tickers.items():
+                    if symbol in self._active_symbols:
+                        self._tickers[symbol] = ticker
+                        self.publish("tickers", ticker)
+                else:
+                    self.logger.warning("REST client has no ticker methods available")
+                            
+            self.logger.info("Ticker sync completed",
+                           symbols_synced=len([s for s in self._active_symbols if s in self._tickers]),
+                           sync_time_ms=timer.elapsed_ms)
+                           
+        except Exception as e:
+            self.logger.error("Failed to sync tickers", error=str(e))
+
+    async def _background_ticker_sync(self) -> None:
+        """Background task to sync tickers every 2 hours."""
+        while True:
+            try:
+                await asyncio.sleep(self._ticker_sync_interval)
+                await self._sync_tickers()
+            except asyncio.CancelledError:
+                self.logger.info("Background ticker sync task cancelled")
+                break
+            except Exception as e:
+                self.logger.error("Error in background ticker sync", error=str(e))
+                # Continue running even if sync fails
+
     async def _refresh_exchange_data(self) -> None:
         """Refresh market data including best bid/ask after WebSocket reconnection."""
         try:
@@ -430,7 +485,8 @@ class BasePublicComposite(BaseCompositeExchange[PublicRestType, PublicWebsocketT
             for symbol in self._active_symbols:
                 refresh_tasks.append(self._load_orderbook_snapshot(symbol))
 
-            # TODO: refresh tickers, if needed in future
+            # Sync tickers during refresh
+            refresh_tasks.append(self._sync_tickers())
 
             results = await asyncio.gather(*refresh_tasks, return_exceptions=True)
 
@@ -442,11 +498,12 @@ class BasePublicComposite(BaseCompositeExchange[PublicRestType, PublicWebsocketT
                     successful_loads += 1
 
             self.logger.info(
-                f"Successfully initialized {successful_loads}/{len(self.active_symbols)} orderbook snapshots")
+                f"Successfully initialized {successful_loads}/{len(self.active_symbols)} operations")
 
             self.logger.info("Market data refreshed",
                              symbols=len(self._active_symbols),
-                             includes_best_bid_ask=True)
+                             includes_best_bid_ask=True,
+                             includes_tickers=True)
 
         except Exception as e:
             self.logger.error("Failed to refresh market data after reconnection", error=str(e))
@@ -455,6 +512,15 @@ class BasePublicComposite(BaseCompositeExchange[PublicRestType, PublicWebsocketT
         """Close public exchange connections."""
         try:
             close_tasks = []
+
+            # Cancel background ticker sync task
+            if self._ticker_sync_task and not self._ticker_sync_task.done():
+                self._ticker_sync_task.cancel()
+                try:
+                    await self._ticker_sync_task
+                except asyncio.CancelledError:
+                    pass
+                self.logger.info("Background ticker sync task cancelled")
 
             if self._ws:
                 close_tasks.append(self._ws.close())

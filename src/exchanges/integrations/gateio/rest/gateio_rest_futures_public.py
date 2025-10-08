@@ -6,7 +6,7 @@ from datetime import datetime
 from exchanges.interfaces.rest import PublicFuturesRestInterface
 from exchanges.structs.common import (
     Symbol, SymbolInfo, OrderBook, OrderBookEntry, Trade, Kline,
-    Ticker
+    Ticker, FuturesTicker
 )
 from exchanges.structs.enums import KlineInterval
 from exchanges.structs import Side
@@ -295,11 +295,12 @@ class GateioPublicFuturesRestInterface(GateioBaseFuturesRestInterface, PublicFut
             self.logger.error(f"Failed to get futures historical trades for {symbol}: {e}")
             raise ExchangeRestError(500, f"Futures historical trades fetch failed: {str(e)}")
 
-    async def get_ticker_info(self, symbol: Optional[Symbol] = None) -> Dict[Symbol, Ticker]:
+    async def get_ticker_info(self, symbol: Optional[Symbol] = None) -> Dict[Symbol, FuturesTicker]:
         """
-        Get futures tickers. Endpoint: /futures/usdt/tickers
+        Get futures tickers with comprehensive market data including funding rates.
+        Endpoint: /futures/usdt/tickers
         Can request single symbol via 'contract' param or get all tickers.
-        Returns mapping Symbol -> Ticker (similar to spot signature).
+        Returns mapping Symbol -> FuturesTicker with all required fields.
         """
         try:
             params = {}
@@ -313,7 +314,7 @@ class GateioPublicFuturesRestInterface(GateioBaseFuturesRestInterface, PublicFut
             )
 
             tickers_data = response_data if isinstance(response_data, list) else [response_data]
-            tickers: Dict[Symbol, Ticker] = {}
+            tickers: Dict[Symbol, FuturesTicker] = {}
 
             for td in tickers_data:
                 pair_str = td.get('contract') or td.get('name') or td.get('currency_pair') or ''
@@ -326,36 +327,46 @@ class GateioPublicFuturesRestInterface(GateioBaseFuturesRestInterface, PublicFut
                 except Exception:
                     continue
 
+                # Extract basic price data
                 last_price = float(td.get('last', td.get('last_price', 0)))
-                change_24h = float(td.get('change', td.get('change_utc0', 0)))
-                base_volume = float(td.get('base_volume', 0))
-                quote_volume = float(td.get('quote_volume', 0))
-                current_time = int(time.time() * 1000)
-                open_time = current_time - (24 * 60 * 60 * 1000)
-                close_time = current_time
+                mark_price = float(td.get('mark_price', 0)) if td.get('mark_price') else None
+                index_price = float(td.get('index_price', 0)) if td.get('index_price') else None
+                
+                # Extract funding rate data from ticker if available
+                funding_rate = None
+                funding_rate_indicative = None
+                funding_time = None
+                
+                if td.get('funding_rate') is not None:
+                    funding_rate = float(td.get('funding_rate', 0))
+                if td.get('funding_rate_indicative') is not None:
+                    funding_rate_indicative = float(td.get('funding_rate_indicative', 0))
 
-                ticker = Ticker(
+                # TODO: this is it symbol_info (contacts)
+                # if td.get('funding_next_apply') is not None:
+                #     funding_time = int(td.get('funding_next_apply', 0))
+
+                # If funding data not in ticker, try to fetch it separately
+                # if funding_rate is None:
+                #     try:
+                #         funding_data = await self.get_historical_funding_rate(symbol_obj)
+                #         funding_rate = float(funding_data.get('r', 0)) if funding_data.get('r') else None
+                #         funding_time = int(funding_data.get('t', 0)) if funding_data.get('t') else None
+                #     except Exception:
+                #         # Funding rate fetch failed, continue with None values
+                #         pass
+                # TODO: useful
+                # "delisting_time": 1609899548,
+                # "delisted_time": 1609899548
+
+                ticker = FuturesTicker(
                     symbol=symbol_obj,
-                    price_change=change_24h,
-                    price_change_percent=float(td.get('change_percentage', 0)),
-                    weighted_avg_price=(quote_volume / base_volume) if base_volume > 0 else last_price,
-                    prev_close_price=last_price - change_24h if last_price and change_24h else last_price,
-                    last_price=last_price,
-                    last_qty=0.0,
-                    open_price=last_price - change_24h if last_price and change_24h else last_price,
-                    high_price=float(td.get('high', td.get('high_24h', 0))),
-                    low_price=float(td.get('low', td.get('low_24h', 0))),
-                    volume=base_volume,
-                    quote_volume=quote_volume,
-                    open_time=open_time,
-                    close_time=close_time,
-                    count=0,
-                    bid_price=float(td.get('highest_bid', td.get('bid', 0))) if td.get('highest_bid') or td.get('bid') else None,
-                    bid_qty=None,
-                    ask_price=float(td.get('lowest_ask', td.get('ask', 0))) if td.get('lowest_ask') or td.get('ask') else None,
-                    ask_qty=None,
-                    first_id=None,
-                    last_id=None
+                    price=last_price,
+                    mark_price=mark_price,
+                    index_price=index_price,
+                    funding_rate=funding_rate,
+                    funding_rate_indicative=funding_rate_indicative,
+                    funding_time=funding_time
                 )
 
                 tickers[symbol_obj] = ticker
@@ -367,7 +378,7 @@ class GateioPublicFuturesRestInterface(GateioBaseFuturesRestInterface, PublicFut
             self.logger.error(f"Failed to get futures ticker info: {e}")
             raise ExchangeRestError(500, f"Futures ticker info fetch failed: {str(e)}")
 
-    async def get_funding_rate(self, symbol: Symbol) -> Dict[str, Any]:
+    async def get_historical_funding_rate(self, symbol: Symbol) -> Dict[str, Any]:
         """
         Get funding rate for a contract. Endpoint: /futures/usdt/funding_rate
         Returns raw dict (public-only).

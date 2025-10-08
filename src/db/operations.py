@@ -12,7 +12,7 @@ from collections import defaultdict
 import time
 
 from .connection import get_db_manager
-from .models import BookTickerSnapshot, TradeSnapshot
+from .models import BookTickerSnapshot, TradeSnapshot, FundingRateSnapshot
 from .symbol_manager import get_symbol_id, get_symbol_details
 from exchanges.structs.common import Symbol
 
@@ -648,6 +648,64 @@ async def insert_trade_snapshot(snapshot: TradeSnapshot) -> int:
         
     except Exception as e:
         logger.error(f"Failed to insert trade snapshot: {e}")
+        raise
+
+
+async def insert_funding_rate_snapshots_batch(snapshots: List[FundingRateSnapshot]) -> int:
+    """
+    Insert funding rate snapshots in batch for optimal performance.
+    
+    Args:
+        snapshots: List of FundingRateSnapshot objects
+        
+    Returns:
+        Number of records inserted/updated
+    """
+    if not snapshots:
+        return 0
+        
+    db = get_db_manager()
+    
+    # Prepare batch insert with ON CONFLICT handling
+    query = """
+    INSERT INTO funding_rate_snapshots (
+        timestamp, symbol_id, funding_rate, funding_time, created_at
+    ) VALUES ($1, $2, $3, $4, $5)
+    ON CONFLICT (timestamp, symbol_id) 
+    DO UPDATE SET
+        funding_rate = EXCLUDED.funding_rate,
+        funding_time = EXCLUDED.funding_time,
+        created_at = EXCLUDED.created_at
+    """
+    
+    # Prepare data for batch insert
+    batch_data = []
+    for snapshot in snapshots:
+        # Validate funding_time to prevent constraint violations
+        funding_time = snapshot.funding_time
+        if funding_time is None or funding_time <= 0:
+            # Generate a valid funding_time (current time + 8 hours in milliseconds)
+            import time
+            funding_time = int(time.time() * 1000) + (8 * 60 * 60 * 1000)
+            logger.warning(f"Invalid funding_time ({snapshot.funding_time}) for symbol_id {snapshot.symbol_id}, using fallback: {funding_time}")
+        
+        batch_data.append((
+            snapshot.timestamp,
+            snapshot.symbol_id,
+            snapshot.funding_rate,
+            funding_time,
+            snapshot.created_at or datetime.now()
+        ))
+    
+    try:
+        # Execute batch insert
+        await db.executemany(query, batch_data)
+        
+        logger.debug(f"Successfully inserted/updated {len(snapshots)} funding rate snapshots")
+        return len(snapshots)
+        
+    except Exception as e:
+        logger.error(f"Failed to insert funding rate snapshots: {e}")
         raise
 
 

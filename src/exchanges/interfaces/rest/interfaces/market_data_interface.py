@@ -1,13 +1,13 @@
 from abc import abstractmethod, ABC
 from datetime import datetime
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Union
 from exchanges.structs.common import (
     Symbol,
     SymbolInfo,
     OrderBook,
     Trade,
     Kline,
-    Ticker
+    Ticker, FuturesTicker
 )
 from exchanges.structs.enums import KlineInterval
 
@@ -65,7 +65,7 @@ class MarketDataInterface(ABC):
         pass
 
     @abstractmethod
-    async def get_ticker_info(self, symbol: Optional[Symbol] = None) -> Dict[Symbol, Ticker]:
+    async def get_ticker_info(self, symbol: Optional[Symbol] = None) -> Dict[Symbol, Union[Ticker, FuturesTicker]]:
         """Get 24hr ticker price change statistics
 
         Args:

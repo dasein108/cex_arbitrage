@@ -95,13 +95,15 @@ def index_prices(self) -> Dict[Symbol, Decimal]:
 ## Abstract Loading Methods
 
 ### Futures Data Loading
+
 ```python
 @abstractmethod
 async def _load_funding_rates(self, symbols: List[Symbol]) -> None:
     """Load funding rates from REST API"""
     for symbol in symbols:
-        rate_data = await self._public_rest.get_funding_rate(symbol)
+        rate_data = await self._public_rest.get_historical_funding_rate(symbol)
         self._funding_rates[symbol] = rate_data
+
 
 @abstractmethod
 async def _load_open_interest(self, symbols: List[Symbol]) -> None:
@@ -110,12 +112,14 @@ async def _load_open_interest(self, symbols: List[Symbol]) -> None:
         oi_data = await self._public_rest.get_open_interest(symbol)
         self._open_interest[symbol] = oi_data
 
+
 @abstractmethod
 async def _load_mark_prices(self, symbols: List[Symbol]) -> None:
     """Load mark prices from REST API"""
     for symbol in symbols:
         mark_price = await self._public_rest.get_mark_price(symbol)
         self._mark_prices[symbol] = Decimal(mark_price)
+
 
 @abstractmethod
 async def _load_index_prices(self, symbols: List[Symbol]) -> None:
@@ -264,28 +268,29 @@ def _calculate_avg_funding_rate(self) -> Decimal:
 ## Implementation Pattern
 
 ### Minimal Futures Implementation
+
 ```python
 class GateioPublicFuturesExchange(CompositePublicFuturesExchange):
     # Inherit factory methods from spot implementation
     async def _create_public_rest(self) -> PublicFuturesRest:
         return GateioFuturesPublicRest(self.config, self.logger)
-    
+
     async def _create_public_ws_with_handlers(
-        self,
-        handlers: PublicWebsocketHandlers
+            self,
+            handlers: PublicWebsocketHandlers
     ) -> PublicFuturesWebsocket:
         return GateioFuturesPublicWebsocket(
             self.config,
             handlers,
             self.logger
         )
-    
+
     # Implement futures-specific loaders
     async def _load_funding_rates(self, symbols: List[Symbol]) -> None:
         for symbol in symbols:
-            rate = await self._public_rest.get_funding_rate(symbol)
+            rate = await self._public_rest.get_historical_funding_rate(symbol)
             self._funding_rates[symbol] = rate
-    
+
     # ... other loading methods
 ```
 

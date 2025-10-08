@@ -49,6 +49,7 @@ _FUTURES_PUBLIC_CHANNEL_MAPPING = {
     WebsocketChannelType.ORDERBOOK: "futures.order_book",
     WebsocketChannelType.PUB_TRADE: "futures.trades",
     WebsocketChannelType.HEARTBEAT: "futures.ping",
+    WebsocketChannelType.TICKER: "futures.tickers",
 }
 
 class GateioPublicFuturesWebsocket(GateioBaseWebsocket, PublicBaseWebsocket):
@@ -238,27 +239,30 @@ class GateioPublicFuturesWebsocket(GateioBaseWebsocket, PublicBaseWebsocket):
         except Exception as e:
             self.logger.error(f"Error parsing Gate.io futures book ticker update: {e}")
 
-    async def _parse_futures_ticker_update(self, data: Dict[str, Any], channel: str) -> None:
+    async def _parse_futures_ticker_update(self, data_list: List[Dict[str, Any]], channel: str) -> None:
         """Parse Gate.io futures ticker update."""
         try:
-            # Extract symbol
-            symbol_str = data.get('s') or data.get('currency_pair') or data.get('contract')
-            if not symbol_str:
-                self.logger.error("Missing symbol in Gate.io futures ticker update")
-                return
-                
-            symbol = GateioFuturesSymbol.to_symbol(symbol_str)
-            
-            # Create futures ticker from data
-            ticker = FuturesTicker(
-                symbol=symbol,
-                price=float(data.get('last', '0')),
-                mark_price=float(data.get('mark_price', '0')),
-                index_price=float(data.get('index_price', '0')),
-            )
-            
-            # Handle ticker via bound handler
-            await self._exec_bound_handler(PublicWebsocketChannelType.TICKER, ticker)
-            
+            for data in data_list:
+                # Extract symbol
+                symbol_str = data.get('s') or data.get('currency_pair') or data.get('contract')
+                if not symbol_str:
+                    self.logger.error("Missing symbol in Gate.io futures ticker update")
+                    return
+
+                symbol = GateioFuturesSymbol.to_symbol(symbol_str)
+
+                # Create futures ticker from data
+                ticker = FuturesTicker(
+                    symbol=symbol,
+                    price=float(data.get('last', '0')),
+                    mark_price=float(data.get('mark_price', '0')),
+                    index_price=float(data.get('index_price', '0')),
+                    funding_rate=float(data.get('funding_rate', '0')),
+                    funding_rate_indicative=float(data.get('funding_rate_indicative', '0'))
+                )
+
+                # Handle ticker via bound handler
+                await self._exec_bound_handler(PublicWebsocketChannelType.TICKER, ticker)
+
         except Exception as e:
             self.logger.error(f"Error parsing Gate.io futures ticker update: {e}")

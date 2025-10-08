@@ -185,25 +185,25 @@ class Ticker(Struct):
     """24hr ticker statistics."""
     symbol: Symbol
     price_change: float
-    price_change_percent: float
-    weighted_avg_price: float
-    prev_close_price: float
+    price_change_percent: float # TODO: remove
+    weighted_avg_price: float # TODO: remove
+    prev_close_price: float # TODO: remove
     last_price: float
     last_qty: float
-    open_price: float
-    high_price: float
-    low_price: float
+    open_price: float # TODO: remove
+    high_price: float # TODO: remove
+    low_price: float # TODO: remove
     volume: float
     quote_volume: float
-    open_time: int
-    close_time: int
-    count: int
+    open_time: Optional[int]=None # TODO: remove
+    close_time: Optional[int]=None # TODO: remove
+    count: Optional[int] = None # TODO: remove
     bid_price: Optional[float] = None
     bid_qty: Optional[float] = None
     ask_price: Optional[float] = None
     ask_qty: Optional[float] = None
-    first_id: Optional[int] = None
-    last_id: Optional[int] = None
+    first_id: Optional[int] = None # TODO: remove
+    last_id: Optional[int] = None # TODO: remove
 
 class Kline(Struct):
     """Kline/candlestick data."""
@@ -250,6 +250,7 @@ class FuturesTicker(Struct):
     index_price: Optional[float] = None
     funding_rate: Optional[float] = None
     funding_rate_indicative: Optional[float] = None
+    funding_time: Optional[int] = None  # Timestamp of next funding
 # Configuration structures
 
 class TradingFee(Struct):

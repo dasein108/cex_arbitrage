@@ -1,501 +1,613 @@
-#!/usr/bin/env python3
 """
-SpreadAnalyzer - Arbitrage Spread Analysis Engine
+Spread Analyzer for NEIROETH Arbitrage
 
-Analyzes price spreads between exchanges to identify arbitrage opportunities.
-Provides comprehensive metrics and scoring for profitable trading opportunities.
+Advanced spread analysis engine for cross-exchange arbitrage opportunities.
+Provides real-time spread calculations, historical pattern analysis, and
+statistical indicators for informed trading decisions.
 
 Key Features:
-- Calculates multi-dimensional arbitrage metrics
-- Generates comprehensive scoring system
-- Exports analysis results to CSV reports
-- Provides statistical analysis and insights
-
-Usage:
-    from spread_analyzer import SpreadAnalyzer
-    
-    analyzer = SpreadAnalyzer(data_dir="data/arbitrage")
-    results = analyzer.analyze_all_symbols()
-    analyzer.generate_csv_report(results, "report.csv")
+- Cross-exchange spread monitoring
+- Historical pattern recognition
+- Statistical analysis (volatility, trends, percentiles)
+- Arbitrage opportunity detection with configurable thresholds
 """
 
-import pandas as pd
-import numpy as np
-from pathlib import Path
-from typing import List, Dict, Optional, Any
-import logging
-from dataclasses import dataclass
 from datetime import datetime, timedelta
-import json
-import glob
+from typing import List, Dict, Optional, Tuple, NamedTuple
+from statistics import mean, stdev, median
+from collections import deque
+import math
+import logging
 
-from infrastructure.logging.factory import get_logger
+import msgspec
+import numpy as np
+
+try:
+    from .data_fetcher import UnifiedSnapshot, MultiSymbolDataFetcher
+except ImportError:
+    from data_fetcher import UnifiedSnapshot, MultiSymbolDataFetcher
+
+logger = logging.getLogger(__name__)
 
 
-@dataclass
-class ArbitrageMetrics:
-    """Comprehensive arbitrage metrics for a trading pair."""
-    pair: str
+class SpreadOpportunity(msgspec.Struct):
+    """
+    Arbitrage opportunity identification.
+    
+    Represents a potential profit opportunity with risk assessment.
+    """
+    timestamp: datetime
+    opportunity_type: str  # 'spot_arbitrage', 'delta_neutral', 'rebalance'
+    
+    # Opportunity details
+    buy_exchange: str
+    sell_exchange: str
+    buy_price: float
+    sell_price: float
+    spread_abs: float
+    spread_pct: float
+    
+    # Risk assessment
+    confidence_score: float  # 0-1 scale
+    max_quantity: float     # Based on order book depth
+    estimated_profit: float # After fees and slippage
+    
+    # Additional context
+    historical_percentile: Optional[float] = None
+    volatility_score: Optional[float] = None
+    duration_estimate: Optional[float] = None  # Expected opportunity duration in seconds
+
+
+class SpreadStatistics(msgspec.Struct):
+    """
+    Statistical analysis of spreads over time.
+    """
+    period_start: datetime
+    period_end: datetime
+    sample_count: int
+    
+    # Basic statistics
+    mean_spread: float
+    median_spread: float
+    std_deviation: float
+    min_spread: float
     max_spread: float
-    avg_spread: float
-    med_spread: float
-    spread_gt_0_3_percent: float
-    spread_gt_0_5_percent: float
-    count_gt_0_3_percent: int
-    count_gt_0_5_percent: int
-    opportunity_minutes_per_day: float
-    avg_duration_seconds: float
-    liquidity_score: float
-    execution_score: float
-    risk_score: float
-    profit_score: float
-    total_data_points: int
-    exchanges: List[str]
+    
+    # Percentiles
+    p25: float
+    p75: float
+    p90: float
+    p95: float
+    p99: float
+    
+    # Trend analysis
+    trend_direction: str  # 'expanding', 'contracting', 'stable'
+    volatility_regime: str  # 'low', 'medium', 'high'
+    
+    # Opportunity metrics
+    profitable_opportunities: int  # Count above threshold
+    opportunity_rate: float       # Opportunities per hour
 
 
 class SpreadAnalyzer:
     """
-    Advanced spread analysis engine for cryptocurrency arbitrage opportunities.
+    Advanced spread analysis engine for multi-symbol arbitrage.
     
-    Analyzes historical candles data from multiple exchanges to identify
-    profitable arbitrage opportunities with comprehensive scoring.
+    Provides comprehensive spread monitoring and statistical analysis
+    for optimal arbitrage timing and risk management across any trading symbol.
     """
     
-    def __init__(self, data_dir: str = "data/arbitrage"):
-        """
-        Initialize the SpreadAnalyzer.
+    # Default arbitrage thresholds (configurable)
+    DEFAULT_ENTRY_THRESHOLD = 0.1  # 0.1% spread to enter arbitrage
+    DEFAULT_EXIT_THRESHOLD = 0.01  # 0.01% spread to exit arbitrage
+    
+    # Statistical analysis parameters
+    VOLATILITY_WINDOW = 100  # Number of samples for volatility calculation
+    TREND_WINDOW = 50       # Number of samples for trend analysis
+    
+    def __init__(
+        self, 
+        data_fetcher: MultiSymbolDataFetcher,
+        entry_threshold_pct: float = DEFAULT_ENTRY_THRESHOLD,
+        exit_threshold_pct: float = DEFAULT_EXIT_THRESHOLD
+    ):
+        self.data_fetcher = data_fetcher
+        self.entry_threshold = entry_threshold_pct / 100.0  # Convert to decimal
+        self.exit_threshold = exit_threshold_pct / 100.0
+        self.logger = logger.getChild("SpreadAnalyzer")
         
-        Args:
-            data_dir: Directory containing collected candles data files
-        """
-        self.data_dir = Path(data_dir)
-        self.logger = get_logger("SpreadAnalyzer")
-        
-        # Analysis configuration
-        self.min_data_points = 100  # Minimum data points for reliable analysis
-        self.spread_thresholds = {
-            'low': 0.1,      # 0.1% - minimum spread for consideration
-            'medium': 0.3,   # 0.3% - profitable spread threshold
-            'high': 0.5      # 0.5% - high profit spread threshold
+        # Rolling windows for real-time analysis
+        self._recent_spreads: Dict[str, deque] = {
+            'gateio_mexc_spread': deque(maxlen=self.VOLATILITY_WINDOW),
+            'spot_futures_spread': deque(maxlen=self.VOLATILITY_WINDOW),
+            'arbitrage_score': deque(maxlen=self.TREND_WINDOW)
         }
         
-        # Scoring weights for profit score calculation
-        self.scoring_weights = {
-            'max_spread': 0.25,
-            'frequency': 0.35,
-            'duration': 0.15,
-            'liquidity': 0.15,
-            'risk': 0.10
-        }
+        # Historical data cache (cleared periodically)
+        self._historical_cache: Optional[List[UnifiedSnapshot]] = None
+        self._cache_timestamp: Optional[datetime] = None
+        self._cache_ttl_minutes = 30
     
-    def discover_available_symbols(self) -> List[str]:
+    async def analyze_current_spreads(self) -> Dict[str, float]:
         """
-        Discover symbols with available data for analysis.
+        Analyze current spread conditions across all exchanges.
         
         Returns:
-            List of symbol pairs with sufficient data
+            Dictionary with current spread analysis
         """
-        self.logger.info(f"🔍 Discovering available symbols in: {self.data_dir}")
+        snapshot = await self.data_fetcher.get_latest_snapshots()
+        if not snapshot:
+            self.logger.warning("No current data available for spread analysis")
+            return {}
+            
+        # Calculate all relevant spreads
+        spreads = {}
+        cross_spreads = snapshot.get_cross_exchange_spreads()
         
-        if not self.data_dir.exists():
-            self.logger.warning(f"Data directory does not exist: {self.data_dir}")
+        # Primary arbitrage spreads
+        if 'gateio_mexc_sell_buy' in cross_spreads:
+            spreads['gateio_mexc_sell_buy_abs'] = cross_spreads['gateio_mexc_sell_buy']
+            spreads['gateio_mexc_sell_buy_pct'] = self._calculate_spread_percentage(
+                cross_spreads['gateio_mexc_sell_buy'],
+                snapshot.gateio_spot_bid,
+                snapshot.mexc_spot_ask
+            )
+            
+        if 'mexc_gateio_sell_buy' in cross_spreads:
+            spreads['mexc_gateio_sell_buy_abs'] = cross_spreads['mexc_gateio_sell_buy']
+            spreads['mexc_gateio_sell_buy_pct'] = self._calculate_spread_percentage(
+                cross_spreads['mexc_gateio_sell_buy'],
+                snapshot.mexc_spot_bid,
+                snapshot.gateio_spot_ask
+            )
+        
+        # Delta neutral spreads
+        if 'spot_futures_long_short' in cross_spreads:
+            spreads['spot_futures_long_short_abs'] = cross_spreads['spot_futures_long_short']
+            spreads['spot_futures_long_short_pct'] = self._calculate_spread_percentage(
+                cross_spreads['spot_futures_long_short'],
+                snapshot.gateio_spot_bid,
+                snapshot.gateio_futures_ask
+            )
+            
+        # Individual exchange spreads
+        exchange_spreads = snapshot.get_spreads()
+        for exchange, spread in exchange_spreads.items():
+            spreads[f'{exchange}_internal_spread'] = spread
+            
+            # Calculate percentage spread
+            if exchange == 'gateio_spot' and snapshot.gateio_spot_bid and snapshot.gateio_spot_ask:
+                mid_price = (snapshot.gateio_spot_bid + snapshot.gateio_spot_ask) / 2
+                spreads[f'{exchange}_internal_spread_pct'] = (spread / mid_price) * 100
+                
+            elif exchange == 'gateio_futures' and snapshot.gateio_futures_bid and snapshot.gateio_futures_ask:
+                mid_price = (snapshot.gateio_futures_bid + snapshot.gateio_futures_ask) / 2
+                spreads[f'{exchange}_internal_spread_pct'] = (spread / mid_price) * 100
+                
+            elif exchange == 'mexc_spot' and snapshot.mexc_spot_bid and snapshot.mexc_spot_ask:
+                mid_price = (snapshot.mexc_spot_bid + snapshot.mexc_spot_ask) / 2
+                spreads[f'{exchange}_internal_spread_pct'] = (spread / mid_price) * 100
+        
+        # Update rolling windows for trend analysis
+        if 'gateio_mexc_sell_buy_pct' in spreads:
+            self._recent_spreads['gateio_mexc_spread'].append(spreads['gateio_mexc_sell_buy_pct'])
+        
+        if 'spot_futures_long_short_pct' in spreads:
+            self._recent_spreads['spot_futures_spread'].append(spreads['spot_futures_long_short_pct'])
+        
+        self.logger.debug(f"Analyzed current spreads: {len(spreads)} metrics calculated")
+        return spreads
+    
+    async def identify_opportunities(self) -> List[SpreadOpportunity]:
+        """
+        Identify current arbitrage opportunities based on spread analysis.
+        
+        Returns:
+            List of SpreadOpportunity objects ranked by profit potential
+        """
+        snapshot = await self.data_fetcher.get_latest_snapshots()
+        if not snapshot or not snapshot.is_complete():
+            self.logger.warning("Incomplete data for opportunity identification")
             return []
-        
-        # Find all CSV files matching exchange pattern
-        csv_files = list(self.data_dir.glob("*_USDT_1m_*.csv"))
-        
-        if not csv_files:
-            self.logger.warning("No CSV files found in data directory")
-            return []
-        
-        # Extract unique symbols from filenames
-        symbols = set()
-        for file_path in csv_files:
-            # Parse filename like: GATEIO_FUTURES_BTC_USDT_1m_20250919_20250922.csv
-            filename = file_path.stem
-            parts = filename.split('_')
             
-            if len(parts) >= 4 and parts[-3] == '1m':
-                # Extract base currency (e.g., BTC from BTC_USDT)
-                base_idx = -4
-                quote_idx = -3
-                if base_idx < len(parts) and quote_idx < len(parts):
-                    base = parts[base_idx]
-                    quote = parts[quote_idx - 1]  # USDT is before 1m
-                    symbol = f"{base}/{quote}"
-                    symbols.add(symbol)
+        opportunities = []
+        cross_spreads = snapshot.get_cross_exchange_spreads()
         
-        available_symbols = sorted(list(symbols))
-        self.logger.info(f"📊 Found {len(available_symbols)} symbols with data")
+        # Spot arbitrage opportunities
+        for spread_key, spread_value in cross_spreads.items():
+            spread_pct = abs(spread_value / self._get_mid_price_for_spread(snapshot, spread_key)) * 100
+            
+            if spread_pct >= (self.entry_threshold * 100):
+                opportunity = self._create_opportunity_from_spread(
+                    snapshot, spread_key, spread_value, spread_pct
+                )
+                if opportunity:
+                    opportunities.append(opportunity)
         
-        return available_symbols
+        # Calculate confidence scores and risk metrics
+        if opportunities:
+            await self._enhance_opportunities_with_analytics(opportunities)
+        
+        # Sort by estimated profit (highest first)
+        opportunities.sort(key=lambda op: op.estimated_profit, reverse=True)
+        
+        self.logger.info(f"Identified {len(opportunities)} arbitrage opportunities")
+        return opportunities
     
-    def load_symbol_data(self, symbol: str) -> Optional[Dict[str, pd.DataFrame]]:
+    async def get_historical_statistics(
+        self, 
+        hours_back: int = 24,
+        spread_type: str = 'gateio_mexc'
+    ) -> Optional[SpreadStatistics]:
         """
-        Load data for a specific symbol from all available exchanges.
+        Calculate historical spread statistics for pattern analysis.
         
         Args:
-            symbol: Trading pair symbol (e.g., "BTC/USDT")
+            hours_back: Number of hours of history to analyze
+            spread_type: Type of spread ('gateio_mexc', 'spot_futures', 'all', 'auto')
             
         Returns:
-            Dictionary mapping exchange names to DataFrames, or None if insufficient data
+            SpreadStatistics object with comprehensive analysis
         """
-        base, quote = symbol.split('/')
-        search_pattern = f"*_{base}_{quote}_1m_*.csv"
+        # Check cache first
+        if (self._historical_cache and self._cache_timestamp and 
+            datetime.utcnow() - self._cache_timestamp < timedelta(minutes=self._cache_ttl_minutes)):
+            snapshots = self._historical_cache
+        else:
+            snapshots = await self.data_fetcher.get_historical_snapshots(hours_back)
+            self._historical_cache = snapshots
+            self._cache_timestamp = datetime.utcnow()
         
-        files = list(self.data_dir.glob(search_pattern))
-        
-        if len(files) < 2:
-            self.logger.debug(f"Insufficient data files for {symbol}: {len(files)} files found")
+        if not snapshots:
+            self.logger.warning(f"No historical data for statistics calculation ({hours_back}h)")
             return None
         
-        exchange_data = {}
+        # Auto-detect best spread type if requested or if primary fails
+        if spread_type == 'auto' or spread_type == 'gateio_mexc':
+            spreads, actual_spread_type = self._extract_best_available_spreads(snapshots, spread_type)
+        else:
+            spreads, actual_spread_type = self._extract_spreads_by_type(snapshots, spread_type)
         
-        for file_path in files:
-            try:
-                # Extract exchange name from filename
-                filename = file_path.stem
-                parts = filename.split('_')
-                exchange_name = '_'.join(parts[:2])  # e.g., "GATEIO_FUTURES"
-                
-                # Load CSV data
-                df = pd.read_csv(file_path)
-                
-                # Validate required columns
-                required_cols = ['timestamp', 'open', 'high', 'low', 'close', 'volume']
-                if not all(col in df.columns for col in required_cols):
-                    self.logger.warning(f"Missing columns in {file_path}")
-                    continue
-                
-                # Convert timestamp and set as index
-                df['timestamp'] = pd.to_datetime(df['timestamp'])
-                df = df.set_index('timestamp').sort_index()
-                
-                # Validate data quality
-                if len(df) < self.min_data_points:
-                    self.logger.debug(f"Insufficient data points for {symbol} on {exchange_name}: {len(df)}")
-                    continue
-                
-                exchange_data[exchange_name] = df
-                
-            except Exception as e:
-                self.logger.warning(f"Failed to load {file_path}: {e}")
-                continue
-        
-        if len(exchange_data) < 2:
-            self.logger.debug(f"Insufficient exchanges for {symbol}: {len(exchange_data)} exchanges")
-            return None
-        
-        return exchange_data
-    
-    def calculate_spreads(self, exchange_data: Dict[str, pd.DataFrame]) -> pd.DataFrame:
-        """
-        Calculate spreads between exchanges for the given data.
-        
-        Args:
-            exchange_data: Dictionary mapping exchange names to price data
+        if not spreads:
+            # Try fallback to any available spread type
+            self.logger.warning(f"No valid spreads found for {spread_type}, trying fallback...")
+            spreads, actual_spread_type = self._extract_best_available_spreads(snapshots, 'auto')
             
-        Returns:
-            DataFrame with spread calculations
-        """
-        # Align all exchange data to common timestamps
-        all_exchanges = list(exchange_data.keys())
-        
-        # Use close prices for spread calculation
-        price_data = {}
-        for exchange, df in exchange_data.items():
-            price_data[exchange] = df['close']
-        
-        # Combine all price data
-        combined_prices = pd.DataFrame(price_data)
-        
-        # Forward fill small gaps, drop rows with any NaN
-        combined_prices = combined_prices.fillna(method='ffill', limit=5)
-        combined_prices = combined_prices.dropna()
-        
-        if len(combined_prices) < self.min_data_points:
-            return pd.DataFrame()
-        
-        # Calculate spreads between all exchange pairs
-        spread_results = []
-        
-        for i in range(len(all_exchanges)):
-            for j in range(i + 1, len(all_exchanges)):
-                exchange_a = all_exchanges[i]
-                exchange_b = all_exchanges[j]
-                
-                price_a = combined_prices[exchange_a]
-                price_b = combined_prices[exchange_b]
-                
-                # Calculate percentage spread
-                spread = abs(price_a - price_b) / ((price_a + price_b) / 2) * 100
-                
-                spread_results.append({
-                    'timestamp': combined_prices.index,
-                    'exchange_pair': f"{exchange_a}_{exchange_b}",
-                    'spread_pct': spread
-                })
-        
-        if not spread_results:
-            return pd.DataFrame()
-        
-        # Create final spread DataFrame
-        spread_df = pd.DataFrame({
-            'timestamp': spread_results[0]['timestamp']
-        })
-        
-        # Add all spread columns
-        for result in spread_results:
-            spread_df[result['exchange_pair']] = result['spread_pct'].values
-        
-        # Calculate maximum spread across all exchange pairs
-        spread_cols = [col for col in spread_df.columns if col != 'timestamp']
-        spread_df['max_spread'] = spread_df[spread_cols].max(axis=1)
-        spread_df['avg_spread'] = spread_df[spread_cols].mean(axis=1)
-        
-        return spread_df
-    
-    def analyze_symbol(self, symbol: str) -> Optional[ArbitrageMetrics]:
-        """
-        Perform comprehensive arbitrage analysis for a single symbol.
-        
-        Args:
-            symbol: Trading pair symbol to analyze
-            
-        Returns:
-            ArbitrageMetrics object with analysis results, or None if analysis failed
-        """
-        self.logger.debug(f"Analyzing symbol: {symbol}")
-        
-        # Load symbol data
-        exchange_data = self.load_symbol_data(symbol)
-        if not exchange_data:
+        if not spreads:
+            self.logger.warning(f"No valid spreads found in any analysis type")
             return None
         
-        # Calculate spreads
-        spread_df = self.calculate_spreads(exchange_data)
-        if spread_df.empty:
-            return None
+        # Calculate statistics
+        spreads_array = np.array(spreads)
         
-        # Calculate core spread metrics
-        max_spread = spread_df['max_spread'].max()
-        avg_spread = spread_df['max_spread'].mean()
-        med_spread = spread_df['max_spread'].median()
+        # Basic statistics
+        mean_val = float(np.mean(spreads_array))
+        median_val = float(np.median(spreads_array))
+        std_val = float(np.std(spreads_array))
+        min_val = float(np.min(spreads_array))
+        max_val = float(np.max(spreads_array))
         
-        # Calculate opportunity frequencies
-        gt_0_3_mask = spread_df['max_spread'] > self.spread_thresholds['medium']
-        gt_0_5_mask = spread_df['max_spread'] > self.spread_thresholds['high']
+        # Percentiles
+        percentiles = np.percentile(spreads_array, [25, 75, 90, 95, 99])
         
-        count_gt_0_3 = gt_0_3_mask.sum()
-        count_gt_0_5 = gt_0_5_mask.sum()
-        total_points = len(spread_df)
+        # Trend analysis
+        trend_direction = self._analyze_trend(spreads[-self.TREND_WINDOW:] if len(spreads) > self.TREND_WINDOW else spreads)
+        volatility_regime = self._classify_volatility(std_val, mean_val)
         
-        spread_gt_0_3_percent = (count_gt_0_3 / total_points) * 100 if total_points > 0 else 0
-        spread_gt_0_5_percent = (count_gt_0_5 / total_points) * 100 if total_points > 0 else 0
+        # Opportunity metrics
+        profitable_opportunities = len([s for s in spreads if s >= (self.entry_threshold * 100)])
+        opportunity_rate = profitable_opportunities / hours_back if hours_back > 0 else 0
         
-        # Calculate opportunity duration metrics
-        opportunity_minutes_per_day = (count_gt_0_3 / total_points) * 1440 if total_points > 0 else 0  # 1440 min/day
-        
-        # Estimate average duration (simplified)
-        avg_duration_seconds = 60.0  # Assume 1-minute minimum duration for now
-        
-        # Calculate scoring components
-        liquidity_score = min(100, len(exchange_data) * 20)  # More exchanges = better liquidity
-        execution_score = max(0, 100 - (avg_spread * 20))    # Lower average spread = better execution
-        risk_score = min(100, max_spread * 10)               # Higher max spread = higher risk
-        
-        # Calculate composite profit score
-        profit_score = self._calculate_profit_score(
-            max_spread, spread_gt_0_3_percent, opportunity_minutes_per_day,
-            liquidity_score, risk_score
+        statistics = SpreadStatistics(
+            period_start=snapshots[0].timestamp,
+            period_end=snapshots[-1].timestamp,
+            sample_count=len(spreads),
+            mean_spread=mean_val,
+            median_spread=median_val,
+            std_deviation=std_val,
+            min_spread=min_val,
+            max_spread=max_val,
+            p25=float(percentiles[0]),
+            p75=float(percentiles[1]),
+            p90=float(percentiles[2]),
+            p95=float(percentiles[3]),
+            p99=float(percentiles[4]),
+            trend_direction=trend_direction,
+            volatility_regime=volatility_regime,
+            profitable_opportunities=profitable_opportunities,
+            opportunity_rate=opportunity_rate
         )
         
-        # Create metrics object
-        metrics = ArbitrageMetrics(
-            pair=symbol,
-            max_spread=max_spread,
-            avg_spread=avg_spread,
-            med_spread=med_spread,
-            spread_gt_0_3_percent=spread_gt_0_3_percent,
-            spread_gt_0_5_percent=spread_gt_0_5_percent,
-            count_gt_0_3_percent=count_gt_0_3,
-            count_gt_0_5_percent=count_gt_0_5,
-            opportunity_minutes_per_day=opportunity_minutes_per_day,
-            avg_duration_seconds=avg_duration_seconds,
-            liquidity_score=liquidity_score,
-            execution_score=execution_score,
-            risk_score=risk_score,
-            profit_score=profit_score,
-            total_data_points=total_points,
-            exchanges=list(exchange_data.keys())
-        )
+        self.logger.info(f"Calculated {actual_spread_type} statistics over {hours_back}h: "
+                        f"{len(spreads)} samples, {profitable_opportunities} opportunities")
+        
+        return statistics
+    
+    async def get_volatility_metrics(self) -> Dict[str, float]:
+        """
+        Calculate current volatility metrics for risk assessment.
+        
+        Returns:
+            Dictionary with volatility indicators
+        """
+        metrics = {}
+        
+        # Calculate volatility for each spread type
+        for spread_name, spread_data in self._recent_spreads.items():
+            if len(spread_data) >= 10:  # Need minimum samples
+                spread_array = np.array(list(spread_data))
+                
+                # Standard deviation
+                metrics[f'{spread_name}_volatility'] = float(np.std(spread_array))
+                
+                # Rolling volatility (last 20 samples)
+                if len(spread_data) >= 20:
+                    recent = spread_array[-20:]
+                    metrics[f'{spread_name}_recent_volatility'] = float(np.std(recent))
+                
+                # Volatility ratio (recent vs overall)
+                if f'{spread_name}_recent_volatility' in metrics:
+                    overall_vol = metrics[f'{spread_name}_volatility']
+                    recent_vol = metrics[f'{spread_name}_recent_volatility']
+                    if overall_vol > 0:
+                        metrics[f'{spread_name}_volatility_ratio'] = recent_vol / overall_vol
         
         return metrics
     
-    def _calculate_profit_score(self, max_spread: float, frequency_pct: float, 
-                              minutes_per_day: float, liquidity_score: float, 
-                              risk_score: float) -> float:
-        """
-        Calculate composite profit score using weighted components.
+    def _calculate_spread_percentage(self, spread_abs: float, price1: Optional[float], price2: Optional[float]) -> float:
+        """Calculate spread as percentage of average price."""
+        if not price1 or not price2:
+            return 0.0
         
-        Args:
-            max_spread: Maximum observed spread percentage
-            frequency_pct: Percentage of time with profitable spreads
-            minutes_per_day: Minutes per day with opportunities
-            liquidity_score: Liquidity assessment score
-            risk_score: Risk assessment score
-            
-        Returns:
-            Composite profit score (0-100)
-        """
-        # Normalize components to 0-100 scale
-        spread_component = min(100, max_spread * 50)        # Max spread contribution
-        frequency_component = frequency_pct                  # Already 0-100
-        duration_component = min(100, minutes_per_day / 10)  # Duration contribution
-        liquidity_component = liquidity_score               # Already 0-100
-        risk_component = 100 - risk_score                   # Invert risk (lower risk = higher score)
-        
-        # Calculate weighted average
-        profit_score = (
-            spread_component * self.scoring_weights['max_spread'] +
-            frequency_component * self.scoring_weights['frequency'] +
-            duration_component * self.scoring_weights['duration'] +
-            liquidity_component * self.scoring_weights['liquidity'] +
-            risk_component * self.scoring_weights['risk']
-        )
-        
-        return round(profit_score, 1)
+        avg_price = (price1 + price2) / 2
+        return abs(spread_abs / avg_price) * 100 if avg_price > 0 else 0.0
     
-    def analyze_all_symbols(self, max_symbols: Optional[int] = None, 
-                          incremental_output: Optional[str] = None) -> List[ArbitrageMetrics]:
-        """
-        Analyze all available symbols for arbitrage opportunities.
+    def _get_mid_price_for_spread(self, snapshot: UnifiedSnapshot, spread_key: str) -> float:
+        """Get appropriate mid price for spread calculation."""
+        if 'gateio_mexc' in spread_key:
+            if snapshot.gateio_spot_bid and snapshot.mexc_spot_ask:
+                return (snapshot.gateio_spot_bid + snapshot.mexc_spot_ask) / 2
+        elif 'spot_futures' in spread_key:
+            if snapshot.gateio_spot_bid and snapshot.gateio_futures_ask:
+                return (snapshot.gateio_spot_bid + snapshot.gateio_futures_ask) / 2
         
-        Args:
-            max_symbols: Maximum number of symbols to analyze
-            incremental_output: Optional file path for incremental results
+        # Fallback to Gate.io spot mid price
+        if snapshot.gateio_spot_bid and snapshot.gateio_spot_ask:
+            return (snapshot.gateio_spot_bid + snapshot.gateio_spot_ask) / 2
             
-        Returns:
-            List of ArbitrageMetrics sorted by profit score (descending)
-        """
-        symbols = self.discover_available_symbols()
+        return 1.0  # Fallback to avoid division by zero
+    
+    def _create_opportunity_from_spread(
+        self, 
+        snapshot: UnifiedSnapshot, 
+        spread_key: str, 
+        spread_value: float, 
+        spread_pct: float
+    ) -> Optional[SpreadOpportunity]:
+        """Create SpreadOpportunity from spread analysis."""
+        if spread_key == 'gateio_mexc_sell_buy' and spread_value > 0:
+            return SpreadOpportunity(
+                timestamp=snapshot.timestamp,
+                opportunity_type='spot_arbitrage',
+                buy_exchange='MEXC_SPOT',
+                sell_exchange='GATEIO_SPOT',
+                buy_price=snapshot.mexc_spot_ask or 0,
+                sell_price=snapshot.gateio_spot_bid or 0,
+                spread_abs=spread_value,
+                spread_pct=spread_pct,
+                confidence_score=0.7,  # Will be enhanced later
+                max_quantity=min(snapshot.mexc_spot_ask_qty or 0, snapshot.gateio_spot_bid_qty or 0),
+                estimated_profit=0.0  # Will be calculated later
+            )
+        elif spread_key == 'mexc_gateio_sell_buy' and spread_value > 0:
+            return SpreadOpportunity(
+                timestamp=snapshot.timestamp,
+                opportunity_type='spot_arbitrage',
+                buy_exchange='GATEIO_SPOT',
+                sell_exchange='MEXC_SPOT',
+                buy_price=snapshot.gateio_spot_ask or 0,
+                sell_price=snapshot.mexc_spot_bid or 0,
+                spread_abs=spread_value,
+                spread_pct=spread_pct,
+                confidence_score=0.7,
+                max_quantity=min(snapshot.gateio_spot_ask_qty or 0, snapshot.mexc_spot_bid_qty or 0),
+                estimated_profit=0.0
+            )
+        elif spread_key == 'spot_futures_long_short' and spread_value > 0:
+            return SpreadOpportunity(
+                timestamp=snapshot.timestamp,
+                opportunity_type='delta_neutral',
+                buy_exchange='GATEIO_SPOT',
+                sell_exchange='GATEIO_FUTURES',
+                buy_price=snapshot.gateio_spot_bid or 0,
+                sell_price=snapshot.gateio_futures_ask or 0,
+                spread_abs=spread_value,
+                spread_pct=spread_pct,
+                confidence_score=0.8,  # Higher confidence for same exchange
+                max_quantity=min(snapshot.gateio_spot_bid_qty or 0, snapshot.gateio_futures_ask_qty or 0),
+                estimated_profit=0.0
+            )
         
-        if max_symbols:
-            symbols = symbols[:max_symbols]
+        return None
+    
+    async def _enhance_opportunities_with_analytics(self, opportunities: List[SpreadOpportunity]):
+        """Enhance opportunities with historical and volatility analysis."""
+        if not opportunities:
+            return
+            
+        # Get recent statistics for comparison
+        stats = await self.get_historical_statistics(hours_back=24)
+        volatility = await self.get_volatility_metrics()
         
-        self.logger.info(f"📊 Analyzing {len(symbols)} symbols for arbitrage opportunities")
-        
-        results = []
-        incremental_file = None
-        
-        if incremental_output:
-            # Prepare incremental CSV file
-            incremental_file = open(incremental_output, 'w')
-            incremental_file.write("pair,max_spread,avg_spread,spread_gt_0_3_percent,opportunity_minutes_per_day,profit_score\n")
-        
-        try:
-            for i, symbol in enumerate(symbols, 1):
-                self.logger.info(f"🔍 [{i}/{len(symbols)}] Analyzing {symbol}...")
-                
-                metrics = self.analyze_symbol(symbol)
-                
-                if metrics:
-                    results.append(metrics)
-                    self.logger.info(f"✅ {symbol}: Profit Score {metrics.profit_score:.1f}, Max Spread {metrics.max_spread:.3f}%")
-                    
-                    # Write incremental results
-                    if incremental_file:
-                        incremental_file.write(f"{metrics.pair},{metrics.max_spread:.3f},{metrics.avg_spread:.3f},"
-                                             f"{metrics.spread_gt_0_3_percent:.1f},{metrics.opportunity_minutes_per_day:.1f},"
-                                             f"{metrics.profit_score:.1f}\n")
-                        incremental_file.flush()
+        for opportunity in opportunities:
+            # Calculate historical percentile
+            if stats:
+                if opportunity.spread_pct <= stats.p25:
+                    opportunity.historical_percentile = 25.0
+                elif opportunity.spread_pct <= stats.p75:
+                    opportunity.historical_percentile = 75.0
+                elif opportunity.spread_pct <= stats.p90:
+                    opportunity.historical_percentile = 90.0
                 else:
-                    self.logger.warning(f"❌ {symbol}: Analysis failed (insufficient data)")
-        
-        finally:
-            if incremental_file:
-                incremental_file.close()
-        
-        # Sort by profit score (descending)
-        results.sort(key=lambda x: x.profit_score, reverse=True)
-        
-        self.logger.info(f"✅ Analysis completed: {len(results)} symbols analyzed")
-        
-        return results
+                    opportunity.historical_percentile = 95.0
+            
+            # Adjust confidence based on volatility
+            if volatility:
+                # Lower confidence in high volatility environments
+                vol_key = f"{opportunity.opportunity_type}_volatility"
+                if vol_key in volatility:
+                    vol_factor = min(1.0, 0.5 / volatility[vol_key]) if volatility[vol_key] > 0 else 1.0
+                    opportunity.confidence_score *= vol_factor
+            
+            # Estimate duration based on historical patterns
+            if stats:
+                # Higher spreads typically last longer
+                base_duration = 30  # seconds
+                spread_factor = opportunity.spread_pct / (stats.mean_spread if stats.mean_spread > 0 else 0.1)
+                opportunity.duration_estimate = base_duration * math.log(1 + spread_factor)
     
-    def generate_csv_report(self, results: List[ArbitrageMetrics], output_file: str) -> str:
+    def _analyze_trend(self, values: List[float]) -> str:
+        """Analyze trend direction in spread values."""
+        if len(values) < 5:
+            return 'insufficient_data'
+            
+        # Simple linear regression slope
+        n = len(values)
+        x = list(range(n))
+        x_mean = mean(x)
+        y_mean = mean(values)
+        
+        numerator = sum((x[i] - x_mean) * (values[i] - y_mean) for i in range(n))
+        denominator = sum((x[i] - x_mean) ** 2 for i in range(n))
+        
+        if denominator == 0:
+            return 'stable'
+            
+        slope = numerator / denominator
+        
+        if slope > 0.01:
+            return 'expanding'
+        elif slope < -0.01:
+            return 'contracting'
+        else:
+            return 'stable'
+    
+    def _extract_best_available_spreads(self, snapshots, requested_type: str) -> Tuple[List[float], str]:
         """
-        Generate a comprehensive CSV report from analysis results.
+        Extract spreads using the best available data in snapshots.
         
         Args:
-            results: List of ArbitrageMetrics to include in report
-            output_file: Output CSV file path
+            snapshots: List of UnifiedSnapshot objects
+            requested_type: Originally requested spread type
             
         Returns:
-            Path to generated report file
+            Tuple of (spreads_list, actual_spread_type_used)
         """
-        # Ensure output directory exists
-        output_path = Path(output_file)
-        output_path.parent.mkdir(parents=True, exist_ok=True)
+        # Try different spread types in order of preference
+        spread_strategies = [
+            ('gateio_mexc', self._extract_gateio_mexc_spreads),
+            ('spot_futures', self._extract_spot_futures_spreads),
+            ('internal_futures', self._extract_internal_futures_spreads),
+            ('internal_spot', self._extract_internal_spot_spreads)
+        ]
         
-        # Convert results to DataFrame
-        data = []
-        for metrics in results:
-            data.append({
-                'rank': len(data) + 1,
-                'pair': metrics.pair,
-                'max_spread_%': metrics.max_spread,
-                'avg_spread_%': metrics.avg_spread,
-                'median_spread_%': metrics.med_spread,
-                'spread_>0.3%_freq_%': metrics.spread_gt_0_3_percent,
-                'spread_>0.5%_freq_%': metrics.spread_gt_0_5_percent,
-                'opportunity_count_0.3%': metrics.count_gt_0_3_percent,
-                'opportunity_count_0.5%': metrics.count_gt_0_5_percent,
-                'opportunity_minutes_per_day': metrics.opportunity_minutes_per_day,
-                'avg_duration_seconds': metrics.avg_duration_seconds,
-                'liquidity_score': metrics.liquidity_score,
-                'execution_score': metrics.execution_score,
-                'risk_score': metrics.risk_score,
-                'profit_score': metrics.profit_score,
-                'total_data_points': metrics.total_data_points,
-                'exchanges': '|'.join(metrics.exchanges),
-                'num_exchanges': len(metrics.exchanges)
-            })
+        # If specific type was requested and not auto, try it first
+        if requested_type != 'auto':
+            for strategy_name, strategy_func in spread_strategies:
+                if strategy_name == requested_type:
+                    spreads = strategy_func(snapshots)
+                    if spreads:
+                        return spreads, strategy_name
+                    break
         
-        df = pd.DataFrame(data)
-        df.to_csv(output_path, index=False, float_format='%.3f')
+        # Try all strategies in order
+        for strategy_name, strategy_func in spread_strategies:
+            spreads = strategy_func(snapshots)
+            if spreads:
+                self.logger.info(f"Using {strategy_name} analysis (found {len(spreads)} valid spreads)")
+                return spreads, strategy_name
         
-        self.logger.info(f"📄 CSV report generated: {output_path}")
-        
-        return str(output_path)
+        return [], 'none'
     
-    def generate_summary_stats(self, results: List[ArbitrageMetrics]) -> Dict[str, Any]:
-        """
-        Generate summary statistics from analysis results.
+    def _extract_spreads_by_type(self, snapshots, spread_type: str) -> Tuple[List[float], str]:
+        """Extract spreads for a specific type only."""
+        if spread_type == 'gateio_mexc':
+            spreads = self._extract_gateio_mexc_spreads(snapshots)
+        elif spread_type == 'spot_futures':
+            spreads = self._extract_spot_futures_spreads(snapshots)
+        elif spread_type == 'internal_futures':
+            spreads = self._extract_internal_futures_spreads(snapshots)
+        elif spread_type == 'internal_spot':
+            spreads = self._extract_internal_spot_spreads(snapshots)
+        else:
+            spreads = []
         
-        Args:
-            results: List of ArbitrageMetrics to summarize
+        return spreads, spread_type if spreads else 'none'
+    
+    def _extract_gateio_mexc_spreads(self, snapshots) -> List[float]:
+        """Extract Gate.io vs MEXC arbitrage spreads."""
+        spreads = []
+        for snapshot in snapshots:
+            cross_spreads = snapshot.get_cross_exchange_spreads()
+            if 'gateio_mexc_sell_buy' in cross_spreads:
+                spread_pct = abs(cross_spreads['gateio_mexc_sell_buy'] / 
+                               self._get_mid_price_for_spread(snapshot, 'gateio_mexc_sell_buy')) * 100
+                spreads.append(spread_pct)
+        return spreads
+    
+    def _extract_spot_futures_spreads(self, snapshots) -> List[float]:
+        """Extract Gate.io Spot vs Futures spreads."""
+        spreads = []
+        for snapshot in snapshots:
+            cross_spreads = snapshot.get_cross_exchange_spreads()
+            if 'spot_futures_long_short' in cross_spreads:
+                spread_pct = abs(cross_spreads['spot_futures_long_short'] /
+                               self._get_mid_price_for_spread(snapshot, 'spot_futures_long_short')) * 100
+                spreads.append(spread_pct)
+        return spreads
+    
+    def _extract_internal_futures_spreads(self, snapshots) -> List[float]:
+        """Extract Gate.io Futures internal bid-ask spreads."""
+        spreads = []
+        for snapshot in snapshots:
+            if snapshot.gateio_futures_bid and snapshot.gateio_futures_ask:
+                spread_abs = snapshot.gateio_futures_ask - snapshot.gateio_futures_bid
+                mid_price = (snapshot.gateio_futures_bid + snapshot.gateio_futures_ask) / 2
+                if mid_price > 0:
+                    spread_pct = (spread_abs / mid_price) * 100
+                    spreads.append(spread_pct)
+        return spreads
+    
+    def _extract_internal_spot_spreads(self, snapshots) -> List[float]:
+        """Extract internal bid-ask spreads from available spot exchanges."""
+        spreads = []
+        for snapshot in snapshots:
+            # Try Gate.io Spot first
+            if snapshot.gateio_spot_bid and snapshot.gateio_spot_ask:
+                spread_abs = snapshot.gateio_spot_ask - snapshot.gateio_spot_bid
+                mid_price = (snapshot.gateio_spot_bid + snapshot.gateio_spot_ask) / 2
+                if mid_price > 0:
+                    spread_pct = (spread_abs / mid_price) * 100
+                    spreads.append(spread_pct)
+            # Try MEXC Spot if Gate.io not available
+            elif snapshot.mexc_spot_bid and snapshot.mexc_spot_ask:
+                spread_abs = snapshot.mexc_spot_ask - snapshot.mexc_spot_bid
+                mid_price = (snapshot.mexc_spot_bid + snapshot.mexc_spot_ask) / 2
+                if mid_price > 0:
+                    spread_pct = (spread_abs / mid_price) * 100
+                    spreads.append(spread_pct)
+        return spreads
+    
+    def _classify_volatility(self, std_dev: float, mean_val: float) -> str:
+        """Classify volatility regime based on coefficient of variation."""
+        if mean_val == 0:
+            return 'undefined'
             
-        Returns:
-            Dictionary with summary statistics
-        """
-        if not results:
-            return {}
+        cv = std_dev / mean_val  # Coefficient of variation
         
-        profit_scores = [r.profit_score for r in results]
-        max_spreads = [r.max_spread for r in results]
-        
-        summary = {
-            'total_opportunities': len(results),
-            'high_profit_opportunities': len([r for r in results if r.profit_score >= 70]),
-            'medium_profit_opportunities': len([r for r in results if 40 <= r.profit_score < 70]),
-            'low_profit_opportunities': len([r for r in results if 1 <= r.profit_score < 40]),
-            'avg_profit_score': np.mean(profit_scores),
-            'max_profit_score': max(profit_scores),
-            'min_profit_score': min(profit_scores),
-            'avg_max_spread': np.mean(max_spreads),
-            'best_symbol': results[0].pair if results else None,
-            'best_profit_score': results[0].profit_score if results else 0
-        }
-        
-        return summary
+        if cv < 0.1:
+            return 'low'
+        elif cv < 0.3:
+            return 'medium'
+        else:
+            return 'high'

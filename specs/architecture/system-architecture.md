@@ -6,7 +6,7 @@ The CEX Arbitrage Engine uses a **separated domain architecture** with **constru
 
 ### **Modern Architecture Implementation**
 
-**COMPLETED (September 2025):**
+**COMPLETED (October 2025):**
 - **✅ Separated Domain Architecture**: Complete isolation between public and private operations
 - **✅ Constructor Injection Pattern**: REST/WebSocket clients injected via constructors
 - **✅ Explicit Cooperative Inheritance**: WebsocketBindHandlerInterface explicitly initialized
@@ -14,19 +14,32 @@ The CEX Arbitrage Engine uses a **separated domain architecture** with **constru
 - **✅ Simplified Factory**: Direct mapping-based factory (110 lines vs 467 lines)
 - **✅ HFT Safety Compliance**: No caching of real-time trading data
 - **✅ Complete Exchange Implementations**: MEXC and Gate.io with spot+futures support
+- **✅ Enhanced Delta Neutral Arbitrage**: 3-exchange arbitrage with state machine
+- **✅ Symbol-Agnostic Analytics**: Analytics infrastructure for any trading pair
+- **✅ Database Schema Migration**: Complete normalized schema with funding rate support
+- **✅ Agent-Compatible APIs**: CLI and Python interfaces for production deployment
 
 ## High-Level Architecture
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│                       Arbitrage Layer                          │
+│                 Enhanced Arbitrage Layer (NEW)                 │
 │  ┌─────────────────┐  ┌─────────────────┐  ┌─────────────────┐  │
-│  │ ArbitrageEngine │  │ PerformanceMonitor │  │ ResourceManager │  │
+│  │3-Exchange Delta │  │  TaskManager    │  │ PerformanceMonitor │
+│  │ Neutral Engine  │  │  Integration    │  │                 │  │
 │  └─────────────────┘  └─────────────────┘  └─────────────────┘  │
 └─────────────────────────────────────────────────────────────────┘
                                │
 ┌─────────────────────────────────────────────────────────────────┐
-│                Separated Domain Layer (NEW)                    │
+│              Symbol-Agnostic Analytics Layer (NEW)             │
+│  ┌─────────────────┐  ┌─────────────────┐  ┌─────────────────┐  │
+│  │   DataFetcher   │  │  SpreadAnalyzer │  │  PnLCalculator  │  │
+│  │ (Any Symbol)    │  │ (Real-time)     │  │ (Performance)   │  │
+│  └─────────────────┘  └─────────────────┘  └─────────────────┘  │
+└─────────────────────────────────────────────────────────────────┘
+                               │
+┌─────────────────────────────────────────────────────────────────┐
+│                Separated Domain Layer                          │
 │  ┌─────────────────┐  ┌─────────────────┐  ┌─────────────────┐  │
 │  │ ExchangeFactory │  │  ConfigManager  │  │  SymbolResolver │  │
 │  │(Direct Mapping) │  │                 │  │                 │  │
@@ -44,17 +57,104 @@ The CEX Arbitrage Engine uses a **separated domain architecture** with **constru
 │  ┌─────────────────┐           ┌─────────────────┐            │
 │  │   MEXC Public   │           │  MEXC Private   │            │
 │  │  Gate.io Public │           │ Gate.io Private │            │
+│  │ Gate.io Futures │           │Gate.io Futures  │            │
 │  └─────────────────┘           └─────────────────┘            │
 └─────────────────────────────────────────────────────────────────┘
                                │
 ┌─────────────────────────────────────────────────────────────────┐
-│                   Infrastructure Layer                          │
+│             Enhanced Infrastructure Layer                       │
 │  ┌─────────────────┐  ┌─────────────────┐  ┌─────────────────┐  │
-│  │ HFT Logging     │  │ REST+WebSocket  │  │   Data Structs  │  │
-│  │ (1.16μs latency)│  │ (Injected)      │  │   (msgspec)     │  │
+│  │ HFT Logging     │  │ REST+WebSocket  │  │ Database Schema │  │
+│  │ (1.16μs latency)│  │ (Injected)      │  │ (Normalized)    │  │
+│  └─────────────────┘  └─────────────────┘  └─────────────────┘  │
+│  ┌─────────────────┐  ┌─────────────────┐  ┌─────────────────┐  │
+│  │ Agent APIs      │  │   Data Structs  │  │ State Machine   │  │
+│  │ (CLI + Python)  │  │   (msgspec)     │  │ (9 States)      │  │
 │  └─────────────────┘  └─────────────────┘  └─────────────────┘  │
 └─────────────────────────────────────────────────────────────────┘
 ```
+
+## Enhanced Arbitrage System Architecture (NEW)
+
+### 1. 3-Exchange Delta Neutral Arbitrage with State Machine
+
+**Enhanced Delta Neutral Strategy**:
+- **3-Exchange Coordination**: Gate.io spot + Gate.io futures + MEXC spot
+- **State Machine Implementation**: 9 sophisticated states for arbitrage coordination
+- **Symbol-Agnostic Design**: Works with any trading pair (NEIROETH → any symbol)
+- **Agent-Compatible APIs**: CLI and Python interfaces for production deployment
+- **TaskManager Integration**: Production-ready persistence and monitoring
+
+**State Machine States**:
+```
+IDLE → SYNCING → ANALYZING → REBALANCING → MANAGING_ORDERS
+   ↓      ↓         ↓           ↓             ↓
+WAITING_ORDERS → MONITORING → COMPLETING → FINALIZING
+```
+
+**Key Features**:
+- **Sub-50ms Arbitrage Cycles**: Complete arbitrage detection and execution
+- **Real-time Analytics**: Spread analysis, PnL calculation, performance tracking
+- **Database Integration**: Normalized schema with funding rate snapshots
+- **HFT Performance**: All operations meet sub-millisecond targets
+
+### 2. Symbol-Agnostic Analytics Infrastructure
+
+**Analytics Components**:
+```python
+# DataFetcher - works with any symbol
+async def fetch_latest_data(symbol: str, exchanges: List[str]) -> AnalyticsData:
+    # Fetch orderbook, funding rates, trades for any symbol
+    
+# SpreadAnalyzer - real-time spread calculation
+async def analyze_spreads(data: AnalyticsData) -> SpreadAnalysis:
+    # Calculate arbitrage opportunities across exchanges
+    
+# PnLCalculator - performance tracking
+async def calculate_performance(symbol: str, timeframe: str) -> PerformanceMetrics:
+    # Analyze profitability and risk metrics
+```
+
+**Agent-Compatible APIs**:
+```bash
+# CLI Interface
+python -m hedged_arbitrage.analytics.cli spread --symbol NEIROETH --timeframe 1h
+python -m hedged_arbitrage.analytics.cli performance --symbol BTCUSDT --days 7
+python -m hedged_arbitrage.analytics.cli opportunities --min-spread 0.5
+
+# Python Interface
+from hedged_arbitrage.analytics import AnalyticsAPI
+api = AnalyticsAPI()
+opportunities = await api.get_opportunities(symbol="ETHUSDT", min_spread=0.3)
+```
+
+**Database Schema Enhancement**:
+- **Normalized Schema**: Complete foreign key relationships via symbols table
+- **Funding Rate Snapshots**: Dedicated table with proper constraint validation
+- **Analytics Tables**: Arbitrage opportunities, order flow metrics, performance data
+- **Migration System**: Simplified to use docker/init-db.sql only
+
+### 3. TaskManager Production Integration
+
+**Task System Architecture**:
+```python
+# Enhanced Delta Neutral Task
+class EnhancedDeltaNeutralTask(BaseTradingTask):
+    async def execute(self) -> TaskResult:
+        # Integrates state machine with TaskManager
+        # Provides persistence, monitoring, and recovery
+        
+# Production Deployment
+task_manager = TaskManager()
+task = EnhancedDeltaNeutralTask(config)
+result = await task_manager.execute_task(task)
+```
+
+**Production Benefits**:
+- **Persistence**: Task state and progress tracking
+- **Monitoring**: Real-time performance and health metrics
+- **Recovery**: Automatic restart and error handling
+- **Scalability**: Multiple task coordination and resource management
 
 ## Core Architectural Patterns
 
@@ -274,35 +374,42 @@ config.yaml → config_manager → ExchangeFactory → BasePublicComposite + Bas
 
 **Key Insight**: All HFT performance targets significantly exceeded. Focus on code simplicity and maintainability.
 
-## Separated Domain System Initialization Flow
+## Enhanced System Initialization Flow
 
 ```
 1. Load Environment Variables (.env)
          ↓
 2. Parse Configuration (config.yaml)
          ↓
-3. Initialize config_manager
+3. Initialize Database Schema (docker/init-db.sql)
          ↓
-4. Create UnifiedExchangeFactory
+4. Initialize config_manager
          ↓
-5. Create Separated Domain Exchanges (constructor injection)
+5. Create UnifiedExchangeFactory
+         ↓
+6. Create Separated Domain Exchanges (constructor injection)
          ↓   
-6. Initialize Injected Resources (REST + WebSocket clients)
+7. Initialize Injected Resources (REST + WebSocket clients)
          ↓
-7. Build Symbol Resolution System (1.06M ops/sec)
+8. Build Symbol Resolution System (1.06M ops/sec)
          ↓
-8. Start HFT Logging System (1.16μs latency)
+9. Start HFT Logging System (1.16μs latency)
          ↓
-9. Initialize Performance Monitoring
+10. Initialize Analytics Infrastructure (symbol-agnostic)
          ↓
-10. Begin Separated Domain Operations
+11. Start TaskManager System (if production mode)
+         ↓
+12. Begin Enhanced Arbitrage Operations
 ```
 
-**Initialization Benefits**:
+**Enhanced Initialization Benefits**:
 - **Constructor Injection**: Dependencies injected at creation time
 - **Explicit Initialization**: WebsocketBindHandlerInterface explicitly initialized
 - **Handler Binding**: WebSocket channels bound during constructor execution
 - **Domain Isolation**: Public and private exchanges completely independent
+- **Database Schema**: Complete normalized schema via docker/init-db.sql
+- **Analytics Ready**: Symbol-agnostic infrastructure for any trading pair
+- **TaskManager Integration**: Production-ready persistence and monitoring
 - **Resource Management**: Proper async context managers throughout
 - **Error Resilience**: Domain failures don't cascade between public/private
 
@@ -454,4 +561,4 @@ COMPOSITE_AGNOSTIC_MAP = {
 
 ---
 
-*This architecture documentation reflects the separated domain architecture with constructor injection patterns (September 2025). All architectural decisions prioritize HFT performance while maintaining complete domain isolation and trading safety.*
+*This architecture documentation reflects the enhanced separated domain architecture with 3-exchange delta neutral arbitrage, symbol-agnostic analytics, and TaskManager integration (October 2025). All architectural decisions prioritize HFT performance while maintaining complete domain isolation and trading safety.*
