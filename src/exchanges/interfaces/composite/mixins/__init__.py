@@ -7,7 +7,9 @@ Segregation Principle.
 """
 
 from .withdrawal_mixin import WithdrawalMixin
+from .balance_sync_mixin import BalanceSyncMixin
 
 __all__ = [
     'WithdrawalMixin',
+    'BalanceSyncMixin',
 ]

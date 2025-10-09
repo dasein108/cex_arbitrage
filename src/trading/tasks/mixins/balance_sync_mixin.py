@@ -5,19 +5,32 @@ Provides integration between private composite exchanges and balance synchroniza
 task for automatic balance tracking and storage.
 """
 
-from typing import Optional, TYPE_CHECKING
+from typing import Optional, TYPE_CHECKING, Protocol
 from exchanges.structs import ExchangeEnum
 
 if TYPE_CHECKING:
     from trading.tasks.balance_sync_task import BalanceSyncTask
 
 
-class BalanceSyncMixin:
+class LoggerProtocol(Protocol):
+    """Protocol for logger interface required by this mixin."""
+    def info(self, msg: str, **kwargs) -> None: ...
+    def warning(self, msg: str, **kwargs) -> None: ...
+
+
+class BalanceSyncTaskMixin:
     """Mixin for private composite exchanges to integrate with balance sync task.
     
     Provides methods to register/unregister with a global balance sync task
     for automatic periodic balance collection and storage.
+    
+    Required attributes from the using class:
+    - logger: LoggerProtocol - For logging sync events
     """
+    
+    # Type hints for IDE - these should be provided by the using class
+    if TYPE_CHECKING:
+        logger: LoggerProtocol
     
     def __init__(self, *args, **kwargs):
         """Initialize balance sync mixin."""

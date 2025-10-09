@@ -25,7 +25,7 @@ The `CompositePrivateFuturesExchange` interface extends `CompositePrivateExchang
 CompositePrivateExchange (parent - inherits all private spot)
     └── CompositePrivateFuturesExchange (adds futures trading)
             └── Implementations:
-                    ├── GateioPrivateFuturesExchange
+                    ├── Generic CompositePrivateFuturesExchange
                     ├── BinancePrivateFuturesExchange
                     └── [Other futures exchanges]
 ```

@@ -28,8 +28,7 @@ from exchanges.integrations.gateio.rest import (
     GateioPrivateFuturesRestInterface
 )
 
-# Gate.io composite exchanges
-from exchanges.integrations.gateio.gateio_private_futures_exchange import GateioPrivateFuturesExchange
+# Gate.io composite exchanges - use generic composite interfaces
 
 # Gate.io WebSocket interfaces
 from exchanges.integrations.gateio.ws import (
@@ -70,8 +69,9 @@ COMPOSITE_AGNOSTIC_MAP = {
 }
 
 # Exchange-specific futures composite mappings
+# Note: Using generic CompositePrivateFuturesExchange for all futures exchanges
 FUTURES_COMPOSITE_MAP = {
-    ExchangeEnum.GATEIO_FUTURES: GateioPrivateFuturesExchange,
+    # No exchange-specific implementations needed - using generic composites
 }
 
 SYMBOL_MAPPER_MAP = {
@@ -134,8 +134,7 @@ def get_ws_implementation(exchange_config: ExchangeConfig, is_private: bool) -> 
 
 def get_composite_implementation(exchange_config: ExchangeConfig, is_private: bool, settle: str = "usdt", balance_sync_interval: float = None) -> Union[
     CompositePublicSpotExchange, CompositePrivateSpotExchange,
-    CompositePublicFuturesExchange, CompositePrivateFuturesExchange,
-    GateioPrivateFuturesExchange
+    CompositePublicFuturesExchange, CompositePrivateFuturesExchange
 ]:
     """
     Get composite exchange implementation with injected REST and WebSocket clients.
@@ -238,22 +237,4 @@ def get_symbol_mapper(exchange: ExchangeEnum) -> Union[MexcSymbolMapper, GateioS
     return symbol_mapper_class()
 
 
-def create_gateio_futures_exchange(exchange_config: ExchangeConfig, settle: str = "usdt") -> GateioPrivateFuturesExchange:
-    """
-    Convenience function to create Gate.io futures exchange with settlement currency support.
-    
-    Args:
-        exchange_config: Gate.io futures exchange configuration
-        settle: Settlement currency ("usdt" or "btc")
-        
-    Returns:
-        Configured Gate.io private futures exchange
-        
-    Raises:
-        ValueError: If exchange_config is not for Gate.io futures
-    """
-    if exchange_config.exchange_enum != ExchangeEnum.GATEIO_FUTURES:
-        raise ValueError(f"Expected GATEIO_FUTURES, got {exchange_config.exchange_enum}")
-    
-    return get_composite_implementation(exchange_config, is_private=True, settle=settle)
 
