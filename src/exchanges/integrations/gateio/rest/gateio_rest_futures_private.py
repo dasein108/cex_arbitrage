@@ -2,7 +2,7 @@ import time
 from typing import Dict, List, Optional, Any
 
 from exchanges.interfaces import PrivateFuturesRestInterface
-from exchanges.structs.common import Symbol, Order, AssetBalance, TradingFee, Position
+from exchanges.structs.common import Symbol, Order, AssetBalance, FuturesBalance, TradingFee, Position
 from exchanges.structs.types import AssetName, OrderId
 from exchanges.structs.enums import TimeInForce
 from exchanges.structs import OrderType, Side
@@ -46,42 +46,52 @@ class GateioPrivateFuturesRestInterface(
         # Initialize base REST client (rate_limiter created internally)
         super().__init__(config, logger, is_private=True)
 
-    async def get_balances(self) -> List[AssetBalance]:
+    async def get_balances(self) -> List[FuturesBalance]:
         """
-        Get futures (margin) account balance. Returns list (usually single USDT entry).
-        Endpoint (typical): /futures/usdt/accounts
+        Get futures (margin) account balance with comprehensive margin information.
+        Endpoint: /futures/usdt/accounts
         """
         try:
             endpoint = "/futures/usdt/accounts"
             response = await self.request(HTTPMethod.GET, endpoint)
 
-            balances: List[AssetBalance] = []
+            balances: List[FuturesBalance] = []
 
             # Support both dict (single account summary) and list formats
             if isinstance(response, dict):
-                # Common fields: total, available
+                # Single account summary - parse comprehensive balance
                 balances = [futures_balance_entry(response)]
 
             elif isinstance(response, list):
-                # List of assets: try parse entries
+                # List of assets - parse each entry with full margin info
                 balances = [futures_balance_entry(item) for item in response]
             else:
                 raise ExchangeRestError(500, "Invalid futures accounts response format")
 
-            self.logger.debug(f"Retrieved futures balances: {balances}")
+            self.logger.debug(f"Retrieved {len(balances)} futures balances with margin info")
             return balances
 
         except Exception as e:
             self.logger.error(f"Failed to get futures account balance: {e}")
             raise ExchangeRestError(500, f"Futures balance fetch failed: {str(e)}")
 
-    async def get_asset_balance(self, asset: AssetName) -> Optional[AssetBalance]:
+
+    async def get_asset_balance(self, asset: AssetName) -> Optional[FuturesBalance]:
+        """Get futures balance for a specific asset with full margin information."""
         try:
             balances = await self.get_balances()
             for b in balances:
                 if b.asset == asset:
                     return b
-            return AssetBalance(asset=asset, available=0.0, locked=0.0)
+            # Return empty futures balance if asset not found
+            return FuturesBalance(
+                asset=asset, 
+                total=0.0, 
+                available=0.0, 
+                unrealized_pnl=0.0,
+                position_margin=0.0, 
+                order_margin=0.0
+            )
         except Exception as e:
             self.logger.error(f"Failed to get futures asset balance {asset}: {e}")
             raise

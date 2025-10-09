@@ -38,7 +38,7 @@ from .operations import (
     get_symbol_stats
 )
 from .models import BookTickerSnapshot, TradeSnapshot, Exchange, Symbol as DBSymbol
-from .migrations import run_migrations
+from .migrations import run_all_pending_migrations as run_pending_migrations
 from .symbol_manager import get_symbol_id, get_symbol_details, clear_symbol_cache
 from .cache import SymbolCache, initialize_symbol_cache, close_symbol_cache, get_symbol_cache
 from .cache_operations import (
@@ -137,7 +137,7 @@ __all__ = [
     'get_symbol_stats',
     
     # Migrations
-    'run_migrations',
+    'run_pending_migrations',
     
     # Symbol manager (legacy compatibility)
     'get_symbol_id',

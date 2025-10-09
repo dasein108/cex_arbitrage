@@ -22,6 +22,7 @@ from typing import Optional, Dict
 import time
 
 from exchanges.structs import Symbol, Side, ExchangeEnum
+from exchanges.structs.common import FuturesBalance
 from infrastructure.logging import HFTLoggerInterface, get_logger
 from utils.exchange_utils import is_order_done
 from utils import calculate_weighted_price

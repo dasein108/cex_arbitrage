@@ -30,6 +30,7 @@ class PrivateWebsocketChannelType(IntEnum):
     BALANCE = 6  # Fixed duplicate value
     ORDER = 7
     POSITION = 8
+    BALANCE_SNAPSHOT = 9  # Balance snapshot events
 
 class ServiceWebsocketChannelType(IntEnum):
     """Service channel types."""
@@ -48,6 +49,7 @@ class WebsocketChannelType(IntEnum):
     BALANCE = PrivateWebsocketChannelType.BALANCE.value
     ORDER = PrivateWebsocketChannelType.ORDER.value
     POSITION = PrivateWebsocketChannelType.POSITION.value
+    BALANCE_SNAPSHOT = PrivateWebsocketChannelType.BALANCE_SNAPSHOT.value
     HEARTBEAT = ServiceWebsocketChannelType.HEARTBEAT.value
 
 

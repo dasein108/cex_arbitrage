@@ -12,7 +12,9 @@ from collections import defaultdict
 import time
 
 from .connection import get_db_manager
-from .models import BookTickerSnapshot, TradeSnapshot, FundingRateSnapshot, BalanceSnapshot
+from .models import (BookTickerSnapshot, TradeSnapshot, FundingRateSnapshot,
+                     BalanceSnapshot, Exchange, Symbol as DBSymbol, NormalizedBookTickerSnapshot,
+                     NormalizedTradeSnapshot, SymbolType)
 from exchanges.structs.common import Symbol
 
 
@@ -1250,7 +1252,7 @@ async def get_exchange_by_enum(exchange_enum: "ExchangeEnum") -> Optional[Exchan
     db = get_db_manager()
     
     query = """
-        SELECT id, name, enum_value, display_name, market_type
+        SELECT id, exchange_name, enum_value, market_type
         FROM exchanges 
         WHERE enum_value = $1     """
     
@@ -1259,9 +1261,9 @@ async def get_exchange_by_enum(exchange_enum: "ExchangeEnum") -> Optional[Exchan
         
         if row:
             return Exchange(
-                name=row['name'],
+                name=row['exchange_name'],
                 enum_value=row['enum_value'],
-                display_name=row['display_name'],
+                display_name=row['exchange_name'],  # Use exchange_name as display_name
                 market_type=row['market_type'],
                 id=row['id']
             )
@@ -1286,7 +1288,7 @@ async def get_exchange_by_id(exchange_id: int) -> Optional[Exchange]:
     db = get_db_manager()
     
     query = """
-        SELECT id, name, enum_value, display_name, market_type
+        SELECT id, exchange_name, enum_value, market_type
         FROM exchanges 
         WHERE id = $1
     """
@@ -1296,9 +1298,9 @@ async def get_exchange_by_id(exchange_id: int) -> Optional[Exchange]:
         
         if row:
             return Exchange(
-                name=row['name'],
+                name=row['exchange_name'],
                 enum_value=row['enum_value'],
-                display_name=row['display_name'],
+                display_name=row['exchange_name'],  # Use exchange_name as display_name
                 market_type=row['market_type'],
                 id=row['id']
             )
@@ -1320,9 +1322,9 @@ async def get_all_active_exchanges() -> List[Exchange]:
     db = get_db_manager()
     
     query = """
-        SELECT id, name, enum_value, display_name, market_type
+        SELECT id, exchange_name, enum_value, market_type
         FROM exchanges 
-                ORDER BY name
+                ORDER BY exchange_name
     """
     
     try:
@@ -1331,9 +1333,9 @@ async def get_all_active_exchanges() -> List[Exchange]:
         exchanges = []
         for row in rows:
             exchange = Exchange(
-                name=row['name'],
+                name=row['exchange_name'],
                 enum_value=row['enum_value'],
-                display_name=row['display_name'],
+                display_name=row['exchange_name'],  # Use exchange_name as display_name
                 market_type=row['market_type'],
                 id=row['id']
             )
@@ -1360,9 +1362,9 @@ async def get_exchanges_by_market_type(market_type: str) -> List[Exchange]:
     db = get_db_manager()
     
     query = """
-        SELECT id, name, enum_value, display_name, market_type
+        SELECT id, exchange_name, enum_value, market_type
         FROM exchanges 
-        WHERE market_type = $1         ORDER BY name
+        WHERE market_type = $1         ORDER BY exchange_name
     """
     
     try:
@@ -1371,9 +1373,9 @@ async def get_exchanges_by_market_type(market_type: str) -> List[Exchange]:
         exchanges = []
         for row in rows:
             exchange = Exchange(
-                name=row['name'],
+                name=row['exchange_name'],
                 enum_value=row['enum_value'],
-                display_name=row['display_name'],
+                display_name=row['exchange_name'],  # Use exchange_name as display_name
                 market_type=row['market_type'],
                 id=row['id']
             )
@@ -1412,8 +1414,8 @@ async def insert_exchange(exchange: Exchange) -> int:
     
     query = """
         INSERT INTO exchanges (
-            name, enum_value, display_name, market_type
-        ) VALUES ($1, $2, $3, $4)
+            exchange_name, enum_value, market_type
+        ) VALUES ($1, $2, $3)
         RETURNING id
     """
     
@@ -1422,7 +1424,6 @@ async def insert_exchange(exchange: Exchange) -> int:
             query,
             exchange.name,
             exchange.enum_value,
-            exchange.display_name,
             exchange.market_type
         )
         
@@ -2042,11 +2043,11 @@ async def get_symbol_stats() -> Dict[str, Any]:
         
         # Add exchange breakdown
         exchange_breakdown_query = """
-            SELECT e.name, COUNT(s.id) as symbol_count
+            SELECT e.exchange_name as name, COUNT(s.id) as symbol_count
             FROM exchanges e
             LEFT JOIN symbols s ON e.id = s.exchange_id AND s.is_active = true
             WHERE 1=1
-            GROUP BY e.name
+            GROUP BY e.exchange_name
             ORDER BY symbol_count DESC
         """
         
@@ -2140,7 +2141,7 @@ async def get_exchange_by_enum_value(enum_value: str) -> Optional[Exchange]:
     db = get_db_manager()
     
     query = """
-        SELECT id, name, enum_value, display_name, market_type
+        SELECT id, exchange_name, enum_value, market_type
         FROM exchanges
         WHERE enum_value = $1     """
     
@@ -2152,9 +2153,9 @@ async def get_exchange_by_enum_value(enum_value: str) -> Optional[Exchange]:
         
         return Exchange(
             id=row['id'],
-            name=row['name'],
+            name=row['exchange_name'],
             enum_value=row['enum_value'],
-            display_name=row['display_name'],
+            display_name=row['exchange_name'],  # Use exchange_name as display_name
             market_type=row['market_type']
         )
         

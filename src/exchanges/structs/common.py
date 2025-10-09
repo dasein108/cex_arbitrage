@@ -85,6 +85,43 @@ class AssetBalance(Struct):
     def __str__(self):
         return f"{self.asset}: {self.total}({self.available}/{self.locked})"
 
+class FuturesBalance(Struct):
+    """Futures account balance with margin information for margin trading."""
+    asset: AssetName
+    total: float                    # Total account balance
+    available: float                # Available for new positions
+    unrealized_pnl: float          # Unrealized PnL across all positions
+    position_margin: float         # Margin allocated to current positions
+    order_margin: float            # Margin allocated to open orders
+    cross_wallet_balance: Optional[float] = None  # Cross margin wallet balance
+    cross_unrealized_pnl: Optional[float] = None  # Cross margin unrealized PnL
+    
+    @property
+    def locked(self) -> float:
+        """Total locked balance (position + order margin)."""
+        return self.position_margin + self.order_margin
+    
+    @property
+    def equity(self) -> float:
+        """Account equity (total + unrealized PnL)."""
+        return self.total + self.unrealized_pnl
+    
+    @property
+    def margin_utilization(self) -> float:
+        """Margin utilization percentage (0.0 - 1.0)."""
+        if self.total <= 0:
+            return 1.0
+        return self.locked / self.total
+    
+    def has_available_margin(self, required_margin: float) -> bool:
+        """Check if there's sufficient available margin for a new position."""
+        return self.available >= required_margin
+    
+    def __str__(self):
+        return (f"{self.asset}: Total={self.total:.6f}, Available={self.available:.6f}, "
+                f"PnL={self.unrealized_pnl:.6f}, Margin={self.locked:.6f} "
+                f"({self.margin_utilization*100:.2f}%)")
+
 class Position(Struct):
     """Trading position (for margin/futures)."""
     symbol: Symbol

@@ -16,6 +16,45 @@ from .connection import get_db_manager
 logger = logging.getLogger(__name__)
 
 
+async def run_pending_migrations() -> Dict[str, Any]:
+    """
+    Run any pending database migrations automatically.
+    
+    This function checks for missing tables and applies migrations as needed.
+    Called automatically during database initialization.
+    
+    Returns:
+        Dictionary with migration results
+    """
+    logger.info("Checking for pending database migrations...")
+    
+    try:
+        # Import migrations module
+        from .migrations import run_all_pending_migrations
+        
+        # Run all pending migrations
+        result = await run_all_pending_migrations()
+        
+        if result['success']:
+            if result['migrations_run']:
+                logger.info(f"Applied {len(result['migrations_run'])} migrations successfully")
+            else:
+                logger.info("No pending migrations found")
+        else:
+            logger.error(f"Migration failed: {result['migrations_failed']}")
+        
+        return result
+        
+    except Exception as e:
+        logger.error(f"Failed to run migrations: {e}")
+        return {
+            'success': False,
+            'error': str(e),
+            'migrations_run': [],
+            'migrations_failed': []
+        }
+
+
 async def check_schema_initialization() -> Dict[str, Any]:
     """
     Check if the database schema has been properly initialized.
@@ -28,7 +67,7 @@ async def check_schema_initialization() -> Dict[str, Any]:
     # Check for core tables that should exist after initialization
     core_tables = [
         'exchanges', 'symbols', 'book_ticker_snapshots', 
-        'funding_rate_snapshots', 'trade_snapshots'
+        'funding_rate_snapshots', 'balance_snapshots', 'trade_snapshots'
     ]
     
     status = {

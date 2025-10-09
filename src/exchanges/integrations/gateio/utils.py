@@ -11,7 +11,7 @@ from typing import Dict, Optional
 import re
 from enum import Enum
 from exchanges.structs.common import (
-    Side, OrderStatus, OrderType, TimeInForce, AssetName, AssetBalance, Order
+    Side, OrderStatus, OrderType, TimeInForce, AssetName, AssetBalance, FuturesBalance, Order
 )
 from exchanges.structs.enums import WithdrawalStatus, KlineInterval
 from exchanges.structs.types import OrderId
@@ -175,22 +175,32 @@ def detect_side_from_size(size: int) -> Side:
     return Side.BUY if size > 0 else Side.SELL
 
 
-def futures_balance_entry(item: Dict) -> AssetBalance:
+def futures_balance_entry(item: Dict) -> FuturesBalance:
     """
-    Normalize futures balance entry into AssetBalance.
-    Works for both dict and list entry.
+    Normalize futures balance entry into FuturesBalance with full margin information.
+    Works for both dict and list entry from Gate.io futures API.
     """
     asset = AssetName(item.get("currency", item.get("asset", "USDT")))
-    total = float(item.get("total", 0))
+    total = float(item.get("total", item.get("balance", 0)))
     available = float(item.get("available", 0))
-    locked = max(0.0, total - available)
+    unrealized_pnl = float(item.get("unrealized_pnl", item.get("unrealised_pnl", 0)))
+    position_margin = float(item.get("position_margin", 0))
+    order_margin = float(item.get("order_margin", 0))
     
-    return AssetBalance(
-        asset=asset, 
-        available=available, 
-        locked=locked
-
-        )
+    # Optional cross margin fields
+    cross_wallet_balance = item.get("cross_wallet_balance")
+    cross_unrealized_pnl = item.get("cross_unrealized_pnl") 
+    
+    return FuturesBalance(
+        asset=asset,
+        total=total,
+        available=available,
+        unrealized_pnl=unrealized_pnl,
+        position_margin=position_margin,
+        order_margin=order_margin,
+        cross_wallet_balance=float(cross_wallet_balance) if cross_wallet_balance is not None else None,
+        cross_unrealized_pnl=float(cross_unrealized_pnl) if cross_unrealized_pnl is not None else None
+    )
 
 # TODO: implement for futures, refactor futures_rest, get rid of fallabacks
 def rest_futures_to_order(gateio_order_data) -> Order:

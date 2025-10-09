@@ -8,17 +8,18 @@ futures-specific order types.
 
 from abc import abstractmethod
 from typing import Dict, List, Optional, Any
-from decimal import Decimal
 
 from exchanges.structs import Side
-from exchanges.structs.common import Symbol, Order, Position, SymbolsInfo, OrderId
+from exchanges.structs.common import Symbol, Order, Position, SymbolsInfo, OrderId, FuturesBalance
 from exchanges.interfaces.composite.base_private_composite import BasePrivateComposite
+from exchanges.interfaces.rest.interfaces import PrivateFuturesInterface
+from exchanges.interfaces.ws.ws_base_private import PrivateBaseWebsocket
 from exchanges.interfaces.composite.types import PrivateRestType, PrivateWebsocketType
 from infrastructure.logging import HFTLoggerInterface
-from infrastructure.exceptions.exchange import ExchangeRestError, OrderNotFoundError
+from infrastructure.networking.websocket.structs import PrivateWebsocketChannelType
 
 
-class CompositePrivateFuturesExchange(BasePrivateComposite):
+class CompositePrivateFuturesExchange(BasePrivateComposite[PrivateFuturesInterface, PrivateBaseWebsocket]):
     """
     Base interface for private futures exchange operations.
     
@@ -35,25 +36,32 @@ class CompositePrivateFuturesExchange(BasePrivateComposite):
                  config,
                  rest_client: PrivateRestType,
                  websocket_client: Optional[PrivateWebsocketType] = None,
-                 logger: Optional[HFTLoggerInterface] = None):
+                 logger: Optional[HFTLoggerInterface] = None,
+                 balance_sync_interval: Optional[float] = None):
         """Initialize private futures exchange interface with dependency injection."""
-        super().__init__(config, rest_client, websocket_client, logger)
+        super().__init__(config, rest_client, websocket_client, logger, balance_sync_interval)
         
         # Override tag to indicate futures operations
         self._tag = f'{config.name}_private_futures'
 
         # Futures-specific private data
         self._positions: Dict[Symbol, Position] = {}
+        self._futures_balances: Dict[str, FuturesBalance] = {}  # Asset -> FuturesBalance
 
     @property
     def positions(self) -> Dict[Symbol, Position]:
         """Get current positions (alias for futures_positions)."""
         return self._positions.copy()
+    
+    @property
+    def futures_balances(self) -> Dict[str, FuturesBalance]:
+        """Get current futures balances with margin information."""
+        return self._futures_balances.copy()
 
     # Trading operations - delegate to REST client
 
-    async def get_balances(self) -> List[Any]:
-        """Get account balances via REST API."""
+    async def get_balances(self) -> List[FuturesBalance]:
+        """Get futures account balances with margin information via REST API."""
         return await self._rest.get_balances()
 
     async def get_positions(self) -> List[Position]:
@@ -62,7 +70,37 @@ class CompositePrivateFuturesExchange(BasePrivateComposite):
 
     async def get_trading_fees(self, symbol: Symbol) -> Any:
         """Get trading fees for a symbol via REST API."""
-        return await self._rest.get_trading_fees(symbol)
+        # return await self._rest.get_trading_fees(symbol)
+        raise NotImplementedError("get_trading_fees must be implemented by subclass")
+    
+    # async def get_futures_balance(self, asset: str) -> Optional[FuturesBalance]:
+    #     """Get futures balance for a specific asset with margin information."""
+    #     return await self._rest.get_asset_balance(asset)
+    #
+    # def get_cached_futures_balance(self, asset: str) -> Optional[FuturesBalance]:
+    #     """Get cached futures balance for a specific asset (WebSocket updated)."""
+    #     return self._futures_balances.get(asset)
+    #
+    def check_available_margin(self, asset: str, required_margin: float) -> bool:
+        """Check if there's sufficient available margin for a new position."""
+        balance = self._futures_balances.get(asset)
+        if not balance:
+            return False
+        return balance.has_available_margin(required_margin)
+    
+    def get_margin_utilization(self, asset: str) -> float:
+        """Get current margin utilization percentage (0.0 - 1.0)."""
+        balance = self._futures_balances.get(asset)
+        if not balance:
+            return 1.0  # Assume fully utilized if no balance data
+        return balance.margin_utilization
+    
+    def get_account_equity(self, asset: str) -> float:
+        """Get account equity (total + unrealized PnL) for an asset."""
+        balance = self._futures_balances.get(asset)
+        if not balance:
+            return 0.0
+        return balance.equity
 
     # async def place_order(self, symbol: Symbol, side, order_type, quantity: Optional[float] = None,
     #                      price: Optional[float] = None, **kwargs) -> Order:
@@ -86,11 +124,12 @@ class CompositePrivateFuturesExchange(BasePrivateComposite):
     async def close_position(
         self,
         symbol: Symbol,
-        quantity: Optional[Decimal] = None
+        quantity: Optional[float] = None
     ) -> List[Order]:
         """Close position (partially or completely)."""
-        #TODO: implement
-        raise NotImplemented("close_position must be implemented by subclass")
+        raise NotImplementedError(
+            "close_position must be implemented by subclass",
+        )
 
     # Key futures extensions - WebSocket handlers
     
@@ -112,11 +151,28 @@ class CompositePrivateFuturesExchange(BasePrivateComposite):
             raise
 
 
-    # Futures-specific position event handler (abstract)
+    # Futures-specific event handlers
     async def _position_handler(self, position: Position) -> None:
         """Handle position updates from WebSocket (futures-specific)."""
         self._positions[position.symbol] = position
         self.logger.debug(f"Updated futures position for {position.symbol}: {position}")
+    
+    async def _futures_balance_handler(self, balance: FuturesBalance) -> None:
+        """Handle futures balance updates from WebSocket with margin information."""
+        self._futures_balances[balance.asset] = balance
+        self.logger.debug(f"Updated futures balance for {balance.asset}: {balance}")
+        
+        # Log margin utilization warnings
+        if balance.margin_utilization > 0.8:  # >80% margin utilization
+            self.logger.warning(
+                f"High margin utilization for {balance.asset}: "
+                f"{balance.margin_utilization*100:.2f}% "
+                f"(Available: {balance.available:.6f}, "
+                f"Margin: {balance.locked:.6f})"
+            )
+
+        self.publish(PrivateWebsocketChannelType.BALANCE, balance)
+
 
     def contracts_to_base_quantity(self, symbol: Symbol, contracts: float) -> float:
         """Convert contract quantity to base currency quantity."""

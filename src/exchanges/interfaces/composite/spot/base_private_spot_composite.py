@@ -32,7 +32,8 @@ class CompositePrivateSpotExchange(BasePrivateComposite, WithdrawalMixin):
                  config: ExchangeConfig,
                  rest_client: PrivateRestType,
                  websocket_client: Optional[PrivateWebsocketType] = None,
-                 logger: Optional[HFTLoggerInterface] = None):
+                 logger: Optional[HFTLoggerInterface] = None,
+                 balance_sync_interval: Optional[float] = None):
         """
         Initialize private spot exchange interface with dependency injection.
         
@@ -41,8 +42,9 @@ class CompositePrivateSpotExchange(BasePrivateComposite, WithdrawalMixin):
             rest_client: Injected private REST client instance
             websocket_client: Injected private WebSocket client instance (optional)
             logger: Optional injected HFT logger (auto-created if not provided)
+            balance_sync_interval: Optional interval in seconds for automatic balance syncing
         """
-        super().__init__(config, rest_client, websocket_client, logger)
+        super().__init__(config, rest_client, websocket_client, logger, balance_sync_interval)
         
         # Update tag to indicate spot operations
 

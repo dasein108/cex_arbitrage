@@ -247,13 +247,27 @@ def get_db_manager() -> DatabaseManager:
 
 async def initialize_database(config: DatabaseConfig) -> None:
     """
-    Initialize global database manager.
+    Initialize global database manager and run pending migrations.
     
     Args:
         config: Database configuration
     """
     db_manager = get_db_manager()
     await db_manager.initialize(config)
+    
+    # Run pending migrations automatically
+    try:
+        from .migrations import run_all_pending_migrations as run_pending_migrations
+        migration_result = await run_pending_migrations()
+        
+        if migration_result['success']:
+            if migration_result['migrations_run']:
+                db_manager._logger.info(f"Applied {len(migration_result['migrations_run'])} database migrations")
+        else:
+            db_manager._logger.warning(f"Some migrations failed: {migration_result['migrations_failed']}")
+            
+    except Exception as e:
+        db_manager._logger.warning(f"Migration check failed: {e} - continuing without migrations")
 
 
 async def close_database() -> None:

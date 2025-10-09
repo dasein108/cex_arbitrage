@@ -98,11 +98,73 @@ class WebSocketConfig(Struct, frozen=True):
     # Optimization settings
     enable_compression: bool = True
     text_encoding: str = "utf-8"
-
+    
     @property
     def has_heartbeat(self) -> bool:
         """Check if heartbeat is enabled."""
         return self.heartbeat_interval is not None and self.heartbeat_interval > 0
+
+
+class BalanceSyncConfig(Struct, frozen=True):
+    """
+    Balance synchronization configuration for HFT trading systems.
+    
+    Controls periodic collection and storage of account balances
+    across multiple exchanges for analytics and monitoring.
+    
+    Attributes:
+        enabled: Enable balance synchronization
+        sync_interval_seconds: Interval between balance syncs in seconds
+        batch_size: Maximum number of balance records per batch
+        include_zero_balances: Whether to store zero balance records
+        exchanges: List of exchange enums to monitor (empty = all)
+        performance_target_ms: Target sync completion time in milliseconds
+        retry_count: Number of retries on sync failures
+        retry_delay_seconds: Delay between retries in seconds
+    """
+    # Core settings
+    enabled: bool = True
+    sync_interval_seconds: float = 60.0  # Default 1 minute
+    
+    # Performance settings
+    batch_size: int = 100  # HFT-optimized batch size
+    include_zero_balances: bool = False  # Save storage space
+    performance_target_ms: float = 5000.0  # <5s target sync time
+    
+    # Reliability settings  
+    retry_count: int = 3
+    retry_delay_seconds: float = 1.0
+    
+    # Exchange filtering (empty list = all exchanges)
+    exchanges: List[str] = msgspec.field(default_factory=list)
+    
+    def validate(self) -> None:
+        """Validate balance sync configuration."""
+        if self.sync_interval_seconds <= 0:
+            raise ValueError("sync_interval_seconds must be positive")
+        if self.batch_size <= 0:
+            raise ValueError("batch_size must be positive")
+        if self.performance_target_ms <= 0:
+            raise ValueError("performance_target_ms must be positive")
+        if self.retry_count < 0:
+            raise ValueError("retry_count cannot be negative")
+        if self.retry_delay_seconds < 0:
+            raise ValueError("retry_delay_seconds cannot be negative")
+    
+    def get_exchanges_to_sync(self, available_exchanges: List[str]) -> List[str]:
+        """Get list of exchanges to sync based on configuration.
+        
+        Args:
+            available_exchanges: List of available exchange names
+            
+        Returns:
+            List of exchange names to sync
+        """
+        if not self.exchanges:
+            return available_exchanges  # Sync all available
+        
+        # Filter to only include configured and available exchanges
+        return [ex for ex in self.exchanges if ex in available_exchanges]
 
 class RestTransportConfig(Struct, frozen=True):
     """

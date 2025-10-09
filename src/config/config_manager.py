@@ -47,7 +47,7 @@ from dataclasses import dataclass
 from exchanges.structs.enums import ExchangeEnum
 from infrastructure.exceptions.system import ConfigurationError
 from .structs import ExchangeCredentials, NetworkConfig, RateLimitConfig, WebSocketConfig, ExchangeConfig, \
-    RestTransportConfig, DatabaseConfig, AnalyticsConfig, DataCollectorConfig
+    RestTransportConfig, DatabaseConfig, AnalyticsConfig, DataCollectorConfig, BalanceSyncConfig
 
 # Import specialized managers
 from .database.database_config import DatabaseConfigManager
@@ -731,6 +731,29 @@ class HftConfig:
             Dictionary with global WebSocket configuration template
         """
         return self._websocket_config_template
+    
+    def get_balance_sync_config(self) -> BalanceSyncConfig:
+        """
+        Get balance synchronization configuration as structured object.
+        
+        Returns:
+            BalanceSyncConfig struct with balance sync settings
+        """
+        balance_sync_data = self._config_data.get('balance_sync', {})
+        
+        try:
+            return BalanceSyncConfig(
+                enabled=safe_get_config_value(balance_sync_data, 'enabled', True, bool, 'balance_sync'),
+                sync_interval_seconds=safe_get_config_value(balance_sync_data, 'sync_interval_seconds', 60.0, float, 'balance_sync'),
+                batch_size=safe_get_config_value(balance_sync_data, 'batch_size', 100, int, 'balance_sync'),
+                include_zero_balances=safe_get_config_value(balance_sync_data, 'include_zero_balances', False, bool, 'balance_sync'),
+                performance_target_ms=safe_get_config_value(balance_sync_data, 'performance_target_ms', 5000.0, float, 'balance_sync'),
+                retry_count=safe_get_config_value(balance_sync_data, 'retry_count', 3, int, 'balance_sync'),
+                retry_delay_seconds=safe_get_config_value(balance_sync_data, 'retry_delay_seconds', 1.0, float, 'balance_sync'),
+                exchanges=safe_get_config_value(balance_sync_data, 'exchanges', [], list, 'balance_sync')
+            )
+        except Exception as e:
+            raise ConfigurationError(f"Failed to parse balance sync configuration: {e}", "balance_sync") from e
 
     def get_arbitrage_config(self) -> Dict[str, Any]:
         """
@@ -992,3 +1015,13 @@ def get_data_collector_config() -> DataCollectorConfig:
         DataCollectorConfig struct with complete data collection settings
     """
     return config.get_data_collector_config()
+
+
+def get_balance_sync_config() -> BalanceSyncConfig:
+    """
+    Get balance synchronization configuration as structured object.
+    
+    Returns:
+        BalanceSyncConfig struct with balance sync settings
+    """
+    return config.get_balance_sync_config()

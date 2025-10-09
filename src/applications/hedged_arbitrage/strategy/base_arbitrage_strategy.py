@@ -22,6 +22,7 @@ import msgspec
 
 from exchanges.dual_exchange import DualExchange
 from exchanges.structs import Symbol, BookTicker, Order, AssetBalance, Position, ExchangeEnum
+from exchanges.structs.common import FuturesBalance
 from exchanges.structs.common import Side
 from infrastructure.logging import HFTLoggerInterface
 from infrastructure.networking.websocket.structs import PublicWebsocketChannelType, PrivateWebsocketChannelType
@@ -499,7 +500,7 @@ class BaseArbitrageStrategy(BaseTradingTask[T, ArbitrageState], Generic[T], ABC)
         return None
     
     async def _validate_sufficient_balance(self, orders: Dict[str, dict]) -> bool:
-        """Validate sufficient balance for all planned orders."""
+        """Validate sufficient balance for all planned orders with futures margin support."""
         try:
             for role_key, order_params in orders.items():
                 exchange = self._exchanges.get(role_key)
@@ -513,6 +514,9 @@ class BaseArbitrageStrategy(BaseTradingTask[T, ArbitrageState], Generic[T], ABC)
                 except Exception as e:
                     self.logger.error(f"Failed to get balances for {role_key}: {e}")
                     return False
+                
+                # Check if this is a futures exchange (balances are FuturesBalance type)
+                is_futures = len(balances) > 0 and isinstance(balances[0], FuturesBalance)
                 
                 # For sell orders, check base asset availability
                 if order_params['side'] == Side.SELL:
@@ -531,25 +535,57 @@ class BaseArbitrageStrategy(BaseTradingTask[T, ArbitrageState], Generic[T], ABC)
                     
                     self.logger.debug(f"✅ {role_key} {base_asset} balance check passed: {available_quantity} >= {required_quantity}")
                 
-                # For buy orders, check quote asset availability
+                # For buy orders, check quote asset availability (or margin for futures)
                 elif order_params['side'] == Side.BUY:
                     quote_asset = self.context.symbol.quote
                     quote_balance = next((b for b in balances if b.asset == quote_asset), None)
                     
                     required_quote = float(order_params['quantity']) * float(order_params['price'])
-                    available_quote = float(quote_balance.available) if quote_balance else 0.0
                     
-                    # Add 1% buffer for fees and price movements
-                    required_quote_with_buffer = required_quote * 1.01
-                    
-                    if available_quote < required_quote_with_buffer:
-                        self.logger.warning(
-                            f"Insufficient {quote_asset} balance on {role_key}: "
-                            f"need {required_quote_with_buffer:.6f} (including buffer), have {available_quote:.6f}"
+                    if is_futures and isinstance(quote_balance, FuturesBalance):
+                        # For futures, check available margin and utilization
+                        available_margin = float(quote_balance.available)
+                        margin_utilization = quote_balance.margin_utilization
+                        
+                        # Add 5% buffer for fees and margin requirements
+                        required_margin_with_buffer = required_quote * 1.05
+                        
+                        # Check margin availability
+                        if available_margin < required_margin_with_buffer:
+                            self.logger.warning(
+                                f"Insufficient margin on {role_key}: "
+                                f"need {required_margin_with_buffer:.6f}, available {available_margin:.6f} "
+                                f"(utilization: {margin_utilization*100:.2f}%)"
+                            )
+                            return False
+                        
+                        # Warn if margin utilization will be high
+                        if margin_utilization > 0.7:  # >70% utilization
+                            self.logger.warning(
+                                f"High margin utilization on {role_key}: {margin_utilization*100:.2f}% "
+                                f"(Available: {available_margin:.6f}, Total: {quote_balance.total:.6f})"
+                            )
+                        
+                        self.logger.debug(
+                            f"✅ {role_key} {quote_asset} margin check passed: "
+                            f"{available_margin:.6f} >= {required_margin_with_buffer:.6f} "
+                            f"(utilization: {margin_utilization*100:.2f}%)"
                         )
-                        return False
-                    
-                    self.logger.debug(f"✅ {role_key} {quote_asset} balance check passed: {available_quote:.6f} >= {required_quote_with_buffer:.6f}")
+                    else:
+                        # Regular spot balance check
+                        available_quote = float(quote_balance.available) if quote_balance else 0.0
+                        
+                        # Add 1% buffer for fees and price movements
+                        required_quote_with_buffer = required_quote * 1.01
+                        
+                        if available_quote < required_quote_with_buffer:
+                            self.logger.warning(
+                                f"Insufficient {quote_asset} balance on {role_key}: "
+                                f"need {required_quote_with_buffer:.6f} (including buffer), have {available_quote:.6f}"
+                            )
+                            return False
+                        
+                        self.logger.debug(f"✅ {role_key} {quote_asset} balance check passed: {available_quote:.6f} >= {required_quote_with_buffer:.6f}")
             
             return True
             

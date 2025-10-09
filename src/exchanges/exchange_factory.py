@@ -132,7 +132,7 @@ def get_ws_implementation(exchange_config: ExchangeConfig, is_private: bool) -> 
     return impl_class(exchange_config)
 
 
-def get_composite_implementation(exchange_config: ExchangeConfig, is_private: bool, settle: str = "usdt") -> Union[
+def get_composite_implementation(exchange_config: ExchangeConfig, is_private: bool, settle: str = "usdt", balance_sync_interval: float = None) -> Union[
     CompositePublicSpotExchange, CompositePrivateSpotExchange,
     CompositePublicFuturesExchange, CompositePrivateFuturesExchange,
     GateioPrivateFuturesExchange
@@ -144,6 +144,7 @@ def get_composite_implementation(exchange_config: ExchangeConfig, is_private: bo
         exchange_config: Exchange configuration containing credentials and settings
         is_private: Whether to return private (authenticated) or public composite exchange
         settle: Settlement currency for futures ("usdt" or "btc")
+        balance_sync_interval: Optional interval in seconds for automatic balance syncing (private exchanges only)
         
     Returns:
         Configured composite exchange instance with injected REST and WebSocket clients
@@ -157,11 +158,11 @@ def get_composite_implementation(exchange_config: ExchangeConfig, is_private: bo
         ws_client = get_ws_implementation(exchange_config, is_private)
         rest_client = get_rest_implementation(exchange_config, is_private)
         
-        # For Gate.io futures, pass settlement currency
+        # For Gate.io futures, pass settlement currency and balance sync interval
         if exchange_config.exchange_enum == ExchangeEnum.GATEIO_FUTURES:
-            return futures_class(exchange_config, rest_client, ws_client, settle=settle)
+            return futures_class(exchange_config, rest_client, ws_client, settle=settle, balance_sync_interval=balance_sync_interval)
         else:
-            return futures_class(exchange_config, rest_client, ws_client)
+            return futures_class(exchange_config, rest_client, ws_client, balance_sync_interval=balance_sync_interval)
     
     # Fall back to generic composite implementations
     ws_client = get_ws_implementation(exchange_config, is_private)
@@ -173,7 +174,11 @@ def get_composite_implementation(exchange_config: ExchangeConfig, is_private: bo
         raise ValueError(f"No Composite implementation found for exchange {exchange_config.name} "
                          f"with is_private={is_private} and is_futures={is_futures}")
 
-    return composite_class(exchange_config, rest_client, ws_client)
+    # Pass balance_sync_interval to private composite exchanges
+    if is_private and balance_sync_interval is not None:
+        return composite_class(exchange_config, rest_client, ws_client, balance_sync_interval=balance_sync_interval)
+    else:
+        return composite_class(exchange_config, rest_client, ws_client)
 
 def create_rest_client(exchange: ExchangeEnum, config: ExchangeConfig, is_private: bool = False, **kwargs) -> Union[
     MexcPublicSpotRestInterface, MexcPrivateSpotRestInterface,

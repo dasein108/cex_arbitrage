@@ -34,7 +34,7 @@ import hashlib
 import hmac
 from typing import Dict, Optional, Any, List, Union
 
-from exchanges.structs.common import Order, AssetBalance, OrderId, Trade, OrderStatus, OrderType, Side, Position
+from exchanges.structs.common import Order, AssetBalance, FuturesBalance, OrderId, Trade, OrderStatus, OrderType, Side, Position
 from exchanges.structs.types import AssetName
 from exchanges.interfaces.ws import PrivateBaseWebsocket
 from infrastructure.networking.websocket.structs import SubscriptionAction, WebsocketChannelType, PrivateWebsocketChannelType
@@ -205,18 +205,38 @@ class GateioPrivateFuturesWebsocket(GateioBaseWebsocket, PrivateBaseWebsocket):
             self.logger.debug(f"Received update for unknown Gate.io private futures channel: {channel}")
 
     async def _parse_futures_balance_update(self, data: Union[List[Dict[str, Any]], Dict[str, Any]]) -> None:
-        """Parse Gate.io futures balance update."""
+        """Parse Gate.io futures balance update with full margin information."""
         try:
             balance_list = data if isinstance(data, list) else [data]
             
             for balance_data in balance_list:
-                # Convert Gate.io futures balance to unified format
-                balance = AssetBalance(
-                    asset=AssetName(balance_data.get('currency', '')),
-                    available=float(balance_data.get('available', '0')),
-                    locked=float(balance_data.get('locked', '0'))
+                # Parse comprehensive Gate.io futures balance data
+                asset = AssetName(balance_data.get('currency', balance_data.get('asset', 'USDT')))
+                
+                # Gate.io futures balance fields mapping
+                total = float(balance_data.get('total', balance_data.get('balance', '0')))
+                available = float(balance_data.get('available', '0'))
+                unrealized_pnl = float(balance_data.get('unrealized_pnl', balance_data.get('unrealised_pnl', '0')))
+                position_margin = float(balance_data.get('position_margin', '0'))
+                order_margin = float(balance_data.get('order_margin', '0'))
+                
+                # Optional cross margin fields for advanced margin modes
+                cross_wallet_balance = balance_data.get('cross_wallet_balance')
+                cross_unrealized_pnl = balance_data.get('cross_unrealized_pnl')
+                
+                # Create comprehensive futures balance
+                futures_balance = FuturesBalance(
+                    asset=asset,
+                    total=total,
+                    available=available,
+                    unrealized_pnl=unrealized_pnl,
+                    position_margin=position_margin,
+                    order_margin=order_margin,
+                    cross_wallet_balance=float(cross_wallet_balance) if cross_wallet_balance is not None else None,
+                    cross_unrealized_pnl=float(cross_unrealized_pnl) if cross_unrealized_pnl is not None else None
                 )
-                await self._exec_bound_handler(PrivateWebsocketChannelType.BALANCE, balance)
+                
+                await self._exec_bound_handler(PrivateWebsocketChannelType.BALANCE, futures_balance)
                 
         except Exception as e:
             self.logger.error(f"Error parsing Gate.io futures balance update: {e}")

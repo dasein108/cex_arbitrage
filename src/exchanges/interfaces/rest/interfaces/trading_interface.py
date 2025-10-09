@@ -24,7 +24,8 @@ class PrivateTradingInterface(ABC):
     async def get_balances(self) -> List[AssetBalance]:
         """Get account balance for all assets"""
         pass
-    
+
+    # TODO: move balance to separate interface
     @abstractmethod
     async def get_asset_balance(self, asset: AssetName) -> Optional[AssetBalance]:
         """Get balance for a specific asset"""
