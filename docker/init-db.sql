@@ -159,6 +159,47 @@ SELECT create_hypertable('funding_rate_snapshots', 'timestamp',
     chunk_time_interval => INTERVAL '1 hour',  -- Hourly chunks for funding data
     if_not_exists => TRUE);
 
+-- Balance snapshots table - NORMALIZED SCHEMA (follows existing pattern)
+CREATE TABLE IF NOT EXISTS balance_snapshots (
+    id BIGSERIAL,
+    timestamp TIMESTAMPTZ NOT NULL,
+    exchange_id INTEGER NOT NULL REFERENCES exchanges(id),  -- Foreign key to exchanges table
+    
+    -- Asset identification
+    asset_name VARCHAR(20) NOT NULL,  -- BTC, USDT, ETH, etc.
+    
+    -- Balance data (HFT optimized with REAL/float types per PROJECT_GUIDES.md)
+    available_balance REAL NOT NULL DEFAULT 0,
+    locked_balance REAL NOT NULL DEFAULT 0,
+    total_balance REAL GENERATED ALWAYS AS (available_balance + locked_balance) STORED,
+    
+    -- Exchange-specific fields (optional)
+    frozen_balance REAL DEFAULT 0,  -- Some exchanges track frozen balances
+    borrowing_balance REAL DEFAULT 0,  -- Margin/futures borrowing
+    interest_balance REAL DEFAULT 0,  -- Interest accumulation
+    
+    -- Metadata
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    
+    -- HFT Performance Constraints
+    CONSTRAINT chk_positive_balances CHECK (
+        available_balance >= 0 AND 
+        locked_balance >= 0 AND 
+        frozen_balance >= 0 AND 
+        borrowing_balance >= 0
+    ),
+    CONSTRAINT chk_valid_asset_name CHECK (asset_name ~ '^[A-Z0-9]+$'),
+    CONSTRAINT chk_valid_balance_timestamp CHECK (timestamp >= '2020-01-01'::timestamptz),
+    
+    -- Optimized primary key for time-series partitioning
+    PRIMARY KEY (timestamp, exchange_id, asset_name)
+);
+
+-- Convert to TimescaleDB hypertable (optimized for balance collection)
+SELECT create_hypertable('balance_snapshots', 'timestamp', 
+    chunk_time_interval => INTERVAL '6 hours',  -- Balance data changes less frequently
+    if_not_exists => TRUE);
+
 -- =============================================================================
 -- INSERT INITIAL EXCHANGE DATA
 -- =============================================================================
@@ -311,6 +352,35 @@ CREATE INDEX IF NOT EXISTS idx_funding_rates_rate_range
 CREATE INDEX IF NOT EXISTS idx_funding_rates_funding_time 
     ON funding_rate_snapshots(funding_time);
 
+-- HFT-optimized indexes for balance_snapshots (sub-10ms queries)
+CREATE INDEX IF NOT EXISTS idx_balance_snapshots_exchange_time 
+    ON balance_snapshots(exchange_id, timestamp DESC);
+    
+CREATE INDEX IF NOT EXISTS idx_balance_snapshots_asset_time 
+    ON balance_snapshots(asset_name, timestamp DESC);
+    
+CREATE INDEX IF NOT EXISTS idx_balance_snapshots_exchange_asset_time 
+    ON balance_snapshots(exchange_id, asset_name, timestamp DESC);
+
+-- Index for recent balance queries (most common pattern)
+CREATE INDEX IF NOT EXISTS idx_balance_snapshots_recent 
+    ON balance_snapshots(timestamp DESC) WHERE timestamp > NOW() - INTERVAL '24 hours';
+
+-- Index for asset-specific queries across exchanges
+CREATE INDEX IF NOT EXISTS idx_balance_snapshots_asset_recent 
+    ON balance_snapshots(asset_name, exchange_id, timestamp DESC) 
+    WHERE timestamp > NOW() - INTERVAL '7 days';
+
+-- Index for non-zero balances (analytics optimization)
+CREATE INDEX IF NOT EXISTS idx_balance_snapshots_active_balances 
+    ON balance_snapshots(exchange_id, asset_name, timestamp DESC) 
+    WHERE total_balance > 0;
+
+-- Index for exchange-specific recent balance queries
+CREATE INDEX IF NOT EXISTS idx_balance_snapshots_exchange_recent 
+    ON balance_snapshots(exchange_id, timestamp DESC) 
+    WHERE timestamp > NOW() - INTERVAL '24 hours';
+
 -- Indexes for arbitrage_opportunities table (normalized)
 CREATE INDEX IF NOT EXISTS idx_arbitrage_opps_symbol_time 
     ON arbitrage_opportunities(symbol_id, timestamp DESC);
@@ -394,6 +464,9 @@ SELECT add_retention_policy('trade_snapshots', INTERVAL '3 days', if_not_exists 
 -- Funding rates: Keep 7 days for analysis (reduced from 90 days)
 SELECT add_retention_policy('funding_rate_snapshots', INTERVAL '7 days', if_not_exists => TRUE);
 
+-- Balance snapshots: Keep 14 days for detailed analysis (HFT server optimized)
+SELECT add_retention_policy('balance_snapshots', INTERVAL '14 days', if_not_exists => TRUE);
+
 -- Metrics and analytics: Keep 7 days (reduced from 30 days)
 SELECT add_retention_policy('order_flow_metrics', INTERVAL '7 days', if_not_exists => TRUE);
 
@@ -439,6 +512,7 @@ ALTER TABLE book_ticker_snapshots OWNER TO arbitrage_user;
 ALTER TABLE orderbook_depth OWNER TO arbitrage_user;
 ALTER TABLE trade_snapshots OWNER TO arbitrage_user;
 ALTER TABLE funding_rate_snapshots OWNER TO arbitrage_user;
+ALTER TABLE balance_snapshots OWNER TO arbitrage_user;
 ALTER TABLE arbitrage_opportunities OWNER TO arbitrage_user;
 ALTER TABLE order_flow_metrics OWNER TO arbitrage_user;
 ALTER TABLE collector_status OWNER TO arbitrage_user;
@@ -456,6 +530,7 @@ COMMENT ON TABLE symbols IS 'Trading symbols normalized by exchange with foreign
 COMMENT ON TABLE book_ticker_snapshots IS 'L1 orderbook snapshots optimized for HFT sub-millisecond queries';
 COMMENT ON TABLE trade_snapshots IS 'Individual trade executions with normalized symbol references';
 COMMENT ON TABLE funding_rate_snapshots IS 'Funding rate snapshots for futures contracts with normalized symbol references';
+COMMENT ON TABLE balance_snapshots IS 'Account balance snapshots across all exchanges with normalized schema relationships';
 COMMENT ON TABLE arbitrage_opportunities IS 'Detected arbitrage opportunities with exchange relationships';
 COMMENT ON TABLE order_flow_metrics IS 'Order flow imbalance calculations for market analysis';
 COMMENT ON TABLE collector_status IS 'Real-time system monitoring and health checks';
