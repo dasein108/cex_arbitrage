@@ -191,14 +191,28 @@ WAITING_ORDERS → MONITORING → COMPLETING → FINALIZING
 **Complete analytics system for any trading pair**:
 
 **Analytics Components**:
+
 ```python
 # CLI Interface
-python -m hedged_arbitrage.analytics.cli spread --symbol NEIROETH --timeframe 1h
-python -m hedged_arbitrage.analytics.cli performance --symbol BTCUSDT --days 7
-python -m hedged_arbitrage.analytics.cli opportunities --min-spread 0.5
+python - m
+hedged_arbitrage.analytics.cli
+spread - -symbol
+NEIROETH - -timeframe
+1
+h
+python - m
+hedged_arbitrage.analytics.cli
+performance - -symbol
+BTCUSDT - -days
+7
+python - m
+hedged_arbitrage.analytics.cli
+opportunities - -min - spread
+0.5
 
 # Python Interface
-from hedged_arbitrage.analytics import AnalyticsAPI
+from applications.hedged_arbitrage import AnalyticsAPI
+
 api = AnalyticsAPI()
 opportunities = await api.get_opportunities(symbol="ETHUSDT", min_spread=0.3)
 ```

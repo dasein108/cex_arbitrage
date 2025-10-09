@@ -386,22 +386,22 @@ SELECT add_continuous_aggregate_policy('book_ticker_1min',
 -- =============================================================================
 
 -- Production-ready retention policies for 4GB server with HFT requirements
--- Raw time-series data: Keep 7 days for detailed analysis
-SELECT add_retention_policy('book_ticker_snapshots', INTERVAL '7 days', if_not_exists => TRUE);
-SELECT add_retention_policy('orderbook_depth', INTERVAL '7 days', if_not_exists => TRUE);
-SELECT add_retention_policy('trade_snapshots', INTERVAL '7 days', if_not_exists => TRUE);
+-- Raw time-series data: Keep 3 days to prevent disk overflow (reduced from 7 days)
+SELECT add_retention_policy('book_ticker_snapshots', INTERVAL '3 days', if_not_exists => TRUE);
+SELECT add_retention_policy('orderbook_depth', INTERVAL '3 days', if_not_exists => TRUE);
+SELECT add_retention_policy('trade_snapshots', INTERVAL '3 days', if_not_exists => TRUE);
 
--- Funding rates: Keep 90 days for analysis and backtesting
-SELECT add_retention_policy('funding_rate_snapshots', INTERVAL '90 days', if_not_exists => TRUE);
+-- Funding rates: Keep 7 days for analysis (reduced from 90 days)
+SELECT add_retention_policy('funding_rate_snapshots', INTERVAL '7 days', if_not_exists => TRUE);
 
--- Metrics and analytics: Keep 30 days
-SELECT add_retention_policy('order_flow_metrics', INTERVAL '30 days', if_not_exists => TRUE);
+-- Metrics and analytics: Keep 7 days (reduced from 30 days)
+SELECT add_retention_policy('order_flow_metrics', INTERVAL '7 days', if_not_exists => TRUE);
 
--- Arbitrage opportunities: Keep 90 days for backtesting
-SELECT add_retention_policy('arbitrage_opportunities', INTERVAL '90 days', if_not_exists => TRUE);
+-- Arbitrage opportunities: Keep 14 days for backtesting (reduced from 90 days)
+SELECT add_retention_policy('arbitrage_opportunities', INTERVAL '14 days', if_not_exists => TRUE);
 
--- System monitoring: Keep 30 days
-SELECT add_retention_policy('collector_status', INTERVAL '30 days', if_not_exists => TRUE);
+-- System monitoring: Keep 7 days (reduced from 30 days)
+SELECT add_retention_policy('collector_status', INTERVAL '7 days', if_not_exists => TRUE);
 
 -- Create database user with appropriate permissions
 DO $$

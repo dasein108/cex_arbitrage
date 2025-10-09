@@ -1,0 +1,62 @@
+{
+  "_comment": "Development/testing configuration for MEXC-Gate.io arbitrage strategy",
+  "_documentation": "Conservative settings for development and testing",
+  
+  "strategy_config": {
+    "symbol": "ETH/USDT",
+    "base_position_size": 10.0,
+    "entry_threshold_bps": 15,
+    "exit_threshold_bps": 5,
+    "futures_leverage": 1.0
+  },
+  
+  "risk_management": {
+    "max_position_multiplier": 1.5,
+    "delta_tolerance": 0.1,
+    "max_drawdown_pct": 1.0,
+    "position_timeout_minutes": 3,
+    "emergency_exit_threshold_pct": 2.0,
+    "max_consecutive_failures": 2
+  },
+  
+  "deployment_settings": {
+    "dry_run": true,
+    "enable_alerts": true,
+    "monitoring_interval": 10,
+    "log_level": "DEBUG"
+  },
+  
+  "exchange_settings": {
+    "mexc": {
+      "exchange_enum": "MEXC",
+      "role": "spot_trading",
+      "connection_timeout": 15,
+      "retry_attempts": 5
+    },
+    "gateio_futures": {
+      "exchange_enum": "GATEIO_FUTURES",
+      "role": "futures_hedge", 
+      "connection_timeout": 15,
+      "retry_attempts": 5
+    }
+  },
+  
+  "performance_targets": {
+    "order_execution_ms": 100,
+    "market_data_processing_us": 1000,
+    "websocket_message_routing_ms": 5,
+    "spread_analysis_ms": 200,
+    "position_updates_ms": 20
+  },
+  
+  "alerts": {
+    "enable_telegram": false,
+    "enable_email": false,
+    "enable_slack": false,
+    "telegram_bot_token": "",
+    "telegram_chat_id": "",
+    "email_smtp_server": "",
+    "email_recipients": [],
+    "slack_webhook_url": ""
+  }
+}

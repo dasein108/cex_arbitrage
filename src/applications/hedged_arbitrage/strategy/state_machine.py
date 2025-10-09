@@ -34,12 +34,14 @@ from decimal import Decimal
 import msgspec
 
 try:
-    from exchanges.structs.common import Symbol
+    from exchanges.structs.common import Symbol, Side
     from exchanges.structs.types import AssetName
+    from exchanges.structs.enums import ExchangeEnum
 except ImportError:
     sys.path.insert(0, str(project_root / "src"))
-    from exchanges.structs.common import Symbol
+    from exchanges.structs.common import Symbol, Side
     from exchanges.structs.types import AssetName
+    from exchanges.structs.enums import ExchangeEnum
 
 # Import analytics components
 try:
@@ -72,21 +74,32 @@ class StrategyState(Enum):
     SHUTDOWN = "shutdown"
 
 
-class PositionType(Enum):
-    """Position types for different exchanges."""
-    GATEIO_SPOT_LONG = "gateio_spot_long"
-    GATEIO_SPOT_SHORT = "gateio_spot_short"
-    GATEIO_FUTURES_LONG = "gateio_futures_long"
-    GATEIO_FUTURES_SHORT = "gateio_futures_short"
-    MEXC_SPOT_LONG = "mexc_spot_long"
-    MEXC_SPOT_SHORT = "mexc_spot_short"
+class PositionType(msgspec.Struct):
+    """Position information combining exchange, side, and market type."""
+    exchange: ExchangeEnum
+    side: Side
+    is_futures: bool = False
+    
+    @property
+    def position_key(self) -> str:
+        """Generate unique position identifier."""
+        exchange_name = self.exchange.value.lower()
+        # Remove redundant '_spot' or '_futures' suffixes from exchange name
+        if exchange_name.endswith('_spot'):
+            exchange_name = exchange_name.replace('_spot', '')
+        elif exchange_name.endswith('_futures'):
+            exchange_name = exchange_name.replace('_futures', '')
+        
+        market_type = "futures" if self.is_futures else "spot"
+        side_str = "long" if self.side == Side.BUY else "short"
+        return f"{exchange_name}_{market_type}_{side_str}"
 
 
 class PositionData(msgspec.Struct):
     """Position information for tracking."""
     position_type: PositionType
-    exchange: str
-    symbol: str
+    exchange: ExchangeEnum
+    symbol: Symbol
     quantity: Decimal
     entry_price: Decimal
     current_price: Optional[Decimal] = None
@@ -118,6 +131,11 @@ class StrategyConfiguration(msgspec.Struct):
     """Configuration parameters for the strategy."""
     symbol: Symbol
     
+    # Exchange configuration - use enum directly
+    spot_exchange: ExchangeEnum = ExchangeEnum.GATEIO
+    futures_exchange: ExchangeEnum = ExchangeEnum.GATEIO_FUTURES
+    arbitrage_exchange: ExchangeEnum = ExchangeEnum.MEXC
+    
     # Position sizing
     base_position_size: Decimal = Decimal("100.0")  # Base position size
     max_position_multiplier: Decimal = Decimal("3.0")  # Max 3x base size
@@ -134,12 +152,14 @@ class StrategyConfiguration(msgspec.Struct):
     delta_rebalance_threshold_pct: Decimal = Decimal("5.0")  # 5% deviation
     delta_rebalance_frequency_minutes: int = 15  # Check every 15 min
     
-    # Exchange configuration
-    exchanges: Dict[str, str] = msgspec.field(default_factory=lambda: {
-        'GATEIO_SPOT': 'GATEIO_SPOT',
-        'GATEIO_FUTURES': 'GATEIO_FUTURES', 
-        'MEXC_SPOT': 'MEXC_SPOT'
-    })
+    @property
+    def exchanges_dict(self) -> Dict[str, str]:
+        """Get exchanges as dict for backward compatibility."""
+        return {
+            'spot': self.spot_exchange.value,
+            'futures': self.futures_exchange.value,
+            'arbitrage': self.arbitrage_exchange.value
+        }
 
 
 class StrategyContext(msgspec.Struct):
@@ -179,7 +199,7 @@ class DeltaNeutralArbitrageStateMachine:
         )
         
         # Initialize analytics components
-        self.data_fetcher = MultiSymbolDataFetcher(config.symbol, config.exchanges)
+        self.data_fetcher = MultiSymbolDataFetcher(config.symbol, config.exchanges_dict)
         self.spread_analyzer = SpreadAnalyzer(
             self.data_fetcher,
             entry_threshold_pct=float(config.arbitrage_entry_threshold_pct)
@@ -201,7 +221,7 @@ class DeltaNeutralArbitrageStateMachine:
         }
         
         self.is_running = False
-        logger.info(f"Initialized delta neutral arbitrage strategy for {config.symbol.base}/{config.symbol.quote}")
+        logger.info(f"Initialized delta neutral arbitrage strategy for {config.symbol}")
     
     async def start(self) -> None:
         """Start the strategy execution."""
@@ -286,32 +306,44 @@ class DeltaNeutralArbitrageStateMachine:
                 raise Exception("No market data available")
             
             # Calculate optimal delta neutral position
-            gateio_spot_price = snapshot.data.get('GATEIO_SPOT', {}).get('last_price')
-            gateio_futures_price = snapshot.data.get('GATEIO_FUTURES', {}).get('last_price')
+            gateio_spot_price = snapshot.data.get(self.config.spot_exchange.value, {}).get('last_price')
+            gateio_futures_price = snapshot.data.get(self.config.futures_exchange.value, {}).get('last_price')
             
             if not gateio_spot_price or not gateio_futures_price:
                 raise Exception("Missing Gate.io price data for delta neutral setup")
             
             # For now, simulate position establishment
             # In real implementation, this would place actual orders
+            spot_position_type = PositionType(
+                exchange=self.config.spot_exchange,
+                side=Side.BUY,
+                is_futures=False
+            )
+            
+            futures_position_type = PositionType(
+                exchange=self.config.futures_exchange,
+                side=Side.SELL,
+                is_futures=True
+            )
+            
             spot_position = PositionData(
-                position_type=PositionType.GATEIO_SPOT_LONG,
-                exchange='GATEIO_SPOT',
-                symbol=f"{self.config.symbol.base}/{self.config.symbol.quote}",
+                position_type=spot_position_type,
+                exchange=self.config.spot_exchange,
+                symbol=self.config.symbol,
                 quantity=self.config.base_position_size,
                 entry_price=Decimal(str(gateio_spot_price))
             )
             
             futures_position = PositionData(
-                position_type=PositionType.GATEIO_FUTURES_SHORT,
-                exchange='GATEIO_FUTURES',
-                symbol=f"{self.config.symbol.base}/{self.config.symbol.quote}",
+                position_type=futures_position_type,
+                exchange=self.config.futures_exchange,
+                symbol=self.config.symbol,
                 quantity=self.config.base_position_size,
                 entry_price=Decimal(str(gateio_futures_price))
             )
             
-            self.context.positions['gateio_spot'] = spot_position
-            self.context.positions['gateio_futures'] = futures_position
+            self.context.positions[spot_position_type.position_key] = spot_position
+            self.context.positions[futures_position_type.position_key] = futures_position
             
             # Initialize delta status
             self.context.delta_status = DeltaNeutralStatus(
@@ -512,7 +544,7 @@ class DeltaNeutralArbitrageStateMachine:
         """Get current strategy status for monitoring."""
         return {
             'state': self.context.current_state.value,
-            'symbol': f"{self.config.symbol.base}/{self.config.symbol.quote}",
+            'symbol': self.config.symbol,
             'session_duration': str(datetime.utcnow() - self.context.session_start),
             'total_trades': self.context.total_trades,
             'total_pnl': float(self.context.total_pnl),
@@ -541,7 +573,7 @@ async def main():
     # Create and start strategy
     strategy = DeltaNeutralArbitrageStateMachine(config)
     
-    print(f"📊 Strategy initialized for {symbol.base}/{symbol.quote}")
+    print(f"📊 Strategy initialized for {symbol}")
     print(f"💰 Base position size: {config.base_position_size}")
     print(f"📈 Entry threshold: {config.arbitrage_entry_threshold_pct}%")
     print()

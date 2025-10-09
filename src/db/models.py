@@ -9,7 +9,145 @@ from datetime import datetime
 from typing import Optional
 import msgspec
 
-from exchanges.structs.common import Symbol
+from exchanges.structs.common import Symbol, AssetBalance
+from exchanges.structs.types import AssetName
+
+
+class BalanceSnapshot(msgspec.Struct):
+    """
+    Balance snapshot data structure.
+    
+    Represents account balances for a specific asset at a specific moment.
+    Optimized for high-frequency balance tracking and analysis.
+    Works with normalized database schema using exchange_id foreign keys.
+    Follows PROJECT_GUIDES.md float-only policy for maximum HFT performance.
+    """
+    # Database fields (normalized schema)
+    exchange_id: int
+    
+    # Asset identification
+    asset_name: str
+    
+    # Balance data (float-only per PROJECT_GUIDES.md for HFT performance)
+    available_balance: float
+    locked_balance: float
+    total_balance: Optional[float] = None  # Calculated field
+    
+    # Optional exchange-specific fields (all float for consistency)
+    frozen_balance: Optional[float] = None
+    borrowing_balance: Optional[float] = None
+    interest_balance: Optional[float] = None
+    
+    # Timing
+    timestamp: datetime
+    created_at: Optional[datetime] = None
+    id: Optional[int] = None
+    
+    # Transient fields for convenience (not stored in DB)
+    exchange_name: Optional[str] = None
+    
+    @classmethod
+    def from_asset_balance_and_exchange(
+        cls,
+        exchange_name: str,
+        asset_balance: AssetBalance,
+        timestamp: datetime,
+        exchange_id: Optional[int] = None
+    ) -> "BalanceSnapshot":
+        """
+        Create BalanceSnapshot from AssetBalance and exchange info.
+        
+        Args:
+            exchange_name: Exchange identifier (MEXC_SPOT, GATEIO_SPOT, etc.)
+            asset_balance: AssetBalance object from private exchange interface
+            timestamp: Snapshot timestamp
+            exchange_id: Database exchange_id (required for normalized schema)
+            
+        Returns:
+            BalanceSnapshot instance
+        """
+        if exchange_id is None:
+            raise ValueError("exchange_id is required for normalized database schema")
+            
+        # Calculate total balance using float arithmetic (HFT optimized)
+        total_balance = asset_balance.available + asset_balance.locked
+        if hasattr(asset_balance, 'frozen'):
+            frozen_amount = getattr(asset_balance, 'frozen', 0.0)
+            if frozen_amount is not None:
+                total_balance += frozen_amount
+            
+        return cls(
+            exchange_id=exchange_id,
+            asset_name=str(asset_balance.asset).upper(),
+            available_balance=float(asset_balance.available),  # Ensure float type
+            locked_balance=float(asset_balance.locked),        # Ensure float type
+            total_balance=float(total_balance),                # Ensure float type
+            frozen_balance=float(getattr(asset_balance, 'frozen', 0.0)) if hasattr(asset_balance, 'frozen') and getattr(asset_balance, 'frozen') is not None else None,
+            borrowing_balance=float(getattr(asset_balance, 'borrowing', 0.0)) if hasattr(asset_balance, 'borrowing') and getattr(asset_balance, 'borrowing') is not None else None,
+            interest_balance=float(getattr(asset_balance, 'interest', 0.0)) if hasattr(asset_balance, 'interest') and getattr(asset_balance, 'interest') is not None else None,
+            timestamp=timestamp,
+            # Store transient fields for convenience
+            exchange_name=exchange_name.upper()
+        )
+    
+    def to_asset_balance(self) -> AssetBalance:
+        """
+        Convert back to AssetBalance object.
+        
+        Returns:
+            AssetBalance object reconstructed from snapshot data
+        """
+        return AssetBalance(
+            asset=AssetName(self.asset_name),
+            available=self.available_balance,
+            locked=self.locked_balance
+        )
+    
+    def get_total_balance(self) -> float:
+        """
+        Calculate total balance including all components using hardware-optimized float arithmetic.
+        
+        Returns:
+            Total balance across all balance types (float for HFT performance)
+        """
+        total = self.available_balance + self.locked_balance
+        if self.frozen_balance is not None:
+            total += self.frozen_balance
+        if self.borrowing_balance is not None:
+            total += self.borrowing_balance
+        if self.interest_balance is not None:
+            total += self.interest_balance
+        return total
+    
+    def is_active_balance(self) -> bool:
+        """
+        Check if this is an active balance (total > 0).
+        
+        Returns:
+            True if total balance is greater than zero
+        """
+        return self.get_total_balance() > 0.0
+    
+    def get_balance_utilization(self) -> float:
+        """
+        Calculate balance utilization percentage (locked / total).
+        
+        Returns:
+            Utilization percentage (0.0 to 100.0)
+        """
+        total = self.get_total_balance()
+        if total <= 0.0:
+            return 0.0
+        return (self.locked_balance / total) * 100.0
+    
+    def get_balance_summary(self) -> str:
+        """
+        Get formatted balance summary for logging/display.
+        
+        Returns:
+            Formatted balance string
+        """
+        return f"{self.asset_name}: {self.get_total_balance():.8f} ({self.available_balance:.8f}/{self.locked_balance:.8f})"
 
 
 class BookTickerSnapshot(msgspec.Struct):

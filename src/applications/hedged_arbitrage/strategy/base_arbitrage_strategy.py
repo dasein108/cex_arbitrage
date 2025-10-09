@@ -462,11 +462,150 @@ class BaseArbitrageStrategy(BaseTradingTask[T, ArbitrageState], Generic[T], ABC)
     
     async def _pre_execution_checks(self, opportunity: ArbitrageOpportunity, position_size: float) -> bool:
         """Perform pre-execution validation and risk checks."""
-        # Check sufficient balance on all exchanges
-        # Check market conditions
-        # Validate position sizes
-        # This is a simplified check - subclasses should implement detailed validation
-        return True
+        try:
+            # Prepare orders for validation
+            orders = await self._prepare_orders_for_opportunity(opportunity, position_size)
+            if not orders:
+                self.logger.error("❌ Failed to prepare orders for validation")
+                return False
+            
+            # Validate sufficient balance for all orders
+            if not await self._validate_sufficient_balance(orders):
+                self.logger.error("❌ Insufficient balance for arbitrage execution")
+                return False
+            
+            # Validate position sizes are within limits
+            if not await self._validate_position_limits(position_size):
+                self.logger.error("❌ Position size exceeds limits")
+                return False
+            
+            # Validate market conditions are suitable
+            if not await self._validate_market_conditions(opportunity):
+                self.logger.error("❌ Market conditions unsuitable for execution")
+                return False
+            
+            self.logger.info(f"✅ Pre-execution checks passed for position size {position_size}")
+            return True
+            
+        except Exception as e:
+            self.logger.error(f"❌ Pre-execution check failed: {e}")
+            return False
+    
+    async def _prepare_orders_for_opportunity(self, opportunity: ArbitrageOpportunity, position_size: float) -> Optional[Dict[str, dict]]:
+        """Prepare order structure for validation - to be implemented by subclasses."""
+        # This method should be implemented by subclasses to prepare the actual order structure
+        # based on their specific exchange roles and trading logic
+        self.logger.warning("_prepare_orders_for_opportunity not implemented in subclass")
+        return None
+    
+    async def _validate_sufficient_balance(self, orders: Dict[str, dict]) -> bool:
+        """Validate sufficient balance for all planned orders."""
+        try:
+            for role_key, order_params in orders.items():
+                exchange = self._exchanges.get(role_key)
+                if not exchange:
+                    self.logger.warning(f"Exchange not found for role: {role_key}")
+                    continue
+                
+                # Get current balances
+                try:
+                    balances = await exchange.private.get_balances()
+                except Exception as e:
+                    self.logger.error(f"Failed to get balances for {role_key}: {e}")
+                    return False
+                
+                # For sell orders, check base asset availability
+                if order_params['side'] == Side.SELL:
+                    base_asset = self.context.symbol.base
+                    base_balance = next((b for b in balances if b.asset == base_asset), None)
+                    
+                    required_quantity = float(order_params['quantity'])
+                    available_quantity = float(base_balance.available) if base_balance else 0.0
+                    
+                    if available_quantity < required_quantity:
+                        self.logger.warning(
+                            f"Insufficient {base_asset} balance on {role_key}: "
+                            f"need {required_quantity}, have {available_quantity}"
+                        )
+                        return False
+                    
+                    self.logger.debug(f"✅ {role_key} {base_asset} balance check passed: {available_quantity} >= {required_quantity}")
+                
+                # For buy orders, check quote asset availability
+                elif order_params['side'] == Side.BUY:
+                    quote_asset = self.context.symbol.quote
+                    quote_balance = next((b for b in balances if b.asset == quote_asset), None)
+                    
+                    required_quote = float(order_params['quantity']) * float(order_params['price'])
+                    available_quote = float(quote_balance.available) if quote_balance else 0.0
+                    
+                    # Add 1% buffer for fees and price movements
+                    required_quote_with_buffer = required_quote * 1.01
+                    
+                    if available_quote < required_quote_with_buffer:
+                        self.logger.warning(
+                            f"Insufficient {quote_asset} balance on {role_key}: "
+                            f"need {required_quote_with_buffer:.6f} (including buffer), have {available_quote:.6f}"
+                        )
+                        return False
+                    
+                    self.logger.debug(f"✅ {role_key} {quote_asset} balance check passed: {available_quote:.6f} >= {required_quote_with_buffer:.6f}")
+            
+            return True
+            
+        except Exception as e:
+            self.logger.error(f"Balance validation failed: {e}")
+            return False
+    
+    async def _validate_position_limits(self, position_size: float) -> bool:
+        """Validate position size is within allowed limits."""
+        try:
+            # Check against base position size limit
+            max_allowed = float(self.context.base_position_size * self.context.max_position_multiplier)
+            if position_size > max_allowed:
+                self.logger.warning(f"Position size {position_size} exceeds maximum allowed {max_allowed}")
+                return False
+            
+            # Check minimum position size (prevent dust trades)
+            min_allowed = float(self.context.base_position_size * 0.01)  # 1% of base position
+            if position_size < min_allowed:
+                self.logger.warning(f"Position size {position_size} below minimum allowed {min_allowed}")
+                return False
+            
+            self.logger.debug(f"✅ Position size {position_size} within limits [{min_allowed}, {max_allowed}]")
+            return True
+            
+        except Exception as e:
+            self.logger.error(f"Position limit validation failed: {e}")
+            return False
+    
+    async def _validate_market_conditions(self, opportunity: ArbitrageOpportunity) -> bool:
+        """Validate market conditions are suitable for execution."""
+        try:
+            # Check opportunity is still fresh (not stale)
+            max_age_seconds = 5.0  # Opportunity must be less than 5 seconds old
+            opportunity_age = time.time() - float(opportunity.timestamp)
+            if opportunity_age > max_age_seconds:
+                self.logger.warning(f"Opportunity is stale: {opportunity_age:.2f}s old (max: {max_age_seconds}s)")
+                return False
+            
+            # Check confidence score is acceptable
+            min_confidence = 0.6  # Minimum confidence threshold
+            if float(opportunity.confidence_score) < min_confidence:
+                self.logger.warning(f"Opportunity confidence {opportunity.confidence_score} below minimum {min_confidence}")
+                return False
+            
+            # Check estimated profit is positive
+            if float(opportunity.estimated_profit) <= 0:
+                self.logger.warning(f"Opportunity has non-positive profit: {opportunity.estimated_profit}")
+                return False
+            
+            self.logger.debug(f"✅ Market conditions validated - age: {opportunity_age:.2f}s, confidence: {opportunity.confidence_score}")
+            return True
+            
+        except Exception as e:
+            self.logger.error(f"Market condition validation failed: {e}")
+            return False
     
     async def _cancel_all_orders(self, exchange: DualExchange):
         """Cancel all pending orders for an exchange."""

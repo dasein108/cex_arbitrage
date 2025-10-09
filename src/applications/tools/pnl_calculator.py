@@ -115,8 +115,8 @@ class PnLCalculator:
         ),
         'MEXC_SPOT': ExchangeFees(
             exchange='MEXC_SPOT',
-            maker_fee=0.0,  # 0.2%
-            taker_fee=0.0005   # 0.2%
+            maker_fee=0.0,  # 0.0%
+            taker_fee=0.0005   # 0.05%
         )
     }
     

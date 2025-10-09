@@ -1,0 +1,62 @@
+{
+  "_comment": "Production configuration for MEXC-Gate.io arbitrage strategy",
+  "_documentation": "See mexc_gateio_arbitrage.md for detailed parameter explanations",
+  
+  "strategy_config": {
+    "symbol": "BTC/USDT",
+    "base_position_size": 50.0,
+    "entry_threshold_bps": 10,
+    "exit_threshold_bps": 3,
+    "futures_leverage": 1.0
+  },
+  
+  "risk_management": {
+    "max_position_multiplier": 2.0,
+    "delta_tolerance": 0.05,
+    "max_drawdown_pct": 2.0,
+    "position_timeout_minutes": 5,
+    "emergency_exit_threshold_pct": 5.0,
+    "max_consecutive_failures": 3
+  },
+  
+  "deployment_settings": {
+    "dry_run": false,
+    "enable_alerts": true,
+    "monitoring_interval": 30,
+    "log_level": "INFO"
+  },
+  
+  "exchange_settings": {
+    "mexc": {
+      "exchange_enum": "MEXC",
+      "role": "spot_trading",
+      "connection_timeout": 10,
+      "retry_attempts": 3
+    },
+    "gateio_futures": {
+      "exchange_enum": "GATEIO_FUTURES", 
+      "role": "futures_hedge",
+      "connection_timeout": 10,
+      "retry_attempts": 3
+    }
+  },
+  
+  "performance_targets": {
+    "order_execution_ms": 50,
+    "market_data_processing_us": 500,
+    "websocket_message_routing_ms": 1,
+    "spread_analysis_ms": 100,
+    "position_updates_ms": 10
+  },
+  
+  "alerts": {
+    "enable_telegram": false,
+    "enable_email": false,
+    "enable_slack": false,
+    "telegram_bot_token": "",
+    "telegram_chat_id": "",
+    "email_smtp_server": "",
+    "email_recipients": [],
+    "slack_webhook_url": ""
+  }
+}

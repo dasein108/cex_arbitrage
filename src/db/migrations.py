@@ -99,6 +99,7 @@ async def verify_schema_integrity() -> Dict[str, Any]:
         'constraints_valid': True,
         'hypertables_configured': True,
         'retention_policies_active': True,
+        'retention_policies': {},
         'errors': []
     }
     
@@ -112,17 +113,23 @@ async def verify_schema_integrity() -> Dict[str, Any]:
         foreign_keys = await db.fetch(fk_query)
         logger.debug(f"Found {len(foreign_keys)} foreign key constraints")
         
-        # Check TimescaleDB retention policies
+        # Check TimescaleDB retention policies with details
         retention_query = """
-            SELECT COUNT(*) 
-            FROM timescaledb_information.jobs 
-            WHERE job_type = 'drop_chunks'
+            SELECT 
+                j.hypertable_name,
+                j.config->>'drop_after' as retention_interval
+            FROM timescaledb_information.jobs j
+            WHERE j.job_type = 'drop_chunks'
         """
-        retention_count = await db.fetchval(retention_query)
+        retention_policies = await db.fetch(retention_query)
         
-        if retention_count == 0:
+        if len(retention_policies) == 0:
             integrity['retention_policies_active'] = False
             integrity['errors'].append("No retention policies found")
+        else:
+            for policy in retention_policies:
+                integrity['retention_policies'][policy['hypertable_name']] = policy['retention_interval']
+            logger.info(f"Found {len(retention_policies)} retention policies: {integrity['retention_policies']}")
         
         logger.info("Schema integrity check completed successfully")
         
@@ -150,6 +157,73 @@ async def get_init_script_path() -> str:
         raise FileNotFoundError(f"Database initialization script not found at {init_script}")
     
     return str(init_script)
+
+
+async def update_retention_policies(retention_days: int = 3) -> Dict[str, Any]:
+    """
+    Update retention policies for all hypertables.
+    
+    Args:
+        retention_days: Number of days to retain data (default: 3)
+        
+    Returns:
+        Dictionary with update results
+    """
+    db = get_db_manager()
+    
+    result = {
+        'success': False,
+        'policies_updated': [],
+        'errors': []
+    }
+    
+    # Tables and their retention periods
+    retention_config = {
+        'book_ticker_snapshots': retention_days,
+        'orderbook_depth': retention_days,
+        'trade_snapshots': retention_days,
+        'funding_rate_snapshots': min(7, retention_days * 2),  # Keep funding rates longer
+        'order_flow_metrics': min(7, retention_days * 2),
+        'arbitrage_opportunities': min(14, retention_days * 4),
+        'collector_status': min(7, retention_days * 2)
+    }
+    
+    try:
+        for table_name, days in retention_config.items():
+            try:
+                # Remove existing policy
+                remove_query = f"SELECT remove_retention_policy('{table_name}', if_exists => TRUE);"
+                await db.execute(remove_query)
+                
+                # Add new policy
+                add_query = f"SELECT add_retention_policy('{table_name}', INTERVAL '{days} days', if_not_exists => TRUE);"
+                await db.execute(add_query)
+                
+                result['policies_updated'].append(f"{table_name}: {days} days")
+                logger.info(f"Updated retention policy for {table_name}: {days} days")
+                
+            except Exception as e:
+                error_msg = f"Failed to update {table_name}: {str(e)}"
+                result['errors'].append(error_msg)
+                logger.error(error_msg)
+        
+        # Drop old chunks immediately
+        for table_name, days in retention_config.items():
+            try:
+                drop_query = f"SELECT drop_chunks('{table_name}', older_than => INTERVAL '{days} days');"
+                dropped = await db.fetch(drop_query)
+                if dropped:
+                    logger.info(f"Dropped {len(dropped)} old chunks from {table_name}")
+            except Exception as e:
+                logger.warning(f"Could not drop old chunks from {table_name}: {e}")
+        
+        result['success'] = len(result['errors']) == 0
+        
+    except Exception as e:
+        result['errors'].append(f"General error: {str(e)}")
+        logger.error(f"Failed to update retention policies: {e}")
+    
+    return result
 
 
 async def run_schema_initialization() -> Dict[str, Any]:

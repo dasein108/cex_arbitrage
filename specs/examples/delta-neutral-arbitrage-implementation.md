@@ -89,6 +89,7 @@ logging:
 ### **2. Basic Implementation Example**
 
 #### **Simple Strategy Execution**
+
 ```python
 #!/usr/bin/env python3
 """
@@ -105,60 +106,62 @@ sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
 from exchanges.structs.common import Symbol
 from exchanges.structs.types import AssetName
-from hedged_arbitrage.strategy.enhanced_delta_neutral_task import EnhancedDeltaNeutralTask
+from applications.hedged_arbitrage import EnhancedDeltaNeutralTask
 from tasks.task_manager import TaskManager
 from common.logger_factory import LoggerFactory
 
+
 async def run_basic_strategy():
     """Run basic delta neutral arbitrage strategy."""
-    
+
     # Configure logging
     logger = LoggerFactory.get_logger('delta_neutral_demo')
-    
+
     # Create symbol
     symbol = Symbol(base=AssetName("NEIROETH"), quote=AssetName("USDT"))
-    
+
     # Create strategy task
     strategy_task = EnhancedDeltaNeutralTask(
         symbol=symbol,
-        base_position_size=50.0,        # $50 base position
+        base_position_size=50.0,  # $50 base position
         arbitrage_entry_threshold=0.1,  # 0.1% spread threshold
-        arbitrage_exit_threshold=0.01   # 0.01% exit threshold
+        arbitrage_exit_threshold=0.01  # 0.01% exit threshold
     )
-    
+
     # Create TaskManager
     task_manager = TaskManager()
-    
+
     try:
         # Add task to manager
         await task_manager.add_task(strategy_task)
         logger.info(f"✅ Strategy task created: {strategy_task.task_id}")
-        
+
         # Start TaskManager
         manager_task = asyncio.create_task(task_manager.start())
-        
+
         # Run for specified duration
         runtime_minutes = 5
         logger.info(f"🚀 Running strategy for {runtime_minutes} minutes...")
         await asyncio.sleep(runtime_minutes * 60)
-        
+
         # Stop strategy
         await strategy_task.stop()
         await task_manager.stop()
         await manager_task
-        
+
         # Get performance summary
         performance = strategy_task.get_performance_summary()
         logger.info("📊 Strategy Performance:")
         logger.info(f"   Trades: {performance['strategy_performance']['total_trades']}")
         logger.info(f"   P&L: ${performance['strategy_performance']['total_pnl']:.4f}")
         logger.info(f"   Duration: {performance['task_info']['execution_duration_seconds']:.1f}s")
-        
+
     except Exception as e:
         logger.error(f"❌ Strategy execution failed: {e}")
         raise
     finally:
         await task_manager.stop()
+
 
 if __name__ == "__main__":
     asyncio.run(run_basic_strategy())
@@ -167,6 +170,7 @@ if __name__ == "__main__":
 ### **3. Production Implementation**
 
 #### **Production-Ready Strategy Manager**
+
 ```python
 #!/usr/bin/env python3
 """
@@ -192,16 +196,17 @@ sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
 from exchanges.structs.common import Symbol
 from exchanges.structs.types import AssetName
-from hedged_arbitrage.strategy.enhanced_delta_neutral_task import EnhancedDeltaNeutralTask
+from applications.hedged_arbitrage import EnhancedDeltaNeutralTask
 from tasks.task_manager import TaskManager
 from common.logger_factory import LoggerFactory
 from config.configuration_manager import ConfigurationManager
+
 
 class ProductionStrategyManager:
     """
     Production-ready strategy manager with comprehensive error handling.
     """
-    
+
     def __init__(self, config_path: str = "config.yaml"):
         self.config_manager = ConfigurationManager(config_path)
         self.logger = LoggerFactory.get_logger('production_strategy_manager')
@@ -209,59 +214,59 @@ class ProductionStrategyManager:
         self.active_tasks: Dict[str, EnhancedDeltaNeutralTask] = {}
         self.shutdown_event = asyncio.Event()
         self.running = False
-        
+
     async def initialize(self) -> bool:
         """Initialize the strategy manager."""
         try:
             # Load configuration
             await self.config_manager.load_configuration()
             self.logger.info("✅ Configuration loaded successfully")
-            
+
             # Validate exchange connectivity
             if not await self._validate_exchange_connectivity():
                 return False
-                
+
             # Initialize TaskManager
             await self.task_manager.initialize()
             self.logger.info("✅ TaskManager initialized")
-            
+
             return True
-            
+
         except Exception as e:
             self.logger.error(f"❌ Initialization failed: {e}")
             return False
-    
+
     async def _validate_exchange_connectivity(self) -> bool:
         """Validate connectivity to all required exchanges."""
         try:
             # This would typically test API connectivity
             # For now, we'll simulate validation
             exchanges = ['gateio', 'mexc']
-            
+
             for exchange in exchanges:
                 config = await self.config_manager.get_exchange_config(exchange)
                 if not config or not config.api_key:
                     self.logger.error(f"❌ Missing configuration for {exchange}")
                     return False
-                    
+
             self.logger.info("✅ Exchange connectivity validated")
             return True
-            
+
         except Exception as e:
             self.logger.error(f"❌ Exchange connectivity validation failed: {e}")
             return False
-    
-    async def create_strategy(self, 
-                            symbol_str: str,
-                            base_position_size: float = 100.0,
-                            entry_threshold: float = 0.1,
-                            exit_threshold: float = 0.01) -> Optional[str]:
+
+    async def create_strategy(self,
+                              symbol_str: str,
+                              base_position_size: float = 100.0,
+                              entry_threshold: float = 0.1,
+                              exit_threshold: float = 0.01) -> Optional[str]:
         """Create and start a new strategy instance."""
         try:
             # Parse symbol
             base, quote = symbol_str.split('/')
             symbol = Symbol(base=AssetName(base), quote=AssetName(quote))
-            
+
             # Create strategy task
             strategy_task = EnhancedDeltaNeutralTask(
                 symbol=symbol,
@@ -269,93 +274,93 @@ class ProductionStrategyManager:
                 arbitrage_entry_threshold=entry_threshold,
                 arbitrage_exit_threshold=exit_threshold
             )
-            
+
             # Add to TaskManager
             await self.task_manager.add_task(strategy_task)
-            
+
             # Track active task
             self.active_tasks[strategy_task.task_id] = strategy_task
-            
+
             self.logger.info(f"✅ Strategy created for {symbol_str}: {strategy_task.task_id}")
             return strategy_task.task_id
-            
+
         except Exception as e:
             self.logger.error(f"❌ Strategy creation failed for {symbol_str}: {e}")
             return None
-    
+
     async def stop_strategy(self, task_id: str) -> bool:
         """Stop a specific strategy."""
         try:
             if task_id not in self.active_tasks:
                 self.logger.warning(f"⚠️  Strategy {task_id} not found")
                 return False
-            
+
             strategy_task = self.active_tasks[task_id]
             await strategy_task.stop()
-            
+
             # Remove from active tasks
             del self.active_tasks[task_id]
-            
+
             self.logger.info(f"✅ Strategy {task_id} stopped successfully")
             return True
-            
+
         except Exception as e:
             self.logger.error(f"❌ Failed to stop strategy {task_id}: {e}")
             return False
-    
+
     async def get_strategy_status(self, task_id: str) -> Optional[Dict[str, Any]]:
         """Get status of a specific strategy."""
         try:
             if task_id not in self.active_tasks:
                 return None
-            
+
             strategy_task = self.active_tasks[task_id]
             return strategy_task.get_performance_summary()
-            
+
         except Exception as e:
             self.logger.error(f"❌ Failed to get status for {task_id}: {e}")
             return None
-    
+
     async def run(self) -> None:
         """Run the strategy manager."""
         try:
             self.running = True
             self.logger.info("🚀 Production strategy manager starting...")
-            
+
             # Start TaskManager
             manager_task = asyncio.create_task(self.task_manager.start())
-            
+
             # Start monitoring
             monitor_task = asyncio.create_task(self._monitor_strategies())
-            
+
             # Wait for shutdown signal
             await self.shutdown_event.wait()
-            
+
             self.logger.info("🛑 Shutdown signal received, stopping strategies...")
-            
+
             # Stop all active strategies
             for task_id in list(self.active_tasks.keys()):
                 await self.stop_strategy(task_id)
-            
+
             # Stop TaskManager
             await self.task_manager.stop()
-            
+
             # Cancel monitoring
             monitor_task.cancel()
             try:
                 await monitor_task
             except asyncio.CancelledError:
                 pass
-            
+
             await manager_task
-            
+
         except Exception as e:
             self.logger.error(f"❌ Strategy manager execution failed: {e}")
             raise
         finally:
             self.running = False
             self.logger.info("✅ Strategy manager stopped")
-    
+
     async def _monitor_strategies(self) -> None:
         """Monitor active strategies and system health."""
         while self.running:
@@ -363,7 +368,7 @@ class ProductionStrategyManager:
                 # Monitor each active strategy
                 for task_id, strategy_task in self.active_tasks.items():
                     status = strategy_task.get_performance_summary()
-                    
+
                     # Log periodic status
                     self.logger.info(
                         f"📊 Strategy {task_id[:8]}... - "
@@ -371,46 +376,47 @@ class ProductionStrategyManager:
                         f"Trades: {status['strategy_performance']['total_trades']} | "
                         f"P&L: ${status['strategy_performance']['total_pnl']:.4f}"
                     )
-                    
+
                     # Check for performance issues
                     if status['strategy_performance']['error_count'] >= 5:
                         self.logger.warning(f"⚠️  Strategy {task_id} has high error count")
-                
+
                 # Check system health
                 await self._check_system_health()
-                
+
                 # Wait before next monitoring cycle
                 await asyncio.sleep(30)  # Monitor every 30 seconds
-                
+
             except Exception as e:
                 self.logger.error(f"❌ Monitoring error: {e}")
                 await asyncio.sleep(60)  # Longer wait on error
-    
+
     async def _check_system_health(self) -> None:
         """Check overall system health."""
         try:
             # Check TaskManager health
             if not self.task_manager.is_healthy():
                 self.logger.warning("⚠️  TaskManager health check failed")
-            
+
             # Check memory usage (simplified)
             import psutil
             memory_usage = psutil.virtual_memory().percent
             if memory_usage > 90:
                 self.logger.warning(f"⚠️  High memory usage: {memory_usage:.1f}%")
-            
+
             # Check database connectivity (if configured)
             # This would typically test database connection
-            
+
         except Exception as e:
             self.logger.error(f"❌ System health check failed: {e}")
-    
+
     def setup_signal_handlers(self) -> None:
         """Setup signal handlers for graceful shutdown."""
+
         def signal_handler(signum, frame):
             self.logger.info(f"Received signal {signum}, initiating shutdown...")
             self.shutdown_event.set()
-        
+
         signal.signal(signal.SIGINT, signal_handler)
         signal.signal(signal.SIGTERM, signal_handler)
 
@@ -418,15 +424,15 @@ class ProductionStrategyManager:
 async def main():
     """Main execution with production error handling."""
     manager = ProductionStrategyManager()
-    
+
     try:
         # Setup signal handlers
         manager.setup_signal_handlers()
-        
+
         # Initialize
         if not await manager.initialize():
             sys.exit(1)
-        
+
         # Create default strategy
         task_id = await manager.create_strategy(
             symbol_str="NEIROETH/USDT",
@@ -434,14 +440,14 @@ async def main():
             entry_threshold=0.1,
             exit_threshold=0.01
         )
-        
+
         if not task_id:
             manager.logger.error("❌ Failed to create default strategy")
             sys.exit(1)
-        
+
         # Run manager
         await manager.run()
-        
+
     except Exception as e:
         manager.logger.error(f"❌ Production manager failed: {e}")
         sys.exit(1)
@@ -937,6 +943,7 @@ groups:
 ## Testing and Validation
 
 ### **Unit Testing Setup**
+
 ```python
 # tests/test_delta_neutral_strategy.py
 import pytest
@@ -944,13 +951,14 @@ import asyncio
 from decimal import Decimal
 from datetime import datetime
 
-from hedged_arbitrage.strategy.state_machine import (
+from applications.hedged_arbitrage.strategy.state_machine import (
     DeltaNeutralArbitrageStateMachine,
     StrategyConfiguration,
     StrategyState
 )
 from exchanges.structs.common import Symbol
 from exchanges.structs.types import AssetName
+
 
 @pytest.fixture
 def strategy_config():
@@ -963,62 +971,65 @@ def strategy_config():
         arbitrage_exit_threshold_pct=Decimal("0.01")
     )
 
+
 @pytest.fixture
 def state_machine(strategy_config):
     """Create test state machine."""
     return DeltaNeutralArbitrageStateMachine(strategy_config)
 
+
 class TestDeltaNeutralStateMachine:
     """Test suite for delta neutral arbitrage state machine."""
-    
+
     def test_initialization(self, state_machine):
         """Test state machine initialization."""
         assert state_machine.context.current_state == StrategyState.INITIALIZING
         assert state_machine.config.symbol.base == "NEIROETH"
         assert state_machine.config.symbol.quote == "USDT"
-        
+
     @pytest.mark.asyncio
     async def test_state_transitions(self, state_machine):
         """Test valid state transitions."""
         # Test transition to establishing delta neutral
         await state_machine._transition_to(StrategyState.ESTABLISHING_DELTA_NEUTRAL)
         assert state_machine.context.current_state == StrategyState.ESTABLISHING_DELTA_NEUTRAL
-        
+
         # Test transition to monitoring spreads
         await state_machine._transition_to(StrategyState.MONITORING_SPREADS)
         assert state_machine.context.current_state == StrategyState.MONITORING_SPREADS
-    
+
     @pytest.mark.asyncio
     async def test_error_handling(self, state_machine):
         """Test error handling and recovery."""
         # Simulate error
         await state_machine._handle_error("Test error")
-        
+
         assert state_machine.context.error_count == 1
         assert state_machine.context.last_error == "Test error"
         assert state_machine.context.current_state == StrategyState.ERROR_RECOVERY
-    
+
     def test_performance_monitoring(self, state_machine):
         """Test performance monitoring."""
         status = state_machine.get_current_status()
-        
+
         assert 'state' in status
         assert 'total_trades' in status
         assert 'total_pnl' in status
         assert 'delta_neutral' in status
 
+
 class TestStrategyConfiguration:
     """Test suite for strategy configuration."""
-    
+
     def test_default_values(self):
         """Test configuration default values."""
         symbol = Symbol(base=AssetName("BTC"), quote=AssetName("USDT"))
         config = StrategyConfiguration(symbol=symbol)
-        
+
         assert config.base_position_size == Decimal("100.0")
         assert config.arbitrage_entry_threshold_pct == Decimal("0.1")
         assert config.max_position_multiplier == Decimal("3.0")
-    
+
     def test_custom_values(self):
         """Test configuration with custom values."""
         symbol = Symbol(base=AssetName("ETH"), quote=AssetName("USDT"))
@@ -1027,25 +1038,27 @@ class TestStrategyConfiguration:
             base_position_size=Decimal("50.0"),
             arbitrage_entry_threshold_pct=Decimal("0.05")
         )
-        
+
         assert config.base_position_size == Decimal("50.0")
         assert config.arbitrage_entry_threshold_pct == Decimal("0.05")
 ```
 
 ### **Integration Testing**
+
 ```python
 # tests/test_integration.py
 import pytest
 import asyncio
 from unittest.mock import Mock, AsyncMock
 
-from hedged_arbitrage.strategy.enhanced_delta_neutral_task import EnhancedDeltaNeutralTask
+from applications.hedged_arbitrage import EnhancedDeltaNeutralTask
 from tasks.task_manager import TaskManager
+
 
 @pytest.mark.asyncio
 class TestTaskManagerIntegration:
     """Integration tests for TaskManager."""
-    
+
     async def test_task_creation_and_execution(self):
         """Test task creation and execution."""
         # Create mock TaskManager
@@ -1053,18 +1066,18 @@ class TestTaskManagerIntegration:
         task_manager.add_task = AsyncMock()
         task_manager.start = AsyncMock()
         task_manager.stop = AsyncMock()
-        
+
         # Create strategy task
         symbol = Symbol(base=AssetName("TEST"), quote=AssetName("USDT"))
         task = EnhancedDeltaNeutralTask(
             symbol=symbol,
             base_position_size=10.0
         )
-        
+
         # Test task creation
         await task_manager.add_task(task)
         task_manager.add_task.assert_called_once_with(task)
-        
+
         # Test performance summary
         performance = task.get_performance_summary()
         assert 'task_info' in performance
@@ -1072,6 +1085,7 @@ class TestTaskManagerIntegration:
 ```
 
 ### **Performance Testing**
+
 ```python
 # tests/test_performance.py
 import pytest
@@ -1079,49 +1093,50 @@ import time
 import asyncio
 from statistics import mean
 
-from hedged_arbitrage.strategy.state_machine import DeltaNeutralArbitrageStateMachine
+from applications.hedged_arbitrage.strategy.state_machine import DeltaNeutralArbitrageStateMachine
+
 
 @pytest.mark.asyncio
 class TestPerformance:
     """Performance test suite."""
-    
+
     async def test_state_transition_performance(self, state_machine):
         """Test state transition performance."""
         transitions = []
-        
+
         for _ in range(1000):
             start_time = time.perf_counter()
             await state_machine._transition_to(StrategyState.MONITORING_SPREADS)
             end_time = time.perf_counter()
             transitions.append((end_time - start_time) * 1000)  # Convert to ms
-        
+
         avg_transition_time = mean(transitions)
         max_transition_time = max(transitions)
-        
+
         # Performance assertions (sub-5ms target)
         assert avg_transition_time < 5.0, f"Average transition time {avg_transition_time:.2f}ms exceeds 5ms"
         assert max_transition_time < 10.0, f"Max transition time {max_transition_time:.2f}ms exceeds 10ms"
-        
+
         print(f"State transition performance:")
         print(f"  Average: {avg_transition_time:.2f}ms")
         print(f"  Maximum: {max_transition_time:.2f}ms")
-    
+
     async def test_status_monitoring_performance(self, state_machine):
         """Test status monitoring performance."""
         status_calls = []
-        
+
         for _ in range(10000):
             start_time = time.perf_counter()
             status = state_machine.get_current_status()
             end_time = time.perf_counter()
             status_calls.append((end_time - start_time) * 1000000)  # Convert to μs
-        
+
         avg_status_time = mean(status_calls)
         max_status_time = max(status_calls)
-        
+
         # Performance assertions (sub-100μs target)
         assert avg_status_time < 100.0, f"Average status time {avg_status_time:.2f}μs exceeds 100μs"
-        
+
         print(f"Status monitoring performance:")
         print(f"  Average: {avg_status_time:.2f}μs")
         print(f"  Maximum: {max_status_time:.2f}μs")

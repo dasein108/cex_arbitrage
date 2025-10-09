@@ -72,9 +72,10 @@ python hedged_arbitrage/demo/integrated_3exchange_demo.py --symbol BTC --duratio
 ```
 
 ### Python API (Agent Integration)
+
 ```python
-from hedged_arbitrage.analytics import MultiSymbolDataFetcher, SpreadAnalyzer
-from hedged_arbitrage.strategy import DeltaNeutralArbitrageStateMachine, StrategyConfiguration
+from applications.hedged_arbitrage import MultiSymbolDataFetcher, SpreadAnalyzer
+from applications.hedged_arbitrage import DeltaNeutralArbitrageStateMachine, StrategyConfiguration
 from exchanges.structs.common import Symbol
 from exchanges.structs.types import AssetName
 

@@ -12,7 +12,7 @@ from collections import defaultdict
 import time
 
 from .connection import get_db_manager
-from .models import BookTickerSnapshot, TradeSnapshot, FundingRateSnapshot
+from .models import BookTickerSnapshot, TradeSnapshot, FundingRateSnapshot, BalanceSnapshot
 from .symbol_manager import get_symbol_id, get_symbol_details
 from exchanges.structs.common import Symbol
 
@@ -912,4 +912,333 @@ async def get_trade_database_stats() -> Dict[str, Any]:
         
     except Exception as e:
         logger.error(f"Failed to retrieve trade database stats: {e}")
+        return {}
+
+
+# =============================================================================
+# BALANCE OPERATIONS (HFT-OPTIMIZED)
+# =============================================================================
+
+async def insert_balance_snapshots_batch(snapshots: List[BalanceSnapshot]) -> int:
+    """
+    Insert balance snapshots in batch for optimal performance.
+    
+    Uses ON CONFLICT handling and follows HFT performance requirements.
+    Target: <5ms per batch (up to 100 snapshots).
+    
+    Args:
+        snapshots: List of BalanceSnapshot objects
+        
+    Returns:
+        Number of records inserted/updated
+    """
+    if not snapshots:
+        return 0
+        
+    db = get_db_manager()
+    
+    # Prepare batch insert with ON CONFLICT handling
+    query = """
+    INSERT INTO balance_snapshots (
+        timestamp, exchange_id, asset_name, 
+        available_balance, locked_balance, frozen_balance,
+        borrowing_balance, interest_balance, created_at
+    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+    ON CONFLICT (timestamp, exchange_id, asset_name) 
+    DO UPDATE SET
+        available_balance = EXCLUDED.available_balance,
+        locked_balance = EXCLUDED.locked_balance,
+        frozen_balance = EXCLUDED.frozen_balance,
+        borrowing_balance = EXCLUDED.borrowing_balance,
+        interest_balance = EXCLUDED.interest_balance,
+        created_at = EXCLUDED.created_at
+    """
+    
+    # Prepare data for batch insert using float values
+    batch_data = []
+    for snapshot in snapshots:
+        batch_data.append((
+            snapshot.timestamp,
+            snapshot.exchange_id,
+            snapshot.asset_name.upper(),
+            float(snapshot.available_balance),
+            float(snapshot.locked_balance),
+            float(snapshot.frozen_balance or 0.0),
+            float(snapshot.borrowing_balance or 0.0),
+            float(snapshot.interest_balance or 0.0),
+            snapshot.created_at or datetime.now()
+        ))
+    
+    try:
+        # Execute batch insert (HFT optimized)
+        await db.executemany(query, batch_data)
+        
+        logger.debug(f"Successfully inserted/updated {len(snapshots)} balance snapshots")
+        return len(snapshots)
+        
+    except Exception as e:
+        logger.error(f"Failed to insert balance snapshots: {e}")
+        raise
+
+
+async def get_latest_balance_snapshots(
+    exchange_name: Optional[str] = None,
+    asset_name: Optional[str] = None
+) -> Dict[str, BalanceSnapshot]:
+    """
+    Get latest balance snapshot for each exchange/asset combination.
+    
+    Target: <3ms per exchange/asset combination.
+    
+    Args:
+        exchange_name: Filter by exchange (optional)
+        asset_name: Filter by asset (optional)
+        
+    Returns:
+        Dictionary mapping "exchange_asset" to latest BalanceSnapshot
+    """
+    db = get_db_manager()
+    
+    # Build dynamic WHERE clause
+    where_conditions = []
+    params = []
+    param_counter = 1
+    
+    if exchange_name:
+        where_conditions.append(f"e.enum_value = ${param_counter}")
+        params.append(exchange_name.upper())
+        param_counter += 1
+    
+    if asset_name:
+        where_conditions.append(f"bs.asset_name = ${param_counter}")
+        params.append(asset_name.upper())
+        param_counter += 1
+    
+    where_clause = "WHERE " + " AND ".join(where_conditions) if where_conditions else ""
+    
+    query = f"""
+        SELECT DISTINCT ON (bs.exchange_id, bs.asset_name)
+               bs.id, bs.exchange_id, bs.asset_name,
+               bs.available_balance, bs.locked_balance, bs.frozen_balance,
+               bs.borrowing_balance, bs.interest_balance,
+               bs.timestamp, bs.created_at,
+               e.enum_value as exchange_name
+        FROM balance_snapshots bs
+        JOIN exchanges e ON bs.exchange_id = e.id
+        {where_clause}
+        ORDER BY bs.exchange_id, bs.asset_name, bs.timestamp DESC
+    """
+    
+    try:
+        rows = await db.fetch(query, *params)
+        
+        latest_balances = {}
+        for row in rows:
+            snapshot = BalanceSnapshot(
+                id=row['id'],
+                exchange_id=row['exchange_id'],
+                asset_name=row['asset_name'],
+                available_balance=float(row['available_balance']),
+                locked_balance=float(row['locked_balance']),
+                frozen_balance=float(row['frozen_balance']) if row['frozen_balance'] else None,
+                borrowing_balance=float(row['borrowing_balance']) if row['borrowing_balance'] else None,
+                interest_balance=float(row['interest_balance']) if row['interest_balance'] else None,
+                timestamp=row['timestamp'],
+                created_at=row['created_at'],
+                exchange_name=row['exchange_name']
+            )
+            
+            key = f"{snapshot.exchange_name}_{snapshot.asset_name}"
+            latest_balances[key] = snapshot
+        
+        logger.debug(f"Retrieved {len(latest_balances)} latest balance snapshots")
+        return latest_balances
+        
+    except Exception as e:
+        logger.error(f"Failed to retrieve latest balance snapshots: {e}")
+        raise
+
+
+async def get_balance_history(
+    exchange_name: str,
+    asset_name: str,
+    hours_back: int = 24
+) -> List[BalanceSnapshot]:
+    """
+    Get historical balance data for a specific exchange/asset.
+    
+    Target: <10ms for 24 hours of data.
+    
+    Args:
+        exchange_name: Exchange identifier
+        asset_name: Asset symbol
+        hours_back: How many hours of history to retrieve
+        
+    Returns:
+        List of BalanceSnapshot objects ordered by timestamp
+    """
+    db = get_db_manager()
+    
+    timestamp_from = datetime.utcnow() - timedelta(hours=hours_back)
+    
+    query = """
+        SELECT bs.id, bs.exchange_id, bs.asset_name,
+               bs.available_balance, bs.locked_balance, bs.frozen_balance,
+               bs.borrowing_balance, bs.interest_balance,
+               bs.timestamp, bs.created_at,
+               e.enum_value as exchange_name
+        FROM balance_snapshots bs
+        JOIN exchanges e ON bs.exchange_id = e.id
+        WHERE e.enum_value = $1 
+          AND bs.asset_name = $2
+          AND bs.timestamp >= $3
+        ORDER BY bs.timestamp ASC
+    """
+    
+    try:
+        rows = await db.fetch(
+            query,
+            exchange_name.upper(),
+            asset_name.upper(),
+            timestamp_from
+        )
+        
+        snapshots = []
+        for row in rows:
+            snapshot = BalanceSnapshot(
+                id=row['id'],
+                exchange_id=row['exchange_id'],
+                asset_name=row['asset_name'],
+                available_balance=float(row['available_balance']),
+                locked_balance=float(row['locked_balance']),
+                frozen_balance=float(row['frozen_balance']) if row['frozen_balance'] else None,
+                borrowing_balance=float(row['borrowing_balance']) if row['borrowing_balance'] else None,
+                interest_balance=float(row['interest_balance']) if row['interest_balance'] else None,
+                timestamp=row['timestamp'],
+                created_at=row['created_at'],
+                exchange_name=row['exchange_name']
+            )
+            snapshots.append(snapshot)
+        
+        logger.debug(f"Retrieved {len(snapshots)} historical balance snapshots for {exchange_name} {asset_name}")
+        return snapshots
+        
+    except Exception as e:
+        logger.error(f"Failed to retrieve balance history: {e}")
+        raise
+
+
+async def get_active_balances(
+    exchange_name: Optional[str] = None,
+    min_total_balance: float = 0.001
+) -> List[BalanceSnapshot]:
+    """
+    Get active balances (non-zero) across exchanges.
+    
+    Args:
+        exchange_name: Filter by exchange (optional)
+        min_total_balance: Minimum total balance threshold
+        
+    Returns:
+        List of BalanceSnapshot objects with non-zero balances
+    """
+    db = get_db_manager()
+    
+    where_conditions = ["bs.total_balance > $1"]
+    params = [min_total_balance]
+    param_counter = 2
+    
+    if exchange_name:
+        where_conditions.append(f"e.enum_value = ${param_counter}")
+        params.append(exchange_name.upper())
+        param_counter += 1
+    
+    where_clause = " AND ".join(where_conditions)
+    
+    query = f"""
+        SELECT DISTINCT ON (bs.exchange_id, bs.asset_name)
+               bs.id, bs.exchange_id, bs.asset_name,
+               bs.available_balance, bs.locked_balance, bs.frozen_balance,
+               bs.borrowing_balance, bs.interest_balance,
+               bs.timestamp, bs.created_at,
+               e.enum_value as exchange_name
+        FROM balance_snapshots bs
+        JOIN exchanges e ON bs.exchange_id = e.id
+        WHERE {where_clause}
+        ORDER BY bs.exchange_id, bs.asset_name, bs.timestamp DESC
+    """
+    
+    try:
+        rows = await db.fetch(query, *params)
+        
+        active_balances = []
+        for row in rows:
+            snapshot = BalanceSnapshot(
+                id=row['id'],
+                exchange_id=row['exchange_id'],
+                asset_name=row['asset_name'],
+                available_balance=float(row['available_balance']),
+                locked_balance=float(row['locked_balance']),
+                frozen_balance=float(row['frozen_balance']) if row['frozen_balance'] else None,
+                borrowing_balance=float(row['borrowing_balance']) if row['borrowing_balance'] else None,
+                interest_balance=float(row['interest_balance']) if row['interest_balance'] else None,
+                timestamp=row['timestamp'],
+                created_at=row['created_at'],
+                exchange_name=row['exchange_name']
+            )
+            active_balances.append(snapshot)
+        
+        logger.debug(f"Retrieved {len(active_balances)} active balance snapshots")
+        return active_balances
+        
+    except Exception as e:
+        logger.error(f"Failed to retrieve active balances: {e}")
+        raise
+
+
+async def get_balance_database_stats() -> Dict[str, Any]:
+    """
+    Get balance database statistics for monitoring.
+    
+    Returns:
+        Dictionary with balance database statistics
+    """
+    db = get_db_manager()
+    
+    queries = {
+        'total_snapshots': "SELECT COUNT(*) FROM balance_snapshots",
+        'exchanges': "SELECT COUNT(DISTINCT exchange_id) FROM balance_snapshots",
+        'assets': "SELECT COUNT(DISTINCT asset_name) FROM balance_snapshots",
+        'latest_timestamp': "SELECT MAX(timestamp) FROM balance_snapshots",
+        'oldest_timestamp': "SELECT MIN(timestamp) FROM balance_snapshots",
+        'table_size': """
+            SELECT pg_size_pretty(pg_total_relation_size('balance_snapshots')) as size
+        """,
+        'avg_snapshots_per_hour': """
+            SELECT AVG(snapshot_count) FROM (
+                SELECT COUNT(*) as snapshot_count
+                FROM balance_snapshots 
+                WHERE timestamp > NOW() - INTERVAL '24 hours'
+                GROUP BY DATE_TRUNC('hour', timestamp)
+            ) hour_counts
+        """,
+        'active_assets': """
+            SELECT COUNT(DISTINCT asset_name) 
+            FROM balance_snapshots 
+            WHERE total_balance > 0 
+            AND timestamp > NOW() - INTERVAL '24 hours'
+        """
+    }
+    
+    stats = {}
+    
+    try:
+        for key, query in queries.items():
+            result = await db.fetchval(query)
+            stats[key] = result
+        
+        return stats
+        
+    except Exception as e:
+        logger.error(f"Failed to retrieve balance database stats: {e}")
         return {}
