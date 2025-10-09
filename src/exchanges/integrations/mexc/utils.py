@@ -13,12 +13,11 @@ import re
 from exchanges.integrations.mexc.structs.exchange import (
     MexcOrderResponse
 )
-from exchanges.structs import OrderStatus, OrderType
 from exchanges.structs.common import (
     Side, OrderStatus, OrderType, TimeInForce, Order, Symbol
 )
 from exchanges.structs.types import OrderId
-from exchanges.structs.enums import WithdrawalStatus
+from exchanges.structs.enums import WithdrawalStatus, KlineInterval
 from exchanges.integrations.mexc.services.symbol_mapper import MexcSymbol
 
 # MEXC -> Unified mappings (these could be module-level constants)
@@ -70,6 +69,21 @@ _MEXC_WITHDRAW_STATUS_MAP = {
 }
 
 # Reverse mappings for unified -> MEXC
+# MEXC Kline Interval Mapping (consolidated from symbol_mapper and mexc_classifiers.py)
+_MEXC_KLINE_INTERVAL_MAP = {
+    KlineInterval.MINUTE_1: "1m",
+    KlineInterval.MINUTE_5: "5m",
+    KlineInterval.MINUTE_15: "15m",
+    KlineInterval.MINUTE_30: "30m",
+    KlineInterval.HOUR_1: "1h",
+    KlineInterval.HOUR_4: "4h",
+    KlineInterval.HOUR_12: "12h",
+    KlineInterval.DAY_1: "1d",
+    KlineInterval.WEEK_1: "1w",
+    KlineInterval.MONTH_1: "1M"
+}
+
+# Reverse mappings for unified -> MEXC
 _UNIFIED_TO_MEXC_STATUS = {v: k for k, v in _MEXC_ORDER_STATUS_MAP.items()}
 _UNIFIED_TO_MEXC_SIDE = {v: k for k, v in _MEXC_SIDE_MAP.items()}
 _UNIFIED_TO_MEXC_TYPE = {v: k for k, v in _MEXC_ORDER_TYPE_MAP.items()}
@@ -115,6 +129,17 @@ def to_time_in_force(mexc_tif: str) -> TimeInForce:
 def from_time_in_force(unified_tif: TimeInForce) -> str:
     """Convert unified TimeInForce to MEXC format."""
     return _UNIFIED_TO_MEXC_TIF.get(unified_tif, 'gtc')
+
+
+def from_kline_interval(interval: KlineInterval) -> str:
+    """Convert unified KlineInterval to MEXC format."""
+    return _MEXC_KLINE_INTERVAL_MAP.get(interval, "1h")
+
+
+def to_kline_interval(mexc_interval: str) -> KlineInterval:
+    """Convert MEXC interval string to unified KlineInterval."""
+    reverse_map = {v: k for k, v in _MEXC_KLINE_INTERVAL_MAP.items()}
+    return reverse_map.get(mexc_interval, KlineInterval.HOUR_1)
 
 
 # Additional utility functions for WebSocket and REST operations

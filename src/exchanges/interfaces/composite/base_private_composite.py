@@ -7,7 +7,7 @@ which are only needed for spot exchanges.
 """
 
 import asyncio
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Any
 from exchanges.structs.common import (
     Symbol, AssetBalance, Order, SymbolsInfo
 )
@@ -77,6 +77,37 @@ class BasePrivateComposite(BaseCompositeExchange[PrivateRestType, PrivateWebsock
         # Authentication validation
         if not config.has_credentials():
             self.logger.error("No API credentials provided - trading operations will fail")
+
+    # ========================================
+    # Type-Safe Channel Publishing (Phase 1)
+    # ========================================
+    
+    def publish(self, channel: PrivateWebsocketChannelType, data: Any) -> None:
+        """
+        Type-safe publish method for private channels using enum types.
+        
+        Args:
+            channel: Private channel enum type
+                   - PrivateWebsocketChannelType.EXECUTION: Trade execution updates
+                   - PrivateWebsocketChannelType.BALANCE: Account balance updates  
+                   - PrivateWebsocketChannelType.ORDER: Order status updates
+                   - PrivateWebsocketChannelType.POSITION: Position updates (futures only)
+            data: Event data to publish
+        """
+        # Convert enum to string for internal publishing
+        if hasattr(self, '_exec_bound_handler'):
+            try:
+                import asyncio
+                if asyncio.iscoroutinefunction(self._exec_bound_handler):
+                    asyncio.create_task(self._exec_bound_handler(channel, data))
+                else:
+                    self._exec_bound_handler(channel, data)
+            except Exception as e:
+                if hasattr(self, 'logger'):
+                    self.logger.error("Error publishing event",
+                                    channel=channel,
+                                    error_type=type(e).__name__,
+                                    error_message=str(e))
 
     # Properties for private data
 
@@ -153,9 +184,22 @@ class BasePrivateComposite(BaseCompositeExchange[PrivateRestType, PrivateWebsock
                                  price: Optional[float]=None,
                                  ensure: bool=True, **kwargs) -> Order:
         """Place a market order via REST API."""
-        quote_quantity_ = self.symbols_info.get(symbol).round_quote(quote_quantity)
-        # TODO: FIX: infrastructure.exceptions.exchange.ExchangeRestError: (500, 'Futures order placement failed: Futures market orders with quote_quantity require current price. Use quantity parameter instead.')
-        order =  await self._rest.place_order(symbol, side, OrderType.MARKET,
+        si = self.symbols_info.get(symbol)
+        quote_quantity_ = si.round_quote(quote_quantity)
+        
+        # For futures markets, convert quote_quantity to base quantity
+        # Futures market orders require quantity parameter instead of quote_quantity
+        if self.config.is_futures:
+            if price is None:
+                raise ValueError("Futures market orders require price parameter for quote_quantity conversion")
+            base_quantity = quote_quantity_ / price
+            quantity_ = si.round_base(base_quantity)
+            order = await self._rest.place_order(symbol, side, OrderType.MARKET,
+                                                price=price,
+                                                quantity=quantity_, **kwargs)
+        else:
+            # Spot markets can use quote_quantity directly
+            order = await self._rest.place_order(symbol, side, OrderType.MARKET,
                                                 price=price,
                                                 quote_quantity=quote_quantity_, **kwargs)
 
@@ -340,10 +384,8 @@ class BasePrivateComposite(BaseCompositeExchange[PrivateRestType, PrivateWebsock
                             order_id=order.order_id,
                             status=order.status)
         
-        # TODO: remove
-        await self._exec_bound_handler(PrivateWebsocketChannelType.ORDER, order)
 
-        self.publish('orders', order)
+        self.publish(PrivateWebsocketChannelType.ORDER, order)
 
         return order
 
@@ -482,8 +524,6 @@ class BasePrivateComposite(BaseCompositeExchange[PrivateRestType, PrivateWebsock
                          is_maker=trade.is_maker)
 
         # await self.publish('trades', trade)
-        # TODO: remove
-        await self._exec_bound_handler(PrivateWebsocketChannelType.EXECUTION, trade)
 
     # Data refresh and utilities
 
@@ -504,10 +544,8 @@ class BasePrivateComposite(BaseCompositeExchange[PrivateRestType, PrivateWebsock
         """Update internal balance state."""
         self._balances[asset] = balance
 
-        # TODO: remove
-        await self._exec_bound_handler(PrivateWebsocketChannelType.BALANCE, balance)
 
-        self.publish('balances', balance)
+        self.publish(PrivateWebsocketChannelType.BALANCE, balance)
 
         self.logger.debug(f"Updated balance for {asset}: {balance}")
 

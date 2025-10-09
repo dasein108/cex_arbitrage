@@ -105,15 +105,20 @@ class DeltaNeutralTask(BaseTradingTask[DeltaNeutralTaskContext, DeltaNeutralStat
         # Initialize DualExchanges in parallel for HFT performance
         init_tasks = []
         for side in [Side.BUY, Side.SELL]:
+            exchange = self._exchanges[side]
+            specific_private_channels = [PrivateWebsocketChannelType.POSITION] if exchange.is_futures else [PrivateWebsocketChannelType.BALANCE]
             init_tasks.append(
-                self._exchanges[side].initialize(
+                exchange.initialize(
                     [self.context.symbol],
                     public_channels=[PublicWebsocketChannelType.BOOK_TICKER],
-                    private_channels=[PrivateWebsocketChannelType.ORDER,
-                                    PrivateWebsocketChannelType.BALANCE]
+                    private_channels=[PrivateWebsocketChannelType.ORDER] + specific_private_channels
                 )
             )
-        
+            # if exchange.is_futures:
+            #     exchange.bind_handlers(on_position=)
+            # else:
+            #     exchange.bind_handlers(on_balance=)
+
         await asyncio.gather(*init_tasks)
         
         # Set symbol info and restore orders

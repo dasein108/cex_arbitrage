@@ -82,9 +82,4 @@ class GateioSymbolMapper(SymbolMapperInterface):
 # Global singleton instance for direct usage - use GateioSpotSymbol.method() directly
 GateioSpotSymbol = GateioSymbolMapper()
 
-# Convenience functions remain for non-symbol operations
-def get_exchange_interval(interval) -> str:
-    """Convert unified KlineInterval to Gate.io format."""
-    from exchanges.integrations.gateio.services.gateio_classifiers import KLINE_INTERVAL_MAPPING
-    return KLINE_INTERVAL_MAPPING.get(interval, "1m")
 

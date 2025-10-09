@@ -440,7 +440,7 @@ class HftConfig:
 
         env_loaded = False
         for env_path in guess_file_paths('.env'):
-            print(f'env_path', env_path)
+            self._logger.debug(f"Checking environment file path: {env_path}")
             if env_path.exists():
                 try:
                     # Load the .env file

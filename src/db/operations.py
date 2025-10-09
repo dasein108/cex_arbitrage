@@ -13,7 +13,6 @@ import time
 
 from .connection import get_db_manager
 from .models import BookTickerSnapshot, TradeSnapshot, FundingRateSnapshot, BalanceSnapshot
-from .symbol_manager import get_symbol_id, get_symbol_details
 from exchanges.structs.common import Symbol
 
 
@@ -118,7 +117,6 @@ async def insert_book_ticker_snapshot(snapshot: BookTickerSnapshot) -> int:
         logger.error(f"Failed to insert book ticker snapshot: {e}")
         raise
 
-
 async def insert_book_ticker_snapshots_batch(snapshots: List[BookTickerSnapshot]) -> int:
     """
     Insert multiple BookTicker snapshots efficiently with upsert logic.
@@ -218,10 +216,6 @@ async def insert_book_ticker_snapshots_batch(snapshots: List[BookTickerSnapshot]
         logger.error(f"Failed to batch upsert book ticker snapshots: {e}")
         raise
 
-
-
-
-
 async def get_book_ticker_snapshots(
     exchange: Optional[str] = None,
     symbol_base: Optional[str] = None,
@@ -232,11 +226,11 @@ async def get_book_ticker_snapshots(
     offset: int = 0
 ) -> List[BookTickerSnapshot]:
     """
-    Retrieve BookTicker snapshots with flexible filtering.
+    Retrieve BookTicker snapshots with flexible filtering using normalized schema.
     
     Args:
         exchange: Filter by exchange (optional)
-        symbol_base: Filter by composite asset (optional)
+        symbol_base: Filter by base asset (optional)
         symbol_quote: Filter by quote asset (optional)
         timestamp_from: Start time filter (optional)
         timestamp_to: End time filter (optional)
@@ -244,37 +238,37 @@ async def get_book_ticker_snapshots(
         offset: Number of records to skip
         
     Returns:
-        List of BookTickerSnapshot objects
+        List of BookTickerSnapshot objects with symbol_id
     """
     db = get_db_manager()
     
-    # Build dynamic WHERE clause
+    # Build dynamic WHERE clause using JOINs for normalized schema
     where_conditions = []
     params = []
     param_counter = 1
     
     if exchange:
-        where_conditions.append(f"exchange = ${param_counter}")
+        where_conditions.append(f"e.enum_value = ${param_counter}")
         params.append(exchange.upper())
         param_counter += 1
     
     if symbol_base:
-        where_conditions.append(f"symbol_base = ${param_counter}")
+        where_conditions.append(f"s.symbol_base = ${param_counter}")
         params.append(symbol_base.upper())
         param_counter += 1
     
     if symbol_quote:
-        where_conditions.append(f"symbol_quote = ${param_counter}")
+        where_conditions.append(f"s.symbol_quote = ${param_counter}")
         params.append(symbol_quote.upper())
         param_counter += 1
     
     if timestamp_from:
-        where_conditions.append(f"timestamp >= ${param_counter}")
+        where_conditions.append(f"bts.timestamp >= ${param_counter}")
         params.append(timestamp_from)
         param_counter += 1
     
     if timestamp_to:
-        where_conditions.append(f"timestamp <= ${param_counter}")
+        where_conditions.append(f"bts.timestamp <= ${param_counter}")
         params.append(timestamp_to)
         param_counter += 1
     
@@ -284,12 +278,13 @@ async def get_book_ticker_snapshots(
     where_clause = "WHERE " + " AND ".join(where_conditions) if where_conditions else ""
     
     query = f"""
-        SELECT id, exchange, symbol_base, symbol_quote,
-               bid_price, bid_qty, ask_price, ask_qty,
-               timestamp, created_at
-        FROM book_ticker_snapshots
+        SELECT bts.id, bts.symbol_id, bts.bid_price, bts.bid_qty, 
+               bts.ask_price, bts.ask_qty, bts.timestamp, bts.created_at
+        FROM book_ticker_snapshots bts
+        JOIN symbols s ON bts.symbol_id = s.id
+        JOIN exchanges e ON s.exchange_id = e.id
         {where_clause}
-        ORDER BY timestamp DESC, id DESC
+        ORDER BY bts.timestamp DESC, bts.id DESC
         LIMIT ${param_counter} OFFSET ${param_counter + 1}
     """
     
@@ -299,9 +294,7 @@ async def get_book_ticker_snapshots(
         snapshots = [
             BookTickerSnapshot(
                 id=row['id'],
-                exchange=row['exchange'],
-                symbol_base=row['symbol_base'],
-                symbol_quote=row['symbol_quote'],
+                symbol_id=row['symbol_id'],
                 bid_price=float(row['bid_price']),
                 bid_qty=float(row['bid_qty']),
                 ask_price=float(row['ask_price']),
@@ -312,7 +305,7 @@ async def get_book_ticker_snapshots(
             for row in rows
         ]
         
-        logger.debug(f"Retrieved {len(snapshots)} book ticker snapshots")
+        logger.debug(f"Retrieved {len(snapshots)} normalized book ticker snapshots")
         return snapshots
         
     except Exception as e:
@@ -326,11 +319,11 @@ async def get_latest_book_ticker_snapshots(
     symbol_quote: Optional[str] = None
 ) -> Dict[str, BookTickerSnapshot]:
     """
-    Get the latest BookTicker snapshot for each exchange/symbol combination.
+    Get the latest BookTicker snapshot for each exchange/symbol combination using normalized schema.
     
     Args:
         exchange: Filter by exchange (optional)
-        symbol_base: Filter by composite asset (optional)
+        symbol_base: Filter by base asset (optional)
         symbol_quote: Filter by quote asset (optional)
         
     Returns:
@@ -338,36 +331,39 @@ async def get_latest_book_ticker_snapshots(
     """
     db = get_db_manager()
     
-    # Build dynamic WHERE clause
+    # Build dynamic WHERE clause using JOINs for normalized schema
     where_conditions = []
     params = []
     param_counter = 1
     
     if exchange:
-        where_conditions.append(f"exchange = ${param_counter}")
+        where_conditions.append(f"e.enum_value = ${param_counter}")
         params.append(exchange.upper())
         param_counter += 1
     
     if symbol_base:
-        where_conditions.append(f"symbol_base = ${param_counter}")
+        where_conditions.append(f"s.symbol_base = ${param_counter}")
         params.append(symbol_base.upper())
         param_counter += 1
     
     if symbol_quote:
-        where_conditions.append(f"symbol_quote = ${param_counter}")
+        where_conditions.append(f"s.symbol_quote = ${param_counter}")
         params.append(symbol_quote.upper())
         param_counter += 1
     
     where_clause = "WHERE " + " AND ".join(where_conditions) if where_conditions else ""
     
     query = f"""
-        SELECT DISTINCT ON (exchange, symbol_base, symbol_quote)
-               id, exchange, symbol_base, symbol_quote,
-               bid_price, bid_qty, ask_price, ask_qty,
-               timestamp, created_at
-        FROM book_ticker_snapshots
+        SELECT DISTINCT ON (e.enum_value, s.symbol_base, s.symbol_quote)
+               bts.id, bts.symbol_id, e.enum_value as exchange, 
+               s.symbol_base, s.symbol_quote,
+               bts.bid_price, bts.bid_qty, bts.ask_price, bts.ask_qty,
+               bts.timestamp, bts.created_at
+        FROM book_ticker_snapshots bts
+        JOIN symbols s ON bts.symbol_id = s.id
+        JOIN exchanges e ON s.exchange_id = e.id
         {where_clause}
-        ORDER BY exchange, symbol_base, symbol_quote, timestamp DESC
+        ORDER BY e.enum_value, s.symbol_base, s.symbol_quote, bts.timestamp DESC
     """
     
     try:
@@ -377,9 +373,7 @@ async def get_latest_book_ticker_snapshots(
         for row in rows:
             snapshot = BookTickerSnapshot(
                 id=row['id'],
-                exchange=row['exchange'],
-                symbol_base=row['symbol_base'],
-                symbol_quote=row['symbol_quote'],
+                symbol_id=row['symbol_id'],
                 bid_price=float(row['bid_price']),
                 bid_qty=float(row['bid_qty']),
                 ask_price=float(row['ask_price']),
@@ -388,10 +382,10 @@ async def get_latest_book_ticker_snapshots(
                 created_at=row['created_at']
             )
             
-            key = f"{snapshot.exchange}_{snapshot.symbol_base}_{snapshot.symbol_quote}"
+            key = f"{row['exchange']}_{row['symbol_base']}_{row['symbol_quote']}"
             latest_snapshots[key] = snapshot
         
-        logger.debug(f"Retrieved {len(latest_snapshots)} latest book ticker snapshots")
+        logger.debug(f"Retrieved {len(latest_snapshots)} latest normalized book ticker snapshots")
         return latest_snapshots
         
     except Exception as e:
@@ -406,7 +400,7 @@ async def get_book_ticker_history(
     sample_interval_minutes: int = 1
 ) -> List[BookTickerSnapshot]:
     """
-    Get historical BookTicker data for a specific exchange/symbol.
+    Get historical BookTicker data for a specific exchange/symbol using normalized schema.
     
     Args:
         exchange: Exchange identifier
@@ -421,26 +415,28 @@ async def get_book_ticker_history(
     
     timestamp_from = datetime.utcnow() - timedelta(hours=hours_back)
     
-    # Use window function to sample data at intervals
+    # Use window function to sample data at intervals with normalized schema
     query = """
-        SELECT id, exchange, symbol_base, symbol_quote,
-               bid_price, bid_qty, ask_price, ask_qty,
-               timestamp, created_at
+        SELECT sampled.id, sampled.symbol_id, sampled.bid_price, sampled.bid_qty,
+               sampled.ask_price, sampled.ask_qty, sampled.timestamp, sampled.created_at
         FROM (
-            SELECT *,
+            SELECT bts.id, bts.symbol_id, bts.bid_price, bts.bid_qty,
+                   bts.ask_price, bts.ask_qty, bts.timestamp, bts.created_at,
                    ROW_NUMBER() OVER (
                        PARTITION BY 
-                           DATE_TRUNC('minute', timestamp) / $5
-                       ORDER BY timestamp DESC
+                           FLOOR(EXTRACT(EPOCH FROM bts.timestamp) / (60 * $4))
+                       ORDER BY bts.timestamp DESC
                    ) as rn
-            FROM book_ticker_snapshots
-            WHERE exchange = $1 
-              AND symbol_base = $2 
-              AND symbol_quote = $3
-              AND timestamp >= $4
+            FROM book_ticker_snapshots bts
+            JOIN symbols s ON bts.symbol_id = s.id
+            JOIN exchanges e ON s.exchange_id = e.id
+            WHERE e.enum_value = $1 
+              AND s.symbol_base = $2 
+              AND s.symbol_quote = $3
+              AND bts.timestamp >= $5
         ) sampled
-        WHERE rn = 1
-        ORDER BY timestamp ASC
+        WHERE sampled.rn = 1
+        ORDER BY sampled.timestamp ASC
     """
     
     try:
@@ -449,16 +445,14 @@ async def get_book_ticker_history(
             exchange.upper(),
             str(symbol.base).upper(),
             str(symbol.quote).upper(),
-            timestamp_from,
-            sample_interval_minutes
+            sample_interval_minutes,
+            timestamp_from
         )
         
         snapshots = [
             BookTickerSnapshot(
                 id=row['id'],
-                exchange=row['exchange'],
-                symbol_base=row['symbol_base'],
-                symbol_quote=row['symbol_quote'],
+                symbol_id=row['symbol_id'],
                 bid_price=float(row['bid_price']),
                 bid_qty=float(row['bid_qty']),
                 ask_price=float(row['ask_price']),
@@ -469,7 +463,7 @@ async def get_book_ticker_history(
             for row in rows
         ]
         
-        logger.debug(f"Retrieved {len(snapshots)} historical book ticker snapshots for {exchange} {symbol.base}/{symbol.quote}")
+        logger.debug(f"Retrieved {len(snapshots)} historical normalized book ticker snapshots for {exchange} {symbol.base}/{symbol.quote}")
         return snapshots
         
     except Exception as e:
@@ -519,8 +513,17 @@ async def get_database_stats() -> Dict[str, Any]:
     
     queries = {
         'total_snapshots': "SELECT COUNT(*) FROM book_ticker_snapshots",
-        'exchanges': "SELECT COUNT(DISTINCT exchange) FROM book_ticker_snapshots",
-        'symbols': "SELECT COUNT(DISTINCT symbol_base || '/' || symbol_quote) FROM book_ticker_snapshots",
+        'exchanges': """
+            SELECT COUNT(DISTINCT e.enum_value) 
+            FROM book_ticker_snapshots bts
+            JOIN symbols s ON bts.symbol_id = s.id
+            JOIN exchanges e ON s.exchange_id = e.id
+        """,
+        'symbols': """
+            SELECT COUNT(DISTINCT s.symbol_base || '/' || s.symbol_quote) 
+            FROM book_ticker_snapshots bts
+            JOIN symbols s ON bts.symbol_id = s.id
+        """,
         'latest_timestamp': "SELECT MAX(timestamp) FROM book_ticker_snapshots",
         'oldest_timestamp': "SELECT MIN(timestamp) FROM book_ticker_snapshots",
         'table_size': """
@@ -1205,29 +1208,832 @@ async def get_balance_database_stats() -> Dict[str, Any]:
     """
     db = get_db_manager()
     
-    queries = {
-        'total_snapshots': "SELECT COUNT(*) FROM balance_snapshots",
-        'exchanges': "SELECT COUNT(DISTINCT exchange_id) FROM balance_snapshots",
-        'assets': "SELECT COUNT(DISTINCT asset_name) FROM balance_snapshots",
-        'latest_timestamp': "SELECT MAX(timestamp) FROM balance_snapshots",
-        'oldest_timestamp': "SELECT MIN(timestamp) FROM balance_snapshots",
-        'table_size': """
-            SELECT pg_size_pretty(pg_total_relation_size('balance_snapshots')) as size
-        """,
-        'avg_snapshots_per_hour': """
-            SELECT AVG(snapshot_count) FROM (
-                SELECT COUNT(*) as snapshot_count
-                FROM balance_snapshots 
-                WHERE timestamp > NOW() - INTERVAL '24 hours'
-                GROUP BY DATE_TRUNC('hour', timestamp)
-            ) hour_counts
-        """,
-        'active_assets': """
-            SELECT COUNT(DISTINCT asset_name) 
-            FROM balance_snapshots 
-            WHERE total_balance > 0 
-            AND timestamp > NOW() - INTERVAL '24 hours'
+    try:
+        query = """
+            SELECT 
+                COUNT(*) as total_snapshots,
+                COUNT(DISTINCT exchange_id) as unique_exchanges,
+                COUNT(DISTINCT asset_name) as unique_assets,
+                MIN(timestamp) as earliest_timestamp,
+                MAX(timestamp) as latest_timestamp
+            FROM balance_snapshots
         """
+        
+        row = await db.fetchrow(query)
+        
+        return {
+            "total_snapshots": row["total_snapshots"],
+            "unique_exchanges": row["unique_exchanges"],
+            "unique_assets": row["unique_assets"],
+            "earliest_timestamp": row["earliest_timestamp"],
+            "latest_timestamp": row["latest_timestamp"]
+        }
+        
+    except Exception as e:
+        logger.error(f"Failed to retrieve balance database stats: {e}")
+        return {}
+
+
+# =============================================================================
+# EXCHANGE OPERATIONS (NORMALIZED SCHEMA)
+# =============================================================================
+
+async def get_exchange_by_enum(exchange_enum: "ExchangeEnum") -> Optional[Exchange]:
+    """
+    Get exchange by ExchangeEnum value.
+    
+    Args:
+        exchange_enum: ExchangeEnum to look up
+        
+    Returns:
+        Exchange instance or None if not found
+    """
+    from exchanges.structs.enums import ExchangeEnum
+    
+    db = get_db_manager()
+    
+    query = """
+        SELECT id, name, enum_value, display_name, market_type
+        FROM exchanges 
+        WHERE enum_value = $1     """
+    
+    try:
+        row = await db.fetchrow(query, str(exchange_enum.value))
+        
+        if row:
+            return Exchange(
+                name=row['name'],
+                enum_value=row['enum_value'],
+                display_name=row['display_name'],
+                market_type=row['market_type'],
+                id=row['id']
+            )
+        
+        return None
+        
+    except Exception as e:
+        logger.error(f"Failed to get exchange by enum {exchange_enum}: {e}")
+        raise
+
+
+async def get_exchange_by_id(exchange_id: int) -> Optional[Exchange]:
+    """
+    Get exchange by database ID.
+    
+    Args:
+        exchange_id: Database primary key
+        
+    Returns:
+        Exchange instance or None if not found
+    """
+    db = get_db_manager()
+    
+    query = """
+        SELECT id, name, enum_value, display_name, market_type
+        FROM exchanges 
+        WHERE id = $1
+    """
+    
+    try:
+        row = await db.fetchrow(query, exchange_id)
+        
+        if row:
+            return Exchange(
+                name=row['name'],
+                enum_value=row['enum_value'],
+                display_name=row['display_name'],
+                market_type=row['market_type'],
+                id=row['id']
+            )
+        
+        return None
+        
+    except Exception as e:
+        logger.error(f"Failed to get exchange by id {exchange_id}: {e}")
+        raise
+
+
+async def get_all_active_exchanges() -> List[Exchange]:
+    """
+    Get all active exchanges.
+    
+    Returns:
+        List of active Exchange instances
+    """
+    db = get_db_manager()
+    
+    query = """
+        SELECT id, name, enum_value, display_name, market_type
+        FROM exchanges 
+                ORDER BY name
+    """
+    
+    try:
+        rows = await db.fetch(query)
+        
+        exchanges = []
+        for row in rows:
+            exchange = Exchange(
+                name=row['name'],
+                enum_value=row['enum_value'],
+                display_name=row['display_name'],
+                market_type=row['market_type'],
+                id=row['id']
+            )
+            exchanges.append(exchange)
+        
+        logger.debug(f"Retrieved {len(exchanges)} active exchanges")
+        return exchanges
+        
+    except Exception as e:
+        logger.error(f"Failed to get active exchanges: {e}")
+        raise
+
+
+async def get_exchanges_by_market_type(market_type: str) -> List[Exchange]:
+    """
+    Get exchanges filtered by market type.
+    
+    Args:
+        market_type: Market type filter (SPOT, FUTURES, OPTIONS)
+        
+    Returns:
+        List of Exchange instances for the market type
+    """
+    db = get_db_manager()
+    
+    query = """
+        SELECT id, name, enum_value, display_name, market_type
+        FROM exchanges 
+        WHERE market_type = $1         ORDER BY name
+    """
+    
+    try:
+        rows = await db.fetch(query, market_type.upper())
+        
+        exchanges = []
+        for row in rows:
+            exchange = Exchange(
+                name=row['name'],
+                enum_value=row['enum_value'],
+                display_name=row['display_name'],
+                market_type=row['market_type'],
+                id=row['id']
+            )
+            exchanges.append(exchange)
+        
+        logger.debug(f"Retrieved {len(exchanges)} {market_type} exchanges")
+        return exchanges
+        
+    except Exception as e:
+        logger.error(f"Failed to get {market_type} exchanges: {e}")
+        raise
+
+
+# Exchange CRUD Operations
+# Complete Create, Read, Update, Delete operations for Exchange management
+
+async def insert_exchange(exchange: Exchange) -> int:
+    """
+    Insert a new exchange record.
+    
+    Args:
+        exchange: Exchange instance to insert
+        
+    Returns:
+        Database ID of inserted exchange
+        
+    Raises:
+        ValueError: If exchange data is invalid
+        DatabaseError: If insert fails
+    """
+    db = get_db_manager()
+    
+    # Validate required fields
+    if not exchange.name or not exchange.enum_value:
+        raise ValueError("Exchange name and enum_value are required")
+    
+    query = """
+        INSERT INTO exchanges (
+            name, enum_value, display_name, market_type
+        ) VALUES ($1, $2, $3, $4)
+        RETURNING id
+    """
+    
+    try:
+        exchange_id = await db.fetchval(
+            query,
+            exchange.name,
+            exchange.enum_value,
+            exchange.display_name,
+            exchange.market_type
+        )
+        
+        logger.info(f"Inserted exchange {exchange.name} with ID {exchange_id}")
+        return exchange_id
+        
+    except Exception as e:
+        logger.error(f"Failed to insert exchange {exchange.name}: {e}")
+        raise
+
+
+async def update_exchange(exchange_id: int, updates: Dict[str, Any]) -> bool:
+    """
+    Update exchange record with provided fields.
+    
+    Args:
+        exchange_id: Exchange ID to update
+        updates: Dictionary of field updates
+        
+    Returns:
+        True if update successful, False if exchange not found
+        
+    Raises:
+        DatabaseError: If update fails
+    """
+    db = get_db_manager()
+    
+    if not updates:
+        return True  # No updates needed
+    
+    # Build dynamic update query
+    set_clauses = []
+    params = []
+    param_counter = 1
+    
+    for field, value in updates.items():
+        set_clauses.append(f"{field} = ${param_counter}")
+        params.append(value)
+        param_counter += 1
+    
+    # Always update the updated_at timestamp
+    set_clauses.append(f"updated_at = ${param_counter}")
+    params.append(datetime.utcnow())
+    param_counter += 1
+    
+    # Add WHERE clause parameter
+    params.append(exchange_id)
+    
+    query = f"""
+        UPDATE exchanges 
+        SET {', '.join(set_clauses)}
+        WHERE id = ${param_counter}
+    """
+    
+    try:
+        result = await db.execute(query, *params)
+        
+        # Check if any rows were updated
+        updated = result.endswith('1')  # UPDATE command returns "UPDATE n"
+        
+        if updated:
+            logger.info(f"Updated exchange {exchange_id} with fields: {list(updates.keys())}")
+        else:
+            logger.warning(f"No exchange found with ID {exchange_id}")
+        
+        return updated
+        
+    except Exception as e:
+        logger.error(f"Failed to update exchange {exchange_id}: {e}")
+        raise
+
+
+async def deactivate_exchange(exchange_id: int) -> bool:
+    """
+    Deactivate an exchange (soft delete).
+    
+    Args:
+        exchange_id: Exchange ID to deactivate
+        
+    Returns:
+        True if deactivation successful, False if exchange not found
+    """
+    return await update_exchange(exchange_id, {'is_active': False})
+
+
+async def activate_exchange(exchange_id: int) -> bool:
+    """
+    Reactivate an exchange.
+    
+    Args:
+        exchange_id: Exchange ID to activate
+        
+    Returns:
+        True if activation successful, False if exchange not found
+    """
+    return await update_exchange(exchange_id, {'is_active': True})
+
+
+async def get_exchange_stats() -> Dict[str, Any]:
+    """
+    Get exchange statistics for monitoring.
+    
+    Returns:
+        Dictionary with exchange statistics
+    """
+    db = get_db_manager()
+    
+    try:
+        query = """
+            SELECT 
+                COUNT(*) as total_exchanges,
+                COUNT(*) FILTER (WHERE is_active = true) as active_exchanges,
+                COUNT(*) FILTER (WHERE market_type = 'SPOT') as spot_exchanges,
+                COUNT(*) FILTER (WHERE market_type = 'FUTURES') as futures_exchanges
+            FROM exchanges
+        """
+        
+        row = await db.fetchrow(query)
+        
+        return {
+            "total_exchanges": row["total_exchanges"],
+            "active_exchanges": row["active_exchanges"],
+            "spot_exchanges": row["spot_exchanges"],
+            "futures_exchanges": row["futures_exchanges"]
+        }
+        
+    except Exception as e:
+        logger.error(f"Failed to retrieve exchange stats: {e}")
+        return {}
+
+
+async def ensure_exchanges_populated() -> None:
+    """
+    Ensure all ExchangeEnum values are present in the database.
+    Creates missing exchanges with default configurations.
+    """
+    from exchanges.structs.enums import ExchangeEnum
+    
+    db = get_db_manager()
+    
+    # Get existing exchanges
+    existing_exchanges = await get_all_active_exchanges()
+    existing_enum_values = {ex.enum_value for ex in existing_exchanges}
+    
+    # Check each ExchangeEnum value
+    for exchange_enum in ExchangeEnum:
+        enum_value = str(exchange_enum.value)
+        
+        if enum_value not in existing_enum_values:
+            logger.info(f"Creating missing exchange for {enum_value}")
+            
+            # Create exchange with defaults
+            exchange = Exchange.from_exchange_enum(exchange_enum)
+            await insert_exchange(exchange)
+
+
+# ================================================================================================
+# Symbol Operations
+# High-performance symbol lookup and management for HFT operations
+# ================================================================================================
+
+async def get_symbol_by_id(symbol_id: int) -> Optional[DBSymbol]:
+    """
+    Get symbol by database ID.
+    
+    Args:
+        symbol_id: Symbol database ID
+        
+    Returns:
+        Symbol instance or None if not found
+    """
+    db = get_db_manager()
+    
+    query = """
+        SELECT id, exchange_id, symbol_base, symbol_quote, exchange_symbol,
+               is_active, symbol_type
+        FROM symbols
+        WHERE id = $1
+    """
+    
+    try:
+        row = await db.fetchrow(query, symbol_id)
+        
+        if not row:
+            return None
+        
+        return DBSymbol(
+            id=row['id'],
+            exchange_id=row['exchange_id'],
+            symbol_base=row['symbol_base'],
+            symbol_quote=row['symbol_quote'],
+            exchange_symbol=row['exchange_symbol'],
+            is_active=row['is_active'],
+            symbol_type=SymbolType[row['symbol_type']]  # Convert string to SymbolType enum
+        )
+        
+    except Exception as e:
+        logger.error(f"Failed to get symbol by ID {symbol_id}: {e}")
+        raise
+
+
+async def get_symbol_by_exchange_and_pair(
+    exchange_id: int, 
+    symbol_base: str, 
+    symbol_quote: str
+) -> Optional[DBSymbol]:
+    """
+    Get symbol by exchange ID and base/quote pair.
+    
+    Args:
+        exchange_id: Exchange database ID
+        symbol_base: Base asset (e.g., 'BTC')
+        symbol_quote: Quote asset (e.g., 'USDT')
+        
+    Returns:
+        Symbol instance or None if not found
+    """
+    db = get_db_manager()
+    
+    query = """
+        SELECT id, exchange_id, symbol_base, symbol_quote, exchange_symbol,
+               is_active, symbol_type
+        FROM symbols
+        WHERE exchange_id = $1 
+          AND symbol_base = $2 
+          AND symbol_quote = $3
+              """
+    
+    try:
+        row = await db.fetchrow(query, exchange_id, symbol_base.upper(), symbol_quote.upper())
+        
+        if not row:
+            return None
+        
+        return DBSymbol(
+            id=row['id'],
+            exchange_id=row['exchange_id'],
+            symbol_base=row['symbol_base'],
+            symbol_quote=row['symbol_quote'],
+            exchange_symbol=row['exchange_symbol'],
+            is_active=row['is_active'],
+            symbol_type=SymbolType[row['symbol_type']]  # Convert string to SymbolType enum
+        )
+        
+    except Exception as e:
+        logger.error(f"Failed to get symbol for exchange {exchange_id}, {symbol_base}/{symbol_quote}: {e}")
+        raise
+
+
+async def get_symbols_by_exchange(exchange_id: int, active_only: bool = True) -> List[DBSymbol]:
+    """
+    Get all symbols for a specific exchange.
+    
+    Args:
+        exchange_id: Exchange database ID
+        active_only: Only return active symbols
+        
+    Returns:
+        List of Symbol instances
+    """
+    db = get_db_manager()
+    
+    base_query = """
+        SELECT id, exchange_id, symbol_base, symbol_quote, exchange_symbol,
+               is_active, symbol_type
+        FROM symbols
+        WHERE exchange_id = $1
+    """
+    
+    if active_only:
+        query = base_query + " AND is_active = true"
+    else:
+        query = base_query
+    
+    query += " ORDER BY symbol_base, symbol_quote"
+    
+    try:
+        rows = await db.fetch(query, exchange_id)
+        
+        symbols = [
+            DBSymbol(
+                id=row['id'],
+                exchange_id=row['exchange_id'],
+                symbol_base=row['symbol_base'],
+                symbol_quote=row['symbol_quote'],
+                exchange_symbol=row['exchange_symbol'],
+                is_active=row['is_active'],
+                symbol_type=SymbolType[row['symbol_type']]  # Convert string to SymbolType enum
+            )
+            for row in rows
+        ]
+        
+        logger.debug(f"Retrieved {len(symbols)} symbols for exchange {exchange_id}")
+        return symbols
+        
+    except Exception as e:
+        logger.error(f"Failed to get symbols for exchange {exchange_id}: {e}")
+        raise
+
+
+async def get_all_active_symbols() -> List[DBSymbol]:
+    """
+    Get all active symbols across all exchanges.
+    
+    Returns:
+        List of active Symbol instances
+    """
+    db = get_db_manager()
+    
+    query = """
+        SELECT s.id, s.exchange_id, s.symbol_base, s.symbol_quote, s.exchange_symbol,
+               s.is_active, s.symbol_type
+        FROM symbols s
+        JOIN exchanges e ON s.exchange_id = e.id
+        WHERE s.is_active = true
+        ORDER BY e.name, s.symbol_base, s.symbol_quote
+    """
+    
+    try:
+        rows = await db.fetch(query)
+        
+        symbols = [
+            DBSymbol(
+                id=row['id'],
+                exchange_id=row['exchange_id'],
+                symbol_base=row['symbol_base'],
+                symbol_quote=row['symbol_quote'],
+                exchange_symbol=row['exchange_symbol'],
+                is_active=row['is_active'],
+                symbol_type=SymbolType[row['symbol_type']]  # Convert string to SymbolType enum
+            )
+            for row in rows
+        ]
+        
+        logger.debug(f"Retrieved {len(symbols)} active symbols")
+        return symbols
+        
+    except Exception as e:
+        logger.error(f"Failed to get all active symbols: {e}")
+        raise
+
+
+async def get_symbols_by_market_type(market_type: str, active_only: bool = True) -> List[DBSymbol]:
+    """
+    Get symbols filtered by market type (SPOT/FUTURES).
+    
+    Args:
+        market_type: 'SPOT' or 'FUTURES'
+        active_only: Only return active symbols
+        
+    Returns:
+        List of Symbol instances
+    """
+    db = get_db_manager()
+    
+    base_query = """
+        SELECT s.id, s.exchange_id, s.symbol_base, s.symbol_quote, s.exchange_symbol,
+               s.is_active, s.symbol_type
+        FROM symbols s
+        JOIN exchanges e ON s.exchange_id = e.id
+        WHERE e.market_type = $1
+    """
+    
+    conditions = []
+    if active_only:
+        conditions.append("s.is_active = true")
+    
+    if conditions:
+        base_query += " AND " + " AND ".join(conditions)
+    
+    query = base_query + " ORDER BY e.name, s.symbol_base, s.symbol_quote"
+    
+    try:
+        rows = await db.fetch(query, market_type.upper())
+        
+        symbols = [
+            DBSymbol(
+                id=row['id'],
+                exchange_id=row['exchange_id'],
+                symbol_base=row['symbol_base'],
+                symbol_quote=row['symbol_quote'],
+                exchange_symbol=row['exchange_symbol'],
+                is_active=row['is_active'],
+                symbol_type=SymbolType[row['symbol_type']]  # Convert string to SymbolType enum
+            )
+            for row in rows
+        ]
+        
+        logger.debug(f"Retrieved {len(symbols)} {market_type} symbols")
+        return symbols
+        
+    except Exception as e:
+        logger.error(f"Failed to get {market_type} symbols: {e}")
+        raise
+
+
+# ================================================================================================
+# Symbol CRUD Operations
+# Complete Create, Read, Update, Delete operations for Symbol management
+# ================================================================================================
+
+async def insert_symbol(symbol: DBSymbol) -> int:
+    """
+    Insert a new symbol record.
+    
+    Args:
+        symbol: Symbol instance to insert
+        
+    Returns:
+        Database ID of inserted symbol
+        
+    Raises:
+        ValueError: If symbol data is invalid
+        DatabaseError: If insert fails
+    """
+    db = get_db_manager()
+    
+    # Validate required fields
+    if not symbol.exchange_id or not symbol.symbol_base or not symbol.symbol_quote:
+        raise ValueError("Symbol exchange_id, symbol_base, and symbol_quote are required")
+    
+    query = """
+        INSERT INTO symbols (
+            exchange_id, symbol_base, symbol_quote, exchange_symbol, is_active, symbol_type
+        ) VALUES ($1, $2, $3, $4, $5, $6)
+        RETURNING id
+    """
+    
+    try:
+        symbol_id = await db.fetchval(
+            query,
+            symbol.exchange_id,
+            symbol.symbol_base.upper(),
+            symbol.symbol_quote.upper(),
+            symbol.exchange_symbol,
+            symbol.is_active,
+            symbol.symbol_type.name  # Convert SymbolType enum to string
+        )
+        
+        logger.info(f"Inserted symbol {symbol.symbol_base}/{symbol.symbol_quote} for exchange {symbol.exchange_id} with ID {symbol_id}")
+        return symbol_id
+        
+    except Exception as e:
+        logger.error(f"Failed to insert symbol {symbol.symbol_base}/{symbol.symbol_quote}: {e}")
+        raise
+
+
+async def update_symbol(symbol_id: int, updates: Dict[str, Any]) -> bool:
+    """
+    Update symbol record with provided fields.
+    
+    Args:
+        symbol_id: Symbol ID to update
+        updates: Dictionary of field updates
+        
+    Returns:
+        True if update successful, False if symbol not found
+        
+    Raises:
+        DatabaseError: If update fails
+    """
+    db = get_db_manager()
+    
+    if not updates:
+        return True  # No updates needed
+    
+    # Build dynamic update query
+    set_clauses = []
+    params = []
+    param_counter = 1
+    
+    for field, value in updates.items():
+        set_clauses.append(f"{field} = ${param_counter}")
+        params.append(value)
+        param_counter += 1
+    
+    # Always update the updated_at timestamp
+    set_clauses.append(f"updated_at = ${param_counter}")
+    params.append(datetime.utcnow())
+    param_counter += 1
+    
+    # Add WHERE clause parameter
+    params.append(symbol_id)
+    
+    query = f"""
+        UPDATE symbols 
+        SET {', '.join(set_clauses)}
+        WHERE id = ${param_counter}
+    """
+    
+    try:
+        result = await db.execute(query, *params)
+        
+        # Check if any rows were updated
+        updated = result.endswith('1')  # UPDATE command returns "UPDATE n"
+        
+        if updated:
+            logger.info(f"Updated symbol {symbol_id} with fields: {list(updates.keys())}")
+        else:
+            logger.warning(f"No symbol found with ID {symbol_id}")
+        
+        return updated
+        
+    except Exception as e:
+        logger.error(f"Failed to update symbol {symbol_id}: {e}")
+        raise
+
+
+async def deactivate_symbol(symbol_id: int) -> bool:
+    """
+    Deactivate a symbol (soft delete).
+    
+    Args:
+        symbol_id: Symbol ID to deactivate
+        
+    Returns:
+        True if deactivation successful, False if symbol not found
+    """
+    return await update_symbol(symbol_id, {'is_active': False})
+
+
+async def activate_symbol(symbol_id: int) -> bool:
+    """
+    Reactivate a symbol.
+    
+    Args:
+        symbol_id: Symbol ID to activate
+        
+    Returns:
+        True if activation successful, False if symbol not found
+    """
+    return await update_symbol(symbol_id, {'is_active': True})
+
+
+async def bulk_insert_symbols(symbols: List[DBSymbol]) -> List[int]:
+    """
+    Insert multiple symbols efficiently using batch operations.
+    
+    Args:
+        symbols: List of Symbol instances to insert
+        
+    Returns:
+        List of database IDs for inserted symbols
+        
+    Raises:
+        DatabaseError: If bulk insert fails
+    """
+    if not symbols:
+        return []
+    
+    db = get_db_manager()
+    
+    # Prepare data for bulk insert
+    records = []
+    for symbol in symbols:
+        records.append((
+            symbol.exchange_id,
+            symbol.symbol_base.upper(),
+            symbol.symbol_quote.upper(),
+            symbol.exchange_symbol,
+            symbol.is_active,
+            symbol.is_futures,
+            symbol.min_order_size,
+            symbol.max_order_size,
+            symbol.price_precision,
+            symbol.quantity_precision,
+            symbol.tick_size,
+            symbol.step_size,
+            symbol.min_notional
+        ))
+    
+    columns = [
+        'exchange_id', 'symbol_base', 'symbol_quote', 'exchange_symbol',
+        'is_active', 'is_futures', 'min_order_size', 'max_order_size',
+        'price_precision', 'quantity_precision', 'tick_size', 'step_size', 'min_notional'
+    ]
+    
+    try:
+        # Use COPY for maximum performance
+        result_count = await db.copy_records_to_table('symbols', records, columns)
+        
+        logger.info(f"Bulk inserted {result_count} symbols")
+        
+        # Since COPY doesn't return IDs, we need to fetch them
+        # This is a trade-off between performance and returning IDs
+        # For HFT systems, we often don't need the IDs immediately
+        return []  # Return empty list for now, can be enhanced if needed
+        
+    except Exception as e:
+        logger.error(f"Failed to bulk insert {len(symbols)} symbols: {e}")
+        raise
+
+
+async def get_symbol_stats() -> Dict[str, Any]:
+    """
+    Get symbol statistics for monitoring.
+    
+    Returns:
+        Dictionary with symbol statistics
+    """
+    db = get_db_manager()
+    
+    queries = {
+        'total_symbols': "SELECT COUNT(*) FROM symbols",
+        'active_symbols': "SELECT COUNT(*) FROM symbols WHERE is_active = true",
+        'spot_symbols': "SELECT COUNT(*) FROM symbols s JOIN exchanges e ON s.exchange_id = e.id WHERE e.market_type = 'SPOT' AND s.is_active = true",
+        'futures_symbols': "SELECT COUNT(*) FROM symbols s JOIN exchanges e ON s.exchange_id = e.id WHERE e.market_type = 'FUTURES' AND s.is_active = true",
+        'latest_update': "SELECT MAX(CURRENT_TIMESTAMP) FROM symbols"
     }
     
     stats = {}
@@ -1237,8 +2043,472 @@ async def get_balance_database_stats() -> Dict[str, Any]:
             result = await db.fetchval(query)
             stats[key] = result
         
+        # Add exchange breakdown
+        exchange_breakdown_query = """
+            SELECT e.name, COUNT(s.id) as symbol_count
+            FROM exchanges e
+            LEFT JOIN symbols s ON e.id = s.exchange_id AND s.is_active = true
+            WHERE 1=1
+            GROUP BY e.name
+            ORDER BY symbol_count DESC
+        """
+        
+        breakdown_rows = await db.fetch(exchange_breakdown_query)
+        stats['symbols_by_exchange'] = {
+            row['name']: row['symbol_count'] for row in breakdown_rows
+        }
+        
         return stats
         
     except Exception as e:
-        logger.error(f"Failed to retrieve balance database stats: {e}")
+        logger.error(f"Failed to retrieve symbol stats: {e}")
         return {}
+
+
+async def populate_symbols_from_existing_data() -> int:
+    """
+    Populate symbols table from existing book_ticker_snapshots data.
+    
+    Returns:
+        Number of symbols populated
+    """
+    db = get_db_manager()
+    
+    # Extract unique symbols from existing data
+    extract_query = """
+        SELECT DISTINCT 
+            bts.exchange,
+            bts.symbol_base,
+            bts.symbol_quote
+        FROM book_ticker_snapshots bts
+        WHERE NOT EXISTS (
+            SELECT 1 FROM symbols s 
+            JOIN exchanges e ON s.exchange_id = e.id 
+            WHERE e.name = CONCAT(bts.exchange, '_SPOT')
+              AND s.symbol_base = bts.symbol_base 
+              AND s.symbol_quote = bts.symbol_quote
+        )
+        ORDER BY bts.exchange, bts.symbol_base, bts.symbol_quote
+    """
+    
+    try:
+        unique_symbols = await db.fetch(extract_query)
+        logger.info(f"Found {len(unique_symbols)} unique symbols to populate")
+        
+        inserted_count = 0
+        
+        for row in unique_symbols:
+            exchange_name = f"{row['exchange']}_SPOT"
+            
+            # Get exchange ID
+            exchange = await get_exchange_by_enum_value(exchange_name)
+            if not exchange:
+                logger.warning(f"Exchange {exchange_name} not found, skipping symbol {row['symbol_base']}/{row['symbol_quote']}")
+                continue
+            
+            # Create symbol
+            symbol = DBSymbol(
+                exchange_id=exchange.id,
+                symbol_base=row['symbol_base'],
+                symbol_quote=row['symbol_quote'],
+                exchange_symbol=f"{row['symbol_base']}{row['symbol_quote']}",  # Default format
+                is_active=True,
+                symbol_type=SymbolType.SPOT  # From book_ticker_snapshots, likely spot
+            )
+            
+            try:
+                await insert_symbol(symbol)
+                inserted_count += 1
+            except Exception as e:
+                logger.warning(f"Failed to insert symbol {row['symbol_base']}/{row['symbol_quote']} for {exchange_name}: {e}")
+        
+        logger.info(f"Successfully populated {inserted_count} symbols from existing data")
+        return inserted_count
+        
+    except Exception as e:
+        logger.error(f"Failed to populate symbols from existing data: {e}")
+        raise
+
+
+async def get_exchange_by_enum_value(enum_value: str) -> Optional[Exchange]:
+    """
+    Helper function to get exchange by enum value.
+    
+    Args:
+        enum_value: Exchange enum value (e.g., 'MEXC_SPOT')
+        
+    Returns:
+        Exchange instance or None if not found
+    """
+    db = get_db_manager()
+    
+    query = """
+        SELECT id, name, enum_value, display_name, market_type
+        FROM exchanges
+        WHERE enum_value = $1     """
+    
+    try:
+        row = await db.fetchrow(query, enum_value)
+        
+        if not row:
+            return None
+        
+        return Exchange(
+            id=row['id'],
+            name=row['name'],
+            enum_value=row['enum_value'],
+            display_name=row['display_name'],
+            market_type=row['market_type']
+        )
+        
+    except Exception as e:
+        logger.error(f"Failed to get exchange by enum value {enum_value}: {e}")
+        raise
+
+
+# ================================================================================================
+# Normalized Snapshot Operations
+# High-performance normalized data storage using foreign key relationships
+# ================================================================================================
+
+async def insert_normalized_book_ticker_snapshot(snapshot: NormalizedBookTickerSnapshot) -> int:
+    """
+    Insert a single normalized BookTicker snapshot.
+    
+    Args:
+        snapshot: NormalizedBookTickerSnapshot to insert
+        
+    Returns:
+        Database ID of inserted record
+    """
+    db = get_db_manager()
+    
+    query = """
+        INSERT INTO normalized_book_ticker_snapshots (
+            exchange_id, symbol_id,
+            bid_price, bid_qty, ask_price, ask_qty,
+            timestamp
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7)
+        RETURNING id
+    """
+    
+    try:
+        snapshot_id = await db.fetchval(
+            query,
+            snapshot.exchange_id,
+            snapshot.symbol_id,
+            snapshot.bid_price,
+            snapshot.bid_qty,
+            snapshot.ask_price,
+            snapshot.ask_qty,
+            snapshot.timestamp
+        )
+        
+        logger.debug(f"Inserted normalized book ticker snapshot with ID {snapshot_id}")
+        return snapshot_id
+        
+    except Exception as e:
+        logger.error(f"Failed to insert normalized book ticker snapshot: {e}")
+        raise
+
+
+async def insert_normalized_book_ticker_snapshots_batch(snapshots: List[NormalizedBookTickerSnapshot]) -> int:
+    """
+    Insert multiple normalized BookTicker snapshots efficiently.
+    
+    Args:
+        snapshots: List of NormalizedBookTickerSnapshot objects to insert
+        
+    Returns:
+        Number of records inserted
+    """
+    if not snapshots:
+        return 0
+    
+    db = get_db_manager()
+    
+    # Prepare data for bulk insert
+    records = []
+    for snapshot in snapshots:
+        records.append((
+            snapshot.exchange_id,
+            snapshot.symbol_id,
+            snapshot.bid_price,
+            snapshot.bid_qty,
+            snapshot.ask_price,
+            snapshot.ask_qty,
+            snapshot.timestamp
+        ))
+    
+    columns = [
+        'exchange_id', 'symbol_id', 'bid_price', 'bid_qty', 
+        'ask_price', 'ask_qty', 'timestamp'
+    ]
+    
+    try:
+        # Use COPY for maximum performance
+        result_count = await db.copy_records_to_table(
+            'normalized_book_ticker_snapshots', 
+            records, 
+            columns
+        )
+        
+        logger.debug(f"Bulk inserted {result_count} normalized book ticker snapshots")
+        return result_count
+        
+    except Exception as e:
+        logger.error(f"Failed to bulk insert normalized book ticker snapshots: {e}")
+        raise
+
+
+async def insert_normalized_trade_snapshot(snapshot: NormalizedTradeSnapshot) -> int:
+    """
+    Insert a single normalized trade snapshot.
+    
+    Args:
+        snapshot: NormalizedTradeSnapshot to insert
+        
+    Returns:
+        Database ID of inserted record
+    """
+    db = get_db_manager()
+    
+    query = """
+        INSERT INTO normalized_trade_snapshots (
+            exchange_id, symbol_id, price, quantity, side, timestamp,
+            trade_id, quote_quantity, is_buyer, is_maker
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+        RETURNING id
+    """
+    
+    try:
+        snapshot_id = await db.fetchval(
+            query,
+            snapshot.exchange_id,
+            snapshot.symbol_id,
+            snapshot.price,
+            snapshot.quantity,
+            snapshot.side,
+            snapshot.timestamp,
+            snapshot.trade_id,
+            snapshot.quote_quantity,
+            snapshot.is_buyer,
+            snapshot.is_maker
+        )
+        
+        logger.debug(f"Inserted normalized trade snapshot with ID {snapshot_id}")
+        return snapshot_id
+        
+    except Exception as e:
+        logger.error(f"Failed to insert normalized trade snapshot: {e}")
+        raise
+
+
+async def insert_normalized_trade_snapshots_batch(snapshots: List[NormalizedTradeSnapshot]) -> int:
+    """
+    Insert multiple normalized trade snapshots efficiently.
+    
+    Args:
+        snapshots: List of NormalizedTradeSnapshot objects to insert
+        
+    Returns:
+        Number of records inserted
+    """
+    if not snapshots:
+        return 0
+    
+    db = get_db_manager()
+    
+    # Prepare data for bulk insert
+    records = []
+    for snapshot in snapshots:
+        records.append((
+            snapshot.exchange_id,
+            snapshot.symbol_id,
+            snapshot.price,
+            snapshot.quantity,
+            snapshot.side,
+            snapshot.timestamp,
+            snapshot.trade_id,
+            snapshot.quote_quantity,
+            snapshot.is_buyer,
+            snapshot.is_maker
+        ))
+    
+    columns = [
+        'exchange_id', 'symbol_id', 'price', 'quantity', 'side', 'timestamp',
+        'trade_id', 'quote_quantity', 'is_buyer', 'is_maker'
+    ]
+    
+    try:
+        # Use COPY for maximum performance
+        result_count = await db.copy_records_to_table(
+            'normalized_trade_snapshots', 
+            records, 
+            columns
+        )
+        
+        logger.debug(f"Bulk inserted {result_count} normalized trade snapshots")
+        return result_count
+        
+    except Exception as e:
+        logger.error(f"Failed to bulk insert normalized trade snapshots: {e}")
+        raise
+
+
+# ================================================================================================
+# Symbol Auto-Population from Exchange Data
+# Automatically discovers and populates symbols from exchange connections
+# ================================================================================================
+
+async def auto_populate_symbols_from_exchanges(
+    exchange_configs: List[tuple], 
+    max_symbols_per_exchange: int = 100
+) -> Dict[str, int]:
+    """
+    Auto-populate symbols table by connecting to exchanges and discovering tradable symbols.
+    
+    Args:
+        exchange_configs: List of (exchange_enum, symbols_to_check) tuples
+        max_symbols_per_exchange: Maximum symbols to populate per exchange
+        
+    Returns:
+        Dictionary with exchange names and symbol counts populated
+    """
+    from exchanges.structs.enums import ExchangeEnum
+    
+    results = {}
+    
+    for exchange_enum, symbols_to_check in exchange_configs:
+        try:
+            logger.info(f"Auto-populating symbols for {exchange_enum.value}")
+            
+            # Get exchange from database
+            exchange = await get_exchange_by_enum(exchange_enum)
+            if not exchange:
+                logger.warning(f"Exchange {exchange_enum.value} not found in database")
+                continue
+            
+            symbols_populated = 0
+            
+            for symbol in symbols_to_check[:max_symbols_per_exchange]:
+                try:
+                    # Check if symbol already exists
+                    existing_symbol = await get_symbol_by_exchange_and_pair(
+                        exchange.id,
+                        str(symbol.base),
+                        str(symbol.quote)
+                    )
+                    
+                    if existing_symbol:
+                        logger.debug(f"Symbol {symbol.base}/{symbol.quote} already exists for {exchange_enum.value}")
+                        continue
+                    
+                    # Create new symbol
+                    db_symbol = DBSymbol(
+                        exchange_id=exchange.id,
+                        symbol_base=str(symbol.base).upper(),
+                        symbol_quote=str(symbol.quote).upper(),
+                        exchange_symbol=f"{symbol.base}{symbol.quote}".upper(),
+                        is_active=True,
+                        symbol_type=SymbolType.SPOT  # Default to spot
+                    )
+                    
+                    # Insert symbol
+                    await insert_symbol(db_symbol)
+                    symbols_populated += 1
+                    
+                    logger.debug(f"Populated symbol {symbol.base}/{symbol.quote} for {exchange_enum.value}")
+                    
+                except Exception as e:
+                    logger.warning(f"Failed to populate symbol {symbol.base}/{symbol.quote} for {exchange_enum.value}: {e}")
+                    continue
+            
+            results[exchange_enum.value] = symbols_populated
+            logger.info(f"Auto-populated {symbols_populated} symbols for {exchange_enum.value}")
+            
+        except Exception as e:
+            logger.error(f"Failed to auto-populate symbols for {exchange_enum.value}: {e}")
+            results[exchange_enum.value] = 0
+    
+    return results
+
+
+# ================================================================================================
+# Legacy to Normalized Conversion Helpers
+# Utilities for converting between legacy and normalized data structures
+# ================================================================================================
+
+async def convert_legacy_snapshots_to_normalized(
+    legacy_snapshots: List[BookTickerSnapshot]
+) -> List[NormalizedBookTickerSnapshot]:
+    """
+    Convert legacy BookTickerSnapshot objects to normalized format.
+    
+    Args:
+        legacy_snapshots: List of legacy BookTickerSnapshot objects
+        
+    Returns:
+        List of NormalizedBookTickerSnapshot objects
+    """
+    from exchanges.structs.enums import ExchangeEnum
+    
+    normalized_snapshots = []
+    conversion_stats = {"successful": 0, "failed": 0, "skipped": 0}
+    
+    for legacy_snapshot in legacy_snapshots:
+        try:
+            # Parse exchange enum from legacy format
+            try:
+                exchange_enum = ExchangeEnum(legacy_snapshot.exchange.upper())
+            except ValueError:
+                # Try mapping common variations
+                exchange_mapping = {
+                    "MEXC": ExchangeEnum.MEXC,
+                    "GATEIO": ExchangeEnum.GATEIO_SPOT,
+                    "GATEIO_FUTURES": ExchangeEnum.GATEIO_FUTURES
+                }
+                exchange_enum = exchange_mapping.get(legacy_snapshot.exchange.upper())
+                
+                if not exchange_enum:
+                    logger.warning(f"Unknown exchange: {legacy_snapshot.exchange}")
+                    conversion_stats["skipped"] += 1
+                    continue
+            
+            # Get exchange and symbol from cache
+            from .cache_operations import cached_get_exchange_by_enum, cached_resolve_symbol_for_exchange
+            
+            exchange = cached_get_exchange_by_enum(exchange_enum)
+            if not exchange:
+                logger.warning(f"Exchange {exchange_enum.value} not found in cache")
+                conversion_stats["failed"] += 1
+                continue
+            
+            symbol = cached_resolve_symbol_for_exchange(
+                exchange_enum,
+                legacy_snapshot.symbol_base,
+                legacy_snapshot.symbol_quote
+            )
+            
+            if not symbol:
+                logger.warning(f"Symbol {legacy_snapshot.symbol_base}/{legacy_snapshot.symbol_quote} not found for {exchange_enum.value}")
+                conversion_stats["failed"] += 1
+                continue
+            
+            # Create normalized snapshot
+            normalized_snapshot = NormalizedBookTickerSnapshot.from_legacy_snapshot(
+                legacy_snapshot,
+                exchange.id,
+                symbol.id
+            )
+            
+            normalized_snapshots.append(normalized_snapshot)
+            conversion_stats["successful"] += 1
+            
+        except Exception as e:
+            logger.error(f"Failed to convert legacy snapshot: {e}")
+            conversion_stats["failed"] += 1
+            continue
+    
+    logger.info(f"Conversion stats: {conversion_stats}")
+    return normalized_snapshots

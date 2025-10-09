@@ -23,8 +23,6 @@ Architecture: Handler objects with composite class coordination
 """
 from typing import Dict, Any
 
-from websockets import connect
-
 from exchanges.interfaces.ws import PublicBaseWebsocket
 from exchanges.integrations.mexc.structs.protobuf.PushDataV3ApiWrapper_pb2 import PushDataV3ApiWrapper
 from exchanges.integrations.mexc.structs.protobuf.PublicLimitDepthsV3Api_pb2 import PublicLimitDepthsV3Api

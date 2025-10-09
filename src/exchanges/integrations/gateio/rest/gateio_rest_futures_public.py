@@ -20,7 +20,7 @@ from utils import get_minimal_step, count_decimal_places
 
 # Import direct utility functions
 from exchanges.integrations.gateio.services.futures_symbol_mapper import GateioFuturesSymbol
-from exchanges.integrations.gateio.services.spot_symbol_mapper import get_exchange_interval
+from exchanges.integrations.gateio.utils import to_kline_interval
 
 
 from .gateio_base_futures_rest import GateioBaseFuturesRestInterface
@@ -408,7 +408,7 @@ class GateioPublicFuturesRestInterface(GateioBaseFuturesRestInterface, PublicFut
         """
         try:
             contract = GateioFuturesSymbol.to_pair(symbol)
-            interval = get_exchange_interval(timeframe)
+            interval = to_kline_interval(timeframe)
 
             params = {'contract': contract, 'interval': interval}
             if date_from:
