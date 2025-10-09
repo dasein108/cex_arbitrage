@@ -1047,11 +1047,10 @@ async def get_latest_balance_snapshots(
                 borrowing_balance=float(row['borrowing_balance']) if row['borrowing_balance'] else None,
                 interest_balance=float(row['interest_balance']) if row['interest_balance'] else None,
                 timestamp=row['timestamp'],
-                created_at=row['created_at'],
-                exchange_name=row['exchange_name']
+                created_at=row['created_at']
             )
             
-            key = f"{snapshot.exchange_name}_{snapshot.asset_name}"
+            key = f"{row['exchange_name']}_{snapshot.asset_name}"
             latest_balances[key] = snapshot
         
         logger.debug(f"Retrieved {len(latest_balances)} latest balance snapshots")
@@ -1118,8 +1117,7 @@ async def get_balance_history(
                 borrowing_balance=float(row['borrowing_balance']) if row['borrowing_balance'] else None,
                 interest_balance=float(row['interest_balance']) if row['interest_balance'] else None,
                 timestamp=row['timestamp'],
-                created_at=row['created_at'],
-                exchange_name=row['exchange_name']
+                created_at=row['created_at']
             )
             snapshots.append(snapshot)
         
@@ -1186,8 +1184,7 @@ async def get_active_balances(
                 borrowing_balance=float(row['borrowing_balance']) if row['borrowing_balance'] else None,
                 interest_balance=float(row['interest_balance']) if row['interest_balance'] else None,
                 timestamp=row['timestamp'],
-                created_at=row['created_at'],
-                exchange_name=row['exchange_name']
+                created_at=row['created_at']
             )
             active_balances.append(snapshot)
         

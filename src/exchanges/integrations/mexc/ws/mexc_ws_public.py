@@ -34,6 +34,7 @@ from exchanges.integrations.mexc.utils import from_subscription_action
 from exchanges.integrations.mexc.ws.protobuf_parser import MexcProtobufParser
 from exchanges.integrations.mexc.services.symbol_mapper import MexcSymbol
 from common.orderbook_entry_pool import OrderBookEntryPool
+from websockets import connect
 
 import msgspec
 

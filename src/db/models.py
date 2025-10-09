@@ -32,6 +32,8 @@ class BalanceSnapshot(msgspec.Struct):
     # Balance data (float-only per PROJECT_GUIDES.md for HFT performance)
     available_balance: float
     locked_balance: float
+    timestamp: datetime
+
     total_balance: Optional[float] = None  # Calculated field
     
     # Optional exchange-specific fields (all float for consistency)
@@ -40,12 +42,8 @@ class BalanceSnapshot(msgspec.Struct):
     interest_balance: Optional[float] = None
     
     # Timing
-    timestamp: datetime
     created_at: Optional[datetime] = None
     id: Optional[int] = None
-    
-    # Transient fields for convenience (not stored in DB)
-    exchange_name: Optional[str] = None
     
     @classmethod
     def from_asset_balance_and_exchange(
@@ -86,9 +84,7 @@ class BalanceSnapshot(msgspec.Struct):
             frozen_balance=float(getattr(asset_balance, 'frozen', 0.0)) if hasattr(asset_balance, 'frozen') and getattr(asset_balance, 'frozen') is not None else None,
             borrowing_balance=float(getattr(asset_balance, 'borrowing', 0.0)) if hasattr(asset_balance, 'borrowing') and getattr(asset_balance, 'borrowing') is not None else None,
             interest_balance=float(getattr(asset_balance, 'interest', 0.0)) if hasattr(asset_balance, 'interest') and getattr(asset_balance, 'interest') is not None else None,
-            timestamp=timestamp,
-            # Store transient fields for convenience
-            exchange_name=exchange_name.upper()
+            timestamp=timestamp
         )
     
     def to_asset_balance(self) -> AssetBalance:

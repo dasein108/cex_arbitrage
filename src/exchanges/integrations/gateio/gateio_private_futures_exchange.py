@@ -96,9 +96,9 @@ class GateioPrivateFuturesExchange(CompositePrivateFuturesExchange):
         self._tag = f'{config.name}_private_futures_{self.settle}'
         
         # Bind WebSocket position handler if WebSocket client available
-        if self._websocket:
+        if self.websocket_client:
             # Bind position handler to receive position updates
-            self._websocket.bind(PrivateWebsocketChannelType.POSITION, self._position_handler)
+            self.websocket_client.bind(PrivateWebsocketChannelType.POSITION, self._position_handler)
             
         self.logger.info(f"Initialized {self._tag} with settlement currency: {self.settle}")
     
@@ -297,7 +297,7 @@ class GateioPrivateFuturesExchange(CompositePrivateFuturesExchange):
                 self._positions[position.symbol] = position
             
             # Subscribe to position updates if WebSocket available
-            if self._websocket and positions:
+            if self.websocket_client and positions:
                 symbols = [pos.symbol for pos in positions]
                 await self.subscribe_position_updates(symbols)
             
