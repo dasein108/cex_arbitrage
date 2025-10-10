@@ -16,11 +16,11 @@ import asyncio
 from typing import Dict, List, Optional, Callable, Any
 # Float-only policy - no Decimal imports per PROJECT_GUIDES.md
 import time
-from dataclasses import dataclass
 from enum import Enum
+from msgspec import Struct
 
 from exchanges.dual_exchange import DualExchange
-from exchanges.structs import Symbol, BookTicker, Order, AssetBalance, Position
+from exchanges.structs import Symbol, BookTicker, Order, AssetBalance, Position, Side
 from infrastructure.logging import HFTLoggerInterface
 from infrastructure.networking.websocket.structs import PublicWebsocketChannelType, PrivateWebsocketChannelType
 from config.config_manager import get_exchange_config
@@ -37,9 +37,35 @@ class ExchangeStatus(Enum):
     RECOVERING = "recovering"
 
 
-@dataclass
-class ExchangeMetrics:
-    """Performance metrics for an exchange."""
+class OrderPlacementParams(Struct, frozen=True):
+    """Type-safe order placement parameters following struct-first policy."""
+    side: Side
+    quantity: float
+    price: float
+    
+    def validate(self) -> bool:
+        """Validate order parameters for HFT compliance."""
+        return (
+            self.quantity > 0.0 and 
+            self.price > 0.0
+        )
+
+
+class ExchangeBalanceSummary(Struct, frozen=True):
+    """Balance summary for a single exchange with AssetBalance structs."""
+    role_key: str
+    balances: Dict[str, AssetBalance]  # asset_name -> AssetBalance
+
+
+class BalanceSummaryResponse(Struct, frozen=True):
+    """Complete balance summary across all exchanges following struct-first policy."""
+    exchanges: Dict[str, ExchangeBalanceSummary]
+    total_exchanges: int
+    timestamp: float
+
+
+class ExchangeMetrics(Struct):
+    """Performance metrics for an exchange (msgspec optimized)."""
     connection_time: float = 0.0
     last_price_update: float = 0.0
     price_update_count: int = 0
@@ -392,28 +418,36 @@ class ExchangeManager:
         self._balance_alerts_enabled = enabled
         self.logger.info(f"📢 Balance alerts {'enabled' if enabled else 'disabled'}")
     
-    def get_balance_summary(self) -> Dict[str, Dict[str, float]]:
-        """Get summary of all current balances across exchanges."""
-        summary = {}
+    def get_balance_summary(self) -> BalanceSummaryResponse:
+        """Get structured summary of all current balances across exchanges."""
+        exchange_summaries = {}
+        
         for role_key, balances in self._current_balances.items():
-            summary[role_key] = {}
+            # Convert list of balances to dict keyed by asset name
+            balance_dict = {}
             for balance in balances:
                 asset_name = str(balance.asset)
-                summary[role_key][asset_name] = {
-                    'available': float(balance.available),
-                    'locked': float(balance.locked),
-                    'total': float(balance.total)
-                }
-        return summary
+                balance_dict[asset_name] = balance
+            
+            exchange_summaries[role_key] = ExchangeBalanceSummary(
+                role_key=role_key,
+                balances=balance_dict
+            )
+        
+        return BalanceSummaryResponse(
+            exchanges=exchange_summaries,
+            total_exchanges=len(self._exchanges),
+            timestamp=time.time()
+        )
     
     # Trading operations
     
-    async def place_order_parallel(self, orders: Dict[str, dict]) -> Dict[str, Optional[Order]]:
-        """Place orders on multiple exchanges in parallel.
+    async def place_order_parallel(self, orders: Dict[str, OrderPlacementParams]) -> Dict[str, Optional[Order]]:
+        """Place orders on multiple exchanges in parallel with type-safe parameters.
         
         Args:
-            orders: Dict mapping role_key to order parameters
-                   {'role_key': {'side': Side.BUY, 'quantity': 100, 'price': 50.0}}
+            orders: Dict mapping role_key to OrderPlacementParams struct
+                   {'role_key': OrderPlacementParams(side=Side.BUY, quantity=100.0, price=50.0)}
         
         Returns:
             Dict mapping role_key to placed Order (or None if failed)
@@ -423,12 +457,17 @@ class ExchangeManager:
         
         for role_key, order_params in orders.items():
             if role_key in self._exchanges:
+                # Validate parameters using struct validation
+                if not order_params.validate():
+                    self.logger.error(f"Invalid order parameters for {role_key}: {order_params}")
+                    continue
+                    
                 exchange = self._exchanges[role_key]
                 task = exchange.private.place_limit_order(
                     symbol=self.symbol,
-                    side=order_params['side'],
-                    quantity=order_params['quantity'],
-                    price=order_params['price']
+                    side=order_params.side,
+                    quantity=order_params.quantity,
+                    price=order_params.price
                 )
                 order_tasks.append(task)
                 role_keys.append(role_key)

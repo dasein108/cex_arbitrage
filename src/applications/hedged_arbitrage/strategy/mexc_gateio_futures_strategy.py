@@ -42,7 +42,6 @@ class MexcGateioFuturesContext(ArbitrageTaskContext):
     
     # Strategy-specific configuration (fields not in base class)
     futures_leverage: float = 1.0  # Leverage for futures position
-    min_spread_bps: int = 10  # Minimum spread in basis points (backward compatibility)
     max_position_hold_seconds: int = 300  # 5 minutes max hold time
     
     # Strategy-specific position tracking
@@ -106,7 +105,6 @@ class MexcGateioFuturesStrategy(BaseArbitrageStrategy[MexcGateioFuturesContext])
             base_position_size=base_position_size,
             entry_threshold_pct=entry_threshold_pct / 100,  # Convert percentage to decimal
             exit_threshold_pct=exit_threshold_pct / 100,
-            min_spread_bps=int(entry_threshold_pct * 100),  # Store as bps for backward compatibility
             max_position_multiplier=2.0  # Conservative for 2-exchange strategy
         )
         
@@ -396,18 +394,10 @@ class MexcGateioFuturesStrategy(BaseArbitrageStrategy[MexcGateioFuturesContext])
                 self.logger.warning("Could not get exchanges for balance checking")
                 return base_size
             
-            # Get balances for both exchanges
-            try:
-                spot_balances = await spot_exchange.private.get_balances()
-                futures_balances = await futures_exchange.private.get_balances()
-            except Exception as e:
-                self.logger.warning(f"Failed to get balances for position sizing: {e}")
-                return base_size
-            
             # Determine trade direction and check relevant balances
             if opportunity.primary_exchange == ExchangeEnum.MEXC:
                 # Buying MEXC spot, selling Gate.io futures
-                quote_balance = next((b for b in spot_balances if b.asset == self.context.symbol.quote), None)
+                quote_balance = await spot_exchange.private.get_asset_balance(opportunity.symbol.quote)
                 if quote_balance:
                     # Calculate max position based on available quote balance
                     required_quote_per_unit = float(opportunity.primary_price) * 1.01  # Add 1% buffer for fees
@@ -417,7 +407,7 @@ class MexcGateioFuturesStrategy(BaseArbitrageStrategy[MexcGateioFuturesContext])
                 
             else:
                 # Selling MEXC spot, buying Gate.io futures
-                base_balance = next((b for b in spot_balances if b.asset == self.context.symbol.base), None)
+                base_balance = await spot_exchange.private.get_asset_balance(opportunity.symbol.quote)
                 if base_balance:
                     # Calculate max position based on available base balance
                     max_spot_sell = float(base_balance.available)
@@ -445,14 +435,14 @@ class MexcGateioFuturesStrategy(BaseArbitrageStrategy[MexcGateioFuturesContext])
                 # Buy MEXC spot, sell Gate.io futures
                 mexc_side = Side.BUY
                 gateio_side = Side.SELL
-                mexc_price = float(opportunity.primary_price)
-                gateio_price = float(opportunity.target_price)
+                mexc_price = opportunity.primary_price
+                gateio_price = opportunity.target_price
             else:
                 # Buy Gate.io futures, sell MEXC spot
                 mexc_side = Side.SELL
                 gateio_side = Side.BUY
-                mexc_price = float(opportunity.target_price)
-                gateio_price = float(opportunity.primary_price)
+                mexc_price = opportunity.target_price
+                gateio_price = opportunity.primary_price
             
             # Prepare order structure for validation
             orders = {

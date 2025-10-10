@@ -449,18 +449,20 @@ class MicrostructureAnalyzer:
         """Fetch recent trade data"""
         query = """
         SELECT 
-            timestamp,
-            price,
-            quantity,
-            side,
-            trade_id,
-            is_buyer,
-            is_maker
-        FROM trades
-        WHERE symbol_base = %s 
-            AND exchange = %s
-            AND timestamp > NOW() - INTERVAL '%s minutes'
-        ORDER BY timestamp
+            ts.timestamp,
+            ts.price,
+            ts.quantity,
+            ts.side,
+            ts.trade_id,
+            ts.is_buyer,
+            ts.is_maker
+        FROM trade_snapshots ts
+        JOIN symbols s ON ts.symbol_id = s.id
+        JOIN exchanges e ON s.exchange_id = e.id
+        WHERE s.symbol_base = %s 
+            AND e.enum_value = %s
+            AND ts.timestamp > NOW() - INTERVAL '%s minutes'
+        ORDER BY ts.timestamp
         """
         
         self.cursor.execute(query, (symbol, exchange, minutes))

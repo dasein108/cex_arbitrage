@@ -24,10 +24,40 @@ from exchanges.exchange_factory import get_composite_implementation
 from exchanges.adapters import BindedEventHandlersAdapter
 from infrastructure.networking.websocket.structs import PublicWebsocketChannelType
 from db import BookTickerSnapshot
-from db.models import TradeSnapshot, FundingRateSnapshot, NormalizedBookTickerSnapshot, NormalizedTradeSnapshot
+from db.models import TradeSnapshot, FundingRateSnapshot
 from .analytics import RealTimeAnalytics, ArbitrageOpportunity
 from config.config_manager import get_exchange_config
 from infrastructure.logging import get_logger, LoggingTimer
+
+
+@dataclass(frozen=True)
+class SymbolCacheKey:
+    """
+    Structured cache key for exchange-symbol combinations.
+    
+    Uses frozen dataclass to make it hashable for dictionary keys.
+    Eliminates string parsing issues and exchange-specific symbol format problems.
+    """
+    exchange: ExchangeEnum
+    base: str
+    quote: str
+    
+    @classmethod
+    def from_exchange_and_symbol(cls, exchange: ExchangeEnum, symbol: Symbol) -> "SymbolCacheKey":
+        """Create cache key from exchange and symbol objects."""
+        return cls(
+            exchange=exchange,
+            base=symbol.base.upper(),
+            quote=symbol.quote.upper()
+        )
+    
+    def to_symbol(self) -> Symbol:
+        """Convert cache key back to Symbol object."""
+        return Symbol(base=self.base, quote=self.quote)
+    
+    def __str__(self) -> str:
+        """String representation for logging."""
+        return f"{self.exchange.value}:{self.base}/{self.quote}"
 
 
 @dataclass
@@ -99,8 +129,8 @@ class UnifiedWebSocketManager:
         # Event handler adapters for each exchange
         self._event_adapters: Dict[ExchangeEnum, BindedEventHandlersAdapter] = {}
 
-        # Book ticker cache: {exchange_symbol: BookTickerCache}
-        self._book_ticker_cache: Dict[str, BookTickerCache] = {}
+        # Symbol-based cache with structured keys (eliminates parsing issues)
+        self._book_ticker_cache: Dict[SymbolCacheKey, BookTickerCache] = {}
 
         # Performance tracking
         self._total_messages_received = 0
@@ -112,11 +142,11 @@ class UnifiedWebSocketManager:
                          has_book_ticker_handler=book_ticker_handler is not None,
                          has_trade_handler=trade_handler is not None)
 
-        # Trade cache: {exchange_symbol: List[TradeCache]} (keep recent trades)
-        self._trade_cache: Dict[str, List[TradeCache]] = {}
+        # Trade cache with structured keys: {SymbolCacheKey: List[TradeCache]}
+        self._trade_cache: Dict[SymbolCacheKey, List[TradeCache]] = {}
 
-        # Funding rate cache: {exchange_symbol: FundingRateCache}
-        self._funding_rate_cache: Dict[str, FundingRateCache] = {}
+        # Funding rate cache with structured keys: {SymbolCacheKey: FundingRateCache}
+        self._funding_rate_cache: Dict[SymbolCacheKey, FundingRateCache] = {}
 
         # Active symbols per exchange
         self._active_symbols: Dict[ExchangeEnum, Set[Symbol]] = {}
@@ -291,8 +321,8 @@ class UnifiedWebSocketManager:
             # Track message reception
             self._total_messages_received += 1
 
-            # Update cache - use symbol directly without prefixes
-            cache_key = f"{exchange.value}_{symbol}"
+            # Update cache using structured SymbolCacheKey (eliminates format issues)
+            cache_key = SymbolCacheKey.from_exchange_and_symbol(exchange, symbol)
             with LoggingTimer(self.logger, "book_ticker_cache_update") as timer:
                 self._book_ticker_cache[cache_key] = BookTickerCache(
                     ticker=book_ticker,
@@ -303,14 +333,14 @@ class UnifiedWebSocketManager:
             # Log update with performance context
             self.logger.debug("Book ticker cached",
                               exchange=exchange.value,
-                              symbol=str(symbol),
+                              symbol=str(cache_key),
                               bid_price=book_ticker.bid_price,
                               ask_price=book_ticker.ask_price,
                               cache_time_us=timer.elapsed_ms * 1000)
 
             # Track performance metrics
             self.logger.metric("book_ticker_updates", 1,
-                               tags={"exchange": exchange.value, "symbol": str(symbol)})
+                               tags={"exchange": exchange.value, "symbol": str(cache_key)})
 
             self.logger.metric("cache_update_time_us", timer.elapsed_ms * 1000,
                                tags={"exchange": exchange.value, "operation": "book_ticker"})
@@ -337,15 +367,16 @@ class UnifiedWebSocketManager:
                 self.logger.metric("cache_size", len(self._book_ticker_cache))
 
         except Exception as e:
+            cache_key = SymbolCacheKey.from_exchange_and_symbol(exchange, symbol)
             self.logger.error("Error handling book ticker update",
                               exchange=exchange.value,
-                              symbol=str(symbol),
+                              symbol=str(cache_key),
                               error_type=type(e).__name__,
                               error_message=str(e))
 
             # Track error metrics
             self.logger.metric("book_ticker_processing_errors", 1,
-                               tags={"exchange": exchange.value, "symbol": str(symbol)})
+                               tags={"exchange": exchange.value, "symbol": str(cache_key)})
 
             import traceback
             self.logger.debug("Full traceback", traceback=traceback.format_exc())
@@ -362,8 +393,8 @@ class UnifiedWebSocketManager:
             trades: List of trade data
         """
         try:
-            # Update cache (keep recent trades, limit to 100 per symbol)
-            cache_key = f"{exchange.value}_{symbol}"
+            # Update cache using structured SymbolCacheKey (eliminates format issues)
+            cache_key = SymbolCacheKey.from_exchange_and_symbol(exchange, symbol)
             if cache_key not in self._trade_cache:
                 self._trade_cache[cache_key] = []
 
@@ -422,9 +453,22 @@ class UnifiedWebSocketManager:
                 # Create funding rate snapshot
                 current_time = datetime.now(timezone.utc)
                 
-                # Get symbol_id for database storage
-                from db.symbol_manager import get_symbol_id
-                symbol_id = await get_symbol_id(exchange.value, symbol)
+                # Get symbol_id for database storage using unified DatabaseManager resolution
+                db_manager = self._get_database_manager()
+                
+                # Use unified symbol resolution that handles both formats automatically
+                db_symbol = db_manager.resolve_symbol(exchange, symbol)
+                symbol_id = db_symbol.id if db_symbol else None
+                
+                # Monitor cache performance for HFT compliance
+                if symbol_id:
+                    from db.cache_operations import get_cache_stats
+                    cache_stats = get_cache_stats()
+                    if cache_stats.avg_lookup_time_us > 1.0:  # >1μs threshold
+                        self.logger.warning("Cache performance degradation during unified symbol lookup",
+                                          hit_ratio=cache_stats.hit_ratio,
+                                          avg_lookup_time_us=cache_stats.avg_lookup_time_us,
+                                          cache_size=cache_stats.cache_size)
                 
                 if symbol_id:
                     funding_snapshot = FundingRateSnapshot(
@@ -435,8 +479,8 @@ class UnifiedWebSocketManager:
                         exchange=exchange.value
                     )
                     
-                    # Update cache
-                    cache_key = f"{exchange.value}_{symbol}"
+                    # Update cache using structured SymbolCacheKey 
+                    cache_key = SymbolCacheKey.from_exchange_and_symbol(exchange, symbol)
                     cache_entry = FundingRateCache(
                         funding_rate_snapshot=funding_snapshot,
                         last_updated=current_time,
@@ -508,9 +552,22 @@ class UnifiedWebSocketManager:
                             # if funding_rate is None or funding_time is None:
                             #     continue
                             
-                            # Get symbol ID from database
-                            from db.symbol_manager import get_symbol_id
-                            symbol_id = await get_symbol_id(exchange.value, symbol)
+                            # Get symbol ID from database using unified DatabaseManager resolution
+                            db_manager = self._get_database_manager()
+                            
+                            # Use unified symbol resolution that handles both formats automatically
+                            db_symbol = db_manager.resolve_symbol(exchange, symbol)
+                            symbol_id = db_symbol.id if db_symbol else None
+                            
+                            # Monitor cache performance for HFT compliance during funding rate sync
+                            if symbol_id:
+                                from db.cache_operations import get_cache_stats
+                                cache_stats = get_cache_stats()
+                                if cache_stats.avg_lookup_time_us > 1.0:  # >1μs threshold
+                                    self.logger.warning("Cache performance degradation during unified funding rate sync",
+                                                      hit_ratio=cache_stats.hit_ratio,
+                                                      avg_lookup_time_us=cache_stats.avg_lookup_time_us,
+                                                      cache_size=cache_stats.cache_size)
                             funding_rate = ticker[symbol].funding_rate
                             funding_time = ticker[symbol].funding_time
                             
@@ -531,8 +588,8 @@ class UnifiedWebSocketManager:
                                 symbol_id=symbol_id
                             )
                             
-                            # Cache the snapshot
-                            cache_key = f"{exchange.value}_{symbol}"
+                            # Cache the snapshot using structured SymbolCacheKey
+                            cache_key = SymbolCacheKey.from_exchange_and_symbol(exchange, symbol)
                             self._funding_rate_cache[cache_key] = FundingRateCache(
                                 funding_rate_snapshot=funding_snapshot,
                                 last_updated=datetime.now(),
@@ -596,10 +653,10 @@ class UnifiedWebSocketManager:
                         await composite.remove_symbol(s)
                         self._active_symbols[exchange].difference_update(symbols)
 
-            # Remove from cache
+            # Remove from cache using structured SymbolCacheKey
             for symbol in symbols:
                 for exchange in self.exchanges:
-                    cache_key = f"{exchange.value}_{symbol}"
+                    cache_key = SymbolCacheKey.from_exchange_and_symbol(exchange, symbol)
                     self._book_ticker_cache.pop(cache_key, None)
 
             self.logger.info(f"Removed {len(symbols)} symbols from all exchanges")
@@ -618,34 +675,62 @@ class UnifiedWebSocketManager:
         Returns:
             BookTicker if available, None otherwise
         """
-        cache_key = f"{exchange.value}_{symbol}"
+        cache_key = SymbolCacheKey.from_exchange_and_symbol(exchange, symbol)
         cache_entry = self._book_ticker_cache.get(cache_key)
 
         if cache_entry:
             return cache_entry.ticker
         return None
 
-    def _parse_cache_key(self, cache_key: str) -> tuple[str, str]:
+    def _get_database_manager(self):
+        """Get database manager instance, initializing if needed."""
+        if hasattr(self, 'db') and self.db is not None:
+            return self.db
+        # Fallback for cases where manager isn't cached yet
+        from db import get_database_manager
+        return get_database_manager()
+
+    def _resolve_symbol_id_from_symbol_cache_key(self, cache_key: SymbolCacheKey) -> Optional[int]:
         """
-        Parse cache key into exchange and symbol components.
+        Resolve symbol_id from SymbolCacheKey using unified DatabaseManager resolution.
         
-        Cache keys follow the format: {exchange}_{symbol}
-        where exchange may contain underscores (e.g., "MEXC_SPOT").
+        Uses the new structured cache key to eliminate string parsing and format conversion issues.
         
         Args:
-            cache_key: Cache key in format "exchange_symbol"
+            cache_key: Structured cache key with exchange and symbol info
             
         Returns:
-            Tuple of (exchange, symbol_str)
-            
-        Raises:
-            ValueError: If cache key format is invalid
+            symbol_id if found, None otherwise
         """
-        parts = cache_key.rsplit("_", 1)
-        if len(parts) != 2:
-            raise ValueError(f"Invalid cache key format: {cache_key}")
-
-        return parts[0], parts[1]
+        try:
+            # Use optimized DatabaseManager with unified symbol resolution (PROJECT_GUIDES.md compliant)
+            db_manager = self._get_database_manager()
+            
+            # Convert cache key back to Symbol object for resolution
+            symbol_obj = cache_key.to_symbol()
+            
+            # Use the unified resolution method that handles both formats automatically
+            db_symbol = db_manager.resolve_symbol(cache_key.exchange, symbol_obj)
+            
+            if db_symbol:
+                # Monitor cache performance for HFT compliance during symbol resolution
+                from db.cache_operations import get_cache_stats
+                cache_stats = get_cache_stats()
+                if cache_stats.avg_lookup_time_us > 1.0:  # >1μs threshold
+                    self.logger.warning("Cache performance degradation during unified symbol resolution", 
+                                      symbol=str(cache_key),
+                                      hit_ratio=cache_stats.hit_ratio,
+                                      avg_lookup_time_us=cache_stats.avg_lookup_time_us,
+                                      cache_size=cache_stats.cache_size)
+                    
+                self.logger.debug(f"Resolved symbol_id {db_symbol.id} for {cache_key}")
+                return db_symbol.id
+            
+            return None
+            
+        except Exception as e:
+            self.logger.warning(f"Error resolving symbol_id for {cache_key}: {e}")
+            return None
 
     async def get_all_cached_tickers(self) -> List[BookTickerSnapshot]:
         """
@@ -661,13 +746,10 @@ class UnifiedWebSocketManager:
 
         for cache_key, cache_entry in cached_items:
             try:
-                # Parse exchange and symbol from cache key
-                exchange, symbol_str = self._parse_cache_key(cache_key)
-
-                # Resolve symbol_id directly using database cache (normalized approach)
-                symbol_id = self._resolve_symbol_id_from_cache(exchange, symbol_str)
+                # Resolve symbol_id using structured SymbolCacheKey (eliminates parsing issues)
+                symbol_id = self._resolve_symbol_id_from_symbol_cache_key(cache_key)
                 if symbol_id is None:
-                    self.logger.warning(f"Cannot resolve symbol_id from cache: {symbol_str} on {exchange}")
+                    self.logger.warning(f"Cannot resolve symbol_id from cache: {cache_key}")
                     continue
 
                 # Create normalized snapshot directly with symbol_id
@@ -687,48 +769,6 @@ class UnifiedWebSocketManager:
 
         return snapshots
 
-    def _resolve_symbol_id_from_cache(self, exchange: str, symbol_str: str) -> Optional[int]:
-        """
-        Resolve symbol_id from database cache using exchange and symbol string.
-        
-        Handles both slash format (BTC/USDT) and exchange format (BTCUSDT).
-        
-        Args:
-            exchange: Exchange identifier (e.g., 'MEXC_SPOT')
-            symbol_str: Symbol string (e.g., 'BTCUSDT' or 'BTC/USDT')
-            
-        Returns:
-            symbol_id if found, None otherwise
-        """
-        try:
-            from exchanges.structs.enums import ExchangeEnum
-            from db.cache_operations import cached_resolve_symbol_by_exchange_string
-            
-            # Parse exchange enum
-            exchange_enum = ExchangeEnum(exchange)
-            
-            # Try direct resolution first (for exchange format like 'BTCUSDT')
-            db_symbol = cached_resolve_symbol_by_exchange_string(exchange_enum, symbol_str)
-            if db_symbol:
-                self.logger.debug(f"Resolved symbol_id {db_symbol.id} for {symbol_str} on {exchange}")
-                return db_symbol.id
-            
-            # If slash format (e.g., 'BTC/USDT'), convert to exchange format
-            if '/' in symbol_str:
-                parts = symbol_str.split('/')
-                if len(parts) == 2:
-                    exchange_symbol = f"{parts[0]}{parts[1]}"  # BTC/USDT -> BTCUSDT
-                    db_symbol = cached_resolve_symbol_by_exchange_string(exchange_enum, exchange_symbol)
-                    if db_symbol:
-                        self.logger.debug(f"Resolved symbol_id {db_symbol.id} for {symbol_str} (converted to {exchange_symbol}) on {exchange}")
-                        return db_symbol.id
-            
-            return None
-            
-        except Exception as e:
-            self.logger.warning(f"Error resolving symbol_id for {symbol_str} on {exchange}: {e}")
-            return None
-
     def get_all_cached_trades(self) -> List[TradeSnapshot]:
         """
         Get all cached trades as normalized TradeSnapshot objects.
@@ -740,13 +780,10 @@ class UnifiedWebSocketManager:
 
         for cache_key, trade_cache_list in self._trade_cache.items():
             try:
-                # Parse exchange and symbol from cache key
-                exchange, symbol_str = self._parse_cache_key(cache_key)
-
-                # Resolve symbol_id directly using database cache (normalized approach)
-                symbol_id = self._resolve_symbol_id_from_cache(exchange, symbol_str)
+                # Resolve symbol_id using structured SymbolCacheKey (eliminates parsing issues)
+                symbol_id = self._resolve_symbol_id_from_symbol_cache_key(cache_key)
                 if symbol_id is None:
-                    self.logger.warning(f"Cannot resolve symbol_id from cache for trades: {symbol_str} on {exchange}")
+                    self.logger.warning(f"Cannot resolve symbol_id from cache for trades: {cache_key}")
                     continue
 
                 # Convert each cached trade to normalized TradeSnapshot
@@ -813,40 +850,31 @@ class UnifiedWebSocketManager:
         """
         total_cached = len(self._book_ticker_cache)
 
-        # Count by exchange
+        # Count by exchange using structured SymbolCacheKey (eliminates parsing errors)
         by_exchange = {}
         for cache_key in self._book_ticker_cache.keys():
-            try:
-                exchange, _ = self._parse_cache_key(cache_key)
-                by_exchange[exchange] = by_exchange.get(exchange, 0) + 1
-            except Exception as e:
-                self.logger.warning(f"Error parsing cache key {cache_key}: {e}")
+            exchange_name = cache_key.exchange.value
+            by_exchange[exchange_name] = by_exchange.get(exchange_name, 0) + 1
 
         # Count cached trades by exchange
         trades_by_exchange = {}
         total_cached_trades = 0
         for cache_key, trade_list in self._trade_cache.items():
-            try:
-                exchange, _ = self._parse_cache_key(cache_key)
-                trade_count = len(trade_list)
-                trades_by_exchange[exchange] = trades_by_exchange.get(exchange, 0) + trade_count
-                total_cached_trades += trade_count
-            except Exception as e:
-                self.logger.warning(f"Error parsing trade cache key {cache_key}: {e}")
+            exchange_name = cache_key.exchange.value
+            trade_count = len(trade_list)
+            trades_by_exchange[exchange_name] = trades_by_exchange.get(exchange_name, 0) + trade_count
+            total_cached_trades += trade_count
 
         # Count cached funding rates by exchange
         funding_rates_by_exchange = {}
         total_cached_funding_rates = 0
         for cache_key, funding_cache in self._funding_rate_cache.items():
-            try:
-                exchange, _ = self._parse_cache_key(cache_key)
-                funding_rates_by_exchange[exchange] = funding_rates_by_exchange.get(exchange, 0) + 1
-                total_cached_funding_rates += 1
-            except Exception as e:
-                self.logger.warning(f"Error parsing funding rate cache key {cache_key}: {e}")
+            exchange_name = cache_key.exchange.value
+            funding_rates_by_exchange[exchange_name] = funding_rates_by_exchange.get(exchange_name, 0) + 1
+            total_cached_funding_rates += 1
 
-        # Add detailed cache keys for debugging
-        cache_keys = list(self._book_ticker_cache.keys())
+        # Add detailed cache keys for debugging (use structured representation)
+        sample_cache_keys = [str(key) for key in list(self._book_ticker_cache.keys())[:5]]
 
         return {
             "total_cached_tickers": total_cached,
@@ -857,7 +885,7 @@ class UnifiedWebSocketManager:
             "funding_rates_by_exchange": funding_rates_by_exchange,
             "connected_exchanges": sum(1 for connected in self._connected.values() if connected),
             "total_exchanges": len(self._connected),
-            "sample_cache_keys": cache_keys[:5],  # Show first 5 cache keys for debugging
+            "sample_cache_keys": sample_cache_keys,  # Show first 5 cache keys for debugging
             "connection_status": dict(self._connected)  # Show individual connection status
         }
 
@@ -1064,12 +1092,21 @@ class DataCollector:
         self.ws_manager: Optional[UnifiedWebSocketManager] = None
         self.analytics: Optional[RealTimeAnalytics] = None
         self.scheduler: Optional[SnapshotScheduler] = None
+        self.db = None  # Database manager instance
 
         # State
         self._running = False
         self._start_time: Optional[datetime] = None
 
         self.logger.info(f"Data collector initialized with {len(self.config.symbols)} symbols")
+
+    def _get_database_manager(self):
+        """Get database manager instance, using cached version if available."""
+        if hasattr(self, 'db') and self.db is not None:
+            return self.db
+        # Fallback for cases where manager isn't cached yet  
+        from db import get_database_manager
+        return get_database_manager()
 
     async def _perform_symbol_synchronization(self) -> None:
         """
@@ -1163,13 +1200,13 @@ class DataCollector:
             import exchanges.integrations.gateio
             self.logger.debug("Exchange modules imported successfully")
 
-            # Initialize database manager
-            from db import DatabaseManager
-
-            # Use the centralized database config directly
-            db_manager = DatabaseManager()
-            await db_manager.initialize(self.config.database)
-            self.logger.info("Database connection pool initialized")
+            # Initialize database manager using simplified PROJECT_GUIDES.md approach
+            from db import initialize_database_manager, get_database_manager
+            
+            # Use simplified initialization with HftConfig (PROJECT_GUIDES.md compliant)
+            await initialize_database_manager()
+            self.db = get_database_manager()
+            self.logger.info("Database connection pool initialized and manager cached")
             
             # Perform symbol synchronization on startup
             await self._perform_symbol_synchronization()
@@ -1178,6 +1215,21 @@ class DataCollector:
             from db.cache_warming import warm_symbol_cache
             await warm_symbol_cache()
             self.logger.info("Symbol cache warmed for normalized schema operations")
+            
+            # Log cache performance statistics for HFT compliance monitoring
+            from db.cache_operations import get_cache_stats
+            cache_stats = get_cache_stats()
+            hit_ratio = cache_stats.hit_ratio * 100
+            lookup_time_us = cache_stats.avg_lookup_time_us
+            hft_compliant = cache_stats.avg_lookup_time_us < 1.0  # <1μs target
+            
+            self.logger.info("Cache performance initialized", 
+                           hit_ratio_pct=hit_ratio,
+                           lookup_time_us=lookup_time_us,
+                           hft_compliant=hft_compliant,
+                           cache_size=cache_stats.cache_size,
+                           target_hit_ratio=95.0,
+                           target_lookup_time_us=1.0)
 
             # Initialize analytics engine
             from .analytics import RealTimeAnalytics
@@ -1260,10 +1312,9 @@ class DataCollector:
             if self.ws_manager:
                 await self.ws_manager.close()
 
-            # Close database connection pool
-            from db import DatabaseManager
-            db_manager = DatabaseManager()
-            await db_manager.close()
+            # Close database connection pool using simplified approach
+            from db import close_database_manager
+            await close_database_manager()
             self.logger.info("Database connection pool closed")
 
             self._running = False
@@ -1344,19 +1395,24 @@ class DataCollector:
 
             self.logger.debug(f"Storing {len(snapshots)} normalized snapshots to database...")
 
-            # Store snapshots using normalized batch insert (snapshots have symbol_id)
-            from db.operations import insert_book_ticker_snapshot
-
+            # Store snapshots using optimized DatabaseManager (PROJECT_GUIDES.md compliant)
             start_time = datetime.now()
-            count = 0
             
-            # Use individual inserts for normalized snapshots
-            for snapshot in snapshots:
-                try:
-                    await insert_book_ticker_snapshot(snapshot)
-                    count += 1
-                except Exception as e:
-                    self.logger.warning(f"Failed to insert snapshot for symbol_id {snapshot.symbol_id}: {e}")
+            # Use HFT-optimized batch insert with float-only policy and deduplication
+            try:
+                count = await self.db.insert_book_ticker_snapshots_batch(snapshots)
+                
+                # Log cache performance for HFT monitoring
+                from db.cache_operations import get_cache_stats
+                cache_stats = get_cache_stats()
+                if cache_stats.avg_lookup_time_us > 1.0:  # >1μs threshold
+                    self.logger.warning("Cache performance degradation detected",
+                                      hit_ratio=cache_stats.hit_ratio,
+                                      avg_lookup_time_us=cache_stats.avg_lookup_time_us,
+                                      cache_size=cache_stats.cache_size)
+            except Exception as e:
+                self.logger.warning(f"Failed to insert batch of {len(snapshots)} snapshots: {e}")
+                count = 0
                     
             storage_duration = (datetime.now() - start_time).total_seconds() * 1000
 
@@ -1392,19 +1448,24 @@ class DataCollector:
 
             self.logger.debug(f"Storing {len(trade_snapshots)} normalized trade snapshots to database...")
 
-            # Store trade snapshots using normalized individual inserts (they have symbol_id)
-            from db.operations import insert_trade_snapshot
-
+            # Store trade snapshots using optimized DatabaseManager (PROJECT_GUIDES.md compliant)
             start_time = datetime.now()
-            count = 0
             
-            # Use individual inserts for normalized trade snapshots
-            for trade_snapshot in trade_snapshots:
-                try:
-                    await insert_trade_snapshot(trade_snapshot)
-                    count += 1
-                except Exception as e:
-                    self.logger.warning(f"Failed to insert trade snapshot for symbol_id {trade_snapshot.symbol_id}: {e}")
+            # Use HFT-optimized batch insert with float-only policy and deduplication
+            try:
+                count = await self.db.insert_trade_snapshots_batch(trade_snapshots)
+                
+                # Log cache performance for HFT monitoring
+                from db.cache_operations import get_cache_stats
+                cache_stats = get_cache_stats()
+                if cache_stats.avg_lookup_time_us > 1.0:  # >1μs threshold
+                    self.logger.warning("Cache performance degradation detected during trade storage",
+                                      hit_ratio=cache_stats.hit_ratio,
+                                      avg_lookup_time_us=cache_stats.avg_lookup_time_us,
+                                      cache_size=cache_stats.cache_size)
+            except Exception as e:
+                self.logger.warning(f"Failed to insert batch of {len(trade_snapshots)} trade snapshots: {e}")
+                count = 0
                     
             storage_duration = (datetime.now() - start_time).total_seconds() * 1000
 
@@ -1426,12 +1487,24 @@ class DataCollector:
             if not funding_rate_snapshots:
                 return
 
-            # Store funding rate snapshots in database using batch insert
-            from db.operations import insert_funding_rate_snapshots_batch
-
+            # Store funding rate snapshots using optimized DatabaseManager (PROJECT_GUIDES.md compliant)
             start_time = datetime.now()
-            count = await insert_funding_rate_snapshots_batch(funding_rate_snapshots)
+            count = await self.db.insert_funding_rate_snapshots_batch(funding_rate_snapshots)
+            
+            # Log cache performance for HFT monitoring
+            from db.cache_operations import get_cache_stats
+            cache_stats = get_cache_stats()
+            if cache_stats.avg_lookup_time_us > 1.0:  # >1μs threshold
+                self.logger.warning("Cache performance degradation detected during funding rate storage",
+                                  hit_ratio=cache_stats.hit_ratio,
+                                  avg_lookup_time_us=cache_stats.avg_lookup_time_us,
+                                  cache_size=cache_stats.cache_size)
+                
             storage_duration = (datetime.now() - start_time).total_seconds() * 1000
+            
+            # Validate HFT performance requirement (<5ms target)
+            if storage_duration > 5.0:
+                self.logger.warning(f"Funding rate storage exceeded HFT target: {storage_duration:.1f}ms > 5ms")
 
             self.logger.debug(
                 f"Stored {count} funding rate snapshots in {storage_duration:.1f}ms"

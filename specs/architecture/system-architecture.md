@@ -129,10 +129,24 @@ opportunities = await api.get_opportunities(symbol="ETHUSDT", min_spread=0.3)
 ```
 
 **Database Schema Enhancement**:
-- **Normalized Schema**: Complete foreign key relationships via symbols table
-- **Funding Rate Snapshots**: Dedicated table with proper constraint validation
+- **Current Schema**: Denormalized with direct column storage for HFT performance
+- **Key Tables**: book_ticker_snapshots, funding_rate_snapshots, balance_snapshots
+- **Exchange Field**: `exchange` column (e.g., "MEXC_SPOT", "GATEIO_FUTURES")
+- **Symbol Fields**: `symbol_base` and `symbol_quote` columns directly
 - **Analytics Tables**: Arbitrage opportunities, order flow metrics, performance data
 - **Migration System**: Simplified to use docker/init-db.sql only
+
+**Actual Database Schema (Denormalized)**:
+```sql
+-- Time-Series Tables (TimescaleDB Hypertables)
+book_ticker_snapshots (
+    id, timestamp, exchange, symbol_base, symbol_quote,
+    bid_price, bid_qty, ask_price, ask_qty, sequence_number, update_type, created_at
+)
+funding_rate_snapshots (timestamp, exchange, symbol_base, symbol_quote, funding_rate, funding_time)
+balance_snapshots (timestamp, exchange, asset_name, available_balance, locked_balance)
+trade_snapshots (timestamp, exchange, symbol_base, symbol_quote, price, quantity, side)
+```
 
 ### 3. TaskManager Production Integration
 

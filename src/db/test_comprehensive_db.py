@@ -44,17 +44,13 @@ from db.operations import (
     
     # Snapshot operations
     insert_book_ticker_snapshot,
-    insert_normalized_book_ticker_snapshots_batch,
-    insert_normalized_trade_snapshots_batch,
 )
 from db.models import (
     Exchange, 
     Symbol as DBSymbol, 
     SymbolType,
     BookTickerSnapshot,
-    TradeSnapshot,
-    NormalizedBookTickerSnapshot,
-    NormalizedTradeSnapshot
+    TradeSnapshot
 )
 from exchanges.structs.enums import ExchangeEnum
 
@@ -320,50 +316,6 @@ class DatabaseComprehensiveTest:
                 f"Inserted with ID: {snapshot_id}"
             )
             
-            # Test 2: Insert normalized book ticker snapshot
-            print("Test 2: Insert Normalized Book Ticker Snapshot")
-            normalized_snapshot = NormalizedBookTickerSnapshot(
-                exchange_id=test_exchange.id,
-                symbol_id=test_symbol.id,
-                bid_price=99999.98,
-                bid_qty=1.5,
-                ask_price=100000.02,
-                ask_qty=2.5,
-                timestamp=datetime.now(timezone.utc)
-            )
-            
-            norm_snapshots = [normalized_snapshot]
-            batch_count = await insert_normalized_book_ticker_snapshots_batch(norm_snapshots)
-            
-            self.log_test_result(
-                "Insert Normalized Book Ticker Batch",
-                batch_count > 0,
-                f"Inserted {batch_count} normalized snapshots"
-            )
-            
-            # Test 3: Insert normalized trade snapshot
-            print("Test 3: Insert Normalized Trade Snapshot")
-            normalized_trade = NormalizedTradeSnapshot(
-                exchange_id=test_exchange.id,
-                symbol_id=test_symbol.id,
-                price=99999.97,
-                quantity=0.75,
-                side='sell',
-                timestamp=datetime.now(timezone.utc),
-                trade_id='test_norm_trade_456',
-                quote_quantity=74999.9775,
-                is_buyer=False,
-                is_maker=True
-            )
-            
-            norm_trades = [normalized_trade]
-            trade_batch_count = await insert_normalized_trade_snapshots_batch(norm_trades)
-            
-            self.log_test_result(
-                "Insert Normalized Trade Batch",
-                trade_batch_count > 0,
-                f"Inserted {trade_batch_count} normalized trades"
-            )
             
         except Exception as e:
             self.log_test_result("Snapshot Operations", False, error=str(e))

@@ -7,8 +7,9 @@ from .exchange_factory import get_composite_implementation
 from typing import List, Optional, Awaitable, Callable, Dict
 from exchanges.adapters import BindedEventHandlersAdapter
 from exchanges.structs import Order, AssetBalance, BookTicker, Position, ExchangeEnum, Symbol
+from .interfaces.composite import BasePrivateComposite, BasePublicComposite
 
-_DUAL_CLIENTS: Dict[ExchangeEnum, 'DualExchange']  = {}
+_DUAL_CLIENTS: Dict[ExchangeEnum, 'DualExchange'] = {}
 
 
 class DualExchange:
@@ -21,8 +22,10 @@ class DualExchange:
         """
         self.config = config
         self.logger = logger or get_logger(f'dual_exchange.{config.name.lower()}')
-        self.private = get_composite_implementation(config, is_private=True)
-        self.public = get_composite_implementation(config, is_private=False)
+        self.private: BasePrivateComposite = get_composite_implementation(config, is_private=True,
+                                                                          balance_sync_interval=30)
+        self.public: BasePublicComposite = get_composite_implementation(config, is_private=False,
+                                                                        balance_sync_interval=30)
         self.adapter_private = BindedEventHandlersAdapter(self.logger).bind_to_exchange(self.private)
         self.adapter_public = BindedEventHandlersAdapter(self.logger).bind_to_exchange(self.public)
 
@@ -37,7 +40,6 @@ class DualExchange:
             _DUAL_CLIENTS[config.exchange_enum] = DualExchange(config, logger)
         return _DUAL_CLIENTS[config.exchange_enum]
 
-
     async def initialize(self, symbols=None, public_channels: List[PublicWebsocketChannelType] = None,
                          private_channels: List[PrivateWebsocketChannelType] = None) -> None:
         """
@@ -49,25 +51,23 @@ class DualExchange:
             private_channels: Optional list of private WebSocket channels
         """
         await asyncio.gather(*[self.public.initialize(symbols, public_channels),
-                              self.private.initialize(None, private_channels)])
+                               self.private.initialize(None, private_channels)])
         # deferred symbol info
         self.private.set_symbol_info(self.public.symbols_info)
 
     async def subscribe_symbols(self, symbols: List) -> None:
         """Subscribe to symbols on both public and private exchanges."""
-        await asyncio.gather(*[self.public.subscribe_symbols(symbols),
-                              self.private.subscribe_symbols(symbols)])
+        await asyncio.gather(*[self.public.add_symbol(s) for s in symbols])
 
     async def unsubscribe_symbols(self, symbols: List) -> None:
         """Unsubscribe from symbols on both public and private exchanges."""
-        await asyncio.gather(*[self.public.unsubscribe_symbols(symbols),
-                              self.private.unsubscribe_symbols(symbols)])
+        await asyncio.gather(*[self.public.remove_symbol(s) for s in symbols])
 
     async def bind_handlers(self,
-                           on_book_ticker: Optional[Callable[[BookTicker], Awaitable[None]]]=None,
-                           on_order: Optional[Callable[[Order], Awaitable[None]]]=None,
-                           on_balance: Optional[Callable[[AssetBalance], Awaitable[None]]]=None,
-                           on_position: Optional[Callable[[Position], Awaitable[None]]]=None) -> None:
+                            on_book_ticker: Optional[Callable[[BookTicker], Awaitable[None]]] = None,
+                            on_order: Optional[Callable[[Order], Awaitable[None]]] = None,
+                            on_balance: Optional[Callable[[AssetBalance], Awaitable[None]]] = None,
+                            on_position: Optional[Callable[[Position], Awaitable[None]]] = None) -> None:
         """Add event handlers to both public and private exchanges."""
         on_book_ticker and self.adapter_public.bind(PublicWebsocketChannelType.BOOK_TICKER, on_book_ticker)
         on_order and self.adapter_private.bind(PrivateWebsocketChannelType.ORDER, on_order)
@@ -75,10 +75,10 @@ class DualExchange:
         on_position and self.adapter_private.bind(PrivateWebsocketChannelType.POSITION, on_position)
 
     async def unbind_handlers(self,
-                             on_book_ticker: Optional[Callable[[BookTicker], Awaitable[None]]]=None,
-                             on_order: Optional[Callable[[Order], Awaitable[None]]]=None,
-                             on_balance: Optional[Callable[[AssetBalance], Awaitable[None]]]=None,
-                             on_position: Optional[Callable[[Position], Awaitable[None]]]=None) -> None:
+                              on_book_ticker: Optional[Callable[[BookTicker], Awaitable[None]]] = None,
+                              on_order: Optional[Callable[[Order], Awaitable[None]]] = None,
+                              on_balance: Optional[Callable[[AssetBalance], Awaitable[None]]] = None,
+                              on_position: Optional[Callable[[Position], Awaitable[None]]] = None) -> None:
         """Remove event handlers from both public and private exchanges."""
         on_book_ticker and self.adapter_public.unbind(PublicWebsocketChannelType.BOOK_TICKER, on_book_ticker)
         on_order and self.adapter_private.unbind(PrivateWebsocketChannelType.ORDER, on_order)
@@ -95,10 +95,10 @@ class DualExchange:
         close_tasks = []
         for instance in _DUAL_CLIENTS.values():
             close_tasks.append(instance.close())
-        
+
         if close_tasks:
             await asyncio.gather(*close_tasks, return_exceptions=True)
-        
+
         # Clear singleton registry
         _DUAL_CLIENTS.clear()
 
@@ -108,5 +108,3 @@ class DualExchange:
             return self.private.round_base_to_contracts(symbol, base_quantity)
 
         raise NotImplemented(f"Not implemented - round_base_to_contracts for {self.name}")
-
-

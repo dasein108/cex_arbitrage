@@ -13,8 +13,7 @@ import time
 
 from .connection import get_db_manager
 from .models import (BookTickerSnapshot, TradeSnapshot, FundingRateSnapshot,
-                     BalanceSnapshot, Exchange, Symbol as DBSymbol, NormalizedBookTickerSnapshot,
-                     NormalizedTradeSnapshot, SymbolType)
+                     BalanceSnapshot, Exchange, Symbol as DBSymbol, SymbolType)
 from exchanges.structs.common import Symbol
 
 
@@ -395,6 +394,80 @@ async def get_latest_book_ticker_snapshots(
         raise
 
 
+async def get_book_ticker_snapshots_by_exchange_and_symbol(
+    exchange_enum_value: str,
+    symbol_base: str,
+    symbol_quote: str,
+    timestamp_from: datetime,
+    timestamp_to: datetime,
+    limit: int = 10000
+) -> List[BookTickerSnapshot]:
+    """
+    Retrieve BookTicker snapshots by exchange and symbol for backtesting (normalized schema).
+    
+    Optimized for HFT backtesting with the normalized book_ticker_snapshots schema.
+    Target: <10ms for queries up to 10,000 records.
+    
+    Args:
+        exchange_enum_value: Exchange enum value (e.g., 'MEXC_SPOT')
+        symbol_base: Symbol base asset (e.g., 'NEIROETH')
+        symbol_quote: Symbol quote asset (e.g., 'USDT')
+        timestamp_from: Start time filter
+        timestamp_to: End time filter
+        limit: Maximum number of records to return
+        
+    Returns:
+        List of BookTickerSnapshot objects ordered by timestamp ASC for backtesting
+    """
+    db = get_db_manager()
+    
+    # Query with normalized schema using JOINs to resolve symbol_id
+    query = """
+        SELECT bts.id, bts.symbol_id, s.symbol_base, s.symbol_quote, e.enum_value as exchange,
+               bts.bid_price, bts.bid_qty, bts.ask_price, bts.ask_qty, 
+               bts.timestamp, bts.created_at
+        FROM book_ticker_snapshots bts
+        JOIN symbols s ON bts.symbol_id = s.id
+        JOIN exchanges e ON s.exchange_id = e.id
+        WHERE e.enum_value = $1 
+          AND s.symbol_base = $2
+          AND s.symbol_quote = $3
+          AND bts.timestamp >= $4
+          AND bts.timestamp <= $5
+        ORDER BY bts.timestamp ASC, bts.id ASC
+        LIMIT $6
+    """
+    
+    try:
+        rows = await db.fetch(query, exchange_enum_value, symbol_base.upper(), symbol_quote.upper(), 
+                             timestamp_from, timestamp_to, limit)
+        
+        snapshots = [
+            BookTickerSnapshot(
+                id=row['id'],
+                symbol_id=row['symbol_id'],
+                bid_price=float(row['bid_price']),
+                bid_qty=float(row['bid_qty']),
+                ask_price=float(row['ask_price']),
+                ask_qty=float(row['ask_qty']),
+                timestamp=row['timestamp'],
+                created_at=row['created_at'],
+                # Add transient fields for convenience
+                exchange=row['exchange'],
+                symbol_base=row['symbol_base'],
+                symbol_quote=row['symbol_quote']
+            )
+            for row in rows
+        ]
+        
+        logger.debug(f"Retrieved {len(snapshots)} book ticker snapshots for {exchange_enum_value} {symbol_base}/{symbol_quote}")
+        return snapshots
+        
+    except Exception as e:
+        logger.error(f"Failed to retrieve book ticker snapshots by exchange/symbol: {e}")
+        raise
+
+
 async def get_book_ticker_history(
     exchange: str,
     symbol: Symbol,
@@ -557,14 +630,14 @@ async def get_database_stats() -> Dict[str, Any]:
 _trade_timestamp_cache: Dict[tuple, Set] = defaultdict(set)
 
 
-def _is_duplicate_trade_timestamp(exchange: str, symbol_base: str, symbol_quote: str, timestamp: datetime, trade_id: str) -> bool:
+def _is_duplicate_trade_timestamp(symbol_id: int, timestamp: datetime, trade_id: str) -> bool:
     """
-    Check if this trade timestamp/ID has been seen recently for this exchange/symbol.
+    Check if this trade timestamp/ID has been seen recently for this symbol_id.
     
     Returns:
         True if this is a duplicate trade that should be skipped
     """
-    key = (exchange, symbol_base, symbol_quote)
+    key = (symbol_id,)
     trade_key = (timestamp, trade_id) if trade_id else timestamp
     
     # Check if we've seen this exact trade recently
@@ -625,19 +698,17 @@ async def insert_trade_snapshot(snapshot: TradeSnapshot) -> int:
     db = get_db_manager()
     
     query = """
-        INSERT INTO trades (
-            exchange, symbol_base, symbol_quote, price, quantity, side,
-            trade_id, timestamp, quote_quantity, is_buyer, is_maker
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+        INSERT INTO trade_snapshots (
+            symbol_id, price, quantity, side, trade_id, timestamp,
+            quote_quantity, is_buyer, is_maker, created_at
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
         RETURNING id
     """
     
     try:
         record_id = await db.fetchval(
             query,
-            snapshot.exchange,
-            snapshot.symbol_base,
-            snapshot.symbol_quote,
+            snapshot.symbol_id,
             snapshot.price,
             snapshot.quantity,
             snapshot.side,
@@ -645,10 +716,11 @@ async def insert_trade_snapshot(snapshot: TradeSnapshot) -> int:
             snapshot.timestamp,
             snapshot.quote_quantity,
             snapshot.is_buyer,
-            snapshot.is_maker
+            snapshot.is_maker,
+            snapshot.created_at or datetime.now()
         )
         
-        logger.debug(f"Inserted trade snapshot {record_id} for {snapshot.exchange} {snapshot.symbol_base}_{snapshot.symbol_quote}")
+        logger.debug(f"Inserted trade snapshot {record_id} for symbol_id {snapshot.symbol_id}")
         return record_id
         
     except Exception as e:
@@ -674,12 +746,13 @@ async def insert_funding_rate_snapshots_batch(snapshots: List[FundingRateSnapsho
     # Prepare batch insert with ON CONFLICT handling
     query = """
     INSERT INTO funding_rate_snapshots (
-        timestamp, symbol_id, funding_rate, funding_time, created_at
-    ) VALUES ($1, $2, $3, $4, $5)
+        timestamp, symbol_id, funding_rate, funding_time, next_funding_time, created_at
+    ) VALUES ($1, $2, $3, $4, $5, $6)
     ON CONFLICT (timestamp, symbol_id) 
     DO UPDATE SET
         funding_rate = EXCLUDED.funding_rate,
         funding_time = EXCLUDED.funding_time,
+        next_funding_time = EXCLUDED.next_funding_time,
         created_at = EXCLUDED.created_at
     """
     
@@ -699,6 +772,7 @@ async def insert_funding_rate_snapshots_batch(snapshots: List[FundingRateSnapsho
             snapshot.symbol_id,
             snapshot.funding_rate,
             funding_time,
+            snapshot.next_funding_time,  # Include the new field
             snapshot.created_at or datetime.now()
         ))
     
@@ -739,8 +813,7 @@ async def insert_trade_snapshots_batch(snapshots: List[TradeSnapshot]) -> int:
     
     for snapshot in snapshots:
         if not _is_duplicate_trade_timestamp(
-            snapshot.exchange, snapshot.symbol_base, 
-            snapshot.symbol_quote, snapshot.timestamp, snapshot.trade_id or ""
+            snapshot.symbol_id, snapshot.timestamp, snapshot.trade_id or ""
         ):
             filtered_snapshots.append(snapshot)
         else:
@@ -756,8 +829,7 @@ async def insert_trade_snapshots_batch(snapshots: List[TradeSnapshot]) -> int:
     unique_snapshots = {}
     for snapshot in filtered_snapshots:
         # Use both timestamp and trade_id for deduplication
-        key = (snapshot.exchange, snapshot.symbol_base, snapshot.symbol_quote, 
-               snapshot.timestamp, snapshot.trade_id)
+        key = (snapshot.symbol_id, snapshot.timestamp, snapshot.trade_id)
         unique_snapshots[key] = snapshot
     
     deduplicated_snapshots = list(unique_snapshots.values())
@@ -775,11 +847,11 @@ async def insert_trade_snapshots_batch(snapshots: List[TradeSnapshot]) -> int:
     count = 0
     
     query = """
-        INSERT INTO trades (
-            exchange, symbol_base, symbol_quote, price, quantity, side,
-            trade_id, timestamp, quote_quantity, is_buyer, is_maker
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
-        ON CONFLICT (timestamp, exchange, symbol_base, symbol_quote, id)
+        INSERT INTO trade_snapshots (
+            symbol_id, price, quantity, side, trade_id, timestamp,
+            quote_quantity, is_buyer, is_maker, created_at
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+        ON CONFLICT (symbol_id, timestamp, trade_id)
         DO UPDATE SET
             price = EXCLUDED.price,
             quantity = EXCLUDED.quantity,
@@ -787,7 +859,7 @@ async def insert_trade_snapshots_batch(snapshots: List[TradeSnapshot]) -> int:
             quote_quantity = EXCLUDED.quote_quantity,
             is_buyer = EXCLUDED.is_buyer,
             is_maker = EXCLUDED.is_maker,
-            created_at = NOW()
+            created_at = EXCLUDED.created_at
     """
     
     try:
@@ -796,9 +868,7 @@ async def insert_trade_snapshots_batch(snapshots: List[TradeSnapshot]) -> int:
                 for snapshot in deduplicated_snapshots:
                     await conn.execute(
                         query,
-                        snapshot.exchange,
-                        snapshot.symbol_base,
-                        snapshot.symbol_quote,
+                        snapshot.symbol_id,
                         snapshot.price,
                         snapshot.quantity,
                         snapshot.side,
@@ -806,7 +876,8 @@ async def insert_trade_snapshots_batch(snapshots: List[TradeSnapshot]) -> int:
                         snapshot.timestamp,
                         snapshot.quote_quantity,
                         snapshot.is_buyer,
-                        snapshot.is_maker
+                        snapshot.is_maker,
+                        snapshot.created_at or datetime.now()
                     )
                     count += 1
         
@@ -840,24 +911,25 @@ async def get_recent_trades(
     timestamp_from = datetime.utcnow() - timedelta(minutes=minutes_back)
     
     query = """
-        SELECT id, exchange, symbol_base, symbol_quote, price, quantity, side,
-               trade_id, timestamp, created_at, quote_quantity, is_buyer, is_maker
-        FROM trades
-        WHERE exchange = $1 AND symbol_base = $2 AND symbol_quote = $3 AND timestamp >= $4
-        ORDER BY timestamp DESC, id DESC
+        SELECT ts.id, ts.symbol_id, ts.price, ts.quantity, ts.side,
+               ts.trade_id, ts.timestamp, ts.created_at, ts.quote_quantity, 
+               ts.is_buyer, ts.is_maker
+        FROM trade_snapshots ts
+        JOIN symbols s ON ts.symbol_id = s.id
+        JOIN exchanges e ON s.exchange_id = e.id
+        WHERE e.enum_value = $1 AND s.symbol_base = $2 AND s.symbol_quote = $3 AND ts.timestamp >= $4
+        ORDER BY ts.timestamp DESC, ts.id DESC
         LIMIT 10000
     """
     
     try:
-        rows = await db.fetch(query, exchange.upper(), str(symbol.base), str(symbol.quote), timestamp_from)
+        rows = await db.fetch(query, exchange.upper(), str(symbol.base).upper(), str(symbol.quote).upper(), timestamp_from)
         
         snapshots = []
         for row in rows:
             snapshot = TradeSnapshot(
                 id=row['id'],
-                exchange=row['exchange'],
-                symbol_base=row['symbol_base'],
-                symbol_quote=row['symbol_quote'],
+                symbol_id=row['symbol_id'],
                 price=float(row['price']),
                 quantity=float(row['quantity']),
                 side=row['side'],
@@ -888,18 +960,18 @@ async def get_trade_database_stats() -> Dict[str, Any]:
     db = get_db_manager()
     
     queries = {
-        'total_trades': "SELECT COUNT(*) FROM trades",
-        'exchanges': "SELECT COUNT(DISTINCT exchange) FROM trades",
-        'symbols': "SELECT COUNT(DISTINCT CONCAT(symbol_base, '_', symbol_quote)) FROM trades",
-        'latest_timestamp': "SELECT MAX(timestamp) FROM trades",
-        'oldest_timestamp': "SELECT MIN(timestamp) FROM trades",
+        'total_trades': "SELECT COUNT(*) FROM trade_snapshots",
+        'exchanges': "SELECT COUNT(DISTINCT e.enum_value) FROM trade_snapshots ts JOIN symbols s ON ts.symbol_id = s.id JOIN exchanges e ON s.exchange_id = e.id",
+        'symbols': "SELECT COUNT(DISTINCT CONCAT(s.symbol_base, '_', s.symbol_quote)) FROM trade_snapshots ts JOIN symbols s ON ts.symbol_id = s.id",
+        'latest_timestamp': "SELECT MAX(timestamp) FROM trade_snapshots",
+        'oldest_timestamp': "SELECT MIN(timestamp) FROM trade_snapshots",
         'table_size': """
-            SELECT pg_size_pretty(pg_total_relation_size('trades')) as size
+            SELECT pg_size_pretty(pg_total_relation_size('trade_snapshots')) as size
         """,
         'avg_trades_per_minute': """
             SELECT AVG(trade_count) FROM (
                 SELECT COUNT(*) as trade_count
-                FROM trades 
+                FROM trade_snapshots 
                 WHERE timestamp > NOW() - INTERVAL '1 hour'
                 GROUP BY DATE_TRUNC('minute', timestamp)
             ) minute_counts
@@ -1237,17 +1309,26 @@ async def get_balance_database_stats() -> Dict[str, Any]:
 # EXCHANGE OPERATIONS (NORMALIZED SCHEMA)
 # =============================================================================
 
-async def get_exchange_by_enum(exchange_enum: "ExchangeEnum") -> Optional[Exchange]:
+async def get_exchange_by_enum(exchange_enum_or_str) -> Optional[Exchange]:
     """
-    Get exchange by ExchangeEnum value.
+    Get exchange by ExchangeEnum value or string.
     
     Args:
-        exchange_enum: ExchangeEnum to look up
+        exchange_enum_or_str: ExchangeEnum value or string (e.g., "MEXC_SPOT", "TEST_SPOT")
         
     Returns:
         Exchange instance or None if not found
     """
     from exchanges.structs.enums import ExchangeEnum
+    
+    # Handle both ExchangeEnum and string inputs
+    if isinstance(exchange_enum_or_str, ExchangeEnum):
+        enum_value = str(exchange_enum_or_str.value)
+    elif isinstance(exchange_enum_or_str, str):
+        enum_value = exchange_enum_or_str
+    else:
+        # Try to convert to string as fallback
+        enum_value = str(exchange_enum_or_str)
     
     db = get_db_manager()
     
@@ -1257,7 +1338,7 @@ async def get_exchange_by_enum(exchange_enum: "ExchangeEnum") -> Optional[Exchan
         WHERE enum_value = $1     """
     
     try:
-        row = await db.fetchrow(query, str(exchange_enum.value))
+        row = await db.fetchrow(query, enum_value)
         
         if row:
             return Exchange(
@@ -1739,7 +1820,7 @@ async def get_all_active_symbols() -> List[DBSymbol]:
         FROM symbols s
         JOIN exchanges e ON s.exchange_id = e.id
         WHERE s.is_active = true
-        ORDER BY e.name, s.symbol_base, s.symbol_quote
+        ORDER BY e.exchange_name, s.symbol_base, s.symbol_quote
     """
     
     try:
@@ -1794,7 +1875,7 @@ async def get_symbols_by_market_type(market_type: str, active_only: bool = True)
     if conditions:
         base_query += " AND " + " AND ".join(conditions)
     
-    query = base_query + " ORDER BY e.name, s.symbol_base, s.symbol_quote"
+    query = base_query + " ORDER BY e.exchange_name, s.symbol_base, s.symbol_quote"
     
     try:
         rows = await db.fetch(query, market_type.upper())
@@ -2065,67 +2146,23 @@ async def get_symbol_stats() -> Dict[str, Any]:
 
 async def populate_symbols_from_existing_data() -> int:
     """
-    Populate symbols table from existing book_ticker_snapshots data.
+    Populate symbols table from existing book_ticker_snapshots data (normalized schema).
+    
+    Note: This function is now deprecated since the database uses a normalized schema.
+    In the normalized schema, book_ticker_snapshots only contains symbol_id references,
+    not direct exchange/symbol columns. This function will return 0.
     
     Returns:
-        Number of symbols populated
+        Number of symbols populated (always 0 for normalized schema)
     """
     db = get_db_manager()
     
-    # Extract unique symbols from existing data
-    extract_query = """
-        SELECT DISTINCT 
-            bts.exchange,
-            bts.symbol_base,
-            bts.symbol_quote
-        FROM book_ticker_snapshots bts
-        WHERE NOT EXISTS (
-            SELECT 1 FROM symbols s 
-            JOIN exchanges e ON s.exchange_id = e.id 
-            WHERE e.name = CONCAT(bts.exchange, '_SPOT')
-              AND s.symbol_base = bts.symbol_base 
-              AND s.symbol_quote = bts.symbol_quote
-        )
-        ORDER BY bts.exchange, bts.symbol_base, bts.symbol_quote
-    """
-    
-    try:
-        unique_symbols = await db.fetch(extract_query)
-        logger.info(f"Found {len(unique_symbols)} unique symbols to populate")
-        
-        inserted_count = 0
-        
-        for row in unique_symbols:
-            exchange_name = f"{row['exchange']}_SPOT"
-            
-            # Get exchange ID
-            exchange = await get_exchange_by_enum_value(exchange_name)
-            if not exchange:
-                logger.warning(f"Exchange {exchange_name} not found, skipping symbol {row['symbol_base']}/{row['symbol_quote']}")
-                continue
-            
-            # Create symbol
-            symbol = DBSymbol(
-                exchange_id=exchange.id,
-                symbol_base=row['symbol_base'],
-                symbol_quote=row['symbol_quote'],
-                exchange_symbol=f"{row['symbol_base']}{row['symbol_quote']}",  # Default format
-                is_active=True,
-                symbol_type=SymbolType.SPOT  # From book_ticker_snapshots, likely spot
-            )
-            
-            try:
-                await insert_symbol(symbol)
-                inserted_count += 1
-            except Exception as e:
-                logger.warning(f"Failed to insert symbol {row['symbol_base']}/{row['symbol_quote']} for {exchange_name}: {e}")
-        
-        logger.info(f"Successfully populated {inserted_count} symbols from existing data")
-        return inserted_count
-        
-    except Exception as e:
-        logger.error(f"Failed to populate symbols from existing data: {e}")
-        raise
+    # In normalized schema, we can't extract symbols from book_ticker_snapshots
+    # because it only contains symbol_id references, not the actual symbol data.
+    # The symbols must be populated separately through symbol synchronization services.
+    logger.warning("populate_symbols_from_existing_data is deprecated for normalized schema")
+    logger.info("Use symbol synchronization services to populate symbols from exchange APIs")
+    return 0
 
 
 async def get_exchange_by_enum_value(enum_value: str) -> Optional[Exchange]:
@@ -2166,192 +2203,6 @@ async def get_exchange_by_enum_value(enum_value: str) -> Optional[Exchange]:
 
 # ================================================================================================
 # Normalized Snapshot Operations
-# High-performance normalized data storage using foreign key relationships
-# ================================================================================================
-
-async def insert_normalized_book_ticker_snapshot(snapshot: NormalizedBookTickerSnapshot) -> int:
-    """
-    Insert a single normalized BookTicker snapshot.
-    
-    Args:
-        snapshot: NormalizedBookTickerSnapshot to insert
-        
-    Returns:
-        Database ID of inserted record
-    """
-    db = get_db_manager()
-    
-    query = """
-        INSERT INTO normalized_book_ticker_snapshots (
-            exchange_id, symbol_id,
-            bid_price, bid_qty, ask_price, ask_qty,
-            timestamp
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7)
-        RETURNING id
-    """
-    
-    try:
-        snapshot_id = await db.fetchval(
-            query,
-            snapshot.exchange_id,
-            snapshot.symbol_id,
-            snapshot.bid_price,
-            snapshot.bid_qty,
-            snapshot.ask_price,
-            snapshot.ask_qty,
-            snapshot.timestamp
-        )
-        
-        logger.debug(f"Inserted normalized book ticker snapshot with ID {snapshot_id}")
-        return snapshot_id
-        
-    except Exception as e:
-        logger.error(f"Failed to insert normalized book ticker snapshot: {e}")
-        raise
-
-
-async def insert_normalized_book_ticker_snapshots_batch(snapshots: List[NormalizedBookTickerSnapshot]) -> int:
-    """
-    Insert multiple normalized BookTicker snapshots efficiently.
-    
-    Args:
-        snapshots: List of NormalizedBookTickerSnapshot objects to insert
-        
-    Returns:
-        Number of records inserted
-    """
-    if not snapshots:
-        return 0
-    
-    db = get_db_manager()
-    
-    # Prepare data for bulk insert
-    records = []
-    for snapshot in snapshots:
-        records.append((
-            snapshot.exchange_id,
-            snapshot.symbol_id,
-            snapshot.bid_price,
-            snapshot.bid_qty,
-            snapshot.ask_price,
-            snapshot.ask_qty,
-            snapshot.timestamp
-        ))
-    
-    columns = [
-        'exchange_id', 'symbol_id', 'bid_price', 'bid_qty', 
-        'ask_price', 'ask_qty', 'timestamp'
-    ]
-    
-    try:
-        # Use COPY for maximum performance
-        result_count = await db.copy_records_to_table(
-            'normalized_book_ticker_snapshots', 
-            records, 
-            columns
-        )
-        
-        logger.debug(f"Bulk inserted {result_count} normalized book ticker snapshots")
-        return result_count
-        
-    except Exception as e:
-        logger.error(f"Failed to bulk insert normalized book ticker snapshots: {e}")
-        raise
-
-
-async def insert_normalized_trade_snapshot(snapshot: NormalizedTradeSnapshot) -> int:
-    """
-    Insert a single normalized trade snapshot.
-    
-    Args:
-        snapshot: NormalizedTradeSnapshot to insert
-        
-    Returns:
-        Database ID of inserted record
-    """
-    db = get_db_manager()
-    
-    query = """
-        INSERT INTO normalized_trade_snapshots (
-            exchange_id, symbol_id, price, quantity, side, timestamp,
-            trade_id, quote_quantity, is_buyer, is_maker
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
-        RETURNING id
-    """
-    
-    try:
-        snapshot_id = await db.fetchval(
-            query,
-            snapshot.exchange_id,
-            snapshot.symbol_id,
-            snapshot.price,
-            snapshot.quantity,
-            snapshot.side,
-            snapshot.timestamp,
-            snapshot.trade_id,
-            snapshot.quote_quantity,
-            snapshot.is_buyer,
-            snapshot.is_maker
-        )
-        
-        logger.debug(f"Inserted normalized trade snapshot with ID {snapshot_id}")
-        return snapshot_id
-        
-    except Exception as e:
-        logger.error(f"Failed to insert normalized trade snapshot: {e}")
-        raise
-
-
-async def insert_normalized_trade_snapshots_batch(snapshots: List[NormalizedTradeSnapshot]) -> int:
-    """
-    Insert multiple normalized trade snapshots efficiently.
-    
-    Args:
-        snapshots: List of NormalizedTradeSnapshot objects to insert
-        
-    Returns:
-        Number of records inserted
-    """
-    if not snapshots:
-        return 0
-    
-    db = get_db_manager()
-    
-    # Prepare data for bulk insert
-    records = []
-    for snapshot in snapshots:
-        records.append((
-            snapshot.exchange_id,
-            snapshot.symbol_id,
-            snapshot.price,
-            snapshot.quantity,
-            snapshot.side,
-            snapshot.timestamp,
-            snapshot.trade_id,
-            snapshot.quote_quantity,
-            snapshot.is_buyer,
-            snapshot.is_maker
-        ))
-    
-    columns = [
-        'exchange_id', 'symbol_id', 'price', 'quantity', 'side', 'timestamp',
-        'trade_id', 'quote_quantity', 'is_buyer', 'is_maker'
-    ]
-    
-    try:
-        # Use COPY for maximum performance
-        result_count = await db.copy_records_to_table(
-            'normalized_trade_snapshots', 
-            records, 
-            columns
-        )
-        
-        logger.debug(f"Bulk inserted {result_count} normalized trade snapshots")
-        return result_count
-        
-    except Exception as e:
-        logger.error(f"Failed to bulk insert normalized trade snapshots: {e}")
-        raise
 
 
 # ================================================================================================
@@ -2433,80 +2284,3 @@ async def auto_populate_symbols_from_exchanges(
 
 
 # ================================================================================================
-# Legacy to Normalized Conversion Helpers
-# Utilities for converting between legacy and normalized data structures
-# ================================================================================================
-
-async def convert_legacy_snapshots_to_normalized(
-    legacy_snapshots: List[BookTickerSnapshot]
-) -> List[NormalizedBookTickerSnapshot]:
-    """
-    Convert legacy BookTickerSnapshot objects to normalized format.
-    
-    Args:
-        legacy_snapshots: List of legacy BookTickerSnapshot objects
-        
-    Returns:
-        List of NormalizedBookTickerSnapshot objects
-    """
-    from exchanges.structs.enums import ExchangeEnum
-    
-    normalized_snapshots = []
-    conversion_stats = {"successful": 0, "failed": 0, "skipped": 0}
-    
-    for legacy_snapshot in legacy_snapshots:
-        try:
-            # Parse exchange enum from legacy format
-            try:
-                exchange_enum = ExchangeEnum(legacy_snapshot.exchange.upper())
-            except ValueError:
-                # Try mapping common variations
-                exchange_mapping = {
-                    "MEXC": ExchangeEnum.MEXC,
-                    "GATEIO": ExchangeEnum.GATEIO_SPOT,
-                    "GATEIO_FUTURES": ExchangeEnum.GATEIO_FUTURES
-                }
-                exchange_enum = exchange_mapping.get(legacy_snapshot.exchange.upper())
-                
-                if not exchange_enum:
-                    logger.warning(f"Unknown exchange: {legacy_snapshot.exchange}")
-                    conversion_stats["skipped"] += 1
-                    continue
-            
-            # Get exchange and symbol from cache
-            from .cache_operations import cached_get_exchange_by_enum, cached_resolve_symbol_for_exchange
-            
-            exchange = cached_get_exchange_by_enum(exchange_enum)
-            if not exchange:
-                logger.warning(f"Exchange {exchange_enum.value} not found in cache")
-                conversion_stats["failed"] += 1
-                continue
-            
-            symbol = cached_resolve_symbol_for_exchange(
-                exchange_enum,
-                legacy_snapshot.symbol_base,
-                legacy_snapshot.symbol_quote
-            )
-            
-            if not symbol:
-                logger.warning(f"Symbol {legacy_snapshot.symbol_base}/{legacy_snapshot.symbol_quote} not found for {exchange_enum.value}")
-                conversion_stats["failed"] += 1
-                continue
-            
-            # Create normalized snapshot
-            normalized_snapshot = NormalizedBookTickerSnapshot.from_legacy_snapshot(
-                legacy_snapshot,
-                exchange.id,
-                symbol.id
-            )
-            
-            normalized_snapshots.append(normalized_snapshot)
-            conversion_stats["successful"] += 1
-            
-        except Exception as e:
-            logger.error(f"Failed to convert legacy snapshot: {e}")
-            conversion_stats["failed"] += 1
-            continue
-    
-    logger.info(f"Conversion stats: {conversion_stats}")
-    return normalized_snapshots

@@ -80,13 +80,15 @@ class DeltaNeutralAnalyzer:
         ),
         volume_analysis AS (
             SELECT 
-                SUM(quantity * price) as volume_24h,
+                SUM(ts.quantity * ts.price) as volume_24h,
                 COUNT(*) as trade_count,
-                AVG(quantity * price) as avg_trade_size
-            FROM trades
-            WHERE symbol_base = %s 
-                AND exchange = %s
-                AND timestamp > NOW() - INTERVAL '%s hours'
+                AVG(ts.quantity * ts.price) as avg_trade_size
+            FROM trade_snapshots ts
+            JOIN symbols s ON ts.symbol_id = s.id
+            JOIN exchanges e ON s.exchange_id = e.id
+            WHERE s.symbol_base = %s 
+                AND e.enum_value = %s
+                AND ts.timestamp > NOW() - INTERVAL '%s hours'
         )
         SELECT * FROM depth_analysis CROSS JOIN volume_analysis
         """

@@ -27,9 +27,8 @@ from collections import defaultdict
 import msgspec
 
 # Direct imports from src (we're already in the src tree)
-from db.connection import get_db_manager
+from db import get_database_manager
 from db.models import BookTickerSnapshot
-from db.symbol_manager import get_symbol_id
 from exchanges.structs.common import Symbol
 from exchanges.structs.types import AssetName
 
@@ -156,26 +155,31 @@ class MultiSymbolDataFetcher:
         try:
             # Initialize database connection using config manager pattern
             from config.config_manager import HftConfig
-            from db.connection import get_db_manager
+            # Initialize simplified DatabaseManager (PROJECT_GUIDES.md compliant)
+            from db import initialize_database_manager
             
-            # Load configuration
-            config_manager = HftConfig()
-            db_config = config_manager.get_database_config()
-            
-            # Initialize database manager
-            db_manager = get_db_manager()
-            if not db_manager.is_initialized:
-                await db_manager.initialize(db_config)
-                self.logger.info("Database connection pool initialized")
+            await initialize_database_manager()
+            self.logger.info("DatabaseManager initialized with built-in configuration")
             
         except Exception as e:
             self.logger.error(f"Failed to initialize database: {e}")
             return False
         
-        # Initialize symbol IDs for all exchanges
+        # Initialize symbol IDs for all exchanges using simplified DatabaseManager
+        db = get_database_manager()
         success = True
         for exchange_key, exchange_name in self.exchanges.items():
-            symbol_id = await get_symbol_id(exchange_name, self.symbol)
+            # Get exchange and symbol using simplified DatabaseManager
+            exchange_obj = db.get_exchange_by_enum(exchange_name)
+            if not exchange_obj:
+                self.logger.error(f"Exchange {exchange_name} not found in database")
+                success = False
+                continue
+                
+            symbol_obj = db.get_symbol_by_exchange_and_pair(
+                exchange_obj.id, self.symbol.base, self.symbol.quote
+            )
+            symbol_id = symbol_obj.id if symbol_obj else None
             if symbol_id:
                 self._symbol_ids[exchange_key] = symbol_id
                 self.logger.debug(f"✓ {exchange_name}: symbol_id={symbol_id}")
@@ -206,7 +210,7 @@ class MultiSymbolDataFetcher:
             self.logger.error("Not all symbol IDs available")
             return None
             
-        db = get_db_manager()
+        db = get_database_manager()
         
         # Single query to get latest data for all symbols
         query = """
@@ -286,7 +290,7 @@ class MultiSymbolDataFetcher:
             self.logger.error("Not all symbol IDs available for historical query")
             return []
             
-        db = get_db_manager()
+        db = get_database_manager()
         timestamp_from = datetime.now(timezone.utc) - timedelta(hours=hours_back)
         
         # Query with time-based sampling for all symbols
@@ -390,7 +394,7 @@ class MultiSymbolDataFetcher:
             self.logger.error(f"No symbol_id for exchange: {exchange_key}")
             return []
             
-        db = get_db_manager()
+        db = get_database_manager()
         timestamp_from = datetime.now(timezone.utc) - timedelta(hours=hours_back)
         
         query = """

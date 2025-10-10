@@ -22,7 +22,7 @@ from db.cache_operations import cached_resolve_symbol_by_exchange_string
 from exchanges.structs.enums import ExchangeEnum
 from exchanges.structs.common import Symbol
 from exchanges.structs.types import AssetName
-from db.models import BookTickerSnapshot, TradeSnapshot, NormalizedBookTickerSnapshot, NormalizedTradeSnapshot
+from db.models import BookTickerSnapshot, TradeSnapshot
 
 # Enable logging
 logging.basicConfig(level=logging.INFO)
@@ -96,9 +96,8 @@ async def test_snapshot_conversion():
             logger.info(f"   - Resolved to: {symbol.symbol_base}/{symbol.symbol_quote}")
             logger.info(f"   - Database IDs: exchange_id={symbol.exchange_id}, symbol_id={symbol.id}")
             
-            # Test creating a normalized snapshot directly
-            normalized_snapshot = NormalizedBookTickerSnapshot(
-                exchange_id=symbol.exchange_id,
+            # Test creating a normalized snapshot directly using BookTickerSnapshot
+            normalized_snapshot = BookTickerSnapshot.from_symbol_id_and_data(
                 symbol_id=symbol.id,
                 bid_price=50000.0,
                 bid_qty=1.0,
@@ -106,7 +105,7 @@ async def test_snapshot_conversion():
                 ask_qty=2.0,
                 timestamp=datetime.now(timezone.utc)
             )
-            logger.info(f"✅ Created normalized snapshot: exchange_id={normalized_snapshot.exchange_id}, symbol_id={normalized_snapshot.symbol_id}")
+            logger.info(f"✅ Created normalized snapshot: symbol_id={normalized_snapshot.symbol_id}")
         else:
             logger.error(f"❌ Could not resolve symbol: {test_db_symbol.exchange_symbol}")
     except ValueError as e:

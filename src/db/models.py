@@ -553,133 +553,8 @@ class BookTickerSnapshot(msgspec.Struct):
         return (self.bid_price + self.ask_price) / 2
 
 
-class NormalizedBookTickerSnapshot(msgspec.Struct):
-    """
-    Normalized book ticker snapshot using foreign key relationships.
-    
-    Uses exchange_id and symbol_id instead of string-based identification
-    for optimal database performance and referential integrity.
-    """
-    # Foreign key relationships
-    exchange_id: int                                # Foreign key to exchanges table
-    symbol_id: int                                  # Foreign key to symbols table
-    
-    # Book ticker data
-    bid_price: float
-    bid_qty: float
-    ask_price: float
-    ask_qty: float
-    
-    # Timing
-    timestamp: datetime
-    created_at: Optional[datetime] = None
-    id: Optional[int] = None
-    
-    @classmethod
-    def from_legacy_snapshot(
-        cls,
-        legacy_snapshot: "BookTickerSnapshot",
-        exchange_id: int,
-        symbol_id: int
-    ) -> "NormalizedBookTickerSnapshot":
-        """
-        Create normalized snapshot from legacy snapshot.
-        
-        Args:
-            legacy_snapshot: Legacy BookTickerSnapshot
-            exchange_id: Resolved exchange database ID
-            symbol_id: Resolved symbol database ID
-            
-        Returns:
-            NormalizedBookTickerSnapshot instance
-        """
-        return cls(
-            exchange_id=exchange_id,
-            symbol_id=symbol_id,
-            bid_price=legacy_snapshot.bid_price,
-            bid_qty=legacy_snapshot.bid_qty,
-            ask_price=legacy_snapshot.ask_price,
-            ask_qty=legacy_snapshot.ask_qty,
-            timestamp=legacy_snapshot.timestamp,
-            created_at=legacy_snapshot.created_at,
-            id=legacy_snapshot.id
-        )
-    
-    def get_spread(self) -> float:
-        """Calculate bid-ask spread."""
-        return self.ask_price - self.bid_price
-    
-    def get_spread_percentage(self) -> float:
-        """Calculate bid-ask spread as percentage."""
-        mid_price = (self.bid_price + self.ask_price) / 2
-        return (self.get_spread() / mid_price) * 100 if mid_price > 0 else 0.0
-    
-    def get_mid_price(self) -> float:
-        """Calculate mid price."""
-        return (self.bid_price + self.ask_price) / 2
 
 
-class NormalizedTradeSnapshot(msgspec.Struct):
-    """
-    Normalized trade snapshot using foreign key relationships.
-    
-    Uses exchange_id and symbol_id instead of string-based identification
-    for optimal database performance and referential integrity.
-    """
-    # Foreign key relationships
-    exchange_id: int                                # Foreign key to exchanges table
-    symbol_id: int                                  # Foreign key to symbols table
-    
-    # Trade data
-    price: float
-    quantity: float
-    side: str                                       # 'buy' or 'sell'
-    timestamp: datetime
-    
-    # Optional fields
-    trade_id: Optional[str] = None
-    created_at: Optional[datetime] = None
-    id: Optional[int] = None
-    quote_quantity: Optional[float] = None
-    is_buyer: Optional[bool] = None
-    is_maker: Optional[bool] = None
-    
-    @classmethod
-    def from_legacy_snapshot(
-        cls,
-        legacy_snapshot: "TradeSnapshot",
-        exchange_id: int,
-        symbol_id: int
-    ) -> "NormalizedTradeSnapshot":
-        """
-        Create normalized snapshot from legacy snapshot.
-        
-        Args:
-            legacy_snapshot: Legacy TradeSnapshot
-            exchange_id: Resolved exchange database ID
-            symbol_id: Resolved symbol database ID
-            
-        Returns:
-            NormalizedTradeSnapshot instance
-        """
-        return cls(
-            exchange_id=exchange_id,
-            symbol_id=symbol_id,
-            price=legacy_snapshot.price,
-            quantity=legacy_snapshot.quantity,
-            side=legacy_snapshot.side,
-            timestamp=legacy_snapshot.timestamp,
-            trade_id=legacy_snapshot.trade_id,
-            created_at=legacy_snapshot.created_at,
-            id=legacy_snapshot.id,
-            quote_quantity=legacy_snapshot.quote_quantity,
-            is_buyer=legacy_snapshot.is_buyer,
-            is_maker=legacy_snapshot.is_maker
-        )
-    
-    def get_notional_value(self) -> float:
-        """Calculate trade notional value."""
-        return self.price * self.quantity
 
 
 class FundingRateSnapshot(msgspec.Struct):
@@ -698,6 +573,7 @@ class FundingRateSnapshot(msgspec.Struct):
     
     # Timing
     timestamp: datetime
+    next_funding_time: Optional[datetime] = None  # Next funding time as datetime for easier analysis
     created_at: Optional[datetime] = None
     id: Optional[int] = None
     
@@ -739,12 +615,16 @@ class FundingRateSnapshot(msgspec.Struct):
             # Use current timestamp + 8 hours as fallback (typical funding interval)
             import time
             funding_time = int(time.time() * 1000) + (8 * 60 * 60 * 1000)
+        
+        # Convert funding_time to datetime for next_funding_time field
+        next_funding_time = datetime.fromtimestamp(funding_time / 1000) if funding_time else None
             
         return cls(
             symbol_id=symbol_id,
             funding_rate=funding_rate,
             funding_time=funding_time,
             timestamp=timestamp,
+            next_funding_time=next_funding_time,
             # Store transient fields for convenience
             exchange=exchange.upper(),
             symbol_base=str(symbol.base),

@@ -135,7 +135,8 @@ CREATE TABLE IF NOT EXISTS funding_rate_snapshots (
     
     -- Funding rate data
     funding_rate NUMERIC(12,8) NOT NULL,  -- Current funding rate (e.g., 0.00010000 for 0.01%)
-    funding_time BIGINT NOT NULL,         -- Next funding time (Unix timestamp in milliseconds)
+    next_funding_time BIGINT NOT NULL,         -- Next funding time (Unix timestamp in milliseconds)
+    next_funding_time TIMESTAMPTZ,       -- Next funding time as datetime for easier analysis
     
     -- Metadata
     created_at TIMESTAMPTZ DEFAULT NOW(),
@@ -352,6 +353,10 @@ CREATE INDEX IF NOT EXISTS idx_funding_rates_rate_range
 CREATE INDEX IF NOT EXISTS idx_funding_rates_funding_time 
     ON funding_rate_snapshots(funding_time);
 
+-- Index for next funding time datetime queries (enhanced analytics)
+CREATE INDEX IF NOT EXISTS idx_funding_rates_next_funding_time 
+    ON funding_rate_snapshots(next_funding_time) WHERE next_funding_time IS NOT NULL;
+
 -- HFT-optimized indexes for balance_snapshots (sub-10ms queries)
 CREATE INDEX IF NOT EXISTS idx_balance_snapshots_exchange_time 
     ON balance_snapshots(exchange_id, timestamp DESC);
@@ -529,7 +534,7 @@ COMMENT ON TABLE exchanges IS 'Supported cryptocurrency exchanges with enum valu
 COMMENT ON TABLE symbols IS 'Trading symbols normalized by exchange with foreign key relationships';
 COMMENT ON TABLE book_ticker_snapshots IS 'L1 orderbook snapshots optimized for HFT sub-millisecond queries';
 COMMENT ON TABLE trade_snapshots IS 'Individual trade executions with normalized symbol references';
-COMMENT ON TABLE funding_rate_snapshots IS 'Funding rate snapshots for futures contracts with normalized symbol references';
+COMMENT ON TABLE funding_rate_snapshots IS 'Funding rate snapshots for futures contracts with normalized symbol references and datetime support';
 COMMENT ON TABLE balance_snapshots IS 'Account balance snapshots across all exchanges with normalized schema relationships';
 COMMENT ON TABLE arbitrage_opportunities IS 'Detected arbitrage opportunities with exchange relationships';
 COMMENT ON TABLE order_flow_metrics IS 'Order flow imbalance calculations for market analysis';

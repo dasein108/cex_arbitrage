@@ -16,26 +16,36 @@ This guide covers the complete database development workflow for the CEX Arbitra
 
 ## Current Database Structure
 
-### Core Normalized Schema
+### Current Database Schema (Denormalized)
 
-The database uses a **normalized schema** with proper foreign key relationships optimized for HFT performance:
+The database currently uses a **denormalized schema** optimized for HFT performance with direct column storage:
 
 ```sql
--- Foundation Tables
+-- Foundation Tables (for reference and future migration)
 exchanges (id, enum_value, exchange_name, market_type)
 symbols (id, exchange_id FK, symbol_base, symbol_quote, exchange_symbol)
 
--- Time-Series Data Tables (TimescaleDB Hypertables)
-book_ticker_snapshots (timestamp, symbol_id FK, bid_price, ask_price, ...)
-funding_rate_snapshots (timestamp, symbol_id FK, funding_rate, funding_time, ...)
-balance_snapshots (timestamp, exchange_id FK, asset_name, available_balance, ...)
-trade_snapshots (timestamp, symbol_id FK, price, quantity, side, ...)
+-- Time-Series Data Tables (TimescaleDB Hypertables) - DENORMALIZED
+book_ticker_snapshots (
+    id, timestamp, exchange, symbol_base, symbol_quote,
+    bid_price, bid_qty, ask_price, ask_qty, sequence_number, update_type, created_at
+)
+funding_rate_snapshots (timestamp, exchange, symbol_base, symbol_quote, funding_rate, funding_time, ...)
+balance_snapshots (timestamp, exchange, asset_name, available_balance, locked_balance, ...)
+trade_snapshots (timestamp, exchange, symbol_base, symbol_quote, price, quantity, side, ...)
 
 -- Analytics Tables
-arbitrage_opportunities (timestamp, symbol_id FK, buy_exchange_id FK, sell_exchange_id FK, ...)
-order_flow_metrics (timestamp, symbol_id FK, ofi_score, microprice, ...)
-collector_status (timestamp, exchange_id FK, status, messages_per_second, ...)
+arbitrage_opportunities (timestamp, exchange, symbol_base, symbol_quote, buy_exchange, sell_exchange, ...)
+order_flow_metrics (timestamp, exchange, symbol_base, symbol_quote, ofi_score, microprice, ...)
 ```
+
+**Key Schema Details:**
+- **Current Status**: Denormalized schema with direct column storage
+- **Exchange Field**: Uses `exchange` column (CHARACTER VARYING(20)) storing values like "MEXC", "GATEIO_FUTURES"
+- **Symbol Fields**: Uses `symbol_base` and `symbol_quote` columns (CHARACTER VARYING(20)) directly
+- **Performance**: Optimized for sub-5ms queries with direct column access
+- **TimescaleDB**: Configured as hypertable with timestamp partitioning
+- **Indexes**: Primary key on (timestamp, exchange, symbol_base, symbol_quote) with additional performance indexes
 
 ### Key Relationships
 

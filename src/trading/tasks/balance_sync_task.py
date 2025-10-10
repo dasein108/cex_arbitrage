@@ -16,8 +16,7 @@ from trading.struct import TradingStrategyState
 from exchanges.interfaces.composite.base_private_composite import BasePrivateComposite
 from exchanges.structs import ExchangeEnum, AssetName, AssetBalance
 from db.models import BalanceSnapshot
-from db.operations import insert_balance_snapshots_batch
-from db.cache_operations import cached_get_exchange_by_enum
+from db import get_database_manager
 
 
 class BalanceSyncTaskContext(TaskContext):
@@ -211,8 +210,9 @@ class BalanceSyncTask(BaseTradingTask[BalanceSyncTaskContext, TradingStrategySta
             self.logger.warning(f"No private exchange instance for {exchange_enum.name}")
             return []
         
-        # Get exchange database ID using cache
-        exchange_db = cached_get_exchange_by_enum(exchange_enum)
+        # Get exchange database ID using simplified DatabaseManager (PROJECT_GUIDES.md compliant)
+        db = get_database_manager()
+        exchange_db = db.get_exchange_by_enum(exchange_enum)
         if exchange_db is None:
             self.logger.error(f"Exchange {exchange_enum.name} not found in database")
             return []
@@ -259,7 +259,8 @@ class BalanceSyncTask(BaseTradingTask[BalanceSyncTaskContext, TradingStrategySta
             return
             
         try:
-            stored_count = await insert_balance_snapshots_batch(snapshots)
+            db = get_database_manager()
+            stored_count = await db.insert_balance_snapshots_batch(snapshots)
             
             self.logger.debug(
                 f"Stored {stored_count} balance snapshots in database "
