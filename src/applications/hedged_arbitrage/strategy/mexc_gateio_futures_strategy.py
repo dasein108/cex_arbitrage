@@ -34,7 +34,7 @@ from applications.hedged_arbitrage.strategy.base_arbitrage_strategy import (
     ArbitrageState,
     create_spot_futures_arbitrage_roles
 )
-from applications.hedged_arbitrage.strategy.exchange_manager import ExchangeManager
+from applications.hedged_arbitrage.strategy.exchange_manager import ExchangeManager, OrderPlacementParams
 
 
 class MexcGateioFuturesContext(ArbitrageTaskContext):
@@ -103,8 +103,8 @@ class MexcGateioFuturesStrategy(BaseArbitrageStrategy[MexcGateioFuturesContext])
             symbol=symbol,
             exchange_roles=exchange_roles,
             base_position_size=base_position_size,
-            entry_threshold_pct=entry_threshold_pct / 100,  # Convert percentage to decimal
-            exit_threshold_pct=exit_threshold_pct / 100,
+            entry_threshold_pct=entry_threshold_pct,  # Already in percentage format
+            exit_threshold_pct=exit_threshold_pct,    # Already in percentage format
             max_position_multiplier=2.0  # Conservative for 2-exchange strategy
         )
         
@@ -154,10 +154,10 @@ class MexcGateioFuturesStrategy(BaseArbitrageStrategy[MexcGateioFuturesContext])
             self._last_spread_check = current_time
             
             # Trigger spread analysis if we have data from both exchanges
-            mexc_ticker = self.exchange_manager.get_book_ticker('spot')
-            gateio_ticker = self.exchange_manager.get_book_ticker('futures')
+            spot_ticker = self.exchange_manager.get_book_ticker('spot')
+            futures_ticker = self.exchange_manager.get_book_ticker('futures')
             
-            if mexc_ticker and gateio_ticker and self.context.state == ArbitrageState.MONITORING:
+            if spot_ticker and futures_ticker and self.context.state == ArbitrageState.MONITORING:
                 # Schedule opportunity analysis (don't block event handler)
                 asyncio.create_task(self._check_arbitrage_opportunity_async())
     
@@ -199,10 +199,10 @@ class MexcGateioFuturesStrategy(BaseArbitrageStrategy[MexcGateioFuturesContext])
         if self.context.mexc_position == 0 and self.context.gateio_position == 0:
             return False
         
-        mexc_ticker = self.exchange_manager.get_book_ticker('spot')
-        gateio_ticker = self.exchange_manager.get_book_ticker('futures')
+        spot_ticker = self.exchange_manager.get_book_ticker('spot')
+        futures_ticker = self.exchange_manager.get_book_ticker('futures')
         
-        if not mexc_ticker or not gateio_ticker:
+        if not spot_ticker or not futures_ticker:
             return False
         
         # Calculate the current spread based on our position direction
@@ -213,28 +213,28 @@ class MexcGateioFuturesStrategy(BaseArbitrageStrategy[MexcGateioFuturesContext])
         long_gateio = self.context.gateio_position > 0
         
         if long_mexc and not long_gateio:
-            # We're long MEXC spot, short Gate.io futures
-            # To exit: sell MEXC spot (at bid), buy Gate.io futures (at ask)
-            exit_mexc_price = mexc_ticker.bid_price  # Sell MEXC at bid
-            exit_gateio_price = gateio_ticker.ask_price  # Buy Gate.io at ask
-            # Current spread for exit = what we get from MEXC - what we pay for Gate.io
-            current_exit_spread = (exit_mexc_price - exit_gateio_price) / exit_gateio_price * 100
+            # We're long spot, short futures
+            # To exit: sell spot (at bid), buy futures (at ask)
+            exit_spot_price = spot_ticker.bid_price  # Sell spot at bid
+            exit_futures_price = futures_ticker.ask_price  # Buy futures at ask
+            # Current spread for exit = what we get from spot - what we pay for futures
+            current_exit_spread = (exit_spot_price - exit_futures_price) / exit_futures_price * 100
         elif not long_mexc and long_gateio:
-            # We're short MEXC spot, long Gate.io futures  
-            # To exit: buy MEXC spot (at ask), sell Gate.io futures (at bid)
-            exit_mexc_price = mexc_ticker.ask_price  # Buy MEXC at ask
-            exit_gateio_price = gateio_ticker.bid_price  # Sell Gate.io at bid
-            # Current spread for exit = what we get from Gate.io - what we pay for MEXC
-            current_exit_spread = (exit_gateio_price - exit_mexc_price) / exit_mexc_price * 100
+            # We're short spot, long futures  
+            # To exit: buy spot (at ask), sell futures (at bid)
+            exit_spot_price = spot_ticker.ask_price  # Buy spot at ask
+            exit_futures_price = futures_ticker.bid_price  # Sell futures at bid
+            # Current spread for exit = what we get from futures - what we pay for spot
+            current_exit_spread = (exit_futures_price - exit_spot_price) / exit_spot_price * 100
         else:
             # Unclear position state, use conservative approach
             # Calculate both directions and use the worse (more conservative) spread
-            mexc_to_gateio_spread = (gateio_ticker.bid_price - mexc_ticker.ask_price) / mexc_ticker.ask_price * 100
-            gateio_to_mexc_spread = (mexc_ticker.bid_price - gateio_ticker.ask_price) / gateio_ticker.ask_price * 100
-            current_exit_spread = min(mexc_to_gateio_spread, gateio_to_mexc_spread)
+            spot_to_futures_spread = (futures_ticker.bid_price - spot_ticker.ask_price) / spot_ticker.ask_price * 100
+            futures_to_spot_spread = (spot_ticker.bid_price - futures_ticker.ask_price) / futures_ticker.ask_price * 100
+            current_exit_spread = min(spot_to_futures_spread, futures_to_spot_spread)
         
-        # Convert exit threshold from decimal to percentage for comparison
-        exit_threshold_pct = float(self.context.exit_threshold_pct) * 100
+        # Exit threshold is already in percentage format, no conversion needed
+        exit_threshold_pct = float(self.context.exit_threshold_pct)
         
         # Exit when spread falls below exit threshold (profit margin is too small)
         should_exit = current_exit_spread < exit_threshold_pct
@@ -250,10 +250,10 @@ class MexcGateioFuturesStrategy(BaseArbitrageStrategy[MexcGateioFuturesContext])
             self.logger.info("🔄 Exiting all positions...")
             
             # Get current market prices for immediate execution
-            mexc_ticker = self.exchange_manager.get_book_ticker('spot')
-            gateio_ticker = self.exchange_manager.get_book_ticker('futures')
+            spot_ticker = self.exchange_manager.get_book_ticker('spot')
+            futures_ticker = self.exchange_manager.get_book_ticker('futures')
             
-            if not mexc_ticker or not gateio_ticker:
+            if not spot_ticker or not futures_ticker:
                 self.logger.error("❌ Cannot exit positions - missing market data")
                 return
             
@@ -261,23 +261,23 @@ class MexcGateioFuturesStrategy(BaseArbitrageStrategy[MexcGateioFuturesContext])
             
             # Close MEXC spot position
             if self.context.mexc_position != 0:
-                mexc_side = Side.SELL if self.context.mexc_position > 0 else Side.BUY
-                mexc_price = mexc_ticker.bid_price if mexc_side == Side.SELL else mexc_ticker.ask_price
-                exit_orders['spot'] = {
-                    'side': mexc_side,
-                    'quantity': abs(self.context.mexc_position),
-                    'price': mexc_price
-                }
+                spot_side = Side.SELL if self.context.mexc_position > 0 else Side.BUY
+                spot_price = spot_ticker.bid_price if spot_side == Side.SELL else spot_ticker.ask_price
+                exit_orders['spot'] = OrderPlacementParams(
+                    side=spot_side,
+                    quantity=abs(self.context.mexc_position),
+                    price=spot_price
+                )
             
             # Close Gate.io futures position
             if self.context.gateio_position != 0:
-                gateio_side = Side.BUY if self.context.gateio_position < 0 else Side.SELL
-                gateio_price = gateio_ticker.ask_price if gateio_side == Side.BUY else gateio_ticker.bid_price
-                exit_orders['futures'] = {
-                    'side': gateio_side,
-                    'quantity': abs(self.context.gateio_position),
-                    'price': gateio_price
-                }
+                futures_side = Side.BUY if self.context.gateio_position < 0 else Side.SELL
+                futures_price = futures_ticker.ask_price if futures_side == Side.BUY else futures_ticker.bid_price
+                exit_orders['futures'] = OrderPlacementParams(
+                    side=futures_side,
+                    quantity=abs(self.context.gateio_position),
+                    price=futures_price
+                )
             
             if exit_orders:
                 self.logger.info(f"🚀 Executing exit orders: {len(exit_orders)} exchanges")
@@ -292,49 +292,49 @@ class MexcGateioFuturesStrategy(BaseArbitrageStrategy[MexcGateioFuturesContext])
             self.logger.error(f"❌ Error exiting positions: {e}")
     
     async def _identify_arbitrage_opportunity(self) -> Optional[ArbitrageOpportunity]:
-        """Identify arbitrage opportunities between MEXC spot and Gate.io futures."""
-        mexc_ticker = self.exchange_manager.get_book_ticker('spot')
-        gateio_ticker = self.exchange_manager.get_book_ticker('futures')
+        """Identify arbitrage opportunities between spot and futures exchanges."""
+        spot_ticker = self.exchange_manager.get_book_ticker('spot')
+        futures_ticker = self.exchange_manager.get_book_ticker('futures')
         
-        if not mexc_ticker or not gateio_ticker:
+        if not spot_ticker or not futures_ticker:
             return None
         
         # Analyze both arbitrage directions using proper bid/ask spreads
-        # Direction 1: Buy MEXC spot, sell Gate.io futures
-        mexc_buy_price = mexc_ticker.ask_price  # Price to buy on MEXC
-        gateio_sell_price = gateio_ticker.bid_price  # Price to sell on Gate.io
-        mexc_to_gateio_spread = (gateio_sell_price - mexc_buy_price) / mexc_buy_price * 100
+        # Direction 1: Buy spot, sell futures
+        spot_buy_price = spot_ticker.ask_price  # Price to buy on spot
+        futures_sell_price = futures_ticker.bid_price  # Price to sell on futures
+        spot_to_futures_spread = (futures_sell_price - spot_buy_price) / spot_buy_price * 100
         
-        # Direction 2: Buy Gate.io futures, sell MEXC spot
-        gateio_buy_price = gateio_ticker.ask_price  # Price to buy on Gate.io
-        mexc_sell_price = mexc_ticker.bid_price  # Price to sell on MEXC
-        gateio_to_mexc_spread = (mexc_sell_price - gateio_buy_price) / gateio_buy_price * 100
+        # Direction 2: Buy futures, sell spot
+        futures_buy_price = futures_ticker.ask_price  # Price to buy on futures
+        spot_sell_price = spot_ticker.bid_price  # Price to sell on spot
+        futures_to_spot_spread = (spot_sell_price - futures_buy_price) / futures_buy_price * 100
         
         # Choose the direction with better spread (if any)
-        # Note: context thresholds are stored as decimals (0.001 = 0.1%), spreads are calculated as percentages
-        entry_threshold_pct = float(self.context.entry_threshold_pct) * 100
+        # Note: context thresholds are already in percentage format, spreads are calculated as percentages
+        entry_threshold_pct = float(self.context.entry_threshold_pct)
         
         best_opportunity = None
-        if mexc_to_gateio_spread >= entry_threshold_pct:
+        if spot_to_futures_spread >= entry_threshold_pct:
             best_opportunity = {
-                'direction': 'mexc_to_gateio',
-                'spread_pct': mexc_to_gateio_spread,
+                'direction': 'spot_to_futures',
+                'spread_pct': spot_to_futures_spread,
                 'primary_exchange': ExchangeEnum.MEXC,
                 'target_exchange': ExchangeEnum.GATEIO_FUTURES,
-                'primary_price': mexc_buy_price,
-                'target_price': gateio_sell_price
+                'primary_price': spot_buy_price,
+                'target_price': futures_sell_price
             }
         
-        if gateio_to_mexc_spread >= entry_threshold_pct:
+        if futures_to_spot_spread >= entry_threshold_pct:
             # Take the better opportunity if both are profitable
-            if not best_opportunity or gateio_to_mexc_spread > best_opportunity['spread_pct']:
+            if not best_opportunity or futures_to_spot_spread > best_opportunity['spread_pct']:
                 best_opportunity = {
-                    'direction': 'gateio_to_mexc',
-                    'spread_pct': gateio_to_mexc_spread,
+                    'direction': 'futures_to_spot',
+                    'spread_pct': futures_to_spot_spread,
                     'primary_exchange': ExchangeEnum.GATEIO_FUTURES,
                     'target_exchange': ExchangeEnum.MEXC,
-                    'primary_price': gateio_buy_price,
-                    'target_price': mexc_sell_price
+                    'primary_price': futures_buy_price,
+                    'target_price': spot_sell_price
                 }
         
         if not best_opportunity:
@@ -342,22 +342,22 @@ class MexcGateioFuturesStrategy(BaseArbitrageStrategy[MexcGateioFuturesContext])
         
         # If we have open positions, ensure we can still exit profitably
         if self.context.mexc_position != 0 or self.context.gateio_position != 0:
-            # Use exit threshold for position closing
-            exit_threshold_pct = float(self.context.exit_threshold_pct) * 100
+            # Use exit threshold for position closing (already in percentage format)
+            exit_threshold_pct = float(self.context.exit_threshold_pct)
             if best_opportunity['spread_pct'] < exit_threshold_pct:
                 return None
         
         # Calculate maximum quantity based on order book depth and direction
-        if best_opportunity['direction'] == 'mexc_to_gateio':
+        if best_opportunity['direction'] == 'spot_to_futures':
             max_quantity = min(
-                mexc_ticker.ask_quantity,  # MEXC ask depth (what we're buying)
-                gateio_ticker.bid_quantity,  # Gate.io bid depth (what we're selling to)
+                spot_ticker.ask_quantity,  # Spot ask depth (what we're buying)
+                futures_ticker.bid_quantity,  # Futures bid depth (what we're selling to)
                 float(self.context.base_position_size * self.context.max_position_multiplier)
             )
-        else:  # gateio_to_mexc
+        else:  # futures_to_spot
             max_quantity = min(
-                gateio_ticker.ask_quantity,  # Gate.io ask depth (what we're buying)
-                mexc_ticker.bid_quantity,  # MEXC bid depth (what we're selling to)
+                futures_ticker.ask_quantity,  # Futures ask depth (what we're buying)
+                spot_ticker.bid_quantity,  # Spot bid depth (what we're selling to)
                 float(self.context.base_position_size * self.context.max_position_multiplier)
             )
         
@@ -490,16 +490,16 @@ class MexcGateioFuturesStrategy(BaseArbitrageStrategy[MexcGateioFuturesContext])
             
             # Prepare orders for parallel execution
             orders = {
-                'spot': {
-                    'side': mexc_side,
-                    'quantity': position_size,
-                    'price': mexc_price
-                },
-                'futures': {
-                    'side': gateio_side,
-                    'quantity': position_size,
-                    'price': gateio_price
-                }
+                'spot': OrderPlacementParams(
+                    side=mexc_side,
+                    quantity=position_size,
+                    price=mexc_price
+                ),
+                'futures': OrderPlacementParams(
+                    side=gateio_side,
+                    quantity=position_size,
+                    price=gateio_price
+                )
             }
             
             # Execute orders in parallel for HFT performance
@@ -574,14 +574,14 @@ class MexcGateioFuturesStrategy(BaseArbitrageStrategy[MexcGateioFuturesContext])
     
     async def _rebalance_reduce_long_bias(self):
         """Reduce long bias by selling spot (with balance validation)."""
-        mexc_exchange = self.exchange_manager.get_exchange('spot')
-        if not mexc_exchange:
-            self.logger.warning("MEXC exchange not available for rebalancing")
+        spot_exchange = self.exchange_manager.get_exchange('spot')
+        if not spot_exchange:
+            self.logger.warning("Spot exchange not available for rebalancing")
             return
         
         try:
             # Get available balance for the base asset
-            balances = await mexc_exchange.private.get_balances()
+            balances = await spot_exchange.private.get_balances()
             base_balance = next((b for b in balances if b.asset == self.context.symbol.base), None)
             
             if not base_balance:
@@ -598,16 +598,16 @@ class MexcGateioFuturesStrategy(BaseArbitrageStrategy[MexcGateioFuturesContext])
                 return
             
             # Get current price for market order
-            mexc_ticker = self.exchange_manager.get_book_ticker('spot')
-            if not mexc_ticker:
+            spot_ticker = self.exchange_manager.get_book_ticker('spot')
+            if not spot_ticker:
                 self.logger.warning("No market data available for rebalancing")
                 return
             
             # Execute rebalance trade
-            await mexc_exchange.private.place_market_order(
+            await spot_exchange.private.place_market_order(
                 symbol=self.context.symbol,
                 side=Side.SELL,
-                price=float(mexc_ticker.bid_price),
+                price=float(spot_ticker.bid_price),
                 quote_quantity=rebalance_quantity
             )
             
@@ -621,14 +621,14 @@ class MexcGateioFuturesStrategy(BaseArbitrageStrategy[MexcGateioFuturesContext])
     
     async def _rebalance_reduce_short_bias(self):
         """Reduce short bias by buying spot (with balance validation)."""
-        mexc_exchange = self.exchange_manager.get_exchange('spot')
-        if not mexc_exchange:
-            self.logger.warning("MEXC exchange not available for rebalancing")
+        spot_exchange = self.exchange_manager.get_exchange('spot')
+        if not spot_exchange:
+            self.logger.warning("Spot exchange not available for rebalancing")
             return
         
         try:
             # Get available balance for the quote asset
-            balances = await mexc_exchange.private.get_balances()
+            balances = await spot_exchange.private.get_balances()
             quote_balance = next((b for b in balances if b.asset == self.context.symbol.quote), None)
             
             if not quote_balance:
@@ -636,14 +636,14 @@ class MexcGateioFuturesStrategy(BaseArbitrageStrategy[MexcGateioFuturesContext])
                 return
             
             # Get current price for market order
-            mexc_ticker = self.exchange_manager.get_book_ticker('spot')
-            if not mexc_ticker:
+            spot_ticker = self.exchange_manager.get_book_ticker('spot')
+            if not spot_ticker:
                 self.logger.warning("No market data available for rebalancing")
                 return
             
             # Calculate rebalance quantity limited by available balance
             desired_quantity = abs(float(self.context.current_delta)) / 2
-            required_quote_per_unit = float(mexc_ticker.ask_price) * 1.01  # Add 1% buffer for fees
+            required_quote_per_unit = float(spot_ticker.ask_price) * 1.01  # Add 1% buffer for fees
             max_buyable = float(quote_balance.available) / required_quote_per_unit
             rebalance_quantity = min(desired_quantity, max_buyable)
             
@@ -652,10 +652,10 @@ class MexcGateioFuturesStrategy(BaseArbitrageStrategy[MexcGateioFuturesContext])
                 return
             
             # Execute rebalance trade
-            await mexc_exchange.private.place_market_order(
+            await spot_exchange.private.place_market_order(
                 symbol=self.context.symbol,
                 side=Side.BUY,
-                price=float(mexc_ticker.ask_price),
+                price=float(spot_ticker.ask_price),
                 quote_quantity=rebalance_quantity
             )
             

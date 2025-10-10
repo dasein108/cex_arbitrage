@@ -16,54 +16,74 @@ This guide covers the complete database development workflow for the CEX Arbitra
 
 ## Current Database Structure
 
-### Current Database Schema (Denormalized)
+### Current Database Schema (Normalized)
 
-The database currently uses a **denormalized schema** optimized for HFT performance with direct column storage:
+The database uses a **fully normalized schema** with proper foreign key relationships optimized for HFT performance:
 
 ```sql
--- Foundation Tables (for reference and future migration)
+-- Foundation Tables (Reference Data) - NORMALIZED
 exchanges (id, enum_value, exchange_name, market_type)
 symbols (id, exchange_id FK, symbol_base, symbol_quote, exchange_symbol)
 
--- Time-Series Data Tables (TimescaleDB Hypertables) - DENORMALIZED
+-- Time-Series Data Tables (TimescaleDB Hypertables) - NORMALIZED
 book_ticker_snapshots (
-    id, timestamp, exchange, symbol_base, symbol_quote,
+    id, timestamp, symbol_id FK,
     bid_price, bid_qty, ask_price, ask_qty, sequence_number, update_type, created_at
 )
-funding_rate_snapshots (timestamp, exchange, symbol_base, symbol_quote, funding_rate, funding_time, ...)
-balance_snapshots (timestamp, exchange, asset_name, available_balance, locked_balance, ...)
-trade_snapshots (timestamp, exchange, symbol_base, symbol_quote, price, quantity, side, ...)
+funding_rate_snapshots (timestamp, symbol_id FK, funding_rate, funding_time, next_funding_time, ...)
+balance_snapshots (timestamp, exchange_id FK, asset_name, available_balance, locked_balance, ...)
+trade_snapshots (timestamp, symbol_id FK, price, quantity, side, trade_id, ...)
 
 -- Analytics Tables
-arbitrage_opportunities (timestamp, exchange, symbol_base, symbol_quote, buy_exchange, sell_exchange, ...)
-order_flow_metrics (timestamp, exchange, symbol_base, symbol_quote, ofi_score, microprice, ...)
+arbitrage_opportunities (timestamp, symbol_id FK, buy_exchange_id FK, sell_exchange_id FK, spread_bps, ...)
+order_flow_metrics (timestamp, symbol_id FK, ofi_score, microprice, volume_imbalance, ...)
 ```
 
 **Key Schema Details:**
-- **Current Status**: Denormalized schema with direct column storage
-- **Exchange Field**: Uses `exchange` column (CHARACTER VARYING(20)) storing values like "MEXC", "GATEIO_FUTURES"
-- **Symbol Fields**: Uses `symbol_base` and `symbol_quote` columns (CHARACTER VARYING(20)) directly
-- **Performance**: Optimized for sub-5ms queries with direct column access
+- **Current Status**: Fully normalized schema with foreign key relationships throughout
+- **All Time-Series Tables**: Use symbol_id FK to symbols table for data consistency
+- **Balance Tables**: Use exchange_id FK to exchanges table
+- **Foreign Key Integrity**: All data tables maintain referential integrity
+- **Performance**: Optimized for sub-5ms queries with proper JOINs and indexing
 - **TimescaleDB**: Configured as hypertable with timestamp partitioning
-- **Indexes**: Primary key on (timestamp, exchange, symbol_base, symbol_quote) with additional performance indexes
+- **Indexes**: Composite indexes on (timestamp, symbol_id) and foreign key indexes
 
-### Key Relationships
+### Key Relationships (Fully Normalized Schema)
 
-1. **Exchanges → Symbols**: One-to-many relationship
+1. **Exchanges → Symbols**: One-to-many relationship (NORMALIZED)
    ```sql
    symbols.exchange_id → exchanges.id
    ```
 
-2. **Symbols → Time-Series Data**: One-to-many relationships
+2. **Symbols → Time-Series Data**: One-to-many relationship (NORMALIZED)
    ```sql
    book_ticker_snapshots.symbol_id → symbols.id
    funding_rate_snapshots.symbol_id → symbols.id
    trade_snapshots.symbol_id → symbols.id
    ```
 
-3. **Exchanges → Balance Data**: One-to-many relationship
+3. **Exchanges → Balance Data**: One-to-many relationship (NORMALIZED)
    ```sql
    balance_snapshots.exchange_id → exchanges.id
+   ```
+
+4. **Query Patterns**: All queries use JOINs with normalized foreign keys
+   ```sql
+   -- Time-series queries: Use JOINs for normalized schema (HFT optimized)
+   SELECT bts.timestamp, s.symbol_base, s.symbol_quote, e.enum_value as exchange,
+          bts.bid_price, bts.ask_price
+   FROM book_ticker_snapshots bts
+   INNER JOIN symbols s ON bts.symbol_id = s.id
+   INNER JOIN exchanges e ON s.exchange_id = e.id
+   WHERE e.enum_value = 'GATEIO_FUTURES' 
+     AND s.symbol_base = 'MYX' 
+     AND s.symbol_quote = 'USDT'
+   
+   -- Balance queries: Use JOINs with exchanges
+   SELECT bs.timestamp, e.enum_value as exchange, bs.asset_name, bs.available_balance
+   FROM balance_snapshots bs
+   INNER JOIN exchanges e ON bs.exchange_id = e.id
+   WHERE e.enum_value = 'GATEIO_FUTURES'
    ```
 
 ### Exchange Enum Standards

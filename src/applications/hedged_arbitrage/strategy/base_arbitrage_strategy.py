@@ -431,13 +431,36 @@ class BaseArbitrageStrategy(BaseTradingTask[T, ArbitrageState], Generic[T], ABC)
     
     # Utility methods
     
+    def _get_role_key_for_exchange(self, exchange_enum: ExchangeEnum) -> Optional[str]:
+        """Map ExchangeEnum to role key used in _current_book_tickers.
+        
+        Args:
+            exchange_enum: The exchange enum (e.g., ExchangeEnum.MEXC)
+            
+        Returns:
+            Role key string (e.g., 'spot', 'futures') or None if not found
+        """
+        for role_key, role_config in self._exchange_roles.items():
+            if role_config.exchange_enum == exchange_enum:
+                return role_key
+        return None
+    
     async def _validate_opportunity(self, opportunity: ArbitrageOpportunity) -> bool:
         """Validate that opportunity is still viable."""
-        # Check if prices are still within acceptable range
-        primary_ticker = self._current_book_tickers.get(opportunity.primary_exchange.name.lower())
-        target_ticker = self._current_book_tickers.get(opportunity.target_exchange.name.lower())
+        # Map exchange enums to role keys to access current book tickers
+        primary_role_key = self._get_role_key_for_exchange(opportunity.primary_exchange)
+        target_role_key = self._get_role_key_for_exchange(opportunity.target_exchange)
+        
+        if not primary_role_key or not target_role_key:
+            self.logger.warning(f"Cannot find role keys for exchanges: primary={opportunity.primary_exchange}, target={opportunity.target_exchange}")
+            return False
+        
+        # Get current book tickers using role keys (not exchange names)
+        primary_ticker = self._current_book_tickers.get(primary_role_key)
+        target_ticker = self._current_book_tickers.get(target_role_key)
         
         if not primary_ticker or not target_ticker:
+            self.logger.debug(f"Missing book ticker data: primary_role='{primary_role_key}' ticker={bool(primary_ticker)}, target_role='{target_role_key}' ticker={bool(target_ticker)}")
             return False
         
         # Calculate current spread using proper cross-exchange bid/ask comparison
@@ -456,8 +479,8 @@ class BaseArbitrageStrategy(BaseTradingTask[T, ArbitrageState], Generic[T], ABC)
         # Use the better spread (maximum profitability)
         best_current_spread = max(primary_to_target_spread, target_to_primary_spread)
         
-        # Convert entry threshold from decimal to percentage for comparison
-        entry_threshold_pct = float(self.context.entry_threshold_pct) * 100
+        # Entry threshold is already in percentage format, no conversion needed
+        entry_threshold_pct = float(self.context.entry_threshold_pct)
         
         return best_current_spread >= entry_threshold_pct
     
@@ -510,18 +533,18 @@ class BaseArbitrageStrategy(BaseTradingTask[T, ArbitrageState], Generic[T], ABC)
                 
                 # Get current balances
                 try:
-                    balances = await exchange.private.get_balances()
+                    balances = exchange.private.balances
                 except Exception as e:
                     self.logger.error(f"Failed to get balances for {role_key}: {e}")
                     return False
                 
                 # Check if this is a futures exchange (balances are FuturesBalance type)
-                is_futures = len(balances) > 0 and isinstance(balances[0], FuturesBalance)
+                is_futures = role_key == 'futures'
                 
                 # For sell orders, check base asset availability
                 if order_params['side'] == Side.SELL:
                     base_asset = self.context.symbol.base
-                    base_balance = next((b for b in balances if b.asset == base_asset), None)
+                    base_balance = balances.get(base_asset, AssetBalance(base_asset, 0, 0))
                     
                     required_quantity = float(order_params['quantity'])
                     available_quantity = float(base_balance.available) if base_balance else 0.0
@@ -538,7 +561,7 @@ class BaseArbitrageStrategy(BaseTradingTask[T, ArbitrageState], Generic[T], ABC)
                 # For buy orders, check quote asset availability (or margin for futures)
                 elif order_params['side'] == Side.BUY:
                     quote_asset = self.context.symbol.quote
-                    quote_balance = next((b for b in balances if b.asset == quote_asset), None)
+                    quote_balance = balances[quote_asset]
                     
                     required_quote = float(order_params['quantity']) * float(order_params['price'])
                     

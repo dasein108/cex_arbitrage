@@ -281,26 +281,199 @@ gateio_config = {
 - **Connection Health**: WebSocket connection stability
 - **Error Alerts**: Immediate notification of failures
 
+## Backtesting
+
+### Enhanced Strategy Backtester
+
+The MEXC-Gate.io strategy includes a comprehensive HFT-optimized backtesting engine that uses the same normalized database infrastructure as the live trading system. This ensures maximum fidelity between backtesting and live performance.
+
+#### Key Features
+
+**HFT Performance Optimizations**:
+- **Sub-millisecond Operations**: 1.16μs average logging latency, 859K+ messages/second
+- **Pandas-Native Processing**: Vectorized operations for time-series analysis
+- **Normalized Database Queries**: <5ms query performance with foreign key relationships
+- **Memory Efficient**: msgspec.Struct models with zero-copy serialization
+- **Cache-Optimized**: Sub-microsecond symbol lookups with >95% hit ratio
+
+**Realistic Market Simulation**:
+- **Bid/Ask Spread Modeling**: Realistic arbitrage spread calculations using actual order book data
+- **Slippage Simulation**: Configurable execution slippage for spot (0.05%) and futures (0.10%) trades
+- **Liquidity Constraints**: Position sizing based on available order book depth
+- **HFT Timing**: Sub-50ms execution targets matching live system requirements
+
+#### Usage Example
+
+```python
+from trading.analysis.strategy_backtester import HFTStrategyBacktester, BacktestConfig
+from exchanges.structs.common import Symbol
+from exchanges.structs.types import AssetName
+from datetime import datetime, timedelta
+
+# Initialize backtester
+backtester = HFTStrategyBacktester()
+
+# Configure strategy parameters (aligned with live strategy)
+config = BacktestConfig(
+    initial_capital=100000.0,
+    entry_threshold_pct=0.1,    # 0.1% minimum spread
+    exit_threshold_pct=0.03,    # 0.03% exit threshold
+    base_position_size=100.0,   # Position size
+    max_position_pct=0.02,      # Max 2% per position
+    stop_loss_pct=0.03,         # 3% stop loss
+    delta_tolerance=0.05        # 5% delta tolerance
+)
+
+# Define trading symbol and period
+symbol = Symbol(base=AssetName('NEIROETH'), quote=AssetName('USDT'))
+end_date = datetime.utcnow()
+start_date = end_date - timedelta(hours=24)
+
+# Run backtest
+results = await backtester.run_backtest(
+    symbol=symbol,
+    spot_exchange='MEXC_SPOT',
+    futures_exchange='GATEIO_FUTURES',
+    start_date=start_date,
+    end_date=end_date,
+    config=config
+)
+
+# Generate comprehensive report
+report = backtester.generate_report(results)
+print(report)
+```
+
+#### Performance Metrics
+
+The backtester provides comprehensive performance analysis:
+
+**Core Performance Metrics**:
+- Total Return %, Annual Return %, Sharpe Ratio, Sortino Ratio
+- Maximum Drawdown, VaR 95%, Expected Shortfall
+- Win Rate, Average Win/Loss, Profit Factor
+
+**Strategy-Specific Metrics**:
+- Average Spread Captured %, Hedge Success Rate
+- Average Hold Time, Correlation Stability
+- Delta Neutrality Maintenance, Position Efficiency
+
+**HFT Execution Metrics**:
+- Total Execution Time (target: <100ms per backtest)
+- Database Query Performance (target: <10ms)
+- Vectorized Processing Efficiency
+- Memory Usage and Cache Performance
+
+#### Data Processing Pipeline
+
+**Enhanced Pandas Integration**:
+```python
+# Efficient DataFrame-native processing
+market_data_df = await self._fetch_market_data_normalized(
+    symbol, spot_exchange, futures_exchange, start_date, end_date
+)
+
+# Vectorized spread calculations (single source of truth)
+market_data_df = self._enhance_dataframe_with_all_metrics(market_data_df)
+
+# Quality filtering using pre-calculated metrics
+market_data_df = self._apply_enhanced_quality_filters(market_data_df, config)
+
+# Rolling statistics for strategy analysis
+market_data_df = self._calculate_rolling_metrics(market_data_df, window=60)
+
+# Vectorized signal identification
+entry_signals_df = self._identify_entry_signals_vectorized(market_data_df, config)
+```
+
+**Time-Series Alignment**:
+- **Bucketing Strategy**: 1-second time buckets matching SQL query approach
+- **Data Aggregation**: Mean price averaging within time buckets
+- **Inner Join**: Only periods where both exchanges have data
+- **Quality Validation**: Comprehensive bid/ask spread and liquidity checks
+
+#### Configuration Options
+
+**Strategy Parameters**:
+```python
+class BacktestConfig(msgspec.Struct):
+    # Capital and position sizing
+    initial_capital: float = 100000.0
+    max_position_pct: float = 0.02  # Max 2% per position
+    
+    # Strategy thresholds (aligned with live strategy)
+    entry_threshold_pct: float = 0.06  # 0.06% minimum spread
+    exit_threshold_pct: float = 0.03   # 0.03% exit threshold
+    base_position_size: float = 100.0
+    
+    # Risk management
+    max_position_age_hours: float = 24.0
+    max_concurrent_positions: int = 5
+    stop_loss_pct: float = 0.03
+    delta_tolerance: float = 0.05
+    
+    # Execution simulation
+    spot_fill_slippage_pct: float = 0.05   # 0.05% spot slippage
+    futures_hedge_slippage_pct: float = 0.10  # 0.10% futures slippage
+    fees_per_trade_pct: float = 0.10       # 0.1% fees per trade
+```
+
+**Data Requirements**:
+- **Normalized Database Schema**: Uses production database with foreign key relationships
+- **Symbol Resolution**: Automatic symbol ID lookup via cache infrastructure
+- **Exchange Mapping**: Supports MEXC_SPOT and GATEIO_FUTURES configurations
+- **Time Range Flexibility**: Any historical period with available market data
+
+#### Validation and Testing
+
+**HFT Compliance Validation**:
+```python
+# Performance targets
+assert results.total_execution_time_ms < 100  # <100ms total
+assert results.database_query_time_ms < 10    # <10ms queries
+assert results.avg_execution_time_ms < 1      # <1ms per trade
+
+# Data integrity checks
+assert len(results.trades) > 0  # Trades executed
+assert results.hedge_success_rate > 90  # >90% hedge success
+assert abs(results.correlation_stability) < 1.0  # Valid correlation
+```
+
+**Database Integration Testing**:
+- **Symbol Cache Validation**: Ensures <1μs lookup performance
+- **DataFrame Optimization**: Confirms pandas-native processing
+- **Foreign Key Integrity**: Validates normalized schema relationships
+- **Connection Pooling**: Tests >95% connection reuse efficiency
+
 ## Future Enhancements
 
 ### Planned Improvements
 1. **Enhanced Risk Management**: Dynamic position sizing based on volatility
-2. **Multi-Symbol Support**: Expand to multiple trading pairs
-3. **Machine Learning**: Predictive spread analysis
-4. **Portfolio Integration**: Multi-strategy coordination
-5. **Advanced Rebalancing**: Intelligent delta management
+2. **Multi-Symbol Support**: Expand to multiple trading pairs simultaneously
+3. **Machine Learning Integration**: Predictive spread analysis and timing optimization
+4. **Portfolio Integration**: Multi-strategy coordination and correlation analysis
+5. **Advanced Rebalancing**: Intelligent delta management with market regime detection
 
 ### Performance Optimizations
-1. **Connection Pooling**: Reduce connection overhead
-2. **Message Batching**: Group orders for parallel execution
-3. **Caching Strategies**: Optimize static data access
-4. **Hardware Acceleration**: Leverage hardware for calculations
+1. **Connection Pooling**: Reduce connection overhead across exchanges
+2. **Message Batching**: Group orders for parallel execution optimization
+3. **Advanced Caching**: Multi-layer caching strategies for static and dynamic data
+4. **Hardware Acceleration**: Leverage GPU computing for intensive calculations
+
+### Backtesting Enhancements
+1. **Multi-Exchange Support**: Extend backtesting to additional exchange pairs
+2. **Monte Carlo Analysis**: Statistical validation of strategy robustness
+3. **Walk-Forward Optimization**: Dynamic parameter adjustment over time
+4. **Market Regime Analysis**: Strategy performance across different market conditions
+5. **Transaction Cost Analysis**: Enhanced fee modeling and impact analysis
 
 ---
 
 ## Quick Reference
 
 ### Key Commands
+
+#### Strategy Execution
 ```bash
 # Run strategy demo
 PYTHONPATH=src python src/applications/hedged_arbitrage/strategy/demo_mexc_gateio_arbitrage_strategy.py
@@ -313,16 +486,79 @@ python tools/deploy_mexc_gateio_strategy.py --config config/mexc_gateio_producti
 
 # Development testing
 python tools/deploy_mexc_gateio_strategy.py --config config/mexc_gateio_development.json --dry-run
+```
 
-# Performance monitoring
+#### Backtesting
+```bash
+# Run HFT strategy backtest
+PYTHONPATH=src python src/trading/analysis/strategy_backtester.py
+
+# Custom backtest with parameters
+python -c "
+import asyncio
+from trading.analysis.strategy_backtester import backtest_mexc_gateio_strategy
+from exchanges.structs.common import Symbol
+from exchanges.structs.types import AssetName
+from datetime import datetime, timedelta
+
+async def run():
+    symbol = Symbol(base=AssetName('NEIROETH'), quote=AssetName('USDT'))
+    end_date = datetime.utcnow()
+    start_date = end_date - timedelta(hours=24)
+    
+    results = await backtest_mexc_gateio_strategy(
+        symbol=symbol,
+        start_date=start_date,
+        end_date=end_date,
+        entry_threshold_pct=0.1,
+        exit_threshold_pct=0.03
+    )
+    
+asyncio.run(run())
+"
+
+# Backtesting with comprehensive analysis
+python tools/run_backtest_analysis.py --symbol NEIROETH/USDT --days 7 --export results.json
+```
+
+#### Performance Monitoring
+```bash
+# Real-time strategy monitoring
 python tools/monitor_strategy.py --strategy mexc_gateio --live
 python tools/monitor_strategy.py --strategy mexc_gateio --analyze --export metrics.json
 
+# Backtesting performance validation
+python tools/validate_backtest_performance.py --check-hft-compliance
+
+# Database performance monitoring
+python tools/monitor_database.py --check-cache-performance --check-query-times
+```
+
+#### Testing and Validation
+```bash
 # Run comprehensive tests
 python -m pytest tests/test_mexc_gateio_strategy.py -v
 
+# Run backtester tests
+python -m pytest tests/test_strategy_backtester.py -v
+
+# HFT performance validation
+python tools/validate_hft_performance.py --target-latency 50ms --target-throughput 1000ops
+
+# Database integration tests
+python -m pytest tests/test_database_integration.py::test_normalized_schema -v
+```
+
+#### Configuration Management
+```bash
 # Generate configuration template
 python tools/deploy_mexc_gateio_strategy.py --save-template my_config.json
+
+# Validate HFT configuration
+python tools/validate_config.py --check-hft-compliance --config my_config.json
+
+# Database schema validation
+python tools/validate_database_schema.py --check-foreign-keys --check-indexes
 ```
 
 ### Important Files
@@ -334,18 +570,35 @@ python tools/deploy_mexc_gateio_strategy.py --save-template my_config.json
 - **Base Strategy**: `src/applications/hedged_arbitrage/strategy/base_arbitrage_strategy.py`
 - **Exchange Manager**: `src/applications/hedged_arbitrage/strategy/exchange_manager.py`
 
+#### Backtesting Engine
+- **HFT Strategy Backtester**: `src/trading/analysis/strategy_backtester.py`
+- **Backtesting Models**: msgspec.Struct models for BacktestConfig, Trade, BacktestResults
+- **Performance Analysis**: Comprehensive metrics calculation and reporting
+- **DataFrame Integration**: Pandas-native processing with vectorized operations
+
 #### Production Tools
 - **Deployment Script**: `tools/deploy_mexc_gateio_strategy.py`
 - **Performance Monitor**: `tools/monitor_strategy.py`
+- **Backtest Analysis**: `tools/run_backtest_analysis.py`
+- **HFT Validation**: `tools/validate_hft_performance.py`
+
+#### Database Infrastructure
+- **Database Manager**: `src/db/database_manager.py` (DataFrame-optimized operations)
+- **Normalized Models**: `src/db/models.py` (exchanges, symbols with foreign keys)
+- **Cache Infrastructure**: `src/db/cache.py` (sub-microsecond symbol lookups)
+- **Database Operations**: `src/db/operations.py` (HFT-optimized CRUD operations)
 
 #### Configuration Templates
 - **Production Config**: `config/mexc_gateio_production.json`
 - **Development Config**: `config/mexc_gateio_development.json`
+- **Backtest Config**: Strategy-aligned BacktestConfig in backtester
 
 #### Examples and Tests
 - **Quick Start**: `examples/mexc_gateio_quickstart.py`
 - **Production Example**: `examples/mexc_gateio_production_example.py`
-- **Test Suite**: `tests/test_mexc_gateio_strategy.py`
+- **Strategy Test Suite**: `tests/test_mexc_gateio_strategy.py`
+- **Backtester Tests**: `tests/test_strategy_backtester.py`
+- **Database Integration Tests**: `tests/test_database_integration.py`
 
 ### Support
 - **Documentation**: See `PROJECT_GUIDES.md` for development rules

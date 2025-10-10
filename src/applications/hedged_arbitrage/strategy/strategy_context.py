@@ -47,10 +47,10 @@ class RiskParameters(msgspec.Struct):
 
 class SpreadThresholds(msgspec.Struct):
     """Spread thresholds for arbitrage entry/exit."""
-    entry_threshold_bps: int = 10      # 0.1% minimum entry spread
-    exit_threshold_bps: int = 5        # 0.05% minimum exit spread
-    profit_target_bps: int = 8         # 0.08% profit target
-    stop_loss_bps: int = 15            # 0.15% stop loss
+    entry_threshold_pct: float = 0.1   # 0.1% minimum entry spread
+    exit_threshold_pct: float = 0.05   # 0.05% minimum exit spread
+    profit_target_pct: float = 0.08    # 0.08% profit target
+    stop_loss_pct: float = 0.15        # 0.15% stop loss
 
 
 class PositionInfo(msgspec.Struct):
@@ -125,7 +125,7 @@ class FlexibleArbitrageContext(TaskContext):
     last_rebalance_time: float = 0.0
     
     # Current opportunity
-    current_spread_bps: Optional[int] = None
+    current_spread_pct: Optional[float] = None
     opportunity_start_time: Optional[float] = None
     expected_profit: Optional[float] = None
     
@@ -257,13 +257,13 @@ def create_spot_spot_context(
     exchange1: ExchangeEnum,
     exchange2: ExchangeEnum,
     base_position_size: float = 100.0,
-    entry_threshold_bps: int = 10
+    entry_threshold_pct: float = 0.1
 ) -> SpotSpotArbitrageContext:
     """Create context for spot-spot arbitrage strategy."""
     context = SpotSpotArbitrageContext(
         symbol=symbol,
         base_position_size=base_position_size,
-        spread_thresholds=SpreadThresholds(entry_threshold_bps=entry_threshold_bps)
+        spread_thresholds=SpreadThresholds(entry_threshold_pct=entry_threshold_pct)
     )
     
     context.add_exchange_role("exchange1", exchange1, "primary_spot", Side.BUY)
@@ -278,14 +278,14 @@ def create_spot_futures_context(
     futures_exchange: ExchangeEnum,
     base_position_size: float = 100.0,
     futures_leverage: float = 1.0,
-    entry_threshold_bps: int = 10
+    entry_threshold_pct: float = 0.1
 ) -> SpotFuturesArbitrageContext:
     """Create context for spot-futures arbitrage strategy."""
     context = SpotFuturesArbitrageContext(
         symbol=symbol,
         base_position_size=base_position_size,
         futures_leverage=futures_leverage,
-        spread_thresholds=SpreadThresholds(entry_threshold_bps=entry_threshold_bps)
+        spread_thresholds=SpreadThresholds(entry_threshold_pct=entry_threshold_pct)
     )
     
     context.add_exchange_role("spot", spot_exchange, "spot_trading", Side.BUY)

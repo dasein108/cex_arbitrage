@@ -93,7 +93,23 @@ class DatabaseManager:
         
         self._initialized = True
         self._logger.info("DatabaseManager initialized with built-in caching")
-    
+
+    def _debug_query(self, query: str, params: list) -> str:
+        """Debug helper to see the prepared query with values"""
+        result = query
+        for i, param in enumerate(params, 1):
+            placeholder = f"${i}"
+            if isinstance(param, str):
+                value = f"'{param}'"
+            elif isinstance(param, (datetime, date)):  # Add datetime handling
+                value = f"'{param}'"
+            elif param is None:
+                value = "NULL"
+            else:
+                value = str(param)
+            result = result.replace(placeholder, value, 1)
+        return result
+
     async def initialize(self) -> None:
         """
         Initialize database connection using get_database_config() from HftConfig.
@@ -244,7 +260,7 @@ class DatabaseManager:
                     symbol_quote=row['symbol_quote'],
                     exchange_symbol=row['exchange_symbol'],
                     is_active=row['is_active'],
-                    symbol_type=SymbolType[row['symbol_type']]
+                    symbol_type=SymbolType(row['symbol_type'])
                 )
                 
                 # Multiple cache indexes for optimal lookup performance
@@ -809,13 +825,13 @@ class DatabaseManager:
         """
         Get book ticker data as pandas DataFrame for HFT strategy analysis.
         
-        Uses normalized schema with proper JOINs for optimal performance.
-        Optimized for strategy_backtester.py performance requirements (<5ms for normalized joins).
-        Returns data directly as DataFrame without intermediate conversions.
+        Uses normalized schema with proper JOINs for data consistency.
+        Maximum precision preservation: no PostgreSQL casting, Decimal->float conversion in Python.
+        Calculates mid_price and spread_bps in Python to avoid database rounding.
         
         Args:
-            exchange: Filter by exchange (e.g., "MEXC_SPOT")
-            symbol_base: Filter by base asset (e.g., "BTC")
+            exchange: Filter by exchange (e.g., "GATEIO_FUTURES")
+            symbol_base: Filter by base asset (e.g., "MYX")
             symbol_quote: Filter by quote asset (e.g., "USDT") 
             start_time: Start time filter (optional)
             end_time: End time filter (optional)
@@ -831,7 +847,7 @@ class DatabaseManager:
         if not self._pool:
             raise RuntimeError("DatabaseManager not initialized")
         
-        # Build dynamic WHERE clause using normalized schema
+        # Build dynamic WHERE clause using current production schema
         where_conditions = []
         params = []
         param_counter = 1
@@ -865,19 +881,17 @@ class DatabaseManager:
         
         where_clause = "WHERE " + " AND ".join(where_conditions) if where_conditions else ""
         
-        # Use normalized schema with proper JOINs for HFT performance
+        # Use normalized schema with proper JOINs - no casting for maximum precision
         query = f"""
             SELECT 
                 bts.timestamp,
                 e.enum_value as exchange,
                 s.symbol_base,
                 s.symbol_quote,
-                bts.bid_price::float as bid_price,
-                bts.bid_qty::float as bid_qty,
-                bts.ask_price::float as ask_price,
-                bts.ask_qty::float as ask_qty,
-                ((bts.bid_price + bts.ask_price) / 2.0)::float as mid_price,
-                (((bts.ask_price - bts.bid_price) / ((bts.bid_price + bts.ask_price) / 2.0)) * 10000.0)::float as spread_bps
+                bts.bid_price,
+                bts.bid_qty,
+                bts.ask_price,
+                bts.ask_qty
             FROM book_ticker_snapshots bts
             INNER JOIN symbols s ON bts.symbol_id = s.id
             INNER JOIN exchanges e ON s.exchange_id = e.id
@@ -889,15 +903,39 @@ class DatabaseManager:
         async with self._pool.acquire() as conn:
             rows = await conn.fetch(query, *params)
         
-        # Convert directly to DataFrame - no intermediate conversions
+        # Convert Decimal objects to float with maximum precision preservation
         if not rows:
             return pd.DataFrame(columns=[
                 'timestamp', 'exchange', 'symbol_base', 'symbol_quote',
                 'bid_price', 'bid_qty', 'ask_price', 'ask_qty', 'mid_price', 'spread_bps'
             ])
         
-        # Direct conversion from database rows to DataFrame
-        data = [dict(row) for row in rows]
+        # Convert Decimal to float and calculate mid_price/spread_bps in Python for precision
+        data = []
+        # TODO: maybe this is not necessary, check and remove
+        for row in rows:
+            bid_price = float(row['bid_price'])    # Convert Decimal to float
+            bid_qty = float(row['bid_qty'])        # Convert Decimal to float  
+            ask_price = float(row['ask_price'])    # Convert Decimal to float
+            ask_qty = float(row['ask_qty'])        # Convert Decimal to float
+            
+            # Calculate mid_price and spread_bps in Python for maximum precision
+            mid_price = (bid_price + ask_price) / 2.0
+            spread_bps = ((ask_price - bid_price) / mid_price) * 10000.0 if mid_price > 0 else 0.0
+            
+            data.append({
+                'timestamp': row['timestamp'],
+                'exchange': row['exchange'],
+                'symbol_base': row['symbol_base'],
+                'symbol_quote': row['symbol_quote'],
+                'bid_price': bid_price,
+                'bid_qty': bid_qty,
+                'ask_price': ask_price,
+                'ask_qty': ask_qty,
+                'mid_price': mid_price,
+                'spread_bps': spread_bps
+            })
+        
         df = pd.DataFrame(data)
         
         # Set timestamp as index for time-series operations
@@ -918,10 +956,10 @@ class DatabaseManager:
         """
         Get time-aligned market data for multiple exchanges as single DataFrame.
         
-        Uses normalized schema with proper JOINs for optimal performance.
+        Uses normalized schema with proper JOINs for data consistency.
         Optimized for strategy_backtester.py cross-exchange analysis.
         Performs database-level alignment instead of post-processing.
-        Target: <5ms for normalized joins per HFT requirements.
+        Target: <5ms queries with high precision arithmetic.
         
         Args:
             symbol_base: Base asset (e.g., "BTC")
@@ -968,11 +1006,10 @@ class DatabaseManager:
                 SELECT 
                     tb.bucket_time,
                     e.enum_value as exchange,
-                    FIRST(bts.bid_price ORDER BY bts.timestamp DESC)::float as bid_price,
-                    FIRST(bts.bid_qty ORDER BY bts.timestamp DESC)::float as bid_qty,
-                    FIRST(bts.ask_price ORDER BY bts.timestamp DESC)::float as ask_price,
-                    FIRST(bts.ask_qty ORDER BY bts.timestamp DESC)::float as ask_qty,
-                    FIRST(((bts.bid_price + bts.ask_price) / 2.0) ORDER BY bts.timestamp DESC)::float as mid_price
+                    FIRST(bts.bid_price ORDER BY bts.timestamp DESC) as bid_price,
+                    FIRST(bts.bid_qty ORDER BY bts.timestamp DESC) as bid_qty,
+                    FIRST(bts.ask_price ORDER BY bts.timestamp DESC) as ask_price,
+                    FIRST(bts.ask_qty ORDER BY bts.timestamp DESC) as ask_qty
                 FROM time_buckets tb
                 LEFT JOIN book_ticker_snapshots bts ON 
                     time_bucket(INTERVAL '{pg_interval}', bts.timestamp) = tb.bucket_time
@@ -993,8 +1030,31 @@ class DatabaseManager:
         if not rows:
             return pd.DataFrame()
         
-        # Convert to DataFrame and pivot by exchange
-        df = pd.DataFrame([dict(row) for row in rows])
+        # Convert Decimal objects to float with maximum precision preservation
+        data = []
+        # TODO: maybe this is not necessary, check and remove
+        for row in rows:
+            bid_price = float(row['bid_price']) if row['bid_price'] is not None else None
+            bid_qty = float(row['bid_qty']) if row['bid_qty'] is not None else None
+            ask_price = float(row['ask_price']) if row['ask_price'] is not None else None
+            ask_qty = float(row['ask_qty']) if row['ask_qty'] is not None else None
+            
+            # Calculate mid_price in Python for maximum precision
+            mid_price = None
+            if bid_price is not None and ask_price is not None:
+                mid_price = (bid_price + ask_price) / 2.0
+            
+            data.append({
+                'bucket_time': row['bucket_time'],
+                'exchange': row['exchange'],
+                'bid_price': bid_price,
+                'bid_qty': bid_qty,
+                'ask_price': ask_price,
+                'ask_qty': ask_qty,
+                'mid_price': mid_price
+            })
+        
+        df = pd.DataFrame(data)
         
         # Pivot to get exchange-specific columns
         pivoted = df.pivot_table(

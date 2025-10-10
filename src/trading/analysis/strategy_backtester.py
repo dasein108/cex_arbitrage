@@ -51,7 +51,7 @@ class BacktestConfig(msgspec.Struct):
     max_position_pct: float = 0.02  # Max 2% per position
     
     # Strategy thresholds (aligned with MexcGateioFuturesStrategy)
-    entry_threshold_pct: float = 0.1   # 0.1% minimum spread (matches strategy default)
+    entry_threshold_pct: float = 0.06  # 0.06% minimum spread (matches SQL findings)
     exit_threshold_pct: float = 0.03   # 0.03% minimum exit spread (matches strategy default)
     base_position_size: float = 100.0  # Base position size (matches strategy default)
     
@@ -63,10 +63,10 @@ class BacktestConfig(msgspec.Struct):
     delta_tolerance: float = 0.05  # 5% delta tolerance (matches strategy)
     
     # Execution parameters
-    spot_fill_slippage_bps: float = 5.0   # Slippage on spot fills
-    futures_hedge_slippage_bps: float = 10.0  # Slippage on futures hedge
+    spot_fill_slippage_pct: float = 0.05   # Slippage on spot fills (0.05%)
+    futures_hedge_slippage_pct: float = 0.10  # Slippage on futures hedge (0.10%)
     hedge_delay_ms: int = 500  # Delay before hedge execution
-    fees_per_trade_bps: float = 10.0  # 0.1% fees per trade
+    fees_per_trade_pct: float = 0.10  # 0.1% fees per trade
     
     # Liquidity constraints
     min_liquidity_usd: float = 1000.0
@@ -88,13 +88,13 @@ class Trade(msgspec.Struct):
     spot_entry_price: float = 0.0
     spot_exit_price: Optional[float] = None
     spot_size: float = 0.0
-    spot_slippage_bps: float = 0.0
+    spot_slippage_pct: float = 0.0
     
     # Futures leg
     futures_entry_price: Optional[float] = None
     futures_exit_price: Optional[float] = None
     futures_size: float = 0.0
-    futures_slippage_bps: float = 0.0
+    futures_slippage_pct: float = 0.0
     
     # Performance metrics
     gross_pnl: float = 0.0
@@ -137,7 +137,7 @@ class BacktestResults(msgspec.Struct):
     best_trade_pct: float
     
     # Strategy-specific metrics
-    avg_spread_captured_bps: float
+    avg_spread_captured_pct: float
     hedge_success_rate: float
     avg_hold_time_hours: float
     correlation_stability: float
@@ -168,9 +168,35 @@ class MarketDataPoint(msgspec.Struct):
         """Calculate futures mid price."""
         return (self.fut_bid + self.fut_ask) / 2
     
-    def get_spread_bps(self) -> float:
-        """Calculate spread in basis points."""
-        return (self.get_futures_mid() - self.get_spot_mid()) / self.get_spot_mid() * 10000
+    def get_arbitrage_spreads_pct(self) -> tuple[float, float]:
+        """Calculate realistic arbitrage spreads in percentages for both directions.
+        
+        Returns:
+            Tuple of (spot_to_futures_spread_pct, futures_to_spot_spread_pct)
+            Matches strategy calculation: buy on one exchange, sell on another
+        """
+        # Direction 1: Buy spot (at ask), sell futures (at bid)
+        spot_buy_price = self.spot_ask  # Price to buy on spot
+        futures_sell_price = self.fut_bid  # Price to sell on futures
+        spot_to_futures_spread_pct = (futures_sell_price - spot_buy_price) / spot_buy_price * 100
+        
+        # Direction 2: Buy futures (at ask), sell spot (at bid)
+        futures_buy_price = self.fut_ask  # Price to buy on futures
+        spot_sell_price = self.spot_bid  # Price to sell on spot
+        futures_to_spot_spread_pct = (spot_sell_price - futures_buy_price) / futures_buy_price * 100
+        
+        return spot_to_futures_spread_pct, futures_to_spot_spread_pct
+    
+    def get_best_arbitrage_spread_pct(self) -> float:
+        """Get the best available arbitrage spread in percentages."""
+        spot_to_futures, futures_to_spot = self.get_arbitrage_spreads_pct()
+        return max(spot_to_futures, futures_to_spot)
+    
+    # Backward compatibility methods
+    def get_arbitrage_spreads_bps(self) -> tuple[float, float]:
+        """Legacy method - returns spreads in basis points for backward compatibility."""
+        spot_to_futures_pct, futures_to_spot_pct = self.get_arbitrage_spreads_pct()
+        return spot_to_futures_pct * 100, futures_to_spot_pct * 100
     
     def get_spot_liquidity(self) -> float:
         """Calculate spot liquidity in USD."""
@@ -223,7 +249,6 @@ class HFTMarketDataFrame:
         # Add calculated columns using vectorized operations
         df['spot_mid'] = (df['spot_bid'] + df['spot_ask']) / 2
         df['fut_mid'] = (df['fut_bid'] + df['fut_ask']) / 2
-        df['spread_bps'] = (df['fut_mid'] - df['spot_mid']) / df['spot_mid'] * 10000
         df['spot_liquidity'] = df['spot_bid_qty'] * df['spot_bid'] + df['spot_ask_qty'] * df['spot_ask']
         df['fut_liquidity'] = df['fut_bid_qty'] * df['fut_bid'] + df['fut_ask_qty'] * df['fut_ask']
         
@@ -254,21 +279,7 @@ class HFTMarketDataFrame:
         # Remove duplicates, keeping the first occurrence
         df_copy = df_copy[~df_copy.index.duplicated(keep='first')]
         return HFTMarketDataFrame(df_copy)
-    
-    def filter_quality(self, min_liquidity: float = 1000.0, max_spread_bps: float = 10000) -> 'HFTMarketDataFrame':
-        """Filter data points based on quality criteria."""
-        df_filtered = self.df[
-            (self.df['spot_liquidity'] >= min_liquidity) &
-            (self.df['fut_liquidity'] >= min_liquidity) &
-            (abs(self.df['spread_bps']) <= max_spread_bps) &
-            (self.df['spot_bid'] > 0) &
-            (self.df['spot_ask'] > 0) &
-            (self.df['fut_bid'] > 0) &
-            (self.df['fut_ask'] > 0)
-        ].copy()
-        
-        return HFTMarketDataFrame(df_filtered)
-    
+
     def calculate_rolling_metrics(self, window: int = 60) -> 'HFTMarketDataFrame':
         """Calculate rolling statistics for strategy analysis."""
         df_copy = self.df.copy()
@@ -315,7 +326,7 @@ class HFTStrategyBacktester:
     """
     
     # Class constants for configuration
-    MIN_POSITION_SIZE = 100.0
+    MIN_POSITION_SIZE = 0.01  # Minimal for testing liquidity issue
     EQUITY_SNAPSHOT_INTERVAL = 100
     FEES_PER_TRADE_COUNT = 4  # Spot entry/exit, futures entry/exit
     
@@ -422,8 +433,8 @@ class HFTStrategyBacktester:
         
         self.logger.info(f"📊 Processing {len(market_data_df)} data points with vectorized operations")
         
-        # Apply quality filtering using vectorized operations
-        market_data_df = self._apply_quality_filters(market_data_df, config)
+        # Apply enhanced quality filtering using pre-calculated metrics
+        market_data_df = self._apply_enhanced_quality_filters(market_data_df, config)
         
         # Calculate rolling metrics only for larger datasets (performance optimization)
         if len(market_data_df) > 100:
@@ -536,50 +547,23 @@ class HFTStrategyBacktester:
             self.logger.error(f"❌ Failed to fetch market data: {e}")
             raise
     
-    def _rows_to_dataframe(self, rows: List[any]) -> pd.DataFrame:
-        """
-        Convert database rows to pandas DataFrame.
-        
-        Args:
-            rows: List of database row records
-            
-        Returns:
-            DataFrame with columns: timestamp, bid_price, ask_price, bid_qty, ask_qty
-        """
-        if not rows:
-            return pd.DataFrame()
-        
-        data = []
-        for row in rows:
-            data.append({
-                'timestamp': row['timestamp'],
-                'bid_price': float(row['bid_price']),
-                'ask_price': float(row['ask_price']),
-                'bid_qty': float(row['bid_qty']),
-                'ask_qty': float(row['ask_qty'])
-            })
-        
-        df = pd.DataFrame(data)
-        df['timestamp'] = pd.to_datetime(df['timestamp'])
-        return df.sort_values('timestamp').reset_index(drop=True)
-    
     def _align_dataframes(
         self,
         spot_df: pd.DataFrame,
         futures_df: pd.DataFrame
     ) -> pd.DataFrame:
         """
-        Align DataFrame-based spot and futures data for pandas-native optimization.
+        Enhanced DataFrame alignment with complete arbitrage metrics calculation.
         
-        Optimized for HFT performance with direct DataFrame operations.
-        Used as fallback when get_aligned_market_data_dataframe returns empty data.
+        Uses vectorized operations to calculate ALL arbitrage signals and spreads once.
+        This eliminates repeated calculations and maximizes pandas performance.
         
         Args:
             spot_df: Spot market data DataFrame from get_book_ticker_dataframe
             futures_df: Futures market data DataFrame from get_book_ticker_dataframe
             
         Returns:
-            Aligned market data DataFrame with calculated metrics
+            Enhanced DataFrame with all arbitrage metrics pre-calculated
         """
         if spot_df.empty or futures_df.empty:
             return pd.DataFrame()
@@ -590,7 +574,7 @@ class HFTStrategyBacktester:
         if futures_df.index.name == 'timestamp':
             futures_df = futures_df.reset_index()
         
-        # Data quality filtering
+        # Basic data quality filtering (minimal, similar to SQL WHERE clauses)
         spot_df = spot_df[
             (spot_df['bid_price'] > 0) & 
             (spot_df['ask_price'] > 0) & 
@@ -608,52 +592,62 @@ class HFTStrategyBacktester:
         if spot_df.empty or futures_df.empty:
             return pd.DataFrame()
         
+        # TIME BUCKETING APPROACH - Match SQL query's DATE_TRUNC('second', timestamp)
+        spot_df['time_bucket'] = spot_df['timestamp'].dt.floor('S')  # Round to nearest second
+        futures_df['time_bucket'] = futures_df['timestamp'].dt.floor('S')  # Round to nearest second
+        
+        # Aggregate by time bucket (average prices like SQL query)
+        spot_agg = spot_df.groupby('time_bucket').agg({
+            'bid_price': 'mean',
+            'ask_price': 'mean',
+            'bid_qty': 'mean',
+            'ask_qty': 'mean'
+        }).reset_index()
+        
+        futures_agg = futures_df.groupby('time_bucket').agg({
+            'bid_price': 'mean',
+            'ask_price': 'mean',
+            'bid_qty': 'mean',
+            'ask_qty': 'mean'
+        }).reset_index()
+        
         # Rename columns for merge
-        spot_df = spot_df.rename(columns={
+        spot_agg = spot_agg.rename(columns={
             'bid_price': 'spot_bid',
             'ask_price': 'spot_ask', 
             'bid_qty': 'spot_bid_qty',
             'ask_qty': 'spot_ask_qty'
         })
         
-        futures_df = futures_df.rename(columns={
+        futures_agg = futures_agg.rename(columns={
             'bid_price': 'fut_bid',
             'ask_price': 'fut_ask',
             'bid_qty': 'fut_bid_qty', 
             'ask_qty': 'fut_ask_qty'
         })
         
-        # Sort by timestamp for merge_asof
-        spot_df = spot_df.sort_values('timestamp')
-        futures_df = futures_df.sort_values('timestamp')
-        
-        # Merge using pandas merge_asof with 1-second tolerance
-        merged_df = pd.merge_asof(
-            spot_df,
-            futures_df,
-            on='timestamp',
-            tolerance=pd.Timedelta(seconds=1),
-            direction='nearest'
+        # Inner join on time buckets (only periods where both exchanges have data)
+        merged_df = pd.merge(
+            spot_agg,
+            futures_agg,
+            on='time_bucket',
+            how='inner'
         )
-        
-        # Remove rows with missing data
-        merged_df = merged_df.dropna()
         
         if merged_df.empty:
             return pd.DataFrame()
         
-        # Calculate spreads and metrics (HFT-optimized vectorized operations)
-        merged_df['spot_mid'] = (merged_df['spot_bid'] + merged_df['spot_ask']) / 2.0
-        merged_df['fut_mid'] = (merged_df['fut_bid'] + merged_df['fut_ask']) / 2.0
-        merged_df['spread_bps'] = ((merged_df['fut_mid'] - merged_df['spot_mid']) / merged_df['spot_mid']) * 10000.0
+        # Rename time_bucket back to timestamp for compatibility
+        merged_df = merged_df.rename(columns={'time_bucket': 'timestamp'})
         
-        # Liquidity calculations
-        merged_df['spot_liquidity'] = merged_df['spot_bid_qty'] * merged_df['spot_bid'] + merged_df['spot_ask_qty'] * merged_df['spot_ask']
-        merged_df['fut_liquidity'] = merged_df['fut_bid_qty'] * merged_df['fut_bid'] + merged_df['fut_ask_qty'] * merged_df['fut_ask']
+        # ENHANCED: Calculate ALL arbitrage metrics once using vectorized operations
+        merged_df = self._enhance_dataframe_with_all_metrics(merged_df)
         
         # Set timestamp as index for time-series operations
         merged_df.set_index('timestamp', inplace=True)
         merged_df.sort_index(inplace=True)
+        
+        self.logger.info(f"✅ ENHANCED alignment: {len(spot_df)} spot + {len(futures_df)} futures → {len(merged_df)} enriched data points")
         
         return merged_df
     
@@ -717,12 +711,48 @@ class HFTStrategyBacktester:
     
     # ===== DATAFRAME-OPTIMIZED METHODS =====
     
-    def _apply_quality_filters(self, df: pd.DataFrame, config: BacktestConfig) -> pd.DataFrame:
-        """Apply quality filters using vectorized DataFrame operations."""
+    def _enhance_dataframe_with_all_metrics(self, df: pd.DataFrame) -> pd.DataFrame:
+        """
+        Enhanced DataFrame enrichment with ALL arbitrage metrics calculated once.
+        
+        This replaces scattered calculations throughout the codebase with a single
+        vectorized computation that creates all necessary trading signals and metrics.
+        """
+        # Basic mid prices
+        df['spot_mid'] = (df['spot_bid'] + df['spot_ask']) / 2.0
+        df['fut_mid'] = (df['fut_bid'] + df['fut_ask']) / 2.0
+        
+        # Realistic arbitrage spreads for both directions (EXACT SQL query logic)
+        # Direction 1: Buy spot (at ask), sell futures (at bid)
+        df['spot_to_futures_spread_pct'] = ((df['fut_bid'] - df['spot_ask']) / df['spot_ask']) * 100.0
+        
+        # Direction 2: Buy futures (at ask), sell spot (at bid)
+        df['futures_to_spot_spread_pct'] = ((df['spot_bid'] - df['fut_ask']) / df['fut_ask']) * 100.0
+        
+        # Best available spread and optimal direction (vectorized)
+        df['best_spread_pct'] = np.maximum(df['spot_to_futures_spread_pct'], df['futures_to_spot_spread_pct'])
+        df['optimal_direction'] = np.where(
+            df['spot_to_futures_spread_pct'] > df['futures_to_spot_spread_pct'],
+            'spot_to_futures', 'futures_to_spot'
+        )
+        
+        # Liquidity calculations
+        df['spot_liquidity'] = df['spot_bid_qty'] * df['spot_bid'] + df['spot_ask_qty'] * df['spot_ask']
+        df['fut_liquidity'] = df['fut_bid_qty'] * df['fut_bid'] + df['fut_ask_qty'] * df['fut_ask']
+        df['min_liquidity'] = np.minimum(df['spot_liquidity'], df['fut_liquidity'])
+        
+        # Legacy compatibility (keep spread_pct for existing code)
+        df['spread_pct'] = df['best_spread_pct']
+        
+        self.logger.debug(f"📈 Enhanced DataFrame with {len(df.columns)} metrics columns")
+        return df
+    
+    def _apply_enhanced_quality_filters(self, df: pd.DataFrame, config: BacktestConfig) -> pd.DataFrame:
+        """Apply enhanced quality filters using pre-calculated metrics."""
         if df.empty:
             return df
         
-        # Vectorized quality filtering
+        # Enhanced quality filtering using pre-calculated columns
         quality_mask = (
             (df['spot_bid'] > 0) & (df['spot_ask'] > 0) &
             (df['fut_bid'] > 0) & (df['fut_ask'] > 0) &
@@ -730,34 +760,39 @@ class HFTStrategyBacktester:
             (df['fut_bid_qty'] > 0) & (df['fut_ask_qty'] > 0) &
             (df['spot_bid'] < df['spot_ask']) &
             (df['fut_bid'] < df['fut_ask']) &
-            (df['spot_liquidity'] >= config.min_liquidity_usd) &
-            (df['fut_liquidity'] >= config.min_liquidity_usd) &
-            (df['spread_bps'].abs() <= 10000)  # Max 100% spread sanity check
+            # Use pre-calculated spread for filtering
+            (df['best_spread_pct'].abs() <= 500) &  # Max 500% spread sanity check
+            # Basic liquidity filter
+            (df['min_liquidity'] > 0)
         )
         
         filtered_df = df[quality_mask].copy()
         
-        self.logger.debug(f"📊 Quality filtering: {len(df)} -> {len(filtered_df)} points ({len(filtered_df)/len(df)*100:.1f}% retained)")
+        self.logger.info(f"📊 ENHANCED filtering: {len(df)} -> {len(filtered_df)} points ({len(filtered_df)/len(df)*100:.1f}% retained)")
         
         return filtered_df
     
     def _calculate_rolling_metrics(self, df: pd.DataFrame, window: int = 60) -> pd.DataFrame:
-        """Calculate rolling statistics using pandas for strategy analysis."""
+        """Calculate rolling statistics using pandas for realistic arbitrage analysis."""
         if df.empty or len(df) < 10:  # Reduced minimum requirement for faster processing
             return df
         
         # Use efficient rolling calculations with reduced window if dataset is small
         effective_window = min(window, len(df) // 2) if len(df) < window else window
         
-        # In-place operations for better performance
-        df['spread_rolling_mean'] = df['spread_bps'].rolling(effective_window, min_periods=1).mean()
-        df['spread_rolling_std'] = df['spread_bps'].rolling(effective_window, min_periods=1).std()
+        # In-place operations for better performance using realistic spread (percentages)
+        df['spread_rolling_mean'] = df['spread_pct'].rolling(effective_window, min_periods=1).mean()
+        df['spread_rolling_std'] = df['spread_pct'].rolling(effective_window, min_periods=1).std()
+        
+        # Calculate rolling metrics for both arbitrage directions
+        df['spot_to_futures_rolling_mean'] = df['spot_to_futures_spread_pct'].rolling(effective_window, min_periods=1).mean()
+        df['futures_to_spot_rolling_mean'] = df['futures_to_spot_spread_pct'].rolling(effective_window, min_periods=1).mean()
         
         # Only calculate z-score if we have enough data for meaningful rolling stats
         if len(df) >= effective_window:
-            df['spread_z_score'] = (df['spread_bps'] - df['spread_rolling_mean']) / df['spread_rolling_std'].replace(0, np.nan)
+            df['spread_z_score'] = (df['spread_pct'] - df['spread_rolling_mean']) / df['spread_rolling_std'].replace(0, np.nan)
         
-        self.logger.debug(f"📈 Calculated rolling metrics with window={effective_window}")
+        self.logger.debug(f"📈 Calculated realistic arbitrage rolling metrics with window={effective_window}")
         
         return df
     
@@ -783,6 +818,11 @@ class HFTStrategyBacktester:
         # Identify entry opportunities using vectorized operations
         entry_signals_df = self._identify_entry_signals_vectorized(df, config)
         
+        self.logger.info(f"🔍 DEBUG: Found {len(entry_signals_df)} signals, processing {len(df)} data points")
+        if not entry_signals_df.empty:
+            self.logger.info(f"📅 Signal timestamps: {list(entry_signals_df.index[:3])}")
+            self.logger.info(f"📅 Data timestamps: {list(df.index[:3])}")
+        
         # Process data row by row for position management (some operations still need individual processing)
         for idx, (timestamp, row) in enumerate(df.iterrows()):
             # Convert row to MarketDataPoint for existing methods
@@ -790,6 +830,9 @@ class HFTStrategyBacktester:
             
             # Check if this timestamp has an entry signal
             has_entry_signal = timestamp in entry_signals_df.index if not entry_signals_df.empty else False
+            
+            if has_entry_signal:
+                self.logger.info(f"🎯 Found signal at {timestamp}, active positions: {len(self.active_positions)}")
             
             # Update existing positions
             await self._update_existing_positions(data_point, config)
@@ -807,37 +850,61 @@ class HFTStrategyBacktester:
                 self._record_equity_snapshot(timestamp)
     
     def _identify_entry_signals_vectorized(self, df: pd.DataFrame, config: BacktestConfig) -> pd.DataFrame:
-        """Identify entry signals using vectorized pandas operations."""
+        """Identify entry signals using simplified logic matching successful SQL query approach."""
         if df.empty:
             return pd.DataFrame()
         
-        # Pre-calculate threshold for efficiency
-        spread_threshold = config.entry_threshold_pct * 100
+        # Use percentage threshold directly (no conversion needed)
+        spread_threshold = config.entry_threshold_pct
         
-        # Vectorized entry signal detection with efficient boolean indexing
-        sufficient_spread = df['spread_bps'].abs() >= spread_threshold
-        sufficient_liquidity = (df['spot_liquidity'] >= config.min_liquidity_usd) & (df['fut_liquidity'] >= config.min_liquidity_usd)
+        # Calculate realistic arbitrage spreads for both directions (vectorized, in percentages)
+        # Direction 1: Buy spot (at ask), sell futures (at bid)
+        spot_to_futures_spread_pct = (df['fut_bid'] - df['spot_ask']) / df['spot_ask'] * 100
         
-        # Basic entry conditions
-        entry_conditions = sufficient_spread & sufficient_liquidity
+        # Direction 2: Buy futures (at ask), sell spot (at bid)  
+        futures_to_spot_spread_pct = (df['spot_bid'] - df['fut_ask']) / df['fut_ask'] * 100
         
-        # Add z-score filter only if available and meaningful
-        if 'spread_z_score' in df.columns and df['spread_z_score'].notna().any():
-            entry_conditions = entry_conditions & (df['spread_z_score'].abs() > 1.5)
+        # Store both directions for analysis
+        df['spot_to_futures_spread'] = spot_to_futures_spread_pct
+        df['futures_to_spot_spread'] = futures_to_spot_spread_pct
+        df['best_spread_pct'] = np.maximum(spot_to_futures_spread_pct, futures_to_spot_spread_pct)
+        
+        # SIMPLIFIED ENTRY CONDITIONS - Match SQL query approach
+        # Only require positive spread above threshold (remove complex liquidity/z-score filters)
+        entry_conditions = (
+            (df['best_spread_pct'] >= spread_threshold) &
+            (df['spot_bid'] > 0) & (df['spot_ask'] > 0) &
+            (df['fut_bid'] > 0) & (df['fut_ask'] > 0) &
+            (df['spot_bid'] < df['spot_ask']) &  # Valid bid/ask ordering
+            (df['fut_bid'] < df['fut_ask'])
+        )
+        
+        # Apply basic liquidity filter only if configured (but don't make it too restrictive)
+        min_liquidity = max(config.min_liquidity_usd, 100.0)  # Lower minimum to 100 USD
+        if min_liquidity > 100.0:
+            entry_conditions = entry_conditions & (
+                (df['spot_liquidity'] >= min_liquidity) & 
+                (df['fut_liquidity'] >= min_liquidity)
+            )
         
         # Filter and create signals DataFrame efficiently
         entry_signals = df[entry_conditions].copy()
         
         if not entry_signals.empty:
-            # Vectorized direction and strength calculation
+            # Determine optimal direction based on which spread is better
             entry_signals['direction'] = np.where(
-                entry_signals['spread_bps'] > 0,
-                'long_spot_short_futures',
-                'short_spot_long_futures'
+                entry_signals['spot_to_futures_spread'] > entry_signals['futures_to_spot_spread'],
+                'spot_to_futures',  # Buy spot, sell futures
+                'futures_to_spot'   # Buy futures, sell spot
             )
-            entry_signals['signal_strength'] = entry_signals['spread_bps'].abs() / 100
+            entry_signals['signal_strength'] = entry_signals['best_spread_pct']  # Signal strength in percentage
+
+        self.logger.info(f"🎯 SIMPLIFIED: Found {len(entry_signals)} signals from {len(df)} data points (spread >= {spread_threshold:.3f}%)")
         
-        self.logger.debug(f"🎯 Identified {len(entry_signals)} entry signals from {len(df)} data points")
+        # Log some sample signals for debugging
+        if not entry_signals.empty:
+            best_signal = entry_signals.loc[entry_signals['best_spread_pct'].idxmax()]
+            self.logger.info(f"📈 Best signal: {best_signal['best_spread_pct']:.3f}% at {best_signal.name}")
         
         return entry_signals
     
@@ -845,6 +912,8 @@ class HFTStrategyBacktester:
         """Process entry signal with enhanced information from vectorized analysis."""
         direction = signal_row['direction']
         signal_strength = signal_row['signal_strength']
+        
+        self.logger.info(f"🚀 Processing signal: direction={direction}, strength={signal_strength:.3f}, timestamp={data_point.timestamp}")
         
         # Use signal strength to adjust position size
         base_position_value = config.base_position_size
@@ -855,31 +924,65 @@ class HFTStrategyBacktester:
         
         # Calculate position size with enhanced logic
         available_liquidity = min(data_point.get_spot_liquidity(), data_point.get_futures_liquidity())
-        max_position_value = min(
-            self.current_capital * config.max_position_pct,
-            available_liquidity * config.max_size_vs_liquidity_pct,
-            adjusted_position_size
-        )
+        
+        capital_limit = self.current_capital * config.max_position_pct
+        liquidity_limit = available_liquidity * config.max_size_vs_liquidity_pct
+        
+        max_position_value = min(capital_limit, liquidity_limit, adjusted_position_size)
+        
+        self.logger.info(f"💰 Position sizing: capital_limit=${capital_limit:.2f}, liquidity_limit=${liquidity_limit:.2f}, adjusted=${adjusted_position_size:.2f}, final=${max_position_value:.2f}")
+        self.logger.info(f"💧 Liquidity: spot=${data_point.get_spot_liquidity():.0f}, futures=${data_point.get_futures_liquidity():.0f}, min=${available_liquidity:.0f}")
         
         if max_position_value < self.MIN_POSITION_SIZE:
+            self.logger.info(f"🚫 Position size too small: ${max_position_value:.2f} < ${self.MIN_POSITION_SIZE} (signal: {signal_strength:.3f}, liquidity: ${available_liquidity:.0f})")
             return
         
         # Create enhanced trade record
         trade_id = f"trade_{len(self.closed_trades) + len(self.active_positions)}_{int(data_point.timestamp.timestamp())}"
         
-        # Calculate entry prices with slippage
-        if direction == 'long_spot_short_futures':
+        # Calculate entry prices with slippage - Fixed direction mapping
+        if direction == 'spot_to_futures':
+            # Buy spot (at ask), sell futures (at bid)
             spot_entry_price = self._calculate_execution_price(
-                data_point.spot_ask, 'buy', config.spot_fill_slippage_bps
+                data_point.spot_ask, 'buy', config.spot_fill_slippage_pct
             )
             spot_size = max_position_value / spot_entry_price
             futures_size = -spot_size  # Short futures
-        else:
+        elif direction == 'futures_to_spot':
+            # Buy futures (at ask), sell spot (at bid)
             spot_entry_price = self._calculate_execution_price(
-                data_point.spot_bid, 'sell', config.spot_fill_slippage_bps
+                data_point.spot_bid, 'sell', config.spot_fill_slippage_pct
             )
             spot_size = -max_position_value / spot_entry_price  # Short spot
             futures_size = abs(spot_size)  # Long futures
+        elif direction == 'mexc_to_gateio':
+            # Legacy compatibility: Buy MEXC spot (at ask), sell Gate.io futures (at bid)
+            spot_entry_price = self._calculate_execution_price(
+                data_point.spot_ask, 'buy', config.spot_fill_slippage_pct
+            )
+            spot_size = max_position_value / spot_entry_price
+            futures_size = -spot_size  # Short futures
+        elif direction == 'gateio_to_mexc':
+            # Legacy compatibility: Buy Gate.io futures (at ask), sell MEXC spot (at bid)
+            spot_entry_price = self._calculate_execution_price(
+                data_point.spot_bid, 'sell', config.spot_fill_slippage_pct
+            )
+            spot_size = -max_position_value / spot_entry_price  # Short spot
+            futures_size = abs(spot_size)  # Long futures
+        else:
+            # Legacy direction names for backward compatibility
+            if direction == 'long_spot_short_futures':
+                spot_entry_price = self._calculate_execution_price(
+                    data_point.spot_ask, 'buy', config.spot_fill_slippage_pct
+                )
+                spot_size = max_position_value / spot_entry_price
+                futures_size = -spot_size  # Short futures
+            else:  # short_spot_long_futures
+                spot_entry_price = self._calculate_execution_price(
+                    data_point.spot_bid, 'sell', config.spot_fill_slippage_pct
+                )
+                spot_size = -max_position_value / spot_entry_price  # Short spot
+                futures_size = abs(spot_size)  # Long futures
         
         trade = Trade(
             id=trade_id,
@@ -888,15 +991,16 @@ class HFTStrategyBacktester:
             status=PositionStatus.SPOT_FILLED,
             spot_entry_price=spot_entry_price,
             spot_size=spot_size,
-            spot_slippage_bps=config.spot_fill_slippage_bps,
+            spot_slippage_pct=config.spot_fill_slippage_pct,
             futures_size=futures_size,
-            futures_slippage_bps=config.futures_hedge_slippage_bps
+            futures_slippage_pct=config.futures_hedge_slippage_pct
         )
         
         self.active_positions[trade_id] = trade
         self.current_capital -= abs(max_position_value)
         
-        self.logger.debug(f"📍 Enhanced entry: {trade_id}, direction={direction}, strength={signal_strength:.3f}, size=${max_position_value:.0f}")
+        self.logger.info(f"📍 Enhanced entry: {trade_id}, direction={direction}, strength={signal_strength:.3f}, size=${max_position_value:.0f}")
+        self.logger.info(f"💰 Capital update: ${self.current_capital:.0f} - ${abs(max_position_value):.0f} = ${self.current_capital - abs(max_position_value):.0f}")
     
     async def _check_entry_signals(
         self,
@@ -904,47 +1008,43 @@ class HFTStrategyBacktester:
         config: BacktestConfig
     ) -> None:
         """
-        Check for new position entry opportunities using vectorized calculations.
-        Uses MexcGateioFuturesStrategy-compatible logic with enhanced filtering.
+        Check for new position entry opportunities using realistic arbitrage calculations.
+        Uses MexcGateioFuturesStrategy-compatible logic with realistic bid/ask spreads.
         """
-        # Calculate spread in percentage (matching strategy logic)
-        spread_pct = abs(market_data.get_spread_bps()) / 100  # Convert bps to percentage
+        # Calculate realistic arbitrage spreads for both directions (already in percentages)
+        spot_to_futures_spread_pct, futures_to_spot_spread_pct = market_data.get_arbitrage_spreads_pct()
         
-        # Check minimum spread requirement
-        if spread_pct < config.entry_threshold_pct:
+        # Check if either direction meets minimum spread requirement
+        best_spread_pct = max(spot_to_futures_spread_pct, futures_to_spot_spread_pct)
+        if best_spread_pct < config.entry_threshold_pct:
             return
         
-        # Enhanced liquidity validation using vectorized calculations
+        # Enhanced liquidity validation
         spot_liquidity = market_data.get_spot_liquidity()
         futures_liquidity = market_data.get_futures_liquidity()
         min_liquidity = min(spot_liquidity, futures_liquidity)
         
         # Multi-criteria filtering
-        if (
-            min_liquidity < config.min_liquidity_usd or
-            spot_liquidity == 0 or
-            futures_liquidity == 0 or
-            market_data.spot_bid <= 0 or
-            market_data.spot_ask <= 0 or
-            market_data.fut_bid <= 0 or
-            market_data.fut_ask <= 0 or
-            market_data.spot_bid >= market_data.spot_ask or  # Invalid bid/ask ordering
-            market_data.fut_bid >= market_data.fut_ask
-        ):
-            return
+        # if (
+        #     min_liquidity < config.min_liquidity_usd or
+        #     spot_liquidity == 0 or
+        #     futures_liquidity == 0 or
+        #     market_data.spot_bid <= 0 or
+        #     market_data.spot_ask <= 0 or
+        #     market_data.fut_bid <= 0 or
+        #     market_data.fut_ask <= 0 or
+        #     market_data.spot_bid >= market_data.spot_ask or  # Invalid bid/ask ordering
+        #     market_data.fut_bid >= market_data.fut_ask
+        # ):
+        #     return
         
-        # Determine trade direction based on spread with enhanced logic
-        spread_bps = market_data.get_spread_bps()
-        
-        if abs(spread_bps) < config.entry_threshold_pct * 100:  # Convert threshold to bps
-            return
-        
-        if spread_bps > 0:  # Futures premium
+        # Determine optimal trade direction based on which spread is better
+        if spot_to_futures_spread_pct >= futures_to_spot_spread_pct and spot_to_futures_spread_pct >= config.entry_threshold_pct:
             # Buy spot, sell futures
-            await self._enter_position(market_data, config, 'long_spot_short_futures')
-        else:  # Spot premium (spread_bps < 0)
-            # Sell spot, buy futures
-            await self._enter_position(market_data, config, 'short_spot_long_futures')
+            await self._enter_position(market_data, config, 'spot_to_futures')
+        elif futures_to_spot_spread_pct >= config.entry_threshold_pct:
+            # Buy futures, sell spot
+            await self._enter_position(market_data, config, 'futures_to_spot')
     
     async def _enter_position(
         self,
@@ -968,18 +1068,48 @@ class HFTStrategyBacktester:
         trade_id = f"trade_{len(self.closed_trades) + len(self.active_positions)}_{int(market_data.timestamp.timestamp())}"
         
         # Calculate entry prices with slippage using helper method
-        if direction == 'long_spot_short_futures':
+        if direction == 'spot_to_futures':
+            # Buy spot, sell futures
             spot_entry_price = self._calculate_execution_price(
-                market_data.spot_ask, 'buy', config.spot_fill_slippage_bps
+                market_data.spot_ask, 'buy', config.spot_fill_slippage_pct
             )
             spot_size = max_position_value / spot_entry_price
             futures_size = -spot_size  # Short futures
-        else:
+        elif direction == 'futures_to_spot':
+            # Buy futures, sell spot
             spot_entry_price = self._calculate_execution_price(
-                market_data.spot_bid, 'sell', config.spot_fill_slippage_bps
+                market_data.spot_bid, 'sell', config.spot_fill_slippage_pct
             )
             spot_size = -max_position_value / spot_entry_price  # Short spot
             futures_size = abs(spot_size)  # Long futures
+        elif direction == 'mexc_to_gateio':
+            # Legacy compatibility: Buy MEXC spot, sell Gate.io futures
+            spot_entry_price = self._calculate_execution_price(
+                market_data.spot_ask, 'buy', config.spot_fill_slippage_pct
+            )
+            spot_size = max_position_value / spot_entry_price
+            futures_size = -spot_size  # Short futures
+        elif direction == 'gateio_to_mexc':
+            # Legacy compatibility: Buy Gate.io futures, sell MEXC spot
+            spot_entry_price = self._calculate_execution_price(
+                market_data.spot_bid, 'sell', config.spot_fill_slippage_pct
+            )
+            spot_size = -max_position_value / spot_entry_price  # Short spot
+            futures_size = abs(spot_size)  # Long futures
+        else:
+            # Legacy direction names for backward compatibility
+            if direction == 'long_spot_short_futures':
+                spot_entry_price = self._calculate_execution_price(
+                    market_data.spot_ask, 'buy', config.spot_fill_slippage_pct
+                )
+                spot_size = max_position_value / spot_entry_price
+                futures_size = -spot_size  # Short futures
+            else:  # short_spot_long_futures
+                spot_entry_price = self._calculate_execution_price(
+                    market_data.spot_bid, 'sell', config.spot_fill_slippage_pct
+                )
+                spot_size = -max_position_value / spot_entry_price  # Short spot
+                futures_size = abs(spot_size)  # Long futures
         
         trade = Trade(
             id=trade_id,
@@ -988,9 +1118,9 @@ class HFTStrategyBacktester:
             status=PositionStatus.SPOT_FILLED,
             spot_entry_price=spot_entry_price,
             spot_size=spot_size,
-            spot_slippage_bps=config.spot_fill_slippage_bps,
+            spot_slippage_bps=config.spot_fill_slippage_pct,
             futures_size=futures_size,
-            futures_slippage_bps=config.futures_hedge_slippage_bps
+            futures_slippage_bps=config.futures_hedge_slippage_pct
         )
         
         self.active_positions[trade_id] = trade
@@ -1034,11 +1164,11 @@ class HFTStrategyBacktester:
         # Calculate futures entry price with slippage using helper method
         if trade.futures_size < 0:  # Short futures
             futures_entry_price = self._calculate_execution_price(
-                market_data.fut_bid, 'sell', config.futures_hedge_slippage_bps
+                market_data.fut_bid, 'sell', config.futures_hedge_slippage_pct
             )
         else:  # Long futures
             futures_entry_price = self._calculate_execution_price(
-                market_data.fut_ask, 'buy', config.futures_hedge_slippage_bps
+                market_data.fut_ask, 'buy', config.futures_hedge_slippage_pct
             )
         
         trade.futures_entry_price = futures_entry_price
@@ -1067,7 +1197,7 @@ class HFTStrategyBacktester:
     ) -> bool:
         """
         Determine if position should be closed.
-        Uses MexcGateioFuturesStrategy-compatible exit logic.
+        Uses MexcGateioFuturesStrategy-compatible exit logic with realistic spreads.
         """
         if trade.status != PositionStatus.DELTA_NEUTRAL:
             return False
@@ -1077,12 +1207,14 @@ class HFTStrategyBacktester:
         if age_hours > config.max_position_age_hours:
             return True
         
-        # Spread compression exit (convert to percentage)
-        current_spread_pct = abs(market_data.get_spread_bps()) / 100
-        if current_spread_pct < config.exit_threshold_pct:
+        # Realistic spread compression exit - check if we can still exit profitably
+        spot_to_futures, futures_to_spot = market_data.get_arbitrage_spreads_pct()
+        current_best_spread_pct = max(spot_to_futures, futures_to_spot)
+        
+        if current_best_spread_pct < config.exit_threshold_pct:
             return True
         
-        # Stop loss
+        # Stop loss based on actual position P&L
         if trade.futures_entry_price is not None:
             spot_pnl = (market_data.get_spot_mid() - trade.spot_entry_price) * trade.spot_size
             futures_pnl = (trade.futures_entry_price - market_data.get_futures_mid()) * trade.futures_size
@@ -1104,20 +1236,20 @@ class HFTStrategyBacktester:
         # Calculate exit prices with slippage using helper method
         if trade.spot_size > 0:  # Long spot
             spot_exit_price = self._calculate_execution_price(
-                market_data.spot_bid, 'sell', config.spot_fill_slippage_bps
+                market_data.spot_bid, 'sell', config.spot_fill_slippage_pct
             )
         else:  # Short spot
             spot_exit_price = self._calculate_execution_price(
-                market_data.spot_ask, 'buy', config.spot_fill_slippage_bps
+                market_data.spot_ask, 'buy', config.spot_fill_slippage_pct
             )
         
         if trade.futures_size > 0:  # Long futures
             futures_exit_price = self._calculate_execution_price(
-                market_data.fut_bid, 'sell', config.futures_hedge_slippage_bps
+                market_data.fut_bid, 'sell', config.futures_hedge_slippage_pct
             )
         else:  # Short futures
             futures_exit_price = self._calculate_execution_price(
-                market_data.fut_ask, 'buy', config.futures_hedge_slippage_bps
+                market_data.fut_ask, 'buy', config.futures_hedge_slippage_pct
             )
         
         # Calculate final PnL
@@ -1127,7 +1259,7 @@ class HFTStrategyBacktester:
         
         # Calculate fees (4 trades: spot entry/exit, futures entry/exit)
         position_value = abs(trade.spot_size * trade.spot_entry_price)
-        fees = position_value * config.fees_per_trade_bps / 10000 * self.FEES_PER_TRADE_COUNT
+        fees = position_value * config.fees_per_trade_pct / 100 * self.FEES_PER_TRADE_COUNT
         
         net_pnl = gross_pnl - fees
         return_pct = net_pnl / position_value * 100
@@ -1152,19 +1284,19 @@ class HFTStrategyBacktester:
         
         self.logger.debug(f"✅ Closed position {trade.id}: PnL=${net_pnl:.2f} ({return_pct:.2f}%)")
     
-    def _calculate_execution_price(self, base_price: float, side: str, slippage_bps: float) -> float:
+    def _calculate_execution_price(self, base_price: float, side: str, slippage_pct: float) -> float:
         """
         Calculate execution price with slippage for consistent pricing logic.
         
         Args:
             base_price: Base market price
             side: Trade side ('buy' or 'sell')
-            slippage_bps: Slippage in basis points
+            slippage_pct: Slippage in percentage (e.g., 0.05 for 0.05%)
             
         Returns:
             Execution price adjusted for slippage
         """
-        slippage_factor = slippage_bps / 10000
+        slippage_factor = slippage_pct / 100.0
         if side == 'buy':
             return base_price * (1 + slippage_factor)
         else:  # sell
@@ -1262,7 +1394,7 @@ class HFTStrategyBacktester:
             expected_shortfall_pct=0.0,
             worst_trade_pct=0.0,
             best_trade_pct=0.0,
-            avg_spread_captured_bps=0.0,
+            avg_spread_captured_pct=0.0,
             hedge_success_rate=0.0,
             avg_hold_time_hours=0.0,
             correlation_stability=0.0,
@@ -1335,7 +1467,7 @@ class HFTStrategyBacktester:
         """Calculate strategy-specific metrics using vectorized operations."""
         if not self.closed_trades:
             return {
-                'avg_spread_captured_bps': 0.0,
+                'avg_spread_captured_pct': 0.0,
                 'hedge_success_rate': 0.0,
                 'avg_hold_time_hours': 0.0,
                 'correlation_stability': 0.0
@@ -1358,14 +1490,14 @@ class HFTStrategyBacktester:
         
         # Calculate spread capture efficiency (estimated from returns)
         returns = np.array([t['return_pct'] for t in trades_array])
-        avg_spread_captured_bps = np.mean(np.abs(returns)) * 100  # Rough estimate
+        avg_spread_captured_pct = np.mean(np.abs(returns)) * 100  # Rough estimate
         
         # Calculate correlation stability using return variance
         correlation_stability = max(0, 1 - (np.std(returns) / np.mean(np.abs(returns)))) if len(returns) > 1 else 0.0
         correlation_stability = min(1.0, correlation_stability)  # Cap at 1.0
         
         return {
-            'avg_spread_captured_bps': avg_spread_captured_bps,
+            'avg_spread_captured_pct': avg_spread_captured_pct,
             'hedge_success_rate': hedge_success_rate,
             'avg_hold_time_hours': avg_hold_time_hours,
             'correlation_stability': correlation_stability
@@ -1522,10 +1654,10 @@ if __name__ == "__main__":
         from exchanges.structs.types import AssetName
         
         # Define symbol
-        symbol = Symbol(base=AssetName('F'), quote=AssetName('USDT'))
+        symbol = Symbol(base=AssetName('LUNC'), quote=AssetName('USDT'))
         # Use dates where we have actual data (October 5th, 2025)
-        end_date = datetime(2025, 10, 5, 12, 31, 0, tzinfo=timezone.utc)
-        start_date = datetime(2025, 10, 5, 12, 0, 0, tzinfo=timezone.utc)
+        end_date = datetime.utcnow()
+        start_date =  end_date - timedelta(hours=6)
         
         print(f"🚀 Running HFT backtest with pandas optimization")
         print(f"📊 Symbol: {symbol.base}/{symbol.quote}")

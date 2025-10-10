@@ -1352,7 +1352,7 @@ async def get_exchange_by_enum(exchange_enum_or_str) -> Optional[Exchange]:
         return None
         
     except Exception as e:
-        logger.error(f"Failed to get exchange by enum {exchange_enum}: {e}")
+        logger.error(f"Failed to get exchange by enum {exchange_enum_or_str}: {e}")
         raise
 
 
