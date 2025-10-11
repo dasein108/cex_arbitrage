@@ -564,11 +564,10 @@ class FundingRateSnapshot(msgspec.Struct):
     
     # Funding rate data
     funding_rate: float  # Current funding rate (e.g., 0.0001 for 0.01%)
-    funding_time: int    # Next funding time (Unix timestamp in milliseconds)
+    next_funding_time: int    # Next funding time (Unix timestamp in milliseconds)
     
     # Timing
     timestamp: datetime
-    next_funding_time: Optional[datetime] = None  # Next funding time as datetime for easier analysis
     created_at: Optional[datetime] = None
     id: Optional[int] = None
     
@@ -578,7 +577,7 @@ class FundingRateSnapshot(msgspec.Struct):
         exchange: str,
         symbol: Symbol,
         funding_rate: float,
-        funding_time: Optional[int],
+        next_funding_time: Optional[int],
         timestamp: datetime,
         symbol_id: Optional[int] = None
     ) -> "FundingRateSnapshot":
@@ -589,7 +588,7 @@ class FundingRateSnapshot(msgspec.Struct):
             exchange: Exchange identifier (GATEIO_FUTURES, etc.)
             symbol: Symbol object with base/quote assets
             funding_rate: Current funding rate (decimal, e.g., 0.0001)
-            funding_time: Next funding time (Unix timestamp in milliseconds)
+            next_funding_time: Next funding time (Unix timestamp in milliseconds)
             timestamp: Collection timestamp
             symbol_id: Database symbol_id (required for normalized schema)
             
@@ -601,18 +600,17 @@ class FundingRateSnapshot(msgspec.Struct):
         
         # Handle None or invalid funding_time values
         # Database constraint requires funding_time > 0
-        if funding_time is None or funding_time <= 0:
+        if next_funding_time is None or next_funding_time <= 0:
             # Use current timestamp + 8 hours as fallback (typical funding interval)
             import time
-            funding_time = int(time.time() * 1000) + (8 * 60 * 60 * 1000)
+            next_funding_time = int(time.time() * 1000) + (8 * 60 * 60 * 1000)
         
         # Convert funding_time to datetime for next_funding_time field
-        next_funding_time = datetime.fromtimestamp(funding_time / 1000) if funding_time else None
+        next_funding_time = datetime.fromtimestamp(next_funding_time / 1000) if next_funding_time else None
             
         return cls(
             symbol_id=symbol_id,
             funding_rate=funding_rate,
-            funding_time=funding_time,
             timestamp=timestamp,
             next_funding_time=next_funding_time
         )

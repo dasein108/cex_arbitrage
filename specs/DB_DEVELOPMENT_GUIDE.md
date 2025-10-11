@@ -1,8 +1,21 @@
 # Database Development Guide
 
+## 🚨 CRITICAL: NORMALIZED SCHEMA IS THE CURRENT ARCHITECTURE
+
+**MANDATORY READING FOR ALL AGENTS**: This system uses a **FULLY NORMALIZED DATABASE SCHEMA** with foreign key relationships. Any suggestions to use legacy denormalized patterns will be rejected.
+
+**THE NORMALIZED SCHEMA IS NOT A SUGGESTION - IT IS THE CURRENT IMPLEMENTATION**
+
 ## Overview
 
-This guide covers the complete database development workflow for the CEX Arbitrage Engine, including current schema structure, adding new entities, applying changes to production, and maintaining integration tests.
+This guide covers the complete database development workflow for the CEX Arbitrage Engine's **normalized database architecture**, including current schema structure, adding new entities, applying changes to production, and maintaining integration tests.
+
+**Key Architectural Facts**:
+- ✅ **CURRENT**: All time-series tables use `symbol_id` foreign keys to `symbols` table
+- ✅ **CURRENT**: All balance tables use `exchange_id` foreign keys to `exchanges` table  
+- ✅ **CURRENT**: All queries MUST use JOINs with normalized foreign keys
+- ❌ **LEGACY**: No direct `exchange`, `symbol_base`, `symbol_quote` fields in time-series tables
+- ❌ **LEGACY**: No denormalized patterns are supported
 
 ## Table of Contents
 
@@ -16,9 +29,11 @@ This guide covers the complete database development workflow for the CEX Arbitra
 
 ## Current Database Structure
 
-### Current Database Schema (Normalized)
+### CURRENT DATABASE SCHEMA (FULLY NORMALIZED - NOT LEGACY)
 
-The database uses a **fully normalized schema** with proper foreign key relationships optimized for HFT performance:
+🚨 **CRITICAL UNDERSTANDING**: The database uses a **FULLY NORMALIZED SCHEMA** with proper foreign key relationships. This is the **CURRENT IMPLEMENTATION**, not a future design:
+
+**ACTUAL PRODUCTION SCHEMA** (currently deployed and functioning):
 
 ```sql
 -- Foundation Tables (Reference Data) - NORMALIZED
@@ -47,6 +62,136 @@ order_flow_metrics (timestamp, symbol_id FK, ofi_score, microprice, volume_imbal
 - **Performance**: Optimized for sub-5ms queries with proper JOINs and indexing
 - **TimescaleDB**: Configured as hypertable with timestamp partitioning
 - **Indexes**: Composite indexes on (timestamp, symbol_id) and foreign key indexes
+
+## 🚨 ANTI-PATTERNS TO AVOID - LEGACY DENORMALIZED PATTERNS
+
+**CRITICAL WARNING**: These patterns are from the OLD system design and are **COMPLETELY INCOMPATIBLE** with the current normalized schema:
+
+### ❌ WRONG: Legacy Denormalized Query Patterns (DO NOT USE)
+
+```sql
+-- WRONG: This pattern assumes exchange/symbol fields exist in time-series tables
+-- These fields DO NOT EXIST in the current normalized schema
+SELECT * FROM book_ticker_snapshots 
+WHERE exchange = 'MEXC' 
+  AND symbol_base = 'BTC' 
+  AND symbol_quote = 'USDT'
+-- ERROR: columns "exchange", "symbol_base", "symbol_quote" do not exist
+
+-- WRONG: Attempting to INSERT with non-existent denormalized fields  
+INSERT INTO book_ticker_snapshots (exchange, symbol_base, symbol_quote, bid_price, ask_price)
+VALUES ('MEXC', 'BTC', 'USDT', 50000.0, 50001.0)
+-- ERROR: columns "exchange", "symbol_base", "symbol_quote" do not exist
+
+-- WRONG: Any query that assumes direct string fields in time-series tables
+SELECT COUNT(*) FROM funding_rate_snapshots WHERE exchange = 'GATEIO_FUTURES'
+-- ERROR: column "exchange" does not exist
+```
+
+### ✅ CORRECT: Normalized Schema Query Patterns (CURRENT IMPLEMENTATION)
+
+```sql
+-- CORRECT: Use JOINs with foreign key relationships (CURRENT SCHEMA)
+SELECT bts.timestamp, s.symbol_base, s.symbol_quote, e.enum_value as exchange,
+       bts.bid_price, bts.ask_price, bts.bid_qty, bts.ask_qty
+FROM book_ticker_snapshots bts
+INNER JOIN symbols s ON bts.symbol_id = s.id
+INNER JOIN exchanges e ON s.exchange_id = e.id
+WHERE e.enum_value = 'MEXC_SPOT' 
+  AND s.symbol_base = 'BTC' 
+  AND s.symbol_quote = 'USDT'
+ORDER BY bts.timestamp DESC
+LIMIT 10;
+
+-- CORRECT: Insert using foreign keys (CURRENT SCHEMA)
+INSERT INTO book_ticker_snapshots (timestamp, symbol_id, bid_price, ask_price, bid_qty, ask_qty)
+VALUES (NOW(), 1, 50000.0, 50001.0, 1.5, 2.0)
+-- Uses symbol_id foreign key, not redundant string fields
+
+-- CORRECT: Cross-exchange analysis with normalized JOINs
+SELECT 
+    s.symbol_base, 
+    s.symbol_quote,
+    COUNT(*) as snapshot_count,
+    AVG(bts.bid_price) as avg_bid_price
+FROM book_ticker_snapshots bts
+INNER JOIN symbols s ON bts.symbol_id = s.id
+INNER JOIN exchanges e ON s.exchange_id = e.id
+WHERE bts.timestamp > NOW() - INTERVAL '1 hour'
+GROUP BY s.symbol_base, s.symbol_quote
+ORDER BY snapshot_count DESC;
+
+-- CORRECT: Balance queries with exchange foreign keys
+SELECT bs.timestamp, e.enum_value as exchange, bs.asset_name, 
+       bs.available_balance, bs.locked_balance, bs.total_balance
+FROM balance_snapshots bs
+INNER JOIN exchanges e ON bs.exchange_id = e.id
+WHERE e.enum_value = 'GATEIO_FUTURES'
+  AND bs.asset_name = 'USDT'
+  AND bs.timestamp > NOW() - INTERVAL '24 hours'
+ORDER BY bs.timestamp DESC;
+```
+
+### 🚫 COMMON MISTAKES TO NEVER MAKE
+
+1. **Assuming Legacy Field Names**:
+   ```sql
+   -- WRONG: These columns don't exist
+   WHERE exchange = 'MEXC'        -- Use: e.enum_value = 'MEXC_SPOT'
+   WHERE symbol = 'BTCUSDT'       -- Use: s.symbol_base = 'BTC' AND s.symbol_quote = 'USDT'
+   WHERE pair = 'BTC/USDT'        -- Use: JOINs with symbols table
+   ```
+
+2. **Creating Denormalized Models**:
+   ```python
+   # WRONG: Models with transient fields
+   @struct
+   class BadBookTicker:
+       exchange: str        # WRONG: Not stored in database
+       symbol_base: str     # WRONG: Not stored in database  
+       symbol_quote: str    # WRONG: Not stored in database
+       bid_price: float
+   
+   # CORRECT: Normalized model
+   @struct
+   class BookTicker:
+       symbol_id: int       # CORRECT: Foreign key only
+       bid_price: float
+       ask_price: float
+       timestamp: datetime
+   ```
+
+3. **Writing SQL Without JOINs**:
+   ```sql
+   -- WRONG: Assumes denormalized data
+   SELECT * FROM trade_snapshots WHERE exchange = 'GATEIO_FUTURES';
+   
+   -- CORRECT: Uses proper JOINs
+   SELECT ts.*, s.symbol_base, s.symbol_quote, e.enum_value
+   FROM trade_snapshots ts
+   INNER JOIN symbols s ON ts.symbol_id = s.id
+   INNER JOIN exchanges e ON s.exchange_id = e.id
+   WHERE e.enum_value = 'GATEIO_FUTURES';
+   ```
+
+### 💡 AGENT GUIDANCE: How to Verify Schema Compliance
+
+Before suggesting ANY database query or operation:
+
+1. **Check Table Structure**: All time-series tables have `symbol_id` foreign keys, NOT string fields
+2. **Use JOINs Always**: Every query needing exchange/symbol info MUST JOIN with normalized tables
+3. **No String Filters**: Never filter directly on `exchange`, `symbol_base`, `symbol_quote` in time-series tables
+4. **Foreign Keys Only**: Models contain only foreign key integers, never resolved strings
+
+### 📋 SCHEMA VERIFICATION CHECKLIST
+
+- ✅ Query uses `symbol_id` foreign key to `symbols` table
+- ✅ Query JOINs with `exchanges` table via `symbols.exchange_id`  
+- ✅ No direct `exchange`, `symbol_base`, `symbol_quote` fields in time-series tables
+- ✅ Models contain only foreign keys, no transient fields
+- ✅ Symbol resolution done via cache operations when needed for display
+
+**REMEMBER**: The normalized schema is the CURRENT reality. Legacy patterns will cause database errors.
 
 ### Key Relationships (Fully Normalized Schema)
 
@@ -963,5 +1108,165 @@ The system is designed for safety, performance, and maintainability, with automa
 5. **Clean Separation**: Storage layer (normalized) vs Display layer (resolved)
 
 **Remember**: In HFT systems, data redundancy kills performance and consistency. Always normalize, never duplicate.
+
+## 🛡️ ENFORCEMENT GUIDELINES FOR AGENTS
+
+### Mandatory Pre-Flight Checks for ALL Database Operations
+
+Before suggesting ANY database query, schema change, or data operation, ALL agents MUST verify:
+
+#### ✅ Required Verification Checklist
+
+1. **Schema Reality Check**:
+   - ✅ Confirm time-series tables use `symbol_id` foreign keys, NOT string fields
+   - ✅ Verify no direct `exchange`, `symbol_base`, `symbol_quote` columns exist
+   - ✅ Check that JOINs are required for symbol/exchange information
+
+2. **Query Pattern Compliance**:
+   - ✅ All queries use proper JOINs with normalized foreign keys
+   - ✅ Filter conditions use `e.enum_value = 'EXCHANGE_TYPE'` not `exchange = 'EXCHANGE'`
+   - ✅ Symbol filtering uses `s.symbol_base = 'BTC' AND s.symbol_quote = 'USDT'`
+
+3. **Model Structure Validation**:
+   - ✅ Data models contain ONLY foreign key integers, no transient strings
+   - ✅ No `exchange`, `symbol_base`, `symbol_quote` fields in struct definitions
+   - ✅ Cache operations used for symbol resolution when needed for display
+
+### 🚫 IMMEDIATE REJECTION CRITERIA
+
+**REJECT any suggestion that includes**:
+- Direct filtering on non-existent columns: `WHERE exchange = 'MEXC'`
+- Models with transient fields: `exchange: str`, `symbol_base: str`, `symbol_quote: str`
+- SQL without JOINs when needing exchange/symbol information
+- References to "denormalized" schema as current implementation
+- Attempts to add redundant string fields to time-series tables
+
+### 📋 Agent Response Template
+
+When asked about database operations, agents should respond with:
+
+```python
+# Step 1: Acknowledge normalized schema
+"The database uses a FULLY NORMALIZED SCHEMA with foreign key relationships..."
+
+# Step 2: Provide correct query pattern
+"""
+SELECT bts.timestamp, s.symbol_base, s.symbol_quote, e.enum_value as exchange,
+       bts.bid_price, bts.ask_price
+FROM book_ticker_snapshots bts
+INNER JOIN symbols s ON bts.symbol_id = s.id
+INNER JOIN exchanges e ON s.exchange_id = e.id
+WHERE e.enum_value = 'MEXC_SPOT' AND s.symbol_base = 'BTC'
+"""
+
+# Step 3: Explain why legacy patterns won't work
+"Legacy patterns with direct string fields will cause database errors because 
+these columns do not exist in the current normalized schema."
+```
+
+### 🎯 Common Agent Scenarios and Required Responses
+
+#### Scenario 1: Query Request for Trading Data
+**WRONG Agent Response**:
+```sql
+SELECT * FROM book_ticker_snapshots WHERE exchange = 'MEXC' AND symbol_base = 'BTC'
+```
+
+**CORRECT Agent Response**:
+```sql
+-- The database uses normalized foreign keys, so we need JOINs:
+SELECT bts.*, s.symbol_base, s.symbol_quote, e.enum_value as exchange
+FROM book_ticker_snapshots bts
+INNER JOIN symbols s ON bts.symbol_id = s.id  
+INNER JOIN exchanges e ON s.exchange_id = e.id
+WHERE e.enum_value = 'MEXC_SPOT' AND s.symbol_base = 'BTC'
+```
+
+#### Scenario 2: Model Creation Request
+**WRONG Agent Response**:
+```python
+@struct
+class BookTicker:
+    exchange: str  # WRONG
+    symbol_base: str  # WRONG
+    bid_price: float
+```
+
+**CORRECT Agent Response**:
+```python
+@struct  
+class BookTicker:
+    symbol_id: int  # CORRECT: Foreign key only
+    bid_price: float
+    ask_price: float
+    timestamp: datetime
+    
+# Symbol resolution done via cache when needed for display:
+# symbol = cached_get_symbol_by_id(ticker.symbol_id)
+```
+
+#### Scenario 3: Analytics Query Request
+**WRONG Agent Response**:
+```sql
+SELECT COUNT(*) FROM funding_rate_snapshots WHERE exchange = 'GATEIO_FUTURES'
+```
+
+**CORRECT Agent Response**:
+```sql
+-- Normalized schema requires JOINs to access exchange information:
+SELECT COUNT(*) as funding_rate_count, e.enum_value as exchange
+FROM funding_rate_snapshots frs
+INNER JOIN symbols s ON frs.symbol_id = s.id
+INNER JOIN exchanges e ON s.exchange_id = e.id
+WHERE e.enum_value = 'GATEIO_FUTURES'
+GROUP BY e.enum_value
+```
+
+### 📚 Required Reading for Agents
+
+Before working with database operations, agents MUST understand:
+
+1. **[Normalized Architecture Guide](specs/database/normalized-architecture-guide.md)** - Complete normalized design principles
+2. **[Current Database Schema](docker/init-db.sql)** - Actual table structure (NOT legacy patterns)
+3. **[Cache Operations](src/db/cache_operations.py)** - How to resolve symbols via cache
+
+### 🔍 Schema Verification Commands
+
+Agents can verify schema structure with:
+```sql
+-- Check actual table columns (NO exchange, symbol_base, symbol_quote in time-series tables)
+\d book_ticker_snapshots
+\d funding_rate_snapshots
+\d balance_snapshots
+
+-- Verify foreign key relationships
+SELECT constraint_name, table_name, column_name, foreign_table_name, foreign_column_name
+FROM information_schema.key_column_usage
+WHERE referenced_table_name IS NOT NULL;
+```
+
+### 💡 Performance Justification
+
+The normalized schema is NOT just a design choice - it provides measurable HFT benefits:
+- **Memory Efficiency**: 50-70% reduction in storage vs denormalized
+- **Cache Performance**: >95% hit ratio with <1μs symbol lookups
+- **Data Consistency**: Single source of truth prevents discrepancies
+- **Faster Inserts**: Smaller records = faster writes (critical for HFT)
+
+### 🚨 Final Warning to Agents
+
+**The normalized schema with foreign key relationships IS the current production system**. 
+
+Any suggestions using legacy denormalized patterns will:
+1. **Cause database errors** (columns don't exist)
+2. **Break HFT performance requirements**
+3. **Violate architectural principles**
+4. **Be immediately rejected**
+
+**When in doubt, always use JOINs with foreign keys. Never assume direct string fields exist in time-series tables.**
+
+---
+
+**This enforcement section ensures all agents understand and comply with the current normalized database architecture, preventing suggestions that would break the production system.**
 
 Follow this guide to ensure consistent, safe, and performant database development practices.

@@ -130,3 +130,4 @@ update_server.sh
 output/
 */task_data/
 .claude/settings.local.json
+*.pkl

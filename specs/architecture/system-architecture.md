@@ -129,23 +129,36 @@ opportunities = await api.get_opportunities(symbol="ETHUSDT", min_spread=0.3)
 ```
 
 **Database Schema Enhancement**:
-- **Current Schema**: Denormalized with direct column storage for HFT performance
-- **Key Tables**: book_ticker_snapshots, funding_rate_snapshots, balance_snapshots
-- **Exchange Field**: `exchange` column (e.g., "MEXC_SPOT", "GATEIO_FUTURES")
-- **Symbol Fields**: `symbol_base` and `symbol_quote` columns directly
-- **Analytics Tables**: Arbitrage opportunities, order flow metrics, performance data
-- **Migration System**: Simplified to use docker/init-db.sql only
+- **🔥 CURRENT SCHEMA**: **FULLY NORMALIZED** with foreign key relationships for HFT performance
+- **Key Tables**: book_ticker_snapshots, funding_rate_snapshots, balance_snapshots with normalized foreign keys
+- **Foreign Key Architecture**: All time-series tables use `symbol_id` FK to `symbols` table
+- **Exchange Relationships**: `symbols` table references `exchanges` table via `exchange_id` FK
+- **NO Direct String Fields**: No `exchange`, `symbol_base`, `symbol_quote` columns in time-series tables
+- **Analytics Tables**: Arbitrage opportunities, order flow metrics with normalized foreign keys
+- **Migration System**: Complete normalized schema via docker/init-db.sql
 
-**Actual Database Schema (Denormalized)**:
+**🚨 ACTUAL DATABASE SCHEMA (FULLY NORMALIZED - NOT LEGACY)**:
 ```sql
--- Time-Series Tables (TimescaleDB Hypertables)
+-- Reference Tables (Normalized Foreign Key Sources)
+exchanges (id, enum_value, exchange_name, market_type, is_active)
+symbols (id, exchange_id FK, symbol_base, symbol_quote, exchange_symbol, symbol_type)
+
+-- Time-Series Tables (TimescaleDB Hypertables) - NORMALIZED SCHEMA
 book_ticker_snapshots (
-    id, timestamp, exchange, symbol_base, symbol_quote,
+    id, timestamp, symbol_id FK,  -- ONLY foreign key, NO string fields
     bid_price, bid_qty, ask_price, ask_qty, sequence_number, update_type, created_at
 )
-funding_rate_snapshots (timestamp, exchange, symbol_base, symbol_quote, funding_rate, funding_time)
-balance_snapshots (timestamp, exchange, asset_name, available_balance, locked_balance)
-trade_snapshots (timestamp, exchange, symbol_base, symbol_quote, price, quantity, side)
+funding_rate_snapshots (timestamp, symbol_id FK, funding_rate, funding_time, next_funding_time)
+balance_snapshots (timestamp, exchange_id FK, asset_name, available_balance, locked_balance)
+trade_snapshots (timestamp, symbol_id FK, price, quantity, side, trade_id)
+
+-- ALL QUERIES MUST USE JOINs WITH FOREIGN KEYS:
+SELECT bts.timestamp, s.symbol_base, s.symbol_quote, e.enum_value as exchange,
+       bts.bid_price, bts.ask_price
+FROM book_ticker_snapshots bts
+INNER JOIN symbols s ON bts.symbol_id = s.id
+INNER JOIN exchanges e ON s.exchange_id = e.id
+WHERE e.enum_value = 'MEXC_SPOT' AND s.symbol_base = 'BTC'
 ```
 
 ### 3. TaskManager Production Integration

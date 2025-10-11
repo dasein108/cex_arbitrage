@@ -55,7 +55,7 @@ database:
     max_size: 15                    # Reduced from 20 to accommodate new max_connections=100
     max_queries: 50000              # Max queries per connection before refresh
     max_inactive_connection_lifetime: 300.0  # 5 minutes
-    command_timeout: 10.0           # Command timeout in seconds
+    command_timeout: 60.0           # Command timeout in seconds
     
   # Performance Settings
   performance:

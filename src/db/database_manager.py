@@ -17,9 +17,7 @@ import asyncio
 import logging
 import time
 from datetime import datetime, timedelta, date
-from typing import Dict, List, Optional, Any, Tuple, Set
-from collections import defaultdict
-import threading
+from typing import Dict, List, Optional, Any, Tuple
 import asyncpg
 
 try:
@@ -40,13 +38,13 @@ from exchanges.structs.enums import ExchangeEnum
 
 class DatabaseManager:
     """
-    Unified database manager with built-in caching and all database operations.
+    Simplified database manager with minimal lookup table.
     
     Follows PROJECT_GUIDES.md requirements:
     - Float-Only Data Policy for all numerical operations
     - Struct-First Data Policy with msgspec.Struct throughout
-    - HFT Performance Requirements with sub-microsecond cache lookups
-    - Single class containing all database functionality
+    - Minimal LOC with simple (ExchangeEnum, Symbol) -> symbol_id lookup
+    - Auto-resolution: create missing exchanges/symbols automatically
     """
     
     _instance: Optional["DatabaseManager"] = None
@@ -59,56 +57,117 @@ class DatabaseManager:
         return cls._instance
     
     def __init__(self):
-        """Initialize DatabaseManager with caching infrastructure."""
+        """Initialize DatabaseManager with simple lookup table."""
         if hasattr(self, '_initialized'):
             return
             
         self._pool: Optional[asyncpg.Pool] = None
         self._config = None
         
-        # Built-in caching with TTL management
-        self._symbol_cache: Dict[int, DBSymbol] = {}
-        self._symbol_exchange_cache: Dict[Tuple[int, str, str], DBSymbol] = {}
-        self._symbol_string_cache: Dict[Tuple[int, str], DBSymbol] = {}
-        self._exchange_cache: Dict[int, Exchange] = {}
-        self._exchange_enum_cache: Dict[str, Exchange] = {}
-        
-        # Cache TTL management
-        self._cache_ttl_seconds = 300  # 5 minutes
-        self._last_cache_refresh = datetime.utcnow()
-        self._cache_lock = threading.RLock()
-        
-        # Performance tracking for HFT compliance
-        self._cache_stats = {
-            'hits': 0,
-            'misses': 0,
-            'total_requests': 0,
-            'avg_lookup_time_ns': 0.0
-        }
-        self._lookup_times: List[float] = []
-        
-        # Deduplication cache for recent operations
-        self._timestamp_cache: Dict[tuple, Set[datetime]] = defaultdict(set)
-        self._cache_last_cleanup = time.time()
+        # Simple lookup table: (exchange_enum, base, quote) -> symbol_id
+        self._lookup_table: Dict[Tuple[str, str, str], int] = {}
         
         self._initialized = True
-        self._logger.info("DatabaseManager initialized with built-in caching")
+        self._logger.info("DatabaseManager initialized with simple lookup table")
 
-    def _debug_query(self, query: str, params: list) -> str:
-        """Debug helper to see the prepared query with values"""
-        result = query
-        for i, param in enumerate(params, 1):
-            placeholder = f"${i}"
-            if isinstance(param, str):
-                value = f"'{param}'"
-            elif isinstance(param, (datetime, date)):  # Add datetime handling
-                value = f"'{param}'"
-            elif param is None:
-                value = "NULL"
-            else:
-                value = str(param)
-            result = result.replace(placeholder, value, 1)
-        return result
+    def _resolve_symbol_id(self, exchange_enum: ExchangeEnum, symbol: Symbol) -> int:
+        """
+        Core resolution method: lookup symbol_id or create new records.
+        
+        Args:
+            exchange_enum: Exchange enum (e.g., ExchangeEnum.MEXC_SPOT)
+            symbol: Symbol object with base/quote
+            
+        Returns:
+            symbol_id from database
+        """
+        key = (exchange_enum.value, symbol.base.upper(), symbol.quote.upper())
+        
+        # Try lookup first
+        if key in self._lookup_table:
+            return self._lookup_table[key]
+        
+        # Not found -> create new records synchronously
+        # This is called from async context, so we need to handle it properly
+        symbol_id = asyncio.create_task(self._create_symbol_record(exchange_enum, symbol))
+        return symbol_id
+    
+    async def _create_symbol_record(self, exchange_enum: ExchangeEnum, symbol: Symbol) -> int:
+        """
+        Create new exchange and symbol records, update lookup table.
+        
+        Args:
+            exchange_enum: Exchange enum
+            symbol: Symbol object
+            
+        Returns:
+            New symbol_id
+        """
+        if not self._pool:
+            raise RuntimeError("DatabaseManager not initialized")
+        
+        async with self._pool.acquire() as conn:
+            # Get or create exchange
+            exchange_id = await self._get_or_create_exchange(conn, exchange_enum)
+            
+            # Create symbol
+            symbol_id = await conn.fetchval(
+                """
+                INSERT INTO symbols (
+                    exchange_id, symbol_base, symbol_quote, exchange_symbol, 
+                    is_active, symbol_type
+                ) VALUES ($1, $2, $3, $4, $5, $6)
+                RETURNING id
+                """,
+                exchange_id,
+                symbol.base.upper(),
+                symbol.quote.upper(),
+                f"{symbol.base}{symbol.quote}".upper(),  # Default exchange symbol format
+                True,
+                'SPOT'
+            )
+            
+            # Update lookup table
+            key = (exchange_enum.value, symbol.base.upper(), symbol.quote.upper())
+            self._lookup_table[key] = symbol_id
+            
+            self._logger.info(f"Created new symbol {symbol.base}/{symbol.quote} on {exchange_enum.value} with ID {symbol_id}")
+            return symbol_id
+    
+    async def _get_or_create_exchange(self, conn: asyncpg.Connection, exchange_enum: ExchangeEnum) -> int:
+        """
+        Get existing exchange_id or create new exchange.
+        
+        Args:
+            conn: Database connection
+            exchange_enum: Exchange enum
+            
+        Returns:
+            exchange_id
+        """
+        # Try to get existing exchange
+        exchange_id = await conn.fetchval(
+            "SELECT id FROM exchanges WHERE enum_value = $1",
+            exchange_enum.value
+        )
+        
+        if exchange_id:
+            return exchange_id
+        
+        # Create new exchange
+        exchange_id = await conn.fetchval(
+            """
+            INSERT INTO exchanges (exchange_name, enum_value, market_type)
+            VALUES ($1, $2, $3)
+            RETURNING id
+            """,
+            exchange_enum.value.replace('_', ' ').title(),  # MEXC_SPOT -> Mexc Spot
+            exchange_enum.value,
+            'SPOT' if 'SPOT' in exchange_enum.value else 'FUTURES'
+        )
+        
+        self._logger.info(f"Created new exchange {exchange_enum.value} with ID {exchange_id}")
+        return exchange_id
 
     async def initialize(self) -> None:
         """
@@ -146,8 +205,8 @@ class DatabaseManager:
                 version = await conn.fetchval('SELECT version()')
                 self._logger.info(f"Database connected: {version}")
             
-            # Initialize cache with data
-            await self._refresh_cache()
+            # Load existing symbols into lookup table
+            await self._load_lookup_table()
             
             self._logger.info("DatabaseManager initialization complete")
             
@@ -155,124 +214,79 @@ class DatabaseManager:
             self._logger.error(f"Database initialization failed: {e}")
             raise ConnectionError(f"Database initialization failed: {e}")
     
+    async def _load_lookup_table(self) -> None:
+        """
+        Load existing symbols into simple lookup table.
+        """
+        if not self._pool:
+            return
+        
+        async with self._pool.acquire() as conn:
+            rows = await conn.fetch(
+                """
+                SELECT s.id, e.enum_value, s.symbol_base, s.symbol_quote
+                FROM symbols s
+                JOIN exchanges e ON s.exchange_id = e.id
+                WHERE s.is_active = true
+                """
+            )
+        
+        for row in rows:
+            key = (row['enum_value'], row['symbol_base'].upper(), row['symbol_quote'].upper())
+            self._lookup_table[key] = row['id']
+        
+        self._logger.info(f"Loaded {len(self._lookup_table)} symbols into lookup table")
+    
     async def close(self) -> None:
-        """Close database connection and clear caches."""
+        """Close database connection and clear lookup table."""
         if self._pool is not None:
             self._logger.info("Closing database connection pool")
             await self._pool.close()
             self._pool = None
         
-        with self._cache_lock:
-            self._symbol_cache.clear()
-            self._symbol_exchange_cache.clear()
-            self._symbol_string_cache.clear()
-            self._exchange_cache.clear()
-            self._exchange_enum_cache.clear()
+        self._lookup_table.clear()
     
-    def _record_cache_lookup(self, lookup_time_ns: float, hit: bool) -> None:
-        """Record cache lookup performance for HFT compliance monitoring."""
-        with self._cache_lock:
-            self._cache_stats['total_requests'] += 1
-            if hit:
-                self._cache_stats['hits'] += 1
-            else:
-                self._cache_stats['misses'] += 1
-            
-            self._lookup_times.append(lookup_time_ns)
-            if len(self._lookup_times) > 1000:  # Keep recent 1000 samples
-                self._lookup_times = self._lookup_times[-1000:]
-            
-            if self._lookup_times:
-                self._cache_stats['avg_lookup_time_ns'] = sum(self._lookup_times) / len(self._lookup_times)
-    
-    async def _refresh_cache(self) -> None:
-        """Refresh cache with latest data from database."""
-        if not self._pool:
-            return
-        
-        start_time = time.perf_counter_ns()
-        
-        try:
-            # Load exchanges
-            await self._load_exchanges_to_cache()
-            
-            # Load symbols
-            await self._load_symbols_to_cache()
-            
-            with self._cache_lock:
-                self._last_cache_refresh = datetime.utcnow()
-            
-            refresh_time_ms = (time.perf_counter_ns() - start_time) / 1_000_000
-            self._logger.debug(f"Cache refreshed in {refresh_time_ms:.2f}ms")
-            
-        except Exception as e:
-            self._logger.error(f"Cache refresh failed: {e}")
-    
-    async def _load_exchanges_to_cache(self) -> None:
-        """Load exchanges into cache."""
-        query = """
-            SELECT id, exchange_name, enum_value, market_type
-            FROM exchanges
-            ORDER BY exchange_name
+    def get_symbol_id(self, exchange_enum: ExchangeEnum, symbol: Symbol) -> int:
         """
+        Get symbol_id with auto-resolution for missing symbols.
         
-        async with self._pool.acquire() as conn:
-            rows = await conn.fetch(query)
-        
-        with self._cache_lock:
-            self._exchange_cache.clear()
-            self._exchange_enum_cache.clear()
+        Args:
+            exchange_enum: Exchange enum
+            symbol: Symbol object
             
-            for row in rows:
-                exchange = Exchange(
-                    id=row['id'],
-                    name=row['exchange_name'],
-                    enum_value=row['enum_value'],
-                    display_name=row['exchange_name'],
-                    market_type=row['market_type']
-                )
-                self._exchange_cache[exchange.id] = exchange
-                self._exchange_enum_cache[exchange.enum_value] = exchange
-    
-    async def _load_symbols_to_cache(self) -> None:
-        """Load symbols into cache."""
-        query = """
-            SELECT id, exchange_id, symbol_base, symbol_quote, exchange_symbol,
-                   is_active, symbol_type
-            FROM symbols
-            WHERE is_active = true
-            ORDER BY exchange_id, symbol_base, symbol_quote
+        Returns:
+            symbol_id
         """
+        # This needs to be called from async context
+        # For now, we'll make it sync but this should be refactored
+        key = (exchange_enum.value, symbol.base.upper(), symbol.quote.upper())
         
-        async with self._pool.acquire() as conn:
-            rows = await conn.fetch(query)
+        if key in self._lookup_table:
+            return self._lookup_table[key]
         
-        with self._cache_lock:
-            self._symbol_cache.clear()
-            self._symbol_exchange_cache.clear()
-            self._symbol_string_cache.clear()
-            
-            for row in rows:
-                symbol = DBSymbol(
-                    id=row['id'],
-                    exchange_id=row['exchange_id'],
-                    symbol_base=row['symbol_base'],
-                    symbol_quote=row['symbol_quote'],
-                    exchange_symbol=row['exchange_symbol'],
-                    is_active=row['is_active'],
-                    symbol_type=SymbolType[row['symbol_type']]
-                )
-                
-                # Multiple cache indexes for optimal lookup performance
-                self._symbol_cache[symbol.id] = symbol
-                pair_key = (symbol.exchange_id, symbol.symbol_base.upper(), symbol.symbol_quote.upper())
-                self._symbol_exchange_cache[pair_key] = symbol
-                string_key = (symbol.exchange_id, symbol.exchange_symbol.upper())
-                self._symbol_string_cache[string_key] = symbol
+        # This is a limitation - we need async context for creation
+        # The caller should use resolve_symbol_id_async instead
+        raise RuntimeError(f"Symbol {symbol.base}/{symbol.quote} not found on {exchange_enum.value}. Use resolve_symbol_id_async() to create.")
     
-    def _should_refresh_cache(self) -> bool:
-        """Check if cache should be refreshed based on TTL."""
-        return (datetime.utcnow() - self._last_cache_refresh).total_seconds() > self._cache_ttl_seconds
+    async def resolve_symbol_id_async(self, exchange_enum: ExchangeEnum, symbol: Symbol) -> int:
+        """
+        Async version of symbol resolution with auto-creation.
+        
+        Args:
+            exchange_enum: Exchange enum
+            symbol: Symbol object
+            
+        Returns:
+            symbol_id (existing or newly created)
+        """
+        key = (exchange_enum.value, symbol.base.upper(), symbol.quote.upper())
+        
+        # Try lookup first
+        if key in self._lookup_table:
+            return self._lookup_table[key]
+        
+        # Create new symbol record
+        return await self._create_symbol_record(exchange_enum, symbol)
     
     # =============================================================================
     # LOW-LEVEL DATABASE OPERATIONS (Consolidated from connection.py)
@@ -404,12 +418,12 @@ class DatabaseManager:
         }
     
     # =============================================================================
-    # SYMBOL OPERATIONS (Cached)
+    # SIMPLIFIED SYMBOL OPERATIONS
     # =============================================================================
     
-    def get_symbol_by_id(self, symbol_id: int) -> Optional[DBSymbol]:
+    async def get_symbol_by_id(self, symbol_id: int) -> Optional[DBSymbol]:
         """
-        Get symbol by ID with sub-microsecond cache lookup.
+        Get symbol by ID from database.
         
         Args:
             symbol_id: Symbol database ID
@@ -417,360 +431,74 @@ class DatabaseManager:
         Returns:
             Symbol instance or None if not found
         """
-        start_time = time.perf_counter_ns()
-        
-        with self._cache_lock:
-            symbol = self._symbol_cache.get(symbol_id)
-            hit = symbol is not None
-        
-        self._record_cache_lookup(time.perf_counter_ns() - start_time, hit)
-        return symbol
-    
-    def get_symbol_by_exchange_and_pair(
-        self, 
-        exchange_id: int, 
-        symbol_base: str, 
-        symbol_quote: str
-    ) -> Optional[DBSymbol]:
-        """
-        Get symbol by exchange and base/quote pair with cache lookup.
-        
-        Args:
-            exchange_id: Exchange database ID
-            symbol_base: Base asset (e.g., 'BTC')
-            symbol_quote: Quote asset (e.g., 'USDT')
-            
-        Returns:
-            Symbol instance or None if not found
-        """
-        start_time = time.perf_counter_ns()
-        
-        with self._cache_lock:
-            pair_key = (exchange_id, symbol_base.upper(), symbol_quote.upper())
-            symbol = self._symbol_exchange_cache.get(pair_key)
-            hit = symbol is not None
-        
-        self._record_cache_lookup(time.perf_counter_ns() - start_time, hit)
-        return symbol
-    
-    def get_symbol_by_exchange_and_string(
-        self, 
-        exchange_id: int, 
-        exchange_symbol: str
-    ) -> Optional[DBSymbol]:
-        """
-        Get symbol by exchange and exchange-specific symbol string.
-        
-        Args:
-            exchange_id: Exchange database ID
-            exchange_symbol: Exchange-specific symbol (e.g., 'BTCUSDT')
-            
-        Returns:
-            Symbol instance or None if not found
-        """
-        start_time = time.perf_counter_ns()
-        
-        with self._cache_lock:
-            string_key = (exchange_id, exchange_symbol.upper())
-            symbol = self._symbol_string_cache.get(string_key)
-            hit = symbol is not None
-        
-        self._record_cache_lookup(time.perf_counter_ns() - start_time, hit)
-        return symbol
-    
-    def get_symbol_by_exchange_and_symbol_string(
-        self, 
-        exchange_id: int, 
-        symbol_string: str
-    ) -> Optional[DBSymbol]:
-        """
-        Get symbol by exchange and symbol string (supports both formats).
-        
-        Handles both slash format ('BTC/USDT') and exchange format ('BTCUSDT')
-        with automatic format detection and conversion. This is the recommended
-        unified method for symbol resolution that provides maximum compatibility.
-        
-        Args:
-            exchange_id: Exchange database ID
-            symbol_string: Symbol in either format ('BTC/USDT' or 'BTCUSDT')
-            
-        Returns:
-            Symbol instance or None if not found
-            
-        Performance: Target <1μs lookup time with fallback <2μs
-        """
-        start_time = time.perf_counter_ns()
-        
-        # Try direct lookup first (handles exchange format like 'BTCUSDT')
-        symbol = self._get_symbol_direct(exchange_id, symbol_string.upper())
-        if symbol:
-            self._record_cache_lookup(time.perf_counter_ns() - start_time, True)
-            return symbol
-        
-        # Try slash format conversion if contains '/'
-        if '/' in symbol_string:
-            parts = symbol_string.split('/')
-            if len(parts) == 2:
-                # Convert to exchange format and try lookup (BTC/USDT -> BTCUSDT)
-                exchange_format = f"{parts[0]}{parts[1]}".upper()
-                symbol = self._get_symbol_direct(exchange_id, exchange_format)
-                if symbol:
-                    self._record_cache_lookup(time.perf_counter_ns() - start_time, True)
-                    return symbol
-                
-                # Try base/quote lookup as fallback
-                symbol = self.get_symbol_by_exchange_and_pair(exchange_id, parts[0], parts[1])
-                if symbol:
-                    self._record_cache_lookup(time.perf_counter_ns() - start_time, True)
-                    return symbol
-        
-        self._record_cache_lookup(time.perf_counter_ns() - start_time, False)
-        return None
-    
-    def _get_symbol_direct(self, exchange_id: int, exchange_symbol: str) -> Optional[DBSymbol]:
-        """
-        Internal helper for direct cache lookup without timing overhead.
-        
-        Args:
-            exchange_id: Exchange database ID
-            exchange_symbol: Exchange-specific symbol (normalized to uppercase)
-            
-        Returns:
-            Symbol instance or None if not found
-        """
-        with self._cache_lock:
-            string_key = (exchange_id, exchange_symbol.upper())
-            return self._symbol_string_cache.get(string_key)
-    
-    def resolve_symbol(self, exchange_enum_or_id, symbol_or_string) -> Optional[DBSymbol]:
-        """
-        Universal symbol resolution method for maximum compatibility.
-        
-        Handles all common patterns:
-        - ExchangeEnum + Symbol object
-        - ExchangeEnum + symbol string (both formats)
-        - Exchange ID + symbol string (both formats)
-        
-        Args:
-            exchange_enum_or_id: ExchangeEnum, exchange string, or exchange_id (int)
-            symbol_or_string: Symbol object or string in any format
-            
-        Returns:
-            Symbol instance or None if not found
-            
-        Examples:
-            resolve_symbol(ExchangeEnum.MEXC, Symbol(base="BTC", quote="USDT"))
-            resolve_symbol(ExchangeEnum.MEXC, "BTC/USDT")
-            resolve_symbol(ExchangeEnum.MEXC, "BTCUSDT")
-            resolve_symbol("MEXC_SPOT", "BTC/USDT")
-            resolve_symbol(1, "BTCUSDT")
-        """
-        start_time = time.perf_counter_ns()
-        
-        # Resolve exchange_id
-        if isinstance(exchange_enum_or_id, int):
-            exchange_id = exchange_enum_or_id
-        else:
-            # Handle ExchangeEnum or string
-            exchange = self.get_exchange_by_enum(exchange_enum_or_id)
-            if not exchange:
-                self._record_cache_lookup(time.perf_counter_ns() - start_time, False)
-                return None
-            exchange_id = exchange.id
-        
-        # Resolve symbol string
-        if hasattr(symbol_or_string, 'base') and hasattr(symbol_or_string, 'quote'):
-            # Symbol object - use base/quote lookup
-            symbol = self.get_symbol_by_exchange_and_pair(
-                exchange_id, 
-                symbol_or_string.base, 
-                symbol_or_string.quote
-            )
-        else:
-            # String - use unified string resolution
-            symbol = self.get_symbol_by_exchange_and_symbol_string(exchange_id, str(symbol_or_string))
-        
-        # Record timing (the individual methods already recorded, but we track overall)
-        self._record_cache_lookup(time.perf_counter_ns() - start_time, symbol is not None)
-        return symbol
-    
-    def get_symbols_by_exchange(self, exchange_id: int) -> List[DBSymbol]:
-        """
-        Get all symbols for an exchange from cache.
-        
-        Args:
-            exchange_id: Exchange database ID
-            
-        Returns:
-            List of symbols for the exchange
-        """
-        start_time = time.perf_counter_ns()
-        
-        with self._cache_lock:
-            symbols = [
-                symbol for symbol in self._symbol_cache.values()
-                if symbol.exchange_id == exchange_id
-            ]
-        
-        self._record_cache_lookup(time.perf_counter_ns() - start_time, True)
-        return symbols
-    
-    async def insert_symbol(self, symbol: DBSymbol) -> int:
-        """
-        Insert new symbol and update cache.
-        
-        Args:
-            symbol: Symbol instance to insert
-            
-        Returns:
-            Database ID of inserted symbol
-        """
         if not self._pool:
             raise RuntimeError("DatabaseManager not initialized")
         
-        query = """
-            INSERT INTO symbols (
-                exchange_id, symbol_base, symbol_quote, exchange_symbol, 
-                is_active, symbol_type
-            ) VALUES ($1, $2, $3, $4, $5, $6)
-            RETURNING id
-        """
-        
         async with self._pool.acquire() as conn:
-            symbol_id = await conn.fetchval(
-                query,
-                symbol.exchange_id,
-                symbol.symbol_base.upper(),
-                symbol.symbol_quote.upper(),
-                symbol.exchange_symbol,
-                symbol.is_active,
-                symbol.symbol_type.name
+            row = await conn.fetchrow(
+                """
+                SELECT id, exchange_id, symbol_base, symbol_quote, exchange_symbol,
+                       is_active, symbol_type
+                FROM symbols
+                WHERE id = $1
+                """,
+                symbol_id
             )
         
-        # Update cache
-        symbol.id = symbol_id
-        with self._cache_lock:
-            self._symbol_cache[symbol_id] = symbol
-            pair_key = (symbol.exchange_id, symbol.symbol_base.upper(), symbol.symbol_quote.upper())
-            self._symbol_exchange_cache[pair_key] = symbol
-            string_key = (symbol.exchange_id, symbol.exchange_symbol.upper())
-            self._symbol_string_cache[string_key] = symbol
+        if not row:
+            return None
         
-        self._logger.info(f"Inserted symbol {symbol.symbol_base}/{symbol.symbol_quote} with ID {symbol_id}")
-        return symbol_id
+        return DBSymbol(
+            id=row['id'],
+            exchange_id=row['exchange_id'],
+            symbol_base=row['symbol_base'],
+            symbol_quote=row['symbol_quote'],
+            exchange_symbol=row['exchange_symbol'],
+            is_active=row['is_active'],
+            symbol_type=SymbolType[row['symbol_type']]
+        )
     
-    # =============================================================================
-    # EXCHANGE OPERATIONS (Cached)
-    # =============================================================================
-    
-    def get_exchange_by_id(self, exchange_id: int) -> Optional[Exchange]:
+    async def get_exchange_by_enum(self, exchange_enum: ExchangeEnum) -> Optional[Exchange]:
         """
-        Get exchange by ID with cache lookup.
+        Get exchange by enum value from database.
         
         Args:
-            exchange_id: Exchange database ID
+            exchange_enum: Exchange enum value
             
         Returns:
             Exchange instance or None if not found
         """
-        start_time = time.perf_counter_ns()
-        
-        with self._cache_lock:
-            exchange = self._exchange_cache.get(exchange_id)
-            hit = exchange is not None
-        
-        self._record_cache_lookup(time.perf_counter_ns() - start_time, hit)
-        return exchange
-    
-    def get_exchange_by_enum(self, exchange_enum_or_str) -> Optional[Exchange]:
-        """
-        Get exchange by enum value or string with cache lookup.
-        
-        Args:
-            exchange_enum_or_str: ExchangeEnum value or string (e.g., "MEXC_SPOT", "TEST_SPOT")
-            
-        Returns:
-            Exchange instance or None if not found
-        """
-        start_time = time.perf_counter_ns()
-        
-        # Handle both ExchangeEnum and string inputs
-        if isinstance(exchange_enum_or_str, ExchangeEnum):
-            enum_value = str(exchange_enum_or_str.value)
-        elif isinstance(exchange_enum_or_str, str):
-            enum_value = exchange_enum_or_str
-        else:
-            # Try to convert to string as fallback
-            enum_value = str(exchange_enum_or_str)
-        
-        with self._cache_lock:
-            exchange = self._exchange_enum_cache.get(enum_value)
-            hit = exchange is not None
-        
-        self._record_cache_lookup(time.perf_counter_ns() - start_time, hit)
-        return exchange
-    
-    def get_all_exchanges(self) -> List[Exchange]:
-        """
-        Get all exchanges from cache.
-        
-        Returns:
-            List of all exchanges
-        """
-        start_time = time.perf_counter_ns()
-        
-        with self._cache_lock:
-            exchanges = list(self._exchange_cache.values())
-        
-        self._record_cache_lookup(time.perf_counter_ns() - start_time, True)
-        return exchanges
-    
-    async def insert_exchange(self, exchange: Exchange) -> int:
-        """
-        Insert new exchange and update cache.
-        
-        Args:
-            exchange: Exchange instance to insert
-            
-        Returns:
-            Database ID of inserted exchange
-        """
         if not self._pool:
             raise RuntimeError("DatabaseManager not initialized")
         
-        query = """
-            INSERT INTO exchanges (
-                exchange_name, enum_value, market_type
-            ) VALUES ($1, $2, $3)
-            RETURNING id
-        """
-        
         async with self._pool.acquire() as conn:
-            exchange_id = await conn.fetchval(
-                query,
-                exchange.name,
-                exchange.enum_value,
-                exchange.market_type
+            row = await conn.fetchrow(
+                "SELECT id, exchange_name, enum_value, market_type FROM exchanges WHERE enum_value = $1",
+                exchange_enum.value
             )
         
-        # Update cache
-        exchange.id = exchange_id
-        with self._cache_lock:
-            self._exchange_cache[exchange_id] = exchange
-            self._exchange_enum_cache[exchange.enum_value] = exchange
+        if not row:
+            return None
         
-        self._logger.info(f"Inserted exchange {exchange.name} with ID {exchange_id}")
-        return exchange_id
+        return Exchange(
+            id=row['id'],
+            name=row['exchange_name'],
+            enum_value=row['enum_value'],
+            display_name=row['exchange_name'],
+            market_type=row['market_type']
+        )
     
     # =============================================================================
     # BOOK TICKER OPERATIONS (Float-Only)
     # =============================================================================
     
-    async def insert_book_ticker_snapshot(self, snapshot: BookTickerSnapshot) -> int:
+    async def insert_book_ticker_snapshot(self, exchange_enum: ExchangeEnum, symbol: Symbol, snapshot: BookTickerSnapshot) -> int:
         """
-        Insert single book ticker snapshot with float-only policy.
+        Insert single book ticker snapshot with auto symbol resolution.
         
         Args:
+            exchange_enum: Exchange enum
+            symbol: Symbol object
             snapshot: BookTickerSnapshot to insert
             
         Returns:
@@ -778,6 +506,9 @@ class DatabaseManager:
         """
         if not self._pool:
             raise RuntimeError("DatabaseManager not initialized")
+        
+        # Resolve symbol_id (create if missing)
+        symbol_id = await self.resolve_symbol_id_async(exchange_enum, symbol)
         
         query = """
             INSERT INTO book_ticker_snapshots (
@@ -789,7 +520,7 @@ class DatabaseManager:
         async with self._pool.acquire() as conn:
             record_id = await conn.fetchval(
                 query,
-                snapshot.symbol_id,
+                symbol_id,
                 float(snapshot.bid_price),    # Ensure float type
                 float(snapshot.bid_qty),      # Ensure float type
                 float(snapshot.ask_price),    # Ensure float type
@@ -799,11 +530,13 @@ class DatabaseManager:
         
         return record_id
     
-    async def insert_book_ticker_snapshots_batch(self, snapshots: List[BookTickerSnapshot]) -> int:
+    async def insert_book_ticker_snapshots_batch(self, exchange_enum: ExchangeEnum, symbol: Symbol, snapshots: List[BookTickerSnapshot]) -> int:
         """
-        Insert multiple book ticker snapshots with deduplication and float-only policy.
+        Insert multiple book ticker snapshots with auto symbol resolution.
         
         Args:
+            exchange_enum: Exchange enum
+            symbol: Symbol object
             snapshots: List of BookTickerSnapshot objects
             
         Returns:
@@ -812,10 +545,13 @@ class DatabaseManager:
         if not snapshots or not self._pool:
             return 0
         
+        # Resolve symbol_id once (create if missing)
+        symbol_id = await self.resolve_symbol_id_async(exchange_enum, symbol)
+        
         # Deduplication
         unique_snapshots = {}
         for snapshot in snapshots:
-            key = (snapshot.symbol_id, snapshot.timestamp)
+            key = (symbol_id, snapshot.timestamp)
             unique_snapshots[key] = snapshot
         
         deduplicated_snapshots = list(unique_snapshots.values())
@@ -839,7 +575,7 @@ class DatabaseManager:
                 for snapshot in deduplicated_snapshots:
                     await conn.execute(
                         query,
-                        snapshot.symbol_id,
+                        symbol_id,
                         float(snapshot.bid_price),    # Float-only policy
                         float(snapshot.bid_qty),      # Float-only policy
                         float(snapshot.ask_price),    # Float-only policy
@@ -972,7 +708,7 @@ class DatabaseManager:
         if not self._pool:
             raise RuntimeError("DatabaseManager not initialized")
         
-        # Build dynamic WHERE clause using current production schema
+        # Build dynamic WHERE clause using normalized schema
         where_conditions = []
         params = []
         param_counter = 1
@@ -1002,14 +738,14 @@ class DatabaseManager:
             params.append(end_time)
             param_counter += 1
         
-        # params.append(limit)
-        
         where_clause = "WHERE " + " AND ".join(where_conditions) if where_conditions else ""
 
+        limit_clause = ""
+        if limit:
+            limit_clause = f"LIMIT ${param_counter}"
+            params.append(limit)
 
-        limit_clause = f'LIMIT ${limit}' if limit else ''
-
-        # Use normalized schema with proper JOINs - no casting for maximum precision
+        # Use normalized schema with proper JOINs for data consistency
         query = f"""
             SELECT 
                 bts.timestamp,
@@ -1076,13 +812,12 @@ class DatabaseManager:
     # BALANCE OPERATIONS (Float-Only, HFT-Optimized)
     # =============================================================================
     
-    async def insert_balance_snapshots_batch(self, snapshots: List[BalanceSnapshot]) -> int:
+    async def insert_balance_snapshots_batch(self, exchange_enum: ExchangeEnum, snapshots: List[BalanceSnapshot]) -> int:
         """
-        Insert balance snapshots with float-only policy and HFT optimization.
-        
-        Target: <5ms per batch (up to 100 snapshots).
+        Insert balance snapshots with auto exchange resolution.
         
         Args:
+            exchange_enum: Exchange enum
             snapshots: List of BalanceSnapshot objects
             
         Returns:
@@ -1090,6 +825,10 @@ class DatabaseManager:
         """
         if not snapshots or not self._pool:
             return 0
+        
+        # Get or create exchange_id
+        async with self._pool.acquire() as conn:
+            exchange_id = await self._get_or_create_exchange(conn, exchange_enum)
         
         query = """
         INSERT INTO balance_snapshots (
@@ -1112,7 +851,7 @@ class DatabaseManager:
         for snapshot in snapshots:
             batch_data.append((
                 snapshot.timestamp,
-                snapshot.exchange_id,
+                exchange_id,
                 snapshot.asset_name.upper(),
                 float(snapshot.available_balance),    # Float-only policy
                 float(snapshot.locked_balance),       # Float-only policy
@@ -1199,11 +938,13 @@ class DatabaseManager:
     # FUNDING RATE OPERATIONS (Float-Only)
     # =============================================================================
     
-    async def insert_funding_rate_snapshots_batch(self, snapshots: List[FundingRateSnapshot]) -> int:
+    async def insert_funding_rate_snapshots_batch(self, exchange_enum: ExchangeEnum, symbol: Symbol, snapshots: List[FundingRateSnapshot]) -> int:
         """
-        Insert funding rate snapshots with float-only policy and constraint validation.
+        Insert funding rate snapshots with auto symbol resolution.
         
         Args:
+            exchange_enum: Exchange enum
+            symbol: Symbol object
             snapshots: List of FundingRateSnapshot objects
             
         Returns:
@@ -1211,6 +952,9 @@ class DatabaseManager:
         """
         if not snapshots or not self._pool:
             return 0
+        
+        # Resolve symbol_id once (create if missing)
+        symbol_id = await self.resolve_symbol_id_async(exchange_enum, symbol)
         
         query = """
         INSERT INTO funding_rate_snapshots (
@@ -1228,14 +972,14 @@ class DatabaseManager:
         batch_data = []
         for snapshot in snapshots:
             # Validate funding_time constraint (must be > 0)
-            funding_time = snapshot.funding_time
+            funding_time = snapshot.next_funding_time
             if funding_time is None or funding_time <= 0:
                 # Generate valid funding_time (current time + 8 hours in milliseconds)
                 funding_time = int(time.time() * 1000) + (8 * 60 * 60 * 1000)
             
             batch_data.append((
                 snapshot.timestamp,
-                snapshot.symbol_id,
+                symbol_id,
                 float(snapshot.funding_rate),    # Float-only policy
                 funding_time,
                 snapshot.next_funding_time,
@@ -1518,14 +1262,10 @@ class DatabaseManager:
                 'latest_timestamp': row['latest_funding']
             }
         
-        # Add cache statistics  
-        from db.cache_operations import get_cache_stats
-        cache_stats = get_cache_stats()
-        stats['cache'] = {
-            'hit_ratio': cache_stats.hit_ratio,
-            'avg_lookup_time_us': cache_stats.avg_lookup_time_us,
-            'cache_size': cache_stats.cache_size,
-            'total_requests': cache_stats.total_requests
+        # Add lookup table statistics
+        stats['lookup_table'] = {
+            'size': len(self._lookup_table),
+            'memory_usage_bytes': sum(len(str(k)) + 8 for k in self._lookup_table.keys())  # Rough estimate
         }
         
         # Add connection pool statistics
@@ -1584,40 +1324,36 @@ class DatabaseManager:
         Ensure all ExchangeEnum values are present in the database.
         Creates missing exchanges with default configurations.
         """
-        # Get existing exchanges from cache
-        existing_exchanges = self.get_all_exchanges()
-        existing_enum_values = {ex.enum_value for ex in existing_exchanges}
+        if not self._pool:
+            return
         
-        # Check each ExchangeEnum value
-        for exchange_enum in ExchangeEnum:
-            enum_value = str(exchange_enum.value)
+        async with self._pool.acquire() as conn:
+            # Get existing exchanges
+            existing_enums = await conn.fetch("SELECT enum_value FROM exchanges")
+            existing_enum_values = {row['enum_value'] for row in existing_enums}
             
-            if enum_value not in existing_enum_values:
-                self._logger.info(f"Creating missing exchange for {enum_value}")
-                
-                # Create exchange with defaults
-                exchange = Exchange.from_exchange_enum(exchange_enum)
-                await self.insert_exchange(exchange)
+            # Check each ExchangeEnum value
+            for exchange_enum in ExchangeEnum:
+                if exchange_enum.value not in existing_enum_values:
+                    await self._get_or_create_exchange(conn, exchange_enum)
+                    self._logger.info(f"Created missing exchange for {exchange_enum.value}")
     
     # =============================================================================
-    # PERFORMANCE MONITORING
+    # UTILITY METHODS
     # =============================================================================
     
+    def get_lookup_table_stats(self) -> Dict[str, Any]:
+        """Get lookup table statistics."""
+        return {
+            'size': len(self._lookup_table),
+            'entries': list(self._lookup_table.keys())[:10],  # First 10 entries for debugging
+            'memory_estimate_kb': len(self._lookup_table) * 64 / 1024  # Rough estimate
+        }
     
-    def reset_cache_stats(self) -> None:
-        """Reset cache performance statistics."""
-        with self._cache_lock:
-            self._cache_stats = {
-                'hits': 0,
-                'misses': 0,
-                'total_requests': 0,
-                'avg_lookup_time_ns': 0.0
-            }
-            self._lookup_times.clear()
-    
-    async def force_cache_refresh(self) -> None:
-        """Force immediate cache refresh."""
-        await self._refresh_cache()
+    async def refresh_lookup_table(self) -> None:
+        """Manual refresh of lookup table from database."""
+        await self._load_lookup_table()
+        self._logger.info(f"Lookup table refreshed with {len(self._lookup_table)} entries")
     
     @property
     def pool(self) -> asyncpg.Pool:
@@ -1630,6 +1366,11 @@ class DatabaseManager:
     def is_initialized(self) -> bool:
         """Check if DatabaseManager is initialized."""
         return self._pool is not None
+    
+    @property
+    def lookup_table_size(self) -> int:
+        """Get current lookup table size."""
+        return len(self._lookup_table)
 
 
 # Global instance
@@ -1658,8 +1399,7 @@ async def initialize_database_manager() -> None:
     Follows PROJECT_GUIDES.md requirements for initialization.
     """
     # Initialize database manager (gets config internally)
-    db_manager = get_database_manager()
-    await db_manager.initialize()
+    await  get_database_manager()
 
 
 async def close_database_manager() -> None:
@@ -1682,7 +1422,10 @@ def get_db_manager() -> DatabaseManager:
     Returns:
         DatabaseManager singleton instance
     """
-    return get_database_manager()
+    global _database_manager
+    if _database_manager is None:
+        raise RuntimeError("Database manager not initialized. Call initialize_database_manager() first.")
+    return _database_manager
 
 async def initialize_database(config) -> None:
     """
@@ -1699,9 +1442,8 @@ async def initialize_database(config) -> None:
         pass
     
     # Initialize using the new pattern
-    db_manager = get_database_manager()
-    await db_manager.initialize()
-    
+    db_manager = await get_database_manager()
+
     # Run pending migrations automatically (from connection.py pattern)
     try:
         from .migrations import run_all_pending_migrations as run_pending_migrations
