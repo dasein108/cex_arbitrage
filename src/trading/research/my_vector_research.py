@@ -29,21 +29,34 @@ def simple_arbitrage_backtest(df: pd.DataFrame, entry_signal: pd.Series, exit_si
             position = row['spot_fut_spread_prc']
             entry_data = {
                 'timestamp': row.name,
-                'spot_ask': row['spot_ask_price'],  # FIXED: We PAY spot_ask when buying spot
-                'fut_bid': row['fut_bid_price'],    # FIXED: We RECEIVE fut_bid when selling futures
+                'spot_buy_price': row['spot_ask_price'],  # FIXED: We PAY spot_ask when buying spot
+                'fut_sell_price': row['fut_bid_price'],    # FIXED: We RECEIVE fut_bid when selling futures
                 'spread': position
             }
         elif position is not None and (bool(exit_signal.loc[row.name]) or time_diff >= 6):
             exit_spread = row['fut_spot_spread_prc']
-            pnl = position - exit_spread
+            pnl_spot_pts = row['spot_bid_price'] - entry_data['spot_buy_price']  # Profit from selling spot
+            pnl_fut_pts = entry_data['fut_sell_price'] - row['fut_ask_price']     # Profit from buying futures
+            pnl_fut_pct = (pnl_fut_pts / entry_data['fut_sell_price'])
+            pnl_spot_pct = (pnl_spot_pts / entry_data['spot_buy_price'])
+
+            pnl = pnl_fut_pct - pnl_spot_pct
+            # Calculate bid-ask spreads and actual PnL
+
+            # Calculate percentage spreads
+
             trades.append({
-                'entry_spot_ask': entry_data['spot_ask'],  # FIXED: Price we PAY for spot
-                'entry_fut_bid': entry_data['fut_bid'],    # FIXED: Price we RECEIVE for futures
+                'entry_spot_ask': entry_data['spot_buy_price'],  # FIXED: Price we PAY for spot
+                'entry_fut_bid': entry_data['fut_sell_price'],    # FIXED: Price we RECEIVE for futures
                 'exit_spot_bid': row['spot_bid_price'],    # FIXED: Price we RECEIVE when selling spot
                 'exit_fut_ask': row['fut_ask_price'],      # FIXED: Price we PAY when buying futures
                 'entry_spread': position,
                 'exit_spread': exit_spread,
                 'pnl': pnl,
+                'pnl_spot_pts': pnl_spot_pts,
+                'pnl_fut_pts': pnl_fut_pts,
+                'pnl_fut_pct': pnl_fut_pct,
+                'pnl_spot_pct': pnl_spot_pct,
                 'hours': time_diff
             })
             position, entry_data = None, None
@@ -70,15 +83,21 @@ async def main():
     # Simple arbitrage backtester
     trades = simple_arbitrage_backtest(df, entry_signal, exit_signal)
     
-    # Print trades table
+    # Print detailed trades table
     if trades:
-        print(f"\n{'='*120}")
-        print(f"{'Trade':<5} {'Entry Spot Ask':<12} {'Entry Fut Bid':<12} {'Exit Spot Bid':<12} {'Exit Fut Ask':<12} {'Entry %':<8} {'Exit %':<8} {'PnL %':<8} {'Hours':<6}")
-        print(f"{'='*120}")
+        print(f"\n{'='*180}")
+        print(f"EXECUTION PRICES:")
+        print(f"{'Trade':<5} "
+              f"{'Entry Spot Ask':<14} {'Exit Spot Bid':<14} {'spot diff ':<14} {'spot pct ':<14} "
+              f"{'Entry Fut Bid':<14} {'Exit Fur Ask':<14} {'fut diff ':<14} {'fut pct ':<14} "
+              f"{'entry s. %':<10} {'exit s %':<10} {'PnL %':<8} {'Hours':<6}")
+        print(f"{'='*180}")
         for i, t in enumerate(trades, 1):
-            print(f"{i:<5} {t['entry_spot_ask']:<12.10f} {t['entry_fut_bid']:<12.10f} {t['exit_spot_bid']:<12.10f} {t['exit_fut_ask']:<12.10f} {t['entry_spread']:<8.4f} {t['exit_spread']:<8.4f} {t['pnl']:<8.4f} {t['hours']:<6.2f}")
-        print(f"{'='*120}")
-        print(f"Total Trades: {len(trades)}, Total PnL: {sum(t['pnl'] for t in trades):.4f}%")
+            print(f"{i:<5} "
+                  f"{t['entry_spot_ask']:<14.10f} {t['exit_spot_bid']:<14.10f} {t['pnl_spot_pts']:<14.10f} {t['pnl_spot_pct']:<14.4f} "
+                  f"{t['entry_fut_bid']:<14.10f} {t['exit_fut_ask']:<14.10f} {t['pnl_fut_pts']:<14.10f} {t['pnl_fut_pct']:<14.4f} "
+                  f"{t['entry_spread']:<10.4f} {t['exit_spread']:<10.4f} {t['pnl']:<8.4f} {t['hours']:<6.2f}")
+
     else:
         print("No trades executed")
 
