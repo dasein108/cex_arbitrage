@@ -287,8 +287,15 @@ Add the entity model to `src/db/models.py`:
 ```python
 @struct
 class NewEntity:
-    """New entity data structure for HFT operations."""
-    symbol_id: int
+    """New entity data structure for HFT operations.
+    
+    IMPORTANT: This model follows normalized design principles:
+    - Uses symbol_id foreign key for symbol resolution
+    - NO transient fields (exchange, symbol_base, symbol_quote)
+    - Symbol data resolved via cache operations when needed
+    - Maintains single source of truth through foreign keys
+    """
+    symbol_id: int  # Foreign key to symbols table - NEVER duplicate symbol data
     field1: float
     field2: str
     timestamp: datetime
@@ -303,13 +310,24 @@ class NewEntity:
             raise ValueError(f"field2 must be alphanumeric uppercase, got: {self.field2}")
 ```
 
+**Critical Design Principle**: 
+- **NEVER add transient fields** for data available through foreign keys
+- **Use cache operations** for symbol resolution when displaying data
+- **Maintain data consistency** through single source of truth
+
 ### Step 5: Create Database Operations
 
 Add operations to `src/db/operations.py`:
 
 ```python
+from db.cache_operations import cached_get_symbol_by_id  # For symbol resolution
+
 async def insert_new_entity(entity: NewEntity) -> int:
-    """Insert a single new entity record."""
+    """Insert a single new entity record.
+    
+    NOTE: Only stores normalized data with symbol_id foreign key.
+    Symbol information resolved via cache when needed for display.
+    """
     db = get_db_manager()
     
     query = """
@@ -321,7 +339,7 @@ async def insert_new_entity(entity: NewEntity) -> int:
     return await db.fetchval(
         query,
         entity.timestamp,
-        entity.symbol_id,
+        entity.symbol_id,  # Only foreign key - no duplicate symbol data
         entity.field1,
         entity.field2
     )
@@ -350,7 +368,11 @@ async def insert_new_entity_batch(entities: List[NewEntity]) -> int:
 
 
 async def get_latest_new_entity_by_symbol(symbol_id: int) -> Optional[NewEntity]:
-    """Get the latest new entity record for a symbol."""
+    """Get the latest new entity record for a symbol.
+    
+    Returns normalized model with symbol_id only.
+    Use cache operations to resolve symbol details when needed.
+    """
     db = get_db_manager()
     
     query = """
@@ -368,11 +390,36 @@ async def get_latest_new_entity_by_symbol(symbol_id: int) -> Optional[NewEntity]
     return NewEntity(
         id=row['id'],
         timestamp=row['timestamp'],
-        symbol_id=row['symbol_id'],
+        symbol_id=row['symbol_id'],  # Only foreign key returned
         field1=float(row['field1']),
         field2=row['field2'],
         created_at=row['created_at']
     )
+
+
+async def get_new_entity_with_symbol_info(entity_id: int) -> Dict[str, Any]:
+    """Get new entity with resolved symbol information.
+    
+    Demonstrates cache-first symbol resolution pattern:
+    1. Fetch normalized entity data with foreign key
+    2. Resolve symbol details via cache lookup
+    3. Combine for display purposes only
+    """
+    db = get_db_manager()
+    
+    # Get normalized entity
+    entity = await get_latest_new_entity_by_symbol(entity_id)
+    if not entity:
+        return None
+    
+    # Resolve symbol via cache (sub-microsecond lookup)
+    symbol = cached_get_symbol_by_id(entity.symbol_id)
+    
+    return {
+        'entity': entity,
+        'symbol': symbol,
+        'display_name': f"{symbol.exchange}:{symbol.symbol_base}/{symbol.symbol_quote}" if symbol else "Unknown"
+    }
 
 
 async def get_new_entity_stats() -> Dict[str, Any]:
@@ -642,13 +689,60 @@ src/db/migrations/
 
 ## Best Practices
 
-### Database Design
+### Database Design - Normalized Architecture
 
-1. **Follow Normalization**: Always use foreign keys to exchanges/symbols tables
-2. **Use TimescaleDB**: For any time-series data (timestamp column)
-3. **Add Constraints**: Validate data at database level
-4. **HFT Indexes**: Create indexes for sub-5ms query performance
-5. **Retention Policies**: Set appropriate data retention (3-14 days)
+1. **Strict Normalization**: 
+   - Always use foreign keys to exchanges/symbols tables
+   - **NEVER add transient fields** (exchange, symbol_base, symbol_quote) to models
+   - Maintain single source of truth through foreign key relationships
+   - Prevents data redundancy and consistency issues in HFT systems
+
+2. **Cache-First Symbol Resolution**:
+   - Use `get_cached_symbol_by_id()` for sub-microsecond symbol lookups
+   - Cache maintains >95% hit ratio for optimal HFT performance
+   - Symbol resolution only when needed for display, not storage
+   - Example pattern:
+     ```python
+     # ✅ CORRECT: Normalized storage, cache resolution
+     entity = await get_entity(entity_id)  # Returns model with symbol_id only
+     symbol = await get_cached_symbol_by_id(entity.symbol_id)  # <1μs lookup
+     
+     # ❌ WRONG: Transient fields in model
+     class BadEntity:
+         symbol_id: int
+         exchange: str  # WRONG: Redundant transient field
+         symbol_base: str  # WRONG: Redundant transient field
+     ```
+
+3. **Use TimescaleDB**: For any time-series data (timestamp column)
+
+4. **Add Constraints**: Validate data at database level
+
+5. **HFT Indexes**: Create indexes for sub-5ms query performance
+
+6. **Retention Policies**: Set appropriate data retention (3-14 days)
+
+### When to Use Cache vs Database Lookups
+
+#### Use Cache Operations (`get_cached_symbol_*`):
+- **High-frequency lookups** during trading operations
+- **Symbol resolution** for display or validation
+- **Real-time processing** where <1μs latency matters
+- **Batch operations** requiring multiple symbol lookups
+
+#### Use Direct Database Queries:
+- **Analytics queries** with complex JOINs
+- **Reporting** where 5-10ms latency is acceptable
+- **Data migration** or bulk updates
+- **One-time lookups** not in hot path
+
+### HFT Performance Benefits
+
+1. **Reduced Memory Footprint**: No duplicate string data in time-series records
+2. **Faster Inserts**: Smaller record size = faster writes (critical for HFT)
+3. **Cache Efficiency**: Symbol cache hit ratio >95% with <1μs lookups
+4. **Data Consistency**: Single source of truth prevents discrepancies
+5. **Simplified Updates**: Change symbol once, reflected everywhere
 
 ### Development Workflow
 
@@ -658,13 +752,54 @@ src/db/migrations/
 4. **Integration Tests**: Add tests for new operations
 5. **Performance Validation**: Ensure HFT compliance (<5ms queries)
 
-### Code Standards
+### Code Standards - Normalized Data Models
 
-1. **Type Safety**: Use msgspec.Struct for all data models
-2. **Validation**: Implement `validate()` methods for data integrity
-3. **Error Handling**: Use try-except blocks for database operations
-4. **Logging**: Log all significant database operations
-5. **Documentation**: Document all new tables and operations
+1. **Type Safety**: 
+   - Use msgspec.Struct for all data models
+   - Models contain ONLY normalized fields (foreign keys)
+   - NO transient fields that duplicate reference data
+
+2. **Model Design Principles**:
+   ```python
+   # ✅ CORRECT: Normalized model
+   @struct
+   class BookTickerSnapshot:
+       symbol_id: int  # Foreign key only
+       bid_price: float
+       ask_price: float
+       timestamp: datetime
+   
+   # ❌ WRONG: Model with transient fields
+   @struct
+   class BadBookTickerSnapshot:
+       symbol_id: int
+       exchange: str  # WRONG: Redundant
+       symbol_base: str  # WRONG: Redundant
+       symbol_quote: str  # WRONG: Redundant
+       bid_price: float
+       ask_price: float
+   ```
+
+3. **Symbol Resolution Pattern**:
+   ```python
+   # Display layer - resolve symbols via cache when needed
+   async def format_for_display(snapshot: BookTickerSnapshot) -> Dict:
+       symbol = await get_cached_symbol_by_id(snapshot.symbol_id)
+       return {
+           'exchange': symbol.exchange if symbol else 'Unknown',
+           'pair': f"{symbol.symbol_base}/{symbol.symbol_quote}" if symbol else 'Unknown',
+           'bid': snapshot.bid_price,
+           'ask': snapshot.ask_price
+       }
+   ```
+
+4. **Validation**: Implement `validate()` methods for data integrity
+
+5. **Error Handling**: Use try-except blocks for database operations
+
+6. **Logging**: Log all significant database operations
+
+7. **Documentation**: Document normalization strategy and cache usage
 
 ### Production Safety
 
@@ -814,6 +949,19 @@ The system is designed for safety, performance, and maintainability, with automa
 - **User**: `arbitrage_user`
 - **Features**: TimescaleDB, normalized schema, HFT optimization
 - **Retention**: 3-14 days depending on table type
-- **Performance**: Sub-5ms query targets for all operations
+- **Performance**: 
+  - Database queries: Sub-5ms for normalized JOINs
+  - Cache lookups: Sub-1μs for symbol resolution
+  - Batch inserts: Sub-5ms for up to 100 records
+
+### Architecture Principles Summary
+
+1. **Normalized Storage**: Foreign keys only, no transient fields
+2. **Cache-First Resolution**: <1μs symbol lookups with >95% hit ratio
+3. **Single Source of Truth**: Data consistency through normalization
+4. **HFT Optimized**: Reduced memory, faster inserts, efficient queries
+5. **Clean Separation**: Storage layer (normalized) vs Display layer (resolved)
+
+**Remember**: In HFT systems, data redundancy kills performance and consistency. Always normalize, never duplicate.
 
 Follow this guide to ensure consistent, safe, and performant database development practices.

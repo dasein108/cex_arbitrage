@@ -46,8 +46,8 @@ from .database_manager import (
     close_database_manager
 )
 
-# LEGACY API (backward compatibility)
-from .connection import DatabaseManager, get_db_manager, initialize_database, close_database
+# CONSOLIDATED API (merged from connection.py for backward compatibility)
+from .database_manager import DatabaseManager, get_db_manager, initialize_database, close_database
 from .operations import (
     insert_book_ticker_snapshot,
     get_book_ticker_snapshots,

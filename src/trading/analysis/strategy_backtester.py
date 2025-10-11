@@ -55,6 +55,14 @@ class BacktestConfig(msgspec.Struct):
     exit_threshold_pct: float = 0.03   # 0.03% minimum exit spread (matches strategy default)
     base_position_size: float = 100.0  # Base position size (matches strategy default)
     
+    # Asymmetric entry thresholds for directional spreads (Option 1: Static Offset)
+    futures_to_spot_entry_threshold_pct: float = 0.08  # Higher threshold for negative spreads (-0.066 to -0.11)
+    spot_to_futures_entry_threshold_pct: float = 0.02   # Lower threshold for smaller opportunities (-0.01 to 0.04)
+    
+    # Asymmetric exit thresholds
+    futures_to_spot_exit_threshold_pct: float = 0.05   # Exit when spread compresses to -0.05%
+    spot_to_futures_exit_threshold_pct: float = 0.00   # Exit at break-even or better
+    
     # Risk management
     max_position_age_hours: float = 24.0
     max_concurrent_positions: int = 5
@@ -83,6 +91,7 @@ class Trade(msgspec.Struct):
     entry_time: datetime
     exit_time: Optional[datetime] = None
     status: PositionStatus = PositionStatus.WAITING
+    direction: str = "unknown"  # 'futures_to_spot', 'spot_to_futures', or legacy values
     
     # Spot leg
     spot_entry_price: float = 0.0
@@ -711,6 +720,85 @@ class HFTStrategyBacktester:
     
     # ===== DATAFRAME-OPTIMIZED METHODS =====
     
+    def _calculate_adaptive_thresholds_research(self, df: pd.DataFrame) -> pd.DataFrame:
+        """
+        Calculate adaptive thresholds for research and visualization (Option 2).
+        These are NOT used for trading - only for analysis and comparison.
+        """
+        if df.empty or len(df) < 30:  # Need minimum data for rolling calculations
+            return df
+        
+        # Adaptive window sizing based on data length
+        fast_window = min(120, max(30, len(df) // 8))   # ~2 hours or dataset/8, min 30 points
+        slow_window = min(1440, max(60, len(df) // 4))  # ~24 hours or dataset/4, min 60 points
+        
+        self.logger.debug(f"📊 Adaptive threshold calculation: fast_window={fast_window}, slow_window={slow_window}")
+        
+        # Rolling statistics for futures-to-spot spreads
+        df['fts_mean_fast'] = df['futures_to_spot_spread_pct'].rolling(fast_window, min_periods=10).mean()
+        df['fts_std_fast'] = df['futures_to_spot_spread_pct'].rolling(fast_window, min_periods=10).std()
+        df['fts_mean_slow'] = df['futures_to_spot_spread_pct'].rolling(slow_window, min_periods=20).mean()
+        df['fts_std_slow'] = df['futures_to_spot_spread_pct'].rolling(slow_window, min_periods=20).std()
+        
+        # Rolling statistics for spot-to-futures spreads
+        df['stf_mean_fast'] = df['spot_to_futures_spread_pct'].rolling(fast_window, min_periods=10).mean()
+        df['stf_std_fast'] = df['spot_to_futures_spread_pct'].rolling(fast_window, min_periods=10).std()
+        df['stf_mean_slow'] = df['spot_to_futures_spread_pct'].rolling(slow_window, min_periods=20).mean()
+        df['stf_std_slow'] = df['spot_to_futures_spread_pct'].rolling(slow_window, min_periods=20).std()
+        
+        # Adaptive thresholds for research (NOT used for trading)
+        # Futures-to-spot: Use absolute value of (mean - n*std) since spreads are typically negative
+        df['fts_adaptive_entry_threshold'] = np.abs(
+            df['fts_mean_slow'] - 1.5 * df['fts_std_slow']
+        ).fillna(0.08)  # Fallback to static threshold
+        
+        # Spot-to-futures: Use (mean + n*std) since spreads are typically small positive
+        df['stf_adaptive_entry_threshold'] = np.maximum(
+            0.01,  # Minimum threshold
+            df['stf_mean_fast'] + 1.0 * df['stf_std_fast']
+        ).fillna(0.02)  # Fallback to static threshold
+        
+        # Volatility regime detection for research
+        df['fts_volatility_regime'] = pd.cut(
+            df['fts_std_fast'].fillna(0),
+            bins=[0, df['fts_std_fast'].quantile(0.33), df['fts_std_fast'].quantile(0.67), np.inf],
+            labels=['low_vol', 'normal_vol', 'high_vol']
+        )
+        
+        df['stf_volatility_regime'] = pd.cut(
+            df['stf_std_fast'].fillna(0),
+            bins=[0, df['stf_std_fast'].quantile(0.33), df['stf_std_fast'].quantile(0.67), np.inf],
+            labels=['low_vol', 'normal_vol', 'high_vol']
+        )
+        
+        # Z-scores for spread analysis
+        df['fts_z_score'] = (
+            (df['futures_to_spot_spread_pct'] - df['fts_mean_slow']) / 
+            df['fts_std_slow'].replace(0, np.nan)
+        ).fillna(0)
+        
+        df['stf_z_score'] = (
+            (df['spot_to_futures_spread_pct'] - df['stf_mean_slow']) / 
+            df['stf_std_slow'].replace(0, np.nan)
+        ).fillna(0)
+        
+        # Research signal indicators (for comparison, NOT trading)
+        df['fts_adaptive_signal_research'] = (
+            (df['futures_to_spot_spread_pct'].abs() > df['fts_adaptive_entry_threshold']) &
+            (df['futures_to_spot_spread_pct'] < 0) &
+            (df['fts_z_score'] < -1.0)  # Significantly below mean
+        )
+        
+        df['stf_adaptive_signal_research'] = (
+            (df['spot_to_futures_spread_pct'] > df['stf_adaptive_entry_threshold']) &
+            (df['spot_to_futures_spread_pct'] > 0) &
+            (df['stf_z_score'] > 0.5)  # Above mean
+        )
+        
+        self.logger.debug(f"📊 Added {len([c for c in df.columns if 'adaptive' in c or 'regime' in c or 'z_score' in c])} adaptive research columns")
+        
+        return df
+
     def _enhance_dataframe_with_all_metrics(self, df: pd.DataFrame) -> pd.DataFrame:
         """
         Enhanced DataFrame enrichment with ALL arbitrage metrics calculated once.
@@ -744,7 +832,10 @@ class HFTStrategyBacktester:
         # Legacy compatibility (keep spread_pct for existing code)
         df['spread_pct'] = df['best_spread_pct']
         
-        self.logger.debug(f"📈 Enhanced DataFrame with {len(df.columns)} metrics columns")
+        # Add adaptive threshold calculations for research (Option 2)
+        df = self._calculate_adaptive_thresholds_research(df)
+        
+        self.logger.debug(f"📈 Enhanced DataFrame with {len(df.columns)} metrics columns (including adaptive research)")
         return df
     
     def _apply_enhanced_quality_filters(self, df: pd.DataFrame, config: BacktestConfig) -> pd.DataFrame:
@@ -850,61 +941,83 @@ class HFTStrategyBacktester:
                 self._record_equity_snapshot(timestamp)
     
     def _identify_entry_signals_vectorized(self, df: pd.DataFrame, config: BacktestConfig) -> pd.DataFrame:
-        """Identify entry signals using simplified logic matching successful SQL query approach."""
+        """Identify entry signals using asymmetric thresholds (Option 1: Static Offset)."""
         if df.empty:
             return pd.DataFrame()
         
-        # Use percentage threshold directly (no conversion needed)
-        spread_threshold = config.entry_threshold_pct
+        # Get pre-calculated spreads from enhanced dataframe
+        futures_to_spot_spread_pct = df['futures_to_spot_spread_pct']
+        spot_to_futures_spread_pct = df['spot_to_futures_spread_pct']
         
-        # Calculate realistic arbitrage spreads for both directions (vectorized, in percentages)
-        # Direction 1: Buy spot (at ask), sell futures (at bid)
-        spot_to_futures_spread_pct = (df['fut_bid'] - df['spot_ask']) / df['spot_ask'] * 100
-        
-        # Direction 2: Buy futures (at ask), sell spot (at bid)  
-        futures_to_spot_spread_pct = (df['spot_bid'] - df['fut_ask']) / df['fut_ask'] * 100
-        
-        # Store both directions for analysis
-        df['spot_to_futures_spread'] = spot_to_futures_spread_pct
-        df['futures_to_spot_spread'] = futures_to_spot_spread_pct
-        df['best_spread_pct'] = np.maximum(spot_to_futures_spread_pct, futures_to_spot_spread_pct)
-        
-        # SIMPLIFIED ENTRY CONDITIONS - Match SQL query approach
-        # Only require positive spread above threshold (remove complex liquidity/z-score filters)
-        entry_conditions = (
-            (df['best_spread_pct'] >= spread_threshold) &
+        # Option 1: Static Asymmetric Entry Conditions
+        # Futures-to-spot: Enter when spread exceeds negative threshold (typically negative spreads)
+        futures_to_spot_signal = (
+            (futures_to_spot_spread_pct.abs() > config.futures_to_spot_entry_threshold_pct) &
+            (futures_to_spot_spread_pct < 0) &  # Explicitly negative spreads
             (df['spot_bid'] > 0) & (df['spot_ask'] > 0) &
             (df['fut_bid'] > 0) & (df['fut_ask'] > 0) &
             (df['spot_bid'] < df['spot_ask']) &  # Valid bid/ask ordering
             (df['fut_bid'] < df['fut_ask'])
         )
         
-        # Apply basic liquidity filter only if configured (but don't make it too restrictive)
+        # Spot-to-futures: Enter on smaller positive spreads with cap to avoid outliers
+        spot_to_futures_signal = (
+            (spot_to_futures_spread_pct > config.spot_to_futures_entry_threshold_pct) &
+            (spot_to_futures_spread_pct < 0.10) &  # Cap outliers at 0.10%
+            (df['spot_bid'] > 0) & (df['spot_ask'] > 0) &
+            (df['fut_bid'] > 0) & (df['fut_ask'] > 0) &
+            (df['spot_bid'] < df['spot_ask']) &  # Valid bid/ask ordering
+            (df['fut_bid'] < df['fut_ask'])
+        )
+        
+        # Apply basic liquidity filter if configured
         min_liquidity = max(config.min_liquidity_usd, 100.0)  # Lower minimum to 100 USD
         if min_liquidity > 100.0:
-            entry_conditions = entry_conditions & (
+            liquidity_filter = (
                 (df['spot_liquidity'] >= min_liquidity) & 
                 (df['fut_liquidity'] >= min_liquidity)
             )
+            futures_to_spot_signal = futures_to_spot_signal & liquidity_filter
+            spot_to_futures_signal = spot_to_futures_signal & liquidity_filter
         
-        # Filter and create signals DataFrame efficiently
-        entry_signals = df[entry_conditions].copy()
+        # Combine signals and create result DataFrame
+        combined_signal = futures_to_spot_signal | spot_to_futures_signal
+        entry_signals = df[combined_signal].copy()
         
         if not entry_signals.empty:
-            # Determine optimal direction based on which spread is better
+            # Determine direction based on which signal triggered
             entry_signals['direction'] = np.where(
-                entry_signals['spot_to_futures_spread'] > entry_signals['futures_to_spot_spread'],
-                'spot_to_futures',  # Buy spot, sell futures
-                'futures_to_spot'   # Buy futures, sell spot
+                futures_to_spot_signal[combined_signal], 
+                'futures_to_spot',
+                'spot_to_futures'
             )
-            entry_signals['signal_strength'] = entry_signals['best_spread_pct']  # Signal strength in percentage
+            
+            # Signal strength based on direction
+            entry_signals['signal_strength'] = np.where(
+                entry_signals['direction'] == 'futures_to_spot',
+                entry_signals['futures_to_spot_spread_pct'].abs(),  # Absolute value for negative spreads
+                entry_signals['spot_to_futures_spread_pct']         # Positive value as-is
+            )
 
-        self.logger.info(f"🎯 SIMPLIFIED: Found {len(entry_signals)} signals from {len(df)} data points (spread >= {spread_threshold:.3f}%)")
+        # Enhanced logging with asymmetric breakdown
+        fts_count = futures_to_spot_signal.sum()
+        stf_count = spot_to_futures_signal.sum()
         
-        # Log some sample signals for debugging
+        self.logger.info(f"🎯 ASYMMETRIC SIGNALS: Found {len(entry_signals)} total signals from {len(df)} data points")
+        self.logger.info(f"   📉 Futures-to-spot: {fts_count} signals (threshold: {config.futures_to_spot_entry_threshold_pct:.3f}%)")
+        self.logger.info(f"   📈 Spot-to-futures: {stf_count} signals (threshold: {config.spot_to_futures_entry_threshold_pct:.3f}%)")
+        
+        # Log sample signals for debugging
         if not entry_signals.empty:
-            best_signal = entry_signals.loc[entry_signals['best_spread_pct'].idxmax()]
-            self.logger.info(f"📈 Best signal: {best_signal['best_spread_pct']:.3f}% at {best_signal.name}")
+            if fts_count > 0:
+                fts_signals = entry_signals[entry_signals['direction'] == 'futures_to_spot']
+                best_fts = fts_signals.loc[fts_signals['signal_strength'].idxmax()]
+                self.logger.info(f"   📉 Best FTS signal: {best_fts['signal_strength']:.3f}% at {best_fts.name}")
+            
+            if stf_count > 0:
+                stf_signals = entry_signals[entry_signals['direction'] == 'spot_to_futures']
+                best_stf = stf_signals.loc[stf_signals['signal_strength'].idxmax()]
+                self.logger.info(f"   📈 Best STF signal: {best_stf['signal_strength']:.3f}% at {best_stf.name}")
         
         return entry_signals
     
@@ -989,6 +1102,7 @@ class HFTStrategyBacktester:
             symbol=f"SPOT-FUTURES",
             entry_time=data_point.timestamp,
             status=PositionStatus.SPOT_FILLED,
+            direction=direction,  # Include direction for asymmetric exit logic
             spot_entry_price=spot_entry_price,
             spot_size=spot_size,
             spot_slippage_pct=config.spot_fill_slippage_pct,
@@ -1116,11 +1230,12 @@ class HFTStrategyBacktester:
             symbol=f"SPOT-FUTURES",  # Simplified symbol representation
             entry_time=market_data.timestamp,
             status=PositionStatus.SPOT_FILLED,
+            direction=direction,  # Include direction for asymmetric exit logic
             spot_entry_price=spot_entry_price,
             spot_size=spot_size,
-            spot_slippage_bps=config.spot_fill_slippage_pct,
+            spot_slippage_pct=config.spot_fill_slippage_pct,
             futures_size=futures_size,
-            futures_slippage_bps=config.futures_hedge_slippage_pct
+            futures_slippage_pct=config.futures_hedge_slippage_pct
         )
         
         self.active_positions[trade_id] = trade
@@ -1196,8 +1311,8 @@ class HFTStrategyBacktester:
         config: BacktestConfig
     ) -> bool:
         """
-        Determine if position should be closed.
-        Uses MexcGateioFuturesStrategy-compatible exit logic with realistic spreads.
+        Determine if position should be closed using asymmetric exit thresholds.
+        Uses direction-specific exit logic compatible with MexcGateioFuturesStrategy.
         """
         if trade.status != PositionStatus.DELTA_NEUTRAL:
             return False
@@ -1207,14 +1322,51 @@ class HFTStrategyBacktester:
         if age_hours > config.max_position_age_hours:
             return True
         
-        # Realistic spread compression exit - check if we can still exit profitably
-        spot_to_futures, futures_to_spot = market_data.get_arbitrage_spreads_pct()
-        current_best_spread_pct = max(spot_to_futures, futures_to_spot)
+        # Determine trade direction from position sizes (need to infer from trade record)
+        if hasattr(trade, 'direction'):
+            direction = trade.direction
+        else:
+            # Infer direction from position sizes for backward compatibility
+            if trade.spot_size > 0 and trade.futures_size < 0:
+                direction = 'spot_to_futures'  # Long spot, short futures
+            elif trade.spot_size < 0 and trade.futures_size > 0:
+                direction = 'futures_to_spot'  # Short spot, long futures
+            else:
+                direction = 'unknown'
         
-        if current_best_spread_pct < config.exit_threshold_pct:
+        # Get current spreads
+        spot_to_futures_spread_pct, futures_to_spot_spread_pct = market_data.get_arbitrage_spreads_pct()
+        
+        # Asymmetric exit conditions based on direction
+        should_exit = False
+        
+        if direction == 'futures_to_spot':
+            # For futures-to-spot trades, exit when negative spread compresses above threshold
+            current_spread = abs(futures_to_spot_spread_pct)
+            exit_threshold = config.futures_to_spot_exit_threshold_pct
+            if current_spread < exit_threshold:
+                should_exit = True
+                self.logger.debug(f"🚪 FTS exit triggered: spread {current_spread:.3f}% < threshold {exit_threshold:.3f}%")
+        
+        elif direction == 'spot_to_futures':
+            # For spot-to-futures trades, exit when positive spread falls to break-even
+            current_spread = spot_to_futures_spread_pct
+            exit_threshold = config.spot_to_futures_exit_threshold_pct
+            if current_spread <= exit_threshold:
+                should_exit = True
+                self.logger.debug(f"🚪 STF exit triggered: spread {current_spread:.3f}% <= threshold {exit_threshold:.3f}%")
+        
+        else:
+            # Fallback to original logic for unknown directions
+            current_best_spread_pct = max(spot_to_futures_spread_pct, abs(futures_to_spot_spread_pct))
+            if current_best_spread_pct < config.exit_threshold_pct:
+                should_exit = True
+                self.logger.debug(f"🚪 Generic exit triggered: spread {current_best_spread_pct:.3f}% < threshold {config.exit_threshold_pct:.3f}%")
+        
+        if should_exit:
             return True
         
-        # Stop loss based on actual position P&L
+        # Stop loss based on actual position P&L (unchanged)
         if trade.futures_entry_price is not None:
             spot_pnl = (market_data.get_spot_mid() - trade.spot_entry_price) * trade.spot_size
             futures_pnl = (trade.futures_entry_price - market_data.get_futures_mid()) * trade.futures_size
@@ -1222,6 +1374,7 @@ class HFTStrategyBacktester:
             position_value = abs(trade.spot_size * trade.spot_entry_price)
             
             if total_pnl / position_value < -config.stop_loss_pct:
+                self.logger.debug(f"🛑 Stop loss triggered: PnL {total_pnl/position_value*100:.2f}% < {-config.stop_loss_pct*100:.2f}%")
                 return True
         
         return False
@@ -1568,6 +1721,126 @@ RECOMMENDATIONS:
         
         if results.database_query_time_ms > 10:
             report += "⚠️ Database queries exceed HFT target of <10ms - optimize queries\n"
+        
+        return report
+
+    def generate_asymmetric_research_report(self, results: BacktestResults, df: pd.DataFrame) -> str:
+        """Generate research report comparing static vs adaptive thresholds for analysis."""
+        if df.empty:
+            return "No data available for research analysis."
+        
+        # Calculate research metrics if adaptive columns exist
+        adaptive_cols = [col for col in df.columns if 'adaptive' in col or 'regime' in col or 'z_score' in col]
+        if not adaptive_cols:
+            return "Adaptive research metrics not calculated. Ensure _calculate_adaptive_thresholds_research was called."
+        
+        report = f"""
+ASYMMETRIC SPREAD RESEARCH ANALYSIS
+{'=' * 60}
+
+SPREAD DISTRIBUTION ANALYSIS:
+- Futures-to-Spot Spread:
+  * Mean: {df['futures_to_spot_spread_pct'].mean():.4f}%
+  * Std:  {df['futures_to_spot_spread_pct'].std():.4f}%
+  * Min:  {df['futures_to_spot_spread_pct'].min():.4f}%
+  * Max:  {df['futures_to_spot_spread_pct'].max():.4f}%
+  * % Negative: {(df['futures_to_spot_spread_pct'] < 0).mean() * 100:.1f}%
+
+- Spot-to-Futures Spread:
+  * Mean: {df['spot_to_futures_spread_pct'].mean():.4f}%
+  * Std:  {df['spot_to_futures_spread_pct'].std():.4f}%
+  * Min:  {df['spot_to_futures_spread_pct'].min():.4f}%
+  * Max:  {df['spot_to_futures_spread_pct'].max():.4f}%
+  * % Positive: {(df['spot_to_futures_spread_pct'] > 0).mean() * 100:.1f}%
+
+STATIC vs ADAPTIVE THRESHOLD COMPARISON:
+- Static Thresholds Used (Trading):
+  * FTS Entry: {results.config.futures_to_spot_entry_threshold_pct:.3f}%
+  * STF Entry: {results.config.spot_to_futures_entry_threshold_pct:.3f}%
+  * FTS Exit:  {results.config.futures_to_spot_exit_threshold_pct:.3f}%
+  * STF Exit:  {results.config.spot_to_futures_exit_threshold_pct:.3f}%
+
+- Adaptive Thresholds (Research Only):
+  * FTS Adaptive Mean: {df['fts_adaptive_entry_threshold'].mean():.4f}%
+  * FTS Adaptive Std:  {df['fts_adaptive_entry_threshold'].std():.4f}%
+  * STF Adaptive Mean: {df['stf_adaptive_entry_threshold'].mean():.4f}%
+  * STF Adaptive Std:  {df['stf_adaptive_entry_threshold'].std():.4f}%
+
+SIGNAL COMPARISON:
+"""
+        
+        # Count signals if research signals exist
+        if 'fts_adaptive_signal_research' in df.columns:
+            fts_static_equiv = (
+                (df['futures_to_spot_spread_pct'].abs() > results.config.futures_to_spot_entry_threshold_pct) &
+                (df['futures_to_spot_spread_pct'] < 0)
+            ).sum()
+            
+            stf_static_equiv = (
+                (df['spot_to_futures_spread_pct'] > results.config.spot_to_futures_entry_threshold_pct) &
+                (df['spot_to_futures_spread_pct'] < 0.10)
+            ).sum()
+            
+            fts_adaptive = df['fts_adaptive_signal_research'].sum()
+            stf_adaptive = df['stf_adaptive_signal_research'].sum()
+            
+            report += f"""- Static Signal Counts:
+  * FTS Signals: {fts_static_equiv} ({fts_static_equiv/len(df)*100:.2f}% of data)
+  * STF Signals: {stf_static_equiv} ({stf_static_equiv/len(df)*100:.2f}% of data)
+
+- Adaptive Signal Counts (Research):
+  * FTS Signals: {fts_adaptive} ({fts_adaptive/len(df)*100:.2f}% of data)
+  * STF Signals: {stf_adaptive} ({stf_adaptive/len(df)*100:.2f}% of data)
+
+VOLATILITY REGIME ANALYSIS:"""
+        
+        # Volatility regime analysis if available
+        if 'fts_volatility_regime' in df.columns:
+            fts_regime_counts = df['fts_volatility_regime'].value_counts()
+            stf_regime_counts = df['stf_volatility_regime'].value_counts()
+            
+            report += f"""
+- FTS Volatility Regimes:
+  * Low Vol:    {fts_regime_counts.get('low_vol', 0)} periods ({fts_regime_counts.get('low_vol', 0)/len(df)*100:.1f}%)
+  * Normal Vol: {fts_regime_counts.get('normal_vol', 0)} periods ({fts_regime_counts.get('normal_vol', 0)/len(df)*100:.1f}%)
+  * High Vol:   {fts_regime_counts.get('high_vol', 0)} periods ({fts_regime_counts.get('high_vol', 0)/len(df)*100:.1f}%)
+
+- STF Volatility Regimes:
+  * Low Vol:    {stf_regime_counts.get('low_vol', 0)} periods ({stf_regime_counts.get('low_vol', 0)/len(df)*100:.1f}%)
+  * Normal Vol: {stf_regime_counts.get('normal_vol', 0)} periods ({stf_regime_counts.get('normal_vol', 0)/len(df)*100:.1f}%)
+  * High Vol:   {stf_regime_counts.get('high_vol', 0)} periods ({stf_regime_counts.get('high_vol', 0)/len(df)*100:.1f}%)"""
+
+        # Z-score analysis
+        if 'fts_z_score' in df.columns:
+            report += f"""
+
+Z-SCORE ANALYSIS:
+- FTS Z-Score Stats:
+  * Mean: {df['fts_z_score'].mean():.3f}
+  * Std:  {df['fts_z_score'].std():.3f}
+  * % < -2σ: {(df['fts_z_score'] < -2).mean() * 100:.1f}% (extreme opportunities)
+  * % < -1σ: {(df['fts_z_score'] < -1).mean() * 100:.1f}% (good opportunities)
+
+- STF Z-Score Stats:
+  * Mean: {df['stf_z_score'].mean():.3f}
+  * Std:  {df['stf_z_score'].std():.3f}
+  * % > +1σ: {(df['stf_z_score'] > 1).mean() * 100:.1f}% (good opportunities)
+  * % > +2σ: {(df['stf_z_score'] > 2).mean() * 100:.1f}% (extreme opportunities)"""
+
+        report += f"""
+
+IMPLEMENTATION RECOMMENDATIONS:
+- Static approach used for trading is {'CONSERVATIVE' if results.config.futures_to_spot_entry_threshold_pct > df['fts_adaptive_entry_threshold'].mean() else 'AGGRESSIVE'}
+- Consider {'LOWERING' if results.config.futures_to_spot_entry_threshold_pct > df['fts_adaptive_entry_threshold'].mean() else 'RAISING'} FTS threshold based on adaptive analysis
+- Adaptive signals show {'MORE' if df.get('fts_adaptive_signal_research', pd.Series()).sum() > fts_static_equiv else 'FEWER'} FTS opportunities than static
+- {'Consider implementing volatility-based threshold scaling' if 'fts_volatility_regime' in df.columns else 'Volatility regime data not available'}
+
+NEXT STEPS FOR RESEARCH:
+1. Backtest with adaptive thresholds to compare actual performance
+2. Implement ensemble approach combining static + adaptive signals
+3. Add machine learning model for optimal threshold prediction
+4. Consider volatility-based position sizing
+"""
         
         return report
 

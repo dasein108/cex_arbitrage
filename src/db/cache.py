@@ -52,12 +52,12 @@ class SymbolCache:
     Uses multiple indexing strategies for different lookup patterns.
     """
     
-    def __init__(self, auto_refresh_interval: int = 300):
+    def __init__(self):
         """
         Initialize symbol cache.
         
-        Args:
-            auto_refresh_interval: Auto-refresh interval in seconds (0 = disabled)
+        Static mapping cache that loads symbols once and provides manual refresh
+        when new symbols are added to exchanges.
         """
         self._logger = logging.getLogger(f"{__name__}.SymbolCache")
         
@@ -79,21 +79,16 @@ class SymbolCache:
         # Thread safety
         self._lock = threading.RLock()
         
-        # Auto-refresh mechanism
-        self._auto_refresh_interval = auto_refresh_interval
-        self._refresh_task: Optional[asyncio.Task] = None
         self._last_refresh = datetime.utcnow()
         
-        # Weak reference tracking for cleanup
-        self._instances: Set[weakref.ref] = set()
-        
-        self._logger.info(f"SymbolCache initialized with {auto_refresh_interval}s auto-refresh")
+        self._logger.info("SymbolCache initialized for static symbol mapping")
     
     async def initialize(self) -> None:
         """
         Initialize cache with data from database.
         
-        This is a one-time setup that loads all symbols and exchanges.
+        This loads all symbols and exchanges once. Use manual refresh()
+        when new symbols are added to exchanges.
         """
         start_time = time.perf_counter_ns()
         
@@ -105,10 +100,6 @@ class SymbolCache:
             
             # Load symbols
             await self._load_symbols()
-            
-            # Start auto-refresh if enabled
-            if self._auto_refresh_interval > 0:
-                await self._start_auto_refresh()
             
             init_time_ms = (time.perf_counter_ns() - start_time) / 1_000_000
             self._logger.info(f"Symbol cache initialized in {init_time_ms:.2f}ms")
@@ -345,47 +336,34 @@ class SymbolCache:
     
     async def refresh(self) -> None:
         """
-        Refresh cache from database.
+        Manual refresh cache from database.
         
+        Call this method when new symbols are added to exchanges.
         This updates the cache with any new or modified symbols/exchanges.
         """
         start_time = time.perf_counter_ns()
         
         try:
-            self._logger.debug("Refreshing symbol cache from database...")
+            self._logger.info("Manually refreshing symbol cache from database...")
+            
+            old_symbol_count = len(self._all_symbols_cache)
+            old_exchange_count = len(self._exchange_cache)
             
             await self._load_exchanges()
             await self._load_symbols()
             
+            new_symbol_count = len(self._all_symbols_cache)
+            new_exchange_count = len(self._exchange_cache)
+            
             refresh_time_ms = (time.perf_counter_ns() - start_time) / 1_000_000
-            self._logger.debug(f"Symbol cache refreshed in {refresh_time_ms:.2f}ms")
+            self._logger.info(f"Symbol cache refreshed in {refresh_time_ms:.2f}ms")
+            self._logger.info(f"Symbols: {old_symbol_count} → {new_symbol_count} (+{new_symbol_count - old_symbol_count})")
+            self._logger.info(f"Exchanges: {old_exchange_count} → {new_exchange_count} (+{new_exchange_count - old_exchange_count})")
             
         except Exception as e:
             self._logger.error(f"Failed to refresh symbol cache: {e}")
             raise
     
-    async def _start_auto_refresh(self) -> None:
-        """Start auto-refresh background task."""
-        if self._refresh_task and not self._refresh_task.done():
-            self._refresh_task.cancel()
-        
-        self._refresh_task = asyncio.create_task(self._auto_refresh_loop())
-        self._logger.info(f"Started auto-refresh with {self._auto_refresh_interval}s interval")
-    
-    async def _auto_refresh_loop(self) -> None:
-        """Background auto-refresh loop."""
-        while True:
-            try:
-                await asyncio.sleep(self._auto_refresh_interval)
-                await self.refresh()
-                
-            except asyncio.CancelledError:
-                self._logger.info("Auto-refresh loop cancelled")
-                break
-            except Exception as e:
-                self._logger.error(f"Error in auto-refresh loop: {e}")
-                # Continue the loop even on error
-                await asyncio.sleep(60)  # Wait 1 minute before retrying
     
     def get_stats(self) -> CacheStats:
         """
@@ -417,13 +395,6 @@ class SymbolCache:
     
     async def close(self) -> None:
         """Clean up cache resources."""
-        if self._refresh_task and not self._refresh_task.done():
-            self._refresh_task.cancel()
-            try:
-                await self._refresh_task
-            except asyncio.CancelledError:
-                pass
-        
         with self._lock:
             self._id_cache.clear()
             self._exchange_pair_cache.clear()
@@ -456,18 +427,18 @@ def get_symbol_cache() -> SymbolCache:
     return _symbol_cache
 
 
-async def initialize_symbol_cache(auto_refresh_interval: int = 300) -> None:
+async def initialize_symbol_cache() -> None:
     """
     Initialize global symbol cache.
     
-    Args:
-        auto_refresh_interval: Auto-refresh interval in seconds (0 = disabled)
+    Static mapping cache for symbols and exchanges. Use refresh()
+    method when new symbols are added to exchanges.
     """
     global _symbol_cache
     if _symbol_cache is not None:
         await _symbol_cache.close()
     
-    _symbol_cache = SymbolCache(auto_refresh_interval)
+    _symbol_cache = SymbolCache()
     await _symbol_cache.initialize()
 
 

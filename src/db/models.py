@@ -409,11 +409,6 @@ class BookTickerSnapshot(msgspec.Struct):
     timestamp: datetime
     created_at: Optional[datetime] = None
     id: Optional[int] = None
-    
-    # Transient fields for convenience (not stored in DB)
-    exchange: Optional[str] = None
-    symbol_base: Optional[str] = None
-    symbol_quote: Optional[str] = None
 
     @classmethod
     def from_symbol_id_and_data(
@@ -577,11 +572,6 @@ class FundingRateSnapshot(msgspec.Struct):
     created_at: Optional[datetime] = None
     id: Optional[int] = None
     
-    # Transient fields for convenience (not stored in DB)
-    exchange: Optional[str] = None
-    symbol_base: Optional[str] = None
-    symbol_quote: Optional[str] = None
-    
     @classmethod
     def from_symbol_and_data(
         cls,
@@ -624,28 +614,23 @@ class FundingRateSnapshot(msgspec.Struct):
             funding_rate=funding_rate,
             funding_time=funding_time,
             timestamp=timestamp,
-            next_funding_time=next_funding_time,
-            # Store transient fields for convenience
-            exchange=exchange.upper(),
-            symbol_base=str(symbol.base),
-            symbol_quote=str(symbol.quote)
+            next_funding_time=next_funding_time
         )
     
     def to_symbol(self) -> Symbol:
         """
-        Convert back to Symbol object.
+        Convert back to Symbol object using database cache lookup.
         
         Returns:
-            Symbol object reconstructed from transient base/quote strings
+            Symbol object reconstructed from symbol_id
         """
-        if not self.symbol_base or not self.symbol_quote:
-            raise ValueError("symbol_base and symbol_quote must be populated to create Symbol object")
-            
-        from exchanges.structs.types import AssetName
-        return Symbol(
-            base=AssetName(self.symbol_base),
-            quote=AssetName(self.symbol_quote),
-        )
+        from db.cache_operations import cached_get_symbol_by_id
+        
+        db_symbol = cached_get_symbol_by_id(self.symbol_id)
+        if not db_symbol:
+            raise ValueError(f"Cannot resolve symbol_id {self.symbol_id} from cache")
+        
+        return db_symbol.to_common_symbol()
     
     def get_funding_rate_percentage(self) -> float:
         """

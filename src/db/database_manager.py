@@ -16,7 +16,7 @@ Key Features:
 import asyncio
 import logging
 import time
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, date
 from typing import Dict, List, Optional, Any, Tuple, Set
 from collections import defaultdict
 import threading
@@ -260,7 +260,7 @@ class DatabaseManager:
                     symbol_quote=row['symbol_quote'],
                     exchange_symbol=row['exchange_symbol'],
                     is_active=row['is_active'],
-                    symbol_type=SymbolType(row['symbol_type'])
+                    symbol_type=SymbolType[row['symbol_type']]
                 )
                 
                 # Multiple cache indexes for optimal lookup performance
@@ -273,6 +273,135 @@ class DatabaseManager:
     def _should_refresh_cache(self) -> bool:
         """Check if cache should be refreshed based on TTL."""
         return (datetime.utcnow() - self._last_cache_refresh).total_seconds() > self._cache_ttl_seconds
+    
+    # =============================================================================
+    # LOW-LEVEL DATABASE OPERATIONS (Consolidated from connection.py)
+    # =============================================================================
+    
+    async def execute(self, query: str, *args) -> str:
+        """
+        Execute a query and return the result.
+        
+        Args:
+            query: SQL query
+            *args: Query parameters
+            
+        Returns:
+            Query execution result
+        """
+        if not self._pool:
+            raise RuntimeError("DatabaseManager not initialized")
+        async with self._pool.acquire() as conn:
+            return await conn.execute(query, *args)
+    
+    async def fetch(self, query: str, *args) -> list:
+        """
+        Fetch multiple rows from a query.
+        
+        Args:
+            query: SQL query
+            *args: Query parameters
+            
+        Returns:
+            List of rows
+        """
+        if not self._pool:
+            raise RuntimeError("DatabaseManager not initialized")
+        async with self._pool.acquire() as conn:
+            return await conn.fetch(query, *args)
+    
+    async def fetchrow(self, query: str, *args) -> Optional[asyncpg.Record]:
+        """
+        Fetch a single row from a query.
+        
+        Args:
+            query: SQL query
+            *args: Query parameters
+            
+        Returns:
+            Single row or None
+        """
+        if not self._pool:
+            raise RuntimeError("DatabaseManager not initialized")
+        async with self._pool.acquire() as conn:
+            return await conn.fetchrow(query, *args)
+    
+    async def fetchval(self, query: str, *args) -> Any:
+        """
+        Fetch a single value from a query.
+        
+        Args:
+            query: SQL query
+            *args: Query parameters
+            
+        Returns:
+            Single value or None
+        """
+        if not self._pool:
+            raise RuntimeError("DatabaseManager not initialized")
+        async with self._pool.acquire() as conn:
+            return await conn.fetchval(query, *args)
+    
+    async def executemany(self, query: str, args_list: list) -> None:
+        """
+        Execute a query multiple times with different parameters.
+        
+        Optimized for batch inserts with minimal overhead.
+        
+        Args:
+            query: SQL query
+            args_list: List of parameter tuples
+        """
+        if not self._pool:
+            raise RuntimeError("DatabaseManager not initialized")
+        async with self._pool.acquire() as conn:
+            await conn.executemany(query, args_list)
+    
+    async def copy_records_to_table(self, table_name: str, records: list, columns: list) -> int:
+        """
+        High-performance bulk insert using COPY command.
+        
+        Most efficient method for large batch inserts.
+        
+        Args:
+            table_name: Target table name
+            records: List of record tuples
+            columns: List of column names
+            
+        Returns:
+            Number of records inserted
+        """
+        if not self._pool:
+            raise RuntimeError("DatabaseManager not initialized")
+        async with self._pool.acquire() as conn:
+            result = await conn.copy_records_to_table(
+                table_name, 
+                records=records,
+                columns=columns
+            )
+            return int(result.split()[-1])  # Extract count from "COPY N"
+    
+    async def get_connection_stats(self) -> Dict[str, Any]:
+        """
+        Get connection pool statistics.
+        
+        Returns:
+            Dictionary with pool statistics
+        """
+        if not self._pool:
+            return {}
+        
+        return {
+            'size': self._pool.get_size(),
+            'max_size': self._pool.get_max_size(),
+            'min_size': self._pool.get_min_size(),
+            'idle_size': self._pool.get_idle_size(),
+            'config': {
+                'host': self._config.host if self._config else None,
+                'database': self._config.database if self._config else None,
+                'max_queries': self._config.max_queries if self._config else None
+            }
+        }
     
     # =============================================================================
     # SYMBOL OPERATIONS (Cached)
@@ -800,10 +929,6 @@ class DatabaseManager:
                     ask_qty=float(row['ask_qty']),        # Float-only policy
                     timestamp=row['timestamp'],
                     created_at=row['created_at'],
-                    # Populate convenience fields from JOIN results
-                    exchange=row['exchange'],
-                    symbol_base=row['symbol_base'],
-                    symbol_quote=row['symbol_quote']
                 )
             )
         
@@ -820,7 +945,7 @@ class DatabaseManager:
         symbol_quote: Optional[str] = None,
         start_time: Optional[datetime] = None,
         end_time: Optional[datetime] = None,
-        limit: int = 10000
+        limit: Optional[int] = None
     ) -> "pd.DataFrame":
         """
         Get book ticker data as pandas DataFrame for HFT strategy analysis.
@@ -877,10 +1002,13 @@ class DatabaseManager:
             params.append(end_time)
             param_counter += 1
         
-        params.append(limit)
+        # params.append(limit)
         
         where_clause = "WHERE " + " AND ".join(where_conditions) if where_conditions else ""
-        
+
+
+        limit_clause = f'LIMIT ${limit}' if limit else ''
+
         # Use normalized schema with proper JOINs - no casting for maximum precision
         query = f"""
             SELECT 
@@ -897,7 +1025,7 @@ class DatabaseManager:
             INNER JOIN exchanges e ON s.exchange_id = e.id
             {where_clause}
             ORDER BY bts.timestamp DESC
-            LIMIT ${param_counter}
+            {limit_clause}
         """
         
         async with self._pool.acquire() as conn:
@@ -921,8 +1049,8 @@ class DatabaseManager:
             
             # Calculate mid_price and spread_bps in Python for maximum precision
             mid_price = (bid_price + ask_price) / 2.0
-            spread_bps = ((ask_price - bid_price) / mid_price) * 10000.0 if mid_price > 0 else 0.0
-            
+            spread_pct = ((ask_price - bid_price) / mid_price)  if mid_price > 0 else 0.0
+
             data.append({
                 'timestamp': row['timestamp'],
                 'exchange': row['exchange'],
@@ -933,7 +1061,7 @@ class DatabaseManager:
                 'ask_price': ask_price,
                 'ask_qty': ask_qty,
                 'mid_price': mid_price,
-                'spread_bps': spread_bps
+                'spread_pct': spread_pct
             })
         
         df = pd.DataFrame(data)
@@ -943,134 +1071,6 @@ class DatabaseManager:
         df.sort_index(inplace=True)
         
         return df
-    
-    async def get_aligned_market_data_dataframe(
-        self,
-        symbol_base: str,
-        symbol_quote: str,
-        exchanges: List[str],
-        start_time: datetime,
-        end_time: datetime,
-        alignment_window: str = "1S"
-    ) -> "pd.DataFrame":
-        """
-        Get time-aligned market data for multiple exchanges as single DataFrame.
-        
-        Uses normalized schema with proper JOINs for data consistency.
-        Optimized for strategy_backtester.py cross-exchange analysis.
-        Performs database-level alignment instead of post-processing.
-        Target: <5ms queries with high precision arithmetic.
-        
-        Args:
-            symbol_base: Base asset (e.g., "BTC")
-            symbol_quote: Quote asset (e.g., "USDT")
-            exchanges: List of exchange names (e.g., ["MEXC_SPOT", "GATEIO_SPOT"])
-            start_time: Start time for data
-            end_time: End time for data  
-            alignment_window: Time window for alignment (e.g., "1S", "5S", "1T")
-            
-        Returns:
-            pandas DataFrame with time-aligned data, columns prefixed by exchange name
-        """
-        if not PANDAS_AVAILABLE:
-            raise ImportError("pandas is required for DataFrame operations. Install with: pip install pandas")
-        
-        if not self._pool:
-            raise RuntimeError("DatabaseManager not initialized")
-        
-        # Convert alignment window to PostgreSQL interval
-        alignment_map = {
-            "1S": "1 second", "5S": "5 seconds", "10S": "10 seconds", "30S": "30 seconds",
-            "1T": "1 minute", "5T": "5 minutes", "15T": "15 minutes", "1H": "1 hour"
-        }
-        pg_interval = alignment_map.get(alignment_window, "1 second")
-        
-        # Build query for time-aligned data across exchanges using normalized schema
-        exchange_conditions = " OR ".join([f"e.enum_value = '{ex.upper()}'" for ex in exchanges])
-        
-        # Use normalized schema with proper JOINs for HFT performance
-        query = f"""
-            WITH time_buckets AS (
-                SELECT time_bucket(INTERVAL '{pg_interval}', bts.timestamp) as bucket_time
-                FROM book_ticker_snapshots bts
-                INNER JOIN symbols s ON bts.symbol_id = s.id
-                INNER JOIN exchanges e ON s.exchange_id = e.id
-                WHERE s.symbol_base = $1 
-                  AND s.symbol_quote = $2
-                  AND ({exchange_conditions})
-                  AND bts.timestamp BETWEEN $3 AND $4
-                GROUP BY bucket_time
-                ORDER BY bucket_time
-            ),
-            aligned_data AS (
-                SELECT 
-                    tb.bucket_time,
-                    e.enum_value as exchange,
-                    FIRST(bts.bid_price ORDER BY bts.timestamp DESC) as bid_price,
-                    FIRST(bts.bid_qty ORDER BY bts.timestamp DESC) as bid_qty,
-                    FIRST(bts.ask_price ORDER BY bts.timestamp DESC) as ask_price,
-                    FIRST(bts.ask_qty ORDER BY bts.timestamp DESC) as ask_qty
-                FROM time_buckets tb
-                LEFT JOIN book_ticker_snapshots bts ON 
-                    time_bucket(INTERVAL '{pg_interval}', bts.timestamp) = tb.bucket_time
-                INNER JOIN symbols s ON bts.symbol_id = s.id
-                INNER JOIN exchanges e ON s.exchange_id = e.id
-                WHERE s.symbol_base = $1 
-                  AND s.symbol_quote = $2
-                  AND ({exchange_conditions})
-                GROUP BY tb.bucket_time, e.enum_value
-            )
-            SELECT * FROM aligned_data
-            ORDER BY bucket_time, exchange
-        """
-        
-        async with self._pool.acquire() as conn:
-            rows = await conn.fetch(query, symbol_base.upper(), symbol_quote.upper(), start_time, end_time)
-        
-        if not rows:
-            return pd.DataFrame()
-        
-        # Convert Decimal objects to float with maximum precision preservation
-        data = []
-        # TODO: maybe this is not necessary, check and remove
-        for row in rows:
-            bid_price = float(row['bid_price']) if row['bid_price'] is not None else None
-            bid_qty = float(row['bid_qty']) if row['bid_qty'] is not None else None
-            ask_price = float(row['ask_price']) if row['ask_price'] is not None else None
-            ask_qty = float(row['ask_qty']) if row['ask_qty'] is not None else None
-            
-            # Calculate mid_price in Python for maximum precision
-            mid_price = None
-            if bid_price is not None and ask_price is not None:
-                mid_price = (bid_price + ask_price) / 2.0
-            
-            data.append({
-                'bucket_time': row['bucket_time'],
-                'exchange': row['exchange'],
-                'bid_price': bid_price,
-                'bid_qty': bid_qty,
-                'ask_price': ask_price,
-                'ask_qty': ask_qty,
-                'mid_price': mid_price
-            })
-        
-        df = pd.DataFrame(data)
-        
-        # Pivot to get exchange-specific columns
-        pivoted = df.pivot_table(
-            index='bucket_time',
-            columns='exchange', 
-            values=['bid_price', 'bid_qty', 'ask_price', 'ask_qty', 'mid_price'],
-            aggfunc='first'
-        )
-        
-        # Flatten column names (e.g., ('bid_price', 'MEXC_SPOT') -> 'MEXC_SPOT_bid_price')
-        pivoted.columns = [f"{col[1]}_{col[0]}" for col in pivoted.columns]
-        
-        # Fill forward missing values for continuous data
-        pivoted.fillna(method='ffill', inplace=True)
-        
-        return pivoted
     
     # =============================================================================
     # BALANCE OPERATIONS (Float-Only, HFT-Optimized)
@@ -1636,7 +1636,7 @@ class DatabaseManager:
 _database_manager: Optional[DatabaseManager] = None
 
 
-def get_database_manager() -> DatabaseManager:
+async def get_database_manager() -> DatabaseManager:
     """
     Get global DatabaseManager singleton instance.
     
@@ -1646,6 +1646,8 @@ def get_database_manager() -> DatabaseManager:
     global _database_manager
     if _database_manager is None:
         _database_manager = DatabaseManager()
+        await _database_manager.initialize()
+
     return _database_manager
 
 
@@ -1666,3 +1668,56 @@ async def close_database_manager() -> None:
     if _database_manager is not None:
         await _database_manager.close()
         _database_manager = None
+
+
+# =============================================================================
+# BACKWARD COMPATIBILITY ALIASES (from connection.py)
+# =============================================================================
+
+# Create aliases to maintain backward compatibility with connection.py
+def get_db_manager() -> DatabaseManager:
+    """
+    Get global database manager instance (compatibility alias).
+    
+    Returns:
+        DatabaseManager singleton instance
+    """
+    return get_database_manager()
+
+async def initialize_database(config) -> None:
+    """
+    Initialize global database manager and run pending migrations (compatibility alias).
+    
+    Args:
+        config: Database configuration (compatible with both DatabaseConfig and dict)
+    """
+    from config.config_manager import HftConfig
+    
+    # Handle both DatabaseConfig objects and legacy usage patterns
+    if hasattr(config, 'get_dsn'):
+        # It's already a DatabaseConfig, use it directly through HftConfig
+        pass
+    
+    # Initialize using the new pattern
+    db_manager = get_database_manager()
+    await db_manager.initialize()
+    
+    # Run pending migrations automatically (from connection.py pattern)
+    try:
+        from .migrations import run_all_pending_migrations as run_pending_migrations
+        migration_result = await run_pending_migrations()
+        
+        if migration_result['success']:
+            if migration_result['migrations_run']:
+                db_manager._logger.info(f"Applied {len(migration_result['migrations_run'])} database migrations")
+        else:
+            db_manager._logger.warning(f"Some migrations failed: {migration_result['migrations_failed']}")
+            
+    except Exception as e:
+        db_manager._logger.warning(f"Migration check failed: {e} - continuing without migrations")
+
+async def close_database() -> None:
+    """
+    Close global database manager (compatibility alias).
+    """
+    await close_database_manager()

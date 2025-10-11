@@ -340,13 +340,14 @@ See **[Caching Policy](specs/performance/caching-policy.md)** for complete safet
 - **[Configuration System](specs/configuration/README.md)** - Unified config management
 
 **Enhanced Database and Caching Infrastructure**:
-- **[Database Models](src/db/models.py)** - Normalized schema with foreign key relationships
+- **[Database Models](src/db/models.py)** - Normalized schema with foreign key relationships (NO transient fields)
 - **[Database Operations](src/db/operations.py)** - HFT-optimized CRUD operations with batch processing
 - **[Cache Infrastructure](src/db/cache.py)** - Sub-microsecond symbol cache with performance monitoring
 - **[Cache Operations](src/db/cache_operations.py)** - Convenience functions for cached lookups
 - **[Symbol Synchronization](src/db/symbol_sync.py)** - Automatic symbol discovery and database consistency
 - **[Exchange Synchronization](src/db/exchange_sync.py)** - Exchange metadata management
 - **[Database Schema](docker/init-db.sql)** - Complete normalized schema with TimescaleDB optimization
+- **[Normalized Architecture Guide](specs/database/normalized-architecture-guide.md)** - Complete guide to normalized design principles
 
 ### **Enhanced Database Schema with Normalized Architecture (October 2025)**
 
