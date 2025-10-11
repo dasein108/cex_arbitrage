@@ -1,5 +1,5 @@
 
-from db.database_manager import initialize_database_manager, close_database_manager
+from db.database_manager import close_database_manager
 import signal
 import asyncio
 import numpy as np
@@ -7,149 +7,13 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 import pandas as pd
 
-from exchanges.structs import Symbol, AssetName, ExchangeEnum
-from trading.analysis.data_loader import get_cached_book_ticker_data
-from datetime import datetime, timezone, timedelta
+from trading.research.data_utlis import load_market_data, group_spread_bins
+
 
 def _signal_handler(signum, frame):
     """Handle shutdown signals gracefully."""
     print(f"Received signal {signum}, initiating graceful shutdown...")
     asyncio.get_event_loop().run_until_complete(close_database_manager())
-
-
-async def load_market_data():
-    """Load market data with caching for both exchanges."""
-    # Use the actual data we have in database
-    end_date = datetime(2025, 10, 5, 12, 30, 0, tzinfo=timezone.utc)
-    start_date = datetime(2025, 10, 5, 12, 9, 0, tzinfo=timezone.utc)
-    symbol = Symbol(base=AssetName("MYX"), quote=AssetName("USDT"))  # Using MYX as it has most data
-    print(f"\n🎯 Symbol: {symbol}")
-    print(f"📅 Period: {start_date.strftime('%Y-%m-%d %H:%M')} to {end_date.strftime('%Y-%m-%d %H:%M')}")
-    exchange_spot = ExchangeEnum.GATEIO_FUTURES.value  # Using same exchange data for demo
-    exchange_futures = ExchangeEnum.GATEIO_FUTURES.value
-    print(f"🏦 Simulating arbitrage with: {exchange_spot} data at different times")
-
-    print("\n📊 Fetching market data from database...")
-
-    # Load spot data
-    spot_df = await get_cached_book_ticker_data(
-        exchange=exchange_spot,
-        symbol_base=symbol.base,
-        symbol_quote=symbol.quote,
-        start_time=start_date,
-        end_time=end_date
-    )
-
-    futures_df = await get_cached_book_ticker_data(
-        exchange=exchange_futures,
-        symbol_base=symbol.base,
-        symbol_quote=symbol.quote,
-        start_time=start_date,
-        end_time=end_date
-    )
-
-    def add_prefix_to_df_columns(df, prefix):
-        # Remove specified columns from spot_df and futures_df
-        columns_to_remove = ["exchange", "symbol_base", "symbol_quote"]
-
-        df = df.copy()
-        
-        # Set timestamp as index first
-        if 'timestamp' in df.columns:
-            df = df.set_index('timestamp')
-        
-        # Remove specified columns 
-        df = df.drop(columns=[col for col in columns_to_remove if col in df.columns], axis=1)
-        df.columns = [f"{prefix}{col}" for col in df.columns]
-        
-        if isinstance(df.index, pd.DatetimeIndex):
-            df.index = df.index.round("1s")
-
-        return df
-
-    # Add small artificial spread to simulate different exchanges (for demo purposes)
-    spot_df['bid_price'] = spot_df['bid_price'] * 1.0002  # Simulate slightly higher spot prices
-    spot_df['ask_price'] = spot_df['ask_price'] * 1.0002
-    futures_df['bid_price'] = futures_df['bid_price'] * 0.9998  # Simulate slightly lower futures prices
-    futures_df['ask_price'] = futures_df['ask_price'] * 0.9998
-    
-    spot_df = add_prefix_to_df_columns(spot_df, "spot_")
-    futures_df = add_prefix_to_df_columns(futures_df, "fut_")
-
-
-    # Load futures data
-    # Validate data
-    if spot_df.empty or futures_df.empty:
-        raise ValueError(f"Insufficient data: spot={len(spot_df)}, futures={len(futures_df)} records")
-
-    merged_df = spot_df.merge(
-        futures_df,
-        left_index=True,
-        right_index=True,
-        how="outer"
-    )
-    # merged_df.index = merged_df.index.round("1s")
-    print(f"  ✅ Loaded spot: {len(spot_df)}, futures: {len(futures_df)} merged: {len(merged_df)} data points")
-
-
-    return merged_df
-
-
-def group_spread_bins(series, step=0.02, threshold=50):
-    """
-    Create histogram bins and group adjacent bins with low counts.
-
-    Parameters:
-    -----------
-    series : pd.Series
-        The spread percentage data
-    step : float
-        Bin width (default: 0.01)
-    threshold : int
-        Minimum count threshold for grouping (default: 10)
-
-    Returns:
-    --------
-    grouped_values : np.array
-        Bin values (mean for grouped, original for others)
-    grouped_counts : np.array
-        Counts (sum for grouped, original for others)
-    """
-    # Create bins and histogram
-    bins = np.arange(series.min(), series.max() + step, step)
-    counts, bin_edges = np.histogram(series, bins=bins)
-
-    # Get non-empty bins (left edge of each bin)
-    mask = counts > 0
-    values = bin_edges[:-1][mask]
-    counts = counts[mask]
-
-    # Group adjacent low-count bins
-    grouped_values = []
-    grouped_counts = []
-
-    i = 0
-    while i < len(values):
-        if counts[i] < threshold:
-            # Group consecutive low-count bins
-            group_vals = [values[i]]
-            group_cnts = [counts[i]]
-
-            j = i + 1
-            while j < len(values) and counts[j] < threshold:
-                group_vals.append(values[j])
-                group_cnts.append(counts[j])
-                j += 1
-
-            grouped_values.append(np.mean(group_vals))
-            grouped_counts.append(sum(group_cnts))
-            i = j
-        else:
-            grouped_values.append(values[i])
-            grouped_counts.append(counts[i])
-            i += 1
-
-    return np.array(grouped_values), np.array(grouped_counts)
 
 
 def calculate_and_plot_profitable_entry_points(df, fees, ax):
