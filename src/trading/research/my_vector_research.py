@@ -25,22 +25,22 @@ def simple_arbitrage_backtest(df: pd.DataFrame, entry_signal: pd.Series, exit_si
     for _, row in signals.iterrows():
         time_diff = (row.name - entry_data['timestamp']).total_seconds() / 3600 if entry_data else 0
         
-        if position is None and entry_signal.loc[row.name].bool():
+        if position is None and bool(entry_signal.loc[row.name]):
             position = row['spot_fut_spread_prc']
             entry_data = {
                 'timestamp': row.name,
-                'spot_bid': row['spot_bid_price'],
-                'fut_ask': row['fut_ask_price'],
+                'spot_ask': row['spot_ask_price'],  # FIXED: We PAY spot_ask when buying spot
+                'fut_bid': row['fut_bid_price'],    # FIXED: We RECEIVE fut_bid when selling futures
                 'spread': position
             }
-        elif position is not None and (exit_signal.loc[row.name].bool() or time_diff >= 6):
+        elif position is not None and (bool(exit_signal.loc[row.name]) or time_diff >= 6):
             exit_spread = row['fut_spot_spread_prc']
             pnl = position - exit_spread
             trades.append({
-                'entry_spot_bid': entry_data['spot_bid'],
-                'entry_fut_ask': entry_data['fut_ask'],
-                'exit_fut_bid': row['fut_bid_price'],
-                'exit_spot_ask': row['spot_ask_price'],
+                'entry_spot_ask': entry_data['spot_ask'],  # FIXED: Price we PAY for spot
+                'entry_fut_bid': entry_data['fut_bid'],    # FIXED: Price we RECEIVE for futures
+                'exit_spot_bid': row['spot_bid_price'],    # FIXED: Price we RECEIVE when selling spot
+                'exit_fut_ask': row['fut_ask_price'],      # FIXED: Price we PAY when buying futures
                 'entry_spread': position,
                 'exit_spread': exit_spread,
                 'pnl': pnl,
@@ -52,7 +52,7 @@ def simple_arbitrage_backtest(df: pd.DataFrame, entry_signal: pd.Series, exit_si
 
 
 async def main():
-    symbol = Symbol(base=AssetName("LUNC"), quote=AssetName("USDT"))  # Using MYX as it has most data
+    symbol = Symbol(base=AssetName("F"), quote=AssetName("USDT"))  # Using MYX as it has most data
     date_to = datetime.datetime.utcnow()
     date_from = date_to - datetime.timedelta(hours=2)
     df = await load_market_data(symbol, date_from, date_to)
@@ -73,10 +73,10 @@ async def main():
     # Print trades table
     if trades:
         print(f"\n{'='*120}")
-        print(f"{'Trade':<5} {'Entry Spot Bid':<12} {'Entry Fut Ask':<12} {'Exit Fut Bid':<12} {'Exit Spot Ask':<12} {'Entry %':<8} {'Exit %':<8} {'PnL %':<8} {'Hours':<6}")
+        print(f"{'Trade':<5} {'Entry Spot Ask':<12} {'Entry Fut Bid':<12} {'Exit Spot Bid':<12} {'Exit Fut Ask':<12} {'Entry %':<8} {'Exit %':<8} {'PnL %':<8} {'Hours':<6}")
         print(f"{'='*120}")
         for i, t in enumerate(trades, 1):
-            print(f"{i:<5} {t['entry_spot_bid']:<12.6f} {t['entry_fut_ask']:<12.6f} {t['exit_fut_bid']:<12.6f} {t['exit_spot_ask']:<12.6f} {t['entry_spread']:<8.4f} {t['exit_spread']:<8.4f} {t['pnl']:<8.4f} {t['hours']:<6.2f}")
+            print(f"{i:<5} {t['entry_spot_ask']:<12.10f} {t['entry_fut_bid']:<12.10f} {t['exit_spot_bid']:<12.10f} {t['exit_fut_ask']:<12.10f} {t['entry_spread']:<8.4f} {t['exit_spread']:<8.4f} {t['pnl']:<8.4f} {t['hours']:<6.2f}")
         print(f"{'='*120}")
         print(f"Total Trades: {len(trades)}, Total PnL: {sum(t['pnl'] for t in trades):.4f}%")
     else:
