@@ -88,6 +88,9 @@ async def load_market_data(symbol: Symbol = None, start_date=None, end_date=None
         right_index=True,
         how="outer"
     )
+    
+    # Remove duplicate timestamps to avoid double-counting
+    merged_df = merged_df[~merged_df.index.duplicated(keep='first')]
     # merged_df.index = merged_df.index.round("1s")
     print(f"  ✅ Loaded spot: {len(spot_df)}, futures: {len(futures_df)} merged: {len(merged_df)} data points")
 

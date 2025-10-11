@@ -10,8 +10,8 @@ import numpy as np
 from datetime import datetime, timezone
 
 from src.trading.research.my_vector_research import get_trading_signals
-from trading.research.data_utlis import get_best_spread_bins
-from src.trading.research.data_utlis import load_market_data, DEFAULT_FEES_PER_TRADE
+from trading.research.trading_utlis import get_best_spread_bins
+from src.trading.research.trading_utlis import load_market_data, DEFAULT_FEES_PER_TRADE
 
 
 async def test_arbitrage_analysis():

@@ -2,7 +2,7 @@ import datetime
 from typing import Tuple
 
 from exchanges.structs import Symbol, AssetName
-from trading.research.data_utlis import load_market_data, add_calculations, \
+from trading.research.trading_utlis import load_market_data, add_calculations, \
     get_best_spread_bins, filter_outliers, calculate_mean_spreads
 import pandas as pd
 
@@ -14,6 +14,41 @@ def get_trading_signals(df: pd.DataFrame, entry_threshold: float = 0.2, exit_thr
     exit_signal = df['fut_spot_spread_prc'] < exit_threshold
 
     return entry_signal, exit_signal
+
+
+def simple_arbitrage_backtest(df: pd.DataFrame, entry_signal: pd.Series, exit_signal: pd.Series) -> list:
+    signals = df[entry_signal | exit_signal].copy()
+    # signals = signals[~signals.index.duplicated(keep='first')].copy()  # Remove duplicate indicesRetry
+
+    trades, position, entry_data = [], None, None
+    
+    for _, row in signals.iterrows():
+        time_diff = (row.name - entry_data['timestamp']).total_seconds() / 3600 if entry_data else 0
+        
+        if position is None and entry_signal.loc[row.name].bool():
+            position = row['spot_fut_spread_prc']
+            entry_data = {
+                'timestamp': row.name,
+                'spot_bid': row['spot_bid_price'],
+                'fut_ask': row['fut_ask_price'],
+                'spread': position
+            }
+        elif position is not None and (exit_signal.loc[row.name].bool() or time_diff >= 6):
+            exit_spread = row['fut_spot_spread_prc']
+            pnl = position - exit_spread
+            trades.append({
+                'entry_spot_bid': entry_data['spot_bid'],
+                'entry_fut_ask': entry_data['fut_ask'],
+                'exit_fut_bid': row['fut_bid_price'],
+                'exit_spot_ask': row['spot_ask_price'],
+                'entry_spread': position,
+                'exit_spread': exit_spread,
+                'pnl': pnl,
+                'hours': time_diff
+            })
+            position, entry_data = None, None
+    
+    return trades
 
 
 async def main():
@@ -32,9 +67,20 @@ async def main():
 
     entry_signal, exit_signal = get_trading_signals(df, entry_threshold=mean_entry, exit_threshold=mean_exit)
 
-    # TODO: add vectorbt backtesting here
-
-    print(f"entry: {mean_entry}, exit: {mean_exit}")
+    # Simple arbitrage backtester
+    trades = simple_arbitrage_backtest(df, entry_signal, exit_signal)
+    
+    # Print trades table
+    if trades:
+        print(f"\n{'='*120}")
+        print(f"{'Trade':<5} {'Entry Spot Bid':<12} {'Entry Fut Ask':<12} {'Exit Fut Bid':<12} {'Exit Spot Ask':<12} {'Entry %':<8} {'Exit %':<8} {'PnL %':<8} {'Hours':<6}")
+        print(f"{'='*120}")
+        for i, t in enumerate(trades, 1):
+            print(f"{i:<5} {t['entry_spot_bid']:<12.6f} {t['entry_fut_ask']:<12.6f} {t['exit_fut_bid']:<12.6f} {t['exit_spot_ask']:<12.6f} {t['entry_spread']:<8.4f} {t['exit_spread']:<8.4f} {t['pnl']:<8.4f} {t['hours']:<6.2f}")
+        print(f"{'='*120}")
+        print(f"Total Trades: {len(trades)}, Total PnL: {sum(t['pnl'] for t in trades):.4f}%")
+    else:
+        print("No trades executed")
 
 if __name__ == "__main__":
     import asyncio
