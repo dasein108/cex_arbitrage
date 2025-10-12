@@ -46,7 +46,7 @@ async def load_market_data(symbol: Symbol = None, start_date=None, end_date=None
         symbol = Symbol(base=AssetName("LUNC"), quote=AssetName("USDT"))  # Using MYX as it has most data
     print(f"📅 Symbol: {symbol} - Fetching market data from database - from {start_date.strftime('%Y-%m-%d %H:%M')} to {end_date.strftime('%Y-%m-%d %H:%M')}")
 
-    exchange_spot = ExchangeEnum.GATEIO_FUTURES.value  # Using same exchange data for demo
+    exchange_spot = ExchangeEnum.MEXC.value  # Using same exchange data for demo
     exchange_futures = ExchangeEnum.GATEIO_FUTURES.value
 
 
@@ -155,7 +155,7 @@ def group_spread_bins(series, step=0.02, threshold=50):
     return np.array(grouped_values), np.array(grouped_counts)
 
 
-def add_calculations(df: pd.DataFrame) -> pd.DataFrame:
+def add_spread_delta_calculations(df: pd.DataFrame) -> pd.DataFrame:
     df = df.copy()
     # entry spread
     df['spot_fut_spread_prc'] = ((df['spot_bid_price'] - df['fut_ask_price']) / df['spot_bid_price']) * 100.0

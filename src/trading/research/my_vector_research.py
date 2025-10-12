@@ -2,7 +2,7 @@ import datetime
 from typing import Tuple
 
 from exchanges.structs import Symbol, AssetName
-from trading.research.trading_utlis import load_market_data, add_calculations, \
+from trading.research.trading_utlis import load_market_data, add_spread_delta_calculations, \
     get_best_spread_bins, filter_outliers, calculate_mean_spreads
 import pandas as pd
 
@@ -65,11 +65,13 @@ def simple_arbitrage_backtest(df: pd.DataFrame, entry_signal: pd.Series, exit_si
 
 
 async def main():
-    symbol = Symbol(base=AssetName("F"), quote=AssetName("USDT"))  # Using MYX as it has most data
+    # 📅 Symbol: BICO/USDT - Fetching market data from database - from 2025-10-11 16:09 to 2025-10-11 18:09
+    # 📅 Symbol: BICO/USDT - Fetching market data from database - from 2025-10-11 16:16 to 2025-10-11 18:16 - not so good
+    symbol = Symbol(base=AssetName("XPIN"), quote=AssetName("USDT"))  # Using MYX as it has most data
     date_to = datetime.datetime.utcnow()
     date_from = date_to - datetime.timedelta(hours=2)
     df = await load_market_data(symbol, date_from, date_to)
-    df = add_calculations(df)
+    df = add_spread_delta_calculations(df)
     opportunities = get_best_spread_bins(df)
 
     # Step 2: Filter outliers for reliable data
