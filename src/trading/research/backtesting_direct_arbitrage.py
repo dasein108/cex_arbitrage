@@ -191,11 +191,11 @@ def print_trade_summary(trades: list):
 
 
 async def main():
-    symbol = Symbol(base=AssetName("HIFI"), quote=AssetName("USDT"))
-    # date_to = datetime.datetime.utcnow()
-    date_to = datetime.datetime.fromisoformat("2025-10-12 06:17").replace(tzinfo=datetime.timezone.utc)  # For consistent testing
+    symbol = Symbol(base=AssetName("F"), quote=AssetName("USDT"))
+    date_to = datetime.datetime.utcnow()
+    # date_to = datetime.datetime.fromisoformat("2025-10-12 06:17").replace(tzinfo=datetime.timezone.utc)  # For consistent testing
 
-    date_from = date_to - datetime.timedelta(hours=24)
+    date_from = date_to - datetime.timedelta(hours=8)
 
     print(f"{'=' * 80}")
     print(f"DELTA-NEUTRAL ARBITRAGE BACKTEST (No Stop-Loss)")

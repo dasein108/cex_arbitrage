@@ -236,6 +236,16 @@ class MexcGateioFuturesStrategy(BaseArbitrageStrategy[MexcGateioFuturesContext])
         # Exit threshold is already in percentage format, no conversion needed
         exit_threshold_pct = float(self.context.exit_threshold_pct)
         
+        # HARDCODED THRESHOLDS - Enhanced exit conditions
+        POSITION_AGE_LIMIT = 180.0    # Force exit after 3 minutes
+        
+        # Check position age - force exit if too old
+        if hasattr(self.context, 'position_start_time') and self.context.position_start_time:
+            position_age = time.time() - self.context.position_start_time
+            if position_age > POSITION_AGE_LIMIT:
+                self.logger.info(f"🕒 Force exit due to position age: {position_age:.1f}s > {POSITION_AGE_LIMIT}s")
+                return True
+        
         # Exit when spread falls below exit threshold (profit margin is too small)
         should_exit = current_exit_spread < exit_threshold_pct
         
@@ -285,6 +295,8 @@ class MexcGateioFuturesStrategy(BaseArbitrageStrategy[MexcGateioFuturesContext])
                 
                 if all(placed_orders.values()):
                     self.logger.info("✅ All exit orders placed successfully")
+                    # Reset position timing when all positions are closed
+                    self.evolve_context(position_start_time=None)
                 else:
                     self.logger.warning("⚠️ Some exit orders failed")
             
@@ -340,6 +352,23 @@ class MexcGateioFuturesStrategy(BaseArbitrageStrategy[MexcGateioFuturesContext])
         if not best_opportunity:
             return None
         
+        # TODO: DISABLED - THRESHOLDS - Volume and profit validation
+        # MIN_VOLUME_THRESHOLD = 500.0  # Minimum orderbook volume required
+        # MIN_PROFIT_THRESHOLD = 5.0    # Minimum expected profit in USDT
+        #
+        # # Check minimum volume availability on both sides
+        # available_volume = min(spot_ticker.ask_quantity, futures_ticker.bid_quantity) if best_opportunity['direction'] == 'spot_to_futures' else min(futures_ticker.ask_quantity, spot_ticker.bid_quantity)
+        # if available_volume < MIN_VOLUME_THRESHOLD:
+        #     self.logger.debug(f"Volume threshold not met: {available_volume:.2f} < {MIN_VOLUME_THRESHOLD}")
+        #     return None
+        
+        # Check minimum profit potential
+        # estimated_volume = min(float(self.context.base_position_size), available_volume)
+        # estimated_profit_usd = (best_opportunity['target_price'] - best_opportunity['primary_price']) * estimated_volume
+        # if estimated_profit_usd < MIN_PROFIT_THRESHOLD:
+        #     self.logger.debug(f"Profit threshold not met: {estimated_profit_usd:.2f} < {MIN_PROFIT_THRESHOLD}")
+        #     return None
+
         # If we have open positions, ensure we can still exit profitably
         if self.context.mexc_position != 0 or self.context.gateio_position != 0:
             # Use exit threshold for position closing (already in percentage format)
@@ -364,6 +393,14 @@ class MexcGateioFuturesStrategy(BaseArbitrageStrategy[MexcGateioFuturesContext])
         # Estimate profit using actual executable prices
         quantity = min(float(self.context.base_position_size), max_quantity)
         estimated_profit = (best_opportunity['target_price'] - best_opportunity['primary_price']) * quantity
+        
+        # TODO: DISABLED - HARDCODED THRESHOLDS - Time-based constraints
+        # MIN_TIME_BETWEEN_TRADES = 10.0  # Minimum seconds between trades
+        #
+        # # Check minimum time between trades
+        # if hasattr(self, '_last_trade_time') and (time.time() - self._last_trade_time) < MIN_TIME_BETWEEN_TRADES:
+        #     self.logger.debug(f"Time threshold not met: {time.time() - self._last_trade_time:.1f}s < {MIN_TIME_BETWEEN_TRADES}s")
+        #     return None
         
         return ArbitrageOpportunity(
             primary_exchange=best_opportunity['primary_exchange'],
@@ -517,6 +554,11 @@ class MexcGateioFuturesStrategy(BaseArbitrageStrategy[MexcGateioFuturesContext])
             
             if mexc_order and gateio_order:
                 self.logger.info(f"✅ Both arbitrage orders placed successfully")
+                # Track trade timing for minimum time constraints
+                self._last_trade_time = time.time()
+                # Track position start time for age limits
+                if not hasattr(self.context, 'position_start_time') or self.context.position_start_time is None:
+                    self.evolve_context(position_start_time=time.time())
                 # Update performance metrics
                 self.evolve_context(
                     arbitrage_cycles=self.context.arbitrage_cycles + 1,

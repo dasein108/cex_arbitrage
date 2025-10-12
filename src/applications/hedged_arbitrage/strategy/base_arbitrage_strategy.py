@@ -13,6 +13,7 @@ This framework supports:
 """
 
 import asyncio
+import datetime
 from abc import ABC, abstractmethod
 from typing import Dict, List, Optional, Type, Union, Callable, Any, TypeVar, Generic
 from enum import IntEnum
@@ -88,7 +89,7 @@ class ArbitrageTaskContext(TaskContext):
     positions: Dict[str, float] = msgspec.field(default_factory=dict)  # exchange_key -> position_size
     avg_prices: Dict[str, float] = msgspec.field(default_factory=dict)  # exchange_key -> avg_price
     unrealized_pnl: Dict[str, float] = msgspec.field(default_factory=dict)  # exchange_key -> pnl
-    
+    position_start_time:Optional[datetime.datetime] = None
     # Current opportunity
     current_opportunity: Optional[ArbitrageOpportunity] = None
     opportunity_start_time: Optional[float] = None

@@ -1,11 +1,13 @@
 """
 Multi-Position Delta-Neutral Arbitrage Strategy
 Supports parallel positions with smart entry/exit timing
+
+FIXED: Proper handling of warmup period and NaN values
 """
 
 import datetime
 from typing import Optional, List, Dict, Tuple
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 import numpy as np
 
 from exchanges.structs import Symbol, AssetName
@@ -83,22 +85,41 @@ class PositionManager:
 class SmartEntryExit:
     """Intelligent entry/exit timing based on spread statistics"""
     
-    def __init__(self, lookback_period: int = 500):
+    def __init__(self, lookback_period: int = 500, min_warmup: int = 100):
         self.lookback_period = lookback_period
+        self.min_warmup = min_warmup  # Minimum data points before trading
     
     def calculate_spread_stats(self, df: pd.DataFrame, 
                                current_idx: int) -> Optional[Dict[str, float]]:
+        """Calculate spread statistics from historical data"""
+        
+        # Need minimum warmup period
+        if current_idx < self.min_warmup:
+            return None
+        
         start_idx = max(0, current_idx - self.lookback_period)
         historical_spreads = df['entry_cost_pct'].iloc[start_idx:current_idx]
+        
+        # Filter out NaN values
+        historical_spreads = historical_spreads.dropna()
         
         if len(historical_spreads) < 50:
             return None
         
         current_spread = df['entry_cost_pct'].iloc[current_idx]
         
+        # Check for NaN in current spread
+        if pd.isna(current_spread):
+            return None
+        
         mean = historical_spreads.mean()
         std = historical_spreads.std()
-        zscore = (current_spread - mean) / (std + 1e-10)
+        
+        # Check for invalid std
+        if pd.isna(std) or std < 1e-10:
+            return None
+        
+        zscore = (current_spread - mean) / std
         percentile = (historical_spreads < current_spread).mean() * 100
         volatility = std
         
@@ -114,8 +135,13 @@ class SmartEntryExit:
     def should_enter(self, df: pd.DataFrame, current_idx: int,
                     min_zscore: float = -1.0,
                     max_entry_cost: float = 0.5) -> Tuple[bool, Optional[Dict]]:
+        """
+        Determine if we should enter a position.
+        Returns (should_enter, stats_dict)
+        """
         stats = self.calculate_spread_stats(df, current_idx)
         
+        # No stats = not enough data yet
         if stats is None:
             return False, None
         
@@ -123,12 +149,19 @@ class SmartEntryExit:
         zscore = stats['zscore']
         percentile = stats['percentile']
         
+        # Check for NaN in calculated values
+        if pd.isna(zscore) or pd.isna(percentile):
+            return False, stats
+        
+        # Criteria 1: Absolute threshold
         if current_spread >= max_entry_cost:
             return False, stats
         
+        # Criteria 2: Z-score (spread is significantly cheap)
         if zscore >= min_zscore:
             return False, stats
         
+        # Criteria 3: Percentile (in bottom 30%)
         if percentile >= 30:
             return False, stats
         
@@ -139,6 +172,12 @@ class SmartEntryExit:
                    min_profit_pct: float = 0.1,
                    trailing_stop_pct: float = 0.05,
                    profit_acceleration: bool = True) -> Tuple[bool, str, float]:
+        """
+        Determine if we should exit a position.
+        Returns (should_exit, reason, current_pnl_pct)
+        """
+        
+        # Calculate current P&L
         entry_spot_cost = position.entry_spot_ask * (1 + spot_fee)
         entry_fut_receive = position.entry_fut_bid * (1 - fut_fee)
         exit_spot_receive = current_row['spot_bid_price'] * (1 - spot_fee)
@@ -151,28 +190,37 @@ class SmartEntryExit:
         capital = entry_spot_cost
         net_pnl_pct = (total_pnl / capital) * 100
         
+        # Update max P&L seen
         if net_pnl_pct > position.max_pnl_seen:
             position.max_pnl_seen = net_pnl_pct
         
+        # Calculate holding time
         hours_held = (current_row.name - position.entry_time).total_seconds() / 3600
         
+        # DYNAMIC PROFIT TARGET based on holding time
         if profit_acceleration and hours_held > 1.0:
             time_factor = min(hours_held / 6.0, 1.0)
             adjusted_profit_target = min_profit_pct * (1 - 0.5 * time_factor)
         else:
             adjusted_profit_target = min_profit_pct
         
+        # EXIT LOGIC
+        
+        # 1. Profit target (dynamic)
         if net_pnl_pct >= adjusted_profit_target:
             return True, 'profit_target', net_pnl_pct
         
+        # 2. Trailing stop (lock in profits)
         if position.max_pnl_seen >= min_profit_pct:
             pullback = position.max_pnl_seen - net_pnl_pct
             if pullback >= trailing_stop_pct:
                 return True, 'trailing_stop', net_pnl_pct
         
+        # 3. Timeout with minimum acceptable profit
         if hours_held >= 6.0 and net_pnl_pct >= -0.05:
             return True, 'timeout', net_pnl_pct
         
+        # 4. Emergency exit (spread went very wrong)
         if net_pnl_pct < -0.5:
             return True, 'emergency_exit', net_pnl_pct
         
@@ -189,19 +237,32 @@ def multi_position_backtest(
     min_profit_pct: float = 0.1,
     trailing_stop_pct: float = 0.05,
     spot_fee: float = 0.0005,
-    fut_fee: float = 0.0005
+    fut_fee: float = 0.0005,
+    min_warmup: int = 100
 ) -> List[Dict]:
+    """
+    Multi-position backtest with intelligent entry/exit.
+    
+    Args:
+        min_warmup: Minimum data points before starting to trade (default 100)
+    """
+    
+    # Calculate entry cost for the entire dataframe
     df['entry_cost_pct'] = ((df['spot_ask_price'] - df['fut_bid_price']) / 
                              df['spot_ask_price']) * 100
     
     manager = PositionManager(total_capital, max_positions, capital_per_position)
-    entry_exit = SmartEntryExit(lookback_period=500)
+    entry_exit = SmartEntryExit(lookback_period=500, min_warmup=min_warmup)
     
     completed_trades = []
     
+    print(f"⏳ Warming up (need {min_warmup} data points before trading)...")
+    
+    # Iterate through data
     for idx in range(len(df)):
         row = df.iloc[idx]
         
+        # CHECK EXITS for all open positions
         positions_to_close = []
         
         for position in manager.positions:
@@ -211,6 +272,7 @@ def multi_position_backtest(
             )
             
             if should_exit:
+                # Calculate final execution prices
                 entry_spot_cost = position.entry_spot_ask * (1 + spot_fee)
                 entry_fut_receive = position.entry_fut_bid * (1 - fut_fee)
                 exit_spot_receive = row['spot_bid_price'] * (1 - spot_fee)
@@ -251,12 +313,17 @@ def multi_position_backtest(
                 
                 positions_to_close.append(position)
         
+        # Close positions
         for position in positions_to_close:
             manager.close_position(position)
         
+        # CHECK ENTRY for new positions
         should_enter, stats = entry_exit.should_enter(
             df, idx, entry_zscore_threshold, max_entry_cost
         )
+        
+        if idx == min_warmup:
+            print(f"✅ Warmup complete! Starting to look for trades at index {idx}")
         
         if should_enter and stats:
             position = manager.open_position(
@@ -276,8 +343,13 @@ def multi_position_backtest(
 
 
 def print_multi_position_summary(trades: List[Dict]):
+    """Print comprehensive summary of multi-position backtest"""
     if not trades:
         print("\n❌ No trades executed")
+        print("\nPossible reasons:")
+        print("  1. Entry criteria too strict (try entry_zscore_threshold=-0.5)")
+        print("  2. Not enough data points (need 100+ for warmup)")
+        print("  3. Spreads never favorable enough")
         return
     
     df = pd.DataFrame(trades)
@@ -311,7 +383,7 @@ def print_multi_position_summary(trades: List[Dict]):
               f"(avg P&L: {subset['net_pnl_pct'].mean():>7.4f}%, "
               f"win rate: {(subset['net_pnl_pct'] > 0).mean()*100:.1f}%)")
     
-    print(f"\n📋 SAMPLE TRADES:")
+    print(f"\n📋 SAMPLE TRADES (first 5 and last 5):")
     print(f"{'-'*180}")
     print(f"{'ID':<4} {'Entry':<20} {'Exit':<20} "
           f"{'Entry Spread':<13} {'Z-Score':<9} "
@@ -319,7 +391,7 @@ def print_multi_position_summary(trades: List[Dict]):
           f"{'P&L %':<10} {'Hrs':<6} {'Reason':<15}")
     print(f"{'-'*180}")
     
-    sample = pd.concat([df.head(5), df.tail(5)])
+    sample = pd.concat([df.head(5), df.tail(5)]) if len(df) > 10 else df
     
     for _, t in sample.iterrows():
         marker = '✅' if t['net_pnl_pct'] > 0 else '❌'
@@ -334,10 +406,10 @@ def print_multi_position_summary(trades: List[Dict]):
 async def main():
     symbol = Symbol(base=AssetName("HIFI"), quote=AssetName("USDT"))
     date_to = datetime.datetime.utcnow()
-    date_from = date_to - datetime.timedelta(hours=24)
+    date_from = date_to - datetime.timedelta(hours=8)
     
     print(f"{'='*80}")
-    print(f"MULTI-POSITION DELTA-NEUTRAL ARBITRAGE")
+    print(f"MULTI-POSITION DELTA-NEUTRAL ARBITRAGE (FIXED)")
     print(f"{'='*80}")
     print(f"Symbol: {symbol.base}/{symbol.quote}")
     print(f"Period: {date_from} to {date_to}")
@@ -350,20 +422,22 @@ async def main():
     print("🚀 Running multi-position backtest...")
     print(f"   Max positions: 5")
     print(f"   Capital per position: 20% ($2000)")
-    print(f"   Entry z-score threshold: -1.0")
-    print(f"   Min profit target: 0.1%\n")
+    print(f"   Entry z-score threshold: -1.0 (1 std below mean)")
+    print(f"   Min profit target: 0.1%")
+    print(f"   Warmup period: 100 data points\n")
     
     trades = multi_position_backtest(
         df,
         total_capital=10000.0,
         max_positions=5,
         capital_per_position=0.2,
-        entry_zscore_threshold=-1.0,
+        entry_zscore_threshold=-1.0,  # Try -0.5 if no trades
         max_entry_cost=0.5,
         min_profit_pct=0.1,
         trailing_stop_pct=0.05,
         spot_fee=0.0005,
-        fut_fee=0.0005
+        fut_fee=0.0005,
+        min_warmup=100
     )
     
     print_multi_position_summary(trades)
