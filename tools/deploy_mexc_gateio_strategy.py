@@ -299,7 +299,7 @@ class StrategyDeployer:
             # Create strategy
             self.strategy = await create_mexc_gateio_strategy(
                 symbol=symbol,
-                base_position_size=self.config.base_position_size,
+                base_position_size_usdt=self.config.base_position_size,
                 entry_threshold_bps=self.config.entry_threshold_bps,
                 exit_threshold_bps=self.config.exit_threshold_bps,
                 futures_leverage=self.config.futures_leverage

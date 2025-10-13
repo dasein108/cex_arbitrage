@@ -75,7 +75,7 @@ async def quick_start_demo():
         # Create strategy
         strategy = await create_mexc_gateio_strategy(
             symbol=symbol,
-            base_position_size=base_position_size,
+            base_position_size_usdt=base_position_size,
             entry_threshold_bps=entry_threshold_bps,
             exit_threshold_bps=exit_threshold_bps,
             futures_leverage=futures_leverage

@@ -8,7 +8,8 @@ pattern used in composite exchanges, supporting both REST and WebSocket clients.
 from typing import TypeVar, Union
 
 # Import base interfaces for type constraints
-from exchanges.interfaces.rest import PublicSpotRestInterface, PrivateSpotRestInterface
+from exchanges.interfaces.rest import (PublicSpotRestInterface, PrivateSpotRestInterface,
+                                       PublicFuturesRestInterface, PrivateFuturesRestInterface)
 from exchanges.interfaces.ws import PrivateBaseWebsocket, PublicBaseWebsocket
 
 
@@ -17,8 +18,8 @@ RestClientType = TypeVar('RestClientType')
 WebSocketClientType = TypeVar('WebSocketClientType')
 
 # Specific type variables for spot operations with proper bounds
-PublicRestType = TypeVar('PublicRestType', bound=PublicSpotRestInterface)
-PrivateRestType = TypeVar('PrivateRestType', bound=PrivateSpotRestInterface)
+PublicRestType = TypeVar('PublicRestType', bound=Union[PublicSpotRestInterface, PublicFuturesRestInterface])
+PrivateRestType = TypeVar('PrivateRestType', bound=Union[PrivateSpotRestInterface, PrivateFuturesRestInterface])
 PublicWebsocketType = TypeVar('PublicWebsocketType', bound=PublicBaseWebsocket)
 PrivateWebsocketType = TypeVar('PrivateWebsocketType', bound=PrivateBaseWebsocket)
 

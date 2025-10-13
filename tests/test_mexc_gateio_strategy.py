@@ -97,7 +97,7 @@ class TestMexcGateioStrategy:
         # Verify basic properties
         assert strategy.name == "MexcGateioFuturesStrategy"
         assert strategy.context.symbol == symbol
-        assert strategy.context.base_position_size == 10.0
+        assert strategy.context.base_position_size_usdt == 10.0
         assert strategy.context.futures_leverage == 1.0
         
         # Verify context type
@@ -315,7 +315,7 @@ class TestMexcGateioStrategy:
         )
         
         # Position size should be limited by max_position_multiplier
-        max_allowed = strategy.context.base_position_size * strategy.context.max_position_multiplier
+        max_allowed = strategy.context.base_position_size_usdt * strategy.context.max_position_multiplier
         # calculated_size = min(strategy.context.base_position_size, large_opportunity.max_quantity)
         # assert calculated_size <= max_allowed
     
@@ -386,18 +386,18 @@ class TestMexcGateioStrategy:
         # Test valid configuration
         valid_strategy = MexcGateioFuturesStrategy(
             symbol=symbol,
-            base_position_size=100.0,
+            base_position_size_usdt=100.0,
             entry_threshold_bps=10,
             exit_threshold_bps=3,
             logger=logger
         )
-        assert valid_strategy.context.base_position_size == 100.0
+        assert valid_strategy.context.base_position_size_usdt == 100.0
         
         # Test invalid configuration (exit threshold > entry threshold)
         with pytest.raises(ValueError):
             MexcGateioFuturesStrategy(
                 symbol=symbol,
-                base_position_size=100.0,
+                base_position_size_usdt=100.0,
                 entry_threshold_bps=5,   # Lower than exit
                 exit_threshold_bps=10,   # Higher than entry
                 logger=logger
@@ -406,7 +406,7 @@ class TestMexcGateioStrategy:
     def test_float_only_compliance(self, strategy):
         """Test that all numerical fields use float (not Decimal)."""
         # Verify context uses float types
-        assert isinstance(strategy.context.base_position_size, float)
+        assert isinstance(strategy.context.base_position_size_usdt, float)
         assert isinstance(strategy.context.futures_leverage, float)
         assert isinstance(strategy.context.mexc_position, float)
         assert isinstance(strategy.context.gateio_position, float)

@@ -19,7 +19,7 @@ def get_decrease_vector(side: Side, tick: int = 1) -> int:
 
 def calculate_weighted_price(price1: float, quantity1: float, price2: float, quantity2: float) -> tuple[float, float]:
     previous_filled = quantity1
-    previous_cost = price1 * previous_filled if previous_filled > 0 else 0.0
+    previous_cost = price1 * previous_filled if previous_filled > 1e-8 else 0.0
 
     # New order cost = price2 * quantity2
     new_order_cost = price2 * quantity2

@@ -79,15 +79,21 @@ class GateioPrivateFuturesWebsocket(GateioBaseWebsocket, PrivateBaseWebsocket):
             "channel": channel_name,
             "event": event
         }
+        
         if channel in [WebsocketChannelType.TICKER]:
             raise NotImplementedError("TODO: Implement ticker subscription for futures if needed")
 
-        # Add payload for channels that require it
-        # futures.orders and futures.positions accept ["!all"] to subscribe to all updates
+        # Add payload for channels that require it based on Gate.io futures documentation
+        if channel == WebsocketChannelType.BALANCE:
+            # futures.balances requires only user_id in payload: ["user_id"]
+            # #kwargs.get('user_id', "20011")  # Default user_id
+            user_id = '11789588' #TODO: hardcoded move to .env
+            message["payload"] = [user_id]
         elif channel in [WebsocketChannelType.ORDER, WebsocketChannelType.POSITION]:
+            # futures.orders and futures.positions accept ["!all"] to subscribe to all updates
             message["payload"] = ["!all"]  # Subscribe to all updates
-        # futures.usertrades requires specific contract format like ["user_id", "BTC_USD"]
         elif channel == WebsocketChannelType.EXECUTION:
+            # futures.usertrades requires specific contract format like ["user_id", "BTC_USD"]
             # Get user_id and contracts from kwargs or use defaults
             # user_id = kwargs.get('user_id', "20011")  # Default user_id
             # contracts = kwargs.get('contracts', ["BTC_USD", "ETH_USD"])

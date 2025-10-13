@@ -267,7 +267,7 @@ async def production_example(config: ProductionConfig):
         # Create strategy
         strategy = await create_mexc_gateio_strategy(
             symbol=symbol,
-            base_position_size=config.base_position_size,
+            base_position_size_usdt=config.base_position_size,
             entry_threshold_bps=config.entry_threshold_bps,
             exit_threshold_bps=config.exit_threshold_bps,
             futures_leverage=config.futures_leverage

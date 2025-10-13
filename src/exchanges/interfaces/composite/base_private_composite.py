@@ -332,6 +332,17 @@ class BasePrivateComposite(BalanceSyncMixin,
 
     # Order lifecycle management
 
+    def get_orders_by_symbol(self, symbol: Symbol) -> Dict[OrderId, Order]:
+        """Get order by ID from unified storage.
+
+        Args:
+            symbol: Trading symbol
+
+        Returns:
+            Orders by symbol
+        """
+        return {o.order_id: o for o in self._orders.values() if o.symbol == symbol}
+
     def get_order(self, order_id: OrderId) -> Optional[Order]:
         """Get order by ID from unified storage.
         

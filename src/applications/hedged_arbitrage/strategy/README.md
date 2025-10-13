@@ -101,10 +101,10 @@ symbol = Symbol(base=AssetName("ETH"), quote=AssetName("USDT"))
 # Create and configure strategy
 strategy = await create_mexc_gateio_strategy(
     symbol=symbol,
-    base_position_size=100.0,
+    base_position_size_usdt=100.0,
     entry_threshold_bps=10,  # 0.1% minimum spread
-    exit_threshold_bps=3,    # 0.03% exit threshold
-    futures_leverage=1.0     # Conservative leverage
+    exit_threshold_bps=3,  # 0.03% exit threshold
+    futures_leverage=1.0  # Conservative leverage
 )
 
 # Start strategy execution

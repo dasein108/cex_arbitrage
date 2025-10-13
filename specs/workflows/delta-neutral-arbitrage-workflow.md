@@ -88,9 +88,10 @@ The delta neutral arbitrage strategy coordinates between three exchanges:
 5. Initialize delta tracking
 
 **Delta Neutral Logic**:
+
 ```python
 # Position Calculation
-spot_position_size = config.base_position_size
+spot_position_size = config.base_position_size_usdt
 futures_position_size = spot_position_size  # 1:1 hedge ratio
 
 # Delta Calculation
@@ -169,6 +170,7 @@ if spread_pct >= config.arbitrage_entry_threshold_pct:
 5. **Risk Assessment**: Validate execution risks
 
 **Risk Checks**:
+
 ```python
 # Profitability Validation
 estimated_pnl = calculate_arbitrage_pnl(opportunity, position_size)
@@ -177,7 +179,7 @@ if estimated_pnl.net_profit <= 0:
 
 # Position Size Limits
 max_position = min(
-    config.base_position_size * config.max_position_multiplier,
+    config.base_position_size_usdt * config.max_position_multiplier,
     available_capital_limit
 )
 ```

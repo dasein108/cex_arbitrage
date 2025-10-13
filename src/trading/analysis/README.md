@@ -230,7 +230,7 @@ from src.applications.hedged_arbitrage.strategy.mexc_gateio_futures_strategy imp
 # Create strategy context for backtesting
 strategy_context = MexcGateioFuturesContext(
     symbol=symbol,
-    base_position_size=100.0,
+    base_position_size_usdt=100.0,
     entry_threshold_pct=0.5
 )
 

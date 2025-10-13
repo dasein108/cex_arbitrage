@@ -6,12 +6,14 @@ import datetime
 from exchanges.structs import Symbol, AssetName
 from trading.research.trading_utlis import load_market_data
 import pandas as pd
-
+from trading.research.cost_utils import (calculate_spread_statistics, optimize_parameters_statistical,
+                                         optimize_parameters_risk_adjusted, compare_parameter_approaches,
+                                         print_optimization_summary)
 
 async def analyze_spreads():
     symbol = Symbol(base=AssetName("HIFI"), quote=AssetName("USDT"))
     date_to = datetime.datetime.utcnow()
-    date_from = date_to - datetime.timedelta(hours=24)
+    date_from = date_to - datetime.timedelta(hours=8)
     
     print(f"Loading data for {symbol.base}/{symbol.quote}...")
     df = await load_market_data(symbol, date_from, date_to)
@@ -104,6 +106,14 @@ async def analyze_spreads():
         print(f"✅ REVERSE STRATEGY is better!")
         print(f"   Profitable entries: {profitable_reverse.mean()*100:.1f}%")
 
+        print(calculate_spread_statistics(df))
+        # stat_result = optimize_parameters_statistical(df)
+        # risk_adjusted = optimize_parameters_risk_adjusted(df)
+        compare_approaches = compare_parameter_approaches(df)
+        print_optimization_summary(compare_approaches)
+# calculate_spread_statistics, optimize_parameters_statistical,
+#                                          optimize_parameters_risk_adjusted, compare_parameter_approaches,
+#                                          print_optimization_summary
 
 if __name__ == "__main__":
     import asyncio

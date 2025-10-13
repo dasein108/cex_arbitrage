@@ -22,8 +22,7 @@ class DualExchange:
         """
         self.config = config
         self.logger = logger or get_logger(f'dual_exchange.{config.name.lower()}')
-        self.private: BasePrivateComposite = get_composite_implementation(config, is_private=True,
-                                                                          balance_sync_interval=30)
+        self.private = get_composite_implementation(config, is_private=True, balance_sync_interval=30)
         self.public: BasePublicComposite = get_composite_implementation(config, is_private=False,
                                                                         balance_sync_interval=30)
         self.adapter_private = BindedEventHandlersAdapter(self.logger).bind_to_exchange(self.private)

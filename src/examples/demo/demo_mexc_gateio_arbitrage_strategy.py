@@ -52,7 +52,7 @@ async def main():
     # Create strategy using the simplified factory function
     strategy = await create_mexc_gateio_strategy(
         symbol=symbol,
-        base_position_size=10.0,
+        base_position_size_usdt=10.0,
         entry_threshold_pct=0.007,
         exit_threshold_pct=0.005,
         futures_leverage=1.0

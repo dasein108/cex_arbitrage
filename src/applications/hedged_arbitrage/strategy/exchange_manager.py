@@ -13,7 +13,7 @@ Features:
 """
 
 import asyncio
-from typing import Dict, List, Optional, Callable, Any
+from typing import Dict, List, Optional, Callable, Any, Literal
 # Float-only policy - no Decimal imports per PROJECT_GUIDES.md
 import time
 from enum import Enum
@@ -27,6 +27,7 @@ from config.config_manager import get_exchange_config
 
 from applications.hedged_arbitrage.strategy.base_arbitrage_strategy import ExchangeRole
 
+ArbitrageExchangeType = Literal['spot', 'futures']
 
 class ExchangeStatus(Enum):
     """Exchange connection status."""
@@ -53,7 +54,7 @@ class OrderPlacementParams(Struct, frozen=True):
 
 class ExchangeBalanceSummary(Struct, frozen=True):
     """Balance summary for a single exchange with AssetBalance structs."""
-    role_key: str
+    role_key: ArbitrageExchangeType
     balances: Dict[str, AssetBalance]  # asset_name -> AssetBalance
 
 
@@ -126,9 +127,9 @@ class ExchangeManager:
     - HFT-optimized parallel operations
     """
     
-    def __init__(self, 
+    def __init__(self,
                  symbol: Symbol,
-                 exchange_roles: Dict[str, ExchangeRole],
+                 exchange_roles: Dict[ArbitrageExchangeType, ExchangeRole],
                  logger: HFTLoggerInterface):
         """Initialize exchange manager.
         
@@ -142,21 +143,21 @@ class ExchangeManager:
         self.logger = logger
         
         # Exchange instances and tracking
-        self._exchanges: Dict[str, DualExchange] = {}
-        self._metrics: Dict[str, ExchangeMetrics] = {}
-        self._status: Dict[str, ExchangeStatus] = {}
+        self._exchanges: Dict[ArbitrageExchangeType, DualExchange] = {}
+        self._metrics: Dict[ArbitrageExchangeType, ExchangeMetrics] = {}
+        self._status: Dict[ArbitrageExchangeType, ExchangeStatus] = {}
         
         # Event management
         self.event_bus = ExchangeEventBus(logger)
         
         # Market data (fresh, no caching per HFT policy)
-        self._book_tickers: Dict[str, BookTicker] = {}
-        self._active_orders: Dict[str, List[Order]] = {}
+        self._book_tickers: Dict[ArbitrageExchangeType, BookTicker] = {}
+        self._active_orders: Dict[ArbitrageExchangeType, List[Order]] = {}
         
         # Balance tracking and monitoring
-        self._current_balances: Dict[str, List[AssetBalance]] = {}
+        self._current_balances: Dict[ArbitrageExchangeType, List[AssetBalance]] = {}
         self._balance_alerts_enabled: bool = True
-        self._min_balance_thresholds: Dict[str, float] = {}  # Per-asset minimum thresholds
+        self._min_balance_thresholds: Dict[ArbitrageExchangeType, float] = {}  # Per-asset minimum thresholds
         
         # Performance tracking
         self._initialization_time: Optional[float] = None
@@ -206,7 +207,7 @@ class ExchangeManager:
             self.logger.error(f"Exchange manager initialization failed: {e}")
             return False
     
-    async def _initialize_exchange(self, role_key: str, exchange: DualExchange) -> bool:
+    async def _initialize_exchange(self, role_key: ArbitrageExchangeType, exchange: DualExchange) -> bool:
         """Initialize a single exchange with error handling."""
         try:
             init_start = time.time()
@@ -250,7 +251,7 @@ class ExchangeManager:
         await asyncio.gather(*binding_tasks)
         self.logger.info(f"✅ Event handlers bound for {len(self._exchanges)} exchanges")
     
-    def _create_book_ticker_handler(self, role_key: str):
+    def _create_book_ticker_handler(self, role_key: ArbitrageExchangeType):
         """Create book ticker handler for specific exchange."""
         async def handle_book_ticker(book_ticker: BookTicker):
             if book_ticker.symbol == self.symbol:
@@ -266,7 +267,7 @@ class ExchangeManager:
         
         return handle_book_ticker
     
-    def _create_order_handler(self, role_key: str):
+    def _create_order_handler(self, role_key: ArbitrageExchangeType):
         """Create order handler for specific exchange."""
         async def handle_order(order: Order):
             if order.symbol == self.symbol:
@@ -291,7 +292,7 @@ class ExchangeManager:
         
         return handle_order
     
-    def _create_balance_handler(self, role_key: str):
+    def _create_balance_handler(self, role_key: ArbitrageExchangeType):
         """Create balance handler with monitoring and alerts."""
         async def handle_balance(balance: AssetBalance):
             # Update balance cache for validation purposes
@@ -316,7 +317,7 @@ class ExchangeManager:
         
         return handle_balance
     
-    def _create_position_handler(self, role_key: str):
+    def _create_position_handler(self, role_key: ArbitrageExchangeType):
         """Create position handler for specific exchange."""
         async def handle_position(position: Position):
             if position.symbol == self.symbol:
@@ -325,7 +326,7 @@ class ExchangeManager:
     
     # Public API methods
     
-    def get_exchange(self, role_key: str) -> Optional[DualExchange]:
+    def get_exchange(self, role_key: ArbitrageExchangeType) -> Optional[DualExchange]:
         """Get DualExchange instance by role key."""
         return self._exchanges.get(role_key)
     
@@ -333,7 +334,7 @@ class ExchangeManager:
         """Get all DualExchange instances."""
         return self._exchanges.copy()
     
-    def get_book_ticker(self, role_key: str) -> Optional[BookTicker]:
+    def get_book_ticker(self, role_key: ArbitrageExchangeType) -> Optional[BookTicker]:
         """Get current book ticker for exchange (fresh, not cached)."""
         return self._book_tickers.get(role_key)
     
@@ -341,15 +342,15 @@ class ExchangeManager:
         """Get all current book tickers."""
         return self._book_tickers.copy()
     
-    def get_active_orders(self, role_key: str) -> List[Order]:
+    def get_active_orders(self, role_key: ArbitrageExchangeType) -> List[Order]:
         """Get active orders for exchange."""
         return self._active_orders.get(role_key, []).copy()
     
-    def get_exchange_metrics(self, role_key: str) -> Optional[ExchangeMetrics]:
+    def get_exchange_metrics(self, role_key: ArbitrageExchangeType) -> Optional[ExchangeMetrics]:
         """Get performance metrics for exchange."""
         return self._metrics.get(role_key)
     
-    def get_exchange_status(self, role_key: str) -> Optional[ExchangeStatus]:
+    def get_exchange_status(self, role_key: ArbitrageExchangeType) -> Optional[ExchangeStatus]:
         """Get connection status for exchange."""
         return self._status.get(role_key)
     
@@ -363,10 +364,13 @@ class ExchangeManager:
     
     # Balance monitoring and alerts
     
-    async def _check_balance_alerts(self, role_key: str, balance: AssetBalance):
+    async def _check_balance_alerts(self, role_key: ArbitrageExchangeType, balance: AssetBalance):
         """Check for low balance conditions and emit alerts."""
         try:
             asset_name = str(balance.asset)
+            if asset_name != 'USDT':
+                return
+
             threshold_key = f"{role_key}_{asset_name}"
             
             # Get or set default threshold
@@ -398,17 +402,17 @@ class ExchangeManager:
         except Exception as e:
             self.logger.error(f"Balance alert check failed: {e}")
     
-    def set_balance_threshold(self, role_key: str, asset: str, threshold: float):
+    def set_balance_threshold(self, role_key: ArbitrageExchangeType, asset: str, threshold: float):
         """Set minimum balance threshold for alerts."""
         threshold_key = f"{role_key}_{asset}"
         self._min_balance_thresholds[threshold_key] = threshold
         self.logger.info(f"📊 Balance threshold set: {threshold_key} = {threshold:.6f}")
     
-    def get_current_balances(self, role_key: str) -> List[AssetBalance]:
+    def get_current_balances(self, role_key: ArbitrageExchangeType) -> List[AssetBalance]:
         """Get current cached balances for an exchange."""
         return self._current_balances.get(role_key, []).copy()
     
-    def get_asset_balance(self, role_key: str, asset: str) -> Optional[AssetBalance]:
+    def get_asset_balance(self, role_key: ArbitrageExchangeType, asset: str) -> Optional[AssetBalance]:
         """Get current balance for a specific asset on an exchange."""
         balances = self._current_balances.get(role_key, [])
         return next((b for b in balances if str(b.asset) == asset), None)
@@ -442,7 +446,7 @@ class ExchangeManager:
     
     # Trading operations
     
-    async def place_order_parallel(self, orders: Dict[str, OrderPlacementParams]) -> Dict[str, Optional[Order]]:
+    async def place_order_parallel(self, orders: Dict[ArbitrageExchangeType, OrderPlacementParams]) -> Dict[ArbitrageExchangeType, Optional[Order]]:
         """Place orders on multiple exchanges in parallel with type-safe parameters.
         
         Args:
@@ -487,7 +491,7 @@ class ExchangeManager:
         
         return placed_orders
     
-    async def cancel_all_orders(self) -> Dict[str, int]:
+    async def cancel_all_orders(self) -> Dict[ArbitrageExchangeType, int]:
         """Cancel all active orders across all exchanges.
         
         Returns:
@@ -513,7 +517,7 @@ class ExchangeManager:
         
         return cancelled_counts
     
-    async def _cancel_exchange_orders(self, role_key: str, exchange: DualExchange) -> int:
+    async def _cancel_exchange_orders(self, role_key: ArbitrageExchangeType, exchange: DualExchange) -> int:
         """Cancel all orders for a specific exchange."""
         try:
             # TODO: implement cancel_all_orders
@@ -636,3 +640,5 @@ class ExchangeManager:
                 for role_key, metrics in self._metrics.items()
             }
         }
+
+
