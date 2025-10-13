@@ -74,8 +74,7 @@ class PositionState(msgspec.Struct):
             new_position = Position(qty=quantity, price=price, side=side)
         elif current.side == side:
             # Same side: add to position with weighted average price
-            new_qty = current.qty + quantity
-            new_price = calculate_weighted_price(current.qty, current.price, quantity, price)
+            new_price, new_qty = calculate_weighted_price(current.qty, current.price, quantity, price)
             new_position = Position(qty=new_qty, price=new_price, side=side)
         else:
             # Opposite side: get decrease vector

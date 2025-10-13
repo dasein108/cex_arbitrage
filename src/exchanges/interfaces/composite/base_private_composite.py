@@ -287,7 +287,7 @@ class BasePrivateComposite(BalanceSyncMixin,
                 for b in balances_data:
                     await self._update_balance(b.asset, b)
 
-            self.logger.info("Balances loaded successfully",
+            self.logger.debug("Balances loaded successfully",
                              balance_count=len(balances_data),
                              load_time_ms=timer.elapsed_ms)
 
