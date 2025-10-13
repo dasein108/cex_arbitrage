@@ -396,7 +396,7 @@ class BasePrivateComposite(BalanceSyncMixin,
 
         # Log status appropriately
         if is_order_done(order):
-            self.logger.info("Order completed",
+            self.logger.info("order completed",
                            order=str(order), order_id=order.order_id, status=order.status)
         else:
             self.logger.info("Order updated",

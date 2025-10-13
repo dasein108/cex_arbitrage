@@ -209,6 +209,7 @@ def rest_futures_to_order(gateio_order_data) -> Order:
     symbol = GateioFuturesSymbol.to_symbol(gateio_order_data['contract'])
     #Time in ms
     timestamp = int(gateio_order_data['create_time']*1000)
+    # 'fill_price': 0.06335,
     price=float(gateio_order_data.get('price', '0'))
     remaining_quantity=abs(gateio_order_data.get('left', '0'))
     quantity = abs(gateio_order_data['size'])
@@ -221,7 +222,6 @@ def rest_futures_to_order(gateio_order_data) -> Order:
     filled_quantity = quantity - remaining_quantity
 
     order_status = gateio_order_data.get('status', '').lower()
-
     if order_status in ['closed', 'finished']:
         if remaining_quantity == 0:
             order_status = OrderStatus.FILLED

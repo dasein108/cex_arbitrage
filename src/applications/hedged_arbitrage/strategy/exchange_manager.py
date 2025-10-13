@@ -467,12 +467,19 @@ class ExchangeManager:
                     continue
                     
                 exchange = self._exchanges[role_key]
-                task = exchange.private.place_limit_order(
+                # task = exchange.private.place_limit_order(
+                #     symbol=self.symbol,
+                #     side=order_params.side,
+                #     quantity=order_params.quantity,
+                #     price=order_params.price
+                # )
+                task = exchange.private.place_market_order(
                     symbol=self.symbol,
                     side=order_params.side,
-                    quantity=order_params.quantity,
-                    price=order_params.price
+                    price=order_params.price,
+                    quote_quantity=order_params.quantity*order_params.price,
                 )
+
                 order_tasks.append(task)
                 role_keys.append(role_key)
         

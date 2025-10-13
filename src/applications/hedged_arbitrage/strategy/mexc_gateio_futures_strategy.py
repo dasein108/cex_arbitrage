@@ -68,8 +68,9 @@ class PositionState(msgspec.Struct):
     
     def update_position(self, exchange: ArbitrageExchangeType, quantity: float, price: float, side: Side) -> 'PositionState':
         """Update position for specified exchange with side information and weighted average price."""
-        if price <= 0 or quantity <= 0:
-            raise ValueError(f"Invalid price: {price} or quantity: {quantity}")
+        if quantity <= 0:
+            return self
+            # raise ValueError(f"Invalid price: {price} or quantity: {quantity}")
         
         current = self.positions[exchange]
         
@@ -156,14 +157,6 @@ class ValidationResult(msgspec.Struct):
     reason: str = ""
 
 
-class OrderSpec(msgspec.Struct):
-    """Specification for order placement."""
-    role: str  # 'spot' | 'futures'
-    side: Side
-    quantity: float
-    price: float
-
-
 class MexcGateioFuturesContext(msgspec.Struct):
     """Optimized context for MEXC spot + Gate.io futures arbitrage strategy."""
     
@@ -186,7 +179,7 @@ class MexcGateioFuturesContext(msgspec.Struct):
     min_quote_quantity: Dict[ArbitrageExchangeType, float] = {}
     # Performance tracking
     arbitrage_cycles: int = 0
-    total_volume: float = 0.0
+    total_volume_usdt: float = 0.0
     total_profit: float = 0.0
     total_fees: float = 0.0
 
@@ -305,6 +298,7 @@ class MexcGateioFuturesStrategy:
             adjusted_quantity = min_quote_qty / price + 0.001  # Small buffer for precision
             self.logger.info(f"📏 Adjusting {exchange_type} order size: {quantity:.6f} -> {adjusted_quantity:.6f} to meet minimum {min_quote_qty}")
             return adjusted_quantity
+
         return quantity
     
     def _prepare_order_quantity(self, exchange_type: ArbitrageExchangeType, base_quantity: float, price: float) -> float:
@@ -393,7 +387,7 @@ class MexcGateioFuturesStrategy:
         
         return ValidationResult(valid=True)
 
-    def _validate_delta_neutral(self, tolerance: float = 0.01) -> ValidationResult:
+    def _validate_delta_neutral(self) -> ValidationResult:
         """Validate that positions maintain delta neutrality."""
         if not self.context.positions.has_positions:
             return ValidationResult(valid=True)  # No positions = neutral
@@ -406,16 +400,17 @@ class MexcGateioFuturesStrategy:
         # spot_value = spot_pos.qty if spot_pos.side == Side.BUY else -spot_pos.qty
         # futures_value = futures_pos.qty if futures_pos.side == Side.BUY else -futures_pos.qty
         # imbalance = spot_value + futures_value
-        tolerance = 0.01
+        tolerance = min(self.context.min_quote_quantity['spot'], self.context.min_quote_quantity['futures'])
+
         if spot_qty > futures_qty:
             imbalance_pct = (spot_qty - futures_qty) / spot_qty * 100
         else:
             imbalance_pct = -(futures_qty - spot_qty) / futures_qty * 100
 
         if abs(imbalance_pct) <= tolerance:
-            return ValidationResult(valid=True
-                                    )
-        self.logger.warning(f'🔍 Delta neutrality check, imbalance_pct: {imbalance_pct}%')
+            return ValidationResult(valid=True)
+
+        # self.logger.warning(f'🔍 Delta neutrality check, imbalance_pct: {imbalance_pct}%')
 
         return ValidationResult(
             valid=False,
@@ -525,7 +520,15 @@ class MexcGateioFuturesStrategy:
                 await self._check_order_updates()
                 
                 # Check position updates directly (futures)
-                await self._check_position_updates()
+                # await self._check_position_updates()
+
+                # Skip if we already have positions (delta-neutral strategy)
+                if self.context.positions.has_positions:
+                    # Additional check: ensure existing positions are delta neutral
+                    delta_validation = self._validate_delta_neutral()
+                    if not delta_validation.valid:
+                        self.logger.warning(f"😱 Existing positions not delta neutral: {delta_validation.reason}")
+                    return None
                 
                 # Simplified state machine
                 if self.context.state == ArbitrageState.IDLE:
@@ -553,119 +556,52 @@ class MexcGateioFuturesStrategy:
 
     async def _check_order_updates(self):
         """Check order status updates using direct access to exchange orders."""
-        try:
-            for exchange_role in ['spot', 'futures']: # type: Literal['spot', 'futures']
-                # Get exchange directly
-                exchange = self.exchange_manager.get_exchange(exchange_role)
+        for exchange_role in ['spot', 'futures']: # type: Literal['spot', 'futures']
+            # Get exchange directly
+            for order_id, order in self._active_orders[exchange_role].items():
+                await self._process_order_fill(exchange_role, order)
 
-                # Check all orders for this symbol
-                symbol_orders = exchange.private.get_orders_by_symbol(self.context.symbol)
-
-                for order_id, order in symbol_orders.items():
-                    # Track active orders and check for fills
-                    if order_id not in self._active_orders[exchange_role]:
-                        # New order - track it
-                        self._active_orders[exchange_role][order_id] = order
-                        new_positions = self.context.positions.update_position(
-                            exchange_role, order.filled_quantity, order.price, order.side
-                        )
-                        self.evolve_context(positions=new_positions)
-
-                        self.logger.info(f"📝 New order tracked: {order_id} on {exchange_role}")
-                    else:
-                        # Existing order - check for new fills
-                        previous_order = self._active_orders[exchange_role][order_id]
-                        previous_filled = previous_order.filled_quantity
-                        current_filled = order.filled_quantity
-
-                        # Update stored order with latest state
-                        self._active_orders[exchange_role][order_id] = order
-
-                        if current_filled > previous_filled:
-                            # Process only the new fill amount
-                            new_fill_amount = current_filled - previous_filled
-
-                            # Update position with ONLY the new fill amount
-                            new_positions = self.context.positions.update_position(
-                                exchange_role, new_fill_amount, order.price, order.side
-                            )
-
-                            self.evolve_context(positions=new_positions)
-                            
-                            # Validate delta neutrality after position update
-                            delta_validation = self._validate_delta_neutral()
-                            if not delta_validation.valid:
-                                self.logger.warning(f"⚠️ {delta_validation.reason}")
-
-                    # Remove completed orders from tracking
-                    if is_order_done(order):
-                        if order_id in self._active_orders[exchange_role]:
-                            del self._active_orders[exchange_role][order_id]
-                            exchange.private.remove_order(order_id) # cleanup exchange
-                            self.logger.info(f"🏁 Order completed and removed from tracking: {order_id} on {exchange_role}")
-                            
-        except Exception as e:
-            self.logger.error(f"❌ Error checking order updates: {e}")
-    
-    async def _check_position_updates(self):
-        """Check position updates using direct access (futures only)."""
-        try:
-            futures_exchange = self.exchange_manager.get_exchange('futures')
-
-            # Get position for this symbol
-            position = futures_exchange.private.positions.get(self.context.symbol)
-            if position and hasattr(position, 'side'):
-                # Only update if position differs from our tracking
-                current = self.context.positions.positions['futures']
-                
-                position_changed = (
-                    abs(position.quantity - current.qty) > 1e-8 or 
-                    position.side != current.side
-                )
-                
-                if position_changed:
-                    # Position has changed, update with absolute quantity and side
-                    new_positions = self.context.positions.update_position(
-                        'futures',
-                        abs(position.quantity),
-                        position.entry_price,
-                        position.side
-                    )
-                    self.evolve_context(positions=new_positions)
-                    
-                    # Validate delta neutrality after position update
-                    delta_validation = self._validate_delta_neutral()
-                    if not delta_validation.valid:
-                        self.logger.warning(f"⚠️ {delta_validation.reason}")
-                    
-        except Exception as e:
-            self.logger.error(f"❌ Error checking position updates: {e}")
-    
+    # TODO: update position later
+    # async def _check_position_updates(self):
+    #     """Check position updates using direct access (futures only)."""
+    #     try:
+    #         futures_exchange = self.exchange_manager.get_exchange('futures')
+    #
+    #         # Get position for this symbol
+    #         position = futures_exchange.private.positions.get(self.context.symbol)
+    #         if position and hasattr(position, 'side'):
+    #             # Only update if position differs from our tracking
+    #             current = self.context.positions.positions['futures']
+    #
+    #             position_changed = (
+    #                 abs(position.quantity - current.qty) > 1e-8 or
+    #                 position.side != current.side
+    #             )
+    #
+    #             if position_changed:
+    #                 # Position has changed, update with absolute quantity and side
+    #                 new_positions = self.context.positions.update_position(
+    #                     'futures',
+    #                     abs(position.quantity),
+    #                     position.entry_price,
+    #                     position.side
+    #                 )
+    #                 self.evolve_context(positions=new_positions)
+    #
+    #                 # Validate delta neutrality after position update
+    #                 delta_validation = self._validate_delta_neutral()
+    #                 if not delta_validation.valid:
+    #                     self.logger.warning(f"⚠️ {delta_validation.reason}")
+    #
+    #     except Exception as e:
+    #         self.logger.error(f"❌ Error checking position updates: {e}")
+    #
     async def _update_active_orders_after_placement(self, placed_orders: Dict[ArbitrageExchangeType, Order]):
         """Update active orders tracking after placing new orders."""
-        try:
-            pass
-            for exchange_role, success in placed_orders.items():
-                if not success:
-                    continue
-                    
-                # Get the exchange and fetch newly placed orders
-                exchange = self.exchange_manager.get_exchange(exchange_role).private
+        for exchange_role, order in placed_orders.items():
+            await self._process_order_fill(exchange_role, order)
 
-                # Get all orders for this symbol
-                symbol_orders = exchange.get_orders_by_symbol(self.context.symbol)
-                
-                # Add any new orders to our tracking that aren't already tracked
-                for order_id, order in symbol_orders.items():
-                    if order_id not in self._active_orders[exchange_role]:
-                        self._active_orders[exchange_role][order_id] = order
-                        self.logger.info(f"📝 Tracking new placed order: {order_id} on {exchange_role} {order}")
-                        
-        except Exception as e:
-            self.logger.error(f"❌ Error updating active orders after placement: {e}")
-    
     # Opportunity identification and execution
-    
     async def _check_arbitrage_opportunity(self):
         """Asynchronously check for arbitrage opportunities."""
         try:
@@ -687,14 +623,6 @@ class MexcGateioFuturesStrategy:
         market_data = self.get_market_data()
         
         if not market_data.is_complete:
-            return None
-        
-        # Skip if we already have positions (delta-neutral strategy)
-        if self.context.positions.has_positions:
-            # Additional check: ensure existing positions are delta neutral
-            delta_validation = self._validate_delta_neutral()
-            if not delta_validation.valid:
-                self.logger.warning(f"😱 Existing positions not delta neutral: {delta_validation.reason}")
             return None
         
         # Calculate entry cost using backtesting logic
@@ -876,14 +804,18 @@ class MexcGateioFuturesStrategy:
             
             # CRITICAL FIX: Convert USDT to coin units before comparison
             base_position_coin_size = self.context.base_position_size_usdt / market_data.spot.ask_price
+
             position_size = min(
                 base_position_coin_size,    # Now in coin units
                 opportunity.max_quantity    # Already in coin units
             )
+
             self.logger.info(f"Calculated position size: {position_size:.6f} coins, base: {base_position_coin_size}, "
                              f"oppo: {opportunity.max_quantity} price: {market_data.spot.ask_price}")
+
             # Validate execution parameters
             validation = self._validate_execution(opportunity, position_size)
+
             if not validation.valid:
                 self.logger.error(f"❌ Execution validation failed: {validation.reason}")
                 return False
@@ -895,6 +827,7 @@ class MexcGateioFuturesStrategy:
                 spot_price=opportunity.buy_price,
                 futures_price=opportunity.sell_price
             )
+
             if not volume_validation.valid:
                 self.logger.error(f"❌ Entry volume validation failed: {volume_validation.reason}")
                 return False
@@ -909,31 +842,24 @@ class MexcGateioFuturesStrategy:
                 adjusted_quantity = max(spot_quantity, futures_quantity)
                 self.logger.info(f"⚖️ Adjusting both quantities to {adjusted_quantity:.6f} for delta neutrality")
                 spot_quantity = futures_quantity = adjusted_quantity
-            
-            # Prepare orders with validated and adjusted quantities
-            order_specs = [
-                OrderSpec(role='spot', side=Side.BUY, quantity=spot_quantity, price=opportunity.buy_price),
-                OrderSpec(role='futures', side=Side.SELL, quantity=futures_quantity, price=opportunity.sell_price)
-            ]
+
             # Convert to OrderPlacementParams
-            orders = {}
-            for spec in order_specs:
-                orders[spec.role] = OrderPlacementParams(
-                    side=spec.side,
-                    quantity=spec.quantity,
-                    price=spec.price
-                )
+            enter_orders: Dict[ArbitrageExchangeType, OrderPlacementParams] = {
+                'spot': OrderPlacementParams(side=Side.BUY, quantity=spot_quantity, price=opportunity.buy_price),
+                'futures': OrderPlacementParams(side=Side.SELL, quantity=futures_quantity, price=opportunity.sell_price)
+            }
             
             # Execute orders in parallel
             self.logger.info(f"🚀 Executing arbitrage trades: {position_size}")
             start_time = time.time()
             
-            placed_orders = await self.exchange_manager.place_order_parallel(orders)
+            placed_orders = await self.exchange_manager.place_order_parallel(enter_orders)
 
             # Update active orders tracking for successfully placed orders
             await self._update_active_orders_after_placement(placed_orders)
             
             execution_time = (time.time() - start_time) * 1000
+
             self.logger.info(f"⚡ Order execution completed in {execution_time:.1f}ms,"
                              f" placed orders: {placed_orders}")
             
@@ -947,7 +873,7 @@ class MexcGateioFuturesStrategy:
                 position_usdt = self._coins_to_usdt(max(spot_quantity, futures_quantity))
                 if position_usdt:
                     self.evolve_context(
-                        total_volume=self.context.total_volume + position_usdt
+                        total_volume_usdt=self.context.total_volume_usdt + position_usdt
                     )
             else:
                 # Cancel any successful orders
@@ -976,7 +902,7 @@ class MexcGateioFuturesStrategy:
                 self.logger.error(f"❌ Exit volume validation failed: {volume_validation.reason}")
                 return
             
-            exit_orders = {}
+            exit_orders: Dict[ArbitrageExchangeType, OrderPlacementParams] = {}
             
             # Close spot position (exit is opposite side) with volume validation
             spot_pos = self.context.positions.positions['spot']
@@ -1024,51 +950,56 @@ class MexcGateioFuturesStrategy:
         except Exception as e:
             self.logger.error(f"❌ Error exiting positions: {e}")
     
-    # Position tracking
-    
-    async def _process_partial_fill(self, exchange_key: ArbitrageExchangeType, order: Order, fill_amount: float):
+    # Position order fill processing
+    async def _process_order_fill(self, exchange_key: ArbitrageExchangeType, order: Order):
         """Process partial fill and update position tracking incrementally with delta validation."""
         try:
             if order is None:
                 self.logger.error(f"❌ Cannot process None order from {exchange_key}")
                 return
-            
-            if fill_amount <= 0:
-                self.logger.warning(f"⚠️ Invalid fill amount: {fill_amount} for order {order.order_id}")
-                return
-            
-            # Validate fill amount meets minimum requirements
-            fill_price = order.price
-            min_quantity = self._get_minimum_order_quantity_usdt(exchange_key, fill_price)
-            if fill_amount < min_quantity:
-                self.logger.warning(f"⚠️ Fill amount {fill_amount:.6f} < minimum {min_quantity:.6f} for {exchange_key}")
-            
-            # Use the order price for the fill
-            fill_price = order.price
 
-            # Update position with ONLY the new fill amount
-            new_positions = self.context.positions.update_position(
-                exchange_key, fill_amount, order.price, order.side
-            )
-            
-            self.evolve_context(positions=new_positions)
-            
-            # Validate delta neutrality after position update
-            delta_validation = self._validate_delta_neutral()
-            if not delta_validation.valid:
-                self.logger.warning(f"⚠️ After fill - {delta_validation.reason}")
-            
-            # Log the incremental fill
-            self.logger.info(f"📈 Partial fill on {exchange_key}: {order.side.name} {fill_amount:.6f} @ {fill_price:.6f} (Order: {order.order_id})")
-            
-            # Log current total positions
-            self.logger.info(f"📊 Total Positions - {new_positions}")
-            
+            previous_order = self._active_orders[exchange_key].get(order.order_id, None)
+
+            if not previous_order:
+                # New order - track it
+                self._active_orders[exchange_key][order.order_id] = order
+
+                new_positions = self.context.positions.update_position(
+                    exchange_key, order.filled_quantity, order.price, order.side
+                )
+
+                self.evolve_context(positions=new_positions)
+
+                self.logger.info(f"📝 New order tracked: {order} on {exchange_key}")
+            else:
+                # Update stored order with latest state
+                self._active_orders[exchange_key][order.order_id] = order
+
+                # Existing order - check for new fills
+                previous_filled = previous_order.filled_quantity
+                current_filled = order.filled_quantity
+
+                fill_amount = current_filled - previous_filled
+
+                if fill_amount > 0:
+                    new_positions = self.context.positions.update_position(
+                        exchange_key, fill_amount, order.price, order.side
+                    )
+
+                    self.evolve_context(positions=new_positions)
+
+                    self.logger.info(f"🔄 Processed partial fill for order {order} on {exchange_key}: {fill_amount} ")
+
+            if is_order_done(order):
+                del self._active_orders[exchange_key][order.order_id]
+                exchange = self.exchange_manager.get_exchange(exchange_key).private
+                exchange.remove_order(order.order_id) # cleanup exchange
+                self.logger.info(f"🏁 Order completed: {order.order_id} on {exchange_key} {order}")
+
         except Exception as e:
             self.logger.error(f"Error processing partial fill: {e}")
     
     # Cleanup
-    
     async def cleanup(self):
         """Cleanup strategy resources."""
         self.logger.info("🧹 Cleaning up strategy resources")
@@ -1102,7 +1033,7 @@ class MexcGateioFuturesStrategy:
             },
             'performance': {
                 'arbitrage_cycles': self.context.arbitrage_cycles,
-                'total_volume': float(self.context.total_volume),
+                'total_volume_usdt': float(self.context.total_volume_usdt),
                 'total_profit': float(self.context.total_profit),
                 'total_fees': float(self.context.total_fees)
             },
