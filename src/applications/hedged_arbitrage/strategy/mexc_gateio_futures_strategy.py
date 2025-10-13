@@ -157,6 +157,15 @@ class ValidationResult(msgspec.Struct):
     reason: str = ""
 
 
+class DeltaImbalanceResult(msgspec.Struct):
+    """Result of delta imbalance analysis."""
+    has_imbalance: bool
+    imbalance_direction: Optional[Literal['spot_excess', 'futures_excess']] = None
+    imbalance_quantity: float = 0.0
+    imbalance_percentage: float = 0.0
+    reason: str = ""
+
+
 class MexcGateioFuturesContext(msgspec.Struct):
     """Optimized context for MEXC spot + Gate.io futures arbitrage strategy."""
     
@@ -387,38 +396,163 @@ class MexcGateioFuturesStrategy:
         
         return ValidationResult(valid=True)
 
-    def _validate_delta_neutral(self) -> ValidationResult:
-        """Validate that positions maintain delta neutrality."""
-        if not self.context.positions.has_positions:
-            return ValidationResult(valid=True)  # No positions = neutral
-
-        spot_qty =  self.context.positions.positions['spot'].qty
-        futures_qty = self.context.positions.positions['futures'].qty
-        # spot_pos = self.context.positions.positions['spot']
-        # futures_pos = self.context.positions.positions['futures']
-
-        # spot_value = spot_pos.qty if spot_pos.side == Side.BUY else -spot_pos.qty
-        # futures_value = futures_pos.qty if futures_pos.side == Side.BUY else -futures_pos.qty
-        # imbalance = spot_value + futures_value
-        tolerance = min(self.context.min_quote_quantity['spot'], self.context.min_quote_quantity['futures'])
-
-        if spot_qty > futures_qty:
-            imbalance_pct = (spot_qty - futures_qty) / spot_qty * 100
-        else:
-            imbalance_pct = -(futures_qty - spot_qty) / futures_qty * 100
-
-        if abs(imbalance_pct) <= tolerance:
-            return ValidationResult(valid=True)
-
-        # self.logger.warning(f'🔍 Delta neutrality check, imbalance_pct: {imbalance_pct}%')
-
-        return ValidationResult(
-            valid=False,
-            reason=f"Delta imbalance detected: {imbalance_pct:.2f}% "
-                   f"(spot: {spot_qty:.6f}, "
-                   f"futures: {futures_qty:.6f})"
-        )
+    def _has_delta_imbalance(self) -> DeltaImbalanceResult:
+        """Check for delta imbalance and determine correction needed.
         
+        Returns detailed analysis of any position imbalance that requires correction.
+        Uses proper signed position values and percentage-based tolerance.
+        """
+        if not self.context.positions.has_positions:
+            return DeltaImbalanceResult(has_imbalance=False, reason="No positions to balance")
+        
+        spot_pos = self.context.positions.positions['spot']
+        futures_pos = self.context.positions.positions['futures']
+        
+        # Calculate signed position values (positive for long, negative for short)
+        spot_signed = spot_pos.qty if spot_pos.side == Side.BUY else -spot_pos.qty if spot_pos.side else 0.0
+        futures_signed = futures_pos.qty if futures_pos.side == Side.BUY else -futures_pos.qty if futures_pos.side else 0.0
+        
+        # For delta-neutral arbitrage: spot + futures should equal zero
+        # spot_signed + futures_signed = 0 (perfect balance)
+        net_exposure = spot_signed + futures_signed
+        
+        # Use percentage-based tolerance (e.g., 2% imbalance threshold)
+        tolerance_pct = 2.0  # 2% tolerance for delta neutrality
+        total_exposure = abs(spot_signed) + abs(futures_signed)
+        
+        if total_exposure < 1e-8:
+            return DeltaImbalanceResult(has_imbalance=False, reason="No meaningful positions")
+        
+        imbalance_pct = abs(net_exposure) / total_exposure * 100
+        
+        if imbalance_pct <= tolerance_pct:
+            return DeltaImbalanceResult(
+                has_imbalance=False, 
+                imbalance_percentage=imbalance_pct,
+                reason=f"Delta balanced within tolerance: {imbalance_pct:.2f}% <= {tolerance_pct}%"
+            )
+        
+        # Determine imbalance direction and correction needed
+        if net_exposure > 0:
+            # Net long position - need to reduce spot or increase short futures
+            if abs(spot_signed) > abs(futures_signed):
+                direction = 'spot_excess'
+                imbalance_qty = abs(spot_signed) - abs(futures_signed)
+            else:
+                direction = 'futures_excess' 
+                imbalance_qty = net_exposure
+        else:
+            # Net short position - need to reduce short futures or increase spot
+            if abs(futures_signed) > abs(spot_signed):
+                direction = 'futures_excess'
+                imbalance_qty = abs(futures_signed) - abs(spot_signed)
+            else:
+                direction = 'spot_excess'
+                imbalance_qty = abs(net_exposure)
+        
+        return DeltaImbalanceResult(
+            has_imbalance=True,
+            imbalance_direction=direction,
+            imbalance_quantity=imbalance_qty,
+            imbalance_percentage=imbalance_pct,
+            reason=f"Delta imbalance: {imbalance_pct:.2f}% ({direction}: {imbalance_qty:.6f})"
+        )
+    
+    async def _correct_delta_imbalance(self, imbalance: DeltaImbalanceResult) -> bool:
+        """Actively correct delta imbalance by executing balancing trades.
+        
+        Args:
+            imbalance: Result from _has_delta_imbalance() indicating the correction needed
+            
+        Returns:
+            bool: True if correction was successful, False otherwise
+        """
+        if not imbalance.has_imbalance:
+            self.logger.info("✅ No delta imbalance to correct")
+            return True
+        
+        self.logger.info(f"🔄 Correcting delta imbalance: {imbalance.reason}")
+        
+        try:
+            # Get current market data for pricing
+            market_data = self.get_market_data()
+            if not market_data.is_complete:
+                self.logger.error("❌ Cannot correct imbalance - missing market data")
+                return False
+            
+            correction_order: Optional[OrderPlacementParams] = None
+            exchange_key: Optional[ArbitrageExchangeType] = None
+            
+            if imbalance.imbalance_direction == 'spot_excess':
+                # Too much spot exposure - need to add futures short position
+                # Execute market SELL on futures to balance
+                exchange_key = 'futures'
+                price = market_data.futures.bid_price  # Market sell - use bid
+                quantity = self._prepare_order_quantity('futures', imbalance.imbalance_quantity, price)
+                
+                correction_order = OrderPlacementParams(
+                    side=Side.SELL,
+                    quantity=quantity,
+                    price=price
+                )
+                
+                self.logger.info(f"🎯 Correcting spot excess: SELL {quantity:.6f} futures @ {price:.6f}")
+                
+            elif imbalance.imbalance_direction == 'futures_excess':
+                # Too much futures exposure - need to add spot long position
+                # Execute market BUY on spot to balance
+                exchange_key = 'spot'
+                price = market_data.spot.ask_price  # Market buy - use ask
+                quantity = self._prepare_order_quantity('spot', imbalance.imbalance_quantity, price)
+                
+                correction_order = OrderPlacementParams(
+                    side=Side.BUY,
+                    quantity=quantity,
+                    price=price
+                )
+                
+                self.logger.info(f"🎯 Correcting futures excess: BUY {quantity:.6f} spot @ {price:.6f}")
+            
+            if not correction_order or not exchange_key:
+                self.logger.error(f"❌ Could not determine correction order for {imbalance.imbalance_direction}")
+                return False
+            
+            # Validate minimum order requirements
+            min_qty = self._get_minimum_order_quantity_usdt(exchange_key, correction_order.price)
+            if correction_order.quantity < min_qty:
+                self.logger.warning(f"⚠️ Correction quantity {correction_order.quantity:.6f} < minimum {min_qty:.6f}")
+                
+                # Check if imbalance is too small to correct profitably
+                if imbalance.imbalance_quantity < min_qty * 1.5:
+                    self.logger.info(f"📏 Imbalance too small to correct profitably, tolerating {imbalance.imbalance_percentage:.2f}%")
+                    return True  # Accept the small imbalance
+                
+                # Adjust to minimum if possible
+                correction_order = OrderPlacementParams(
+                    side=correction_order.side,
+                    quantity=min_qty * 1.01,  # Add small buffer
+                    price=correction_order.price
+                )
+                self.logger.info(f"📏 Adjusted correction quantity to {correction_order.quantity:.6f}")
+            
+            # Execute the correction order
+            placed_orders = await self.exchange_manager.place_order_parallel({exchange_key: correction_order})
+            
+            if exchange_key in placed_orders and placed_orders[exchange_key]:
+                order = placed_orders[exchange_key]
+                self.logger.info(f"✅ Delta correction order placed: {order.order_id} on {exchange_key}")
+                
+                # Update active orders tracking
+                await self._update_active_orders_after_placement(placed_orders)
+                return True
+            else:
+                self.logger.error(f"❌ Failed to place delta correction order on {exchange_key}")
+                return False
+                
+        except Exception as e:
+            self.logger.error(f"❌ Error correcting delta imbalance: {e}")
+            return False
+
 
     # Unified utility methods
     
@@ -500,6 +634,7 @@ class MexcGateioFuturesStrategy:
             symbol_info = self.exchange_manager.get_exchange(exchange_type).public.symbols_info[self.context.symbol]
             self.context.min_quote_quantity[exchange_type] = symbol_info.min_quote_quantity
 
+        self.logger.info("✅ Delta correction system validated successfully")
         self._transition(ArbitrageState.MONITORING)
         self.logger.info(f"✅ {self.name} strategy started for {self.context.symbol}")
     
@@ -522,13 +657,26 @@ class MexcGateioFuturesStrategy:
                 # Check position updates directly (futures)
                 # await self._check_position_updates()
 
-                # Skip if we already have positions (delta-neutral strategy)
+                # Check and correct delta imbalance if positions exist
                 if self.context.positions.has_positions:
-                    # Additional check: ensure existing positions are delta neutral
-                    delta_validation = self._validate_delta_neutral()
-                    if not delta_validation.valid:
-                        self.logger.warning(f"😱 Existing positions not delta neutral: {delta_validation.reason}")
-                    return None
+                    delta_imbalance = self._has_delta_imbalance()
+                    if delta_imbalance.has_imbalance:
+                        self.logger.warning(f"⚖️ Delta imbalance detected: {delta_imbalance.reason}")
+                        
+                        # Attempt to correct the imbalance
+                        correction_success = await self._correct_delta_imbalance(delta_imbalance)
+                        if not correction_success:
+                            self.logger.error("❌ Failed to correct delta imbalance")
+                            # Continue monitoring but avoid new arbitrage opportunities
+                            await asyncio.sleep(1.0)  # Wait before retry
+                            continue
+                        else:
+                            self.logger.info("✅ Delta imbalance corrected successfully")
+                    else:
+                        self.logger.debug(f"✅ Positions are delta neutral: {delta_imbalance.reason}")
+                    
+                    # After handling imbalance, continue with normal monitoring
+                    # Don't return - allow strategy to continue looking for exit opportunities
                 
                 # Simplified state machine
                 if self.context.state == ArbitrageState.IDLE:
