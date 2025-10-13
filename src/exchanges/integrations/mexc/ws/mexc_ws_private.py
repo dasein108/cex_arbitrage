@@ -240,7 +240,7 @@ class MexcPrivateSpotWebsocket(PrivateBaseWebsocket):
                     order_data = wrapper.privateOrders
 
                     # Direct parsing from protobuf fields - order_data already has parsed fields
-                    order_type = _WS_ORDER_TYPE_MAPPING.get(getattr(order_data, 'status', 0), OrderType.LIMIT)
+                    order_type = _WS_ORDER_TYPE_MAPPING.get(getattr(order_data, 'orderType', 0), OrderType.LIMIT)
                     order_status_code = getattr(order_data, 'status', 0)
                     status = _WS_ORDER_STATUS_MAPPING.get(order_status_code, OrderStatus.UNKNOWN)
                     order = Order(

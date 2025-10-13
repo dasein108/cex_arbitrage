@@ -44,7 +44,7 @@ from exchanges.integrations.gateio.utils import (
     from_subscription_action,
     to_order_type,
     to_order_status,
-    to_side,
+    to_side, ws_futures_to_order, rest_spot_to_order, rest_futures_to_order,
 )
 from exchanges.integrations.gateio.ws.gateio_ws_common import GateioBaseWebsocket
 
@@ -254,24 +254,8 @@ class GateioPrivateFuturesWebsocket(GateioBaseWebsocket, PrivateBaseWebsocket):
             
             for order_data in order_list:
                 # Convert Gate.io futures order to unified format
-                symbol = GateioFuturesSymbol.to_symbol(order_data.get('contract', ''))
-
-                # Convert create_time to milliseconds if needed
-                create_time = order_data.get('create_time', 0)
-                timestamp = int(create_time * 1000) if create_time and create_time < 1e10 else int(create_time or 0)
-
-                order = Order(
-                    order_id=OrderId(str(order_data.get('id', ''))),
-                    symbol=symbol,
-                    side=to_side(order_data.get('side', 'buy')),
-                    order_type=to_order_type(order_data.get('type', 'limit')),
-                    quantity=float(order_data.get('size', '0')),  # Futures uses 'size'
-                    price=float(order_data.get('price', '0')) if order_data.get('price') else None,
-                    filled_quantity=float(order_data.get('filled_size', '0')),
-                    remaining_quantity=float(order_data.get('left', '0')),
-                    status=to_order_status(order_data.get('status', 'open')),
-                    timestamp=timestamp
-                )
+                print(f"-- order_data: {order_data}")
+                order = rest_futures_to_order(order_data)
                 await self._exec_bound_handler(PrivateWebsocketChannelType.ORDER, order)
                 
         except Exception as e:

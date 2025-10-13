@@ -10,7 +10,10 @@ Key Optimizations:
 - Consolidated validation logic (79% validation LOC reduction)
 - Unified market data access (80% ticker access reduction)
 - Role-based operations eliminating enum mapping
+- Enhanced volume validation and delta neutral enforcement
 """
+
+import asyncio
 
 from typing import Optional, Dict, Literal
 import time
@@ -180,7 +183,7 @@ class MexcGateioFuturesContext(msgspec.Struct):
     state: ArbitrageState = ArbitrageState.IDLE
     current_opportunity: Optional[ArbitrageOpportunity] = None
     position_start_time: Optional[float] = None
-    
+    min_quote_quantity: Dict[ArbitrageExchangeType, float] = {}
     # Performance tracking
     arbitrage_cycles: int = 0
     total_volume: float = 0.0
@@ -287,6 +290,141 @@ class MexcGateioFuturesStrategy:
         """Update context with new values."""
         self.context = msgspec.structs.replace(self.context, **kwargs)
     
+    # Volume validation methods following delta neutral task patterns
+    
+    def _get_minimum_order_quantity_usdt(self, exchange_type: ArbitrageExchangeType, current_price: float) -> float:
+        """Get minimum order quantity based on exchange requirements."""
+        return self.context.min_quote_quantity[exchange_type] / current_price
+    
+    def _validate_order_size(self, exchange_type: ArbitrageExchangeType, quantity: float, price: float) -> float:
+        """Validate and adjust order size to meet exchange minimums."""
+
+        min_quote_qty = self.context.min_quote_quantity[exchange_type]
+
+        if quantity * price < min_quote_qty:
+            adjusted_quantity = min_quote_qty / price + 0.001  # Small buffer for precision
+            self.logger.info(f"📏 Adjusting {exchange_type} order size: {quantity:.6f} -> {adjusted_quantity:.6f} to meet minimum {min_quote_qty}")
+            return adjusted_quantity
+        return quantity
+    
+    def _prepare_order_quantity(self, exchange_type: ArbitrageExchangeType, base_quantity: float, price: float) -> float:
+        """Prepare order quantity with all required adjustments including exchange minimums."""
+        # Validate with exchange minimums
+        quantity = self._validate_order_size(exchange_type, base_quantity, price)
+        
+        # Round to contracts if futures
+        exchange = self.exchange_manager.get_exchange(exchange_type)
+        if exchange.is_futures:
+            quantity = exchange.round_base_to_contracts(self.context.symbol, quantity)
+        
+        return quantity
+    
+    def _validate_entry_volumes(self, spot_quantity: float, futures_quantity: float, 
+                               spot_price: float, futures_price: float) -> ValidationResult:
+        """Validate that entry volumes meet minimum requirements for both exchanges."""
+        # Get minimum quantities for both exchanges
+        spot_min = self._get_minimum_order_quantity_usdt('spot', spot_price)
+        futures_min = self._get_minimum_order_quantity_usdt('futures', futures_price)
+        
+        # Check spot volume
+        if spot_quantity < spot_min:
+            return ValidationResult(
+                valid=False, 
+                reason=f"Spot volume {spot_quantity:.6f} < minimum {spot_min:.6f}"
+            )
+        
+        # Check futures volume
+        if futures_quantity < futures_min:
+            return ValidationResult(
+                valid=False, 
+                reason=f"Futures volume {futures_quantity:.6f} < minimum {futures_min:.6f}"
+            )
+        
+        # Check that volumes are executable (max of minimums)
+        max_min = max(spot_min, futures_min)
+        if spot_quantity < max_min or futures_quantity < max_min:
+            return ValidationResult(
+                valid=False, 
+                reason=f"Entry volume {min(spot_quantity, futures_quantity):.6f} < max minimum {max_min:.6f}"
+            )
+        
+        return ValidationResult(valid=True)
+    
+    def _validate_exit_volumes(self) -> ValidationResult:
+        """Validate that exit volumes meet minimum requirements for both exchanges."""
+        spot_pos = self.context.positions.positions['spot']
+        futures_pos = self.context.positions.positions['futures']
+        
+        if spot_pos.qty < 1e-8 or futures_pos.qty < 1e-8:
+            return ValidationResult(valid=False, reason="No positions to exit")
+        
+        market_data = self.get_market_data()
+        if not market_data.is_complete:
+            return ValidationResult(valid=False, reason="Missing market data for exit validation")
+        
+        # Get exit prices for minimum calculations
+        spot_exit_price = market_data.spot.bid_price if spot_pos.side == Side.BUY else market_data.spot.ask_price
+        futures_exit_price = market_data.futures.bid_price if futures_pos.side == Side.BUY else market_data.futures.ask_price
+        
+        # Get minimum quantities
+        spot_min = self._get_minimum_order_quantity_usdt('spot', spot_exit_price)
+        futures_min = self._get_minimum_order_quantity_usdt('futures', futures_exit_price)
+        
+        # Check if positions are large enough to exit
+        if spot_pos.qty < spot_min:
+            return ValidationResult(
+                valid=False, 
+                reason=f"Spot position {spot_pos.qty:.6f} < minimum exit {spot_min:.6f}"
+            )
+        
+        if futures_pos.qty < futures_min:
+            return ValidationResult(
+                valid=False, 
+                reason=f"Futures position {futures_pos.qty:.6f} < minimum exit {futures_min:.6f}"
+            )
+        
+        # Check max minimum requirement
+        max_min = max(spot_min, futures_min)
+        if spot_pos.qty < max_min or futures_pos.qty < max_min:
+            return ValidationResult(
+                valid=False, 
+                reason=f"Exit volume {min(spot_pos.qty, futures_pos.qty):.6f} < max minimum {max_min:.6f}"
+            )
+        
+        return ValidationResult(valid=True)
+
+    def _validate_delta_neutral(self, tolerance: float = 0.01) -> ValidationResult:
+        """Validate that positions maintain delta neutrality."""
+        if not self.context.positions.has_positions:
+            return ValidationResult(valid=True)  # No positions = neutral
+
+        spot_qty =  self.context.positions.positions['spot'].qty
+        futures_qty = self.context.positions.positions['futures'].qty
+        # spot_pos = self.context.positions.positions['spot']
+        # futures_pos = self.context.positions.positions['futures']
+
+        # spot_value = spot_pos.qty if spot_pos.side == Side.BUY else -spot_pos.qty
+        # futures_value = futures_pos.qty if futures_pos.side == Side.BUY else -futures_pos.qty
+        # imbalance = spot_value + futures_value
+        tolerance = 0.01
+        if spot_qty > futures_qty:
+            imbalance_pct = (spot_qty - futures_qty) / spot_qty * 100
+        else:
+            imbalance_pct = -(futures_qty - spot_qty) / futures_qty * 100
+
+        if abs(imbalance_pct) <= tolerance:
+            return ValidationResult(valid=True
+                                    )
+        self.logger.warning(f'🔍 Delta neutrality check, imbalance_pct: {imbalance_pct}%')
+
+        return ValidationResult(
+            valid=False,
+            reason=f"Delta imbalance detected: {imbalance_pct:.2f}% "
+                   f"(spot: {spot_qty:.6f}, "
+                   f"futures: {futures_qty:.6f})"
+        )
+        
+
     # Unified utility methods
     
     def _usdt_to_coins(self, usdt_amount: float) -> Optional[float]:
@@ -362,7 +500,11 @@ class MexcGateioFuturesStrategy:
             self.logger.error("Failed to initialize exchange manager")
             self._transition(ArbitrageState.ERROR_RECOVERY)
             return
-        
+
+        for exchange_type in ['spot', 'futures']:  # type: Literal['spot', 'futures']
+            symbol_info = self.exchange_manager.get_exchange(exchange_type).public.symbols_info[self.context.symbol]
+            self.context.min_quote_quantity[exchange_type] = symbol_info.min_quote_quantity
+
         self._transition(ArbitrageState.MONITORING)
         self.logger.info(f"✅ {self.name} strategy started for {self.context.symbol}")
     
@@ -424,6 +566,11 @@ class MexcGateioFuturesStrategy:
                     if order_id not in self._active_orders[exchange_role]:
                         # New order - track it
                         self._active_orders[exchange_role][order_id] = order
+                        new_positions = self.context.positions.update_position(
+                            exchange_role, order.filled_quantity, order.price, order.side
+                        )
+                        self.evolve_context(positions=new_positions)
+
                         self.logger.info(f"📝 New order tracked: {order_id} on {exchange_role}")
                     else:
                         # Existing order - check for new fills
@@ -437,8 +584,6 @@ class MexcGateioFuturesStrategy:
                         if current_filled > previous_filled:
                             # Process only the new fill amount
                             new_fill_amount = current_filled - previous_filled
-                            # Use the order price for the fill
-                            fill_price = order.price
 
                             # Update position with ONLY the new fill amount
                             new_positions = self.context.positions.update_position(
@@ -446,6 +591,11 @@ class MexcGateioFuturesStrategy:
                             )
 
                             self.evolve_context(positions=new_positions)
+                            
+                            # Validate delta neutrality after position update
+                            delta_validation = self._validate_delta_neutral()
+                            if not delta_validation.valid:
+                                self.logger.warning(f"⚠️ {delta_validation.reason}")
 
                     # Remove completed orders from tracking
                     if is_order_done(order):
@@ -483,12 +633,18 @@ class MexcGateioFuturesStrategy:
                     )
                     self.evolve_context(positions=new_positions)
                     
+                    # Validate delta neutrality after position update
+                    delta_validation = self._validate_delta_neutral()
+                    if not delta_validation.valid:
+                        self.logger.warning(f"⚠️ {delta_validation.reason}")
+                    
         except Exception as e:
             self.logger.error(f"❌ Error checking position updates: {e}")
     
     async def _update_active_orders_after_placement(self, placed_orders: Dict[ArbitrageExchangeType, Order]):
         """Update active orders tracking after placing new orders."""
         try:
+            pass
             for exchange_role, success in placed_orders.items():
                 if not success:
                     continue
@@ -503,7 +659,7 @@ class MexcGateioFuturesStrategy:
                 for order_id, order in symbol_orders.items():
                     if order_id not in self._active_orders[exchange_role]:
                         self._active_orders[exchange_role][order_id] = order
-                        self.logger.info(f"📝 Tracking new placed order: {order_id} on {exchange_role}")
+                        self.logger.info(f"📝 Tracking new placed order: {order_id} on {exchange_role} {order}")
                         
         except Exception as e:
             self.logger.error(f"❌ Error updating active orders after placement: {e}")
@@ -535,28 +691,49 @@ class MexcGateioFuturesStrategy:
         
         # Skip if we already have positions (delta-neutral strategy)
         if self.context.positions.has_positions:
+            # Additional check: ensure existing positions are delta neutral
+            delta_validation = self._validate_delta_neutral()
+            if not delta_validation.valid:
+                self.logger.warning(f"😱 Existing positions not delta neutral: {delta_validation.reason}")
             return None
         
         # Calculate entry cost using backtesting logic
         # Entry cost = (spot_ask - fut_bid) / spot_ask * 100
         entry_cost_pct = ((market_data.spot.ask_price - market_data.futures.bid_price) / 
                           market_data.spot.ask_price) * 100
+
         if self._debug_info_counter % 1000 == 0:
             print(f'Entry cost {entry_cost_pct} '
                   f'delta: {market_data.spot.ask_price - market_data.futures.bid_price}')
             self._debug_info_counter = 0
+
         self._debug_info_counter += 1
         # Only enter if cost is below threshold (favorable spread)
         if entry_cost_pct >= self.context.params.max_entry_cost_pct:
             return None
         
-        # Calculate max quantity
+        # Calculate max quantity with minimum order validation
+        base_max_coins = (self.context.base_position_size_usdt * 
+                         self.context.max_position_multiplier / 
+                         market_data.spot.ask_price)
+        
+        # Get minimum order quantities for validation
+        spot_min = self._get_minimum_order_quantity_usdt('spot', market_data.spot.ask_price)
+        futures_min = self._get_minimum_order_quantity_usdt('futures', market_data.futures.bid_price)
+        
+        # Use max of minimums to ensure both orders can be placed
+        min_required = max(spot_min, futures_min)
+        
         max_quantity = min(
             market_data.spot.ask_quantity,
             market_data.futures.bid_quantity,
-            # CRITICAL important to transform USDT size to coins
-            self.context.base_position_size_usdt * self.context.max_position_multiplier / market_data.spot.ask_price
+            base_max_coins
         )
+        
+        # Ensure max_quantity meets minimum requirements
+        if max_quantity < min_required:
+            self.logger.debug(f"📏 Max quantity {max_quantity:.6f} < minimum required {min_required:.6f}")
+            return None  # Skip opportunity if can't meet minimums
         
         # Create opportunity for spot-to-futures arbitrage (buy spot, sell futures)
         return ArbitrageOpportunity(
@@ -705,16 +882,38 @@ class MexcGateioFuturesStrategy:
             )
             self.logger.info(f"Calculated position size: {position_size:.6f} coins, base: {base_position_coin_size}, "
                              f"oppo: {opportunity.max_quantity} price: {market_data.spot.ask_price}")
-            # Validate execution
+            # Validate execution parameters
             validation = self._validate_execution(opportunity, position_size)
             if not validation.valid:
-                self.logger.error(f"❌ Validation failed: {validation.reason}")
+                self.logger.error(f"❌ Execution validation failed: {validation.reason}")
                 return False
             
-            # Prepare orders
+            # CRITICAL: Validate entry volumes meet minimum requirements
+            volume_validation = self._validate_entry_volumes(
+                spot_quantity=position_size, 
+                futures_quantity=position_size,
+                spot_price=opportunity.buy_price,
+                futures_price=opportunity.sell_price
+            )
+            if not volume_validation.valid:
+                self.logger.error(f"❌ Entry volume validation failed: {volume_validation.reason}")
+                return False
+            
+            # Adjust order sizes to meet exchange minimums
+            spot_quantity = self._prepare_order_quantity('spot', position_size, opportunity.buy_price)
+            futures_quantity = self._prepare_order_quantity('futures', position_size, opportunity.sell_price)
+            
+            # Ensure adjusted quantities are still equal for delta neutrality
+            if abs(spot_quantity - futures_quantity) > 1e-6:
+                # Use the larger quantity for both to maintain delta neutrality
+                adjusted_quantity = max(spot_quantity, futures_quantity)
+                self.logger.info(f"⚖️ Adjusting both quantities to {adjusted_quantity:.6f} for delta neutrality")
+                spot_quantity = futures_quantity = adjusted_quantity
+            
+            # Prepare orders with validated and adjusted quantities
             order_specs = [
-                OrderSpec(role='spot', side=Side.BUY, quantity=position_size, price=opportunity.buy_price),
-                OrderSpec(role='futures', side=Side.SELL, quantity=position_size, price=opportunity.sell_price)
+                OrderSpec(role='spot', side=Side.BUY, quantity=spot_quantity, price=opportunity.buy_price),
+                OrderSpec(role='futures', side=Side.SELL, quantity=futures_quantity, price=opportunity.sell_price)
             ]
             # Convert to OrderPlacementParams
             orders = {}
@@ -730,12 +929,13 @@ class MexcGateioFuturesStrategy:
             start_time = time.time()
             
             placed_orders = await self.exchange_manager.place_order_parallel(orders)
-            
+
             # Update active orders tracking for successfully placed orders
             await self._update_active_orders_after_placement(placed_orders)
             
             execution_time = (time.time() - start_time) * 1000
-            self.logger.info(f"⚡ Order execution completed in {execution_time:.1f}ms")
+            self.logger.info(f"⚡ Order execution completed in {execution_time:.1f}ms,"
+                             f" placed orders: {placed_orders}")
             
             # Check success
             success = all(placed_orders.values())
@@ -744,7 +944,7 @@ class MexcGateioFuturesStrategy:
                 if self.context.position_start_time is None:
                     self.evolve_context(position_start_time=time.time())
                 # Update performance metrics (convert to USDT for consistent tracking)
-                position_usdt = self._coins_to_usdt(position_size)
+                position_usdt = self._coins_to_usdt(max(spot_quantity, futures_quantity))
                 if position_usdt:
                     self.evolve_context(
                         total_volume=self.context.total_volume + position_usdt
@@ -761,7 +961,7 @@ class MexcGateioFuturesStrategy:
             return False
     
     async def _exit_all_positions(self):
-        """Exit all positions using simplified logic."""
+        """Exit all positions using simplified logic with volume validation."""
         try:
             self.logger.info("🔄 Exiting all positions...")
             
@@ -770,31 +970,45 @@ class MexcGateioFuturesStrategy:
                 self.logger.error("❌ Cannot exit positions - missing market data")
                 return
             
+            # CRITICAL: Validate exit volumes meet minimum requirements
+            volume_validation = self._validate_exit_volumes()
+            if not volume_validation.valid:
+                self.logger.error(f"❌ Exit volume validation failed: {volume_validation.reason}")
+                return
+            
             exit_orders = {}
             
-            # Close spot position (exit is opposite side)
+            # Close spot position (exit is opposite side) with volume validation
             spot_pos = self.context.positions.positions['spot']
-            if spot_pos.qty > 0.01:
+            if spot_pos.qty > 1e-8:
                 exit_side = flip_side(spot_pos.side)
                 price = market_data.spot.bid_price if exit_side == Side.SELL else market_data.spot.ask_price
+                
+                # Prepare exit quantity with minimum validations
+                exit_quantity = self._prepare_order_quantity('spot', spot_pos.qty, price)
+                
                 exit_orders['spot'] = OrderPlacementParams(
                     side=exit_side,
-                    quantity=spot_pos.qty,
+                    quantity=exit_quantity,
                     price=price
                 )
             
-            # Close futures position (exit is opposite side)
+            # Close futures position (exit is opposite side) with volume validation
             futures_pos = self.context.positions.positions['futures']
-            if futures_pos.qty > 0.01:
+            if futures_pos.qty > 1e-8:
                 exit_side = flip_side(futures_pos.side)
                 price = market_data.futures.bid_price if exit_side == Side.SELL else market_data.futures.ask_price
+                
+                # Prepare exit quantity with minimum validations
+                exit_quantity = self._prepare_order_quantity('futures', futures_pos.qty, price)
+                
                 exit_orders['futures'] = OrderPlacementParams(
                     side=exit_side,
-                    quantity=futures_pos.qty,
+                    quantity=exit_quantity,
                     price=price
                 )
             
-        f exit_orders:
+            if exit_orders:
                 placed_orders = await self.exchange_manager.place_order_parallel(exit_orders)
                 
                 # Update active orders tracking for exit orders
@@ -813,7 +1027,7 @@ class MexcGateioFuturesStrategy:
     # Position tracking
     
     async def _process_partial_fill(self, exchange_key: ArbitrageExchangeType, order: Order, fill_amount: float):
-        """Process partial fill and update position tracking incrementally."""
+        """Process partial fill and update position tracking incrementally with delta validation."""
         try:
             if order is None:
                 self.logger.error(f"❌ Cannot process None order from {exchange_key}")
@@ -822,6 +1036,12 @@ class MexcGateioFuturesStrategy:
             if fill_amount <= 0:
                 self.logger.warning(f"⚠️ Invalid fill amount: {fill_amount} for order {order.order_id}")
                 return
+            
+            # Validate fill amount meets minimum requirements
+            fill_price = order.price
+            min_quantity = self._get_minimum_order_quantity_usdt(exchange_key, fill_price)
+            if fill_amount < min_quantity:
+                self.logger.warning(f"⚠️ Fill amount {fill_amount:.6f} < minimum {min_quantity:.6f} for {exchange_key}")
             
             # Use the order price for the fill
             fill_price = order.price
@@ -832,6 +1052,11 @@ class MexcGateioFuturesStrategy:
             )
             
             self.evolve_context(positions=new_positions)
+            
+            # Validate delta neutrality after position update
+            delta_validation = self._validate_delta_neutral()
+            if not delta_validation.valid:
+                self.logger.warning(f"⚠️ After fill - {delta_validation.reason}")
             
             # Log the incremental fill
             self.logger.info(f"📈 Partial fill on {exchange_key}: {order.side.name} {fill_amount:.6f} @ {fill_price:.6f} (Order: {order.order_id})")

@@ -77,7 +77,7 @@ class DeltaNeutralTaskDemo:
         """Main demo execution."""
         try:
             # Configuration - Use different exchanges for delta neutral strategy
-            buy_exchange = ExchangeEnum.GATEIO    # Exchange for BUY side
+            buy_exchange = ExchangeEnum.MEXC    # Exchange for BUY side
             sell_exchange = ExchangeEnum.GATEIO_FUTURES  # Exchange for SELL side
 
             # Initialize TaskManager with persistence support
@@ -87,7 +87,7 @@ class DeltaNeutralTaskDemo:
             if self.task_manager.task_count == 0:
                 # Define trading symbols
                 ada_symbol = Symbol(
-                    base=AssetName("ADA"),
+                    base=AssetName("HIFI"),
                     quote=AssetName("USDT")
                 )
 
@@ -106,8 +106,8 @@ class DeltaNeutralTaskDemo:
                         Side.BUY: buy_exchange,   # MEXC for buying
                         Side.SELL: sell_exchange  # GATEIO for selling
                     },
-                    total_quantity=30.0,  # Total delta neutral quantity
-                    order_quantity=10.0,   # Size of each execution slice
+                    total_quantity=1000.0,  # Total delta neutral quantity
+                    order_quantity=60.0,   # Size of each execution slice
                     offset_ticks={
                         Side.BUY: 3,     # BUY orders 3 ticks above bid
                         Side.SELL: 4     # SELL orders 4 ticks below ask

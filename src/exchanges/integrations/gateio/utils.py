@@ -249,6 +249,72 @@ def rest_futures_to_order(gateio_order_data) -> Order:
     )
 
 
+def ws_futures_to_order(gateio_order_data) -> Order:
+    """Transform Gate.io REST futures order response to unified Order struct."""
+    print(f"--- ws_futures_to_order: {gateio_order_data}")
+
+    # symbol = GateioFuturesSymbol.to_symbol(order_data.get('contract', ''))
+    #
+    # # Convert create_time to milliseconds if needed
+    # create_time = order_data.get('create_time', 0)
+    # timestamp = int(create_time * 1000) if create_time and create_time < 1e10 else int(create_time or 0)
+    # print(f"--- futures: {order_data}")
+    # order = Order(
+    #     order_id=OrderId(str(order_data.get('id', ''))),
+    #     symbol=symbol,
+    #     side=to_side(order_data.get('side', 'buy')),
+    #     order_type=to_order_type(order_data.get('type', 'limit')),
+    #     quantity=float(order_data.get('size', '0')),  # Futures uses 'size'
+    #     price=float(order_data.get('price', '0')) if order_data.get('price') else None,
+    #     filled_quantity=float(order_data.get('filled_size', '0')),
+    #     remaining_quantity=float(order_data.get('left', '0')),
+    #     status=to_order_status(order_data.get('status', 'open')),
+    #     timestamp=timestamp
+    # )
+    symbol = GateioFuturesSymbol.to_symbol(gateio_order_data['contract'])
+    #Time in ms
+    timestamp = int(gateio_order_data.get('update_time', 0)*1000)
+    price=float(gateio_order_data.get('price', '0'))
+    remaining_quantity=abs(gateio_order_data.get('left', '0'))
+    quantity = abs(gateio_order_data['size'])
+    filled_quantity = float(gateio_order_data.get('filled_size', '0'))
+
+    order_type = (
+        OrderType.MARKET
+        if price == 0
+        else OrderType.LIMIT)
+
+
+
+    order_status = gateio_order_data.get('status', '').lower()
+
+    if order_status in ['closed', 'finished']:
+        if remaining_quantity == 0:
+            order_status = OrderStatus.FILLED
+        elif filled_quantity > 0:
+            order_status = OrderStatus.PARTIALLY_FILLED
+        else:
+            order_status = OrderStatus.CANCELED
+    else:
+        order_status = OrderStatus.NEW
+
+    return Order(
+        symbol=symbol,
+        order_id=OrderId(str(gateio_order_data['id'])),
+        side=detect_side_from_size(gateio_order_data['size']),
+        order_type=order_type,
+        quantity=quantity,
+        price=price,
+        filled_quantity = filled_quantity,
+        remaining_quantity=remaining_quantity,
+        status=order_status,
+        timestamp=timestamp,
+        fee=float(gateio_order_data.get('fee', '0')),
+        time_in_force=to_time_in_force(gateio_order_data.get('tif'))
+
+    )
+
+
 def rest_spot_to_order(gateio_order_data) -> Order:
     """Transform Gate.io REST order response to unified Order struct."""
     

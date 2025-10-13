@@ -69,7 +69,7 @@ class Order(Struct):
 
     def __str__(self):
         return (f"{self.symbol} {self.side.name} "
-                f"{self.order_type.name} {self.quantity}@{self.price} status: {self.status.name}")
+                f"{self.order_type.name} ({self.quantity}/{self.filled_quantity})@{self.price} status: {self.status.name}")
     
 class AssetBalance(Struct):
     """Account balance for a single asset."""

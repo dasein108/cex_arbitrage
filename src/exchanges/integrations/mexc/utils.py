@@ -25,7 +25,7 @@ _MEXC_ORDER_STATUS_MAP = {
     'new': OrderStatus.NEW,
     'filled': OrderStatus.FILLED,
     'partially_filled': OrderStatus.PARTIALLY_FILLED,
-    'cancelled': OrderStatus.CANCELED,
+    'canceled': OrderStatus.CANCELED,
     'pending_cancel': OrderStatus.CANCELED,
     'rejected': OrderStatus.REJECTED,
     'expired': OrderStatus.EXPIRED,
