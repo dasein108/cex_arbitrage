@@ -484,7 +484,7 @@ class ExchangeManager:
             role_key = role_keys[i]
             if isinstance(result, Order):
                 placed_orders[role_key] = result
-                self.logger.info(f"✅ Order placed on {role_key}: {result.order_id}")
+                self.logger.info(f"✅ Order placed on {role_key}: {result.order_id} {result}")
             else:
                 placed_orders[role_key] = None
                 self.logger.error(f"❌ Order failed on {role_key}: {result}")
@@ -531,7 +531,10 @@ class ExchangeManager:
             
             if cancel_tasks:
                 await asyncio.gather(*cancel_tasks, return_exceptions=True)
-            
+
+            for order in orders:
+                self.logger.info(f"🛑 Cancelled order on {role_key}: {order.order_id} {order}")
+                # TODO: sync orders forced way from REST API, in inherited class
             return len(cancel_tasks)
             
         except Exception as e:

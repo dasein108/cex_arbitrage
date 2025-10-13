@@ -703,7 +703,8 @@ class MexcGateioFuturesStrategy:
                 base_position_coin_size,    # Now in coin units
                 opportunity.max_quantity    # Already in coin units
             )
-            
+            self.logger.info(f"Calculated position size: {position_size:.6f} coins, base: {base_position_coin_size}, "
+                             f"oppo: {opportunity.max_quantity} price: {market_data.spot.ask_price}")
             # Validate execution
             validation = self._validate_execution(opportunity, position_size)
             if not validation.valid:
@@ -793,7 +794,7 @@ class MexcGateioFuturesStrategy:
                     price=price
                 )
             
-            if exit_orders:
+        f exit_orders:
                 placed_orders = await self.exchange_manager.place_order_parallel(exit_orders)
                 
                 # Update active orders tracking for exit orders
