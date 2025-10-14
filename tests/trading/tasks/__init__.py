@@ -1,1 +1,0 @@
-"""Trading task tests package."""

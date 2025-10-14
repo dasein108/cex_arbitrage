@@ -7,27 +7,24 @@ Supports arbitrage between any spot and futures exchanges.
 
 import asyncio
 import time
-from typing import Optional, Dict, Type, Literal, Callable, Awaitable
+from typing import Optional, Dict, Type
 
-from trading.tasks.base_task import BaseTradingTask, TaskExecutionResult, StateHandler
+from trading.tasks.base_task import BaseTradingTask, StateHandler
 from trading.tasks.arbitrage_task_context import (
-    ArbitrageTaskContext, 
-    ArbitrageState, 
-    Position, 
-    PositionState,
+    ArbitrageTaskContext,
     TradingParameters,
     ArbitrageOpportunity,
     MarketData,
     ValidationResult,
     DeltaImbalanceResult
 )
-from exchanges.structs import Symbol, Side, ExchangeEnum, BookTicker, Order, OrderId
+from exchanges.structs import Symbol, Side, ExchangeEnum, Order
 from infrastructure.logging import HFTLoggerInterface, get_logger
 from utils.exchange_utils import is_order_done
-from utils import get_decrease_vector, flip_side, calculate_weighted_price
+from utils import flip_side
 
 # Import existing arbitrage components
-from applications.hedged_arbitrage.strategy.exchange_manager import (
+from trading.task_manager.exchange_manager import (
     ExchangeManager, 
     OrderPlacementParams, 
     ExchangeRole, 
@@ -191,7 +188,7 @@ class SpotFuturesArbitrageTask(BaseTradingTask[ArbitrageTaskContext, str]):
             await self._check_order_updates()
             
             # Check positions and imbalances
-            if self.context.positions.has_positions:
+            if self.context.positions_state.has_positions:
                 delta_imbalance = self._has_delta_imbalance()
                 if delta_imbalance.has_imbalance:
                     self.logger.warning(f"⚖️ Delta imbalance: {delta_imbalance.reason}")
@@ -203,7 +200,7 @@ class SpotFuturesArbitrageTask(BaseTradingTask[ArbitrageTaskContext, str]):
                 return
             
             # Look for new opportunities
-            if not self.context.positions.has_positions:
+            if not self.context.positions_state.has_positions:
                 opportunity = await self._identify_arbitrage_opportunity()
                 if opportunity:
                     self.logger.info(f"💰 Opportunity: {opportunity.spread_pct:.4f}% spread")
@@ -336,8 +333,8 @@ class SpotFuturesArbitrageTask(BaseTradingTask[ArbitrageTaskContext, str]):
     
     def _validate_exit_volumes(self) -> ValidationResult:
         """Validate that exit volumes meet minimum requirements for both exchanges."""
-        spot_pos = self.context.positions.positions['spot']
-        futures_pos = self.context.positions.positions['futures']
+        spot_pos = self.context.positions_state.positions['spot']
+        futures_pos = self.context.positions_state.positions['futures']
         
         if spot_pos.qty < 1e-8 or futures_pos.qty < 1e-8:
             return ValidationResult(valid=False, reason="No positions to exit")
@@ -467,7 +464,7 @@ class SpotFuturesArbitrageTask(BaseTradingTask[ArbitrageTaskContext, str]):
     
     async def _should_exit_positions(self) -> bool:
         """Check if should exit existing positions."""
-        if not self.context.positions.has_positions:
+        if not self.context.positions_state.has_positions:
             return False
         
         market_data = self.get_market_data()
@@ -475,8 +472,8 @@ class SpotFuturesArbitrageTask(BaseTradingTask[ArbitrageTaskContext, str]):
             return False
         
         # Get position details
-        spot_pos = self.context.positions.positions['spot']
-        futures_pos = self.context.positions.positions['futures']
+        spot_pos = self.context.positions_state.positions['spot']
+        futures_pos = self.context.positions_state.positions['futures']
         
         if spot_pos.qty < 1e-8 or futures_pos.qty < 1e-8:
             return False
@@ -527,11 +524,11 @@ class SpotFuturesArbitrageTask(BaseTradingTask[ArbitrageTaskContext, str]):
         Returns detailed analysis of any position imbalance that requires correction.
         Uses proper signed position values and percentage-based tolerance.
         """
-        if not self.context.positions.has_positions:
+        if not self.context.positions_state.has_positions:
             return DeltaImbalanceResult(has_imbalance=False, reason="No positions to balance")
         
-        spot_pos = self.context.positions.positions['spot']
-        futures_pos = self.context.positions.positions['futures']
+        spot_pos = self.context.positions_state.positions['spot']
+        futures_pos = self.context.positions_state.positions['futures']
         
         # Calculate signed position values (positive for long, negative for short)
         spot_signed = spot_pos.qty if spot_pos.side == Side.BUY else -spot_pos.qty if spot_pos.side else 0.0
@@ -811,7 +808,7 @@ class SpotFuturesArbitrageTask(BaseTradingTask[ArbitrageTaskContext, str]):
             exit_orders: Dict[str, OrderPlacementParams] = {}
             
             # Close spot position (exit is opposite side) with volume validation
-            spot_pos = self.context.positions.positions['spot']
+            spot_pos = self.context.positions_state.positions['spot']
             if spot_pos.qty > 1e-8:
                 exit_side = flip_side(spot_pos.side)
                 price = market_data.spot.bid_price if exit_side == Side.SELL else market_data.spot.ask_price
@@ -826,7 +823,7 @@ class SpotFuturesArbitrageTask(BaseTradingTask[ArbitrageTaskContext, str]):
                 )
             
             # Close futures position (exit is opposite side) with volume validation
-            futures_pos = self.context.positions.positions['futures']
+            futures_pos = self.context.positions_state.positions['futures']
             if futures_pos.qty > 1e-8:
                 exit_side = flip_side(futures_pos.side)
                 price = market_data.futures.bid_price if exit_side == Side.SELL else market_data.futures.ask_price
@@ -865,7 +862,7 @@ class SpotFuturesArbitrageTask(BaseTradingTask[ArbitrageTaskContext, str]):
         """Check order status updates using direct access to exchange orders."""
         for exchange_role in ['spot', 'futures']:
             # Get exchange directly
-            for order_id, order in self.context.active_orders[exchange_role].items():
+            for order_id, order in self.context.active_orders[exchange_role].copy().items():
                 await self._process_order_fill(exchange_role, order)
 
     async def _process_order_fill(self, exchange_key: str, order: Order):
@@ -882,7 +879,7 @@ class SpotFuturesArbitrageTask(BaseTradingTask[ArbitrageTaskContext, str]):
                 new_active_orders = self.context.active_orders.copy()
                 new_active_orders[exchange_key][order.order_id] = order
                 
-                new_positions = self.context.positions.update_position(
+                new_positions = self.context.positions_state.update_position(
                     exchange_key, order.filled_quantity, order.price, order.side
                 )
 
@@ -904,7 +901,7 @@ class SpotFuturesArbitrageTask(BaseTradingTask[ArbitrageTaskContext, str]):
                 fill_amount = current_filled - previous_filled
 
                 if fill_amount > 0:
-                    new_positions = self.context.positions.update_position(
+                    new_positions = self.context.positions_state.update_position(
                         exchange_key, fill_amount, order.price, order.side
                     )
 

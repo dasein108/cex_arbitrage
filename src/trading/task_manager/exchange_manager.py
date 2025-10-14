@@ -20,12 +20,21 @@ from enum import Enum
 from msgspec import Struct
 
 from exchanges.dual_exchange import DualExchange
-from exchanges.structs import Symbol, BookTicker, Order, AssetBalance, Position, Side
+from exchanges.structs import Symbol, BookTicker, Order, AssetBalance, Position, Side, ExchangeEnum
 from infrastructure.logging import HFTLoggerInterface
 from infrastructure.networking.websocket.structs import PublicWebsocketChannelType, PrivateWebsocketChannelType
 from config.config_manager import get_exchange_config
+import msgspec
 
-from applications.hedged_arbitrage.strategy.base_arbitrage_strategy import ExchangeRole
+
+class ExchangeRole(msgspec.Struct):
+    """Defines role and configuration for an exchange in arbitrage strategy."""
+    exchange_enum: ExchangeEnum
+    role: str  # e.g., 'primary_spot', 'hedge_futures', 'arbitrage_target'
+    side: Optional[Side] = None  # For strategies with fixed sides per exchange
+    max_position_size: Optional[float] = None
+    priority: int = 0  # Execution priority (0 = highest)
+
 
 ArbitrageExchangeType = Literal['spot', 'futures']
 
@@ -478,6 +487,7 @@ class ExchangeManager:
                     side=order_params.side,
                     price=order_params.price,
                     quote_quantity=order_params.quantity*order_params.price,
+                    ensure=True
                 )
 
                 order_tasks.append(task)

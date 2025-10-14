@@ -15,8 +15,10 @@ import msgspec
 from msgspec import Struct
 
 from trading.tasks.base_task import TaskContext
-from exchanges.structs import Symbol, Side, Order, ExchangeEnum, BookTicker
-
+from exchanges.structs import Symbol, Side, Order, ExchangeEnum, BookTicker, OrderId
+from trading.task_manager.exchange_manager import (
+    ArbitrageExchangeType
+)
 
 # Arbitrage strategy states using Literal strings for optimal performance
 # Includes base states and arbitrage-specific states
@@ -50,7 +52,7 @@ class Position(Struct):
 
 class PositionState(msgspec.Struct):
     """Unified position tracking for both exchanges using dictionary structure."""
-    positions: Dict[str, Position] = msgspec.field(default_factory=lambda: {
+    positions: Dict[ArbitrageExchangeType, Position] = msgspec.field(default_factory=lambda: {
         'spot': Position(),
         'futures': Position()
     })
@@ -63,12 +65,12 @@ class PositionState(msgspec.Struct):
         """Check if strategy has any open positions."""
         return any(pos.qty > 1e-8 for pos in self.positions.values())
     
-    def update_position(self, exchange: str, quantity: float, price: float, side: Side) -> 'PositionState':
+    def update_position(self, exchange_key: ArbitrageExchangeType, quantity: float, price: float, side: Side) -> 'PositionState':
         """Update position for specified exchange with side information and weighted average price."""
         if quantity <= 0:
             return self
             
-        current = self.positions[exchange]
+        current = self.positions[exchange_key]
         
         if current.qty < 1e-8:  # No existing position
             new_position = Position(qty=quantity, price=price, side=side)
@@ -78,19 +80,20 @@ class PositionState(msgspec.Struct):
             new_price, new_qty = calculate_weighted_price(current.qty, current.price, quantity, price)
             new_position = Position(qty=new_qty, price=new_price, side=side)
         else:
-            # Opposite side: get decrease vector
-            from utils import get_decrease_vector
-            new_qty, new_side = get_decrease_vector(current.qty, current.side, quantity, side)
-            new_price = price if new_side != current.side else current.price
-            
-            # Clear position if quantity becomes zero
-            if new_qty < 1e-8:
-                new_position = Position()
-            else:
-                new_position = Position(qty=new_qty, price=new_price, side=new_side)
+            raise NotImplementedError("Position reduction logic not implemented yet.")
+            # # Opposite side: get decrease vector
+            # from utils import get_decrease_vector
+            # new_qty, new_side = get_decrease_vector(current.qty, current.side, quantity, side)
+            # new_price = price if new_side != current.side else current.price
+            #
+            # # Clear position if quantity becomes zero
+            # if new_qty < 1e-8:
+            #     new_position = Position()
+            # else:
+            #     new_position = Position(qty=new_qty, price=new_price, side=new_side)
         
         new_positions = self.positions.copy()
-        new_positions[exchange] = new_position
+        new_positions[exchange_key] = new_position
         return msgspec.structs.replace(self, positions=new_positions)
 
 
@@ -187,10 +190,10 @@ class ArbitrageTaskContext(TaskContext):
     params: TradingParameters = msgspec.field(default_factory=TradingParameters)
     
     # Position tracking
-    positions: PositionState = msgspec.field(default_factory=PositionState)
+    positions_state: PositionState = msgspec.field(default_factory=PositionState)
     
     # Active orders (preserved across restarts) - using string keys for serialization
-    active_orders: Dict[str, Dict[str, Order]] = msgspec.field(default_factory=lambda: {
+    active_orders: Dict[ArbitrageExchangeType, Dict[OrderId, Order]] = msgspec.field(default_factory=lambda: {
         'spot': {},
         'futures': {}
     })
@@ -232,7 +235,7 @@ class ArbitrageTaskContext(TaskContext):
         # Call parent for common conversions (Side enum, etc.)
         return super()._convert_dict_key(field_name, key_str)
     
-    def get_active_order_count(self, exchange_type: Optional[str] = None) -> int:
+    def get_active_order_count(self, exchange_type: Optional[ArbitrageExchangeType] = None) -> int:
         """Get count of active orders for debugging and monitoring."""
         if exchange_type:
             return len(self.active_orders.get(exchange_type, {}))

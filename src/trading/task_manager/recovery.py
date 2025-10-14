@@ -239,51 +239,27 @@ class TaskRecovery:
         """
         try:
             from trading.tasks.spot_futures_arbitrage_task import SpotFuturesArbitrageTask
-            from trading.tasks.arbitrage_task_context import ArbitrageTaskContext, ArbitrageState, TradingParameters
-            from exchanges.structs import Symbol, ExchangeEnum
+            from trading.tasks.arbitrage_task_context import ArbitrageTaskContext
+            from exchanges.structs import ExchangeEnum
             
-            # Parse JSON data to extract required fields
-            context_data = json.loads(json_data)
-            symbol_data = context_data.get('symbol', {})
+            # Use TaskSerializer to properly deserialize the full context
+            context = TaskSerializer.deserialize_context(json_data, ArbitrageTaskContext)
             
-            # Reconstruct Symbol
-            symbol = Symbol(
-                base=symbol_data['base'],
-                quote=symbol_data['quote']
-            )
+            # Extract exchange enums from context (with fallback values)
+            spot_exchange = context.spot_exchange if context.spot_exchange else ExchangeEnum.MEXC
+            futures_exchange = context.futures_exchange if context.futures_exchange else ExchangeEnum.GATEIO_FUTURES
             
-            # Reconstruct TradingParameters
-            params_data = context_data.get('params', {})
-            params = TradingParameters(
-                max_entry_cost_pct=params_data.get('max_entry_cost_pct', 0.5),
-                min_profit_pct=params_data.get('min_profit_pct', 0.1),
-                max_hours=params_data.get('max_hours', 6.0),
-                spot_fee=params_data.get('spot_fee', 0.0005),
-                fut_fee=params_data.get('fut_fee', 0.0005)
-            )
-            
-            # Extract exchange enums (with backward compatibility)
-            spot_exchange = ExchangeEnum(context_data.get('spot_exchange', ExchangeEnum.MEXC.value))
-            futures_exchange = ExchangeEnum(context_data.get('futures_exchange', ExchangeEnum.GATEIO_FUTURES.value))
-            
-            # Create minimal context for task initialization
-            context = ArbitrageTaskContext(
-                symbol=symbol,
-                base_position_size_usdt=context_data.get('base_position_size_usdt', 20.0),
-                futures_leverage=context_data.get('futures_leverage', 1.0),
-                params=params,
-                arbitrage_state=context_data.get('arbitrage_state', 'idle')
-            )
-            
+            # Create task with properly deserialized context
             task = SpotFuturesArbitrageTask(self.logger, context, spot_exchange, futures_exchange)
             
-            # Restore full state from JSON
-            task.restore_from_json(json_data)
+            # No need to call restore_from_json since context is already fully deserialized
             
             return task
             
         except Exception as e:
             self.logger.error(f"Failed to recover SpotFuturesArbitrageTask {task_id}", error=str(e))
+            import traceback
+            traceback.print_exc()
             return None
     
     async def recover_mexc_gateio_arbitrage_task(self, task_id: str, json_data: str) -> Optional['SpotFuturesArbitrageTask']:

@@ -7,9 +7,7 @@ No classes, no factories, no dependency injection - just direct transformations.
 HFT COMPLIANT: Zero overhead function calls, no object instantiation.
 """
 
-from typing import Dict, Optional
-import re
-from enum import Enum
+from typing import Dict, Optional, Any
 from exchanges.structs.common import (
     Side, OrderStatus, OrderType, TimeInForce, AssetName, AssetBalance, FuturesBalance, Order
 )
@@ -203,16 +201,16 @@ def futures_balance_entry(item: Dict) -> FuturesBalance:
     )
 
 # TODO: implement for futures, refactor futures_rest, get rid of fallabacks
-def rest_futures_to_order(gateio_order_data) -> Order:
+def rest_futures_to_order(order_data: Dict[str, Any]) -> Order:
     """Transform Gate.io REST futures order response to unified Order struct."""
-
-    symbol = GateioFuturesSymbol.to_symbol(gateio_order_data['contract'])
+    print(f"==== order_data futures: {order_data}")
+    symbol = GateioFuturesSymbol.to_symbol(order_data['contract'])
     #Time in ms
-    timestamp = int(gateio_order_data['create_time']*1000)
+    timestamp = int(order_data['create_time'] * 1000)
     # 'fill_price': 0.06335,
-    price=float(gateio_order_data.get('price', '0'))
-    remaining_quantity=abs(gateio_order_data.get('left', '0'))
-    quantity = abs(gateio_order_data['size'])
+    price=float(order_data.get('price', '0')) # fill_price
+    remaining_quantity=abs(float(order_data.get('left', '0')))
+    quantity = abs(order_data['size'])
     order_type = (
         OrderType.MARKET 
         if price == 0 
@@ -221,7 +219,7 @@ def rest_futures_to_order(gateio_order_data) -> Order:
 
     filled_quantity = quantity - remaining_quantity
 
-    order_status = gateio_order_data.get('status', '').lower()
+    order_status = order_data.get('status', '').lower()
     if order_status in ['closed', 'finished']:
         if remaining_quantity == 0:
             order_status = OrderStatus.FILLED
@@ -234,8 +232,8 @@ def rest_futures_to_order(gateio_order_data) -> Order:
 
     return Order(
         symbol=symbol,
-        order_id=OrderId(str(gateio_order_data['id'])),
-        side=detect_side_from_size(gateio_order_data['size']),
+        order_id=OrderId(str(order_data['id'])),
+        side=detect_side_from_size(order_data['size']),
         order_type=order_type,
         quantity=quantity,
         price=price,
@@ -243,106 +241,39 @@ def rest_futures_to_order(gateio_order_data) -> Order:
         remaining_quantity=remaining_quantity,
         status=order_status,
         timestamp=timestamp,
-        fee=float(gateio_order_data.get('fee', '0')),
-        time_in_force=to_time_in_force(gateio_order_data.get('tif'))
+        fee=float(order_data.get('fee', '0')),
+        time_in_force=to_time_in_force(order_data.get('tif'))
 
     )
 
-
-def ws_futures_to_order(gateio_order_data) -> Order:
-    """Transform Gate.io REST futures order response to unified Order struct."""
-    print(f"--- ws_futures_to_order: {gateio_order_data}")
-
-    # symbol = GateioFuturesSymbol.to_symbol(order_data.get('contract', ''))
-    #
-    # # Convert create_time to milliseconds if needed
-    # create_time = order_data.get('create_time', 0)
-    # timestamp = int(create_time * 1000) if create_time and create_time < 1e10 else int(create_time or 0)
-    # print(f"--- futures: {order_data}")
-    # order = Order(
-    #     order_id=OrderId(str(order_data.get('id', ''))),
-    #     symbol=symbol,
-    #     side=to_side(order_data.get('side', 'buy')),
-    #     order_type=to_order_type(order_data.get('type', 'limit')),
-    #     quantity=float(order_data.get('size', '0')),  # Futures uses 'size'
-    #     price=float(order_data.get('price', '0')) if order_data.get('price') else None,
-    #     filled_quantity=float(order_data.get('filled_size', '0')),
-    #     remaining_quantity=float(order_data.get('left', '0')),
-    #     status=to_order_status(order_data.get('status', 'open')),
-    #     timestamp=timestamp
-    # )
-    symbol = GateioFuturesSymbol.to_symbol(gateio_order_data['contract'])
-    #Time in ms
-    timestamp = int(gateio_order_data.get('update_time', 0)*1000)
-    price=float(gateio_order_data.get('price', '0'))
-    remaining_quantity=abs(gateio_order_data.get('left', '0'))
-    quantity = abs(gateio_order_data['size'])
-    filled_quantity = float(gateio_order_data.get('filled_size', '0'))
-
-    order_type = (
-        OrderType.MARKET
-        if price == 0
-        else OrderType.LIMIT)
-
-
-
-    order_status = gateio_order_data.get('status', '').lower()
-
-    if order_status in ['closed', 'finished']:
-        if remaining_quantity == 0:
-            order_status = OrderStatus.FILLED
-        elif filled_quantity > 0:
-            order_status = OrderStatus.PARTIALLY_FILLED
-        else:
-            order_status = OrderStatus.CANCELED
-    else:
-        order_status = OrderStatus.NEW
-
-    return Order(
-        symbol=symbol,
-        order_id=OrderId(str(gateio_order_data['id'])),
-        side=detect_side_from_size(gateio_order_data['size']),
-        order_type=order_type,
-        quantity=quantity,
-        price=price,
-        filled_quantity = filled_quantity,
-        remaining_quantity=remaining_quantity,
-        status=order_status,
-        timestamp=timestamp,
-        fee=float(gateio_order_data.get('fee', '0')),
-        time_in_force=to_time_in_force(gateio_order_data.get('tif'))
-
-    )
-
-
-def rest_spot_to_order(gateio_order_data) -> Order:
+def rest_spot_to_order(order_data: Dict[str, Any]) -> Order:
     """Transform Gate.io REST order response to unified Order struct."""
     
     # Convert Gate.io symbol to unified Symbol
-    symbol = GateioSpotSymbol.to_symbol(gateio_order_data['currency_pair'])
+    symbol = GateioSpotSymbol.to_symbol(order_data['currency_pair'])
     
     # Calculate fee from order data if available
-    fee = float(gateio_order_data.get('fee', '0'))
+    fee = float(order_data.get('fee', '0'))
     
     return Order(
         symbol=symbol,
-        side=to_side(gateio_order_data['side']),
-        order_type=to_order_type(gateio_order_data['type']),
-        price=float(gateio_order_data['price']),
-        quantity=float(gateio_order_data['amount']),
-        filled_quantity=float(gateio_order_data.get('filled_amount', '0')),
-        order_id=OrderId(str(gateio_order_data['id'])),
-        status=to_order_status(gateio_order_data['status']),
-        timestamp=int(gateio_order_data['create_time_ms']) if gateio_order_data.get('create_time_ms') else None,
+        side=to_side(order_data['side']),
+        order_type=to_order_type(order_data['type']),
+        price=float(order_data['price']),
+        quantity=float(order_data['amount']),
+        filled_quantity=float(order_data.get('filled_amount', '0')),
+        order_id=OrderId(str(order_data['id'])),
+        status=to_order_status(order_data['status']),
+        timestamp=int(order_data['create_time_ms']) if order_data.get('create_time_ms') else None,
         fee=fee
     )
 
-def to_withdrawal_status(gateio_status: str) -> WithdrawalStatus:
+def to_withdrawal_status(status_str: str) -> WithdrawalStatus:
     """Convert GATEIO withdrawal status to unified WithdrawalStatus."""
-    return _GATEIO_WITHDRAW_STATUS_MAP.get(gateio_status.upper(), WithdrawalStatus.UNKNOWN)
+    return _GATEIO_WITHDRAW_STATUS_MAP.get(status_str.upper(), WithdrawalStatus.UNKNOWN)
 
-def reverse_lookup_order_type(gateio_type_str: str) -> OrderType:
+def reverse_lookup_order_type(type_str: str) -> OrderType:
     """Reverse lookup for Gate.io order type strings to unified OrderType."""
     # This handles the reverse mapping that was in the mapper
-    return to_order_type(gateio_type_str)
+    return to_order_type(type_str)
 

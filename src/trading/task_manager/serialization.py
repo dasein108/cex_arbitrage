@@ -10,6 +10,7 @@ from typing import Any, Dict, Optional, Type, TypeVar
 import msgspec
 
 from exchanges.structs import Symbol, Side, ExchangeEnum
+from exchanges.structs.enums import OrderStatus, OrderType, TimeInForce
 from trading.struct import TradingStrategyState
 
 T = TypeVar('T', bound=msgspec.Struct)
@@ -204,11 +205,11 @@ class TaskSerializer:
                 # If import fails, leave as is - the specific task recovery will handle it
                 pass
         
-        # Handle PositionState and Position nested structs
-        if 'positions' in obj_data and obj_data['positions'] is not None:
+        # Handle PositionState and Position nested structs for ArbitrageTaskContext
+        if 'positions_state' in obj_data and obj_data['positions_state'] is not None:
             try:
                 from trading.tasks.arbitrage_task_context import PositionState, Position
-                positions_data = obj_data['positions']
+                positions_state_data = obj_data['positions_state']
                 
                 def reconstruct_position(pos_data):
                     if pos_data is None:
@@ -220,11 +221,73 @@ class TaskSerializer:
                         side=side
                     )
                 
-                positions_dict = {}
-                for key, pos_data in positions_data.items():
-                    positions_dict[key] = reconstruct_position(pos_data)
+                # Handle positions_state nested structure
+                if 'positions' in positions_state_data:
+                    positions_dict = {}
+                    for key, pos_data in positions_state_data['positions'].items():
+                        positions_dict[key] = reconstruct_position(pos_data)
+                    obj_data['positions_state'] = PositionState(positions=positions_dict)
+                else:
+                    # Direct position data
+                    positions_dict = {}
+                    for key, pos_data in positions_state_data.items():
+                        positions_dict[key] = reconstruct_position(pos_data)
+                    obj_data['positions_state'] = PositionState(positions=positions_dict)
+            except ImportError:
+                # If import fails, leave as is - the specific task recovery will handle it
+                pass
+        
+        # Handle active_orders nested Order objects for ArbitrageTaskContext
+        if 'active_orders' in obj_data and obj_data['active_orders'] is not None:
+            try:
+                from exchanges.structs.common import Order
+                active_orders_data = obj_data['active_orders']
                 
-                obj_data['positions'] = PositionState(positions=positions_dict)
+                def reconstruct_order(order_data):
+                    """Reconstruct Order object from dict data."""
+                    if order_data is None:
+                        return None
+                    
+                    # Handle Symbol reconstruction
+                    symbol_data = order_data.get('symbol')
+                    symbol = Symbol(
+                        base=symbol_data['base'],
+                        quote=symbol_data['quote']
+                    ) if symbol_data else None
+                    
+                    # Handle enum conversions
+                    side = Side(order_data['side']) if order_data.get('side') is not None else None
+                    order_type = OrderType(order_data['order_type']) if order_data.get('order_type') is not None else OrderType.LIMIT
+                    status = OrderStatus(order_data['status']) if order_data.get('status') is not None else OrderStatus.NEW
+                    time_in_force = TimeInForce(order_data['time_in_force']) if order_data.get('time_in_force') is not None else TimeInForce.GTC
+                    
+                    return Order(
+                        symbol=symbol,
+                        order_id=order_data.get('order_id', ''),
+                        side=side,
+                        order_type=order_type,
+                        quantity=order_data.get('quantity', 0.0),
+                        client_order_id=order_data.get('client_order_id'),
+                        price=order_data.get('price'),
+                        filled_quantity=order_data.get('filled_quantity', 0.0),
+                        remaining_quantity=order_data.get('remaining_quantity'),
+                        status=status,
+                        timestamp=order_data.get('timestamp'),
+                        average_price=order_data.get('average_price'),
+                        fee=order_data.get('fee'),
+                        fee_asset=order_data.get('fee_asset'),
+                        time_in_force=time_in_force
+                    )
+                
+                # Reconstruct nested active_orders structure
+                reconstructed_active_orders = {}
+                for exchange_key, orders_dict in active_orders_data.items():
+                    reconstructed_orders = {}
+                    for order_id, order_data in orders_dict.items():
+                        reconstructed_orders[order_id] = reconstruct_order(order_data)
+                    reconstructed_active_orders[exchange_key] = reconstructed_orders
+                
+                obj_data['active_orders'] = reconstructed_active_orders
             except ImportError:
                 # If import fails, leave as is - the specific task recovery will handle it
                 pass

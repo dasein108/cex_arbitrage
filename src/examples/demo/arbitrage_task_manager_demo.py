@@ -29,7 +29,7 @@ async def run_arbitrage_demo():
     logger = get_logger("arbitrage_task_demo")
     
     # Initialize TaskManager with persistence
-    manager = TaskManager(logger, base_path="arbitrage_task_data")
+    manager = TaskManager(logger, base_path="task_data")
     
     # Set up graceful shutdown
     shutdown_event = asyncio.Event()
@@ -116,7 +116,7 @@ async def recovery_demo():
     logger = get_logger("arbitrage_recovery_demo")
     
     # Initialize TaskManager
-    manager = TaskManager(logger, base_path="arbitrage_task_data")
+    manager = TaskManager(logger, base_path="task_data")
     
     try:
         logger.info("🔄 Testing task recovery capabilities...")

@@ -38,7 +38,7 @@ The system is built on a robust foundation defined in `base_task.py`:
 ```python
 class TaskContext(msgspec.Struct, frozen=False, kw_only=True):
     task_id: str = ""
-    state: TradingStrategyState = TradingStrategyState.NOT_STARTED
+    state: TradingStrategyState = 'not_started'
     error: Optional[Exception] = None
     metadata: Dict[str, Any] = msgspec.field(default_factory=dict)
     should_save_flag: bool = True  # Whether to persist this task
@@ -51,7 +51,7 @@ class TaskExecutionResult(msgspec.Struct, frozen=False, kw_only=True):
     context: 'TaskContext'  # Snapshot of task context after execution
     should_continue: bool = True  # True if task needs more cycles
     next_delay: float = 0.1  # Suggested delay before next execution
-    state: TradingStrategyState = TradingStrategyState.IDLE
+    state: TradingStrategyState = 'idle'
     error: Optional[Exception] = None
     execution_time_ms: float = 0.0
     metadata: Dict[str, Any] = msgspec.field(default_factory=dict)
@@ -68,7 +68,7 @@ class BaseTradingTask(Generic[T, StateT], ABC):
 The task architecture uses advanced Python generics to provide type safety:
 
 - `T` - Bound to `TaskContext` (specific context type for each task)
-- `StateT` - Bound to `IntEnum` (custom states beyond base TradingStrategyState)
+- `StateT` - Bound to `str` (custom string states beyond base TradingStrategyState)
 
 This enables:
 - **Type-safe context access** - IDE autocomplete and type checking
@@ -124,7 +124,7 @@ The system uses an immutable context evolution pattern for thread-safe state upd
 ```python
 # Django-like field updates
 self.evolve_context(
-    state=TradingStrategyState.EXECUTING,
+    state='executing',
     total_quantity=1000.0
 )
 
@@ -136,7 +136,7 @@ self.evolve_context(
 
 # Mixed updates
 self.evolve_context(
-    state=TradingStrategyState.EXECUTING,
+    state='executing',
     order_id__buy="12345",
     avg_price__sell=0.001234
 )
@@ -260,14 +260,14 @@ class MyTaskContext(TaskContext):
 
 #### Step 2: Define Custom States (Optional)
 ```python
-from enum import IntEnum
+from typing import Literal
 
-class MyTaskState(IntEnum):
-    """Custom states for my task."""
-    ANALYZING_MARKET = 1
-    PLACING_ORDERS = 2  
-    MONITORING_FILLS = 3
-    ADJUSTING_PRICE = 4
+MyTaskState = Literal[
+    'analyzing_market',
+    'placing_orders',
+    'monitoring_fills', 
+    'adjusting_price'
+]
 ```
 
 #### Step 3: Implement Task Class
@@ -275,7 +275,7 @@ class MyTaskState(IntEnum):
 from trading.tasks.base_task import BaseTradingTask
 from typing import Type, Dict
 
-class MyTask(BaseTradingTask[MyTaskContext, MyTaskState]):
+class MyTask(BaseTradingTask[MyTaskContext, str]):
     """Custom trading task implementation."""
     name: str = "MyTask"
     
@@ -610,18 +610,18 @@ async def _handle_executing(self):
     except ExchangeConnectionError as e:
         # Handle connection issues
         self.logger.error("Exchange connection lost", error=str(e))
-        self._transition(TradingStrategyState.ERROR)
+        self._transition('error')
         
     except InsufficientBalanceError as e:
         # Handle balance issues
         self.logger.warning("Insufficient balance", error=str(e))
-        self._transition(TradingStrategyState.PAUSED)
+        self._transition('paused')
         
     except Exception as e:
         # Handle unexpected errors
         self.logger.error("Unexpected error in execution", error=str(e))
         self.evolve_context(error=e)
-        self._transition(TradingStrategyState.ERROR)
+        self._transition('error')
 ```
 
 ### Monitoring and Debugging

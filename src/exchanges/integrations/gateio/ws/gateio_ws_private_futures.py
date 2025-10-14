@@ -42,9 +42,7 @@ from exchanges.integrations.gateio.services.futures_symbol_mapper import GateioF
 
 from exchanges.integrations.gateio.utils import (
     from_subscription_action,
-    to_order_type,
-    to_order_status,
-    to_side, ws_futures_to_order, rest_spot_to_order, rest_futures_to_order,
+    rest_futures_to_order,
 )
 from exchanges.integrations.gateio.ws.gateio_ws_common import GateioBaseWebsocket
 

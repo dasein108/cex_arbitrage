@@ -83,8 +83,8 @@ class HFTLogger(HFTLoggerInterface):
         self._py_logger = logging.getLogger(name)
         
         # Set propagate=True by default in DEV environment for easier debugging
-        environment = os.getenv('ENVIRONMENT', 'dev').lower()
-        if environment in ('dev', 'development', 'local', 'test'):
+        self.is_development = os.getenv('ENVIRONMENT', 'dev').lower() in ('dev', 'development', 'local', 'test')
+        if self.is_development:
             self._py_logger.propagate = True
         
         # Register for cleanup
@@ -255,6 +255,10 @@ class HFTLogger(HFTLoggerInterface):
                 extra = f"\r\n{str(full_context)}" if full_context else ""
                 self._py_logger.log(py_level, str(msg) + extra)
                 immediate_propagated = True
+            
+            if self.is_development:
+                self._sync_dispatch_immediate(record)
+                return
             
             # Add to buffer only if not immediately propagated to avoid double logging
             if not immediate_propagated:

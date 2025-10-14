@@ -289,7 +289,9 @@ class WebSocketManager:
                                  tags={"exchange": "ws"})
                 
                 try:
-                    self._message_queue.get_nowait()
+                    # cleanup 10% of the queue to prevent constant overflow
+                    for _ in range(round(self._message_queue.qsize()/10)):
+                        self._message_queue.get_nowait()
                 except asyncio.QueueEmpty:
                     pass
             
