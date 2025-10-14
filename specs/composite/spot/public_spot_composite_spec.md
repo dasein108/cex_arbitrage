@@ -42,7 +42,7 @@ BaseCompositeExchange (parent - common functionality)
 # Market data state (HFT-critical)
 self._orderbooks: Dict[Symbol, OrderBook] = {}
 self._tickers: Dict[Symbol, Ticker] = {}
-self._book_ticker: Dict[Symbol, BookTicker] = {}
+self.book_ticker: Dict[Symbol, BookTicker] = {}
 self._book_ticker_update: Dict[Symbol, float] = {}
 
 # Symbol tracking
@@ -162,7 +162,7 @@ async def _handle_book_ticker(self, book_ticker: BookTicker) -> None:
     start_time = time.perf_counter()
 
     # Update state (HFT critical path)
-    self._book_ticker[book_ticker.symbol] = book_ticker
+    self.book_ticker[book_ticker.symbol] = book_ticker
 
     # Track performance
     latency = (time.perf_counter() - start_time) * 1000000
@@ -210,7 +210,7 @@ Total: <500μs target
 ```python
 def get_best_bid_ask(self, symbol: Symbol) -> Optional[BookTicker]:
     """Direct dictionary access - no validation overhead"""
-    return self._book_ticker.get(symbol)
+    return self.book_ticker.get(symbol)
 
 
 @property
@@ -328,7 +328,7 @@ def get_orderbook_stats(self) -> Dict[str, any]:
         'active_symbols': len(self._active_symbols),
         'cached_orderbooks': len(self._orderbooks),
         'connection_healthy': self.is_connected,
-        'best_bid_ask_count': len(self._book_ticker),
+        'best_bid_ask_count': len(self.book_ticker),
         'avg_book_ticker_latency_us': self._get_avg_latency()
     }
 ```

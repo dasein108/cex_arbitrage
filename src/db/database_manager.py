@@ -532,7 +532,7 @@ class DatabaseManager:
     
     async def insert_book_ticker_snapshots_batch(self, exchange_enum: ExchangeEnum, symbol: Symbol, snapshots: List[BookTickerSnapshot]) -> int:
         """
-        Insert multiple book ticker snapshots with auto symbol resolution.
+        Insert multiple book ticker snapshots with compatibility for existing schema.
         
         Args:
             exchange_enum: Exchange enum
@@ -545,22 +545,22 @@ class DatabaseManager:
         if not snapshots or not self._pool:
             return 0
         
-        # Resolve symbol_id once (create if missing)
-        symbol_id = await self.resolve_symbol_id_async(exchange_enum, symbol)
+        # Use existing schema with exchange, symbol_base, symbol_quote columns
+        exchange_name = exchange_enum.value
         
-        # Deduplication
+        # Deduplication based on existing schema
         unique_snapshots = {}
         for snapshot in snapshots:
-            key = (symbol_id, snapshot.timestamp)
+            key = (exchange_name, symbol.base.upper(), symbol.quote.upper(), snapshot.timestamp)
             unique_snapshots[key] = snapshot
         
         deduplicated_snapshots = list(unique_snapshots.values())
         
         query = """
             INSERT INTO book_ticker_snapshots (
-                symbol_id, bid_price, bid_qty, ask_price, ask_qty, timestamp
-            ) VALUES ($1, $2, $3, $4, $5, $6)
-            ON CONFLICT (symbol_id, timestamp)
+                exchange, symbol_base, symbol_quote, bid_price, bid_qty, ask_price, ask_qty, timestamp
+            ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+            ON CONFLICT (timestamp, exchange, symbol_base, symbol_quote)
             DO UPDATE SET
                 bid_price = EXCLUDED.bid_price,
                 bid_qty = EXCLUDED.bid_qty,
@@ -575,7 +575,9 @@ class DatabaseManager:
                 for snapshot in deduplicated_snapshots:
                     await conn.execute(
                         query,
-                        symbol_id,
+                        exchange_name,
+                        symbol.base.upper(),
+                        symbol.quote.upper(),
                         float(snapshot.bid_price),    # Float-only policy
                         float(snapshot.bid_qty),      # Float-only policy
                         float(snapshot.ask_price),    # Float-only policy
@@ -596,8 +598,8 @@ class DatabaseManager:
         """
         Get latest book ticker snapshots with float conversion.
         
-        Uses normalized schema with proper JOINs for optimal performance.
-        Target: <5ms for normalized joins per HFT requirements.
+        Compatible with existing schema using exchange, symbol_base, symbol_quote columns.
+        Target: <5ms per HFT requirements.
         
         Args:
             exchange: Filter by exchange (optional)
@@ -611,23 +613,23 @@ class DatabaseManager:
         if not self._pool:
             raise RuntimeError("DatabaseManager not initialized")
         
-        # Build dynamic WHERE clause using normalized schema
+        # Build dynamic WHERE clause using existing schema
         where_conditions = []
         params = []
         param_counter = 1
         
         if exchange:
-            where_conditions.append(f"e.enum_value = ${param_counter}")
+            where_conditions.append(f"exchange = ${param_counter}")
             params.append(exchange.upper())
             param_counter += 1
         
         if symbol_base:
-            where_conditions.append(f"s.symbol_base = ${param_counter}")
+            where_conditions.append(f"symbol_base = ${param_counter}")
             params.append(symbol_base.upper())
             param_counter += 1
         
         if symbol_quote:
-            where_conditions.append(f"s.symbol_quote = ${param_counter}")
+            where_conditions.append(f"symbol_quote = ${param_counter}")
             params.append(symbol_quote.upper())
             param_counter += 1
         
@@ -635,18 +637,15 @@ class DatabaseManager:
         
         where_clause = "WHERE " + " AND ".join(where_conditions) if where_conditions else ""
         
-        # Use normalized schema with proper JOINs for HFT performance
+        # Use existing schema directly
         query = f"""
-            SELECT DISTINCT ON (e.enum_value, s.symbol_base, s.symbol_quote)
-                   bts.id, bts.symbol_id, e.enum_value as exchange,
-                   s.symbol_base, s.symbol_quote,
-                   bts.bid_price, bts.bid_qty, bts.ask_price, bts.ask_qty, 
-                   bts.timestamp, bts.created_at
-            FROM book_ticker_snapshots bts
-            INNER JOIN symbols s ON bts.symbol_id = s.id
-            INNER JOIN exchanges e ON s.exchange_id = e.id
+            SELECT DISTINCT ON (exchange, symbol_base, symbol_quote)
+                   id, exchange, symbol_base, symbol_quote,
+                   bid_price, bid_qty, ask_price, ask_qty, 
+                   timestamp, created_at
+            FROM book_ticker_snapshots
             {where_clause}
-            ORDER BY e.enum_value, s.symbol_base, s.symbol_quote, bts.timestamp DESC
+            ORDER BY exchange, symbol_base, symbol_quote, timestamp DESC
             LIMIT ${param_counter}
         """
         
@@ -655,10 +654,11 @@ class DatabaseManager:
         
         snapshots = []
         for row in rows:
+            # Create compatibility BookTickerSnapshot with dummy symbol_id 
             snapshots.append(
                 BookTickerSnapshot(
                     id=row['id'],
-                    symbol_id=row['symbol_id'],
+                    symbol_id=0,  # Dummy value for compatibility
                     bid_price=float(row['bid_price']),    # Float-only policy
                     bid_qty=float(row['bid_qty']),        # Float-only policy
                     ask_price=float(row['ask_price']),    # Float-only policy

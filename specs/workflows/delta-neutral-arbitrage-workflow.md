@@ -91,7 +91,7 @@ The delta neutral arbitrage strategy coordinates between three exchanges:
 
 ```python
 # Position Calculation
-spot_position_size = config.base_position_size_usdt
+spot_position_size = config.single_order_size_usdt
 futures_position_size = spot_position_size  # 1:1 hedge ratio
 
 # Delta Calculation
@@ -179,7 +179,7 @@ if estimated_pnl.net_profit <= 0:
 
 # Position Size Limits
 max_position = min(
-    config.base_position_size_usdt * config.max_position_multiplier,
+    config.single_order_size_usdt * config.max_position_multiplier,
     available_capital_limit
 )
 ```

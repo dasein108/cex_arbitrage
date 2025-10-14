@@ -52,6 +52,9 @@ class OrderPlacementParams(Struct, frozen=True):
     side: Side
     quantity: float
     price: float
+
+    def __str__(self):
+        return f"[{self.side.name} {self.quantity} @ {self.price}]"
     
     def validate(self) -> bool:
         """Validate order parameters for HFT compliance."""
@@ -234,7 +237,7 @@ class ExchangeManager:
             # self._metrics[role_key].connection_time = time.time() - init_start
             # self._status[role_key] = ExchangeStatus.CONNECTED
             
-            self.logger.debug(f"✅ Exchange {role_key} initialized in {self._metrics[role_key].connection_time*1000:.1f}ms")
+            self.logger.debug(f"✅ Exchange {role_key} initialized")
             return True
             
         except Exception as e:
@@ -335,10 +338,13 @@ class ExchangeManager:
     #
     # Public API methods
     #
-    # def get_exchange(self, role_key: ArbitrageExchangeType) -> Optional[DualExchange]:
-    #     """Get DualExchange instance by role key."""
-    #     return self._exchanges.get(role_key)
-    #
+    def get_exchange(self, role_key: ArbitrageExchangeType) -> Optional[DualExchange]:
+        """Get DualExchange instance by role key."""
+        return self._exchanges.get(role_key)
+
+    def get_book_ticker(self, role_key: ArbitrageExchangeType, symbol: Symbol) -> Optional[BookTicker]:
+        return self._exchanges[role_key].public.book_ticker.get(symbol)
+
     # def get_all_exchanges(self) -> Dict[str, DualExchange]:
     #     """Get all DualExchange instances."""
     #     return self._exchanges.copy()

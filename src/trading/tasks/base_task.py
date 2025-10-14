@@ -3,7 +3,7 @@ from abc import ABC, abstractmethod
 from typing import Optional, TypeVar, Generic, Type, Dict, Any, List, Union, Callable, Awaitable, Literal
 import msgspec
 import time
-
+from exchanges.structs.common import Side
 
 # Base state literals that all task state types should include
 BaseState = Literal[
@@ -101,7 +101,6 @@ class TaskContext(msgspec.Struct, frozen=False, kw_only=True):
         # Handle common Side enum conversion
         if key_str.upper() in ['BUY', 'SELL']:
             try:
-                from exchanges.structs.common import Side
                 return Side.BUY if key_str.upper() == 'BUY' else Side.SELL
             except ImportError:
                 pass
@@ -175,18 +174,9 @@ class BaseTradingTask(Generic[T, StateT], ABC):
             self.evolve_context(task_id="_".join(task_id_parts))
         
         # Build state handlers - base handlers + extended handlers
-        self._state_handlers = self._build_state_handlers()
+        self._state_handlers = self.get_unified_state_handlers()
 
 
-    def _build_state_handlers(self) -> Dict[str, StateHandler]:
-        """Build unified state handler mapping.
-        
-        Now uses literal string states that include both base and task-specific states.
-        Each task defines its complete state handler mapping using string keys.
-        """
-        # Get unified handlers from subclass - includes base + task-specific
-        return self.get_unified_state_handlers()
-    
     def get_unified_state_handlers(self) -> Dict[str, StateHandler]:
         """Override in subclasses to provide complete state handler mapping.
         
@@ -249,7 +239,6 @@ class BaseTradingTask(Generic[T, StateT], ABC):
             **updates: Fields to update, supporting Django-like dict notation
         """
         self.context = self.context.evolve(**updates)
-    
 
 
     def save_context(self) -> str:

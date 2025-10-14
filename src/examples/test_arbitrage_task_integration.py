@@ -39,11 +39,11 @@ async def test_task_creation():
         
         context = ArbitrageTaskContext(
             symbol=symbol,
-            base_position_size_usdt=100.0,
+            single_order_size_usdt=100.0,
             params=params,
             arbitrage_state='idle'
         )
-        print(f"   ✅ Context created: {context.symbol} with {context.base_position_size_usdt} USDT")
+        print(f"   ✅ Context created: {context.symbol} with {context.single_order_size_usdt} USDT")
         
         # Test 2: Create SpotFuturesArbitrageTask
         print("2. Creating SpotFuturesArbitrageTask...")
@@ -139,7 +139,7 @@ async def test_context_evolution():
         symbol = Symbol(base=AssetName("ETH"), quote=AssetName("USDT"))
         context = ArbitrageTaskContext(
             symbol=symbol,
-            base_position_size_usdt=50.0
+            single_order_size_usdt=50.0
         )
         
         # Create task

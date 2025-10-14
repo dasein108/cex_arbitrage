@@ -97,7 +97,7 @@ class BasePublicComposite(BaseCompositeExchange[PublicRestType, PublicWebsocketT
         self._tickers: Dict[Symbol, Union[Ticker, FuturesTicker]] = {}
 
         # NEW: Enhanced best bid/ask state management (HFT CRITICAL)
-        self._book_ticker: Dict[Symbol, BookTicker] = {}
+        self.book_ticker: Dict[Symbol, BookTicker] = {}
         self._book_ticker_update: Dict[Symbol, float] = {}  # Performance tracking
 
         self._active_symbols: Set[Symbol] = set()
@@ -167,8 +167,8 @@ class BasePublicComposite(BaseCompositeExchange[PublicRestType, PublicWebsocketT
     async def get_book_ticker(self, symbol: Symbol, force=False) -> Optional[BookTicker]:
         """Get current best bid/ask (book ticker) for a symbol."""
 
-        if symbol in self._book_ticker and not force:
-            return self._book_ticker.get(symbol)
+        if symbol in self.book_ticker and not force:
+            return self.book_ticker.get(symbol)
 
         ob = await self._rest.get_orderbook(symbol, 1)
 
@@ -329,7 +329,7 @@ class BasePublicComposite(BaseCompositeExchange[PublicRestType, PublicWebsocketT
                     update_id=getattr(orderbook, 'update_id', None)
                 )
 
-                self._book_ticker[symbol] = book_ticker
+                self.book_ticker[symbol] = book_ticker
                 self._book_ticker_update[symbol] = time.perf_counter()
                 self.publish(PublicWebsocketChannelType.BOOK_TICKER, book_ticker)  # Publish to streams
 
@@ -419,7 +419,7 @@ class BasePublicComposite(BaseCompositeExchange[PublicRestType, PublicWebsocketT
                 return
 
             # Update internal best bid/ask state (HFT CRITICAL PATH)
-            self._book_ticker[book_ticker.symbol] = book_ticker
+            self.book_ticker[book_ticker.symbol] = book_ticker
             self._book_ticker_update[book_ticker.symbol] = start_time
 
             # Track performance metrics for HFT monitoring
@@ -457,7 +457,7 @@ class BasePublicComposite(BaseCompositeExchange[PublicRestType, PublicWebsocketT
         Returns:
             BookTicker with current best bid/ask or None if not available
         """
-        return self._book_ticker.get(symbol)
+        return self.book_ticker.get(symbol)
 
     async def _sync_tickers(self) -> None:
         """Sync ticker data for all active symbols."""
@@ -563,7 +563,7 @@ class BasePublicComposite(BaseCompositeExchange[PublicRestType, PublicWebsocketT
             # Clear cached market data including best bid/ask
             self._orderbooks.clear()
             self._tickers.clear()
-            self._book_ticker.clear()  # NEW: Clear best bid/ask state
+            self.book_ticker.clear()  # NEW: Clear best bid/ask state
             self._book_ticker_update.clear()  # NEW: Clear performance tracking
 
         except Exception as e:

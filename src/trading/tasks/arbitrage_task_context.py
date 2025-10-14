@@ -46,6 +46,15 @@ class Position(Struct):
     price: float = 0.0
     side: Optional[Side] = None
 
+    @property
+    def qty_usdt(self) -> float:
+        """Calculate position value in USDT."""
+        return self.qty * self.price
+
+    @property
+    def has_position(self):
+        return self.qty > 1e-8
+
     def __str__(self):
         return f"[{self.side.name}: {self.qty} @ {self.price}]" if self.side else "[No Position]"
 
@@ -64,6 +73,16 @@ class PositionState(msgspec.Struct):
     def has_positions(self) -> bool:
         """Check if strategy has any open positions."""
         return any(pos.qty > 1e-8 for pos in self.positions.values())
+
+    @property
+    def delta(self):
+        """Calculate delta between spot and futures positions, negative if futures exceed spot."""
+        return self.positions['spot'].qty - self.positions['futures'].qty
+
+    @property
+    def delta_usdt(self):
+        """Calculate delta in USDT negative if futures exceed spot."""
+        return self.positions['spot'].qty_usdt - self.positions['futures'].qty_usdt
     
     def update_position(self, exchange_key: ArbitrageExchangeType, quantity: float, price: float, side: Side) -> 'PositionState':
         """Update position for specified exchange with side information and weighted average price."""
@@ -97,33 +116,6 @@ class PositionState(msgspec.Struct):
         return msgspec.structs.replace(self, positions=new_positions)
 
 
-class MarketData(msgspec.Struct):
-    """Unified market data access."""
-    spot: Optional[BookTicker] = None
-    futures: Optional[BookTicker] = None
-    
-    @property
-    def is_complete(self) -> bool:
-        """Check if we have data from both exchanges."""
-        return self.spot is not None and self.futures is not None
-    
-    def calculate_spreads(self) -> Optional[Dict[str, float]]:
-        """Calculate spreads in both directions."""
-        if not self.is_complete:
-            return None
-        
-        # Direction 1: Buy spot, sell futures
-        spot_to_futures = (self.futures.bid_price - self.spot.ask_price) / self.spot.ask_price * 100
-        
-        # Direction 2: Buy futures, sell spot
-        futures_to_spot = (self.spot.bid_price - self.futures.ask_price) / self.futures.ask_price * 100
-        
-        return {
-            'spot_to_futures': spot_to_futures,
-            'futures_to_spot': futures_to_spot
-        }
-
-
 class TradingParameters(msgspec.Struct):
     """Trading parameters matching backtesting logic."""
     max_entry_cost_pct: float = 0.5  # Only enter if cost < 0.5%
@@ -150,7 +142,7 @@ class DeltaImbalanceResult(msgspec.Struct):
 
 class ArbitrageOpportunity(msgspec.Struct):
     """Simplified arbitrage opportunity representation."""
-    direction: str  # 'spot_to_futures' | 'futures_to_spot'
+    direction: Literal['enter', 'exit']  # 'spot_to_futures' | 'futures_to_spot'
     spread_pct: float
     buy_price: float
     sell_price: float
@@ -179,7 +171,8 @@ class ArbitrageTaskContext(TaskContext):
     
     # Core strategy configuration
     symbol: Symbol
-    base_position_size_usdt: float = 20.0
+    single_order_size_usdt: float = 20.0
+    max_executed_orders: int = 3
     futures_leverage: float = 1.0
     
     # Exchange configuration for persistence
@@ -197,19 +190,18 @@ class ArbitrageTaskContext(TaskContext):
         'spot': {},
         'futures': {}
     })
+
+    current_mode: Literal['enter', 'exit'] = 'enter'
     
     # Strategy state and performance
     arbitrage_state: ArbitrageState = 'idle'
     current_opportunity: Optional[ArbitrageOpportunity] = None
     position_start_time: Optional[float] = None
-    arbitrage_cycles: int = 0
     total_volume_usdt: float = 0.0
     total_profit: float = 0.0
     total_fees: float = 0.0
-    
-    # Minimum quote quantities per exchange
-    min_quote_quantity: Dict[str, float] = msgspec.field(default_factory=dict)
-    
+
+
     def _convert_dict_key(self, field_name: str, key_str: str):
         """Convert string key to appropriate type for arbitrage context.
         
@@ -227,8 +219,8 @@ class ArbitrageTaskContext(TaskContext):
             if state_str in valid_states:
                 return state_str
         
-        # Handle exchange type keys for active_orders and min_quote_quantity
-        if field_name in ["active_orders", "min_quote_quantity"]:
+        # Handle exchange type keys for active_orders
+        if field_name in ["active_orders"]:
             if key_str.lower() in ['spot', 'futures']:
                 return key_str.lower()
         

@@ -207,7 +207,7 @@ class IcebergTask(BaseTradingTask[IcebergTaskContext, str]):
 
     def _get_current_top_price(self) -> float:
         """Get current ask price from public exchange."""
-        book_ticker = self._exchange.public._book_ticker[self.context.symbol]
+        book_ticker = self._exchange.public.book_ticker[self.context.symbol]
         return book_ticker.ask_price if self.context.side == Side.SELL else book_ticker.bid_price
 
     async def _cancel_current_order(self):

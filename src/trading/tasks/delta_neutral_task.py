@@ -182,7 +182,7 @@ class DeltaNeutralTask(BaseTradingTask[DeltaNeutralTaskContext, str]):
 
     def _get_current_top_price(self, side: Side) -> float:
         """Get current best price from public exchange."""
-        book_ticker = self._exchanges[side].public._book_ticker[self.context.symbol]
+        book_ticker = self._exchanges[side].public.book_ticker[self.context.symbol]
         return book_ticker.ask_price if side == Side.SELL else book_ticker.bid_price
 
     async def _cancel_side_order(self, exchange_side: Side) -> bool:
