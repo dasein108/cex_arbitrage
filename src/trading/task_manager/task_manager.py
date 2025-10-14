@@ -53,6 +53,9 @@ class TaskManager:
     async def add_task(self, task: BaseTradingTask) -> str:
         """Add a task for managed execution.
         
+        For strategy tasks with deterministic IDs, duplicate tasks are handled gracefully.
+        For non-strategy tasks, duplicates raise an error.
+        
         Args:
             task: Trading task to manage
             
@@ -62,12 +65,23 @@ class TaskManager:
         task_id = task.task_id
         
         if task_id in self._tasks:
-            raise ValueError(f"Task {task_id} already registered")
+            # For strategy tasks, this is expected behavior - just return existing task_id
+            if self._is_strategy_task(task):
+                existing_task = self._tasks[task_id]
+                self.logger.info(f"Strategy task {task_id} already exists, using existing instance",
+                               symbol=str(task.context.symbol),
+                               existing_state=existing_task.state,
+                               new_state=task.state)
+                return task_id
+            else:
+                # For non-strategy tasks, duplicates are an error
+                raise ValueError(f"Task {task_id} already registered")
         
         self._tasks[task_id] = task
         self._next_execution[task_id] = time.time()  # Ready immediately
         
-        self.logger.info(f"Added task {task_id}",
+        task_type = "strategy" if self._is_strategy_task(task) else "non-strategy"
+        self.logger.info(f"Added {task_type} task {task_id}",
                         symbol=str(task.context.symbol),
                         state=task.state)
         
@@ -101,6 +115,28 @@ class TaskManager:
             Task if found, None otherwise
         """
         return self._tasks.get(task_id)
+    
+    def _is_strategy_task(self, task: BaseTradingTask) -> bool:
+        """Check if task is a strategy task (uses deterministic IDs).
+        
+        Strategy tasks are identified by having deterministic IDs that don't contain timestamps.
+        
+        Args:
+            task: Task to check
+            
+        Returns:
+            True if task is a strategy task, False otherwise
+        """
+        task_id = task.task_id
+        # Strategy tasks have format: TaskName_SYMBOL_EXCHANGE1_EXCHANGE2
+        # Non-strategy tasks have format: timestamp_TaskName
+        
+        # Check if task_id starts with a timestamp (all digits before first underscore)
+        if '_' in task_id:
+            first_part = task_id.split('_')[0]
+            return not first_part.isdigit()  # If first part is not all digits, it's a strategy task
+        
+        return False
     
     async def start(self, recover_tasks: bool = False):
         """Start the task manager execution loop.
@@ -308,7 +344,7 @@ class TaskManager:
                         # Add to manager
                         self._tasks[task_id] = task
                         self._next_execution[task_id] = time.time()  # Ready immediately
-                        await task.start()
+                        # Don't call task.start() - recovered tasks should resume from their saved state
                         
                         self.logger.info(f"✅ Recovered task {task_id}", 
                                        task_type=task_type,

@@ -244,3 +244,23 @@ class ArbitrageTaskContext(TaskContext):
     def has_active_orders(self) -> bool:
         """Check if strategy has any active orders."""
         return self.get_active_order_count() > 0
+    
+    def generate_strategy_task_id(self, task_name: str, spot_exchange: ExchangeEnum, futures_exchange: ExchangeEnum) -> str:
+        """Generate deterministic task ID for strategy tasks.
+        
+        Creates a recovery-aware task ID based on strategy components instead of timestamps.
+        This prevents duplicate tasks during recovery and makes task identification easier.
+        
+        Args:
+            task_name: Name of the task class (e.g., "SpotFuturesArbitrageTask")
+            spot_exchange: Spot exchange enum
+            futures_exchange: Futures exchange enum
+            
+        Returns:
+            Deterministic task ID string
+            
+        Example:
+            SpotFuturesArbitrageTask_BTCUSDT_MEXC_GATEIO_FUTURES
+        """
+        symbol_str = f"{self.symbol.base}{self.symbol.quote}"
+        return f"{task_name}_{symbol_str}_{spot_exchange.value}_{futures_exchange.value}"

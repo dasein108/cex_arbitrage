@@ -61,6 +61,13 @@ class SpotFuturesArbitrageTask(BaseTradingTask[ArbitrageTaskContext, str]):
             futures_exchange=futures_exchange
         )
         
+        # Generate deterministic task_id for strategy recovery-awareness
+        if not context.task_id:
+            strategy_task_id = context.generate_strategy_task_id(
+                self.name, spot_exchange, futures_exchange
+            )
+            context = context.evolve(task_id=strategy_task_id)
+        
         # Initialize BaseTradingTask with updated context
         super().__init__(logger, context, delay=0.01, **kwargs)  # 10ms for HFT
         
@@ -860,7 +867,7 @@ class SpotFuturesArbitrageTask(BaseTradingTask[ArbitrageTaskContext, str]):
 
     async def _check_order_updates(self):
         """Check order status updates using direct access to exchange orders."""
-        for exchange_role in ['spot', 'futures']:
+        for exchange_role in ['spot', 'futures']: # type: ArbitrageExchangeType
             # Get exchange directly
             for order_id, order in self.context.active_orders[exchange_role].copy().items():
                 await self._process_order_fill(exchange_role, order)
