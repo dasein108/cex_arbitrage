@@ -157,6 +157,15 @@ async def recovery_demo():
     
     finally:
         await manager.stop()
+
+        from exchanges.dual_exchange import DualExchange
+        from infrastructure.logging.hft_logger import HFTLogger
+
+        # Close all exchange connections
+        await DualExchange.cleanup_all()
+
+        # Shutdown all logger background tasks
+        await HFTLogger.shutdown_all()
         logger.info("✅ Recovery demo complete")
 
 
@@ -233,6 +242,20 @@ async def stress_test_demo():
         await manager.stop()
         logger.info("✅ Stress test complete")
 
+    # async def _comprehensive_cleanup(self):
+    #     """Complete system cleanup - all resources properly closed."""
+    #     from exchanges.dual_exchange import DualExchange
+    #     from infrastructure.logging.hft_logger import HFTLogger
+    #
+    #     # Stop task manager (cleans up all task resources)
+    #     if self.task_manager:
+    #         await self.task_manager.stop()
+    #
+    #     # Close all exchange connections
+    #     await DualExchange.cleanup_all()
+    #
+    #     # Shutdown all logger background tasks
+    #     await HFTLogger.shutdown_all()
 
 async def main():
     """Main demo execution."""
@@ -247,6 +270,8 @@ async def main():
         await stress_test_demo()
     else:
         await run_arbitrage_demo()
+
+
 
 
 if __name__ == "__main__":
