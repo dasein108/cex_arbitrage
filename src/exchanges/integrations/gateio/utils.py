@@ -207,8 +207,7 @@ def rest_futures_to_order(order_data: Dict[str, Any]) -> Order:
     symbol = GateioFuturesSymbol.to_symbol(order_data['contract'])
     #Time in ms
     timestamp = int(order_data['create_time'] * 1000)
-    # 'fill_price': 0.06335,
-    price=float(order_data.get('price', '0')) # fill_price
+    price=float(order_data.get('fill_price', order_data.get('price', '0')))
     remaining_quantity=abs(float(order_data.get('left', '0')))
     quantity = abs(order_data['size'])
     order_type = (
@@ -254,12 +253,13 @@ def rest_spot_to_order(order_data: Dict[str, Any]) -> Order:
     
     # Calculate fee from order data if available
     fee = float(order_data.get('fee', '0'))
-    
+    price=float(order_data.get('fill_price', order_data.get('price', '0')))
+
     return Order(
         symbol=symbol,
         side=to_side(order_data['side']),
         order_type=to_order_type(order_data['type']),
-        price=float(order_data['price']),
+        price=price,
         quantity=float(order_data['amount']),
         filled_quantity=float(order_data.get('filled_amount', '0')),
         order_id=OrderId(str(order_data['id'])),

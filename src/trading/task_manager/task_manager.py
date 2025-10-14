@@ -344,13 +344,13 @@ class TaskManager:
                         # Add to manager
                         self._tasks[task_id] = task
                         self._next_execution[task_id] = time.time()  # Ready immediately
-                        # Don't call task.start() - recovered tasks should resume from their saved state
+                        await task.start()
                         
                         self.logger.info(f"✅ Recovered task {task_id}", 
                                        task_type=task_type,
                                        symbol=str(task.context.symbol) if task.context.symbol else "N/A",
                                        state=task.state)
-                        
+
                 except Exception as e:
                     self.logger.error(f"Failed to recover task {task_id}", error=str(e))
                     traceback.print_exc()

@@ -9,6 +9,7 @@ import json
 from infrastructure.logging import HFTLoggerInterface
 from trading.task_manager.persistence import TaskPersistenceManager
 from trading.task_manager.serialization import TaskSerializer
+from trading.tasks.base_task import BaseTradingTask
 
 
 class TaskRecovery:
@@ -47,7 +48,7 @@ class TaskRecovery:
             # First try to extract from task_id format: {timestamp}_{task_name}_{symbol}_{side}
             task_parts = task_id.split('_')
             if len(task_parts) >= 2:
-                return task_parts[1]
+                return task_parts[0]
             
             # Fallback: extract from metadata if available
             metadata = TaskSerializer.extract_task_metadata(json_data)
@@ -262,19 +263,6 @@ class TaskRecovery:
             traceback.print_exc()
             return None
     
-    async def recover_mexc_gateio_arbitrage_task(self, task_id: str, json_data: str) -> Optional['SpotFuturesArbitrageTask']:
-        """Recover a MexcGateioArbitrageTask from JSON data (backward compatibility).
-        
-        Args:
-            task_id: Task identifier
-            json_data: JSON string containing task context
-            
-        Returns:
-            Optional[SpotFuturesArbitrageTask]: Recovered task or None if failed
-        """
-        # Delegate to new method for backward compatibility
-        return await self.recover_spot_futures_arbitrage_task(task_id, json_data)
-
     async def recover_task_by_type(self, task_id: str, json_data: str, task_type: str) -> Optional['BaseTradingTask']:
         """Recover a task based on its type.
         
@@ -290,8 +278,6 @@ class TaskRecovery:
             return await self.recover_iceberg_task(task_id, json_data)
         elif task_type == "DeltaNeutralTask":
             return await self.recover_delta_neutral_task(task_id, json_data)
-        elif task_type == "MexcGateioArbitrageTask":
-            return await self.recover_mexc_gateio_arbitrage_task(task_id, json_data)
         elif task_type == "SpotFuturesArbitrageTask":
             return await self.recover_spot_futures_arbitrage_task(task_id, json_data)
         else:
