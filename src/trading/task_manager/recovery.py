@@ -227,6 +227,78 @@ class TaskRecovery:
             self.logger.error(f"Failed to recover DeltaNeutralTask {task_id}", error=str(e))
             return None
     
+    async def recover_spot_futures_arbitrage_task(self, task_id: str, json_data: str) -> Optional['SpotFuturesArbitrageTask']:
+        """Recover a SpotFuturesArbitrageTask from JSON data.
+        
+        Args:
+            task_id: Task identifier
+            json_data: JSON string containing task context
+            
+        Returns:
+            Optional[SpotFuturesArbitrageTask]: Recovered task or None if failed
+        """
+        try:
+            from trading.tasks.spot_futures_arbitrage_task import SpotFuturesArbitrageTask
+            from trading.tasks.arbitrage_task_context import ArbitrageTaskContext, ArbitrageState, TradingParameters
+            from exchanges.structs import Symbol, ExchangeEnum
+            
+            # Parse JSON data to extract required fields
+            context_data = json.loads(json_data)
+            symbol_data = context_data.get('symbol', {})
+            
+            # Reconstruct Symbol
+            symbol = Symbol(
+                base=symbol_data['base'],
+                quote=symbol_data['quote']
+            )
+            
+            # Reconstruct TradingParameters
+            params_data = context_data.get('params', {})
+            params = TradingParameters(
+                max_entry_cost_pct=params_data.get('max_entry_cost_pct', 0.5),
+                min_profit_pct=params_data.get('min_profit_pct', 0.1),
+                max_hours=params_data.get('max_hours', 6.0),
+                spot_fee=params_data.get('spot_fee', 0.0005),
+                fut_fee=params_data.get('fut_fee', 0.0005)
+            )
+            
+            # Extract exchange enums (with backward compatibility)
+            spot_exchange = ExchangeEnum(context_data.get('spot_exchange', ExchangeEnum.MEXC.value))
+            futures_exchange = ExchangeEnum(context_data.get('futures_exchange', ExchangeEnum.GATEIO_FUTURES.value))
+            
+            # Create minimal context for task initialization
+            context = ArbitrageTaskContext(
+                symbol=symbol,
+                base_position_size_usdt=context_data.get('base_position_size_usdt', 20.0),
+                futures_leverage=context_data.get('futures_leverage', 1.0),
+                params=params,
+                arbitrage_state=ArbitrageState(context_data.get('arbitrage_state', ArbitrageState.IDLE))
+            )
+            
+            task = SpotFuturesArbitrageTask(self.logger, context, spot_exchange, futures_exchange)
+            
+            # Restore full state from JSON
+            task.restore_from_json(json_data)
+            
+            return task
+            
+        except Exception as e:
+            self.logger.error(f"Failed to recover SpotFuturesArbitrageTask {task_id}", error=str(e))
+            return None
+    
+    async def recover_mexc_gateio_arbitrage_task(self, task_id: str, json_data: str) -> Optional['SpotFuturesArbitrageTask']:
+        """Recover a MexcGateioArbitrageTask from JSON data (backward compatibility).
+        
+        Args:
+            task_id: Task identifier
+            json_data: JSON string containing task context
+            
+        Returns:
+            Optional[SpotFuturesArbitrageTask]: Recovered task or None if failed
+        """
+        # Delegate to new method for backward compatibility
+        return await self.recover_spot_futures_arbitrage_task(task_id, json_data)
+
     async def recover_task_by_type(self, task_id: str, json_data: str, task_type: str) -> Optional['BaseTradingTask']:
         """Recover a task based on its type.
         
@@ -242,6 +314,10 @@ class TaskRecovery:
             return await self.recover_iceberg_task(task_id, json_data)
         elif task_type == "DeltaNeutralTask":
             return await self.recover_delta_neutral_task(task_id, json_data)
+        elif task_type == "MexcGateioArbitrageTask":
+            return await self.recover_mexc_gateio_arbitrage_task(task_id, json_data)
+        elif task_type == "SpotFuturesArbitrageTask":
+            return await self.recover_spot_futures_arbitrage_task(task_id, json_data)
         else:
             self.logger.warning(f"Unknown task type {task_type} for task {task_id}")
             return None

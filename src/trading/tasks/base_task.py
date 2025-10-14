@@ -163,8 +163,7 @@ class BaseTradingTask(Generic[T, StateT], ABC):
         # Build state handlers - base handlers + extended handlers
         self._state_handlers = self._build_state_handlers()
 
-        self._build_tag()
-    
+
     def _build_state_handlers(self) -> Dict[Union[TradingStrategyState, StateT], str]:
         """Build state handler mapping with base and extended states."""
         # Base state handlers (always available)

@@ -37,6 +37,9 @@ class TaskSerializer:
                     'base': value.base,
                     'quote': value.quote
                 }
+            elif isinstance(value, msgspec.Struct):
+                # Handle nested msgspec.Struct objects (like TradingParameters)
+                return {k: _serialize_value(v) for k, v in msgspec.structs.asdict(value).items()}
             elif isinstance(value, Exception):
                 return {
                     'type': type(value).__name__,
@@ -181,6 +184,79 @@ class TaskSerializer:
             except ImportError:
                 # If import fails, leave as is - the specific task recovery will handle it
                 pass
+        
+        # Handle ArbitrageState enum for arbitrage tasks
+        if 'arbitrage_state' in obj_data and obj_data['arbitrage_state'] is not None:
+            try:
+                from trading.tasks.arbitrage_task_context import ArbitrageState
+                obj_data['arbitrage_state'] = ArbitrageState(obj_data['arbitrage_state'])
+            except ImportError:
+                # If import fails, leave as is - the specific task recovery will handle it
+                pass
+        
+        # Handle TradingParameters nested struct
+        if 'params' in obj_data and obj_data['params'] is not None:
+            try:
+                from trading.tasks.arbitrage_task_context import TradingParameters
+                params_data = obj_data['params']
+                obj_data['params'] = TradingParameters(
+                    max_entry_cost_pct=params_data.get('max_entry_cost_pct', 0.5),
+                    min_profit_pct=params_data.get('min_profit_pct', 0.1),
+                    max_hours=params_data.get('max_hours', 6.0),
+                    spot_fee=params_data.get('spot_fee', 0.0005),
+                    fut_fee=params_data.get('fut_fee', 0.0005)
+                )
+            except ImportError:
+                # If import fails, leave as is - the specific task recovery will handle it
+                pass
+        
+        # Handle PositionState and Position nested structs
+        if 'positions' in obj_data and obj_data['positions'] is not None:
+            try:
+                from trading.tasks.arbitrage_task_context import PositionState, Position
+                positions_data = obj_data['positions']
+                
+                def reconstruct_position(pos_data):
+                    if pos_data is None:
+                        return Position()
+                    side = Side(pos_data['side']) if pos_data.get('side') is not None else None
+                    return Position(
+                        qty=pos_data.get('qty', 0.0),
+                        price=pos_data.get('price', 0.0),
+                        side=side
+                    )
+                
+                obj_data['positions'] = PositionState(
+                    spot=reconstruct_position(positions_data.get('spot')),
+                    futures=reconstruct_position(positions_data.get('futures'))
+                )
+            except ImportError:
+                # If import fails, leave as is - the specific task recovery will handle it
+                pass
+        
+        # Handle ArbitrageOpportunity nested struct
+        if 'current_opportunity' in obj_data and obj_data['current_opportunity'] is not None:
+            try:
+                from trading.tasks.arbitrage_task_context import ArbitrageOpportunity
+                opp_data = obj_data['current_opportunity']
+                obj_data['current_opportunity'] = ArbitrageOpportunity(
+                    direction=opp_data.get('direction', ''),
+                    spread_pct=opp_data.get('spread_pct', 0.0),
+                    buy_price=opp_data.get('buy_price', 0.0),
+                    sell_price=opp_data.get('sell_price', 0.0),
+                    max_quantity=opp_data.get('max_quantity', 0.0),
+                    timestamp=opp_data.get('timestamp', 0.0)
+                )
+            except ImportError:
+                # If import fails, leave as is - the specific task recovery will handle it
+                pass
+        
+        # Handle spot_exchange and futures_exchange enums (for SpotFuturesArbitrageTask)
+        if 'spot_exchange' in obj_data and obj_data['spot_exchange'] is not None:
+            obj_data['spot_exchange'] = ExchangeEnum(obj_data['spot_exchange'])
+        
+        if 'futures_exchange' in obj_data and obj_data['futures_exchange'] is not None:
+            obj_data['futures_exchange'] = ExchangeEnum(obj_data['futures_exchange'])
         
         # Reconstruct Exception
         if 'error' in obj_data and obj_data['error']:

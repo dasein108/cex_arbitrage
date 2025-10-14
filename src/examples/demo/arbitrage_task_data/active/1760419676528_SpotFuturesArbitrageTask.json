@@ -1,0 +1,53 @@
+{
+  "symbol": {
+    "base": "HIFI",
+    "quote": "USDT"
+  },
+  "base_position_size_usdt": 20.0,
+  "futures_leverage": 1.0,
+  "spot_exchange": "MEXC_SPOT",
+  "futures_exchange": "GATEIO_FUTURES",
+  "params": {
+    "max_entry_cost_pct": 0.5,
+    "min_profit_pct": 0.1,
+    "max_hours": 6.0,
+    "spot_fee": 0.0005,
+    "fut_fee": 0.0005
+  },
+  "positions": {
+    "positions": {
+      "spot": {
+        "qty": 0.0,
+        "price": 0.0,
+        "side": null
+      },
+      "futures": {
+        "qty": 0.0,
+        "price": 0.0,
+        "side": null
+      }
+    }
+  },
+  "active_orders": {
+    "spot": {},
+    "futures": {}
+  },
+  "arbitrage_state": 1,
+  "current_opportunity": null,
+  "position_start_time": null,
+  "arbitrage_cycles": 0,
+  "total_volume_usdt": 0.0,
+  "total_profit": 0.0,
+  "total_fees": 0.0,
+  "min_quote_quantity": {
+    "spot": 1.0,
+    "futures": 1.0
+  },
+  "task_id": "1760419676528_SpotFuturesArbitrageTask",
+  "state": 2,
+  "error": null,
+  "metadata": {},
+  "should_save_flag": true,
+  "_persisted_at": 1760419746.211553,
+  "_schema_version": "1.0.0"
+}
