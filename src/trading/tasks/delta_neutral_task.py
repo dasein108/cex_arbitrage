@@ -1,5 +1,5 @@
 import asyncio
-from typing import Optional, Type, Dict
+from typing import Optional, Type, Dict, Callable, Awaitable, Literal
 import msgspec
 
 from exchanges.dual_exchange import DualExchange
@@ -10,7 +10,7 @@ from utils.exchange_utils import is_order_done
 from infrastructure.logging import HFTLoggerInterface
 from infrastructure.networking.websocket.structs import PublicWebsocketChannelType, PrivateWebsocketChannelType
 
-from trading.tasks.base_task import TaskContext, BaseTradingTask
+from trading.tasks.base_task import TaskContext, BaseTradingTask, StateHandler
 from utils import get_decrease_vector, flip_side, calculate_weighted_price
 from enum import IntEnum
 
@@ -21,15 +21,25 @@ class Direction(IntEnum):
     NONE = 0
 
 
-class DeltaNeutralState(IntEnum):
-    """Enhanced states for delta-neutral execution."""
-    IDLE = 0
-    SYNCING = 1          # Sync order status from exchanges  
-    ANALYZING = 2        # Analyze imbalances and completion
-    REBALANCING = 3      # Handle imbalances with market orders
-    MANAGING_ORDERS = 4  # Cancel/place limit orders
-    COMPLETING = 5       # Finalize task
-    ADJUSTING = 6        # External adjustments
+# Delta-neutral execution states using Literal strings for optimal performance
+# Includes base states and delta-neutral specific states
+DeltaNeutralState = Literal[
+    # Base states
+    'idle',
+    'paused',
+    'error',
+    'completed',
+    'cancelled',
+    'executing',
+    'adjusting',
+    
+    # Delta-neutral specific states
+    'syncing',         # Sync order status from exchanges  
+    'analyzing',       # Analyze imbalances and completion
+    'rebalancing',     # Handle imbalances with market orders
+    'managing_orders', # Cancel/place limit orders
+    'completing'       # Finalize task
+]
 
 
 class DeltaNeutralTaskContext(TaskContext):
@@ -50,7 +60,7 @@ class DeltaNeutralTaskContext(TaskContext):
     order_id: Dict[Side, Optional[str]] = msgspec.field(default_factory=lambda: {Side.BUY: None, Side.SELL: None})
 
 
-class DeltaNeutralTask(BaseTradingTask[DeltaNeutralTaskContext, DeltaNeutralState]):
+class DeltaNeutralTask(BaseTradingTask[DeltaNeutralTaskContext, str]):
     """State machine for executing delta-neutral trading strategies.
     
     Executes simultaneous buy and sell orders across two exchanges to maintain
@@ -348,7 +358,7 @@ class DeltaNeutralTask(BaseTradingTask[DeltaNeutralTaskContext, DeltaNeutralStat
 
     async def _handle_idle(self):
         await super()._handle_idle()
-        self._transition(DeltaNeutralState.SYNCING)
+        self._transition('syncing')
 
     def _should_cancel_order(self, side: Side) -> bool:
         """Determine if current order should be cancelled due to price movement."""
@@ -441,13 +451,13 @@ class DeltaNeutralTask(BaseTradingTask[DeltaNeutralTaskContext, DeltaNeutralStat
             self._sync_exchange_order(Side.SELL)
         ]
         await asyncio.gather(*sync_tasks)
-        self._transition(DeltaNeutralState.ANALYZING)
+        self._transition('analyzing')
 
     async def _handle_analyzing(self):
         """Analyze current state and determine next action."""
         # Check completion first (highest priority)
         if self._check_completing():
-            self._transition(DeltaNeutralState.COMPLETING)
+            self._transition('completing')
             return
         
         # Check for imbalances
@@ -457,9 +467,9 @@ class DeltaNeutralTask(BaseTradingTask[DeltaNeutralTaskContext, DeltaNeutralStat
         ])
         
         if has_imbalance:
-            self._transition(DeltaNeutralState.REBALANCING)
+            self._transition('rebalancing')
         else:
-            self._transition(DeltaNeutralState.MANAGING_ORDERS)
+            self._transition('managing_orders')
 
     async def _handle_rebalancing(self):
         """Handle imbalances with market orders."""
@@ -472,9 +482,9 @@ class DeltaNeutralTask(BaseTradingTask[DeltaNeutralTaskContext, DeltaNeutralStat
         if rebalance_tasks:
             await asyncio.gather(*rebalance_tasks)
             self.logger.info("⚖️ Rebalancing completed, returning to sync")
-            self._transition(DeltaNeutralState.SYNCING)  # Re-sync after rebalancing
+            self._transition('syncing')  # Re-sync after rebalancing
         else:
-            self._transition(DeltaNeutralState.MANAGING_ORDERS)
+            self._transition('managing_orders')
 
     async def _handle_managing_orders(self):
         """Manage limit orders (cancel/place) for both sides."""
@@ -483,10 +493,16 @@ class DeltaNeutralTask(BaseTradingTask[DeltaNeutralTaskContext, DeltaNeutralStat
             self._manage_side_orders(Side.SELL)
         ]
         await asyncio.gather(*management_tasks)
-        self._transition(DeltaNeutralState.SYNCING)  # Return to monitoring
+        self._transition('syncing')  # Return to monitoring
 
     async def _handle_completing(self):
         """Finalize task execution."""
+        await self.cancel_all()
+    
+    # Base state handlers (implementing BaseStateMixin states)
+    async def _handle_cancelled(self):
+        """Handle cancelled state."""
+        self.logger.info("🚫 Delta neutral task cancelled")
         await self.cancel_all()
         await super().complete()
     
@@ -507,25 +523,38 @@ class DeltaNeutralTask(BaseTradingTask[DeltaNeutralTaskContext, DeltaNeutralStat
     # Override executing handler to redirect to delta-neutral state machine
     async def _handle_executing(self):
         """Override base executing handler to use delta-neutral states."""
-        self._transition(DeltaNeutralState.SYNCING)
+        self._transition('syncing')
 
     async def _handle_adjusting(self):
         """Handle external adjustments to task parameters."""
         self.logger.debug(f"ADJUSTING state for {self._tag}")
         # After adjustments, return to syncing to refresh state
-        self._transition(DeltaNeutralState.SYNCING)
+        self._transition('syncing')
 
     async def complete(self):
         """Complete the task and clean up."""
         await self.cancel_all()
         await super().complete()
     
-    def get_extended_state_handlers(self) -> Dict[DeltaNeutralState, str]:
-        """Get delta-neutral specific state handlers."""
+    def get_unified_state_handlers(self) -> Dict[str, StateHandler]:
+        """Provide complete unified state handler mapping.
+        
+        Includes both base states and delta-neutral specific states using string keys.
+        """
         return {
-            DeltaNeutralState.SYNCING: '_handle_syncing',
-            DeltaNeutralState.ANALYZING: '_handle_analyzing', 
-            DeltaNeutralState.REBALANCING: '_handle_rebalancing',
-            DeltaNeutralState.MANAGING_ORDERS: '_handle_managing_orders',
-            DeltaNeutralState.COMPLETING: '_handle_completing',
+            # Base state handlers
+            'idle': self._handle_idle,
+            'paused': self._handle_paused,
+            'error': self._handle_error,
+            'completed': self._handle_complete,
+            'cancelled': self._handle_cancelled,
+            'executing': self._handle_executing,
+            'adjusting': self._handle_adjusting,
+            
+            # Delta-neutral specific state handlers
+            'syncing': self._handle_syncing,
+            'analyzing': self._handle_analyzing, 
+            'rebalancing': self._handle_rebalancing,
+            'managing_orders': self._handle_managing_orders,
+            'completing': self._handle_completing,
         }

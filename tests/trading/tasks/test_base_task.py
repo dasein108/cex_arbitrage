@@ -7,9 +7,10 @@ state transitions, and serialization.
 
 import pytest
 import asyncio
+from typing import Dict
 from unittest.mock import AsyncMock
 
-from trading.tasks.base_task import BaseTradingTask, TaskContext, TaskExecutionResult
+from trading.tasks.base_task import BaseTradingTask, TaskContext, TaskExecutionResult, StateHandler
 from trading.struct import TradingStrategyState
 from tests.trading.helpers import TestDataFactory
 
@@ -20,7 +21,7 @@ class TestTaskContext(TaskContext):
     test_number: int = 42
 
 
-class TestBaseTradingTaskImpl(BaseTradingTask[TestTaskContext]):
+class TestBaseTradingTaskImpl(BaseTradingTask[TestTaskContext, str]):
     """Test implementation of BaseTradingTask."""
     
     name = "TestTask"
@@ -29,10 +30,22 @@ class TestBaseTradingTaskImpl(BaseTradingTask[TestTaskContext]):
     def context_class(self):
         return TestTaskContext
     
+    def get_unified_state_handlers(self) -> Dict[str, StateHandler]:
+        """Provide basic state handlers for testing."""
+        return {
+            'idle': self._handle_idle,
+            'paused': self._handle_paused,
+            'error': self._handle_error,
+            'completed': self._handle_complete,
+            'cancelled': self._handle_cancelled,
+            'executing': self._handle_executing,
+            'adjusting': self._handle_adjusting,
+        }
+    
     async def _handle_executing(self):
         """Simple executing handler for testing."""
         await asyncio.sleep(0.001)  # Simulate work
-        self._transition(TradingStrategyState.COMPLETED)
+        self._transition('completed')
 
 
 class TestBaseTradingTask:

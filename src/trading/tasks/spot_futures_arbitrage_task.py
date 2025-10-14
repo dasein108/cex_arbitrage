@@ -7,9 +7,9 @@ Supports arbitrage between any spot and futures exchanges.
 
 import asyncio
 import time
-from typing import Optional, Dict, Type, Literal
+from typing import Optional, Dict, Type, Literal, Callable, Awaitable
 
-from trading.tasks.base_task import BaseTradingTask, TaskExecutionResult
+from trading.tasks.base_task import BaseTradingTask, TaskExecutionResult, StateHandler
 from trading.tasks.arbitrage_task_context import (
     ArbitrageTaskContext, 
     ArbitrageState, 
@@ -21,7 +21,6 @@ from trading.tasks.arbitrage_task_context import (
     ValidationResult,
     DeltaImbalanceResult
 )
-from trading.struct import TradingStrategyState
 from exchanges.structs import Symbol, Side, ExchangeEnum, BookTicker, Order, OrderId
 from infrastructure.logging import HFTLoggerInterface, get_logger
 from utils.exchange_utils import is_order_done
@@ -36,7 +35,7 @@ from applications.hedged_arbitrage.strategy.exchange_manager import (
 )
 
 
-class SpotFuturesArbitrageTask(BaseTradingTask[ArbitrageTaskContext, ArbitrageState]):
+class SpotFuturesArbitrageTask(BaseTradingTask[ArbitrageTaskContext, str]):
     """
     Exchange-agnostic spot-futures arbitrage strategy - TaskManager Compatible.
     
@@ -84,14 +83,26 @@ class SpotFuturesArbitrageTask(BaseTradingTask[ArbitrageTaskContext, ArbitrageSt
         """Build logging tag with arbitrage-specific fields."""
         self._tag = f'{self.name}_{self.context.symbol}_{self.spot_exchange.name}_{self.futures_exchange.name}'
     
-    def get_extended_state_handlers(self) -> Dict[ArbitrageState, str]:
-        """Register arbitrage-specific state handlers."""
+    def get_unified_state_handlers(self) -> Dict[str, StateHandler]:
+        """Provide complete unified state handler mapping.
+        
+        Includes both base states and arbitrage-specific states using string keys.
+        """
         return {
-            ArbitrageState.INITIALIZING: '_handle_arbitrage_initializing',
-            ArbitrageState.MONITORING: '_handle_arbitrage_monitoring',
-            ArbitrageState.ANALYZING: '_handle_arbitrage_analyzing',
-            ArbitrageState.EXECUTING: '_handle_arbitrage_executing',
-            ArbitrageState.ERROR_RECOVERY: '_handle_arbitrage_error_recovery',
+            # Base state handlers
+            'idle': self._handle_idle,
+            'paused': self._handle_paused,
+            'error': self._handle_error,
+            'completed': self._handle_complete,
+            'cancelled': self._handle_cancelled,
+            'executing': self._handle_executing,
+            # 'adjusting': self._handle_adjusting,
+            
+            # Arbitrage-specific state handlers
+            'initializing': self._handle_initializing,
+            'monitoring': self._handle_arbitrage_monitoring,
+            'analyzing': self._handle_arbitrage_analyzing,
+            'error_recovery': self._handle_arbitrage_error_recovery,
         }
     
     # async def _handle_executing(self):
@@ -111,31 +122,31 @@ class SpotFuturesArbitrageTask(BaseTradingTask[ArbitrageTaskContext, ArbitrageSt
     #         await self._handle_arbitrage_error_recovery()
     #     else:
     #         # Default to monitoring
-    #         self._transition_arbitrage_state(ArbitrageState.MONITORING)
+    #         self._transition_arbitrage_state('monitoring')
     #
-    def _transition_arbitrage_state(self, new_state: ArbitrageState):
+    def _transition_arbitrage_state(self, new_state: str):
         """Transition to a new arbitrage state."""
         # old_state = self.context.arbitrage_state
-        # self.logger.info(f"Arbitrage state transition: {old_state.name} -> {new_state.name}")
+        # self.logger.info(f"Arbitrage state transition: {old_state} -> {new_state}")
         # self.evolve_context(arbitrage_state=new_state)
         self._transition(new_state)
     
-    async def _handle_arbitrage_initializing(self):
+    async def _handle_initializing(self):
         """Initialize exchange manager and connections."""
         if self.exchange_manager is None:
             await self._initialize_exchange_manager()
         
         if self.exchange_manager:
-            self._transition_arbitrage_state(ArbitrageState.MONITORING)
+            self._transition_arbitrage_state('monitoring')
         else:
             self.logger.error("❌ Failed to initialize exchange manager")
-            self._transition_arbitrage_state(ArbitrageState.ERROR_RECOVERY)
+            self._transition_arbitrage_state('error_recovery')
     
     async def _initialize_exchange_manager(self) -> bool:
         """Initialize exchange manager with configured exchanges."""
         try:
             # Create exchange roles with configured exchanges
-            exchange_roles = {
+            exchange_roles: Dict[ArbitrageExchangeType, ExchangeRole] = {
                 'spot': ExchangeRole(
                     exchange_enum=self.spot_exchange,
                     role='spot_trading',
@@ -156,7 +167,7 @@ class SpotFuturesArbitrageTask(BaseTradingTask[ArbitrageTaskContext, ArbitrageSt
             
             if success:
                 # Get minimum quote quantities
-                for exchange_type in ['spot', 'futures']:
+                for exchange_type in ['spot', 'futures']: # type: ArbitrageExchangeType
                     exchange = self.exchange_manager.get_exchange(exchange_type)
                     symbol_info = exchange.public.symbols_info.get(self.context.symbol)
                     if symbol_info:
@@ -197,30 +208,30 @@ class SpotFuturesArbitrageTask(BaseTradingTask[ArbitrageTaskContext, ArbitrageSt
                 if opportunity:
                     self.logger.info(f"💰 Opportunity: {opportunity.spread_pct:.4f}% spread")
                     self.evolve_context(current_opportunity=opportunity)
-                    self._transition_arbitrage_state(ArbitrageState.ANALYZING)
+                    self._transition_arbitrage_state('analyzing')
         
         except Exception as e:
             self.logger.error(f"Monitoring failed: {e}")
-            self._transition_arbitrage_state(ArbitrageState.ERROR_RECOVERY)
+            self._transition_arbitrage_state('error_recovery')
     
     async def _handle_arbitrage_analyzing(self):
         """Analyze current opportunity."""
         if not self.context.current_opportunity:
-            self._transition_arbitrage_state(ArbitrageState.MONITORING)
+            self._transition_arbitrage_state('monitoring')
             return
         
         opportunity = self.context.current_opportunity
         if opportunity.is_fresh():
-            self._transition_arbitrage_state(ArbitrageState.EXECUTING)
+            self._transition_arbitrage_state('executing')
         else:
             self.logger.info("⚠️ Opportunity no longer fresh")
             self.evolve_context(current_opportunity=None)
-            self._transition_arbitrage_state(ArbitrageState.MONITORING)
+            self._transition_arbitrage_state('monitoring')
     
     async def _handle_executing(self):
         """Execute arbitrage trades."""
         if not self.context.current_opportunity:
-            self._transition_arbitrage_state(ArbitrageState.MONITORING)
+            self._transition_arbitrage_state('monitoring')
             return
         
         try:
@@ -239,7 +250,14 @@ class SpotFuturesArbitrageTask(BaseTradingTask[ArbitrageTaskContext, ArbitrageSt
         except Exception as e:
             self.logger.error(f"Execution error: {e}")
             
-        self._transition_arbitrage_state(ArbitrageState.MONITORING)
+        self._transition_arbitrage_state('monitoring')
+    
+    # Base state handlers (implementing BaseStateMixin states)
+    async def _handle_cancelled(self):
+        """Handle cancelled state."""
+        self.logger.info("🚫 Task cancelled")
+        if self.exchange_manager:
+            await self.exchange_manager.cancel_all_orders()
     
     async def _handle_arbitrage_error_recovery(self):
         """Handle errors and recovery."""
@@ -254,7 +272,7 @@ class SpotFuturesArbitrageTask(BaseTradingTask[ArbitrageTaskContext, ArbitrageSt
         
         # Wait before returning to monitoring
         await asyncio.sleep(1.0)
-        self._transition_arbitrage_state(ArbitrageState.MONITORING)
+        self._transition_arbitrage_state('monitoring')
     
     # Volume validation methods following delta neutral task patterns
     
@@ -946,7 +964,7 @@ async def create_spot_futures_arbitrage_task(
         symbol=symbol,
         base_position_size_usdt=base_position_size_usdt,
         params=params,
-        arbitrage_state=ArbitrageState.INITIALIZING
+        arbitrage_state='initializing'
     )
     
     task = SpotFuturesArbitrageTask(

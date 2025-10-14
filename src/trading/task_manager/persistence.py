@@ -49,9 +49,9 @@ class TaskPersistenceManager:
         """
         try:
             # Determine directory based on state
-            if context.state == TradingStrategyState.COMPLETED:
+            if context.state == 'completed':
                 dir_path = self.base_path / "completed"
-            elif context.state in [TradingStrategyState.ERROR, TradingStrategyState.CANCELLED]:
+            elif context.state in ['error', 'cancelled']:
                 dir_path = self.base_path / "errored"
             else:
                 dir_path = self.base_path / "active"

@@ -272,7 +272,7 @@ class TaskRecovery:
                 base_position_size_usdt=context_data.get('base_position_size_usdt', 20.0),
                 futures_leverage=context_data.get('futures_leverage', 1.0),
                 params=params,
-                arbitrage_state=ArbitrageState(context_data.get('arbitrage_state', ArbitrageState.IDLE))
+                arbitrage_state=context_data.get('arbitrage_state', 'idle')
             )
             
             task = SpotFuturesArbitrageTask(self.logger, context, spot_exchange, futures_exchange)

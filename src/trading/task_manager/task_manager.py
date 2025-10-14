@@ -12,7 +12,6 @@ from infrastructure.logging import HFTLoggerInterface
 from trading.tasks.base_task import BaseTradingTask, TaskExecutionResult
 from trading.task_manager.persistence import TaskPersistenceManager
 from trading.task_manager.recovery import TaskRecovery
-from trading.struct import TradingStrategyState
 from exchanges.structs import Symbol
 
 
@@ -70,7 +69,7 @@ class TaskManager:
         
         self.logger.info(f"Added task {task_id}",
                         symbol=str(task.context.symbol),
-                        state=task.state.name)
+                        state=task.state)
         
         return task_id
     
@@ -173,7 +172,7 @@ class TaskManager:
         
         for task_id, task in self._tasks.items():
             # Skip completed/cancelled tasks
-            if task.state in [TradingStrategyState.COMPLETED, TradingStrategyState.CANCELLED]:
+            if task.state in ['completed', 'cancelled']:
                 continue
             
             # Check if ready to execute
@@ -267,19 +266,20 @@ class TaskManager:
                     for result in results:
                         if isinstance(result, TaskExecutionResult) and not result.should_continue:
                             # Remove completed/cancelled tasks from persistence (keep errored)
-                            if result.state in [TradingStrategyState.COMPLETED, TradingStrategyState.CANCELLED]:
+                            if result.state in ['completed', 'cancelled']:
                                 # Save final state first, then it will be auto-cleaned by persistence manager
                                 if result.context:
                                     self._persistence.save_context(result.task_id, result.context)
                             
                             await self.remove_task(result.task_id)
-                            self.logger.info(f"Task {result.task_id} completed, removed from manager", state=result.state.name)
+                            self.logger.info(f"Task {result.task_id} completed, removed from manager", state=result.state)
                 
                 # Minimal sleep for cooperative multitasking
                 await asyncio.sleep(0.001)
                 
             except Exception as e:
                 self.logger.error(f"TaskManager execution loop error", error=str(e))
+                traceback.print_exc()
                 await asyncio.sleep(1.0)  # Back off on error
         
         self.logger.info("TaskManager execution loop stopped")
@@ -313,7 +313,7 @@ class TaskManager:
                         self.logger.info(f"✅ Recovered task {task_id}", 
                                        task_type=task_type,
                                        symbol=str(task.context.symbol) if task.context.symbol else "N/A",
-                                       state=task.state.name)
+                                       state=task.state)
                         
                 except Exception as e:
                     self.logger.error(f"Failed to recover task {task_id}", error=str(e))
@@ -357,7 +357,7 @@ class TaskManager:
             tasks_info.append({
                 "task_id": task_id,
                 "symbol": str(task.context.symbol),
-                "state": task.state.name,
+                "state": task.state,
                 "next_execution": self._next_execution.get(task_id, 0) - time.time()
             })
         

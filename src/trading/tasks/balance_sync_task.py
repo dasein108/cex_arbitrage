@@ -12,7 +12,6 @@ import msgspec
 
 from infrastructure.logging import HFTLoggerInterface
 from trading.tasks.base_task import TaskContext, BaseTradingTask, TaskExecutionResult
-from trading.struct import TradingStrategyState
 from exchanges.interfaces.composite.base_private_composite import BasePrivateComposite
 from exchanges.structs import ExchangeEnum, AssetName, AssetBalance
 from db.models import BalanceSnapshot
@@ -41,7 +40,7 @@ class BalanceSyncTaskContext(TaskContext):
     last_error: Optional[str] = None
 
 
-class BalanceSyncTask(BaseTradingTask[BalanceSyncTaskContext, TradingStrategyState]):
+class BalanceSyncTask(BaseTradingTask[BalanceSyncTaskContext, str]):
     """Periodic task to sync account balances from private exchanges.
     
     Collects balance data from all configured private exchange interfaces

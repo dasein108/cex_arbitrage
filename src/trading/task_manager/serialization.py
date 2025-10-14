@@ -172,8 +172,8 @@ class TaskSerializer:
                 order_id_dict[side_key] = order_id
             obj_data['order_id'] = order_id_dict
         
-        if 'state' in obj_data:
-            obj_data['state'] = TradingStrategyState(obj_data['state'])
+        # State is already a string literal, no conversion needed
+        # 'state' field remains as string for Literal type compatibility
         
         # Handle direction enum for DeltaNeutralTask (avoid circular import)
         if 'direction' in obj_data and obj_data['direction'] is not None:
@@ -185,14 +185,8 @@ class TaskSerializer:
                 # If import fails, leave as is - the specific task recovery will handle it
                 pass
         
-        # Handle ArbitrageState enum for arbitrage tasks
-        if 'arbitrage_state' in obj_data and obj_data['arbitrage_state'] is not None:
-            try:
-                from trading.tasks.arbitrage_task_context import ArbitrageState
-                obj_data['arbitrage_state'] = ArbitrageState(obj_data['arbitrage_state'])
-            except ImportError:
-                # If import fails, leave as is - the specific task recovery will handle it
-                pass
+        # Handle ArbitrageState - now string literal, no conversion needed
+        # 'arbitrage_state' field remains as string for Literal type compatibility
         
         # Handle TradingParameters nested struct
         if 'params' in obj_data and obj_data['params'] is not None:
@@ -226,10 +220,11 @@ class TaskSerializer:
                         side=side
                     )
                 
-                obj_data['positions'] = PositionState(
-                    spot=reconstruct_position(positions_data.get('spot')),
-                    futures=reconstruct_position(positions_data.get('futures'))
-                )
+                positions_dict = {}
+                for key, pos_data in positions_data.items():
+                    positions_dict[key] = reconstruct_position(pos_data)
+                
+                obj_data['positions'] = PositionState(positions=positions_dict)
             except ImportError:
                 # If import fails, leave as is - the specific task recovery will handle it
                 pass

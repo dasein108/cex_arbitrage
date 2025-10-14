@@ -34,7 +34,7 @@ class IcebergTaskContext(TaskContext):
     avg_price: float = 0.0
 
 
-class IcebergTask(BaseTradingTask[IcebergTaskContext, TradingStrategyState]):
+class IcebergTask(BaseTradingTask[IcebergTaskContext, str]):
     """State machine for executing iceberg orders.
     
     Breaks large orders into smaller chunks to minimize market impact.
@@ -264,7 +264,7 @@ class IcebergTask(BaseTradingTask[IcebergTaskContext, TradingStrategyState]):
 
     async def _handle_idle(self):
         await super()._handle_idle()
-        self._transition(TradingStrategyState.EXECUTING)
+        self._transition('executing')
 
     def _should_cancel_order(self):
         if not self._curr_order:

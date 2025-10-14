@@ -41,7 +41,7 @@ async def test_task_creation():
             symbol=symbol,
             base_position_size_usdt=100.0,
             params=params,
-            arbitrage_state=ArbitrageState.IDLE
+            arbitrage_state='idle'
         )
         print(f"   ✅ Context created: {context.symbol} with {context.base_position_size_usdt} USDT")
         
@@ -158,7 +158,7 @@ async def test_context_evolution():
         print(f"Min quantities: {task.context.min_quote_quantity}")
         
         # Test state transition
-        task._transition_arbitrage_state(ArbitrageState.MONITORING)
+        task._transition_arbitrage_state('monitoring')
         print(f"New arbitrage state: {task.context.arbitrage_state}")
         
         await task.cleanup()

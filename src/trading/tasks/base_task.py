@@ -1,9 +1,23 @@
 import asyncio
 from abc import ABC, abstractmethod
-from typing import Optional, TypeVar, Generic, Type, Dict, Any, List, Union
-from enum import IntEnum
+from typing import Optional, TypeVar, Generic, Type, Dict, Any, List, Union, Callable, Awaitable, Literal
 import msgspec
 import time
+
+
+# Base state literals that all task state types should include
+BaseState = Literal[
+    'idle',
+    'paused', 
+    'error',
+    'completed',
+    'cancelled',
+    # 'executing',
+    # 'adjusting'
+]
+
+# Type alias for cleaner signatures
+StateHandler = Callable[[], Awaitable[None]]
 
 from config.structs import ExchangeConfig
 from exchanges.structs import Symbol, Side, ExchangeEnum
@@ -20,7 +34,7 @@ class TaskExecutionResult(msgspec.Struct, frozen=False, kw_only=True):
     context: 'TaskContext'  # Snapshot of task context after execution
     should_continue: bool = True  # True if task needs more cycles
     next_delay: float = 0.1  # Suggested delay before next execution
-    state: TradingStrategyState = TradingStrategyState.IDLE
+    state: TradingStrategyState = 'idle'
     error: Optional[Exception] = None
     execution_time_ms: float = 0.0
     metadata: Dict[str, Any] = msgspec.field(default_factory=dict)
@@ -32,7 +46,7 @@ class TaskContext(msgspec.Struct, frozen=False, kw_only=True):
     Task-specific fields should be added in subclasses.
     """
     task_id: str = ""
-    state: TradingStrategyState = TradingStrategyState.NOT_STARTED
+    state: TradingStrategyState = 'not_started'
     error: Optional[Exception] = None
     metadata: Dict[str, Any] = msgspec.field(default_factory=dict)
     should_save_flag: bool = True  # Whether to persist this task
@@ -106,7 +120,7 @@ class TaskContext(msgspec.Struct, frozen=False, kw_only=True):
 
 
 T = TypeVar('T', bound=TaskContext)
-StateT = TypeVar('StateT', bound=IntEnum)
+StateT = TypeVar('StateT', bound=str)  # String-based state type
 
 
 class BaseTradingTask(Generic[T, StateT], ABC):
@@ -164,41 +178,35 @@ class BaseTradingTask(Generic[T, StateT], ABC):
         self._state_handlers = self._build_state_handlers()
 
 
-    def _build_state_handlers(self) -> Dict[Union[TradingStrategyState, StateT], str]:
-        """Build state handler mapping with base and extended states."""
-        # Base state handlers (always available)
-        base_handlers = {
-            TradingStrategyState.IDLE: '_handle_idle',
-            TradingStrategyState.PAUSED: '_handle_paused',
-            TradingStrategyState.ERROR: '_handle_error',
-            TradingStrategyState.COMPLETED: '_handle_complete',
-            TradingStrategyState.EXECUTING: '_handle_executing',
-            TradingStrategyState.ADJUSTING: '_handle_adjusting',
-        }
+    def _build_state_handlers(self) -> Dict[str, StateHandler]:
+        """Build unified state handler mapping.
         
-        # Add extended state handlers from subclass
-        extended_handlers = self.get_extended_state_handlers()
-        
-        # Combine both
-        all_handlers = {**base_handlers, **extended_handlers}
-        return all_handlers
+        Now uses literal string states that include both base and task-specific states.
+        Each task defines its complete state handler mapping using string keys.
+        """
+        # Get unified handlers from subclass - includes base + task-specific
+        return self.get_unified_state_handlers()
     
-    def get_extended_state_handlers(self) -> Dict[StateT, str]:
-        """Override in subclasses to add task-specific state handlers.
+    def get_unified_state_handlers(self) -> Dict[str, StateHandler]:
+        """Override in subclasses to provide complete state handler mapping.
+        
+        Should include handlers for both base states ('idle', 'paused', etc.)
+        and task-specific states.
         
         Returns:
-            Dict mapping custom states to handler method names
+            Dict mapping all state strings to handler function references
         """
-        return {}
+        # Default implementation - subclasses must override
+        raise NotImplementedError("Subclasses must implement get_unified_state_handlers")
     
-    def get_state_handlers(self) -> Dict[Union[TradingStrategyState, StateT], str]:
+    def get_state_handlers(self) -> Dict[str, StateHandler]:
         """Get complete state handler mapping (for external use)."""
         return self._state_handlers
     
     async def _handle_unhandled_state(self):
         """Handle unknown states."""
         self.logger.error(f"No handler for state {self.context.state}")
-        self._transition(TradingStrategyState.ERROR)
+        self._transition('error')
 
     def _build_tag(self) -> None:
         """Build logging tag based on available context fields.
@@ -210,7 +218,7 @@ class BaseTradingTask(Generic[T, StateT], ABC):
 
 
     @property
-    def state(self) -> Union[TradingStrategyState, StateT]:
+    def state(self) -> str:
         """Get current state from context."""
         return self.context.state
     
@@ -274,19 +282,21 @@ class BaseTradingTask(Generic[T, StateT], ABC):
             # Re-raise the exception so the recovery method knows it failed
             raise
 
-    def _transition(self, new_state: Union[TradingStrategyState, StateT]) -> None:
+    def _transition(self, new_state: str) -> None:
         """Transition to a new state.
         
         Args:
-            new_state: Target state to transition to
+            new_state: Target state string to transition to
         """
         old_state = self.context.state
-        self.logger.debug(f"Transitioning from {old_state.name} to {new_state.name}")
+        self.logger.debug(f"Transitioning from {old_state} to {new_state}")
         self.evolve_context(state=new_state)
 
     async def _handle_idle(self):
         """Default idle state handler."""
         self.logger.debug(f"IDLE state for {self._tag}")
+        self._transition('initializing')
+
 
     async def _handle_paused(self):
         """Default paused state handler."""
@@ -296,18 +306,18 @@ class BaseTradingTask(Generic[T, StateT], ABC):
         """Default complete state handler."""
         self.logger.debug(f"COMPLETED state for {self._tag}")
 
-    @abstractmethod
-    async def _handle_executing(self):
-        """Abstract executing state handler.
-
-        Subclasses must implement this to define execution logic.
-        """
-        pass
-
-    async def _handle_adjusting(self):
-        """Default adjusting state handler."""
-        # Actual for arbitrage/delta neutral tasks
-        self.logger.debug(f"ADJUSTING state for {self._tag}")
+    # @abstractmethod
+    # async def _handle_executing(self):
+    #     """Abstract executing state handler.
+    #
+    #     Subclasses must implement this to define execution logic.
+    #     """
+    #     pass
+    #
+    # async def _handle_adjusting(self):
+    #     """Default adjusting state handler."""
+    #     # Actual for arbitrage/delta neutral tasks
+    #     self.logger.debug(f"ADJUSTING state for {self._tag}")
 
     async def _handle_error(self):
         """Default error state handler."""
@@ -324,11 +334,11 @@ class BaseTradingTask(Generic[T, StateT], ABC):
         if context_updates:
             self.evolve_context(**context_updates)
         
-        self._transition(TradingStrategyState.IDLE)
+        self._transition('idle')
     
     async def pause(self):
-        self.logger.info(f"Pausing task from state {self.context.state.name}")
-        self._transition(TradingStrategyState.PAUSED)
+        self.logger.info(f"Pausing task from state {self.context.state}")
+        self._transition('paused')
 
     async def update(self, **context_updates):
         """Update the task with new context data.
@@ -341,7 +351,7 @@ class BaseTradingTask(Generic[T, StateT], ABC):
             - Required fields are preserved from current context
             - Pass field_name=value to update specific fields
         """
-        self.logger.info(f"Updating task in state {self.context.state.name}")
+        self.logger.info(f"Updating task in state {self.context.state}")
         
         if context_updates:
             # Partial updates - evolve existing context
@@ -369,14 +379,13 @@ class BaseTradingTask(Generic[T, StateT], ABC):
         
         try:
             # Check if task should continue
-            if self.context.state in [TradingStrategyState.COMPLETED, TradingStrategyState.CANCELLED]:
+            if self.context.state in ['completed', 'cancelled']:
                 result.should_continue = False
                 return result
             
-            # Get handler for current state
-            handler_name = self._state_handlers.get(self.context.state)
-            if handler_name and hasattr(self, handler_name):
-                handler = getattr(self, handler_name)
+            # Get handler for current state - now calling function directly
+            handler = self._state_handlers.get(self.context.state)
+            if handler:
                 await handler()
             else:
                 # No handler for this state
@@ -387,9 +396,9 @@ class BaseTradingTask(Generic[T, StateT], ABC):
             
             # Determine if should continue
             result.should_continue = self.context.state not in [
-                TradingStrategyState.COMPLETED,
-                TradingStrategyState.CANCELLED,
-                TradingStrategyState.ERROR
+                'completed',
+                'cancelled', 
+                'error'
             ]
             
             # Calculate execution time
@@ -398,7 +407,7 @@ class BaseTradingTask(Generic[T, StateT], ABC):
             
         except asyncio.CancelledError:
             self.logger.info(f"Task cancelled during execution: {self._tag}")
-            self._transition(TradingStrategyState.CANCELLED)
+            self._transition('cancelled')
             result.should_continue = False
             result.state = self.context.state
             result.context = self.context
@@ -409,7 +418,7 @@ class BaseTradingTask(Generic[T, StateT], ABC):
             import traceback
             traceback.print_exc()
             self.evolve_context(error=e)
-            self._transition(TradingStrategyState.ERROR)
+            self._transition('error')
             result.error = e
             result.should_continue = False
             result.state = self.context.state
@@ -421,23 +430,23 @@ class BaseTradingTask(Generic[T, StateT], ABC):
         
         Subclasses can override to provide custom behavior.
         """
-        self.logger.warning(f"No handler for state {self.context.state}, transitioning to ERROR")
-        self._transition(TradingStrategyState.ERROR)
+        self.logger.warning(f"No handler for state {self.context.state}, transitioning to error")
+        self._transition('error')
     
     async def stop(self):
         """Stop the task gracefully."""
         self.logger.info(f"Stopping task {self._tag}")
-        self._transition(TradingStrategyState.COMPLETED)
+        self._transition('completed')
     
     async def cancel(self):
         """Cancel the task immediately."""
         self.logger.info(f"Cancelling task {self._tag}")
-        self._transition(TradingStrategyState.CANCELLED)
+        self._transition('cancelled')
 
     async def complete(self):
         """Mark the task as completed."""
         self.logger.info(f"Completing task {self._tag}")
-        self._transition(TradingStrategyState.COMPLETED)
+        self._transition('completed')
 
     def _load_exchange(self, exchange_name: ExchangeEnum) -> DualExchange:
         """Load exchange configuration from ExchangeEnum.

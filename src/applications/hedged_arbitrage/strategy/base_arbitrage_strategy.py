@@ -15,8 +15,7 @@ This framework supports:
 import asyncio
 import datetime
 from abc import ABC, abstractmethod
-from typing import Dict, List, Optional, Type, Union, Callable, Any, TypeVar, Generic
-from enum import IntEnum
+from typing import Dict, List, Optional, Type, Union, Callable, Any, TypeVar, Generic, Awaitable, Literal
 import time
 
 import msgspec
@@ -27,8 +26,7 @@ from exchanges.structs.common import FuturesBalance
 from exchanges.structs.common import Side
 from infrastructure.logging import HFTLoggerInterface
 from infrastructure.networking.websocket.structs import PublicWebsocketChannelType, PrivateWebsocketChannelType
-from trading.tasks.base_task import BaseTradingTask, TaskContext
-from trading.struct import TradingStrategyState
+from trading.tasks.base_task import BaseTradingTask, TaskContext, StateHandler
 from config.config_manager import get_exchange_config
 
 
@@ -36,17 +34,27 @@ from config.config_manager import get_exchange_config
 T = TypeVar('T', bound='ArbitrageTaskContext')
 
 
-class ArbitrageState(IntEnum):
-    """Enhanced states for arbitrage strategy execution."""
-    IDLE = 0
-    INITIALIZING = 1        # Initialize exchanges and connections
-    MONITORING = 2          # Monitor spreads and opportunities
-    ANALYZING = 3           # Analyze opportunity viability
-    PREPARING = 4           # Prepare for execution (position sizing, risk checks)
-    EXECUTING = 5           # Execute arbitrage trades
-    REBALANCING = 6         # Rebalance positions for delta neutrality
-    COMPLETING = 7          # Finalize arbitrage cycle
-    ERROR_RECOVERY = 8      # Handle errors and recovery
+# Arbitrage strategy states using Literal strings for optimal performance
+# Includes base states and arbitrage-specific states
+ArbitrageState = Literal[
+    # Base states
+    'idle',
+    'paused',
+    'error',
+    'completed',
+    'cancelled',
+    'executing',
+    'adjusting',
+    
+    # Arbitrage-specific states
+    'initializing',     # Initialize exchanges and connections
+    'monitoring',       # Monitor spreads and opportunities
+    'analyzing',        # Analyze opportunity viability
+    'preparing',        # Prepare for execution (position sizing, risk checks)
+    'rebalancing',      # Rebalance positions for delta neutrality
+    'completing',       # Finalize arbitrage cycle
+    'error_recovery'    # Handle errors and recovery
+]
 
 
 class ExchangeRole(msgspec.Struct):
@@ -110,7 +118,7 @@ class ArbitrageTaskContext(TaskContext):
     price_check_interval: float = 0.1  # 100ms between price checks
 
 
-class BaseArbitrageStrategy(BaseTradingTask[T, ArbitrageState], Generic[T], ABC):
+class BaseArbitrageStrategy(BaseTradingTask[T, str], Generic[T], ABC):
     """
     Abstract base class for arbitrage strategies.
     
@@ -208,7 +216,7 @@ class BaseArbitrageStrategy(BaseTradingTask[T, ArbitrageState], Generic[T], ABC)
                 current_time = time.time()
                 if (current_time - self._last_opportunity_check) >= self.context.price_check_interval:
                     self._last_opportunity_check = current_time
-                    if self.context.state == ArbitrageState.MONITORING:
+                    if self.context.state == 'monitoring':
                         # Schedule opportunity analysis (don't block WebSocket handler)
                         asyncio.create_task(self._analyze_opportunity_async())
         return handle_book_ticker
@@ -240,8 +248,8 @@ class BaseArbitrageStrategy(BaseTradingTask[T, ArbitrageState], Generic[T], ABC)
                 opportunity = await self._identify_arbitrage_opportunity()
                 if opportunity and opportunity.spread_pct >= self.context.entry_threshold_pct:
                     self.evolve_context(current_opportunity=opportunity)
-                    if self.context.state == ArbitrageState.MONITORING:
-                        self._transition(ArbitrageState.ANALYZING)
+                    if self.context.state == 'monitoring':
+                        self._transition('analyzing')
         except Exception as e:
             self.logger.warning(f"Opportunity analysis failed: {e}")
     
@@ -288,8 +296,7 @@ class BaseArbitrageStrategy(BaseTradingTask[T, ArbitrageState], Generic[T], ABC)
     async def _handle_idle(self):
         """Handle idle state - transition to initialization."""
         await super()._handle_idle()
-        self._transition(ArbitrageState.INITIALIZING)
-    
+
     async def _handle_initializing(self):
         """Initialize strategy components and market data."""
         self.logger.info(f"Initializing arbitrage strategy for {self.context.symbol}")
@@ -304,14 +311,14 @@ class BaseArbitrageStrategy(BaseTradingTask[T, ArbitrageState], Generic[T], ABC)
             
             if all_ready:
                 self.logger.info("✅ All exchanges initialized successfully")
-                self._transition(ArbitrageState.MONITORING)
+                self._transition('monitoring')
             else:
                 # Wait and retry
                 await asyncio.sleep(1.0)
                 
         except Exception as e:
             self.logger.error(f"Initialization failed: {e}")
-            self._transition(ArbitrageState.ERROR_RECOVERY)
+            self._transition('error_recovery')
     
     async def _handle_monitoring(self):
         """Monitor market for arbitrage opportunities."""
@@ -322,7 +329,7 @@ class BaseArbitrageStrategy(BaseTradingTask[T, ArbitrageState], Generic[T], ABC)
     async def _handle_analyzing(self):
         """Analyze current opportunity for viability."""
         if not self.context.current_opportunity:
-            self._transition(ArbitrageState.MONITORING)
+            self._transition('monitoring')
             return
         
         opportunity = self.context.current_opportunity
@@ -330,16 +337,16 @@ class BaseArbitrageStrategy(BaseTradingTask[T, ArbitrageState], Generic[T], ABC)
         # Verify opportunity is still valid (prices haven't moved significantly)
         if await self._validate_opportunity(opportunity):
             self.logger.info(f"💰 Valid arbitrage opportunity: {opportunity.spread_pct:.4f}% spread")
-            self._transition(ArbitrageState.PREPARING)
+            self._transition('preparing')
         else:
             self.logger.info("⚠️ Opportunity no longer valid, returning to monitoring")
             self.evolve_context(current_opportunity=None)
-            self._transition(ArbitrageState.MONITORING)
+            self._transition('monitoring')
     
     async def _handle_preparing(self):
         """Prepare for arbitrage execution."""
         if not self.context.current_opportunity:
-            self._transition(ArbitrageState.MONITORING)
+            self._transition('monitoring')
             return
         
         opportunity = self.context.current_opportunity
@@ -353,16 +360,16 @@ class BaseArbitrageStrategy(BaseTradingTask[T, ArbitrageState], Generic[T], ABC)
         # Final validation before execution
         if await self._pre_execution_checks(opportunity, max_position):
             self.evolve_context(opportunity_start_time=time.time())
-            self._transition(ArbitrageState.EXECUTING)
+            self._transition('executing')
         else:
             self.logger.warning("Pre-execution checks failed, aborting opportunity")
             self.evolve_context(current_opportunity=None)
-            self._transition(ArbitrageState.MONITORING)
+            self._transition('monitoring')
     
     async def _handle_executing(self):
         """Execute arbitrage trades."""
         if not self.context.current_opportunity:
-            self._transition(ArbitrageState.MONITORING)
+            self._transition('monitoring')
             return
         
         opportunity = self.context.current_opportunity
@@ -375,14 +382,14 @@ class BaseArbitrageStrategy(BaseTradingTask[T, ArbitrageState], Generic[T], ABC)
                 self.logger.info(f"✅ Arbitrage execution successful")
                 # Update performance metrics
                 self.evolve_context(total_trades=self.context.total_trades + 1)
-                self._transition(ArbitrageState.REBALANCING)
+                self._transition('rebalancing')
             else:
                 self.logger.warning("❌ Arbitrage execution failed")
-                self._transition(ArbitrageState.ERROR_RECOVERY)
+                self._transition('error_recovery')
                 
         except Exception as e:
             self.logger.error(f"Execution error: {e}")
-            self._transition(ArbitrageState.ERROR_RECOVERY)
+            self._transition('error_recovery')
     
     async def _handle_rebalancing(self):
         """Rebalance positions after arbitrage execution."""
@@ -391,14 +398,14 @@ class BaseArbitrageStrategy(BaseTradingTask[T, ArbitrageState], Generic[T], ABC)
             
             if success:
                 self.logger.info("✅ Position rebalancing successful")
-                self._transition(ArbitrageState.COMPLETING)
+                self._transition('completing')
             else:
                 self.logger.warning("⚠️ Rebalancing had issues, proceeding to completion")
-                self._transition(ArbitrageState.COMPLETING)
+                self._transition('completing')
                 
         except Exception as e:
             self.logger.error(f"Rebalancing error: {e}")
-            self._transition(ArbitrageState.ERROR_RECOVERY)
+            self._transition('error_recovery')
     
     async def _handle_completing(self):
         """Complete arbitrage cycle and return to monitoring."""
@@ -410,7 +417,7 @@ class BaseArbitrageStrategy(BaseTradingTask[T, ArbitrageState], Generic[T], ABC)
         self.evolve_context(current_opportunity=None, opportunity_start_time=None)
         
         # Return to monitoring for next opportunity
-        self._transition(ArbitrageState.MONITORING)
+        self._transition('monitoring')
     
     async def _handle_error_recovery(self):
         """Handle errors and attempt recovery."""
@@ -428,7 +435,7 @@ class BaseArbitrageStrategy(BaseTradingTask[T, ArbitrageState], Generic[T], ABC)
         
         # Wait before returning to monitoring
         await asyncio.sleep(1.0)
-        self._transition(ArbitrageState.MONITORING)
+        self._transition('monitoring')
     
     # Utility methods
     
@@ -693,18 +700,38 @@ class BaseArbitrageStrategy(BaseTradingTask[T, ArbitrageState], Generic[T], ABC)
         # Update position tracking for delta neutrality
         pass
     
-    def get_extended_state_handlers(self) -> Dict[ArbitrageState, str]:
-        """Get arbitrage-specific state handlers."""
+    def get_unified_state_handlers(self) -> Dict[str, StateHandler]:
+        """Provide complete unified state handler mapping.
+        
+        Includes both base states and arbitrage-specific states using string keys.
+        """
         return {
-            ArbitrageState.INITIALIZING: '_handle_initializing',
-            ArbitrageState.MONITORING: '_handle_monitoring',
-            ArbitrageState.ANALYZING: '_handle_analyzing',
-            ArbitrageState.PREPARING: '_handle_preparing',
-            ArbitrageState.EXECUTING: '_handle_executing',
-            ArbitrageState.REBALANCING: '_handle_rebalancing',
-            ArbitrageState.COMPLETING: '_handle_completing',
-            ArbitrageState.ERROR_RECOVERY: '_handle_error_recovery',
+            # Base state handlers
+            'idle': self._handle_idle,
+            'paused': self._handle_paused,
+            'error': self._handle_error,
+            'completed': self._handle_complete,
+            'cancelled': self._handle_cancelled,
+            'executing': self._handle_executing,
+            'adjusting': self._handle_adjusting,
+            
+            # Arbitrage-specific state handlers
+            'initializing': self._handle_initializing,
+            'monitoring': self._handle_monitoring,
+            'analyzing': self._handle_analyzing,
+            'preparing': self._handle_preparing,
+            'rebalancing': self._handle_rebalancing,
+            'completing': self._handle_completing,
+            'error_recovery': self._handle_error_recovery,
         }
+    
+    # Base state handlers (implementing BaseStateMixin states)
+    async def _handle_cancelled(self):
+        """Handle cancelled state."""
+        self.logger.info("🚫 Arbitrage strategy cancelled")
+        # Cancel all orders and close positions
+        for exchange in self._exchanges.values():
+            await exchange.cancel_all_orders()
     
     async def cleanup(self):
         """Cleanup resources when task completes."""

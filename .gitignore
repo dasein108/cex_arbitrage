@@ -131,3 +131,4 @@ output/
 */task_data/
 .claude/settings.local.json
 *.pkl
+*.json

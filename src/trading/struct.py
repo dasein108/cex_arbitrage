@@ -1,7 +1,5 @@
-from enum import IntEnum
-
 from msgspec import Struct
-from typing import Optional
+from typing import Optional, Literal
 from exchanges.structs.common import Symbol, Side, Position
 
 
@@ -17,14 +15,15 @@ class SynthPosition(Struct):
         return f"Synth-pos: {self.symbol} {self.side} size: {self.quantity}/{self.quantity_filled}"
 
 
-class TradingStrategyState(IntEnum):
-    """Base states for all trading strategies."""
-    IDLE = 1
-    EXECUTING = 2
-    MONITORING = 3
-    ADJUSTING = 4
-    COMPLETED = 100
-    NOT_STARTED = -1
-    CANCELLED = -2
-    PAUSED = 0
-    ERROR = -100
+# Base trading strategy states using Literal strings for optimal performance
+TradingStrategyState = Literal[
+    'idle',
+    'executing', 
+    'monitoring',
+    'adjusting',
+    'completed',
+    'not_started',
+    'cancelled',
+    'paused',
+    'error'
+]

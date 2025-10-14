@@ -10,7 +10,6 @@ Extends TaskContext with arbitrage-specific fields following PROJECT_GUIDES.md:
 
 import time
 from typing import Dict, Optional, Literal
-from enum import IntEnum
 
 import msgspec
 from msgspec import Struct
@@ -19,14 +18,24 @@ from trading.tasks.base_task import TaskContext
 from exchanges.structs import Symbol, Side, Order, ExchangeEnum, BookTicker
 
 
-class ArbitrageState(IntEnum):
-    """States for arbitrage strategy execution."""
-    IDLE = 0
-    INITIALIZING = 1
-    MONITORING = 2
-    ANALYZING = 3
-    EXECUTING = 4
-    ERROR_RECOVERY = 5
+# Arbitrage strategy states using Literal strings for optimal performance
+# Includes base states and arbitrage-specific states
+ArbitrageState = Literal[
+    # Base states
+    'idle',
+    'paused',
+    'error', 
+    'completed',
+    'cancelled',
+    'executing',
+    'adjusting',
+    
+    # Arbitrage-specific states
+    'initializing',
+    'monitoring',
+    'analyzing',
+    'error_recovery'
+]
 
 
 class Position(Struct):
@@ -187,7 +196,7 @@ class ArbitrageTaskContext(TaskContext):
     })
     
     # Strategy state and performance
-    arbitrage_state: ArbitrageState = ArbitrageState.IDLE
+    arbitrage_state: ArbitrageState = 'idle'
     current_opportunity: Optional[ArbitrageOpportunity] = None
     position_start_time: Optional[float] = None
     arbitrage_cycles: int = 0
@@ -203,12 +212,17 @@ class ArbitrageTaskContext(TaskContext):
         
         Handles arbitrage-specific enum conversions for context evolution.
         """
-        # Handle ArbitrageState enum conversion
+        # Handle ArbitrageState string validation
         if field_name == "arbitrage_state":
-            try:
-                return ArbitrageState[key_str.upper()]
-            except (KeyError, AttributeError):
-                pass
+            # Convert to lowercase and validate against ArbitrageState
+            state_str = key_str.lower()
+            # Valid states are defined in the ArbitrageState Literal type
+            valid_states = [
+                'idle', 'paused', 'error', 'completed', 'cancelled', 'executing', 'adjusting',
+                'initializing', 'monitoring', 'analyzing', 'error_recovery'
+            ]
+            if state_str in valid_states:
+                return state_str
         
         # Handle exchange type keys for active_orders and min_quote_quantity
         if field_name in ["active_orders", "min_quote_quantity"]:
