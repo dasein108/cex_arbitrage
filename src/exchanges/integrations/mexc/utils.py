@@ -11,12 +11,12 @@ from typing import Dict, List, Optional
 import re
 
 from exchanges.integrations.mexc.structs.exchange import (
-    MexcOrderResponse
+    MexcOrderResponse, MexcAccountTradeResponse
 )
 from exchanges.structs.common import (
-    Side, OrderStatus, OrderType, TimeInForce, Order, Symbol
+    Side, OrderStatus, OrderType, TimeInForce, Order, Symbol, Trade
 )
-from exchanges.structs.types import OrderId
+from exchanges.structs.types import OrderId, AssetName
 from exchanges.structs.enums import WithdrawalStatus, KlineInterval
 from exchanges.integrations.mexc.services.symbol_mapper import MexcSymbol
 
@@ -165,6 +165,31 @@ def from_subscription_action(action) -> str:
         return "UNSUBSCRIPTION"
     return "SUBSCRIPTION"
 
+def trades_to_order(symbol: Symbol, order_id: OrderId, trades: List[Trade]) -> Order:
+    """Aggregate multiple trades into a single Order representation."""
+    if not trades:
+        raise ValueError("No trades provided to aggregate into an order.")
+
+    side = trades[0].side
+    order_type = OrderType.MARKET  # Assuming trades come from market orders
+    total_quantity = sum(trade.quantity for trade in trades)
+    total_filled = total_quantity  # All quantity is filled in aggregated trades
+    avg_price = sum(trade.price * trade.quantity for trade in trades) / total_quantity
+    total_fee = sum(trade.fee for trade in trades if trade.fee is not None)
+
+    return Order(
+        symbol=symbol,
+        side=side,
+        order_type=order_type,
+        price=avg_price,
+        quantity=total_quantity,
+        filled_quantity=total_filled,
+        order_id=order_id,  # Placeholder ID for aggregated order
+        status=OrderStatus.FILLED,
+        timestamp=min(trade.timestamp for trade in trades),
+        fee=total_fee if total_fee > 0 else None,
+        client_order_id=None
+    )
 
 def rest_to_order(mexc_order_data: MexcOrderResponse) -> Order:
     """Transform MEXC REST order response to unified Order struct."""
@@ -213,3 +238,27 @@ _WS_ORDER_TYPE_MAPPING = {
     3: OrderType.STOP_LIMIT,
     4: OrderType.STOP_MARKET,
 }
+
+
+def rest_to_trade(mexc_trade_data: MexcAccountTradeResponse) -> Trade:
+    """Transform MEXC account trade response to unified Trade struct."""
+    # Convert MEXC symbol to unified Symbol
+    symbol = MexcSymbol.to_symbol(mexc_trade_data.symbol)
+    
+    # Determine side from isBuyer field 
+    side = Side.BUY if mexc_trade_data.isBuyer else Side.SELL
+    
+    return Trade(
+        symbol=symbol,
+        side=side,
+        quantity=float(mexc_trade_data.qty),
+        price=float(mexc_trade_data.price),
+        timestamp=mexc_trade_data.time,
+        quote_quantity=float(mexc_trade_data.quoteQty),
+        trade_id=mexc_trade_data.id,
+        order_id=OrderId(mexc_trade_data.orderId),
+        fee=float(mexc_trade_data.commission) if mexc_trade_data.commission else None,
+        fee_asset=AssetName(mexc_trade_data.commissionAsset) if mexc_trade_data.commissionAsset else None,
+        is_buyer=mexc_trade_data.isBuyer,
+        is_maker=mexc_trade_data.isMaker
+    )

@@ -304,7 +304,10 @@ class HFTLogger(HFTLoggerInterface):
     def metric(self, name: str, value: float, **tags) -> None:
         """Log metric value."""
         start_time = time.perf_counter()
-        
+
+        # TODO: TMP Disabled for testing/dev
+        return
+
         try:
             # Merge persistent context with tags
             full_tags = {**self.context, **tags}

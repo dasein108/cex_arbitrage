@@ -26,7 +26,7 @@ import msgspec
 
 from exchanges.integrations.mexc.services.symbol_mapper import MexcSymbol
 from exchanges.structs.common import (
-    Symbol, Order, AssetBalance,
+    Symbol, Order, AssetBalance, Trade,
     AssetInfo, NetworkInfo, WithdrawalRequest, WithdrawalResponse
 )
 from exchanges.structs.types import AssetName, OrderId
@@ -38,12 +38,12 @@ from infrastructure.exceptions.exchange import ExchangeRestError, OrderCancelled
 from exchanges.interfaces.rest import PrivateSpotRestInterface
 from exchanges.interfaces.rest.interfaces import ListenKeyInterface
 from exchanges.integrations.mexc.structs.exchange import (MexcAccountResponse, MexcOrderResponse,
-                                                          MexcCurrencyInfoResponse)
+                                                          MexcCurrencyInfoResponse, MexcAccountTradeResponse)
 
 # Import direct utility functions
 from exchanges.integrations.mexc.utils import (
     from_side, from_order_type, format_quantity, format_price,
-    from_time_in_force, to_order_status, rest_to_order, rest_to_withdrawal_status
+    from_time_in_force, to_order_status, rest_to_order, rest_to_withdrawal_status, rest_to_trade
 )
 from utils import get_current_timestamp
 
@@ -183,11 +183,26 @@ class MexcPrivateSpotRestInterface(MexcBaseRestInterface, PrivateSpotRestInterfa
                 raise ValueError(f"Stop price is required for {order_type.name} orders")
 
         # For MARKET buy orders, either amount or quote_quantity is required
-        if order_type == OrderType.MARKET and side == Side.BUY:
-            if quantity is None and quote_quantity is None:
-                raise ValueError("Either amount or quote_quantity is required for MARKET buy orders")
-        elif quantity is None:
-            raise ValueError("Amount is required for this order type")
+
+        if order_type == OrderType.MARKET:
+
+            if side == Side.BUY:
+                if quote_quantity is None:
+                    if price is None:
+                        raise ValueError("Either quote_quantity or price is required for MARKET buy orders")
+
+                    quote_quantity = quantity * price if quantity and price else None
+                    quantity = None
+                # raise ValueError("Either amount or quote_quantity is required for MARKET buy orders")
+            elif side == Side.SELL:
+                if quantity is None:
+                    if price is None:
+                        raise ValueError("Either quantity or price is required for MARKET sell orders")
+
+                    quantity = quote_quantity / price if quote_quantity and price else None
+                    quote_quantity = None
+                # raise ValueError(f"Amount is required for this order type {order_type.name}, q: {quantity}, "
+                #                  f"qq: {quote_quantity}, price: {price}")
 
         # Prepare exchanges order parameters
         params = {
@@ -385,9 +400,107 @@ class MexcPrivateSpotRestInterface(MexcBaseRestInterface, PrivateSpotRestInterfa
             unified_order = rest_to_order(order_response)
             open_orders.append(unified_order)
 
-        symbol_str = f" for {symbol.base}/{symbol.quote}" if symbol else ""
-        self.logger.debug(f"Retrieved {len(open_orders)} open orders{symbol_str}")
+        self.logger.debug(f"Retrieved {len(open_orders)} open orders for {symbol}")
         return open_orders
+
+    async def get_history_orders(self, symbol: Symbol,
+                                 start_time: Optional[int] = None,
+                                 end_time: Optional[int] = None,
+                                 limit: Optional[int] =None) -> List[Order]:
+        """
+        Get all open orders, optionally filtered by symbol.
+
+        Args:
+            symbol: Optional symbol to filter orders
+            start_time: Optional start time in milliseconds
+            end_time: Optional end time in milliseconds
+            limit: Optional maximum number of orders to return
+
+        Returns:
+            List of open Order objects
+
+        Raises:
+            ExchangeAPIError: If unable to fetch orders
+        """
+        params = {'symbol': MexcSymbol.to_pair(symbol)}
+        if limit:
+            params['limit'] = limit
+        if end_time:
+            params['endTime'] = end_time
+        if start_time:
+            params['startTime'] = end_time
+
+        # Use base class request method with direct implementation
+        response_data = await self.request(
+            HTTPMethod.GET,
+            '/api/v3/allOrders',
+            params=params
+        )
+
+        order_responses = msgspec.convert(response_data, list[MexcOrderResponse])
+
+        # Transform to unified format
+        all_orders = []
+        for order_response in order_responses:
+            unified_order = rest_to_order(order_response)
+            all_orders.append(unified_order)
+
+        self.logger.debug(f"Retrieved {len(all_orders)} history orders for {symbol}")
+        return all_orders
+
+    async def get_account_trades(self, symbol: Symbol,
+                                order_id: Optional[OrderId] = None,
+                                start_time: Optional[int] = None,
+                                end_time: Optional[int] = None,
+                                limit: Optional[int] = None) -> List[Trade]:
+        """
+        Get account trade history for a specific symbol.
+        
+        Args:
+            symbol: Symbol to get trades for
+            order_id: Optional order ID to filter trades
+            start_time: Optional start time in milliseconds
+            end_time: Optional end time in milliseconds
+            limit: Optional maximum number of trades to return (max 100)
+            
+        Returns:
+            List of Trade objects representing account trades
+            
+        Raises:
+            ExchangeAPIError: If unable to fetch trade history
+        """
+        pair = MexcSymbol.to_pair(symbol)
+        
+        params = {'symbol': pair}
+        
+        # Add optional parameters if provided
+        if order_id:
+            params['orderId'] = str(order_id)
+        if start_time:
+            params['startTime'] = start_time
+        if end_time:
+            params['endTime'] = end_time
+        if limit:
+            # MEXC API max limit is 100
+            params['limit'] = min(limit, 100)
+
+        # Use base class request method with direct implementation
+        response_data = await self.request(
+            HTTPMethod.GET,
+            '/api/v3/myTrades',
+            params=params
+        )
+
+        trade_responses = msgspec.convert(response_data, list[MexcAccountTradeResponse])
+
+        # Transform to unified format
+        account_trades = []
+        for trade_response in trade_responses:
+            unified_trade = rest_to_trade(trade_response)
+            account_trades.append(unified_trade)
+
+        self.logger.debug(f"Retrieved {len(account_trades)} account trades for {symbol.base}/{symbol.quote}")
+        return account_trades
 
     # async def modify_order(
     #         self,

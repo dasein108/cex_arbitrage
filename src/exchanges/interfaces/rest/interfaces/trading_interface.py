@@ -10,7 +10,8 @@ from typing import Dict, List, Optional
 from exchanges.structs.common import (
     Symbol,
     Order,
-    AssetBalance
+    AssetBalance,
+    Trade
 )
 from exchanges.structs.types import AssetName, OrderId
 from exchanges.structs.enums import TimeInForce
@@ -81,3 +82,17 @@ class PrivateTradingInterface(ABC):
     async def get_open_orders(self, symbol: Optional[Symbol] = None) -> List[Order]:
         """Get all open orders for account or symbol"""
         pass
+
+    async def get_history_orders(self, symbol: Symbol,
+                                 start_time: Optional[int] = None,
+                                 end_time: Optional[int] = None,
+                                 limit: Optional[int] =None) -> List[Order]:
+        raise NotImplementedError("get_history_orders not implemented for this exchange")
+
+    async def get_account_trades(self, symbol: Symbol,
+                                order_id: Optional[OrderId] = None,
+                                start_time: Optional[int] = None,
+                                end_time: Optional[int] = None,
+                                limit: Optional[int] = None) -> List[Trade]:
+        """Get account trade history for a specific symbol"""
+        raise NotImplementedError("get_account_trades not implemented for this exchange")

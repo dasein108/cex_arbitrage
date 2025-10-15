@@ -350,6 +350,10 @@ class SpotFuturesArbitrageTask(BaseTradingTask[ArbitrageTaskContext, str]):
 
     # Unified utility methods
 
+    def _get_entry_cost_pct(self, buy_price: float, sell_price: float) -> float:
+        """Calculate entry cost percentage."""
+        return ((buy_price - sell_price) / buy_price) * 100
+
     async def _identify_arbitrage_opportunity(self) -> Optional[ArbitrageOpportunity]:
         """Identify arbitrage opportunities using backtesting logic."""
 
@@ -357,8 +361,7 @@ class SpotFuturesArbitrageTask(BaseTradingTask[ArbitrageTaskContext, str]):
         futures_ticker = self.futures_ticker
         
         # Calculate entry cost
-        entry_cost_pct = ((spot_ticker.ask_price - futures_ticker.bid_price) /
-                          spot_ticker.ask_price) * 100
+        entry_cost_pct = self._get_entry_cost_pct(spot_ticker.ask_price, futures_ticker.bid_price)
         
         if self._debug_info_counter % 1000 == 0:
             print(f'Entry cost {entry_cost_pct:.4f}% ({self.spot_exchange.name} -> {self.futures_exchange.name})')
@@ -393,6 +396,32 @@ class SpotFuturesArbitrageTask(BaseTradingTask[ArbitrageTaskContext, str]):
             sell_price=futures_ticker.bid_price,
             max_quantity=max_quantity
         )
+
+    def _get_pos_net_pnl(self, entry_spot_price: float, entry_fut_price: float,
+                         curr_spot_price: float, curr_fut_price: float) -> Optional[float]:
+        # Calculate P&L using backtesting logic with fees
+        spot_fee = self.context.params.spot_fee
+        fut_fee = self.context.params.fut_fee
+
+        # Entry costs (what we paid)
+        entry_spot_cost = entry_spot_price * (1 + spot_fee)  # Bought spot with fee
+        entry_fut_receive = entry_fut_price * (1 - fut_fee)  # Sold futures with fee
+
+        # Exit revenues (what we get)
+        exit_spot_receive = curr_spot_price * (1 - spot_fee)  # Sell spot with fee
+        exit_fut_cost = curr_fut_price * (1 + fut_fee)  # Buy futures with fee
+
+        # P&L calculation
+        spot_pnl_pts = exit_spot_receive - entry_spot_cost
+        fut_pnl_pts = entry_fut_receive - exit_fut_cost
+        total_pnl_pts = spot_pnl_pts + fut_pnl_pts
+
+        # P&L percentage
+        capital = entry_spot_cost
+        net_pnl_pct = (total_pnl_pts / capital) * 100
+
+        return net_pnl_pct
+
     
     async def _should_exit_positions(self) -> bool:
         """Check if should exit existing positions."""
@@ -403,29 +432,37 @@ class SpotFuturesArbitrageTask(BaseTradingTask[ArbitrageTaskContext, str]):
         spot_pos = self.context.positions_state.positions['spot']
         futures_pos = self.context.positions_state.positions['futures']
         
-        # Calculate P&L using backtesting logic with fees
-        spot_fee = self.context.params.spot_fee
-        fut_fee = self.context.params.fut_fee
-        
-        # Entry costs (what we paid)
-        entry_spot_cost = spot_pos.price * (1 + spot_fee)  # Bought spot with fee
-        entry_fut_receive = futures_pos.price * (1 - fut_fee)  # Sold futures with fee
-        
-        # Exit revenues (what we get)
-        exit_spot_receive = self.spot_ticker.bid_price * (1 - spot_fee)  # Sell spot with fee
-        exit_fut_cost = self.futures_ticker.ask_price * (1 + fut_fee)  # Buy futures with fee
-        
-        # P&L calculation
-        spot_pnl_pts = exit_spot_receive - entry_spot_cost
-        fut_pnl_pts = entry_fut_receive - exit_fut_cost
-        total_pnl_pts = spot_pnl_pts + fut_pnl_pts
-        
-        # P&L percentage
-        capital = entry_spot_cost
-        net_pnl_pct = (total_pnl_pts / capital) * 100
+        # # Calculate P&L using backtesting logic with fees
+        # spot_fee = self.context.params.spot_fee
+        # fut_fee = self.context.params.fut_fee
+        #
+        # # Entry costs (what we paid)
+        # entry_spot_cost = spot_pos.price * (1 + spot_fee)  # Bought spot with fee
+        # entry_fut_receive = futures_pos.price * (1 - fut_fee)  # Sold futures with fee
+        #
+        # # Exit revenues (what we get)
+        # exit_spot_receive = self.spot_ticker.bid_price * (1 - spot_fee)  # Sell spot with fee
+        # exit_fut_cost = self.futures_ticker.ask_price * (1 + fut_fee)  # Buy futures with fee
+        #
+        # # P&L calculation
+        # spot_pnl_pts = exit_spot_receive - entry_spot_cost
+        # fut_pnl_pts = entry_fut_receive - exit_fut_cost
+        # total_pnl_pts = spot_pnl_pts + fut_pnl_pts
+        #
+        # # P&L percentage
+        # capital = entry_spot_cost
+        # net_pnl_pct = (total_pnl_pts / capital) * 100
+
+        net_pnl_pct = self._get_pos_net_pnl(spot_pos.price, futures_pos.price,
+                                            self.spot_ticker.bid_price, self.futures_ticker.ask_price)
         
         # Check exit conditions
         exit_now = False
+        if self._debug_info_counter % 1000 == 0:
+            print(f'Exit pnl {net_pnl_pct:.4f}%')
+            self._debug_info_counter = 0
+
+        self._debug_info_counter += 1
 
         # 1. PROFIT TARGET: Exit when profitable
         if net_pnl_pct >= self.context.params.min_profit_pct:
@@ -554,6 +591,15 @@ class SpotFuturesArbitrageTask(BaseTradingTask[ArbitrageTaskContext, str]):
                              f" placed orders: {placed_orders}")
             
             if success:
+                entry_cost_pct = self._get_entry_cost_pct(opportunity.buy_price, opportunity.sell_price)
+                entry_cost_real_pct = self._get_entry_cost_pct(placed_orders['spot'].price, placed_orders['futures'].price)
+                entry_cost_diff = entry_cost_real_pct - entry_cost_pct
+                self.logger.info(f"✅ Both entry orders placed successfully, "
+                                 f"oppo price, buy {opportunity.buy_price}, sell {opportunity.sell_price} "
+                                 f"real price, buy {placed_orders['spot'].price}, sell {placed_orders['futures'].price} "
+                                 f"enter cost % {entry_cost_pct}:.3f real cost % {entry_cost_real_pct}:.3f "
+                                 f"diff % {entry_cost_diff:.3f}")
+
                 # Track position start time
                 if self.context.position_start_time is None:
                     self.evolve_context(position_start_time=time.time())

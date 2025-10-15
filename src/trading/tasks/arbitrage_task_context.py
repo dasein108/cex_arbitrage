@@ -19,6 +19,7 @@ from exchanges.structs import Symbol, Side, Order, ExchangeEnum, BookTicker, Ord
 from trading.task_manager.exchange_manager import (
     ArbitrageExchangeType
 )
+from utils import calculate_weighted_price
 
 # Arbitrage strategy states using Literal strings for optimal performance
 # Includes base states and arbitrage-specific states
@@ -91,26 +92,23 @@ class PositionState(msgspec.Struct):
             
         current = self.positions[exchange_key]
         
-        if current.qty < 1e-8:  # No existing position
+        if not current.has_position:  # No existing position
             new_position = Position(qty=quantity, price=price, side=side)
         elif current.side == side:
             # Same side: add to position with weighted average price
-            from utils import calculate_weighted_price
             new_price, new_qty = calculate_weighted_price(current.qty, current.price, quantity, price)
             new_position = Position(qty=new_qty, price=new_price, side=side)
         else:
-            raise NotImplementedError("Position reduction logic not implemented yet.")
-            # # Opposite side: get decrease vector
-            # from utils import get_decrease_vector
-            # new_qty, new_side = get_decrease_vector(current.qty, current.side, quantity, side)
-            # new_price = price if new_side != current.side else current.price
-            #
-            # # Clear position if quantity becomes zero
-            # if new_qty < 1e-8:
-            #     new_position = Position()
-            # else:
-            #     new_position = Position(qty=new_qty, price=new_price, side=new_side)
-        
+            new_price, new_qty = calculate_weighted_price(current.qty, current.price, -quantity, price)
+            # flip side if FUTURES position reverses
+            new_side = side if new_qty < 0 and exchange_key == 'futures' else current.side
+            threshold_usdt = 1.0
+            new_qty_usdt = abs(new_qty * new_price)
+            if new_qty_usdt < threshold_usdt:
+                new_position = Position()
+            else:
+                new_position = Position(qty=abs(new_qty), price=new_price, side=new_side)
+
         new_positions = self.positions.copy()
         new_positions[exchange_key] = new_position
         return msgspec.structs.replace(self, positions=new_positions)

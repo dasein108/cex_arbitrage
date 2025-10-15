@@ -8,11 +8,13 @@ which are only needed for spot exchanges.
 
 import asyncio
 from typing import Dict, List, Optional, Any
+
+from exchanges.integrations.mexc.utils import trades_to_order
 from exchanges.structs.common import (
     Symbol, AssetBalance, Order, SymbolsInfo
 )
 from exchanges.structs.types import AssetName, OrderId
-from exchanges.structs import Side, Trade, OrderType
+from exchanges.structs import Side, Trade, OrderType, ExchangeEnum
 from config.structs import ExchangeConfig
 from infrastructure.exceptions.exchange import OrderNotFoundError
 from infrastructure.exceptions.system import InitializationError
@@ -194,22 +196,33 @@ class BasePrivateComposite(BalanceSyncMixin,
         """Place a market order via REST API."""
         si = self.symbols_info.get(symbol)
         quote_quantity_ = si.round_quote(quote_quantity)
-        
+
         # For futures markets, convert quote_quantity to base quantity
         # Futures market orders require quantity parameter instead of quote_quantity
         if self.config.is_futures:
             if price is None:
                 raise ValueError("Futures market orders require price parameter for quote_quantity conversion")
-            base_quantity = quote_quantity_ / price
-            quantity_ = si.round_base(base_quantity)
+
+            quantity_ = si.round_base(quote_quantity_ / price)
+
             order = await self._rest.place_order(symbol, side, OrderType.MARKET,
                                                 price=price,
                                                 quantity=quantity_, **kwargs)
         else:
-            # Spot markets can use quote_quantity directly
-            order = await self._rest.place_order(symbol, side, OrderType.MARKET,
-                                                price=price,
-                                                quote_quantity=quote_quantity_, **kwargs)
+            if side == Side.BUY:
+                order = await self._rest.place_order(symbol, side, OrderType.MARKET,
+                                                     price=price,
+                                                     quote_quantity=quote_quantity_, **kwargs)
+                # raise ValueError("Either amount or quote_quantity is required for MARKET buy orders")
+            else:
+                quantity_ = si.round_base(quote_quantity_ / price)
+
+                order = await self._rest.place_order(symbol, side, OrderType.MARKET,
+                                                     price=price,
+                                                     quantity=quantity_, **kwargs)
+                # raise ValueError(f"Amount is required for this order type {order_type.name}, q: {quantity}, "
+                #                  f"qq: {quote_quantity}, price: {price}")
+
 
         if ensure:
             return await self.fetch_order(symbol, order.order_id)
@@ -258,10 +271,46 @@ class BasePrivateComposite(BalanceSyncMixin,
         Raises:
             ExchangeError: If order not found or query fails
         """
+        # TODO: Mexc direct api doesn't provide correct prices disabled
+        if self.config.exchange_enum == ExchangeEnum.MEXC:
+            return await self.fetch_order_from_trades(symbol, order_id)
+
         try:
             order = await self._rest.get_order(symbol, order_id)
             if order:
                 return await self._update_order(order, order_id)
+
+            return None
+        except OrderNotFoundError as e:
+            self.logger.error("Failed to fetch order status", order_id=order_id, error=str(e))
+            self.remove_order(order_id)
+            return None
+
+    async def fetch_order_from_trades(self, symbol: Symbol, order_id: OrderId) -> Order | None:
+        """
+        Get current status of an order.
+
+        Args:
+            symbol: Trading symbol
+            order_id: Exchange order ID
+
+        Returns:
+            Order object with current status
+
+        Raises:
+            ExchangeError: If order not found or query fails
+        """
+        try:
+            trades = await self._rest.get_account_trades(symbol, order_id)
+
+
+            if trades:
+                order = trades_to_order(symbol, order_id, trades)
+                return await self._update_order(order, order_id)
+
+            if not trades:
+                self.logger.warning("No trades found for order", order_id=order_id)
+                self.remove_order(order_id)
 
             return None
         except OrderNotFoundError as e:
@@ -311,7 +360,13 @@ class BasePrivateComposite(BalanceSyncMixin,
 
             with LoggingTimer(self.logger, "load_open_orders") as timer:
                 orders = await self._rest.get_open_orders(symbol)
+                self.logger.warning("MEXC REST open orders do not provide CORRECT prices, "
+                                    "using trades to fetch prices")
                 for o in orders:
+                    # Mexc prices from orders is incorrect, need to fetch from trades
+                    if self.config.exchange_enum == ExchangeEnum.MEXC:
+                        o = await self.fetch_order_from_trades(o.symbol, o.order_id)
+
                     # if it was opened before reconnect, remove from forced reload list
                     if o.order_id in prev_open_orders:
                         del prev_open_orders[o.order_id]
@@ -368,18 +423,6 @@ class BasePrivateComposite(BalanceSyncMixin,
             self.logger.debug("Order removed from storage", order_id=order_id)
             return True
         return False
-
-    def get_cached_order(self, symbol: Symbol, order_id: OrderId) -> Optional[Order]:
-        """Get order from local cache (backward compatibility).
-        
-        Args:
-            symbol: Trading symbol (ignored, kept for compatibility)
-            order_id: Order identifier
-            
-        Returns:
-            Order object if found, None otherwise
-        """
-        return self.get_order(order_id)
 
     async def _update_order(self, order: Order | None, order_id: OrderId | None = None) -> Order | None:
         """Update order in unified storage.

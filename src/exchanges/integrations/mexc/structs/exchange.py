@@ -228,3 +228,22 @@ class MexcCurrencyInfoResponse(msgspec.Struct):
     coin: str
     name: str
     networkList: list[MexcNetworkConfigResponse]
+
+
+class MexcAccountTradeResponse(msgspec.Struct):
+    """MEXC account trade (myTrades) API response structure."""
+    symbol: str
+    id: str  # Deal id
+    orderId: str
+    price: str
+    qty: str  # Quantity
+    quoteQty: str  # Deal quantity (price * qty)
+    commission: str
+    commissionAsset: str
+    time: int  # Deal time
+    isBuyer: bool  # isBuyerMaker in docs
+    isMaker: bool
+    isBestMatch: bool
+    isSelfTrade: bool
+    orderListId: int = -1
+    clientOrderId: Optional[str] = None

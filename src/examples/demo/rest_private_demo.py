@@ -26,14 +26,14 @@ async def check_get_account_balance(exchange: PrivateSpotRestInterface, exchange
     try:
         result = await exchange.get_balances()
         print(f"Total balances: {len(result)}")
-        
+
         # Show first 5 non-zero balances
         for i, balance in enumerate(result[:5]):
-            print(f"Balance {i+1}: {balance.asset}")
+            print(f"Balance {i + 1}: {balance.asset}")
             print(f"  Free: {balance.available}")
             print(f"  Locked: {balance.locked}")
             print(f"  Total: {balance.total}")
-            
+
     except Exception as e:
         print(f"Error: {e}")
 
@@ -42,7 +42,7 @@ async def check_get_asset_balance(exchange: PrivateSpotRestInterface, exchange_n
     """Check get_asset_balance method."""
     print(f"\n=== {exchange_name.upper()} GET ASSET BALANCE CHECK ===")
     asset = AssetName('USDT')
-    
+
     try:
         result = await exchange.get_asset_balance(asset)
         print(f"Asset: {asset}")
@@ -52,7 +52,7 @@ async def check_get_asset_balance(exchange: PrivateSpotRestInterface, exchange_n
             print(f"Total: {result.total}")
         else:
             print("No balance found for asset")
-            
+
     except Exception as e:
         print(f"Error: {e}")
 
@@ -89,14 +89,14 @@ async def check_place_order(exchange: PrivateSpotRestInterface, exchange_name: s
 async def check_get_open_orders(exchange: PrivateSpotRestInterface, exchange_name: str, symbol: Symbol = None):
     """Check get_open_orders method."""
     print(f"\n=== {exchange_name.upper()} GET OPEN ORDERS CHECK ===")
-    
+
     try:
         result = await exchange.get_open_orders(symbol)
         print(f"Open orders count: {len(result)}")
-        
+
         # Show first 3 open orders
         for i, order in enumerate(result[:3]):
-            print(f"Order {i+1}:")
+            print(f"Order {i + 1}:")
             print(f"  Order ID: {order.order_id}")
             print(f"  Symbol: {order.symbol}")
             print(f"  Side: {order.side}")
@@ -105,7 +105,7 @@ async def check_get_open_orders(exchange: PrivateSpotRestInterface, exchange_nam
             print(f"  Price: {order.price}")
             print(f"  Status: {order.status}")
             print(f"  Filled: {order.filled_quantity}")
-            
+
     except Exception as e:
         print(f"Error: {e}")
 
@@ -115,7 +115,7 @@ async def check_get_order(exchange: PrivateSpotRestInterface, exchange_name: str
     print(f"\n=== {exchange_name.upper()} GET ORDER CHECK ===")
     symbol = Symbol(base=AssetName('BTC'), quote=AssetName('USDT'))
     order_id = "123456789"  # This will likely fail as order doesn't exist
-    
+
     try:
         result = await exchange.get_order(symbol, order_id)
         print(f"Order details:")
@@ -128,7 +128,7 @@ async def check_get_order(exchange: PrivateSpotRestInterface, exchange_name: str
         print(f"  Status: {result.status}")
         print(f"  Filled: {result.filled_quantity}")
         print(f"  Timestamp: {result.timestamp}")
-        
+
     except Exception as e:
         print(f"Error: {e}")
 
@@ -145,7 +145,7 @@ async def check_cancel_order(exchange: PrivateSpotRestInterface, exchange_name: 
         print(f"  Symbol: {result.symbol}")
         print(f"  Status: {result.status}")
         print(f"  Timestamp: {result.timestamp}")
-        
+
     except Exception as e:
         print(f"Error: {e}")
 
@@ -154,18 +154,18 @@ async def check_cancel_all_orders(exchange: PrivateSpotRestInterface, exchange_n
     """Check cancel_all_orders method."""
     print(f"\n=== {exchange_name.upper()} CANCEL ALL ORDERS CHECK ===")
     symbol = Symbol(base=AssetName('BTC'), quote=AssetName('USDT'))
-    
+
     try:
         result = await exchange.cancel_all_orders(symbol)
         print(f"Cancelled orders count: {len(result)}")
-        
+
         # Show cancelled orders
         for i, order in enumerate(result):
-            print(f"Cancelled order {i+1}:")
+            print(f"Cancelled order {i + 1}:")
             print(f"  Order ID: {order.order_id}")
             print(f"  Symbol: {order.symbol}")
             print(f"  Status: {order.status}")
-            
+
     except Exception as e:
         print(f"Error: {e}")
 
@@ -174,7 +174,7 @@ async def main(exchange_name: str):
     """Run all private API integration checks for the specified exchange."""
     print(f"{exchange_name.upper()} PRIVATE REST API INTEGRATION DEMO")
     print("=" * 50)
-    
+
     try:
         # Load exchange configuration and API credentials
         config_manager = HftConfig()
@@ -183,21 +183,26 @@ async def main(exchange_name: str):
         from utils.exchange_utils import get_exchange_enum
         exchange = get_exchange_enum(exchange_name)
         exchange = create_rest_client(exchange, is_private=True, config=config)
-        symbol = Symbol(base=AssetName('ADA'), quote=AssetName('USDT'))
-
+        symbol = Symbol(base=AssetName('HIFI'), quote=AssetName('USDT'))
+        # 0.06752 vs 0.06554 for buy  - >3% diff
+        # 0.06087 vs 0.06395 for sell - >4% diff
+        print(await exchange.get_order(symbol, '606979991732985856020000088'))
+        print(await exchange.get_history_orders(symbol, limit=2))
+        trades = await exchange.get_account_trades(symbol)
+        print([trade_response for trade_response in trades if trade_response.order_id == '606979991732985856020000088'])
         # Execute all private API checks
         await check_get_account_balance(exchange, exchange_name)
         await check_get_asset_balance(exchange, exchange_name)
         await check_get_open_orders(exchange, exchange_name, symbol)
         await check_get_order(exchange, exchange_name)
         o = await check_place_order(exchange, exchange_name, symbol)
-        print ('OPEN', await exchange.get_open_orders())
+        print('OPEN', await exchange.get_open_orders())
         print('BY ID', await exchange.get_order(o.symbol, o.order_id))
         await check_cancel_order(exchange, exchange_name, o.order_id)
         await check_cancel_all_orders(exchange, exchange_name)
 
         await exchange.close()
-        
+
     except ValueError as e:
         print(f"Configuration Error: {e}")
         print(f"Make sure {exchange_name.upper()} API credentials are configured")
@@ -205,13 +210,13 @@ async def main(exchange_name: str):
         print(f"Initialization Error: {e}")
         import traceback
         traceback.print_exc()
-    
+
     print("\n" + "=" * 50)
     print(f"{exchange_name.upper()} PRIVATE API DEMO COMPLETE")
 
 
 if __name__ == "__main__":
-    exchange_name = sys.argv[1] if len(sys.argv) > 1 else "gateio_spot"
+    exchange_name = sys.argv[1] if len(sys.argv) > 1 else "mexc_spot"
 
     try:
         asyncio.run(main(exchange_name))
@@ -219,4 +224,5 @@ if __name__ == "__main__":
     except Exception as e:
         print(f"\n❌ {exchange_name.upper()} private API demo failed: {e}")
         import traceback
+
         traceback.print_exc()
