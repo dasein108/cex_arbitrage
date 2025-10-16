@@ -8,10 +8,11 @@ from trading.research.trading_utlis import load_market_data
 import pandas as pd
 from trading.research.cost_utils import (calculate_spread_statistics, optimize_parameters_statistical,
                                          optimize_parameters_risk_adjusted, compare_parameter_approaches,
-                                         print_optimization_summary)
+                                         print_optimization_summary, optimize_parameters_random_sampling,
+                                         optimize_parameters_statistical_fast)
 
 async def analyze_spreads():
-    symbol = Symbol(base=AssetName("HIFI"), quote=AssetName("USDT"))
+    symbol = Symbol(base=AssetName("PRCL"), quote=AssetName("USDT"))
     date_to = datetime.datetime.utcnow()
     date_from = date_to - datetime.timedelta(hours=8)
     
@@ -107,10 +108,15 @@ async def analyze_spreads():
     #     print(f"   Profitable entries: {profitable_reverse.mean()*100:.1f}%")
 
     print(calculate_spread_statistics(df))
-    # stat_result = optimize_parameters_statistical(df)
+    stat_result = optimize_parameters_statistical(df)
+    print(stat_result)
+    stat_result_fase  = optimize_parameters_statistical_fast(df)
+    print(stat_result_fase)
+    random_result = optimize_parameters_random_sampling(df, n_samples=5000)
+    print(random_result)
     # risk_adjusted = optimize_parameters_risk_adjusted(df)
-    compare_approaches = compare_parameter_approaches(df)
-    print_optimization_summary(compare_approaches)
+    # compare_approaches = compare_parameter_approaches(df)
+    # print_optimization_summary(compare_approaches)
 # calculate_spread_statistics, optimize_parameters_statistical,
 #                                          optimize_parameters_risk_adjusted, compare_parameter_approaches,
 #                                          print_optimization_summary

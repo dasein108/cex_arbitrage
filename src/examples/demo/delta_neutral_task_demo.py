@@ -87,7 +87,7 @@ class DeltaNeutralTaskDemo:
             if self.task_manager.task_count == 0:
                 # Define trading symbols
                 ada_symbol = Symbol(
-                    base=AssetName("HIFI"),
+                    base=AssetName("PRCL"),
                     quote=AssetName("USDT")
                 )
 

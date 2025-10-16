@@ -274,12 +274,13 @@ class DeltaNeutralTask(BaseTradingTask[DeltaNeutralTaskContext, str]):
         # Adjust with exchange minimums
         price = self._get_current_top_price(side)
         quantity = self._validate_order_size(self._symbol_info[side], base_quantity, price)
-        
+
+        # TODO: refactoring, check
         # Round to contracts if futures
-        if self._exchanges[side].is_futures:
-            quantity = self._exchanges[side].round_base_to_contracts(
-                self.context.symbol, quantity
-            )
+        # if self._exchanges[side].is_futures:
+        #     quantity = self._exchanges[side].round_base_to_contracts(
+        #         self.context.symbol, quantity
+        #     )
         
         return quantity
 

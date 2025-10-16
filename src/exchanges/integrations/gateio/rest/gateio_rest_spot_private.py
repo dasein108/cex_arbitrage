@@ -248,22 +248,23 @@ class GateioPrivateSpotRestInterface(GateioBaseSpotRestInterface, PrivateSpotRes
             if side == Side.BUY:
                 # Market buy: specify quote quantity
                 if quote_quantity is None:
-                    if quantity is None or price is None:
-                        raise ValueError("Market buy orders require quote_quantity or (quantity + price)")
-                    quote_quantity = quantity * price
-                payload['amount'] = format_quantity(quote_quantity)
+                    raise ValueError("Market buy orders require quote_quantity")
+                    # if quantity is None or price is None:
+                    #     raise ValueError("Market buy orders require quote_quantity or (quantity + price)")
+                    # quote_quantity = quantity * price
+                payload['amount'] = str(quote_quantity) # format_quantity(quote_quantity)
             else:
                 # Market sell: specify exchanges quantity
                 if quantity is None:
                     raise ValueError("Market sell orders require quantity")
-                payload['amount'] = format_quantity(quantity)
+                payload['amount'] = str(quantity) # format_quantity(quantity)
         else:
             # Limit order: require both price and amount
             if price is None or quantity is None:
                 raise ValueError("Limit orders require both price and amount")
             
-            payload['price'] = format_price(price)
-            payload['amount'] = format_quantity(quantity)
+            payload['price'] = str(price) # format_price(price)
+            payload['amount'] = str(quantity) # format_quantity(quantity)
         
         # Make authenticated request
         endpoint = '/spot/orders'

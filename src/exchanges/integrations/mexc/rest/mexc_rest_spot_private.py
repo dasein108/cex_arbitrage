@@ -183,26 +183,27 @@ class MexcPrivateSpotRestInterface(MexcBaseRestInterface, PrivateSpotRestInterfa
                 raise ValueError(f"Stop price is required for {order_type.name} orders")
 
         # For MARKET buy orders, either amount or quote_quantity is required
+        # **** COVER IN COMPOSITE LAYER ****
 
-        if order_type == OrderType.MARKET:
-
-            if side == Side.BUY:
-                if quote_quantity is None:
-                    if price is None:
-                        raise ValueError("Either quote_quantity or price is required for MARKET buy orders")
-
-                    quote_quantity = quantity * price if quantity and price else None
-                    quantity = None
-                # raise ValueError("Either amount or quote_quantity is required for MARKET buy orders")
-            elif side == Side.SELL:
-                if quantity is None:
-                    if price is None:
-                        raise ValueError("Either quantity or price is required for MARKET sell orders")
-
-                    quantity = quote_quantity / price if quote_quantity and price else None
-                    quote_quantity = None
-                # raise ValueError(f"Amount is required for this order type {order_type.name}, q: {quantity}, "
-                #                  f"qq: {quote_quantity}, price: {price}")
+        # if order_type == OrderType.MARKET:
+        #
+        #     if side == Side.BUY:
+        #         if quote_quantity is None:
+        #             if price is None:
+        #                 raise ValueError("Either quote_quantity or price is required for MARKET buy orders")
+        #
+        #             quote_quantity = quantity * price if quantity and price else None
+        #             quantity = None
+        #         # raise ValueError("Either amount or quote_quantity is required for MARKET buy orders")
+        #     elif side == Side.SELL:
+        #         if quantity is None:
+        #             if price is None:
+        #                 raise ValueError("Either quantity or price is required for MARKET sell orders")
+        #
+        #             quantity = quote_quantity / price if quote_quantity and price else None
+        #             quote_quantity = None
+        #         # raise ValueError(f"Amount is required for this order type {order_type.name}, q: {quantity}, "
+        #         #                  f"qq: {quote_quantity}, price: {price}")
 
         # Prepare exchanges order parameters
         params = {
@@ -252,9 +253,7 @@ class MexcPrivateSpotRestInterface(MexcBaseRestInterface, PrivateSpotRestInterfa
         unified_order = rest_to_order(order_response)
 
         # Log order placement with relevant details
-        amount_str = f"{quantity} {symbol.base}" if quantity else f"{quote_quantity} {symbol.quote}"
-        price_str = f"at {price}" if price else "market price"
-        self.logger.info(f"Placed {side.name} {order_type.name} order for {amount_str} {price_str}")
+        self.logger.info(f"MEXC SPOT PLACED {unified_order}")
         return unified_order
 
     async def cancel_order(self, symbol: Symbol, order_id: OrderId) -> Order:

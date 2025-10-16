@@ -33,3 +33,4 @@ asyncpg~=0.30.0
 aiofiles~=24.1.0
 dotenv~=0.9.9
 pytest~=8.4.2
+cachetools

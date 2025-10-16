@@ -26,6 +26,7 @@ from utils.exchange_utils import is_order_done
 from exchanges.interfaces.common.binding import BoundHandlerInterface
 from infrastructure.networking.websocket.structs import PrivateWebsocketChannelType, WebsocketChannelType
 
+
 class BasePrivateComposite(BalanceSyncMixin,
                            BaseCompositeExchange[PrivateRestType, PrivateWebsocketType],
                            BoundHandlerInterface[PrivateWebsocketChannelType]):
@@ -91,7 +92,7 @@ class BasePrivateComposite(BalanceSyncMixin,
     # ========================================
     # Type-Safe Channel Publishing (Phase 1)
     # ========================================
-    
+
     def publish(self, channel: PrivateWebsocketChannelType, data: Any) -> None:
         """
         Type-safe publish method for private channels using enum types.
@@ -115,9 +116,9 @@ class BasePrivateComposite(BalanceSyncMixin,
             except Exception as e:
                 if hasattr(self, 'logger'):
                     self.logger.error("Error publishing event",
-                                    channel=channel,
-                                    error_type=type(e).__name__,
-                                    error_message=str(e))
+                                      channel=channel,
+                                      error_type=type(e).__name__,
+                                      error_message=str(e))
 
     # Properties for private data
 
@@ -190,39 +191,52 @@ class BasePrivateComposite(BalanceSyncMixin,
         order = await self._rest.place_order(symbol, side, OrderType.LIMIT, quantity_, price_, **kwargs)
         return await self._update_order(order)
 
-    async def place_market_order(self, symbol: Symbol, side: Side, quote_quantity: float,
-                                 price: Optional[float]=None,
-                                 ensure: bool=True, **kwargs) -> Order:
+    async def place_market_order(self, symbol: Symbol, side: Side,
+                                 quantity: Optional[float] = None,
+                                 quote_quantity: Optional[float] = None,
+                                 price: Optional[float] = None,
+                                 ensure: bool = True, **kwargs) -> Order:
         """Place a market order via REST API."""
         si = self.symbols_info.get(symbol)
-        quote_quantity_ = si.round_quote(quote_quantity)
 
         # For futures markets, convert quote_quantity to base quantity
         # Futures market orders require quantity parameter instead of quote_quantity
         if self.config.is_futures:
-            if price is None:
-                raise ValueError("Futures market orders require price parameter for quote_quantity conversion")
-
-            quantity_ = si.round_base(quote_quantity_ / price)
-
+            # Futures market orders always use quantity,
+            # for GATEIO it's should be represented from contract count
+            # *********************************
             order = await self._rest.place_order(symbol, side, OrderType.MARKET,
-                                                price=price,
-                                                quantity=quantity_, **kwargs)
+                                                 price=price,
+                                                 quantity=quantity, **kwargs)
         else:
+
             if side == Side.BUY:
+                if quote_quantity is None:
+                    if price is None:
+                        raise ValueError(
+                            "Market buy orders require either quote_quantity or price for quote_quantity conversion")
+                    quote_quantity_ = si.round_quote(quantity * price)
+                else:
+                    quote_quantity_ = si.round_quote(quote_quantity)
+
                 order = await self._rest.place_order(symbol, side, OrderType.MARKET,
                                                      price=price,
                                                      quote_quantity=quote_quantity_, **kwargs)
                 # raise ValueError("Either amount or quote_quantity is required for MARKET buy orders")
             else:
-                quantity_ = si.round_base(quote_quantity_ / price)
+                if quantity is None:
+                    if price is None:
+                        raise ValueError(
+                            "Market sell orders require either quantity or price for quote_quantity conversion")
+                    quantity_ = si.round_base(quote_quantity / price)
+                else:
+                    quantity_ = si.round_base(quantity)
 
                 order = await self._rest.place_order(symbol, side, OrderType.MARKET,
                                                      price=price,
                                                      quantity=quantity_, **kwargs)
                 # raise ValueError(f"Amount is required for this order type {order_type.name}, q: {quantity}, "
                 #                  f"qq: {quote_quantity}, price: {price}")
-
 
         if ensure:
             return await self.fetch_order(symbol, order.order_id)
@@ -232,6 +246,7 @@ class BasePrivateComposite(BalanceSyncMixin,
             #     o = await self.get_active_order(symbol, order.order_id)
             #     if not o or is_order_done(o):
             #         break
+
         return await self._update_order(order)
 
     async def cancel_order(self, symbol: Symbol, order_id: OrderId) -> Order:
@@ -250,7 +265,7 @@ class BasePrivateComposite(BalanceSyncMixin,
         """
 
         try:
-            order =  await self._rest.cancel_order(symbol, order_id)
+            order = await self._rest.cancel_order(symbol, order_id)
             return await self._update_order(order, order_id)
         except OrderNotFoundError as e:
             self.logger.error("Order cancellation failed", order_id=order_id, error=str(e))
@@ -303,7 +318,6 @@ class BasePrivateComposite(BalanceSyncMixin,
         try:
             trades = await self._rest.get_account_trades(symbol, order_id)
 
-
             if trades:
                 order = trades_to_order(symbol, order_id, trades)
                 return await self._update_order(order, order_id)
@@ -337,8 +351,8 @@ class BasePrivateComposite(BalanceSyncMixin,
                     await self._update_balance(b.asset, b)
 
             self.logger.debug("Balances loaded successfully",
-                             balance_count=len(balances_data),
-                             load_time_ms=timer.elapsed_ms)
+                              balance_count=len(balances_data),
+                              load_time_ms=timer.elapsed_ms)
 
 
 
@@ -355,8 +369,8 @@ class BasePrivateComposite(BalanceSyncMixin,
 
         try:
             # sync with prev in case of reconnect
-            prev_open_orders = {order_id: order for order_id, order in self._orders.items() 
-                               if not is_order_done(order)}
+            prev_open_orders = {order_id: order for order_id, order in self._orders.items()
+                                if not is_order_done(order)}
 
             with LoggingTimer(self.logger, "load_open_orders") as timer:
                 orders = await self._rest.get_open_orders(symbol)
@@ -420,7 +434,7 @@ class BasePrivateComposite(BalanceSyncMixin,
         """
         if order_id in self._orders:
             del self._orders[order_id]
-            self.logger.debug("Order removed from storage", order_id=order_id)
+            self.logger.info("🔲 Order removed from storage", order_id=order_id)
             return True
         return False
 
@@ -440,18 +454,16 @@ class BasePrivateComposite(BalanceSyncMixin,
         # Log status appropriately
         if is_order_done(order):
             self.logger.info("order completed",
-                           order=str(order), order_id=order.order_id, status=order.status)
+                             order=str(order), order_id=order.order_id, status=order.status)
         else:
             self.logger.info("Order updated",
-                            order=str(order),
-                            order_id=order.order_id,
-                            status=order.status)
-        
+                             order=str(order),
+                             order_id=order.order_id,
+                             status=order.status.name)
 
         self.publish(PrivateWebsocketChannelType.ORDER, order)
 
         return order
-
 
     async def get_active_order(self, symbol: Symbol, order_id: OrderId) -> Optional[Order]:
         """
@@ -469,7 +481,7 @@ class BasePrivateComposite(BalanceSyncMixin,
         if order:
             status_type = "executed" if is_order_done(order) else "open"
             self.logger.debug(f"Order found in {status_type} state",
-                            order_id=order_id, status=order.status)
+                              order_id=order_id, status=order.status)
             return order
 
         try:
@@ -517,7 +529,8 @@ class BasePrivateComposite(BalanceSyncMixin,
         self._symbols_info = symbol_info
 
     # Initialization
-    async def initialize(self, symbols_info: Optional[SymbolsInfo] = None, channels: List[WebsocketChannelType]=None) -> None:
+    async def initialize(self, symbols_info: Optional[SymbolsInfo] = None,
+                         channels: List[WebsocketChannelType] = None) -> None:
         """Initialize base private exchange functionality."""
         # Initialize public functionality first (parent class)
         await super().initialize()
@@ -525,8 +538,8 @@ class BasePrivateComposite(BalanceSyncMixin,
         self._symbols_info = symbols_info
         if not channels:
             channels = [WebsocketChannelType.ORDER,
-                      WebsocketChannelType.BALANCE,
-                      WebsocketChannelType.EXECUTION]
+                        WebsocketChannelType.BALANCE,
+                        WebsocketChannelType.EXECUTION]
 
         try:
             # Clients are already injected via constructor - no creation needed
@@ -534,7 +547,7 @@ class BasePrivateComposite(BalanceSyncMixin,
             # Step 1: Load private data
             self.logger.info(f"{self._tag} Loading private data...")
             await self._refresh_exchange_data()
-            
+
             # Step 1.5: Start balance sync if configured (from BalanceSyncMixin)
             if self._balance_sync_interval:
                 self.start_balance_sync()
@@ -567,14 +580,12 @@ class BasePrivateComposite(BalanceSyncMixin,
         o = await self._update_order(order)
         self.logger.info("order update processed", order_id=order.order_id, order=str(o))
 
-
     async def _balance_handler(self, balance: AssetBalance) -> None:
         """Handle balance update event."""
         await self._update_balance(balance.asset, balance)
         self.logger.info("balance update processed",
                          exchange=self._exchange_name,
                          asset_balance=balance.asset)
-
 
     async def _execution_handler(self, trade: Trade) -> None:
         """Handle execution report/trade event."""
@@ -607,18 +618,16 @@ class BasePrivateComposite(BalanceSyncMixin,
         """Update internal balance state."""
         self._balances[asset] = balance
 
-
         self.publish(PrivateWebsocketChannelType.BALANCE, balance)
 
         self.logger.debug(f"Updated balance for {asset}: {balance}")
-    
 
     async def close(self) -> None:
         """Close private exchange connections."""
         try:
             # Stop balance sync first (from BalanceSyncMixin)
             self._cleanup_balance_sync()
-            
+
             close_tasks = []
 
             if self._ws:

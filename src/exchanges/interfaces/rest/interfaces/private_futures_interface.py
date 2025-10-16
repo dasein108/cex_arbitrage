@@ -2,7 +2,7 @@ from abc import ABC, abstractmethod
 from typing import Dict, List, Optional
 from exchanges.structs.common import (
     Symbol,
-    Position,
+    Position, FuturesBalance,
 )
 from exchanges.structs.types import AssetName
 
@@ -19,8 +19,10 @@ class PrivateFuturesInterface(ABC):
     async def get_positions(self, symbol: Optional[Symbol] = None) -> List[Position]:
         """Get futures positions."""
         pass
-    
-    
+
+    @abstractmethod
+    async def get_balances(self) -> List[FuturesBalance]:
+        pass
     #
     # @abstractmethod
     # async def modify_leverage(self, symbol: Symbol, leverage: float) -> bool:

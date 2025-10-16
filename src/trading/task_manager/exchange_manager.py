@@ -488,11 +488,13 @@ class ExchangeManager:
                 #     quantity=order_params.quantity,
                 #     price=order_params.price
                 # )
+
                 task = exchange.private.place_market_order(
                     symbol=self.symbol,
                     side=order_params.side,
                     price=order_params.price,
-                    quote_quantity=order_params.quantity*order_params.price,
+                    quantity=order_params.quantity,
+                    # quote_quantity=order_params.quantity*order_params.price,
                     ensure=True
                 )
 

@@ -191,7 +191,7 @@ def print_trade_summary(trades: list):
 
 
 async def main():
-    symbol = Symbol(base=AssetName("HIFI"), quote=AssetName("USDT"))
+    symbol = Symbol(base=AssetName("PRCL"), quote=AssetName("USDT"))
     date_to = datetime.datetime.utcnow()
     # date_to = datetime.datetime.fromisoformat("2025-10-12 06:17").replace(tzinfo=datetime.timezone.utc)  # For consistent testing
 
@@ -222,7 +222,7 @@ async def main():
     trades = delta_neutral_backtest(
         df,
         max_entry_cost_pct=0.5,  # Enter when cost < 0.5%
-        min_profit_pct=0.1,  # Exit when profit > 0.1%
+        min_profit_pct=0.58,  # Exit when profit > 0.1%
         max_hours=6,  # Timeout
         spot_fee=0.0005,
         fut_fee=0.0005

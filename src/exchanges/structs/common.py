@@ -151,7 +151,7 @@ class SymbolInfo(Struct, frozen=True):
     tick: float = 0.0  # Minimum price increment
     step: float = 0.0  # Minimum quantity increment
     is_futures: bool = False
-    quanto_multiplier: Optional[float] = None  # For futures
+    quanto_multiplier: float = 1  # For futures
 
     def round_quote(self, amount: float) -> float:
         """Round price to the symbol's price/quote precision."""
@@ -161,10 +161,10 @@ class SymbolInfo(Struct, frozen=True):
         """Round quantity to the symbol's base precision."""
         return round(quantity, self.base_precision)
 
-    def adjust_quantity(self, quantity: float) -> float:
+    def adjust_to_contract_size(self, quantity: float) -> float:
         """Adjust quantity to meet minimum and step size requirements."""
         if  self.is_futures and self.quanto_multiplier:
-            return self.round_base(quantity / self.quanto_multiplier)
+            return round(quantity / self.quanto_multiplier) * self.quanto_multiplier
 
         return self.round_base(quantity)
 

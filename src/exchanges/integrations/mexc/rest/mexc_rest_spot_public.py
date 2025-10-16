@@ -48,6 +48,8 @@ from utils import get_minimal_step
 from infrastructure.logging import HFTLoggerInterface
 # Import the new base REST implementation
 from .mexc_base_rest import MexcBaseRestInterface
+from ...gateio.services.spot_symbol_mapper import GateioSpotSymbol
+
 
 class MexcPublicSpotRestInterface(MexcBaseRestInterface, PublicSpotRestInterface):
     """
@@ -142,8 +144,8 @@ class MexcPublicSpotRestInterface(MexcBaseRestInterface, PublicSpotRestInterface
                 symbol=symbol,
                 base_precision=base_prec,
                 quote_precision=quote_prec,
-                min_base_quantity=min_base,
-                min_quote_quantity=min_quote,
+                min_base_quantity=0,
+                min_quote_quantity=float(mexc_symbol.quoteAmountPrecision),
                 maker_commission=float(mexc_symbol.makerCommission),
                 taker_commission=float(mexc_symbol.takerCommission),
                 inactive=mexc_symbol.status != '1',
@@ -287,8 +289,8 @@ class MexcPublicSpotRestInterface(MexcBaseRestInterface, PublicSpotRestInterface
             the most recent trades up to the limit. For true historical access,
             use fromId parameter (not exposed in this unified interface).
         """
-        from exchanges.integrations.mexc.utils import to_pair
-        pair = to_pair(symbol)
+        pair = GateioSpotSymbol.to_pair(symbol)
+
         optimized_limit = min(limit, 1000)  # MEXC max limit
         
         params = {
@@ -355,8 +357,7 @@ class MexcPublicSpotRestInterface(MexcBaseRestInterface, PublicSpotRestInterface
         params = {}
         if symbol:
             # Get ticker for specific symbol
-            from exchanges.integrations.mexc.utils import to_pair
-            pair = to_pair(symbol)
+            pair = GateioSpotSymbol.to_pair(symbol)
             params['symbol'] = pair
         # If no symbol specified, API returns all tickers
         
@@ -492,9 +493,9 @@ class MexcPublicSpotRestInterface(MexcBaseRestInterface, PublicSpotRestInterface
         Raises:
             ExchangeAPIError: If unable to fetch kline data
         """
-        from exchanges.integrations.mexc.utils import to_pair
         from exchanges.integrations.mexc.utils import from_kline_interval
-        pair = to_pair(symbol)
+        pair = GateioSpotSymbol.to_pair(symbol)
+
         interval = from_kline_interval(timeframe)
         
         params = {

@@ -119,18 +119,10 @@ class GateioPrivateFuturesRestInterface(
         contract = GateioFuturesSymbol.to_pair(symbol)
         payload: dict[str, Any] = {"contract": contract}
 
-        if quantity is not None:
-            base_qty = float(quantity)
-        elif quote_quantity is not None:
-            if price is None:
-                self.logger.error("Quote_quantity requires price to compute quantity")
-                raise ExchangeRestError(400, "Quote_quantity requires price to compute quantity")
-            base_qty = float(quote_quantity) / float(price)
-        else:
-            self.logger.error("Either quantity or quote_quantity must be provided")
-            raise ExchangeRestError(400, "Either quantity or quote_quantity must be provided")
+        if quantity is None:
+            raise ExchangeRestError(400, "Quantity must be provided = CONTRACTS COUNT")
 
-        signed_qty = base_qty if side == Side.BUY else -abs(base_qty)
+        signed_qty = quantity if side == Side.BUY else -abs(quantity)
         payload["size"] = int(signed_qty)  # API expects integer
 
         if order_type in (OrderType.MARKET, OrderType.STOP_MARKET):

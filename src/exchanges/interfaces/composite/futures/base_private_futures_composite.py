@@ -203,7 +203,30 @@ class CompositePrivateFuturesExchange(BasePrivateComposite[PrivateFuturesInterfa
         if not symbol_info or not symbol_info.quanto_multiplier:
             raise ValueError(f"Symbol info or quanto multiplier not found for {symbol}")
 
-        return min(round(base_quantity / symbol_info.quanto_multiplier), 1)
+        return max(round(base_quantity / symbol_info.quanto_multiplier), 1)
+
+    async def place_limit_order(self, symbol: Symbol, side: Side, quantity: float, price: float, **kwargs) -> Order:
+        # **** CONVERT BASE QUANTITY TO CONTRACTS ****
+        # ACTUAL FOR GATE.IO FUTURES
+        contracts_count = self.round_base_to_contracts(symbol, quantity)
+
+        return await super().place_market_order(symbol=symbol, side=side,
+                                                quantity=contracts_count, price=price,
+                                                **kwargs)
+
+    async def place_market_order(self, symbol: Symbol, side: Side,
+                                 quantity: Optional[float] = None,
+                                 quote_quantity: Optional[float] = None,
+                                 price: Optional[float] = None,
+                                 ensure: bool = True, **kwargs) -> Order:
+        # **** CONVERT BASE QUANTITY TO CONTRACTS ****
+        # ACTUAL FOR GATE.IO FUTURES
+        contracts_count = self.round_base_to_contracts(symbol, quantity)
+
+        return await super().place_market_order(symbol=symbol, side=side,
+                                                quantity=contracts_count,
+                                                price=price, ensure=ensure,
+                                                **kwargs)
 
 
 

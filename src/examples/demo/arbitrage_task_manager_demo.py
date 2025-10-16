@@ -43,7 +43,7 @@ async def run_arbitrage_demo():
     
     try:
         # Create arbitrage task
-        symbol = Symbol(base=AssetName("HIFI"), quote=AssetName("USDT"))
+        symbol = Symbol(base=AssetName("PRCL"), quote=AssetName("USDT"))
         
         logger.info(f"🚀 Creating spot + futures arbitrage task for {symbol}")
         
@@ -51,9 +51,9 @@ async def run_arbitrage_demo():
             symbol=symbol,
             spot_exchange=ExchangeEnum.MEXC,
             futures_exchange=ExchangeEnum.GATEIO_FUTURES,
-            base_position_size_usdt=20.0,
-            max_entry_cost_pct=0.5,
-            min_profit_pct=0.1,
+            base_position_size_usdt=15.0,
+            max_entry_cost_pct=1.2, #0.5,
+            min_profit_pct=0.5, #0.1,
             max_hours=6.0,
             logger=logger
         )

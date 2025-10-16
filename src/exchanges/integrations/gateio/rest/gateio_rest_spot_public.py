@@ -155,7 +155,7 @@ class GateioPublicSpotRestInterface(GateioBaseSpotRestInterface, PublicSpotRestI
                 symbol = GateioSpotSymbol.to_symbol(pair_id)
                 
                 base_prec, quote_prec, min_quote, min_base = self._extract_symbol_precision(gateio_symbol)
-                
+                # TODO: setup min base, min quote
                 # Extract trading fee (Gate.io returns as percentage)
                 fee_rate = float(gateio_symbol.get('fee', '0.2')) / 100.0  # Convert from percentage
                 

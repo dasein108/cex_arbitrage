@@ -2,7 +2,13 @@
 Spot-Futures Arbitrage Task - TaskManager Compatible
 
 Exchange-agnostic arbitrage strategy that extends BaseTradingTask.
-Supports arbitrage between any spot and futures exchanges.
+Supports arbitrage between any spot and futures exchanges with integrated profit tracking.
+
+Key Features:
+- Automatic profit calculation during position updates
+- Real-time profit logging on exit operations
+- HFT-optimized performance with sub-millisecond execution
+- Comprehensive position and profit analytics
 """
 
 import asyncio
@@ -23,24 +29,30 @@ from utils import flip_side
 
 # Import existing arbitrage components
 from trading.task_manager.exchange_manager import (
-    ExchangeManager, 
-    OrderPlacementParams, 
-    ExchangeRole, 
+    ExchangeManager,
+    OrderPlacementParams,
+    ExchangeRole,
     ArbitrageExchangeType
 )
 
 
 class SpotFuturesArbitrageTask(BaseTradingTask[ArbitrageTaskContext, str]):
     """
-    Exchange-agnostic spot-futures arbitrage strategy - TaskManager Compatible.
+    Exchange-agnostic spot-futures arbitrage strategy with integrated profit tracking.
     
     Extends BaseTradingTask to provide full TaskManager integration while preserving
     all arbitrage logic and performance optimizations. Supports any combination of
     spot and futures exchanges.
+    
+    Profit Tracking Features:
+    - Automatic profit calculation during position updates
+    - Real-time profit tracking per exchange (spot/futures)
+    - Comprehensive profit logging on exit operations
+    - HFT-optimized performance with minimal overhead
     """
-    
+
     name: str = "SpotFuturesArbitrageTask"
-    
+
     @property
     def context_class(self) -> Type[ArbitrageTaskContext]:
         return ArbitrageTaskContext
@@ -52,7 +64,11 @@ class SpotFuturesArbitrageTask(BaseTradingTask[ArbitrageTaskContext, str]):
     @property
     def futures_ticker(self):
         return self.exchange_manager.get_exchange('futures').public.book_ticker.get(self.context.symbol)
-    
+
+    def get_min_base_quantity(self, exchange_type: ArbitrageExchangeType, symbol: Symbol) -> float:
+        """Get minimum base quantity for the given exchange type."""
+        return self.exchange_manager.get_exchange(exchange_type).public.get_min_base_quantity(symbol)
+
     def __init__(self,
                  logger: HFTLoggerInterface,
                  context: ArbitrageTaskContext,
@@ -60,31 +76,30 @@ class SpotFuturesArbitrageTask(BaseTradingTask[ArbitrageTaskContext, str]):
                  futures_exchange: ExchangeEnum,
                  **kwargs):
         """Initialize exchange-agnostic spot-futures arbitrage strategy."""
-        
+
         # Store exchange configuration in context for persistence
         context = context.evolve(
             spot_exchange=spot_exchange,
             futures_exchange=futures_exchange
         )
-        
+
         # Generate deterministic task_id for strategy recovery-awareness
         if not context.task_id:
             strategy_task_id = context.generate_strategy_task_id(
                 self.name, spot_exchange, futures_exchange
             )
             context = context.evolve(task_id=strategy_task_id)
-        
+
         # Initialize BaseTradingTask with updated context
         super().__init__(logger, context, delay=0.01)  # 10ms for HFT
-        
+
         # Store exchange configuration as instance variables for easy access
         self.spot_exchange = spot_exchange
         self.futures_exchange = futures_exchange
-        
+
         # Strategy-specific initialization
         self.exchange_manager: Optional[ExchangeManager] = None
         self._debug_info_counter = 0
-        self.min_quote_quantity: Dict[ArbitrageExchangeType, float] = {'spot': 0, 'futures': 0}  # Default minimums
 
         self.logger.info(f"✅ {self.name} initialized: {spot_exchange.name} spot + {futures_exchange.name} futures")
 
@@ -93,7 +108,7 @@ class SpotFuturesArbitrageTask(BaseTradingTask[ArbitrageTaskContext, str]):
     def _build_tag(self) -> None:
         """Build logging tag with arbitrage-specific fields."""
         self._tag = f'{self.name}_{self.context.symbol}_{self.spot_exchange.name}_{self.futures_exchange.name}'
-    
+
     def get_unified_state_handlers(self) -> Dict[str, StateHandler]:
         """Provide complete unified state handler mapping.
         
@@ -108,14 +123,14 @@ class SpotFuturesArbitrageTask(BaseTradingTask[ArbitrageTaskContext, str]):
             'cancelled': self._handle_cancelled,
             'executing': self._handle_executing,
             # 'adjusting': self._handle_adjusting,
-            
+
             # Arbitrage-specific state handlers
             'initializing': self._handle_initializing,
             'monitoring': self._handle_arbitrage_monitoring,
             'analyzing': self._handle_arbitrage_analyzing,
             'error_recovery': self._handle_arbitrage_error_recovery,
         }
-    
+
     # async def _handle_executing(self):
     #     """Main execution logic - delegates to arbitrage state handlers."""
     #     # Delegate to arbitrage state machine
@@ -141,18 +156,18 @@ class SpotFuturesArbitrageTask(BaseTradingTask[ArbitrageTaskContext, str]):
         # self.logger.info(f"Arbitrage state transition: {old_state} -> {new_state}")
         # self.evolve_context(arbitrage_state=new_state)
         self._transition(new_state)
-    
+
     async def _handle_initializing(self):
         """Initialize exchange manager and connections."""
         if self.exchange_manager is None:
             await self._initialize_exchange_manager()
-        
+
         if self.exchange_manager:
             self._transition_arbitrage_state('monitoring')
         else:
             self.logger.error("❌ Failed to initialize exchange manager")
             self._transition_arbitrage_state('error_recovery')
-    
+
     async def _initialize_exchange_manager(self) -> bool:
         """Initialize exchange manager with configured exchanges."""
         try:
@@ -171,28 +186,23 @@ class SpotFuturesArbitrageTask(BaseTradingTask[ArbitrageTaskContext, str]):
                     priority=1
                 )
             }
-            
+
             # Initialize exchange manager
             self.exchange_manager = ExchangeManager(self.context.symbol, exchange_roles, self.logger)
             success = await self.exchange_manager.initialize()
-            
-            if success:
-                # Get minimum quote quantities
-                for exchange_type in ['spot', 'futures']: # type: ArbitrageExchangeType
-                    exchange = self.exchange_manager.get_exchange(exchange_type)
-                    symbol_info = exchange.public.symbols_info.get(self.context.symbol)
-                    self.min_quote_quantity[exchange_type] =  symbol_info.min_quote_quantity
 
-                self.logger.info(f"✅ Exchange manager initialized: {self.spot_exchange.name} + {self.futures_exchange.name}")
+            if success:
+                self.logger.info(
+                    f"✅ Exchange manager initialized: {self.spot_exchange.name} + {self.futures_exchange.name}")
                 return True
             else:
                 self.logger.error("❌ Exchange manager initialization failed")
                 return False
-                
+
         except Exception as e:
             self.logger.error(f"❌ Exception during exchange manager initialization: {e}")
             return False
-    
+
     async def _handle_arbitrage_monitoring(self):
         """Monitor market and manage positions."""
         try:
@@ -205,7 +215,7 @@ class SpotFuturesArbitrageTask(BaseTradingTask[ArbitrageTaskContext, str]):
             if await self._should_exit_positions():
                 await self._exit_all_positions()
                 return
-            
+
             # Look for new opportunities
             if not self.context.positions_state.has_positions:
                 opportunity = await self._identify_arbitrage_opportunity()
@@ -213,17 +223,17 @@ class SpotFuturesArbitrageTask(BaseTradingTask[ArbitrageTaskContext, str]):
                     self.logger.info(f"💰 Opportunity: {opportunity.spread_pct:.4f}% spread")
                     self.evolve_context(current_opportunity=opportunity)
                     self._transition_arbitrage_state('analyzing')
-        
+
         except Exception as e:
             self.logger.error(f"Monitoring failed: {e}")
             self._transition_arbitrage_state('error_recovery')
-    
+
     async def _handle_arbitrage_analyzing(self):
         """Analyze current opportunity."""
         if not self.context.current_opportunity:
             self._transition_arbitrage_state('monitoring')
             return
-        
+
         opportunity = self.context.current_opportunity
         if opportunity.is_fresh():
             self._transition_arbitrage_state('executing')
@@ -231,121 +241,101 @@ class SpotFuturesArbitrageTask(BaseTradingTask[ArbitrageTaskContext, str]):
             self.logger.info("⚠️ Opportunity no longer fresh")
             self.evolve_context(current_opportunity=None)
             self._transition_arbitrage_state('monitoring')
-    
+
     async def _handle_executing(self):
         """Execute arbitrage trades."""
         if not self.context.current_opportunity:
             self._transition_arbitrage_state('monitoring')
             return
-        
+
         try:
             success = await self._enter_positions(self.context.current_opportunity)
-            
+
             if success:
                 self.logger.info("✅ Arbitrage execution successful")
             else:
                 self.logger.warning("❌ Arbitrage execution failed")
 
             self.evolve_context(current_opportunity=None)
-                
+
         except Exception as e:
             self.logger.error(f"Execution error: {e}")
-            
+
         self._transition_arbitrage_state('monitoring')
-    
+
     # Base state handlers (implementing BaseStateMixin states)
     async def _handle_cancelled(self):
         """Handle cancelled state."""
         self.logger.info("🚫 Task cancelled")
         if self.exchange_manager:
             await self.exchange_manager.cancel_all_orders()
-    
+
     async def _handle_arbitrage_error_recovery(self):
         """Handle errors and recovery."""
         self.logger.info("🔄 Error recovery")
-        
+
         # Clear failed opportunity
         self.evolve_context(current_opportunity=None)
-        
+
         # Cancel pending orders
         if self.exchange_manager:
             await self.exchange_manager.cancel_all_orders()
-        
+
         # Wait before returning to monitoring
         await asyncio.sleep(1.0)
         self._transition_arbitrage_state('monitoring')
-    
+
     # Volume validation methods following delta neutral task patterns
-    
-    def _get_minimum_order_quantity_usdt(self, exchange_type: ArbitrageExchangeType,
-                                         current_price: Optional[float] = None) -> float:
-        if not current_price:
-            current_price = self._get_direction_price('enter', exchange_type)
 
+    def _get_minimum_order_base_quantity(self, exchange_type: ArbitrageExchangeType) -> float:
         """Get minimum order quantity based on exchange requirements."""
-        return self.min_quote_quantity[exchange_type] / current_price
-    
-    def _validate_order_size(self, exchange_type: ArbitrageExchangeType, quantity: float, price: float) -> float:
-        """Validate and adjust order size to meet exchange minimums."""
-        min_quote_qty = self.min_quote_quantity[exchange_type]
+        return self.get_min_base_quantity(exchange_type, self.context.symbol)
 
-        if quantity * price < min_quote_qty:
-            adjusted_quantity = min_quote_qty / price + 0.001  # Small buffer for precision
-            self.logger.info(f"📏 Adjusting {exchange_type} order size: {quantity:.6f} -> {adjusted_quantity:.6f} to meet minimum {min_quote_qty}")
+    def _prepare_order_quantity(self, exchange_type: ArbitrageExchangeType, quantity: float) -> float:
+        """Prepare order quantity with all required adjustments including exchange minimums."""
+        # Validate with exchange minimums
+        min_base_qty = self.get_min_base_quantity(exchange_type, self.context.symbol)
+        if quantity < min_base_qty:
+            adjusted_quantity = min_base_qty * 1.001  # Small buffer for precision
+            self.logger.info(f"📏 Adjusting {exchange_type} order size: {quantity:.6f} ->"
+                             f" {adjusted_quantity:.6f} ")
             return adjusted_quantity
 
         return quantity
-    
-    def _prepare_order_quantity(self, exchange_type: ArbitrageExchangeType, base_quantity: float, price: float) -> float:
-        """Prepare order quantity with all required adjustments including exchange minimums."""
-        # Validate with exchange minimums
-        quantity = self._validate_order_size(exchange_type, base_quantity, price)
-        
-        # Round to contracts if futures
-        exchange = self.exchange_manager.get_exchange(exchange_type)
-        if exchange.is_futures:
-            quantity = exchange.round_base_to_contracts(self.context.symbol, quantity)
-        
-        return quantity
-    
+
     def _validate_exit_volumes(self) -> ValidationResult:
         """Validate that exit volumes meet minimum requirements for both exchanges."""
         if not self.context.positions_state.has_positions:
             return ValidationResult(valid=False, reason="No positions to exit")
 
-
         spot_pos = self.context.positions_state.positions['spot']
         futures_pos = self.context.positions_state.positions['futures']
 
-        # Get exit prices for minimum calculations
-        spot_exit_price = self._get_direction_price('exit', 'spot')
-        futures_exit_price = self._get_direction_price('exit', 'futures')
-        
         # Get minimum quantities
-        spot_min = self._get_minimum_order_quantity_usdt('spot', spot_exit_price)
-        futures_min = self._get_minimum_order_quantity_usdt('futures', futures_exit_price)
-        
+        spot_min = self._get_minimum_order_base_quantity('spot')
+        futures_min = self._get_minimum_order_base_quantity('futures')
+
         # Check if positions are large enough to exit
         if spot_pos.qty < spot_min:
             return ValidationResult(
-                valid=False, 
+                valid=False,
                 reason=f"Spot position {spot_pos.qty:.6f} < minimum exit {spot_min:.6f}"
             )
-        
+
         if futures_pos.qty < futures_min:
             return ValidationResult(
-                valid=False, 
+                valid=False,
                 reason=f"Futures position {futures_pos.qty:.6f} < minimum exit {futures_min:.6f}"
             )
-        
+
         # Check max minimum requirement
         max_min = max(spot_min, futures_min)
         if spot_pos.qty < max_min or futures_pos.qty < max_min:
             return ValidationResult(
-                valid=False, 
+                valid=False,
                 reason=f"Exit volume {min(spot_pos.qty, futures_pos.qty):.6f} < max minimum {max_min:.6f}"
             )
-        
+
         return ValidationResult(valid=True)
 
     # Unified utility methods
@@ -359,36 +349,38 @@ class SpotFuturesArbitrageTask(BaseTradingTask[ArbitrageTaskContext, str]):
 
         spot_ticker = self.spot_ticker
         futures_ticker = self.futures_ticker
-        
+
         # Calculate entry cost
         entry_cost_pct = self._get_entry_cost_pct(spot_ticker.ask_price, futures_ticker.bid_price)
-        
+
         if self._debug_info_counter % 1000 == 0:
             print(f'Entry cost {entry_cost_pct:.4f}% ({self.spot_exchange.name} -> {self.futures_exchange.name})')
             self._debug_info_counter = 0
 
         self._debug_info_counter += 1
-        
+
         # Check if profitable
         if entry_cost_pct >= self.context.params.max_entry_cost_pct:
             return None
-        
+
         # Calculate max quantity
-        max_quantity = min(
-            spot_ticker.ask_quantity,
-            futures_ticker.bid_quantity,
-            self.context.single_order_size_usdt / spot_ticker.ask_price
+        max_quantity = self.round_to_contract_size(
+            min(
+                spot_ticker.ask_quantity,
+                futures_ticker.bid_quantity,
+                self.context.single_order_size_usdt / spot_ticker.ask_price
+            )
         )
-        
+
         # Ensure meets minimum requirements
         min_required = max(
-            self._get_minimum_order_quantity_usdt('spot', spot_ticker.ask_price),
-            self._get_minimum_order_quantity_usdt('futures', futures_ticker.bid_price)
+            self._get_minimum_order_base_quantity('spot'),
+            self._get_minimum_order_base_quantity('futures')
         )
-        
+
         if max_quantity < min_required:
             return None
-        
+
         return ArbitrageOpportunity(
             direction='enter',
             spread_pct=entry_cost_pct,
@@ -422,16 +414,15 @@ class SpotFuturesArbitrageTask(BaseTradingTask[ArbitrageTaskContext, str]):
 
         return net_pnl_pct
 
-    
     async def _should_exit_positions(self) -> bool:
         """Check if should exit existing positions."""
         if not self.context.positions_state.has_positions:
             return False
-        
+
         # Get position details
         spot_pos = self.context.positions_state.positions['spot']
         futures_pos = self.context.positions_state.positions['futures']
-        
+
         # # Calculate P&L using backtesting logic with fees
         # spot_fee = self.context.params.spot_fee
         # fut_fee = self.context.params.fut_fee
@@ -455,7 +446,7 @@ class SpotFuturesArbitrageTask(BaseTradingTask[ArbitrageTaskContext, str]):
 
         net_pnl_pct = self._get_pos_net_pnl(spot_pos.price, futures_pos.price,
                                             self.spot_ticker.bid_price, self.futures_ticker.ask_price)
-        
+
         # Check exit conditions
         exit_now = False
         if self._debug_info_counter % 1000 == 0:
@@ -468,16 +459,18 @@ class SpotFuturesArbitrageTask(BaseTradingTask[ArbitrageTaskContext, str]):
         if net_pnl_pct >= self.context.params.min_profit_pct:
             exit_now = True
             exit_reason = 'profit_target'
-            self.logger.info(f"💰 Profit target reached: {net_pnl_pct:.4f}% >= {self.context.params.min_profit_pct:.4f}%")
-        
+            self.logger.info(
+                f"💰 Profit target reached: {net_pnl_pct:.4f}% >= {self.context.params.min_profit_pct:.4f}%")
+
         # 2. TIMEOUT: Position held too long
         elif self.context.position_start_time:
             hours_held = (time.time() - self.context.position_start_time) / 3600
             if hours_held >= self.context.params.max_hours:
                 exit_now = True
                 exit_reason = 'timeout'
-                self.logger.info(f"🕒 Timeout exit: {hours_held:.2f}h >= {self.context.params.max_hours:.2f}h (P&L: {net_pnl_pct:.4f}%)")
-        
+                self.logger.info(
+                    f"🕒 Timeout exit: {hours_held:.2f}h >= {self.context.params.max_hours:.2f}h (P&L: {net_pnl_pct:.4f}%)")
+
         return exit_now
 
     async def _process_imbalance(self) -> bool:
@@ -485,24 +478,23 @@ class SpotFuturesArbitrageTask(BaseTradingTask[ArbitrageTaskContext, str]):
         if not self.context.positions_state.has_positions:
             return False
 
-        delta_usdt = self.context.positions_state.delta_usdt
         delta_base = self.context.positions_state.delta
-        min_spot_usdt = self._get_minimum_order_quantity_usdt('spot')
-        min_futures_usdt = self._get_minimum_order_quantity_usdt('futures')
+        min_spot_qty = self._get_minimum_order_base_quantity('spot')
+        min_futures_qty = self._get_minimum_order_base_quantity('futures')
 
-        if abs(delta_usdt) < min_spot_usdt:
+        if abs(delta_base) < min_spot_qty:
             return False
 
-        self.logger.info(f'⚠️ Imbalance detected: Delta USDT {delta_usdt:.2f}')
+        self.logger.info(f'⚠️ Imbalance detected COINS: {delta_base} '
+                         f'(min spot {min_spot_qty:.2f}, min fut {min_futures_qty:.2f})')
 
-        spot_imbalance = delta_usdt >= min_spot_usdt
+        spot_imbalance = delta_base >= min_spot_qty
         # force
         # futures_imbalance_less_ = delta_usdt < 0 and abs(delta_usdt) < min_futures_usdt
         place_orders: Dict[ArbitrageExchangeType, OrderPlacementParams] = {}
 
         if spot_imbalance:
-            quantity = self._prepare_order_quantity('spot', delta_base,
-                                                 self.spot_ticker.ask_price)
+            quantity = self._prepare_order_quantity('spot', delta_base)
             place_orders['spot'] = OrderPlacementParams(
                 side=Side.BUY,
                 quantity=quantity,
@@ -510,17 +502,15 @@ class SpotFuturesArbitrageTask(BaseTradingTask[ArbitrageTaskContext, str]):
             )
         else:
             # imbalance < minimal futures quantity, force buy spot to reduce imbalance
-            if abs(delta_usdt) >= min_futures_usdt:
-                quantity = self._prepare_order_quantity('spot', abs(delta_base),
-                                                        self.spot_ticker.ask_price)
+            if abs(delta_base) >= min_futures_qty:
+                quantity = self._prepare_order_quantity('spot', abs(delta_base))
                 place_orders['spot'] = OrderPlacementParams(
                     side=Side.BUY,
                     quantity=quantity,
                     price=self.spot_ticker.ask_price
                 )
             else:
-                quantity = self._prepare_order_quantity('futures', abs(delta_base),
-                                                        self.spot_ticker.ask_price)
+                quantity = self._prepare_order_quantity('futures', abs(delta_base))
                 place_orders['futures'] = OrderPlacementParams(
                     side=Side.SELL,
                     quantity=quantity,
@@ -538,7 +528,6 @@ class SpotFuturesArbitrageTask(BaseTradingTask[ArbitrageTaskContext, str]):
 
         return success
 
-
     async def _enter_positions(self, opportunity: ArbitrageOpportunity) -> bool:
         """Execute arbitrage trades using unified order preparation."""
         try:
@@ -548,25 +537,26 @@ class SpotFuturesArbitrageTask(BaseTradingTask[ArbitrageTaskContext, str]):
 
             position_size = min(order_coin_size, opportunity.max_quantity)
 
-            spot_min = self._get_minimum_order_quantity_usdt('spot', opportunity.buy_price)
-            futures_min = self._get_minimum_order_quantity_usdt('futures', opportunity.sell_price)
-            min_coin_required = max(spot_min, futures_min)
+            spot_min = self._get_minimum_order_base_quantity('spot')
+            futures_min = self._get_minimum_order_base_quantity('futures')
+            min_base_qty = max(spot_min, futures_min)
 
-            if position_size < min_coin_required:
-                self.logger.error(f"❌ Calculated position size {position_size:.6f} < minimum required {min_coin_required:.6f}")
+            if position_size < min_base_qty:
+                self.logger.error(
+                    f"❌ Calculated position size {position_size:.6f} < minimum required {min_base_qty:.6f}")
                 return False
 
             self.logger.info(f"Calculated position size: {position_size:.6f} coins, base: {order_coin_size}, "
                              f"oppo: {opportunity.max_quantity} price: {index_price}")
-            
+
             # Adjust order sizes to meet exchange minimums
-            spot_quantity = self._prepare_order_quantity('spot', position_size, opportunity.buy_price)
-            futures_quantity = self._prepare_order_quantity('futures', position_size, opportunity.sell_price)
-            
+            spot_quantity = self._prepare_order_quantity('spot', position_size)
+            futures_quantity = self._prepare_order_quantity('futures', position_size)
+            adjusted_quantity = max(spot_quantity, futures_quantity)
+
             # Ensure adjusted quantities are still equal for delta neutrality
             if abs(spot_quantity - futures_quantity) > 1e-6:
                 # Use the larger quantity for both to maintain delta neutrality
-                adjusted_quantity = max(spot_quantity, futures_quantity)
                 self.logger.info(f"⚖️ Adjusting both quantities to {adjusted_quantity:.6f} for delta neutrality")
                 spot_quantity = futures_quantity = adjusted_quantity
 
@@ -575,28 +565,29 @@ class SpotFuturesArbitrageTask(BaseTradingTask[ArbitrageTaskContext, str]):
                 'spot': OrderPlacementParams(side=Side.BUY, quantity=spot_quantity, price=opportunity.buy_price),
                 'futures': OrderPlacementParams(side=Side.SELL, quantity=futures_quantity, price=opportunity.sell_price)
             }
-            
+
             # Execute orders in parallel
             self.logger.info(f"🚀 Executing arbitrage trades: {position_size}")
             start_time = time.time()
-            
+
             placed_orders = await self.exchange_manager.place_order_parallel(enter_orders)
 
             # Update active orders tracking for successfully placed orders
-            success =await self._update_active_orders_after_placement(placed_orders)
-            
+            success = await self._update_active_orders_after_placement(placed_orders)
+
             execution_time = (time.time() - start_time) * 1000
 
             self.logger.info(f"⚡ Order execution completed in {execution_time:.1f}ms,"
                              f" placed orders: {placed_orders}")
-            
+
             if success:
                 entry_cost_pct = self._get_entry_cost_pct(opportunity.buy_price, opportunity.sell_price)
-                entry_cost_real_pct = self._get_entry_cost_pct(placed_orders['spot'].price, placed_orders['futures'].price)
+                entry_cost_real_pct = self._get_entry_cost_pct(placed_orders['spot'].price,
+                                                               placed_orders['futures'].price)
                 entry_cost_diff = entry_cost_real_pct - entry_cost_pct
                 self.logger.info(f"✅ Both entry orders placed successfully, "
-                                 f"oppo price, buy {opportunity.buy_price}, sell {opportunity.sell_price} "
-                                 f"real price, buy {placed_orders['spot'].price}, sell {placed_orders['futures'].price} "
+                                 f"oppo price, buy {opportunity.buy_price}, sell {opportunity.sell_price} qty: {adjusted_quantity} "
+                                 f"real price, buy {placed_orders['spot']}, sell {placed_orders['futures']} "
                                  f"enter cost % {entry_cost_pct}:.3f real cost % {entry_cost_real_pct}:.3f "
                                  f"diff % {entry_cost_diff:.3f}")
 
@@ -612,15 +603,21 @@ class SpotFuturesArbitrageTask(BaseTradingTask[ArbitrageTaskContext, str]):
             else:
                 # Cancel any successful orders
                 await self.exchange_manager.cancel_all_orders()
-            
+
             return success
-            
+
         except Exception as e:
             self.logger.error(f"Arbitrage execution error: {e}")
             await self.exchange_manager.cancel_all_orders()
             return False
 
-    def _get_direction_price(self, direction: Literal['enter', 'exit'], exchange_type: ArbitrageExchangeType) -> Optional[float]:
+    def round_to_contract_size(self, qty: float) -> float:
+        """Round price based on exchange tick size."""
+        symbol_info = self.exchange_manager.get_exchange('futures').public.symbols_info[self.context.symbol]
+        return symbol_info.adjust_to_contract_size(qty)
+
+    def _get_direction_price(self, direction: Literal['enter', 'exit'], exchange_type: ArbitrageExchangeType) -> \
+    Optional[float]:
         """Get trade price for entry or exit based on direction and exchange type."""
         if direction == 'enter':
             return self.spot_ticker.ask_price if exchange_type == 'spot' else self.futures_ticker.bid_price
@@ -638,18 +635,18 @@ class SpotFuturesArbitrageTask(BaseTradingTask[ArbitrageTaskContext, str]):
             if not volume_validation.valid:
                 self.logger.error(f"❌ Exit volume validation failed: {volume_validation.reason}")
                 return
-            
+
             exit_orders: Dict[ArbitrageExchangeType, OrderPlacementParams] = {}
-            
+
             # Close spot position (exit is opposite side) with volume validation
-            for exchange_role in ['spot', 'futures']: # type: ArbitrageExchangeType
-                pos =  self.context.positions_state.positions[exchange_role]
+            for exchange_role in ['spot', 'futures']:  # type: ArbitrageExchangeType
+                pos = self.context.positions_state.positions[exchange_role]
                 if pos.has_position:
                     exit_side = flip_side(pos.side)
                     price = self._get_direction_price('exit', 'spot')
 
                     # Prepare exit quantity with minimum validations
-                    exit_quantity = self._prepare_order_quantity('spot', pos.qty, price)
+                    exit_quantity = self._prepare_order_quantity('spot', pos.qty)
 
                     exit_orders[exchange_role] = OrderPlacementParams(
                         side=exit_side,
@@ -659,23 +656,25 @@ class SpotFuturesArbitrageTask(BaseTradingTask[ArbitrageTaskContext, str]):
 
             if exit_orders:
                 placed_orders = await self.exchange_manager.place_order_parallel(exit_orders)
-                
+
                 # Update active orders tracking for exit orders
                 success = await self._update_active_orders_after_placement(placed_orders)
-                
+
                 if success:
-                    self.logger.info("✅ All exit orders placed successfully")
+                    # Log realized profit before clearing positions
+                    total_profit = self.context.positions_state.total_realized_profit
+                    self.logger.info(f"✅ All exit orders placed successfully - Total profit: ${total_profit:.2f}")
                     # Reset position timing
                     self.evolve_context(position_start_time=None)
                 else:
                     self.logger.warning("⚠️ Some exit orders failed")
 
                 return success
-            
+
         except Exception as e:
             self.logger.error(f"❌ Error exiting positions: {e}")
             return False
-    
+
     async def _update_active_orders_after_placement(self, placed_orders: Dict[ArbitrageExchangeType, Order]):
         """Update active orders tracking after placing new orders."""
         for exchange_role, order in placed_orders.items():
@@ -687,7 +686,7 @@ class SpotFuturesArbitrageTask(BaseTradingTask[ArbitrageTaskContext, str]):
 
     async def _check_order_updates(self):
         """Check order status updates using direct access to exchange orders."""
-        for exchange_role in ['spot', 'futures']: # type: ArbitrageExchangeType
+        for exchange_role in ['spot', 'futures']:  # type: ArbitrageExchangeType
             # Get exchange directly
             for order_id, order in self.context.active_orders[exchange_role].copy().items():
                 self._process_order_fill(exchange_role, order)
@@ -705,7 +704,7 @@ class SpotFuturesArbitrageTask(BaseTradingTask[ArbitrageTaskContext, str]):
                 # New order - track it
                 new_active_orders = self.context.active_orders.copy()
                 new_active_orders[exchange_key][order.order_id] = order
-                
+
                 new_positions = self.context.positions_state.update_position(
                     exchange_key, order.filled_quantity, order.price, order.side
                 )
@@ -720,7 +719,7 @@ class SpotFuturesArbitrageTask(BaseTradingTask[ArbitrageTaskContext, str]):
                 # Update stored order with latest state
                 new_active_orders = self.context.active_orders.copy()
                 new_active_orders[exchange_key][order.order_id] = order
-                
+
                 # Existing order - check for new fills
                 previous_filled = previous_order.filled_quantity
                 current_filled = order.filled_quantity
@@ -746,14 +745,14 @@ class SpotFuturesArbitrageTask(BaseTradingTask[ArbitrageTaskContext, str]):
                 new_active_orders = self.context.active_orders.copy()
                 del new_active_orders[exchange_key][order.order_id]
                 self.evolve_context(active_orders=new_active_orders)
-                
+
                 exchange = self.exchange_manager.get_exchange(exchange_key).private
-                exchange.remove_order(order.order_id) # cleanup exchange
+                exchange.remove_order(order.order_id)  # cleanup exchange
                 self.logger.info(f"🏁 Order completed: {order.order_id} on {exchange_key} {order}")
 
         except Exception as e:
             self.logger.error(f"Error processing partial fill: {e}")
-    
+
     async def cleanup(self):
         """Clean up strategy resources."""
         self.logger.info(f"🧹 Cleaning up {self.name} resources")
@@ -764,33 +763,33 @@ class SpotFuturesArbitrageTask(BaseTradingTask[ArbitrageTaskContext, str]):
 
 # Exchange-agnostic factory function
 async def create_spot_futures_arbitrage_task(
-    symbol: Symbol,
-    spot_exchange: ExchangeEnum,
-    futures_exchange: ExchangeEnum,
-    base_position_size_usdt: float = 100.0,
-    max_entry_cost_pct: float = 0.5,
-    min_profit_pct: float = 0.1,
-    max_hours: float = 6.0,
-    logger: Optional[HFTLoggerInterface] = None
+        symbol: Symbol,
+        spot_exchange: ExchangeEnum,
+        futures_exchange: ExchangeEnum,
+        base_position_size_usdt: float = 100.0,
+        max_entry_cost_pct: float = 0.5,
+        min_profit_pct: float = 0.1,
+        max_hours: float = 6.0,
+        logger: Optional[HFTLoggerInterface] = None
 ) -> SpotFuturesArbitrageTask:
     """Create and initialize spot-futures arbitrage task for any exchange pair."""
-    
+
     if logger is None:
         logger = get_logger(f'spot_futures_arbitrage.{symbol}.{spot_exchange.name}_{futures_exchange.name}')
-    
+
     params = TradingParameters(
         max_entry_cost_pct=max_entry_cost_pct,
         min_profit_pct=min_profit_pct,
         max_hours=max_hours
     )
-    
+
     context = ArbitrageTaskContext(
         symbol=symbol,
         single_order_size_usdt=base_position_size_usdt,
         params=params,
         arbitrage_state='initializing'
     )
-    
+
     task = SpotFuturesArbitrageTask(
         logger=logger,
         context=context,
@@ -803,12 +802,12 @@ async def create_spot_futures_arbitrage_task(
 
 # Convenience function for MEXC + Gate.io (backward compatibility)
 async def create_mexc_gateio_arbitrage_task(
-    symbol: Symbol,
-    base_position_size_usdt: float = 100.0,
-    max_entry_cost_pct: float = 0.5,
-    min_profit_pct: float = 0.1,
-    max_hours: float = 6.0,
-    logger: Optional[HFTLoggerInterface] = None
+        symbol: Symbol,
+        base_position_size_usdt: float = 100.0,
+        max_entry_cost_pct: float = 0.5,
+        min_profit_pct: float = 0.1,
+        max_hours: float = 6.0,
+        logger: Optional[HFTLoggerInterface] = None
 ) -> SpotFuturesArbitrageTask:
     """Create MEXC + Gate.io arbitrage task (convenience function for backward compatibility)."""
     return await create_spot_futures_arbitrage_task(

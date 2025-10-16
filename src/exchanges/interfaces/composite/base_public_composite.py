@@ -50,6 +50,7 @@ See also:
 
 import asyncio
 import time
+from functools import lru_cache
 from typing import Dict, List, Optional, Callable, Awaitable, Set, Any, Union
 
 from exchanges.structs.common import (Symbol, SymbolsInfo, OrderBook, BookTicker, Ticker, Trade, FuturesTicker)
@@ -60,6 +61,7 @@ from exchanges.interfaces.composite.types import PublicRestType, PublicWebsocket
 from infrastructure.logging import LoggingTimer, HFTLoggerInterface
 from exchanges.interfaces.common.binding import BoundHandlerInterface
 from infrastructure.networking.websocket.structs import PublicWebsocketChannelType, WebsocketChannelType
+import cachetools.func
 
 class BasePublicComposite(BaseCompositeExchange[PublicRestType, PublicWebsocketType],
                           BoundHandlerInterface[PublicWebsocketChannelType]):
@@ -163,6 +165,25 @@ class BasePublicComposite(BaseCompositeExchange[PublicRestType, PublicWebsocketT
     def orderbooks(self) -> Dict[Symbol, OrderBook]:
         """Get current orderbooks for all active symbols."""
         return self._orderbooks.copy()
+
+    @cachetools.func.ttl_cache(ttl=60)
+    def get_min_order_quote(self, symbol: Symbol) -> Optional[float]:
+        """Get minimum order quote size for all active symbols."""
+        # *** Hack to match min quote size ~ precise
+        symbol_info = self._symbols_info.get(symbol)
+        if symbol_info.min_quote_quantity:
+            return symbol_info.min_quote_quantity
+
+        return symbol_info.min_base_quantity * self.book_ticker[symbol].ask_price * 1.002
+
+    @cachetools.func.ttl_cache(ttl=60)
+    def get_min_base_quantity(self, symbol: Symbol) -> Optional[float]:
+        """Get minimum order base size for all active symbols."""
+        symbol_info = self._symbols_info.get(symbol)
+        if symbol_info.min_base_quantity:
+            return symbol_info.min_base_quantity
+
+        return (symbol_info.min_quote_quantity / self.book_ticker[symbol].ask_price) * 1.002
 
     async def get_book_ticker(self, symbol: Symbol, force=False) -> Optional[BookTicker]:
         """Get current best bid/ask (book ticker) for a symbol."""

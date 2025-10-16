@@ -97,8 +97,8 @@ class GateioPublicFuturesRestInterface(GateioBaseFuturesRestInterface, PublicFut
                 quote_prec = base_prec = count_decimal_places(c.get('order_price_round', '0.01'))
                 quanto_multiplier = float(c.get('quanto_multiplier', 1))
 
-                min_base = min_quote =  float(c.get('order_size_min', 3)) * quanto_multiplier
-
+                min_base =  float(c.get('order_size_min', 3)) * quanto_multiplier
+                min_quote = 0
                 is_inactive = c.get('status', '') != 'trading' and c.get('trade_status', '') != 'tradable'
 
                 #TODO: save funding rate, for get_funding_rate()
