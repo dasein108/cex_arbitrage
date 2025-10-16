@@ -450,7 +450,7 @@ class SpotFuturesArbitrageTask(BaseTradingTask[ArbitrageTaskContext, str]):
         # Check exit conditions
         exit_now = False
         if self._debug_info_counter % 1000 == 0:
-            print(f'Exit pnl {net_pnl_pct:.4f}%')
+            print(f'Exit pnl {net_pnl_pct:.4f}% spot {self.spot_ticker.spread_percentage}, features {self.futures_ticker.spread_percentage}')
             self._debug_info_counter = 0
 
         self._debug_info_counter += 1

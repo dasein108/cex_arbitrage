@@ -60,7 +60,7 @@ class MultiSpotArbitrageDemo:
             # Create multi-spot arbitrage task
             self.task = await create_multi_spot_futures_arbitrage_task(
                 symbol=self.symbol,
-                spot_exchanges=[ExchangeEnum.MEXC, ExchangeEnum.BINANCE],  # Multiple spots
+                spot_exchanges=[ExchangeEnum.MEXC, ExchangeEnum.GATEIO],  # Multiple spots
                 futures_exchange=ExchangeEnum.GATEIO_FUTURES,              # Single futures hedge
                 operation_mode=self.operation_mode,
                 base_position_size_usdt=50.0,  # Smaller size for demo

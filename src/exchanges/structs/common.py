@@ -271,6 +271,7 @@ class BookTicker(Struct):
         """Calculate the bid-ask spread."""
         return self.ask_price - self.bid_price
 
+    @property
     def spread_percentage(self) -> float:
         """Calculate the spread as a percentage """
         return (self.spread / self.bid_price) * 100 if self.bid_price != 0 else 0.0
