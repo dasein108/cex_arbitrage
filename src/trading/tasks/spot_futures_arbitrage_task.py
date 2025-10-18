@@ -23,7 +23,7 @@ from trading.tasks.arbitrage_task_context import (
     ValidationResult
 )
 from exchanges.structs import Symbol, Side, ExchangeEnum, Order
-from infrastructure.logging import HFTLoggerInterface, get_logger
+from infrastructure.logging import HFTLoggerInterface, get_logger, LoggerFactory
 from utils.exchange_utils import is_order_done
 from utils import flip_side
 
@@ -167,6 +167,20 @@ class SpotFuturesArbitrageTask(BaseTradingTask[ArbitrageTaskContext, str]):
         else:
             self.logger.error("❌ Failed to initialize exchange manager")
             self._transition_arbitrage_state('error_recovery')
+
+            # Disable noisy GATEIO loggers by setting minimum level to ERROR
+        logger_names = [
+            "GATEIO_SPOT.ws.private", "GATEIO_SPOT.ws.public", "GATEIO_SPOT.GATEIO_SPOT_private",
+            "GATEIO_FUTURES.ws.private", "GATEIO_FUTURES.ws.public",
+            "GATEIO_FUTURES.GATEIO_FUTURES_private", "GATEIO_FUTURES.GATEIO_FUTURES_public",
+            "gateio.rest.private", "rest.client.gateio_futures",
+            "MEXC_SPOT.MEXC_SPOT_private", "MEXC_SPOT.MEXC_SPOT_public",
+            "MEXC_SPOT.ws.public", "rest.client.mexc_spot"
+        ]
+
+        for logger_name in logger_names:
+            # Use min_level instead of enabled=False which might be more reliable
+            LoggerFactory.override_logger(logger_name, min_level="ERROR")
 
     async def _initialize_exchange_manager(self) -> bool:
         """Initialize exchange manager with configured exchanges."""
@@ -405,31 +419,6 @@ class SpotFuturesArbitrageTask(BaseTradingTask[ArbitrageTaskContext, str]):
             max_quantity=max_quantity
         )
 
-    def _get_pos_net_pnl(self, entry_spot_price: float, entry_fut_price: float,
-                         curr_spot_price: float, curr_fut_price: float) -> Optional[float]:
-        # Calculate P&L using backtesting logic with fees
-        spot_fee = self.context.params.spot_fee
-        fut_fee = self.context.params.fut_fee
-
-        # Entry costs (what we paid)
-        entry_spot_cost = entry_spot_price * (1 + spot_fee)  # Bought spot with fee
-        entry_fut_receive = entry_fut_price * (1 - fut_fee)  # Sold futures with fee
-
-        # Exit revenues (what we get)
-        exit_spot_receive = curr_spot_price * (1 - spot_fee)  # Sell spot with fee
-        exit_fut_cost = curr_fut_price * (1 + fut_fee)  # Buy futures with fee
-
-        # P&L calculation
-        spot_pnl_pts = exit_spot_receive - entry_spot_cost
-        fut_pnl_pts = entry_fut_receive - exit_fut_cost
-        total_pnl_pts = spot_pnl_pts + fut_pnl_pts
-
-        # P&L percentage
-        capital = entry_spot_cost
-        net_pnl_pct = (total_pnl_pts / capital) * 100
-
-        return net_pnl_pct
-
     async def _should_exit_positions(self) -> bool:
         """Check if should exit existing positions."""
         if not self.context.positions_state.has_positions:
@@ -476,6 +465,11 @@ class SpotFuturesArbitrageTask(BaseTradingTask[ArbitrageTaskContext, str]):
 
         # 1. PROFIT TARGET: Exit when profitable
         if net_pnl_pct >= self.context.params.min_profit_pct:
+            print(f'{self.context.symbol} Exit pnl {net_pnl_pct:.4f}% spread:'
+                  f'spot {self.spot_ticker.spread_percentage:.4f}%, futures {self.futures_ticker.spread_percentage:.4f}%'
+                  f' SPOT PNL: {(self.spot_ticker.bid_price - spot_pos.price) / spot_pos.price * 100:.4f}%,'
+                  f' FUT PNL: {(futures_pos.price - self.futures_ticker.ask_price) / futures_pos.price * 100:.4f}%')
+
             exit_now = True
             exit_reason = 'profit_target'
             self.logger.info(
@@ -496,52 +490,55 @@ class SpotFuturesArbitrageTask(BaseTradingTask[ArbitrageTaskContext, str]):
         # Check positions and imbalances
         if not self.context.positions_state.has_positions:
             return False
-
+        positions = self.context.positions_state.positions
         delta_base = self.context.positions_state.delta
         min_spot_qty = self._get_minimum_order_base_quantity('spot')
         min_futures_qty = self._get_minimum_order_base_quantity('futures')
 
-        if abs(delta_base) < min_spot_qty:
+        if abs(delta_base) < max(min_spot_qty, min_futures_qty):
             return False
 
-        self.logger.info(f'⚠️ Imbalance detected COINS: {delta_base} '
-                         f'(min spot {min_spot_qty:.2f}, min fut {min_futures_qty:.2f})')
+        self.logger.info(f'⚠️ Imbalance detected COINS: {delta_base} SPOT: {positions["spot"]}'
+                         f' FUT: {positions["futures"]} ')
 
-        spot_imbalance = delta_base >= min_spot_qty
+        # WRONG:
+        # spot_imbalance = delta_base >= min_spot_qty
         # force
         # futures_imbalance_less_ = delta_usdt < 0 and abs(delta_usdt) < min_futures_usdt
         place_orders: Dict[ArbitrageExchangeType, OrderPlacementParams] = {}
 
-        if spot_imbalance:
-            quantity = self._prepare_order_quantity('spot', delta_base)
+        # if spot_imbalance:
+        #     quantity = self._prepare_order_quantity('spot', delta_base)
+        #     place_orders['spot'] = OrderPlacementParams(
+        #         side=Side.BUY,
+        #         quantity=quantity,
+        #         price=self.spot_ticker.ask_price
+        #     )
+        # else:
+        # imbalance < minimal futures quantity, force buy spot to reduce imbalance
+        if delta_base < 0 and abs(delta_base) >= min_spot_qty:
+            quantity = self._prepare_order_quantity('spot', abs(delta_base))
             place_orders['spot'] = OrderPlacementParams(
                 side=Side.BUY,
                 quantity=quantity,
                 price=self.spot_ticker.ask_price
             )
+        elif delta_base > 0 and abs(delta_base) >= min_futures_qty:
+            quantity = self._prepare_order_quantity('futures', abs(delta_base))
+            place_orders['futures'] = OrderPlacementParams(
+                side=Side.SELL,
+                quantity=quantity,
+                price=self.futures_ticker.bid_price
+            )
         else:
-            # imbalance < minimal futures quantity, force buy spot to reduce imbalance
-            if abs(delta_base) >= min_futures_qty:
-                quantity = self._prepare_order_quantity('spot', abs(delta_base))
-                place_orders['spot'] = OrderPlacementParams(
-                    side=Side.BUY,
-                    quantity=quantity,
-                    price=self.spot_ticker.ask_price
-                )
-            else:
-                quantity = self._prepare_order_quantity('futures', abs(delta_base))
-                place_orders['futures'] = OrderPlacementParams(
-                    side=Side.SELL,
-                    quantity=quantity,
-                    price=self.futures_ticker.bid_price
-                )
+            self.logger.info('ℹ️ Imbalance detected but below minimums, no correction placed')
 
         placed_orders = await self.exchange_manager.place_order_parallel(place_orders)
 
         success = await self._update_active_orders_after_placement(placed_orders)
 
         if success:
-            self.logger.info(f"✅ Delta correction order placed: {placed_orders}")
+            self.logger.info(f"✅ Delta correction order placed: {[str(o) for o in placed_orders]}")
         else:
             self.logger.error(f"❌ Failed to place delta correction orders {placed_orders}")
 
@@ -634,6 +631,11 @@ class SpotFuturesArbitrageTask(BaseTradingTask[ArbitrageTaskContext, str]):
         """Round price based on exchange tick size."""
         symbol_info = self.exchange_manager.get_exchange('futures').public.symbols_info[self.context.symbol]
         return symbol_info.adjust_to_contract_size(qty)
+
+    def get_tick_size(self, exchange_type: ArbitrageExchangeType) -> float:
+        """Get tick size based on exchange type."""
+        symbol_info = self.exchange_manager.get_exchange(exchange_type).public.symbols_info[self.context.symbol]
+        return symbol_info.tick
 
     def _get_direction_price(self, direction: Literal['enter', 'exit'], exchange_type: ArbitrageExchangeType) -> \
     Optional[float]:
@@ -733,7 +735,7 @@ class SpotFuturesArbitrageTask(BaseTradingTask[ArbitrageTaskContext, str]):
                     active_orders=new_active_orders
                 )
 
-                self.logger.info(f"📝 New order tracked: {order} on {exchange_key}")
+                # self.logger.info(f"📝 New order tracked: {order} on {exchange_key}")
             else:
                 # Update stored order with latest state
                 new_active_orders = self.context.active_orders.copy()
@@ -767,7 +769,7 @@ class SpotFuturesArbitrageTask(BaseTradingTask[ArbitrageTaskContext, str]):
 
                 exchange = self.exchange_manager.get_exchange(exchange_key).private
                 exchange.remove_order(order.order_id)  # cleanup exchange
-                self.logger.info(f"🏁 Order completed: {order.order_id} on {exchange_key} {order}")
+                self.logger.info(f"🏁 {exchange_key} order completed: {order.order_id} on {order}")
 
         except Exception as e:
             self.logger.error(f"Error processing partial fill: {e}")
@@ -786,33 +788,34 @@ class SpotFuturesArbitrageTask(BaseTradingTask[ArbitrageTaskContext, str]):
             limit_threshold = self.context.params.min_profit_pct + self.context.params.limit_profit_pct
             
             # Check for enter arbitrage opportunity (buy spot, sell futures)
-            if not self.context.positions_state.has_positions and spot_ask and fut_bid:
+            if not self.context.positions_state.has_positions:
                 # Calculate price for exact limit_profit_pct offset
                 # Goal: Find spot price where profit = limit_profit_pct
                 # We want: (fut_bid - limit_spot_price) / limit_spot_price * 100 = limit_profit_pct
                 # Solving: limit_spot_price = fut_bid / (1 + limit_profit_pct/100)
-                limit_spot_price = fut_bid / (1 + self.context.params.limit_profit_pct / 100)
+                # limit_spot_price = fut_bid / (1 + self.context.params.limit_profit_pct / 100)
                 
                 # Ensure we don't place limit above current ask (would be market order)
-                if limit_spot_price >= spot_ask:
-                    return  # No profitable limit order possible
-                
+                # if limit_spot_price >= spot_ask:
+                #     return  # No profitable limit order possible
+                #
+                limit_spot_price = self.spot_ticker.ask_price - (self.get_tick_size('spot') * 3)  # Place just below current ask
                 # Calculate expected profit at this price
                 entry_cost_pct = self._get_entry_cost_pct(limit_spot_price, fut_bid)
-                expected_profit_pct = -entry_cost_pct
+                # expected_profit_pct = -entry_cost_pct
                 
                 if self._debug_info_counter <= 1:
                     print(f'{self.context.symbol} Enter limit: target profit {self.context.params.limit_profit_pct:.3f}%, '
-                          f'calculated price {limit_spot_price:.6f}, expected profit {expected_profit_pct:.4f}%')
+                          f'calculated price {limit_spot_price:.6f}, COST: {entry_cost_pct:.4f}%')
 
-                if expected_profit_pct >= limit_threshold:
+                if entry_cost_pct >= limit_threshold:
                     # Place limit buy on spot at calculated price
                     await self._place_single_limit_order('enter', Side.BUY, limit_spot_price)
                     self.logger.info(f"📋 Placing enter limit @{limit_spot_price:.6f}: "
-                                   f"expected profit {expected_profit_pct:.4f}% >= threshold {limit_threshold:.4f}%")
+                                   f"expected profit {entry_cost_pct:.4f}% >= threshold {limit_threshold:.4f}%")
 
             # Check for exit arbitrage opportunity (sell spot, buy futures)
-            elif self.context.positions_state.has_positions and spot_bid and fut_ask:
+            elif self.context.positions_state.has_positions:
                 spot_pos = self.context.positions_state.positions['spot']
                 futures_pos = self.context.positions_state.positions['futures']
                 
@@ -828,12 +831,9 @@ class SpotFuturesArbitrageTask(BaseTradingTask[ArbitrageTaskContext, str]):
                 # Calculate required spot price for target PnL
                 # We need to solve for limit_spot_price where net_pnl = target_pnl
                 # For simplicity, add profit percentage to current bid
-                limit_spot_price = spot_bid * (1 + self.context.params.limit_profit_pct / 100)
-                
-                # Ensure we don't place limit below current bid (would be market order)
-                if limit_spot_price <= spot_bid:
-                    return  # No profitable limit order possible
-                
+                # limit_spot_price = spot_bid * (1 + self.context.params.limit_profit_pct / 100)
+                limit_spot_price = spot_bid + (self.get_tick_size('spot') * 3)  # Place just below current ask
+
                 # Calculate expected PnL at this price
                 net_pnl_pct = self._get_pos_net_pnl(
                     spot_pos.price, futures_pos.price, limit_spot_price, fut_ask
@@ -942,15 +942,16 @@ class SpotFuturesArbitrageTask(BaseTradingTask[ArbitrageTaskContext, str]):
                 
                 if not limit_order:
                     # Order not found - likely filled or cancelled
-                    await self._handle_limit_order_fill(direction, order_id)
+                    await self._handle_limit_order_fill('spot', direction, order_id)
                     
         except Exception as e:
             self.logger.error(f"Error checking limit order fills: {e}")
 
-    async def _handle_limit_order_fill(self, direction: Literal['enter', 'exit'], order_id: str):
+    async def _handle_limit_order_fill(self, exchange_key: ArbitrageExchangeType,
+                                       direction: Literal['enter', 'exit'], order_id: str):
         """Handle limit order fill with immediate delta hedge."""
         try:
-            self.logger.info(f"🎯 Limit order filled: {direction} {order_id}")
+            self.logger.info(f"🎯 Limit order filled: {exchange_key} {direction} {order_id}")
             
             # Remove from tracking
             new_limit_orders = self.context.active_limit_orders.copy()
@@ -977,7 +978,7 @@ class SpotFuturesArbitrageTask(BaseTradingTask[ArbitrageTaskContext, str]):
             placed_orders = await self.exchange_manager.place_order_parallel(fut_orders)
             
             if placed_orders.get('futures'):
-                self.logger.info(f"⚡ Immediate delta hedge: futures {fut_side.name}@{fut_price:.6f}")
+                self.logger.info(f"⚡ Immediate delta hedge: futures {fut_side.name} {fut_qty}@{fut_price:.6f}")
                 # Update tracking as normal position
                 await self._update_active_orders_after_placement(placed_orders)
             else:
@@ -992,7 +993,11 @@ class SpotFuturesArbitrageTask(BaseTradingTask[ArbitrageTaskContext, str]):
             # Cancel old order using exchange directly
             exchange = self.exchange_manager.get_exchange('spot')
             if exchange:
-                await exchange.private.cancel_order(self.context.symbol, order_id)
+                o = await exchange.private.cancel_order(self.context.symbol, order_id)
+                self._process_order_fill('spot', o)
+                if o.filled_quantity > 0:
+                    self.logger.info(f"⚠️ Partial fill detected when cancelling limit order {order_id}, processed fill.")
+                    return
             
             # Place new order
             spot_side = Side.BUY if direction == 'enter' else Side.SELL
@@ -1041,6 +1046,31 @@ class SpotFuturesArbitrageTask(BaseTradingTask[ArbitrageTaskContext, str]):
         except Exception as e:
             self.logger.error(f"Error cancelling limit orders: {e}")
 
+    def _get_pos_net_pnl(self, entry_spot_price: float, entry_fut_price: float,
+                         curr_spot_price: float, curr_fut_price: float) -> Optional[float]:
+        # Calculate P&L using backtesting logic with fees
+        spot_fee = self.context.params.spot_fee
+        fut_fee = self.context.params.fut_fee
+
+        # Entry costs (what we paid)
+        entry_spot_cost = entry_spot_price * (1 + spot_fee)  # Bought spot with fee
+        entry_fut_receive = entry_fut_price * (1 - fut_fee)  # Sold futures with fee
+
+        # Exit revenues (what we get)
+        exit_spot_receive = curr_spot_price * (1 - spot_fee)  # Sell spot with fee
+        exit_fut_cost = curr_fut_price * (1 + fut_fee)  # Buy futures with fee
+
+        # P&L calculation
+        spot_pnl_pts = exit_spot_receive - entry_spot_cost
+        fut_pnl_pts = entry_fut_receive - exit_fut_cost
+        total_pnl_pts = spot_pnl_pts + fut_pnl_pts
+
+        # P&L percentage
+        capital = entry_spot_cost
+        net_pnl_pct = (total_pnl_pts / capital) * 100
+
+        return net_pnl_pct
+
     async def cleanup(self):
         """Clean up strategy resources."""
         self.logger.info(f"🧹 Cleaning up {self.name} resources")
@@ -1078,7 +1108,7 @@ async def create_spot_futures_arbitrage_task(
         min_profit_pct=min_profit_pct,
         max_hours=max_hours,
         limit_orders_enabled=True,
-        limit_profit_pct=0.4,
+        limit_profit_pct=0.1,
         limit_profit_tolerance_pct=0.1
     )
 

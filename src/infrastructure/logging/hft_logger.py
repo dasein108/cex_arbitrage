@@ -101,6 +101,23 @@ class HFTLogger(HFTLoggerInterface):
         }
         return mapping.get(level, logging.INFO)
     
+    def _should_propagate_level(self, level: LogLevel) -> bool:
+        """Check if any backend would handle this level (respects override_logger)."""
+        # Create a dummy record to test backend filtering
+        test_record = LogRecord(
+            timestamp=0,
+            level=level,
+            log_type=LogType.TEXT,
+            logger_name=self.name,
+            message="test"
+        )
+        
+        # Check if any backend would handle this
+        for backend in self.backends:
+            if backend.enabled and backend.should_handle(test_record):
+                return True
+        return False
+    
     @property
     def propagate(self) -> bool:
         """Get propagation setting from underlying Python logger."""
@@ -198,7 +215,8 @@ class HFTLogger(HFTLoggerInterface):
         
         # Write to each backend synchronously  
         for backend in backends:
-            if backend.should_handle(record):
+            # Check if backend is enabled and should handle (respects override_logger changes)
+            if backend.enabled and backend.should_handle(record):
                 try:
                     # Convert async write to sync using backend's sync method if available
                     # or just skip if backend requires async
@@ -248,9 +266,10 @@ class HFTLogger(HFTLoggerInterface):
                     symbol=symbol
                 )
             
-            # Immediate propagation for errors/critical (real-time requirement)
+            # Immediate propagation for errors/critical (real-time requirement) 
+            # BUT respect override_logger settings
             immediate_propagated = False
-            if level.value >= LogLevel.WARNING.value and self._py_logger.propagate:
+            if level.value >= LogLevel.WARNING.value and self._py_logger.propagate and self._should_propagate_level(level):
                 py_level = self._convert_level_to_python(level)
                 extra = f"\r\n{str(full_context)}" if full_context else ""
                 self._py_logger.log(py_level, str(msg) + extra)

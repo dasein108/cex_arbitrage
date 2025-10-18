@@ -514,10 +514,10 @@ class ExchangeManager:
             role_key = role_keys[i]
             if isinstance(result, Order):
                 placed_orders[role_key] = result
-                self.logger.info(f"✅ Order placed on {role_key}: {result.order_id} {result}")
+                self.logger.info(f"✅ {role_key} order placed: {result.order_id} {result}")
             else:
                 placed_orders[role_key] = None
-                self.logger.error(f"❌ Order failed on {role_key}: {result}")
+                self.logger.error(f"❌ {role_key} order failed: {result}")
         
         return placed_orders
     

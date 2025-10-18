@@ -135,6 +135,7 @@ class PositionState(msgspec.Struct):
         elif current.side == side:
             # Same side: add to position with weighted average price
             new_price, new_qty = calculate_weighted_price(current.qty, current.price, quantity, price)
+            print(f'ADD {current.qty}@{current.price} to {quantity}@{price} => {new_qty}@{new_price}')
             new_position = Position(qty=new_qty, price=new_price, side=side)
         else:
             new_price, new_qty = calculate_weighted_price(current.qty, current.price, -quantity, price)
@@ -142,6 +143,7 @@ class PositionState(msgspec.Struct):
             new_side = side if new_qty < 0 and exchange_key == 'futures' else current.side
             threshold_usdt = 1.0
             new_qty_usdt = abs(new_qty * new_price)
+            print(f'ADD {current.qty}@{current.price} to {quantity}@{price} => {new_qty}@{new_price}')
             if new_qty_usdt < threshold_usdt:
                 new_position = Position()
             else:

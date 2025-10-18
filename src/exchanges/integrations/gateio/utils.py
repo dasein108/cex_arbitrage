@@ -203,7 +203,6 @@ def futures_balance_entry(item: Dict) -> FuturesBalance:
 # TODO: implement for futures, refactor futures_rest, get rid of fallabacks
 def rest_futures_to_order(order_data: Dict[str, Any]) -> Order:
     """Transform Gate.io REST futures order response to unified Order struct."""
-    print(f"==== order_data futures: {order_data}")
     symbol = GateioFuturesSymbol.to_symbol(order_data['contract'])
     #Time in ms
     timestamp = int(order_data['create_time'] * 1000)

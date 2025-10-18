@@ -1,7 +1,7 @@
 from exchanges.structs.enums import KlineInterval
 
 
-def get_interval_seconds(self, interval: KlineInterval) -> int:
+def get_interval_seconds(interval: KlineInterval) -> int:
     """Get interval duration in seconds for batch processing."""
     interval_map = {
         KlineInterval.MINUTE_1: 60,

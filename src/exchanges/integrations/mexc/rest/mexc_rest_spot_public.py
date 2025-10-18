@@ -48,7 +48,6 @@ from utils import get_minimal_step
 from infrastructure.logging import HFTLoggerInterface
 # Import the new base REST implementation
 from .mexc_base_rest import MexcBaseRestInterface
-from ...gateio.services.spot_symbol_mapper import GateioSpotSymbol
 
 
 class MexcPublicSpotRestInterface(MexcBaseRestInterface, PublicSpotRestInterface):
@@ -289,7 +288,7 @@ class MexcPublicSpotRestInterface(MexcBaseRestInterface, PublicSpotRestInterface
             the most recent trades up to the limit. For true historical access,
             use fromId parameter (not exposed in this unified interface).
         """
-        pair = GateioSpotSymbol.to_pair(symbol)
+        pair = MexcSymbol.to_pair(symbol)
 
         optimized_limit = min(limit, 1000)  # MEXC max limit
         
@@ -357,7 +356,7 @@ class MexcPublicSpotRestInterface(MexcBaseRestInterface, PublicSpotRestInterface
         params = {}
         if symbol:
             # Get ticker for specific symbol
-            pair = GateioSpotSymbol.to_pair(symbol)
+            pair = MexcSymbol.to_pair(symbol)
             params['symbol'] = pair
         # If no symbol specified, API returns all tickers
         
@@ -494,7 +493,7 @@ class MexcPublicSpotRestInterface(MexcBaseRestInterface, PublicSpotRestInterface
             ExchangeAPIError: If unable to fetch kline data
         """
         from exchanges.integrations.mexc.utils import from_kline_interval
-        pair = GateioSpotSymbol.to_pair(symbol)
+        pair = MexcSymbol.to_pair(symbol)
 
         interval = from_kline_interval(timeframe)
         

@@ -51,8 +51,8 @@ async def run_arbitrage_demo():
             symbol=symbol,
             spot_exchange=ExchangeEnum.MEXC,
             futures_exchange=ExchangeEnum.GATEIO_FUTURES,
-            base_position_size_usdt=15.0,
-            max_entry_cost_pct=0.37, #0.5,
+            base_position_size_usdt=5,
+            max_entry_cost_pct=0.01, #0.5,
             min_profit_pct=0.1, #0.1,
             max_hours=6.0,
             logger=logger

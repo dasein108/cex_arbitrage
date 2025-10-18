@@ -252,7 +252,6 @@ class GateioPrivateFuturesWebsocket(GateioBaseWebsocket, PrivateBaseWebsocket):
             
             for order_data in order_list:
                 # Convert Gate.io futures order to unified format
-                print(f"-- gateio order_data: {order_data}")
                 order = rest_futures_to_order(order_data)
                 await self._exec_bound_handler(PrivateWebsocketChannelType.ORDER, order)
                 

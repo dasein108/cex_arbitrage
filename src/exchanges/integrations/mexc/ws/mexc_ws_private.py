@@ -243,7 +243,6 @@ class MexcPrivateSpotWebsocket(PrivateBaseWebsocket):
                     order_type = _WS_ORDER_TYPE_MAPPING.get(getattr(order_data, 'orderType', 0), OrderType.LIMIT)
                     order_status_code = getattr(order_data, 'status', 0)
                     status = _WS_ORDER_STATUS_MAPPING.get(order_status_code, OrderStatus.UNKNOWN)
-                    print(f'--- mexc order data --- {order_data}')
                     order = Order(
                         order_id=order_data.id if hasattr(order_data, 'id') else "",
                         symbol=MexcSymbol.to_symbol(symbol) if symbol else None,

@@ -75,7 +75,7 @@ _MEXC_KLINE_INTERVAL_MAP = {
     KlineInterval.MINUTE_5: "5m",
     KlineInterval.MINUTE_15: "15m",
     KlineInterval.MINUTE_30: "30m",
-    KlineInterval.HOUR_1: "1h",
+    KlineInterval.HOUR_1: "60m",
     KlineInterval.HOUR_4: "4h",
     KlineInterval.HOUR_12: "12h",
     KlineInterval.DAY_1: "1d",
