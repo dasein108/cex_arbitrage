@@ -12,9 +12,9 @@ from trading.research.cost_utils import (calculate_spread_statistics, optimize_p
                                          optimize_parameters_statistical_fast)
 
 async def analyze_spreads():
-    symbol = Symbol(base=AssetName("PRCL"), quote=AssetName("USDT"))
+    symbol = Symbol(base=AssetName("F"), quote=AssetName("USDT"))
     date_to = datetime.datetime.utcnow()
-    date_from = date_to - datetime.timedelta(hours=8)
+    date_from = date_to - datetime.timedelta(hours=1)
     
     print(f"Loading data for {symbol.base}/{symbol.quote}...")
     df = await load_market_data(symbol, date_from, date_to)

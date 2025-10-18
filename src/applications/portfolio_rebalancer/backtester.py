@@ -17,6 +17,7 @@ from config.config_manager import HftConfig
 from .config import RebalanceConfig
 from .portfolio_tracker import PortfolioTracker
 from .rebalancer import ThresholdCascadeRebalancer
+from .trend_filtered_rebalancer import TrendFilteredRebalancer
 
 
 @dataclass
@@ -47,10 +48,14 @@ class BacktestResults:
     end_date: datetime
     days_tested: int
     
+    # Trend filtering metrics (optional)
+    trend_filter_stats: Optional[Dict] = None
+    strategy_type: str = "Standard"
+    
     def summary(self) -> str:
         """Generate summary report."""
-        return f"""
-=== Backtest Results Summary ===
+        base_report = f"""
+=== Backtest Results Summary ({self.strategy_type}) ===
 Period: {self.start_date.date()} to {self.end_date.date()} ({self.days_tested} days)
 
 Performance Metrics:
@@ -72,6 +77,21 @@ Portfolio Results:
   Best Performer: {self.best_performer[0]} ({self.best_performer[1]:.2%})
   Worst Performer: {self.worst_performer[0]} ({self.worst_performer[1]:.2%})
 """
+        
+        # Add trend filtering statistics if available
+        if self.trend_filter_stats:
+            stats = self.trend_filter_stats
+            trend_report = f"""
+Trend Filtering Statistics:
+  Total Rebalance Checks: {stats.get('total_checks', 0)}
+  Trend Filtered (Blocked): {stats.get('trend_filtered', 0)}
+  Mean Reversion Allowed: {stats.get('mean_reversion_allowed', 0)}
+  Filter Rate: {stats.get('filter_rate', 0):.1%}
+  Mean Reversion Rate: {stats.get('mean_reversion_rate', 0):.1%}
+"""
+            base_report += trend_report
+        
+        return base_report
 
 
 class BacktestEngine:
@@ -80,7 +100,7 @@ class BacktestEngine:
     """
     
     def __init__(self, assets: List[str], initial_capital: float, 
-                 config: Optional[RebalanceConfig] = None):
+                 config: Optional[RebalanceConfig] = None, use_trend_filter: bool = False):
         """
         Initialize backtest engine.
         
@@ -88,10 +108,12 @@ class BacktestEngine:
             assets: List of asset symbols to trade
             initial_capital: Starting capital in USDT
             config: Rebalancing configuration (uses defaults if None)
+            use_trend_filter: Whether to use trend-filtered rebalancer
         """
         self.assets = assets
         self.initial_capital = initial_capital
         self.config = config or RebalanceConfig()
+        self.use_trend_filter = use_trend_filter
         
         # Initialize HFT config manager and MEXC client
         self.hft_config = HftConfig()
@@ -220,7 +242,13 @@ class BacktestEngine:
         
         # Initialize portfolio tracker and rebalancer
         self.tracker = PortfolioTracker(self.assets, self.initial_capital, self.config)
-        self.rebalancer = ThresholdCascadeRebalancer(self.assets, self.config, self.tracker)
+        
+        if self.use_trend_filter:
+            self.rebalancer = TrendFilteredRebalancer(self.assets, self.config, self.tracker)
+            print("Using Trend-Filtered Rebalancer")
+        else:
+            self.rebalancer = ThresholdCascadeRebalancer(self.assets, self.config, self.tracker)
+            print("Using Standard Threshold Rebalancer")
         
         # Get initial prices and initialize portfolio
         initial_prices = self.get_prices_at_timestamp(timestamps[0])
@@ -274,6 +302,14 @@ class BacktestEngine:
         years = days / 365.25
         annualized_return = (1 + metrics['total_return']) ** (1/years) - 1 if years > 0 else 0
         
+        # Get trend filtering stats if using trend filter
+        trend_stats = None
+        strategy_type = "Standard"
+        
+        if self.use_trend_filter and hasattr(self.rebalancer, 'get_trend_statistics'):
+            trend_stats = self.rebalancer.get_trend_statistics()
+            strategy_type = "Trend-Filtered"
+        
         return BacktestResults(
             total_return=metrics['total_return'],
             annualized_return=annualized_return,
@@ -290,7 +326,9 @@ class BacktestEngine:
             worst_performer=worst_performer,
             start_date=timestamps[0],
             end_date=timestamps[-1],
-            days_tested=days
+            days_tested=days,
+            trend_filter_stats=trend_stats,
+            strategy_type=strategy_type
         )
     
     def plot_results(self) -> None:

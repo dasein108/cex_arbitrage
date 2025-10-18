@@ -87,10 +87,10 @@ def calculate_spread_statistics(df: pd.DataFrame,
     """
     # Calculate entry and exit costs
     df = df.copy()
-    df['entry_cost_pct'] = ((df['spot_ask_price'] - df['fut_bid_price']) / 
-                           df['spot_ask_price']) * 100
-    df['exit_cost_pct'] = ((df['fut_ask_price'] - df['spot_bid_price']) / 
-                          df['fut_ask_price']) * 100
+    df['entry_cost_pct'] = ((df['mexc_spot_ask_price'] - df['gateio_futures_bid_price']) /
+                           df['mexc_spot_ask_price']) * 100
+    df['exit_cost_pct'] = ((df['gateio_futures_ask_price'] - df['mexc_spot_bid_price']) /
+                          df['gateio_futures_ask_price']) * 100
     
     # Basic statistics
     entry_costs = df['entry_cost_pct'].dropna()
@@ -154,8 +154,8 @@ def optimize_parameters_statistical(df: pd.DataFrame,
     """
     # Calculate entry_cost_pct for trade frequency estimation
     df_with_costs = df.copy()
-    df_with_costs['entry_cost_pct'] = ((df_with_costs['spot_ask_price'] - df_with_costs['fut_bid_price']) / 
-                                       df_with_costs['spot_ask_price']) * 100
+    df_with_costs['entry_cost_pct'] = ((df_with_costs['mexc_spot_ask_price'] - df_with_costs['gateio_futures_bid_price']) /
+                                       df_with_costs['mexc_spot_ask_price']) * 100
     
     stats = calculate_spread_statistics(df, spot_fee, fut_fee)
     
@@ -390,8 +390,8 @@ def optimize_parameters_statistical_fast(df: pd.DataFrame,
     """
     # Calculate entry_cost_pct for analysis
     df_with_costs = df.copy()
-    df_with_costs['entry_cost_pct'] = ((df_with_costs['spot_ask_price'] - df_with_costs['fut_bid_price']) / 
-                                       df_with_costs['spot_ask_price']) * 100
+    df_with_costs['entry_cost_pct'] = ((df_with_costs['mexc_spot_ask_price'] - df_with_costs['gateio_futures_bid_price']) /
+                                       df_with_costs['mexc_spot_ask_price']) * 100
     
     stats = calculate_spread_statistics(df, spot_fee, fut_fee)
     
@@ -536,8 +536,8 @@ def optimize_parameters_random_sampling(df: pd.DataFrame,
     
     # Calculate entry_cost_pct for backtesting
     df_with_costs = df.copy()
-    df_with_costs['entry_cost_pct'] = ((df_with_costs['spot_ask_price'] - df_with_costs['fut_bid_price']) / 
-                                       df_with_costs['spot_ask_price']) * 100
+    df_with_costs['entry_cost_pct'] = ((df_with_costs['mexc_spot_ask_price'] - df_with_costs['gateio_futures_bid_price']) /
+                                       df_with_costs['mexc_spot_ask_price']) * 100
     
     stats = calculate_spread_statistics(df, spot_fee, fut_fee)
     

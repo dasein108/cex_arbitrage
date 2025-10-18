@@ -2,7 +2,7 @@ from datetime import datetime, timezone
 
 import numpy as np
 import pandas as pd
-
+from typing import List, Dict
 from exchanges.structs import Symbol, AssetName, ExchangeEnum
 from trading.analysis.data_loader import get_cached_book_ticker_data
 
@@ -16,9 +16,10 @@ fees = {
 DEFAULT_FEES_PER_TRADE = fees["spot_taker_fee"] + fees["futures_taker_fee"]
 
 
-def _add_prefix_to_df_columns(df, prefix):
+def _add_prefix_to_df_columns(df, prefix: str, columns_to_remove: List[str]= None) -> pd.DataFrame:
     # Remove specified columns from spot_df and futures_df
-    columns_to_remove = ["exchange", "symbol_base", "symbol_quote"]
+    if not columns_to_remove:
+        columns_to_remove = ["exchange", "symbol_base", "symbol_quote"]
 
     df = df.copy()
 
@@ -35,65 +36,44 @@ def _add_prefix_to_df_columns(df, prefix):
 
     return df
 
-async def load_market_data(symbol: Symbol = None, start_date=None, end_date=None) -> pd.DataFrame:
+async def load_market_data(symbol: Symbol = None, start_date=None, end_date=None, exchanges: List[ExchangeEnum] = None) -> pd.DataFrame:
     """Load market data with caching for both exchanges."""
     # Use the actual data we have in database
     if end_date is None:
-        end_date = datetime(2025, 10, 11, 11, 30, 0, tzinfo=timezone.utc)
+        end_date = datetime.utcnow()
     if start_date is None:
-        start_date = end_date - pd.Timedelta(days=1)
+        start_date = end_date - pd.Timedelta(hours=8)
     if symbol is None:
         symbol = Symbol(base=AssetName("LUNC"), quote=AssetName("USDT"))  # Using MYX as it has most data
     print(f"📅 Symbol: {symbol} - Fetching market data from database - from {start_date.strftime('%Y-%m-%d %H:%M')} to {end_date.strftime('%Y-%m-%d %H:%M')}")
 
-    exchange_spot = ExchangeEnum.MEXC.value  # Using same exchange data for demo
-    exchange_futures = ExchangeEnum.GATEIO_FUTURES.value
+    if exchanges is None:
+        exchanges = [ExchangeEnum.MEXC, ExchangeEnum.GATEIO_FUTURES, ExchangeEnum.GATEIO]
 
+    exchange_df: Dict[ExchangeEnum, pd.DataFrame] = {}
+    for exchange in exchanges:
+        df = await get_cached_book_ticker_data(
+            exchange=exchange.value,
+            symbol_base=symbol.base,
+            symbol_quote=symbol.quote,
+            start_time=start_date,
+            end_time=end_date
+        )
+        df = df.drop(columns=["exchange", "symbol_base", "symbol_quote"], axis=1)
+        df = _add_prefix_to_df_columns(df, exchange.value.lower() + "_")
+        # Remove duplicate rounding - already done in _add_prefix_to_df_columns
+        df.index = df.index.round("1s")
+        
+        # Remove any duplicate timestamps within individual exchange data
+        df = df[~df.index.duplicated(keep='first')]
 
-    # Load spot data
-    spot_df = await get_cached_book_ticker_data(
-        exchange=exchange_spot,
-        symbol_base=symbol.base,
-        symbol_quote=symbol.quote,
-        start_time=start_date,
-        end_time=end_date
-    )
+        exchange_df[exchange] = df
 
-    futures_df = await get_cached_book_ticker_data(
-        exchange=exchange_futures,
-        symbol_base=symbol.base,
-        symbol_quote=symbol.quote,
-        start_time=start_date,
-        end_time=end_date
-    )
-
-    # Add small artificial spread to simulate different exchanges (for demo purposes)
-    spot_df['bid_price'] = spot_df['bid_price'] * 1.0002  # Simulate slightly higher spot prices
-    spot_df['ask_price'] = spot_df['ask_price'] * 1.0002
-    futures_df['bid_price'] = futures_df['bid_price'] * 0.9998  # Simulate slightly lower futures prices
-    futures_df['ask_price'] = futures_df['ask_price'] * 0.9998
-
-    spot_df = _add_prefix_to_df_columns(spot_df, "spot_")
-    futures_df = _add_prefix_to_df_columns(futures_df, "fut_")
-
-
-    # Load futures data
-    # Validate data
-    if spot_df.empty or futures_df.empty:
-        raise ValueError(f"Insufficient data: spot={len(spot_df)}, futures={len(futures_df)} records")
-
-    merged_df = spot_df.merge(
-        futures_df,
-        left_index=True,
-        right_index=True,
-        how="outer"
-    )
+    merged_df = pd.concat(list(exchange_df.values()), axis=1, join="outer")
+    merged_df = merged_df.sort_index()
     
     # Remove duplicate timestamps to avoid double-counting
     merged_df = merged_df[~merged_df.index.duplicated(keep='first')]
-    # merged_df.index = merged_df.index.round("1s")
-    print(f"  ✅ Loaded spot: {len(spot_df)}, futures: {len(futures_df)} merged: {len(merged_df)} data points")
-
 
     return merged_df
 
@@ -342,3 +322,20 @@ def calculate_mean_spreads(opportunities: np.array):
     print(f"  • Based on {len(opportunities)} opportunities")
 
     return float(mean_entry_spread), float(mean_exit_spread)
+
+
+if __name__ == "__main__":
+    import asyncio
+
+    async def main():
+        # Example usage
+        symbol = Symbol(base=AssetName("LUNC"), quote=AssetName("USDT"))
+        end_date = datetime.utcnow()
+
+        start_date = end_date - pd.Timedelta(minutes=5)
+
+        df = await load_market_data(symbol=symbol, start_date=start_date, end_date=end_date)
+
+        print(df.head())
+
+    asyncio.run(main())

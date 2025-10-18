@@ -21,13 +21,13 @@ async def run_backtest():
     
     # Configure assets - use actual MEXC trading pairs
     # These are examples - replace with your chosen volatile assets
-    assets = ['HANA', 'XAN', 'AIA', 'UB', 'XPIN', 'BLESS']  # More stable for testing
-    # assets = ['DOGE', 'SHIB', 'PEPE']  # More volatile options
+    assets = ['VFY', 'XAN', 'AIA', 'TRUTH']  # More stable for testing
+    # assets = ['BTC', 'ETH', 'SOL']  # More volatile options
     
     # Create configuration optimized for volatile assets
     config = RebalanceConfig(
-        upside_threshold=0.40,      # 40% above mean triggers sell
-        downside_threshold=0.35,    # 35% below mean triggers buy  
+        upside_threshold=0.10,      # 40% above mean triggers sell
+        downside_threshold=0.15,    # 35% below mean triggers buy
         sell_percentage=0.20,       # Sell only 20% to avoid missing rallies
         usdt_reserve=0.30,         # Keep 30% reserve for volatility
         min_order_value=15.0,      # $15 minimum order
@@ -40,7 +40,8 @@ async def run_backtest():
     engine = BacktestEngine(
         assets=assets,
         initial_capital=config.initial_capital,
-        config=config
+        config=config,
+        use_trend_filter=True
     )
     
     # Define backtest period

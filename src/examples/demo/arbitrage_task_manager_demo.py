@@ -43,7 +43,7 @@ async def run_arbitrage_demo():
     
     try:
         # Create arbitrage task
-        symbol = Symbol(base=AssetName("PRCL"), quote=AssetName("USDT"))
+        symbol = Symbol(base=AssetName("F"), quote=AssetName("USDT"))
         
         logger.info(f"🚀 Creating spot + futures arbitrage task for {symbol}")
         
@@ -52,8 +52,8 @@ async def run_arbitrage_demo():
             spot_exchange=ExchangeEnum.MEXC,
             futures_exchange=ExchangeEnum.GATEIO_FUTURES,
             base_position_size_usdt=5,
-            max_entry_cost_pct=0.01, #0.5,
-            min_profit_pct=0.1, #0.1,
+            max_entry_cost_pct=0.3, #0.5,
+            min_profit_pct=0.5, #0.1,
             max_hours=6.0,
             logger=logger
         )
@@ -169,107 +169,13 @@ async def recovery_demo():
         logger.info("✅ Recovery demo complete")
 
 
-async def stress_test_demo():
-    """Demonstrate multiple concurrent arbitrage tasks."""
-    logger = get_logger("arbitrage_stress_test")
-    
-    # Initialize TaskManager
-    manager = TaskManager(logger, base_path="arbitrage_stress_test_data")
-    
-    try:
-        logger.info("⚡ Starting arbitrage stress test with multiple symbols...")
-        
-        # Create multiple arbitrage tasks
-        symbols = [
-            Symbol(base=AssetName("LUNC"), quote=AssetName("USDT")),
-            Symbol(base=AssetName("PEPE"), quote=AssetName("USDT")),
-            Symbol(base=AssetName("SHIB"), quote=AssetName("USDT"))
-        ]
-        
-        tasks_created = []
-        
-        for symbol in symbols:
-            try:
-                task = await create_spot_futures_arbitrage_task(
-                    symbol=symbol,
-                    spot_exchange=ExchangeEnum.MEXC,
-                    futures_exchange=ExchangeEnum.GATEIO_FUTURES,
-                    base_position_size_usdt=25.0,  # Smaller size for stress test
-                    max_entry_cost_pct=0.3,
-                    min_profit_pct=0.05,
-                    max_hours=2.0,  # Shorter duration
-                    logger=logger
-                )
-                
-                task_id = await manager.add_task(task)
-                tasks_created.append((symbol, task_id))
-                logger.info(f"✅ Created arbitrage task for {symbol}: {task_id}")
-                
-            except Exception as e:
-                logger.warning(f"⚠️ Failed to create task for {symbol}: {e}")
-        
-        if not tasks_created:
-            logger.error("❌ No tasks created successfully")
-            return
-        
-        # Start TaskManager
-        await manager.start(recover_tasks=False)
-        logger.info(f"🚀 Started TaskManager with {len(tasks_created)} arbitrage tasks")
-        
-        # Monitor for stress test duration
-        stress_test_duration = 300  # 5 minutes
-        for i in range(stress_test_duration * 10):  # 0.1s intervals
-            status = manager.get_status()
-            
-            if i % 100 == 0:  # Every 10 seconds
-                logger.info("📊 Stress Test Progress",
-                           active_tasks=status['active_tasks'],
-                           total_executions=status['total_executions'],
-                           runtime=f"{status['runtime_seconds']:.1f}s")
-            
-            if status['active_tasks'] == 0:
-                logger.info("✅ All tasks completed")
-                break
-            
-            await asyncio.sleep(0.1)
-        
-    except Exception as e:
-        logger.error(f"❌ Stress test failed: {e}")
-        import traceback
-        traceback.print_exc()
-    
-    finally:
-        await manager.stop()
-        logger.info("✅ Stress test complete")
-
-    # async def _comprehensive_cleanup(self):
-    #     """Complete system cleanup - all resources properly closed."""
-    #     from exchanges.dual_exchange import DualExchange
-    #     from infrastructure.logging.hft_logger import HFTLogger
-    #
-    #     # Stop task manager (cleans up all task resources)
-    #     if self.task_manager:
-    #         await self.task_manager.stop()
-    #
-    #     # Close all exchange connections
-    #     await DualExchange.cleanup_all()
-    #
-    #     # Shutdown all logger background tasks
-    #     await HFTLogger.shutdown_all()
-
 async def main():
     """Main demo execution."""
     import os
     
     # Check demo mode from environment
-    demo_mode = os.environ.get('DEMO_MODE', 'arbitrage').lower()
-    
-    if demo_mode == 'recovery':
-        await recovery_demo()
-    elif demo_mode == 'stress':
-        await stress_test_demo()
-    else:
-        await run_arbitrage_demo()
+
+    await run_arbitrage_demo()
 
 
 
