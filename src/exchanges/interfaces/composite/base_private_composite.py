@@ -546,7 +546,7 @@ class BasePrivateComposite(BalanceSyncMixin,
 
             # Step 1: Load private data
             self.logger.info(f"{self._tag} Loading private data...")
-            await self._refresh_exchange_data()
+            await self.refresh_exchange_data()
 
             # Step 1.5: Start balance sync if configured (from BalanceSyncMixin)
             if self._balance_sync_interval:
@@ -601,7 +601,7 @@ class BasePrivateComposite(BalanceSyncMixin,
 
     # Data refresh and utilities
 
-    async def _refresh_exchange_data(self) -> None:
+    async def refresh_exchange_data(self) -> None:
         """
         Refresh all exchange data after reconnection.
         

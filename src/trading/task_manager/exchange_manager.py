@@ -52,15 +52,17 @@ class OrderPlacementParams(Struct, frozen=True):
     side: Side
     quantity: float
     price: float
+    order_type: str = 'market'  # 'market' or 'limit'
 
     def __str__(self):
-        return f"[{self.side.name} {self.quantity} @ {self.price}]"
+        return f"[{self.side.name} {self.quantity} @ {self.price} {self.order_type}]"
     
     def validate(self) -> bool:
         """Validate order parameters for HFT compliance."""
         return (
             self.quantity > 0.0 and 
-            self.price > 0.0
+            self.price > 0.0 and
+            self.order_type in ['market', 'limit']
         )
 
 
@@ -482,21 +484,24 @@ class ExchangeManager:
                     continue
                     
                 exchange = self._exchanges[role_key]
-                # task = exchange.private.place_limit_order(
-                #     symbol=self.symbol,
-                #     side=order_params.side,
-                #     quantity=order_params.quantity,
-                #     price=order_params.price
-                # )
-
-                task = exchange.private.place_market_order(
-                    symbol=self.symbol,
-                    side=order_params.side,
-                    price=order_params.price,
-                    quantity=order_params.quantity,
-                    # quote_quantity=order_params.quantity*order_params.price,
-                    ensure=True
-                )
+                
+                # Choose order type based on parameters
+                if order_params.order_type == 'limit':
+                    task = exchange.private.place_limit_order(
+                        symbol=self.symbol,
+                        side=order_params.side,
+                        quantity=order_params.quantity,
+                        price=order_params.price
+                    )
+                else:  # market order
+                    task = exchange.private.place_market_order(
+                        symbol=self.symbol,
+                        side=order_params.side,
+                        price=order_params.price,
+                        quantity=order_params.quantity,
+                        # quote_quantity=order_params.quantity*order_params.price,
+                        ensure=True
+                    )
 
                 order_tasks.append(task)
                 role_keys.append(role_key)
@@ -565,6 +570,18 @@ class ExchangeManager:
         except Exception as e:
             self.logger.warning(f"Failed to cancel orders for {role_key}: {e}")
             return 0
+
+    async def check_connection(self, force_refresh=True):
+        if self._exchanges['spot'].is_connected and self._exchanges['futures'].is_connected:
+            return True
+
+        if force_refresh:
+            await asyncio.sleep(0.25)
+            await asyncio.gather(
+                self._exchanges['spot'].force_refresh(),
+                self._exchanges['futures'].force_refresh()
+            )
+
     
     # Health monitoring
     #

@@ -292,7 +292,7 @@ class BasePublicComposite(BaseCompositeExchange[PublicRestType, PublicWebsocketT
             self.logger.info(f"{self._tag} Loading initial market data...")
             await asyncio.gather(
                 self._load_symbols_info(),
-                self._refresh_exchange_data(),  # This now includes best bid/ask initialization
+                self.refresh_exchange_data(),  # This now includes best bid/ask initialization
                 return_exceptions=True
             )
             self.logger.info(f"{self._tag} Creating public WebSocket client...")
@@ -517,7 +517,7 @@ class BasePublicComposite(BaseCompositeExchange[PublicRestType, PublicWebsocketT
                 self.logger.error("Error in background ticker sync", error=str(e))
                 # Continue running even if sync fails
 
-    async def _refresh_exchange_data(self) -> None:
+    async def refresh_exchange_data(self) -> None:
         """Refresh market data including best bid/ask after WebSocket reconnection."""
         try:
             self.logger.info(f"Initializing {len(self.active_symbols)} orderbooks from REST API")

@@ -206,15 +206,27 @@ class SpotFuturesArbitrageTask(BaseTradingTask[ArbitrageTaskContext, str]):
     async def _handle_arbitrage_monitoring(self):
         """Monitor market and manage positions."""
         try:
+            await self.exchange_manager.check_connection(True)
+
             # Check order updates first
             await self._check_order_updates()
 
+            # Check limit orders if enabled
+            if self.context.params.limit_orders_enabled:
+                await self._check_limit_orders()
+
             await self._process_imbalance()
+
+
 
             # Check if should exit positions
             if await self._should_exit_positions():
                 await self._exit_all_positions()
                 return
+            else:
+                # first try market exit if enabled
+                if self.context.params.limit_orders_enabled:
+                    await self._place_limit_orders()
 
             # Look for new opportunities
             if not self.context.positions_state.has_positions:
@@ -223,6 +235,10 @@ class SpotFuturesArbitrageTask(BaseTradingTask[ArbitrageTaskContext, str]):
                     self.logger.info(f"💰 Opportunity: {opportunity.spread_pct:.4f}% spread")
                     self.evolve_context(current_opportunity=opportunity)
                     self._transition_arbitrage_state('analyzing')
+                else:
+                    # No opportunity found, place limit orders if enabled
+                    if self.context.params.limit_orders_enabled:
+                        await self._place_limit_orders()
 
         except Exception as e:
             self.logger.error(f"Monitoring failed: {e}")
@@ -359,8 +375,8 @@ class SpotFuturesArbitrageTask(BaseTradingTask[ArbitrageTaskContext, str]):
 
         self._debug_info_counter += 1
 
-        # Check if profitable
-        if entry_cost_pct >= self.context.params.max_entry_cost_pct:
+        # Check if profitable (enter when cost is LOW, not high)
+        if entry_cost_pct > self.context.params.max_entry_cost_pct:
             return None
 
         # Calculate max quantity
@@ -450,7 +466,10 @@ class SpotFuturesArbitrageTask(BaseTradingTask[ArbitrageTaskContext, str]):
         # Check exit conditions
         exit_now = False
         if self._debug_info_counter % 1000 == 0:
-            print(f'Exit pnl {net_pnl_pct:.4f}% spot {self.spot_ticker.spread_percentage}, features {self.futures_ticker.spread_percentage}')
+            print(f'{self.context.symbol} Exit pnl {net_pnl_pct:.4f}% spread:'
+                  f'spot {self.spot_ticker.spread_percentage:.4f}%, futures {self.futures_ticker.spread_percentage:.4f}%'
+                  f' SPOT PNL: {(self.spot_ticker.bid_price - spot_pos.price) / spot_pos.price * 100:.4f}%,'
+                  f' FUT PNL: {(futures_pos.price - self.futures_ticker.ask_price) / futures_pos.price * 100:.4f}%')
             self._debug_info_counter = 0
 
         self._debug_info_counter += 1
@@ -753,9 +772,286 @@ class SpotFuturesArbitrageTask(BaseTradingTask[ArbitrageTaskContext, str]):
         except Exception as e:
             self.logger.error(f"Error processing partial fill: {e}")
 
+    async def _place_limit_orders(self):
+        """Place limit orders for profit capture when market opportunity doesn't exist."""
+        try:
+            # Skip if already have active limit orders
+            if self.context.active_limit_orders:
+                return
+
+            spot_bid, spot_ask = self.spot_ticker.bid_price, self.spot_ticker.ask_price
+            fut_bid, fut_ask = self.futures_ticker.bid_price, self.futures_ticker.ask_price
+            
+            # Calculate limit profit threshold 
+            limit_threshold = self.context.params.min_profit_pct + self.context.params.limit_profit_pct
+            
+            # Check for enter arbitrage opportunity (buy spot, sell futures)
+            if not self.context.positions_state.has_positions and spot_ask and fut_bid:
+                # Calculate price for exact limit_profit_pct offset
+                # Goal: Find spot price where profit = limit_profit_pct
+                # We want: (fut_bid - limit_spot_price) / limit_spot_price * 100 = limit_profit_pct
+                # Solving: limit_spot_price = fut_bid / (1 + limit_profit_pct/100)
+                limit_spot_price = fut_bid / (1 + self.context.params.limit_profit_pct / 100)
+                
+                # Ensure we don't place limit above current ask (would be market order)
+                if limit_spot_price >= spot_ask:
+                    return  # No profitable limit order possible
+                
+                # Calculate expected profit at this price
+                entry_cost_pct = self._get_entry_cost_pct(limit_spot_price, fut_bid)
+                expected_profit_pct = -entry_cost_pct
+                
+                if self._debug_info_counter <= 1:
+                    print(f'{self.context.symbol} Enter limit: target profit {self.context.params.limit_profit_pct:.3f}%, '
+                          f'calculated price {limit_spot_price:.6f}, expected profit {expected_profit_pct:.4f}%')
+
+                if expected_profit_pct >= limit_threshold:
+                    # Place limit buy on spot at calculated price
+                    await self._place_single_limit_order('enter', Side.BUY, limit_spot_price)
+                    self.logger.info(f"📋 Placing enter limit @{limit_spot_price:.6f}: "
+                                   f"expected profit {expected_profit_pct:.4f}% >= threshold {limit_threshold:.4f}%")
+
+            # Check for exit arbitrage opportunity (sell spot, buy futures)
+            elif self.context.positions_state.has_positions and spot_bid and fut_ask:
+                spot_pos = self.context.positions_state.positions['spot']
+                futures_pos = self.context.positions_state.positions['futures']
+                
+                # Calculate price for exact limit_profit_pct improvement over current market exit
+                # Current market exit PnL
+                current_market_pnl = self._get_pos_net_pnl(
+                    spot_pos.price, futures_pos.price, spot_bid, fut_ask
+                )
+                
+                # Target PnL with limit improvement
+                target_pnl = current_market_pnl + self.context.params.limit_profit_pct
+                
+                # Calculate required spot price for target PnL
+                # We need to solve for limit_spot_price where net_pnl = target_pnl
+                # For simplicity, add profit percentage to current bid
+                limit_spot_price = spot_bid * (1 + self.context.params.limit_profit_pct / 100)
+                
+                # Ensure we don't place limit below current bid (would be market order)
+                if limit_spot_price <= spot_bid:
+                    return  # No profitable limit order possible
+                
+                # Calculate expected PnL at this price
+                net_pnl_pct = self._get_pos_net_pnl(
+                    spot_pos.price, futures_pos.price, limit_spot_price, fut_ask
+                )
+
+                if self._debug_info_counter <= 1:
+                    print(f'{self.context.symbol} Exit limit: target improvement {self.context.params.limit_profit_pct:.3f}%, '
+                          f'calculated price {limit_spot_price:.6f}, expected PnL {net_pnl_pct:.4f}%')
+
+                if net_pnl_pct >= limit_threshold:
+                    # Place limit sell on spot at calculated price
+                    await self._place_single_limit_order('exit', Side.SELL, limit_spot_price)
+                    self.logger.info(f"📋 Placing exit limit @{limit_spot_price:.6f}: "
+                                   f"expected PnL {net_pnl_pct:.4f}% >= threshold {limit_threshold:.4f}%")
+                    
+        except Exception as e:
+            self.logger.error(f"Error placing limit orders: {e}")
+
+    async def _place_single_limit_order(self, direction: Literal['enter', 'exit'], spot_side: Side, spot_price: float):
+        """Place a single limit order on spot. Hedge will be placed when filled."""
+        try:
+            # Cancel existing limit orders if any
+            await self._cancel_limit_orders()
+            
+            qty_usdt = self.context.single_order_size_usdt
+            spot_qty = qty_usdt / spot_price
+            
+            # Prepare spot limit order using existing pattern
+            spot_orders: Dict[ArbitrageExchangeType, OrderPlacementParams] = {
+                'spot': OrderPlacementParams(side=spot_side, quantity=spot_qty, price=spot_price, order_type='limit')
+            }
+            
+            # Place only spot limit order
+            placed_orders = await self.exchange_manager.place_order_parallel(spot_orders)
+            
+            if placed_orders.get('spot'):
+                # Track limit orders
+                self.evolve_context(
+                    active_limit_orders={direction: placed_orders['spot'].order_id},
+                    limit_order_prices={direction: spot_price}
+                )
+                
+                self.logger.info(f"📋 Placed {direction} limit order: spot {spot_side.name}@{spot_price:.6f}")
+            
+        except Exception as e:
+            self.logger.error(f"Error placing single limit order: {e}")
+
+    async def _check_limit_orders(self):
+        """Check limit orders for fills and price updates."""
+        try:
+            if not self.context.active_limit_orders:
+                return
+                
+            # Check for fills first - if filled, execute immediate hedge
+            await self._check_limit_order_fills()
+                
+            # Then check if prices need updates based on tolerance percentage
+            spot_bid, spot_ask = self.spot_ticker.bid_price, self.spot_ticker.ask_price
+            fut_bid, fut_ask = self.futures_ticker.bid_price, self.futures_ticker.ask_price
+            
+            for direction, order_id in self.context.active_limit_orders.items():
+                current_limit_price = self.context.limit_order_prices.get(direction)
+                if not current_limit_price:
+                    continue
+                    
+                # Calculate new optimal price based on current market
+                new_optimal_price = None
+                
+                if direction == 'enter' and spot_ask and fut_bid:
+                    # Recalculate optimal entry price
+                    new_optimal_price = fut_bid / (1 + self.context.params.limit_profit_pct / 100)
+                    # Ensure it's still below current ask
+                    if new_optimal_price >= spot_ask:
+                        new_optimal_price = None  # Can't improve
+                        
+                elif direction == 'exit' and spot_bid and fut_ask:
+                    # Recalculate optimal exit price  
+                    new_optimal_price = spot_bid * (1 + self.context.params.limit_profit_pct / 100)
+                    # Ensure it's still above current bid
+                    if new_optimal_price <= spot_bid:
+                        new_optimal_price = None  # Can't improve
+                
+                # Check if price moved beyond tolerance threshold
+                if new_optimal_price:
+                    price_change_pct = abs(new_optimal_price - current_limit_price) / current_limit_price * 100
+                    
+                    if price_change_pct >= self.context.params.limit_profit_tolerance_pct:
+                        self.logger.info(f"🔄 Price moved {price_change_pct:.3f}% >= tolerance {self.context.params.limit_profit_tolerance_pct:.3f}%, "
+                                       f"updating {direction} limit: {current_limit_price:.6f} -> {new_optimal_price:.6f}")
+                        await self._update_limit_order(direction, order_id, new_optimal_price)
+                    
+        except Exception as e:
+            self.logger.error(f"Error checking limit orders: {e}")
+
+    async def _check_limit_order_fills(self):
+        """Check if limit orders are filled and execute immediate delta hedge."""
+        try:
+            for direction, order_id in list(self.context.active_limit_orders.items()):
+                # Get order status from exchange
+                exchange = self.exchange_manager.get_exchange('spot')
+                if not exchange:
+                    continue
+                    
+                # Check if order is filled by looking at active orders
+                limit_order =  exchange.private.get_order(order_id)
+                
+                if not limit_order:
+                    # Order not found - likely filled or cancelled
+                    await self._handle_limit_order_fill(direction, order_id)
+                    
+        except Exception as e:
+            self.logger.error(f"Error checking limit order fills: {e}")
+
+    async def _handle_limit_order_fill(self, direction: Literal['enter', 'exit'], order_id: str):
+        """Handle limit order fill with immediate delta hedge."""
+        try:
+            self.logger.info(f"🎯 Limit order filled: {direction} {order_id}")
+            
+            # Remove from tracking
+            new_limit_orders = self.context.active_limit_orders.copy()
+            new_limit_prices = self.context.limit_order_prices.copy()
+            del new_limit_orders[direction]
+            del new_limit_prices[direction]
+            
+            self.evolve_context(
+                active_limit_orders=new_limit_orders,
+                limit_order_prices=new_limit_prices
+            )
+            
+            # Execute immediate delta hedge on futures
+            fut_side = Side.SELL if direction == 'enter' else Side.BUY
+            qty_usdt = self.context.single_order_size_usdt
+            fut_price = self.futures_ticker.ask_price if fut_side == Side.BUY else self.futures_ticker.bid_price
+            fut_qty = qty_usdt / fut_price
+            
+            # Place futures market order for immediate hedge
+            fut_orders: Dict[ArbitrageExchangeType, OrderPlacementParams] = {
+                'futures': OrderPlacementParams(side=fut_side, quantity=fut_qty, price=fut_price, order_type='market')
+            }
+            
+            placed_orders = await self.exchange_manager.place_order_parallel(fut_orders)
+            
+            if placed_orders.get('futures'):
+                self.logger.info(f"⚡ Immediate delta hedge: futures {fut_side.name}@{fut_price:.6f}")
+                # Update tracking as normal position
+                await self._update_active_orders_after_placement(placed_orders)
+            else:
+                self.logger.error(f"❌ Failed to place delta hedge for {direction}")
+                
+        except Exception as e:
+            self.logger.error(f"Error handling limit order fill: {e}")
+
+    async def _update_limit_order(self, direction: Literal['enter', 'exit'], order_id: str, new_price: float):
+        """Update limit order price."""
+        try:
+            # Cancel old order using exchange directly
+            exchange = self.exchange_manager.get_exchange('spot')
+            if exchange:
+                await exchange.private.cancel_order(self.context.symbol, order_id)
+            
+            # Place new order
+            spot_side = Side.BUY if direction == 'enter' else Side.SELL
+            qty_usdt = self.context.single_order_size_usdt  
+            spot_qty = qty_usdt / new_price
+            
+            spot_orders: Dict[ArbitrageExchangeType, OrderPlacementParams] = {
+                'spot': OrderPlacementParams(side=spot_side, quantity=spot_qty, price=new_price, order_type='limit')
+            }
+            
+            placed_orders = await self.exchange_manager.place_order_parallel(spot_orders)
+            
+            if placed_orders.get('spot'):
+                # Update tracking
+                new_limit_orders = self.context.active_limit_orders.copy()
+                new_limit_orders[direction] = placed_orders['spot'].order_id
+                new_limit_prices = self.context.limit_order_prices.copy()
+                new_limit_prices[direction] = new_price
+                
+                self.evolve_context(
+                    active_limit_orders=new_limit_orders,
+                    limit_order_prices=new_limit_prices
+                )
+                
+                self.logger.info(f"🔄 Updated {direction} limit order: {new_price:.6f}")
+            
+        except Exception as e:
+            self.logger.error(f"Error updating limit order: {e}")
+
+    async def _cancel_limit_orders(self):
+        """Cancel all active limit orders."""
+        try:
+            exchange = self.exchange_manager.get_exchange('spot')
+            if not exchange:
+                return
+
+            for direction, order_id in self.context.active_limit_orders.items():
+                o = await exchange.private.cancel_order(self.context.symbol, order_id)
+                self._process_order_fill('spot', o)
+
+            self.evolve_context(
+                active_limit_orders={},
+                limit_order_prices={}
+            )
+            
+        except Exception as e:
+            self.logger.error(f"Error cancelling limit orders: {e}")
+
     async def cleanup(self):
         """Clean up strategy resources."""
         self.logger.info(f"🧹 Cleaning up {self.name} resources")
+        
+        # Cancel limit orders and rebalance if needed
+        if self.context.params.limit_orders_enabled:
+            await self._cancel_limit_orders()
+            # do not exit on restart
+            # if self.context.positions_state.has_positions:
+            #     await self._exit_all_positions()  # Rebalance to delta neutral
+            #
         if self.exchange_manager:
             await self.exchange_manager.shutdown()
         self.logger.info(f"✅ {self.name} cleanup completed")
@@ -780,7 +1076,10 @@ async def create_spot_futures_arbitrage_task(
     params = TradingParameters(
         max_entry_cost_pct=max_entry_cost_pct,
         min_profit_pct=min_profit_pct,
-        max_hours=max_hours
+        max_hours=max_hours,
+        limit_orders_enabled=True,
+        limit_profit_pct=0.4,
+        limit_profit_tolerance_pct=0.1
     )
 
     context = ArbitrageTaskContext(

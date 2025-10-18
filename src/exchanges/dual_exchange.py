@@ -39,6 +39,15 @@ class DualExchange:
             _DUAL_CLIENTS[config.exchange_enum] = DualExchange(config, logger)
         return _DUAL_CLIENTS[config.exchange_enum]
 
+    @property
+    def is_connected(self) -> bool:
+        """Check if both public and private exchanges are connected."""
+        return self.public.is_connected and self.private.is_connected
+
+    async def force_refresh(self):
+        """Force refresh both public and private exchanges."""
+        await asyncio.gather(self.public.refresh_exchange_data(), self.private.refresh_exchange_data())
+
     async def initialize(self, symbols=None, public_channels: List[PublicWebsocketChannelType] = None,
                          private_channels: List[PrivateWebsocketChannelType] = None) -> None:
         """

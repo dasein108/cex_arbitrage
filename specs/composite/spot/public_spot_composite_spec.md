@@ -99,6 +99,7 @@ async def _create_public_ws_with_handlers(
 ## Template Method Pattern
 
 ### Initialization Orchestration
+
 ```python
 async def initialize(self, symbols: List[Symbol] = None) -> None:
     """
@@ -107,16 +108,16 @@ async def initialize(self, symbols: List[Symbol] = None) -> None:
     """
     # Step 1: Create REST client
     self._public_rest = await self._create_public_rest()
-    
+
     # Step 2: Load initial data (parallel)
     await asyncio.gather(
         self._load_symbols_info(),
-        self._refresh_exchange_data()
+        self.refresh_exchange_data()
     )
-    
+
     # Step 3: Create WebSocket with handlers
     await self._initialize_public_websocket()
-    
+
     # Step 4: Mark as initialized
     self._initialized = True
 ```

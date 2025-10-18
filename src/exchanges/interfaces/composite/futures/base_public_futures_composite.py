@@ -65,14 +65,14 @@ class CompositePublicFuturesExchange(BasePublicComposite):
 
     # Enhanced data refresh for reconnections
 
-    async def _refresh_exchange_data(self) -> None:
+    async def refresh_exchange_data(self) -> None:
         """
         Refresh all exchange data after reconnection.
         
         Refreshes both standard market data and futures-specific data.
         """
         # Refresh composite market data
-        await super()._refresh_exchange_data()
+        await super().refresh_exchange_data()
 
         if self.active_symbols:
             active_symbols_list = list(self.active_symbols)

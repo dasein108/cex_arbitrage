@@ -226,21 +226,22 @@ async def _execution_handler(self, trade: Trade) -> None:
 ## Initialization Template Method
 
 ### Complete Initialization Flow
+
 ```python
 async def initialize(self, symbols_info: SymbolsInfo) -> None:
     """Initialize with public and private components"""
     # Step 1: Initialize public functionality (parent)
     await super().initialize()
-    
+
     # Step 2: Store symbols info
     self._symbols_info = symbols_info
-    
+
     # Step 3: Create private REST client
     self._private_rest = await self._create_private_rest()
-    
+
     # Step 4: Load private data
-    await self._refresh_exchange_data()
-    
+    await self.refresh_exchange_data()
+
     # Step 5: Initialize private WebSocket
     await self._initialize_private_websocket()
 ```

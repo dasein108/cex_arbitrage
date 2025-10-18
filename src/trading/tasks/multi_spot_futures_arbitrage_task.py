@@ -213,6 +213,11 @@ class MultiSpotFuturesArbitrageTask(SpotFuturesArbitrageTask):
             # Calculate entry cost vs futures
             entry_cost_pct = self._get_entry_cost_pct(spot_ticker.ask_price, futures_ticker.bid_price)
             
+            if self._debug_info_counter % 1000 == 0:
+                print(f'Entry cost {entry_cost_pct:.4f}% ({exchange_key} -> {self.futures_exchange.name})')
+            
+            self._debug_info_counter += 1
+            
             if entry_cost_pct < self.context.params.max_entry_cost_pct:
                 # Get exchange enum for this key
                 exchange_enum = next(ex for ex in self.spot_exchanges if f"{ex.name.lower()}_spot" == exchange_key)
@@ -684,7 +689,9 @@ class MultiSpotFuturesArbitrageTask(SpotFuturesArbitrageTask):
         exit_now = False
         
         if self._debug_info_counter % 1000 == 0:
-            print(f'Multi-spot exit pnl {net_pnl_pct:.4f}%')
+            # Get current spot ticker for spread info
+            spot_ticker = self.get_spot_ticker(self.context.multi_spot_positions.active_spot_exchange)
+            print(f'Multi-spot exit pnl {net_pnl_pct:.4f}% spot {spot_ticker.spread_percentage:.4f}%, futures {self.futures_ticker.spread_percentage:.4f}%')
             self._debug_info_counter = 0
         
         self._debug_info_counter += 1

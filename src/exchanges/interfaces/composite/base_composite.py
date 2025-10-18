@@ -66,8 +66,7 @@ class BaseCompositeExchange(Generic[RestClientType, WebSocketClientType], ABC):
         
         # Connection status tracking
         self._rest_connected = rest_client is not None
-        self._ws_connected = websocket_client is not None
-        
+
         # Connection and state management
         self._symbols_info: Optional[SymbolsInfo] = None
         self._last_update_time = 0.0
@@ -136,7 +135,7 @@ class BaseCompositeExchange(Generic[RestClientType, WebSocketClientType], ABC):
         Returns:
             True if exchange has healthy connection, False otherwise
         """
-        return self._connection_state == ConnectionState.CONNECTED
+        return self._ws.is_connected()
 
     
     @property
@@ -235,7 +234,7 @@ class BaseCompositeExchange(Generic[RestClientType, WebSocketClientType], ABC):
 
         # Track connection performance
         with LoggingTimer(self.logger, "exchange_data_refresh") as timer:
-            await self._refresh_exchange_data()
+            await self.refresh_exchange_data()
         
         self.logger.info("WebSocket connected and data refreshed",
                         tag=self._tag,
@@ -310,7 +309,7 @@ class BaseCompositeExchange(Generic[RestClientType, WebSocketClientType], ABC):
                                     error_message=str(e))
 
     @abstractmethod
-    async def _refresh_exchange_data(self) -> None:
+    async def refresh_exchange_data(self) -> None:
         """
         Refresh all exchange data after reconnection.
         

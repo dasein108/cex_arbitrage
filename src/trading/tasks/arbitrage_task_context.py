@@ -341,6 +341,10 @@ class TradingParameters(msgspec.Struct):
     max_hours: float = 6.0           # Timeout in hours
     spot_fee: float = 0.0005         # 0.05% spot trading fee
     fut_fee: float = 0.0005          # 0.05% futures trading fee
+    # Limit order parameters
+    limit_orders_enabled: bool = False  # Enable limit order profit capture
+    limit_profit_pct: float = 0.2       # Extra profit threshold for limits (0.2% = 20 bps)
+    limit_profit_tolerance_pct: float = 0.1  # Price tolerance before updating limit orders (0.1% = 10 bps)
 
 
 class ValidationResult(msgspec.Struct):
@@ -357,10 +361,11 @@ class DeltaImbalanceResult(msgspec.Struct):
     imbalance_percentage: float = 0.0
     reason: str = ""
 
+PositionDirection = Literal['enter', 'exit']
 
 class ArbitrageOpportunity(msgspec.Struct):
     """Simplified arbitrage opportunity representation."""
-    direction: Literal['enter', 'exit']  # 'spot_to_futures' | 'futures_to_spot'
+    direction: PositionDirection  # 'spot_to_futures' | 'futures_to_spot'
     spread_pct: float
     buy_price: float
     sell_price: float
@@ -457,7 +462,11 @@ class ArbitrageTaskContext(TaskContext):
         'futures': {}
     })
 
-    current_mode: Literal['enter', 'exit'] = 'enter'
+    # Limit order tracking fields
+    active_limit_orders: Dict[PositionDirection, OrderId] = msgspec.field(default_factory=dict)  # side -> order_id
+    limit_order_prices: Dict[PositionDirection, float] = msgspec.field(default_factory=dict)  # side -> price
+
+    current_mode: PositionDirection = 'enter'
     
     # Strategy state and performance
     arbitrage_state: ArbitrageState = 'idle'

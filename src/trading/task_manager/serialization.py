@@ -199,7 +199,10 @@ class TaskSerializer:
                     min_profit_pct=params_data.get('min_profit_pct', 0.1),
                     max_hours=params_data.get('max_hours', 6.0),
                     spot_fee=params_data.get('spot_fee', 0.0005),
-                    fut_fee=params_data.get('fut_fee', 0.0005)
+                    fut_fee=params_data.get('fut_fee', 0.0005),
+                    limit_orders_enabled=params_data.get('limit_orders_enabled', False),
+                    limit_offset_ticks=params_data.get('limit_offset_ticks', 2),
+                    limit_profit_pct=params_data.get('limit_profit_pct', 0.05)
                 )
             except ImportError:
                 # If import fails, leave as is - the specific task recovery will handle it
