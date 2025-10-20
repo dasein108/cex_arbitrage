@@ -4,18 +4,17 @@ Provides centralized orchestration of trading tasks with automatic lifecycle man
 """
 
 import asyncio
-import time
 import traceback
 from collections import defaultdict
-from typing import Dict, List, Optional
+from typing import Dict, Optional
 from infrastructure.logging import HFTLoggerInterface
 from .task_persistence_manager import TaskPersistenceManager
 from exchanges.structs import Symbol
-from trading.tasks.base.base_strategy import BaseStrategyTask, TaskResult
-from trading.tasks.cross_exchange_arbitrage.cross_exchange_arbitrage_task import CrossExchangeArbTaskContext, CrossExchangeArbitrageTask
+from trading.strategies.implementations.base_strategy.base_strategy import BaseStrategyTask, TaskResult
+from trading.strategies.implementations.cross_exchange_arbitrage_strategy.cross_exchange_arbitrage_task import CrossExchangeArbitrageTaskContext, CrossExchangeArbitrageTask
 
 TASK_TYPE_MAP = {
-    CrossExchangeArbTaskContext.task_type: (CrossExchangeArbTaskContext, CrossExchangeArbitrageTask),
+    CrossExchangeArbitrageTaskContext.task_type: (CrossExchangeArbitrageTaskContext, CrossExchangeArbitrageTask),
 }
 
 class StrategyTaskManager:

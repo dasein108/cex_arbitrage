@@ -1,5 +1,5 @@
 import asyncio
-from typing import Optional, Type, Dict, Callable, Awaitable, Literal
+from typing import Optional, Type, Dict, Literal
 import msgspec
 from msgspec import Struct
 from exchanges.dual_exchange import DualExchange
@@ -7,15 +7,13 @@ from config.config_manager import get_exchange_config
 from exchanges.structs import Order, SymbolInfo, ExchangeEnum, Symbol, OrderId, BookTicker
 from exchanges.structs.common import Side
 from infrastructure.exceptions.exchange import OrderNotFoundError
-from utils.exchange_utils import is_order_done
 from infrastructure.logging import HFTLoggerInterface
 from infrastructure.networking.websocket.structs import PublicWebsocketChannelType, PrivateWebsocketChannelType
 
-from trading.tasks.base_task import TaskContext, BaseTradingTask, StateHandler
-from utils import get_decrease_vector, flip_side, calculate_weighted_price
-from enum import IntEnum
-from .unfied_position import Position, PositionChange, PositionError
-from ..base.base_strategy import BaseStrategyContext
+from utils import get_decrease_vector
+from .unfied_position import Position, PositionError
+
+from trading.strategies.implementations.base_strategy.base_strategy import BaseStrategyContext, BaseStrategyTask
 
 type PrimaryExchangeRole = Literal['source', 'dest']
 
@@ -29,7 +27,7 @@ class ExchangeData(Struct):
     order_id: Optional[OrderId] = None
 
 
-class CrossExchangeArbTaskContext(BaseStrategyContext):
+class CrossExchangeArbitrageTaskContext(BaseStrategyContext):
     """Context for delta neutral execution.
 
     Extends SingleExchangeTaskContext with delta-neutral specific fields for tracking
@@ -41,25 +39,26 @@ class CrossExchangeArbTaskContext(BaseStrategyContext):
     settings: Dict[ExchangeRoleType, ExchangeData] = msgspec.field(default_factory=lambda: {'source': ExchangeData(), 'dest': ExchangeData(), 'hedge': ExchangeData()})
     order_qty: Optional[float] = None # size of each order for limit orders
 
-    task_type: str = "cross_exchange_arbitrage"
+    task_type: str = "cross_exchange_arbitrage_strategy"
 
     @property
     def tag(self) -> str:
         """Generate logging tag based on task_id and symbol."""
         return f"{self.task_type}_{self.symbol}"
 
-class CrossExchangeArbitrageTask(BaseTradingTask[CrossExchangeArbTaskContext, str]):
+class CrossExchangeArbitrageTask(BaseStrategyTask[CrossExchangeArbitrageTaskContext]):
     """State machine for executing delta-neutral trading strategies.
 
     Executes simultaneous buy and sell orders across two exchanges to maintain
     market-neutral positions while capturing spread opportunities.
     """
+
     name: str = "DeltaNeutralTask"
 
     @property
-    def context_class(self) -> Type[CrossExchangeArbTaskContext]:
+    def context_class(self) -> Type[CrossExchangeArbitrageTaskContext]:
         """Return the delta-neutral context class."""
-        return CrossExchangeArbTaskContext
+        return CrossExchangeArbitrageTaskContext
 
     def _build_tag(self) -> None:
         """Build logging tag with exchange-specific fields."""
@@ -67,7 +66,7 @@ class CrossExchangeArbitrageTask(BaseTradingTask[CrossExchangeArbTaskContext, st
 
     def __init__(self,
                  logger: HFTLoggerInterface,
-                 context: CrossExchangeArbTaskContext,
+                 context: CrossExchangeArbitrageTaskContext,
                  **kwargs):
         """Initialize cross-exchange hedged arbitrage task.
         """
@@ -88,11 +87,11 @@ class CrossExchangeArbitrageTask(BaseTradingTask[CrossExchangeArbTaskContext, st
 
         return exchanges
 
-    async def start(self, **kwargs):
+    async def start(self):
         if self.context is None:
             raise ValueError("Cannot start task: context is None (likely deserialization failed)")
 
-        await super().start(**kwargs)
+        await super().start()
 
         # Initialize DualExchanges in parallel for HFT performance
         init_tasks = []
@@ -108,10 +107,38 @@ class CrossExchangeArbitrageTask(BaseTradingTask[CrossExchangeArbTaskContext, st
         await asyncio.gather(*init_tasks)
 
         # init symbol info, reload active orders
-        await asyncio.gather(self._load_symbol_info(), self._reload_active_orders())
+        await asyncio.gather(self._load_symbol_info(), self._force_load_active_orders())
+
+    async def pause(self):
+        """Pause task and cancel any active order."""
+        await super().pause()
+        await self.cancel_all()
+
+    # Base state handlers (implementing BaseStateMixin states)
+    async def cancel(self):
+        """Handle cancelled state."""
+        await super().cancel()
+        await self.cancel_all()
+
+    async def stop(self):
+        """Handle stopped state."""
+        await super().stop()
+        await self.cancel_all()
+
+    async def cancel_all(self):
+        cancel_tasks = []
+        for exchange_role, pos in self.context.positions.items():
+            if pos.last_order:
+                cancel_tasks.append(self._cancel_order_safe(exchange_role,
+                                                            pos.last_order.order_id,
+                                                            f"cancel_all"))
+
+        canceled = await asyncio.gather(*cancel_tasks)
+
+        self.logger.info(f"🛑 Canceled all orders", orders=str(canceled))
 
 
-    async def _reload_active_orders(self):
+    async def _force_load_active_orders(self):
         for exchange_role, exchange in self._exchanges.items():
             pos = self.context.positions[exchange_role]
             last_order = self.context.positions[exchange_role].last_order
@@ -126,41 +153,23 @@ class CrossExchangeArbitrageTask(BaseTradingTask[CrossExchangeArbTaskContext, st
                 await self._track_order_execution(exchange_role, order)
 
 
+    async def _sync_exchange_order(self, exchange_role: ExchangeRoleType) -> Order | None:
+        """Get current order from exchange, track updates."""
+        pos = self.context.positions[exchange_role]
+
+        if pos.last_order:
+            updated_order = await self._exchanges[exchange_role].private.get_active_order(
+                self.context.symbol, pos.last_order.order_id
+            )
+            await self._track_order_execution(exchange_role, updated_order)
+
+
     async def _load_symbol_info(self, force = False):
         for exchange_type, exchange in self._exchanges.items():
             if force:
                 await exchange.public.load_symbols_info()
 
             self._symbol_info[exchange_type] = exchange.public.symbols_info[self.context.symbol]
-
-    async def cancel_all(self):
-        cancel_tasks = []
-        for exchange_role, pos in self.context.positions.items():
-            if pos.last_order:
-                cancel_tasks.append(self._cancel_order_safe(exchange_role,
-                                                            pos.last_order.order_id,
-                                                            f"cancel_all"))
-
-        canceled = await asyncio.gather(*cancel_tasks)
-
-        self.logger.info(f"🛑 Canceled all orders", orders=str(canceled))
-
-    async def pause(self):
-        """Pause task and cancel any active order."""
-        await self.cancel_all()
-        await super().pause()
-
-    # TODO: remove candidate
-    # async def update(self, **context_updates):
-    #     """Update iceberg parameters.
-    #
-    #     Args:
-    #         **context_updates: Partial updates (total_quantity, order_quantity, offset_ticks, etc.)
-    #     """
-    #     # Cancel current order before updating parameters
-    #     await self.cancel_all()
-    #     # Apply updates through base class
-    #     await super().update(**context_updates)
 
 
     def _get_book_ticker(self, exchange_role: ExchangeRoleType) -> BookTicker:
@@ -235,8 +244,8 @@ class CrossExchangeArbitrageTask(BaseTradingTask[CrossExchangeArbTaskContext, st
             return None
 
 
-    async def _rebalance(self) -> bool:
-        """Check if there is an imbalance for specific side."""
+    async def _rebalance_hedge(self) -> bool:
+        """Check if there is an imbalance for specific side and rebalance immediately."""
         source_qty = self.context.positions['source'].qty
         dest_qty = self.context.positions['dest'].qty
         hedge_qty = self.context.positions['hedge'].qty
@@ -259,7 +268,7 @@ class CrossExchangeArbitrageTask(BaseTradingTask[CrossExchangeArbTaskContext, st
 
         return True
 
-    async def _place_order_process(self, exchange_role: PrimaryExchangeRole):
+    async def _manage_order_place(self, exchange_role: PrimaryExchangeRole):
         """
         Place limit order to top-offset price or market order.
         Hedge should be rebalanced relative to source/dest.
@@ -314,22 +323,7 @@ class CrossExchangeArbitrageTask(BaseTradingTask[CrossExchangeArbTaskContext, st
                 tag=f"{exchange_role}:{side.name}:limit"
             )
 
-
-    async def _sync_exchange_order(self, exchange_role: ExchangeRoleType) -> Order | None:
-        """Get current order from exchange, track updates."""
-        pos = self.context.positions[exchange_role]
-
-        if pos.last_order:
-            updated_order = await self._exchanges[exchange_role].private.get_active_order(
-                self.context.symbol, pos.last_order.order_id
-            )
-            await self._track_order_execution(exchange_role, updated_order)
-
-    async def _handle_idle(self):
-        await super()._handle_idle()
-        self._transition('syncing')
-
-    async def _cancel_order_process(self, exchange_role: ExchangeRoleType) -> bool:
+    async def _manage_order_cancel(self, exchange_role: ExchangeRoleType) -> bool:
         """Determine if current order should be cancelled due to price movement."""
         curr_order = self.context.positions[exchange_role].last_order
         settings = self.context.settings[exchange_role]
@@ -377,7 +371,6 @@ class CrossExchangeArbitrageTask(BaseTradingTask[CrossExchangeArbTaskContext, st
         finally:
             self.context.save()
 
-
     def _get_exchange_quantity_remaining(self, exchange_role: PrimaryExchangeRole) -> float:
         """Get remaining quantity to fill for the given side."""
         filled_qty = self.context.positions[exchange_role].qty
@@ -394,44 +387,15 @@ class CrossExchangeArbitrageTask(BaseTradingTask[CrossExchangeArbTaskContext, st
         return quantity
 
     # Enhanced state machine handlers
-    async def _handle_syncing(self):
-        """Sync order status from both exchanges in parallel."""
+    async def _sync_positions(self):
+        """Sync order status from exchanges in parallel."""
         sync_tasks = [
             self._sync_exchange_order(exchange_role) for exchange_role in self.context.positions.keys()
         ]
         await asyncio.gather(*sync_tasks)
-        self._transition('analyzing')
-
-    async def _handle_analyzing(self):
-        """Analyze current state and determine next action."""
-        # Check completion first (highest priority)
-
-        await self._rebalance()
-
-        self._transition('managing_orders')
-
-    async def _handle_managing_orders(self):
-        """Manage limit orders (cancel/place) for both sides."""
-        management_tasks = [
-
-        ]
-        await asyncio.gather(*management_tasks)
-        self._transition('syncing')  # Return to monitoring
-
-    async def _handle_completing(self):
-        """Finalize task execution."""
-        await self.cancel_all()
-        self._transition('completed')
-
-    # Base state handlers (implementing BaseStateMixin states)
-    async def _handle_cancelled(self):
-        """Handle cancelled state."""
-        self.logger.info("🚫 Delta neutral task cancelled")
-        await self.cancel_all()
-        await super().complete()
 
 
-    async def _manage_positions(self, exchange_role: PrimaryExchangeRole):
+    async def _manage_position(self, exchange_role: PrimaryExchangeRole):
         """Manage limit orders for one side."""
         # Skip if no quantity to fill
 
@@ -440,48 +404,36 @@ class CrossExchangeArbitrageTask(BaseTradingTask[CrossExchangeArbTaskContext, st
             return
 
         # Cancel if price moved too much,
-        is_cancelled = await self._cancel_order_process(exchange_role)
+        is_cancelled = await self._manage_order_cancel(exchange_role)
         if is_cancelled:
             # place order with new cycle
             return
 
         # place order if none exists
-        await self._place_order_process(exchange_role)
+        await self._manage_order_place(exchange_role)
 
-    # Override executing handler to redirect to delta-neutral state machine
-    async def _handle_executing(self):
-        """Override base executing handler to use delta-neutral states."""
-        self._transition('syncing')
+    async def _manage_positions(self):
+        manage_tasks = [
+            self._manage_position('source'),
+            self._manage_position('dest')
+        ]
+        await asyncio.gather(*manage_tasks)
 
-    async def _handle_adjusting(self):
-        """Handle external adjustments to task parameters."""
-        self.logger.debug(f"ADJUSTING state for {self._tag}")
-        # After adjustments, return to syncing to refresh state
-        self._transition('syncing')
 
-    async def complete(self):
-        """Complete the task and clean up."""
-        await self.cancel_all()
-        await super().complete()
+    async def step(self):
+        await self._sync_positions()
 
-    def get_unified_state_handlers(self) -> Dict[str, StateHandler]:
-        """Provide complete unified state handler mapping.
+        await self._rebalance_hedge()
 
-        Includes both base states and delta-neutral specific states using string keys.
-        """
-        return {
-            # Base state handlers
-            'idle': self._handle_idle,
-            'paused': self._handle_paused,
-            'error': self._handle_error,
-            'completed': self._handle_complete,
-            'cancelled': self._handle_cancelled,
-            'executing': self._handle_executing,
-            'adjusting': self._handle_adjusting,
+        await self._manage_positions()
 
-            # Delta-neutral specific state handlers
-            'syncing': self._handle_syncing,
-            'analyzing': self._handle_analyzing,
-            'managing_orders': self._handle_managing_orders,
-            'completing': self._handle_completing,
-        }
+
+    async  def cleanup(self):
+        await super().cleanup()
+        # Close exchange connections
+        close_tasks = []
+        for exchange in self._exchanges.values():
+            close_tasks.append(exchange.close())
+        await asyncio.gather(*close_tasks)
+
+

@@ -1,11 +1,8 @@
-import json
 import time
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple, Type, TypeVar
+from typing import List, Tuple
 
 from infrastructure.logging import HFTLoggerInterface
-from trading.tasks.base.base_strategy import BaseStrategyContext
-
 
 
 class TaskPersistenceManager:

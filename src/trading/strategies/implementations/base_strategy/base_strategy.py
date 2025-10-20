@@ -168,17 +168,17 @@ class BaseStrategyTask(Generic[T], ABC):
 
     async def start(self):
         """Stop the task gracefully."""
-        self.logger.info(f"Starting task...")
+        self.logger.info(f"{self.tag} starting task...")
         self.context.status = 'active'
 
     async def stop(self):
         """Stop the task gracefully."""
-        self.logger.info(f"Stopping task")
+        self.logger.info(f"{self.tag} stopping task...")
         self.context.status = 'inactive'
     
     async def cancel(self):
         """Cancel the task immediately."""
-        self.logger.info(f"Cancelling task")
+        self.logger.info(f"{self.tag} cancelling task...")
         self.context.status = 'cancelled'
 
     @abstractmethod

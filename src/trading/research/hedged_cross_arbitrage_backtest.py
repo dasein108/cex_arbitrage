@@ -735,49 +735,5 @@ def main_sync():
         import traceback
         traceback.print_exc()
 
-# Add sync method for synthetic data
-def add_sync_methods():
-    """Add synchronous methods to the backtest class for synthetic mode."""
-    def run_backtest_simulation(self, symbol: Optional[str] = None, days: Optional[int] = None) -> Dict[str, Any]:
-        """Synchronous version for synthetic data simulation."""
-        # Update config if parameters provided
-        if symbol:
-            self.config.symbol = symbol
-        if days:
-            self.config.days = days
-            
-        print(f"🚀 Starting hedged cross-arbitrage backtest simulation for {self.config.symbol} ({self.config.days} days)")
-        print(f"📊 Configuration: Transfer delay={self.config.min_transfer_time_minutes}min, "
-              f"Fees={self.config.fees_bps}bps, Position size=${self.config.position_size_usd}")
-        
-        # Generate synthetic data
-        df = self._generate_synthetic_data()
-        
-        # Run simulation
-        df_with_signals = self._simulate_trading(df)
-        
-        # Calculate performance metrics
-        performance = self._calculate_performance_metrics()
-        
-        # Prepare comprehensive results
-        results = {
-            'config': self.config,
-            'performance': performance,
-            'positions': self.positions,
-            'df': df_with_signals,
-            'total_periods': len(df_with_signals),
-            'backtest_start': df_with_signals['timestamp'].min(),
-            'backtest_end': df_with_signals['timestamp'].max()
-        }
-        
-        # Save results
-        self._save_results(results)
-        
-        return results
-    
-    # Add method to class
-    HedgedCrossArbitrageBacktest.run_backtest_simulation = run_backtest_simulation
-
-
 if __name__ == "__main__":
     asyncio.run(main())

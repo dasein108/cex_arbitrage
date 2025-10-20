@@ -739,7 +739,7 @@ class GateioPrivateSpotRestInterface(GateioBaseSpotRestInterface, PrivateSpotRes
                 raise ExchangeRestError(500, "No withdrawal ID returned from Gate.io")
 
             # Get fee from currency info
-            currency_info = await self.get_currency_info()
+            currency_info = await self.get_assets_info()
             asset_info = currency_info.get(request.asset)
             fee = 0.0
 
