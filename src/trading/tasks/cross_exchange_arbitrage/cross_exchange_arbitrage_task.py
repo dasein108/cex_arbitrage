@@ -15,34 +15,10 @@ from trading.tasks.base_task import TaskContext, BaseTradingTask, StateHandler
 from utils import get_decrease_vector, flip_side, calculate_weighted_price
 from enum import IntEnum
 from .unfied_position import Position, PositionChange, PositionError
-
-class Direction(IntEnum):
-    FILL = 1
-    RELEASE = -1
-    NONE = 0
-
-
-# Delta-neutral execution states using Literal strings for optimal performance
-# Includes base states and delta-neutral specific states
-CrossExchangeArbState = Literal[
-    # Base states
-    'idle',
-    'paused',
-    'error',
-    'completed',
-    'cancelled',
-    'executing',
-    'adjusting',
-
-        # Delta-neutral specific states
-    'syncing',  # Sync order status from exchanges
-    'analyzing',  # Analyze imbalances and completion
-    'rebalancing',  # Handle imbalances with market orders
-    'managing_orders',  # Cancel/place limit orders
-    'completing'  # Finalize task
-]
+from ..base.base_strategy import BaseStrategyContext
 
 type PrimaryExchangeRole = Literal['source', 'dest']
+
 type ExchangeRoleType = PrimaryExchangeRole | Literal['hedge']
 
 class ExchangeData(Struct):
@@ -53,8 +29,7 @@ class ExchangeData(Struct):
     order_id: Optional[OrderId] = None
 
 
-
-class CrossExchangeArbTaskContext(TaskContext):
+class CrossExchangeArbTaskContext(BaseStrategyContext):
     """Context for delta neutral execution.
 
     Extends SingleExchangeTaskContext with delta-neutral specific fields for tracking
@@ -65,6 +40,13 @@ class CrossExchangeArbTaskContext(TaskContext):
     positions: Dict[ExchangeRoleType, Position] = msgspec.field(default_factory=lambda: {'source': Position(), 'dest': Position(), 'hedge': Position()})
     settings: Dict[ExchangeRoleType, ExchangeData] = msgspec.field(default_factory=lambda: {'source': ExchangeData(), 'dest': ExchangeData(), 'hedge': ExchangeData()})
     order_qty: Optional[float] = None # size of each order for limit orders
+
+    task_type: str = "cross_exchange_arbitrage"
+
+    @property
+    def tag(self) -> str:
+        """Generate logging tag based on task_id and symbol."""
+        return f"{self.task_type}_{self.symbol}"
 
 class CrossExchangeArbitrageTask(BaseTradingTask[CrossExchangeArbTaskContext, str]):
     """State machine for executing delta-neutral trading strategies.

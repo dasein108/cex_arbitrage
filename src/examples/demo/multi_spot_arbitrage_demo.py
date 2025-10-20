@@ -125,7 +125,7 @@ class MultiSpotArbitrageDemo:
                 return
             
             context = self.task.context
-            state = context.state
+            state = context.status
             arbitrage_state = context.arbitrage_state
             
             self.logger.info(f"📊 Status: {state} | Arbitrage: {arbitrage_state}")

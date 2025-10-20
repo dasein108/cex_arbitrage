@@ -600,12 +600,13 @@ development_config = {
 ### Common Issues
 
 #### WebSocket Connection Problems
+
 ```python
 # Enable debug logging
 logging.getLogger("exchanges.mexc.ws").setLevel(logging.DEBUG)
 
 # Check connection state
-print(f"WebSocket state: {ws_client.ws_client.state}")
+print(f"WebSocket state: {ws_client.ws_client.status}")
 print(f"Connected: {ws_client.ws_client.is_connected}")
 ```
 

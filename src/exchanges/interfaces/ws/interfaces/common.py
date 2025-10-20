@@ -29,7 +29,7 @@ class WebsocketConnectionInterface(ABC):
     @property
     def is_connected(self) -> bool:
         """Check if WebSocket is connected."""
-        return self._websocket and self._websocket.state == WsState.OPEN
+        return self._websocket and self._websocket.status == WsState.OPEN
 
     @abstractmethod
     async def connect(self) -> WebSocketClientProtocol:

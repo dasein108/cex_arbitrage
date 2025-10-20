@@ -74,16 +74,17 @@ Complete documentation of high-frequency trading performance requirements and ac
 - **Memory Efficiency**: Interned strings reuse memory vs enum object allocation
 
 **HFT State System Architecture**:
+
 ```python
 # Direct function reference mapping (0ns lookup overhead)
 handlers = {
-    'idle': self._handle_idle,           # Function reference
-    'executing': self._handle_executing, # No reflection
+    'idle': self._handle_idle,  # Function reference
+    'executing': self._handle_executing,  # No reflection
     'monitoring': self._handle_monitoring
 }
 
 # Optimized state transitions (sub-nanosecond comparisons)
-if self.context.state == 'executing':  # Interned string comparison
+if self.context.status == 'executing':  # Interned string comparison
     await handler()  # Direct function call
 ```
 

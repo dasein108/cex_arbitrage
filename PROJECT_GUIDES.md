@@ -357,7 +357,7 @@ except ExchangeAuthError as e:
 from typing import Literal
 
 TradingStrategyState = Literal[
-    'idle', 'executing', 'monitoring', 'adjusting', 
+    'idle', 'executing', 'monitoring', 'adjusting',
     'completed', 'not_started', 'cancelled', 'paused', 'error'
 ]
 
@@ -366,23 +366,28 @@ ArbitrageState = Literal[
     'initializing', 'monitoring', 'analyzing', 'error_recovery'
 ]
 
+
 # State transitions use strings directly
 def _transition(self, new_state: str) -> None:
-    self.context.state = new_state  # Direct string assignment
+    self.context.status = new_state  # Direct string assignment
+
 
 # State handlers use string keys with function references  
 def get_unified_state_handlers(self) -> Dict[str, StateHandler]:
     return {
-        'idle': self._handle_idle,           # Direct function reference
-        'executing': self._handle_executing, # No reflection overhead
+        'idle': self._handle_idle,  # Direct function reference
+        'executing': self._handle_executing,  # No reflection overhead
         'monitoring': self._handle_monitoring,
         'completed': self._handle_completed
     }
 
+
 # ❌ PROHIBITED - IntEnum states (100x slower)
 from enum import IntEnum
+
+
 class SlowTradingState(IntEnum):  # NEVER USE
-    IDLE = 1       # Enum comparison overhead
+    IDLE = 1  # Enum comparison overhead
     EXECUTING = 2  # Method name string lookup
     COMPLETED = 3  # Runtime reflection for handlers
 ```
@@ -401,16 +406,17 @@ class SlowTradingState(IntEnum):  # NEVER USE
 - **Serialization Speed**: Strings serialize 10x+ faster than enum values
 
 **Implementation Pattern**:
+
 ```python
 # Base task defines unified handler pattern
 class BaseTradingTask:
     def get_unified_state_handlers(self) -> Dict[str, StateHandler]:
         """Override in subclasses with complete state mapping."""
         raise NotImplementedError("Subclasses must implement unified handlers")
-    
+
     async def execute_once(self) -> TaskExecutionResult:
         # Direct function call - no reflection
-        handler = self._state_handlers.get(self.context.state)
+        handler = self._state_handlers.get(self.context.status)
         if handler:
             await handler()  # Direct function invocation
 ```
