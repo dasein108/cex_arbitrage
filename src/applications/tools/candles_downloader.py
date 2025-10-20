@@ -36,7 +36,7 @@ from config.config_manager import HftConfig
 from exchanges.structs.enums import ExchangeEnum, KlineInterval
 from exchanges.structs.common import Symbol, Kline
 from exchanges.structs.types import AssetName
-from exchanges.exchange_factory import get_composite_implementation
+from exchanges.exchange_factory import get_composite_implementation, get_rest_implementation
 
 
 # Import exchange modules to trigger auto-registration
@@ -265,10 +265,10 @@ class CandlesDownloader:
         """Execute the download operation with simplified error handling."""
         # Create exchange client using standard constructors
         exchange_config = self.config.get_exchange_config(exchange.value)
-        client = self._create_exchange_client(exchange, exchange_config)
+        client = get_rest_implementation(exchange_config, False)
         
         try:
-            klines = await self._fetch_klines(client, symbol_obj, timeframe_enum)
+            klines = await self._fetch_klines(client, symbol_obj, timeframe_enum, start_date, end_date)
             if not klines:
                 self.logger.warning(f"No data received from exchange for {symbol_obj}")
                 return str(csv_path)
@@ -285,9 +285,9 @@ class CandlesDownloader:
             if client:
                 await client.close()
     
-    async def _fetch_klines(self, client, symbol_obj: Symbol, timeframe_enum: KlineInterval) -> List:
+    async def _fetch_klines(self, client, symbol_obj: Symbol, timeframe_enum: KlineInterval, start_date: datetime, end_date: datetime) -> List:
         """Fetch klines data from exchange client."""
-        klines = await client.get_klines_batch(symbol_obj, timeframe_enum)
+        klines = await client.get_klines_batch(symbol_obj, timeframe_enum, date_from=start_date, date_to=end_date)
         self.logger.info(f"Downloaded {len(klines)} candles")
         return klines
     
@@ -300,14 +300,7 @@ class CandlesDownloader:
             for kline in klines:
                 row = self._kline_to_csv_row(kline, exchange_name, timeframe)
                 writer.writerow(row)
-    
-    def _create_exchange_client(self, exchange: ExchangeEnum, config):
-        """Create exchange client using simplified factory with constructor injection."""
-        # Use simplified factory pattern for public market data (candles/klines)
-        return get_composite_implementation(
-            exchange_config=config,
-            is_private=False  # Candles/klines are public market data
-        )
+
     
     def _log_completion_stats(self, klines: List, csv_path: Path) -> None:
         """Log completion statistics."""

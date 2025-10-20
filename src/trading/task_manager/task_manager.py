@@ -242,6 +242,8 @@ class TaskManager:
                     saved = self._persistence.save_context(task.task_id, result.context)
                     if not saved:
                         self.logger.warning(f"Failed to save context for task {task.task_id}")
+                    # reset save flag
+                    task.context.should_save_flag = False
                 
                 # Calculate next execution time
                 self._next_execution[task.task_id] = time.time() + max(0.001, result.next_delay)

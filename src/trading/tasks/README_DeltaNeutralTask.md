@@ -382,7 +382,7 @@ profit_bps = (spread / context.avg_price[Side.BUY]) * 10000
 if volatility > threshold:
     task.update(
         tick_tolerance={Side.BUY: 10, Side.SELL: 10},  # Wider tolerance
-        order_quantity=context.order_quantity * 0.5    # Smaller slices
+        order_quantity=context.order_qty * 0.5  # Smaller slices
     )
 ```
 

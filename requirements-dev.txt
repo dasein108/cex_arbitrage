@@ -21,3 +21,4 @@ memory-profiler==0.61.0
 
 matplotlib
 seaborn
+jupyterlab==4.0.4

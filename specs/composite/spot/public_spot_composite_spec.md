@@ -111,7 +111,7 @@ async def initialize(self, symbols: List[Symbol] = None) -> None:
 
     # Step 2: Load initial data (parallel)
     await asyncio.gather(
-        self._load_symbols_info(),
+        self.load_symbols_info(),
         self.refresh_exchange_data()
     )
 

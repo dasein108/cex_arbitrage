@@ -324,18 +324,267 @@ def calculate_mean_spreads(opportunities: np.array):
     return float(mean_entry_spread), float(mean_exit_spread)
 
 
+def calculate_total_arbitrage_spread(df: pd.DataFrame, fees_pct: float = 0.2) -> pd.DataFrame:
+    """
+    Calculate total arbitrage spread with fees from book ticker data.
+    
+    This calculates the combined arbitrage opportunity between:
+    1. MEXC spot vs Gate.io futures
+    2. Gate.io spot vs Gate.io futures
+    
+    Args:
+        df: DataFrame with columns:
+            - mexc_bid_price, mexc_ask_price (MEXC spot)
+            - gateio_bid_price, gateio_ask_price (Gate.io spot)
+            - gateio_futures_bid_price, gateio_futures_ask_price (Gate.io futures)
+        fees_pct: Total fees percentage (default 0.2% = 0.1% + 0.05% + 0.05%)
+    
+    Returns:
+        DataFrame with additional columns:
+        - mexc_vs_gateio_futures_arb: MEXC spot → Gate.io futures arbitrage
+        - gateio_spot_vs_futures_arb: Gate.io spot vs futures arbitrage
+        - total_arbitrage_sum: Sum of both opportunities
+        - total_arbitrage_sum_fees: After fees (the key signal value)
+    """
+    df = df.copy()
+    
+    # 1. MEXC spot vs Gate.io futures (buy MEXC, sell Gate.io futures)
+    df['mexc_vs_gateio_futures_arb'] = (
+        (df['gateio_futures_bid_price'] - df['mexc_spot_ask_price']) /
+        df['gateio_futures_bid_price'] * 100
+    )
+    
+    # 2. Gate.io spot vs futures (buy Gate.io spot, sell Gate.io futures)
+    df['gateio_spot_vs_futures_arb'] = (
+        (df['gateio_spot_bid_price'] - df['gateio_futures_ask_price']) /
+        df['gateio_spot_bid_price'] * 100
+    )
+    
+    # 3. Total arbitrage sum
+    df['total_arbitrage_sum'] = (
+        df['mexc_vs_gateio_futures_arb'] + df['gateio_spot_vs_futures_arb']
+    )
+    
+    # 4. Apply fees
+    df['total_arbitrage_sum_fees'] = df['total_arbitrage_sum'] - fees_pct
+    
+    return df
+
+
+def get_current_arbitrage_spread(
+    latest_book_tickers: pd.DataFrame,
+    fees_pct: float = 0.2
+) -> Dict[str, float]:
+    """
+    Calculate current arbitrage spread from latest book ticker data.
+    
+    Args:
+        latest_book_tickers: DataFrame with latest book ticker data
+            Should contain bid/ask prices for MEXC, Gate.io spot and futures
+        fees_pct: Total fees percentage (default 0.2%)
+    
+    Returns:
+        Dict with:
+        - current_spread: Current total_arbitrage_sum_fees value
+        - mexc_futures_arb: MEXC vs Gate.io futures component
+        - spot_futures_arb: Gate.io spot vs futures component
+        - timestamp: When this was calculated
+    """
+    if latest_book_tickers.empty:
+        return {
+            'current_spread': 0.0,
+            'mexc_futures_arb': 0.0,
+            'spot_futures_arb': 0.0,
+            'timestamp': datetime.now(timezone.utc)
+        }
+    
+    # Get the most recent row
+    latest = latest_book_tickers.iloc[-1]
+    
+    # Calculate arbitrage components
+    mexc_futures_arb = (
+        (latest['gateio_futures_bid_price'] - latest['mexc_spot_ask_price']) /
+        latest['gateio_futures_bid_price'] * 100
+    )
+    
+    spot_futures_arb = (
+        (latest['gateio_spot_bid_price'] - latest['gateio_futures_ask_price']) /
+        latest['gateio_spot_bid_price'] * 100
+    )
+    
+    # Total spread after fees
+    total_sum = mexc_futures_arb + spot_futures_arb
+    current_spread = total_sum - fees_pct
+    
+    return {
+        'current_spread': float(current_spread),
+        'mexc_futures_arb': float(mexc_futures_arb),
+        'spot_futures_arb': float(spot_futures_arb),
+        'total_sum': float(total_sum),
+        'timestamp': latest.name if isinstance(latest.name, datetime) else datetime.now(timezone.utc)
+    }
+
+
+async def generate_arbitrage_signal_from_db(
+    symbol: Symbol,
+    lookback_hours: int = 24,
+    entry_percentile: int = 10,
+    exit_threshold: float = 0.05,
+    position_open: bool = False,
+    position_duration: int = 0,
+    position_pnl: float = 0.0
+) -> Dict[str, any]:
+    """
+    Generate arbitrage signal using database book ticker data.
+    
+    This combines:
+    1. Load historical book ticker data from DB
+    2. Calculate arbitrage spreads
+    3. Get current spread
+    4. Generate trading signal
+    
+    Args:
+        symbol: Trading symbol
+        lookback_hours: Hours of historical data for percentile calc (default 24)
+        entry_percentile: Percentile threshold for entry (default 10)
+        exit_threshold: Exit when spread below this (default 0.05%)
+        position_open: Whether position currently open
+        position_duration: How long position open (periods)
+        position_pnl: Current P&L if position open
+    
+    Returns:
+        Dict with:
+        - signal: 'enter', 'exit', or 'none'
+        - current_spread: Current arbitrage spread after fees
+        - entry_threshold: Calculated percentile threshold
+        - spread_percentile: Where current sits in distribution
+        - historical_stats: Mean, std, min, max of historical spreads
+    """
+    from arbitrage_signals import generate_arbitrage_signal, SignalConfig
+    
+    # Load historical data
+    end_date = datetime.now(timezone.utc)
+    start_date = end_date - pd.Timedelta(hours=lookback_hours)
+    
+    print(f"📊 Loading {lookback_hours}h of data for {symbol.base}/{symbol.quote}")
+    
+    # Load market data from all 3 exchanges
+    df = await load_market_data(
+        symbol=symbol,
+        start_date=start_date,
+        end_date=end_date,
+        exchanges=[ExchangeEnum.MEXC, ExchangeEnum.GATEIO, ExchangeEnum.GATEIO_FUTURES]
+    )
+    
+    if df.empty:
+        print("❌ No data available")
+        return {
+            'signal': 'none',
+            'current_spread': 0.0,
+            'error': 'No data available'
+        }
+    
+    # Calculate arbitrage spreads
+    df = calculate_total_arbitrage_spread(df)
+    
+    # Get historical spread array for percentile calculation
+    historical_spreads = df['total_arbitrage_sum_fees'].dropna().values
+    
+    if len(historical_spreads) < 100:
+        print(f"⚠️  Only {len(historical_spreads)} data points, need at least 100")
+        return {
+            'signal': 'none',
+            'current_spread': 0.0,
+            'error': f'Insufficient data: {len(historical_spreads)} points'
+        }
+    
+    # Get current spread from latest data
+    current_data = get_current_arbitrage_spread(df.tail(1))
+    current_spread = current_data['current_spread']
+    
+    # Configure signal generation
+    config = SignalConfig(
+        entry_min_spread=0.1,
+        entry_percentile=entry_percentile,
+        exit_spread=exit_threshold,
+        exit_max_duration=120,
+        exit_stop_loss=-0.3
+    )
+    
+    # Generate signal
+    signal = generate_arbitrage_signal(
+        current_spread=current_spread,
+        spread_history=historical_spreads,
+        position_open=position_open,
+        position_duration=position_duration,
+        position_pnl=position_pnl,
+        config=config
+    )
+    
+    # Calculate statistics
+    entry_threshold = np.percentile(historical_spreads, 100 - entry_percentile)
+    spread_percentile = (historical_spreads < current_spread).sum() / len(historical_spreads) * 100
+    
+    return {
+        'signal': signal,
+        'current_spread': current_spread,
+        'mexc_futures_arb': current_data['mexc_futures_arb'],
+        'spot_futures_arb': current_data['spot_futures_arb'],
+        'entry_threshold': float(entry_threshold),
+        'spread_percentile': float(spread_percentile),
+        'timestamp': current_data['timestamp'],
+        'historical_stats': {
+            'mean': float(np.mean(historical_spreads)),
+            'std': float(np.std(historical_spreads)),
+            'min': float(np.min(historical_spreads)),
+            'max': float(np.max(historical_spreads)),
+            'count': len(historical_spreads)
+        }
+    }
+
+
 if __name__ == "__main__":
     import asyncio
 
     async def main():
         # Example usage
-        symbol = Symbol(base=AssetName("LUNC"), quote=AssetName("USDT"))
-        end_date = datetime.utcnow()
-
-        start_date = end_date - pd.Timedelta(minutes=5)
-
+        symbol = Symbol(base=AssetName("F"), quote=AssetName("USDT"))
+        
+        # Test 1: Load recent data and calculate spreads
+        print("="*60)
+        print("TEST 1: Calculate arbitrage spreads")
+        end_date = datetime.now(timezone.utc)
+        start_date = end_date - pd.Timedelta(hours=1)
+        
         df = await load_market_data(symbol=symbol, start_date=start_date, end_date=end_date)
-
-        print(df.head())
+        df = calculate_total_arbitrage_spread(df)
+        
+        print(f"Data shape: {df.shape}")
+        print("\nLast 5 arbitrage calculations:")
+        print(df[['mexc_vs_gateio_futures_arb', 'gateio_spot_vs_futures_arb', 
+                 'total_arbitrage_sum_fees']].tail())
+        
+        # Test 2: Get current spread
+        print("\n" + "="*60)
+        print("TEST 2: Current spread calculation")
+        current = get_current_arbitrage_spread(df.tail(1))
+        print(f"Current spread: {current['current_spread']:.3f}%")
+        print(f"  MEXC→Futures: {current['mexc_futures_arb']:.3f}%")
+        print(f"  Spot→Futures: {current['spot_futures_arb']:.3f}%")
+        
+        # Test 3: Generate signal
+        print("\n" + "="*60)
+        print("TEST 3: Signal generation")
+        signal_data = await generate_arbitrage_signal_from_db(
+            symbol=symbol,
+            lookback_hours=24,
+            position_open=False
+        )
+        
+        print(f"Signal: {signal_data['signal'].upper()}")
+        print(f"Current spread: {signal_data['current_spread']:.3f}%")
+        print(f"Entry threshold: {signal_data['entry_threshold']:.3f}%")
+        print(f"Percentile: {signal_data['spread_percentile']:.1f}%")
+        print(f"Historical mean: {signal_data['historical_stats']['mean']:.3f}%")
 
     asyncio.run(main())

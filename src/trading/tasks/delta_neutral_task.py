@@ -52,8 +52,9 @@ class DeltaNeutralTaskContext(TaskContext):
     total_quantity: Optional[float] = None
     filled_quantity: Dict[Side, float] = msgspec.field(default_factory=lambda: {Side.BUY: 0.0, Side.SELL: 0.0})
     avg_price: Dict[Side, float] = msgspec.field(default_factory=lambda: {Side.BUY: 0.0, Side.SELL: 0.0})
-    exchange_names: Dict[Side, ExchangeEnum] = msgspec.field(default_factory=lambda: {Side.BUY: None, Side.SELL: None})
-    direction: Direction = Direction.NONE
+    spot_exchange: Optional[ExchangeEnum] = None
+    futures_exchange: Optional[ExchangeEnum] = None
+    direction: Direction = Direction.FILL  # FILL: buy spot/sell futures, RELEASE: buy futures/sell spot
     order_quantity: Optional[float] = None
     offset_ticks: Dict[Side, int] = msgspec.field(default_factory=lambda: {Side.BUY: 0, Side.SELL: 0})  # offset_tick = -1 means MARKET order
     tick_tolerance: Dict[Side, int] = msgspec.field(default_factory=lambda: {Side.BUY: 0, Side.SELL: 0})
@@ -75,9 +76,10 @@ class DeltaNeutralTask(BaseTradingTask[DeltaNeutralTaskContext, str]):
 
     def _build_tag(self) -> None:
         """Build logging tag with exchange-specific fields."""
-        buy_exchange = self.context.exchange_names[Side.BUY].name if self.context.exchange_names[Side.BUY] else "UNKNOWN"
-        sell_exchange = self.context.exchange_names[Side.SELL].name if self.context.exchange_names[Side.SELL] else "UNKNOWN"
-        self._tag = f'{self.name}_BUY:{buy_exchange}_SELL:{sell_exchange}_{self.context.symbol}'
+        spot_name = self.context.spot_exchange.name if self.context.spot_exchange else "UNKNOWN"
+        futures_name = self.context.futures_exchange.name if self.context.futures_exchange else "UNKNOWN"
+        mode = "FILL" if self.context.direction == Direction.FILL else "RELEASE"
+        self._tag = f'{self.name}_{mode}_SPOT:{spot_name}_FUTURES:{futures_name}_{self.context.symbol}'
 
     def __init__(self,
                  logger: HFTLoggerInterface,
@@ -87,7 +89,9 @@ class DeltaNeutralTask(BaseTradingTask[DeltaNeutralTaskContext, str]):
         
         Accepts DeltaNeutralTaskContext with parameters:
         - symbol: Trading symbol (required)
-        - exchange_names: Dict mapping Side to ExchangeEnum (required)
+        - spot_exchange: Spot exchange enum (required)
+        - futures_exchange: Futures exchange enum (required)
+        - direction: FILL (buy spot/sell futures) or RELEASE (buy futures/sell spot)
         - total_quantity: Total amount to execute on each side
         - order_quantity: Size of each order slice
         - offset_ticks: Price offset in ticks for each side
@@ -98,13 +102,28 @@ class DeltaNeutralTask(BaseTradingTask[DeltaNeutralTaskContext, str]):
         # DualExchange instances for each side (unified public/private)
         self._exchanges: Dict[Side, DualExchange] = {}
         
-        # Initialize DualExchange for each side
-        for side, exchange_enum in self.context.exchange_names.items():
-            config = get_exchange_config(exchange_enum.value)
-            self._exchanges[side] = DualExchange.get_instance(config, self.logger)
+        # Initialize exchanges based on direction mode
+        spot_config = get_exchange_config(self.context.spot_exchange.value)
+        futures_config = get_exchange_config(self.context.futures_exchange.value)
+        
+        if self.context.direction == Direction.FILL:
+            # FILL mode: buy spot, sell futures
+            self._exchanges[Side.BUY] = DualExchange.get_instance(spot_config, self.logger)
+            self._exchanges[Side.SELL] = DualExchange.get_instance(futures_config, self.logger)
+        else:
+            # RELEASE mode: buy futures, sell spot
+            self._exchanges[Side.BUY] = DualExchange.get_instance(futures_config, self.logger)
+            self._exchanges[Side.SELL] = DualExchange.get_instance(spot_config, self.logger)
 
         self._current_orders: Dict[Side, Optional[Order]] = {Side.BUY: None, Side.SELL: None}
         self._symbol_info: Dict[Side, Optional[SymbolInfo]] = {Side.BUY: None, Side.SELL: None}
+
+    def _get_exchange_type(self, side: Side) -> str:
+        """Get exchange type (spot/futures) for a given side based on direction."""
+        if self.context.direction == Direction.FILL:
+            return "spot" if side == Side.BUY else "futures"
+        else:  # RELEASE
+            return "futures" if side == Side.BUY else "spot"
 
     async def start(self, **kwargs):
         if self.context is None:
@@ -130,6 +149,10 @@ class DeltaNeutralTask(BaseTradingTask[DeltaNeutralTaskContext, str]):
             #     exchange.bind_handlers(on_balance=)
 
         await asyncio.gather(*init_tasks)
+        
+        # Load balances: futures (quantity from balance, price=avg_price), spot (current ask_price, quantity from balance)
+        futures_balance = await self._exchanges[Side.SELL].private.fetch_balance()
+        spot_balance = await self._exchanges[Side.BUY].private.fetch_balance()
         
         # Set symbol info and restore orders
         for side in [Side.BUY, Side.SELL]:
@@ -296,7 +319,8 @@ class DeltaNeutralTask(BaseTradingTask[DeltaNeutralTaskContext, str]):
         flip_side_filled = self.context.filled_quantity[flip_side(side)]
         imbalance_quantity = flip_side_filled - self.context.filled_quantity[side]
         
-        self.logger.info(f"📈 Rebalancing {side.name} imbalance: {imbalance_quantity}")
+        exchange_type = self._get_exchange_type(side)
+        self.logger.info(f"📈 Rebalancing {side.name} on {exchange_type} imbalance: {imbalance_quantity}")
         
         # Cancel existing order first
         await self._cancel_side_order(side)
@@ -332,13 +356,14 @@ class DeltaNeutralTask(BaseTradingTask[DeltaNeutralTaskContext, str]):
         # adjust with exchange minimums and futures contracts
         order_quantity = await self._prepare_order_quantity(side, order_quantity)
 
+        exchange_type = self._get_exchange_type(side)
         order = await self._place_limit_order_safely_dual(
             self._exchanges[side],
             self.context.symbol,
             side,
             order_quantity,
             order_price,
-            side.name
+            f"{side.name} on {exchange_type}"
         )
 
         if order:
@@ -437,7 +462,8 @@ class DeltaNeutralTask(BaseTradingTask[DeltaNeutralTaskContext, str]):
         is_complete = (self._get_quantity_to_fill(Side.BUY) < self._get_min_quantity(Side.BUY)
                        and self._get_quantity_to_fill(Side.SELL) < self._get_min_quantity(Side.SELL))
         if is_complete:
-            self.logger.info(f"🎉 DeltaNeutralTask completed {self._tag}",
+            mode = "FILL" if self.context.direction == Direction.FILL else "RELEASE"
+            self.logger.info(f"🎉 DeltaNeutralTask {mode} mode completed {self._tag}",
                              total_filled=self.context.filled_quantity,
                              avg_price_buy=self.context.avg_price[Side.BUY],
                              avg_price_sell=self.context.avg_price[Side.SELL])
@@ -499,6 +525,7 @@ class DeltaNeutralTask(BaseTradingTask[DeltaNeutralTaskContext, str]):
     async def _handle_completing(self):
         """Finalize task execution."""
         await self.cancel_all()
+        self._transition('completed')
     
     # Base state handlers (implementing BaseStateMixin states)
     async def _handle_cancelled(self):

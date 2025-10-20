@@ -21,7 +21,7 @@ StateHandler = Callable[[], Awaitable[None]]
 
 from config.structs import ExchangeConfig
 from exchanges.structs import Symbol, Side, ExchangeEnum
-from infrastructure.logging import HFTLoggerInterface
+from infrastructure.logging import HFTLoggerInterface, get_strategy_logger
 from trading.struct import TradingStrategyState
 from trading.task_manager.serialization import TaskSerializer
 from exchanges.dual_exchange import DualExchange
@@ -50,6 +50,14 @@ class TaskContext(msgspec.Struct, frozen=False, kw_only=True):
     error: Optional[Exception] = None
     metadata: Dict[str, Any] = msgspec.field(default_factory=dict)
     should_save_flag: bool = True  # Whether to persist this task
+
+    @property
+    def tag(self) -> str:
+        """Generate logging tag based on task_id."""
+        return f"task.{self.task_id}"
+
+    def save(self):
+        self.should_save_flag = True
 
     def evolve(self, **updates) -> 'TaskContext':
         """Create a new context with updated fields.
@@ -161,7 +169,7 @@ class BaseTradingTask(Generic[T, StateT], ABC):
         if not isinstance(context, TaskContext):
             raise TypeError(f"Context must be a TaskContext, got {type(context)}")
         
-        self.logger = logger
+        self.logger = logger or get_strategy_logger(f"task.{self.context.tag}")
         self.delay = delay
         self.context: T = context
         self._tag = "not-set"

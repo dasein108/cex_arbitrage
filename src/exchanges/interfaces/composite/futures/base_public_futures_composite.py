@@ -93,7 +93,7 @@ class CompositePublicFuturesExchange(BasePublicComposite):
             True if symbol is tradable for futures, False otherwise
         """
         if not self._symbols_info:
-            await self._load_symbols_info()
+            await self.load_symbols_info()
         
         if symbol not in self._symbols_info:
             return False
