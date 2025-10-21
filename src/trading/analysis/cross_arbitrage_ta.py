@@ -18,8 +18,6 @@ from datetime import datetime, timedelta, timezone
 from typing import Dict, Optional, Literal, Tuple, List
 from dataclasses import dataclass
 
-from reactivex.operators import timestamp
-
 from exchanges.structs import Symbol, BookTicker, AssetName, ExchangeEnum
 from trading.analysis.data_loader import get_cached_book_ticker_data
 from infrastructure.logging import HFTLoggerInterface, get_logger
@@ -29,7 +27,7 @@ from msgspec import Struct
 class CrossArbitrageSignalConfig(Struct):
     """Configuration for CrossArbitrageTA."""
     lookback_hours: int = 24
-    refresh_minutes: int = 15
+    refresh_minutes: Optional[int] = None  # Auto-refresh interval in minutes (None = disabled)
     entry_percentile: int = 10  # Top 10% of spreads for dynamic entry threshold
     exit_percentile: int = 85  # 85th percentile for dynamic exit threshold
     total_fees: float = 0.2  # Total round-trip fees percentage
@@ -93,14 +91,32 @@ class CrossArbitrageTA:
         self.historical_df: Optional[pd.DataFrame] = None
         self.thresholds: Optional[ArbitrageThresholds] = None
         self.last_refresh: Optional[datetime] = None
+        
+        # Auto-refresh task management
+        self._refresh_task: Optional[asyncio.Task] = None
+        self._shutdown_event = asyncio.Event()
+        self._is_running = False
 
     async def initialize(self) -> None:
         """Load initial historical data and calculate thresholds."""
+        if self._is_running:
+            self.logger.warning("CrossArbitrageTA already initialized")
+            return
+            
         self.logger.info("🔄 Initializing CrossArbitrageTA",
                          symbol=str(self.symbol),
-                         lookback_hours=self.lookback_hours)
+                         lookback_hours=self.lookback_hours,
+                         auto_refresh=self.refresh_minutes is not None)
 
+        # Load initial data
         await self.refresh_historical_data()
+        
+        # Start auto-refresh task if enabled
+        if self.refresh_minutes is not None:
+            self._is_running = True
+            self._refresh_task = asyncio.create_task(self._auto_refresh_loop())
+            self.logger.info("🔄 Auto-refresh task started",
+                           refresh_interval_minutes=self.refresh_minutes)
 
         if self.thresholds:
             self.logger.info("✅ CrossArbitrageTA initialized",
@@ -166,6 +182,80 @@ class CrossArbitrageTA:
 
         except Exception as e:
             self.logger.error(f"❌ Error refreshing historical data: {e}")
+
+    async def _auto_refresh_loop(self) -> None:
+        """
+        Background task that automatically refreshes historical data every N minutes.
+        
+        Runs until shutdown is requested.
+        """
+        if self.refresh_minutes is None:
+            return
+            
+        self.logger.debug("🔄 Auto-refresh loop started")
+        
+        try:
+            while not self._shutdown_event.is_set():
+                # Wait for the refresh interval or shutdown
+                try:
+                    await asyncio.wait_for(
+                        self._shutdown_event.wait(),
+                        timeout=self.refresh_minutes * 60  # Convert to seconds
+                    )
+                    # If we reach here, shutdown was requested
+                    break
+                except asyncio.TimeoutError:
+                    # Timeout reached, time to refresh
+                    pass
+                
+                if not self._shutdown_event.is_set():
+                    self.logger.debug("🔄 Auto-refresh triggered")
+                    try:
+                        await self.refresh_historical_data()
+                        self.logger.debug("✅ Auto-refresh completed successfully")
+                    except Exception as e:
+                        self.logger.error(f"❌ Auto-refresh failed: {e}")
+                        
+        except asyncio.CancelledError:
+            self.logger.debug("🔄 Auto-refresh loop cancelled")
+            raise
+        except Exception as e:
+            self.logger.error(f"❌ Auto-refresh loop error: {e}")
+        finally:
+            self.logger.debug("🔄 Auto-refresh loop stopped")
+
+    async def shutdown(self) -> None:
+        """
+        Shutdown the TA module and cleanup resources.
+        
+        Stops the auto-refresh task and cleans up any background tasks.
+        """
+        if not self._is_running:
+            self.logger.debug("CrossArbitrageTA already shutdown")
+            return
+            
+        self.logger.info("🛑 Shutting down CrossArbitrageTA")
+        
+        # Signal shutdown
+        self._shutdown_event.set()
+        self._is_running = False
+        
+        # Cancel and cleanup auto-refresh task
+        if self._refresh_task and not self._refresh_task.done():
+            self._refresh_task.cancel()
+            try:
+                await self._refresh_task
+            except asyncio.CancelledError:
+                pass
+            except Exception as e:
+                self.logger.error(f"❌ Error during refresh task cleanup: {e}")
+        
+        self._refresh_task = None
+        self.logger.info("✅ CrossArbitrageTA shutdown complete")
+
+    async def cleanup(self) -> None:
+        """Alias for shutdown() for consistency with other components."""
+        await self.shutdown()
 
     async def _load_exchange_data(
             self,
@@ -279,10 +369,18 @@ class CrossArbitrageTA:
                           data_points=self.thresholds.data_points)
 
     def should_refresh(self) -> bool:
-        """Check if historical data needs refreshing."""
+        """
+        Check if historical data needs refreshing.
+        
+        Note: With auto-refresh enabled, this method is mainly for manual refresh checks.
+        """
         if self.last_refresh is None:
             return True
-
+        
+        # If auto-refresh is disabled, use manual refresh check
+        if self.refresh_minutes is None:
+            return False
+            
         elapsed = (datetime.now(timezone.utc) - self.last_refresh).total_seconds() / 60
         return elapsed >= self.refresh_minutes
 
@@ -345,11 +443,8 @@ class CrossArbitrageTA:
         Returns:
             Tuple of (signal, spread_data)
         """
-        # Check if we need to refresh historical data (async operation)
-        if self.should_refresh():
-            self.logger.debug("📊 Historical data refresh needed")
-            # Note: In production, trigger async refresh without blocking
-            # asyncio.create_task(self.refresh_historical_data())
+        # Note: Historical data is automatically refreshed by background task if enabled
+        # Manual refresh can still be triggered by calling refresh_historical_data() directly
 
         # Calculate current spread (HFT-optimized)
         current = self.calculate_realtime_spread(source_book, dest_book, hedge_book)
@@ -408,12 +503,12 @@ class CrossArbitrageTA:
 async def example_usage():
     """Demonstrate how to use CrossArbitrageTA in a strategy."""
 
-    # Initialize TA module with domain-aware configuration
+    # Initialize TA module with domain-aware configuration and auto-refresh
     ta = CrossArbitrageTA(
         symbol=Symbol(base=AssetName("BTC"), quote=AssetName("USDT")),
         config=CrossArbitrageSignalConfig(
             lookback_hours=24,
-            refresh_minutes=15,
+            refresh_minutes=15,  # Auto-refresh every 15 minutes (set to None to disable)
             entry_percentile=10,  # Top 10% of spreads for dynamic entry
             exit_percentile=85  # 85th percentile for dynamic exit
         )
@@ -468,8 +563,16 @@ async def example_usage():
 
     # Get performance metrics for HFT compliance
     metrics = ta.get_performance_metrics()
-    print(f"📊 Performance: {metrics['calculation_count']} calculations, "
-          f"{metrics['data_points']} data points")
+    print(f"📊 Performance: {metrics['data_points']} data points, "
+          f"Auto-refresh: {'enabled' if ta.refresh_minutes else 'disabled'}")
+    
+    # Simulate running for a while...
+    print("⏳ Simulating runtime (auto-refresh running in background)...")
+    await asyncio.sleep(2)  # In production, this would be your main strategy loop
+    
+    # Cleanup when done
+    print("🛑 Shutting down...")
+    await ta.shutdown()
 
 
 if __name__ == "__main__":

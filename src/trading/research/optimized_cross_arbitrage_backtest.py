@@ -270,13 +270,18 @@ class OptimizedCrossArbitrageBacktest:
             # Update position statuses and track P&L
             self._update_positions_and_pnl(current_time, row)
             
-            # Generate optimized signals
-            signal, reason = self._generate_optimized_signal(row)
-            df.at[idx, 'signal'] = signal
+            # Generate optimized signals (now returns list of signals)
+            signals, reason = self._generate_optimized_signal(row)
+            df.at[idx, 'signal'] = '|'.join(signals) if signals else 'HOLD'
             
-            # Execute optimized trading logic
-            action = self._execute_optimized_logic(current_time, row, signal, reason)
-            df.at[idx, 'position_action'] = action
+            # Execute optimized trading logic for each signal
+            actions = []
+            for signal in signals:
+                action = self._execute_optimized_logic(current_time, row, signal, reason)
+                if action:
+                    actions.append(action)
+            
+            df.at[idx, 'position_action'] = '|'.join(actions) if actions else None
             df.at[idx, 'active_positions'] = len(self.open_positions)
             
             # Update P&L tracking
@@ -304,13 +309,20 @@ class OptimizedCrossArbitrageBacktest:
             self.historical_entry_spreads = self.historical_entry_spreads[-max_history:]
             self.historical_exit_spreads = self.historical_exit_spreads[-max_history:]
     
-    def _generate_optimized_signal(self, row: pd.Series) -> Tuple[str, str]:
-        """Generate optimized entry/exit signals with corrected logic."""
+    def _generate_optimized_signal(self, row: pd.Series) -> Tuple[List[str], str]:
+        """Generate optimized entry/exit signals matching the new TA module logic.
+        
+        Returns:
+            Tuple of (signals_list, reason_string)
+        """
         if len(self.historical_entry_spreads) < 50:  # Reduced from 100
-            return 'HOLD', 'Insufficient history'
+            return [], 'Insufficient history'
         
         current_entry_spread = row['entry_spread_net']
         current_exit_spread = row['exit_spread_net']
+        
+        signals = []
+        reasons = []
         
         # REALISTIC ENTRY LOGIC based on data analysis
         # Use all historical data for percentile calculation
@@ -325,12 +337,6 @@ class OptimizedCrossArbitrageBacktest:
         # Use configured minimum
         min_profitable_spread = self.config.min_entry_spread
         
-        # Entry signal: Use more realistic thresholds
-        if (current_entry_spread > entry_threshold and 
-            current_entry_spread > min_profitable_spread and
-            len(self.open_positions) < self.config.max_concurrent_positions):
-            return 'ENTER', f'Entry spread {current_entry_spread:.3f}% > threshold {entry_threshold:.3f}%'
-        
         # DYNAMIC EXIT LOGIC with percentile-based thresholds
         # Calculate dynamic exit threshold
         if len(self.historical_exit_spreads) >= 50:
@@ -341,15 +347,30 @@ class OptimizedCrossArbitrageBacktest:
             # Fallback threshold based on data analysis
             exit_threshold = 0.1
         
-        # Exit signal: Dynamic favorable exit spread for ready positions
+        # Check for EXIT signal first (like the new TA module)
+        # Note: EXIT is triggered when spread falls BELOW the threshold (unfavorable)
         ready_positions = [p for p in self.open_positions 
                           if p.status == PositionStatus.READY_TO_EXIT]
         
-        if (ready_positions and 
-            current_exit_spread > exit_threshold):
-            return 'EXIT', f'Favorable exit spread {current_exit_spread:.3f}% > threshold {exit_threshold:.3f}%'
+        if ready_positions and current_exit_spread < exit_threshold:
+            signals.append('EXIT')
+            reasons.append(f'Exit spread {current_exit_spread:.3f}% < threshold {exit_threshold:.3f}%')
         
-        return 'HOLD', f'Entry: {current_entry_spread:.3f}% (thresh: {entry_threshold:.3f}%), Exit: {current_exit_spread:.3f}% (thresh: {exit_threshold:.3f}%)'
+        # Check for ENTRY signal (can occur simultaneously with EXIT)
+        if (current_entry_spread > entry_threshold and 
+            current_entry_spread > min_profitable_spread and
+            current_entry_spread > 0.1 and  # Minimum 0.1% profit after fees (matching TA module)
+            len(self.open_positions) < self.config.max_concurrent_positions):
+            signals.append('ENTER')
+            reasons.append(f'Entry spread {current_entry_spread:.3f}% > threshold {entry_threshold:.3f}%')
+        
+        # Build reason string
+        if signals:
+            reason = ' | '.join(reasons)
+        else:
+            reason = f'Entry: {current_entry_spread:.3f}% (thresh: {entry_threshold:.3f}%), Exit: {current_exit_spread:.3f}% (thresh: {exit_threshold:.3f}%)'
+        
+        return signals, reason
     
     def _execute_optimized_logic(self, current_time: datetime, row: pd.Series, 
                                 signal: str, reason: str) -> Optional[str]:

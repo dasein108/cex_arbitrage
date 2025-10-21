@@ -54,7 +54,7 @@ class CrossExchangeArbitrageTaskContext(BaseStrategyContext, kw_only=True):
     # Dynamic threshold configuration for TA module
     signal_config: CrossArbitrageSignalConfig = msgspec.field(default_factory=lambda: CrossArbitrageSignalConfig(
         lookback_hours=24,  # Historical data lookback
-        refresh_minutes=15,  # How often to refresh thresholds
+        refresh_minutes=30,  # How often to refresh thresholds
         entry_percentile=10,  # Top 10% of spreads for entry
         exit_percentile=85,  # 85th percentile for exit
         total_fees=0.2  # Total round-trip fees percentage
@@ -529,6 +529,10 @@ class CrossExchangeArbitrageTask(BaseStrategyTask[CrossExchangeArbitrageTaskCont
 
     async def cleanup(self):
         await super().cleanup()
+        
+        # Cleanup TA module
+        await self._ta_module.cleanup()
+        
         # Close exchange connections
         close_tasks = []
         for exchange in self._exchanges.values():

@@ -27,7 +27,7 @@ from trading.strategies.implementations import (
     ExchangeData,
     ExchangeRoleType
 )
-
+from trading.analysis.cross_arbitrage_ta import CrossArbitrageSignalConfig
 
 async def create_cross_exchange_arbitrage_task(
     symbol: Symbol,
@@ -76,12 +76,13 @@ async def create_cross_exchange_arbitrage_task(
         order_qty=order_qty,
         settings=settings,
         # Dynamic threshold configuration for TA module
-        ta_enabled=True,
-        ta_lookback_hours=24,
-        ta_refresh_minutes=15,
-        ta_entry_percentile=10,
-        ta_exit_percentile=85,
-        ta_total_fees=0.2
+        signal_config=CrossArbitrageSignalConfig(
+            lookback_hours=24,
+            refresh_minutes=15,
+            entry_percentile=10,
+            exit_percentile=85,
+            total_fees=0.2
+        )
     )
     
     # Create and return the arbitrage task
