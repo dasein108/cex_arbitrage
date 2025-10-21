@@ -179,7 +179,7 @@ def get_composite_implementation(exchange_config: ExchangeConfig, is_private: bo
     else:
         return composite_class(exchange_config, rest_client, ws_client)
 
-def create_rest_client(exchange: ExchangeEnum, config: ExchangeConfig, is_private: bool = False, **kwargs) -> Union[
+def create_rest_client(config: ExchangeConfig, is_private: bool = False, **kwargs) -> Union[
     MexcPublicSpotRestInterface, MexcPrivateSpotRestInterface,
     GateioPublicSpotRestInterface, GateioPrivateSpotRestInterface,
     GateioPublicFuturesRestInterface, GateioPrivateFuturesRestInterface

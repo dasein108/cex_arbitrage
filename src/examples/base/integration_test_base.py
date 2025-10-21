@@ -45,7 +45,6 @@ class IntegrationTestBase(ABC):
             # Create exchange client
             exchange_enum = get_exchange_enum(self.exchange_name)
             self.exchange = create_rest_client(
-                exchange=exchange_enum,
                 is_private=is_private,
                 config=self.config
             )

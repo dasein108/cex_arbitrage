@@ -182,7 +182,7 @@ async def main(exchange_name: str):
         # Use unified factory function for private REST clients
         from utils.exchange_utils import get_exchange_enum
         exchange = get_exchange_enum(exchange_name)
-        exchange = create_rest_client(exchange, is_private=True, config=config)
+        exchange = create_rest_client(is_private=True, config=config)
         symbol = Symbol(base=AssetName('HIFI'), quote=AssetName('USDT'))
         # 0.06752 vs 0.06554 for buy  - >3% diff
         # 0.06087 vs 0.06395 for sell - >4% diff

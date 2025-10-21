@@ -13,6 +13,8 @@ import sys
 import signal
 from pathlib import Path
 
+from config import get_exchange_config
+
 # Add src to path
 src_path = Path(__file__).parent.parent.parent
 if str(src_path) not in sys.path:
@@ -28,6 +30,7 @@ from trading.strategies.implementations import (
     ExchangeRoleType
 )
 from trading.analysis.cross_arbitrage_ta import CrossArbitrageSignalConfig
+from exchanges.exchange_factory import create_rest_client
 
 async def create_cross_exchange_arbitrage_task(
     symbol: Symbol,
@@ -53,13 +56,13 @@ async def create_cross_exchange_arbitrage_task(
             exchange=ExchangeEnum.MEXC,
             tick_tolerance=3,
             ticks_offset=1,
-            use_market=False
+            use_market=True
         ),
         'dest': ExchangeData(
             exchange=ExchangeEnum.GATEIO,  # Gate.io spot
             tick_tolerance=3,
             ticks_offset=1,
-            use_market=False
+            use_market=True
         ),
         'hedge': ExchangeData(
             exchange=ExchangeEnum.GATEIO_FUTURES,  # Gate.io futures
@@ -129,12 +132,22 @@ async def run_cross_exchange_arbitrage_demo():
                    destination="Gate.io (spot)", 
                    hedge="Gate.io (futures)",
                    strategy="Dynamic threshold arbitrage with TA signals")
-        
+
+        exchange = create_rest_client(get_exchange_config(ExchangeEnum.MEXC.value), is_private=False)
+
+        total_quantity_usdt = 20
+        order_qty_usdt = 2
+
+        price = (await exchange.get_ticker_info(symbol))[symbol].last_price
+
+        total_quantity = total_quantity_usdt / price
+        order_qty = order_qty_usdt / price
+
         arbitrage_task = await create_cross_exchange_arbitrage_task(
             symbol=symbol,
             logger=logger,
-            total_quantity=10.0,  # 10 F tokens
-            order_qty=2.0         # 2 F tokens per order
+            total_quantity=total_quantity,
+            order_qty=order_qty
         )
         
         # Add task to StrategyTaskManager

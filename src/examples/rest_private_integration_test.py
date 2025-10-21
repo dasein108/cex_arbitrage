@@ -61,7 +61,7 @@ class RestPrivateIntegrationTest:
             if not config.credentials.api_key or not config.credentials.secret_key:
                 raise ValueError(f"{self.exchange_name} API credentials are required for private API testing")
             
-            self.exchange = create_rest_client(get_exchange_enum(self.exchange_name), is_private=True, config=config)
+            self.exchange = create_rest_client(is_private=True, config=config)
             
             return {
                 "setup_successful": True,

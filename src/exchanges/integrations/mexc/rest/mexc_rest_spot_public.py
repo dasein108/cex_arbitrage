@@ -335,6 +335,7 @@ class MexcPublicSpotRestInterface(MexcBaseRestInterface, PublicSpotRestInterface
         
         self.logger.debug(f"Retrieved {len(trades)} historical trades for {pair}")
         return trades
+
     
     async def get_ticker_info(self, symbol: Optional[Symbol] = None) -> Dict[Symbol, Ticker]:
         """
@@ -379,7 +380,6 @@ class MexcPublicSpotRestInterface(MexcBaseRestInterface, PublicSpotRestInterface
                 continue
             
             # Skip if not a supported symbol
-            from exchanges.integrations.mexc.services.symbol_mapper import MexcSymbol
             if not MexcSymbol.is_supported_pair(pair_str):
                 continue
             

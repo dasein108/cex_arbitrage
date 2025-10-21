@@ -208,7 +208,7 @@ async def main(exchange_name: str):
         # Load exchange configuration and create instance
         config_manager = HftConfig()
         config = config_manager.get_exchange_config(exchange_name.lower())
-        exchange = create_rest_client(get_exchange_enum(exchange_name), is_private=False, config=config)
+        exchange = create_rest_client( is_private=False, config=config)
         
         # Execute all public API checks
         await check_ping(exchange, exchange_name)
