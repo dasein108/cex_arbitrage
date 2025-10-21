@@ -1,5 +1,5 @@
 import asyncio
-from typing import Optional, Type, Dict, Literal
+from typing import Optional, Type, Dict, Literal, List
 import msgspec
 from msgspec import Struct
 from exchanges.dual_exchange import DualExchange
@@ -14,10 +14,12 @@ from utils import get_decrease_vector
 from .unfied_position import Position, PositionError
 
 from trading.strategies.implementations.base_strategy.base_strategy import BaseStrategyContext, BaseStrategyTask
+from trading.analysis.cross_arbitrage_ta import CrossArbitrageTA, CrossArbitrageSignalConfig, CrossArbitrageSignal
 
 type PrimaryExchangeRole = Literal['source', 'dest']
 
 type ExchangeRoleType = PrimaryExchangeRole | Literal['hedge']
+
 
 class ExchangeData(Struct):
     exchange: ExchangeEnum
@@ -27,24 +29,42 @@ class ExchangeData(Struct):
     order_id: Optional[OrderId] = None
 
 
-class CrossExchangeArbitrageTaskContext(BaseStrategyContext):
+class CrossExchangeArbitrageTaskContext(BaseStrategyContext, kw_only=True):
     """Context for delta neutral execution.
 
     Extends SingleExchangeTaskContext with delta-neutral specific fields for tracking
     partial fills on both sides.
     """
+    # Required fields  
     symbol: Symbol
-    total_quantity: Optional[float] = None
-    positions: Dict[ExchangeRoleType, Position] = msgspec.field(default_factory=lambda: {'source': Position(), 'dest': Position(), 'hedge': Position()})
-    settings: Dict[ExchangeRoleType, ExchangeData] = msgspec.field(default_factory=lambda: {'source': ExchangeData(), 'dest': ExchangeData(), 'hedge': ExchangeData()})
-    order_qty: Optional[float] = None # size of each order for limit orders
 
+    # Override default task type
     task_type: str = "cross_exchange_arbitrage_strategy"
+
+    # Optional fields with defaults
+    total_quantity: Optional[float] = None
+    order_qty: Optional[float] = None  # size of each order for limit orders
+
+    # Complex fields with factory defaults
+    positions: Dict[ExchangeRoleType, Position] = msgspec.field(
+        default_factory=lambda: {'source': Position(), 'dest': Position(), 'hedge': Position()})
+    settings: Dict[ExchangeRoleType, ExchangeData] = msgspec.field(
+        default_factory=lambda: {'source': ExchangeData(), 'dest': ExchangeData(), 'hedge': ExchangeData()})
+
+    # Dynamic threshold configuration for TA module
+    signal_config: CrossArbitrageSignalConfig = msgspec.field(default_factory=lambda: CrossArbitrageSignalConfig(
+        lookback_hours=24,  # Historical data lookback
+        refresh_minutes=15,  # How often to refresh thresholds
+        entry_percentile=10,  # Top 10% of spreads for entry
+        exit_percentile=85,  # 85th percentile for exit
+        total_fees=0.2  # Total round-trip fees percentage
+    ))
 
     @property
     def tag(self) -> str:
         """Generate logging tag based on task_id and symbol."""
         return f"{self.task_type}_{self.symbol}"
+
 
 class CrossExchangeArbitrageTask(BaseStrategyTask[CrossExchangeArbitrageTaskContext]):
     """State machine for executing delta-neutral trading strategies.
@@ -79,6 +99,13 @@ class CrossExchangeArbitrageTask(BaseStrategyTask[CrossExchangeArbitrageTaskCont
         self._symbol_info: Dict[ExchangeRoleType, Optional[SymbolInfo]] = {'source': None, 'dest': None, 'hedge': None}
         self._exchange_trading_allowed: Dict[ExchangeRoleType, bool] = {'source': False, 'dest': False}
 
+        # Initialize dynamic threshold TA module
+        self._ta_module = CrossArbitrageTA(
+            symbol=context.symbol,
+            config=context.signal_config,
+            logger=logger
+        )
+
     def create_exchanges(self):
         exchanges = {}
         for exchange_type, settings in self.context.settings.items():
@@ -109,6 +136,13 @@ class CrossExchangeArbitrageTask(BaseStrategyTask[CrossExchangeArbitrageTaskCont
         # init symbol info, reload active orders
         await asyncio.gather(self._load_symbol_info(), self._force_load_active_orders())
 
+        # Initialize TA module for dynamic thresholds
+        await self._ta_module.initialize()
+        self.logger.info("✅ Dynamic threshold TA module initialized",
+                         entry_percentile=self.context.signal_config.entry_percentile,
+                         exit_percentile=self.context.signal_config.exit_percentile,
+                         lookback_hours=self.context.signal_config.lookback_hours)
+
     async def pause(self):
         """Pause task and cancel any active order."""
         await super().pause()
@@ -137,7 +171,6 @@ class CrossExchangeArbitrageTask(BaseStrategyTask[CrossExchangeArbitrageTaskCont
 
         self.logger.info(f"🛑 Canceled all orders", orders=str(canceled))
 
-
     async def _force_load_active_orders(self):
         for exchange_role, exchange in self._exchanges.items():
             pos = self.context.positions[exchange_role]
@@ -152,7 +185,6 @@ class CrossExchangeArbitrageTask(BaseStrategyTask[CrossExchangeArbitrageTaskCont
 
                 await self._track_order_execution(exchange_role, order)
 
-
     async def _sync_exchange_order(self, exchange_role: ExchangeRoleType) -> Order | None:
         """Get current order from exchange, track updates."""
         pos = self.context.positions[exchange_role]
@@ -163,19 +195,73 @@ class CrossExchangeArbitrageTask(BaseStrategyTask[CrossExchangeArbitrageTaskCont
             )
             await self._track_order_execution(exchange_role, updated_order)
 
-
-    async def _load_symbol_info(self, force = False):
+    async def _load_symbol_info(self, force=False):
         for exchange_type, exchange in self._exchanges.items():
             if force:
                 await exchange.public.load_symbols_info()
 
             self._symbol_info[exchange_type] = exchange.public.symbols_info[self.context.symbol]
 
-
     def _get_book_ticker(self, exchange_role: ExchangeRoleType) -> BookTicker:
         """Get current best price from public exchange."""
         book_ticker = self._exchanges[exchange_role].public.book_ticker[self.context.symbol]
         return book_ticker
+
+    def _check_arbitrage_signal(self) -> List[CrossArbitrageSignal]:
+        """
+        Check for arbitrage entry/exit signals using dynamic thresholds.
+        
+        Returns:
+            Tuple of (signal, spread_data) where signal is 'enter', 'exit', or 'none'
+        """
+
+        try:
+            # Get current order books from all exchanges
+            source_book = self._get_book_ticker('source')  # MEXC spot
+            dest_book = self._get_book_ticker('dest')  # Gate.io spot
+            hedge_book = self._get_book_ticker('hedge')  # Gate.io futures
+
+            # TODO: position duration disabled for now
+            # # Check if we have positions open
+            # position_open = any(pos.qty > 0 for pos in self.context.positions.values())
+            #
+            # # Calculate position duration if open
+            # position_duration_minutes = 0.0
+            # if position_open:
+            #     # Find the earliest position entry time
+            #     earliest_entry = None
+            #     for pos in self.context.positions.values():
+            #         if pos.qty > 0 and pos.last_order and pos.last_order.create_time:
+            #             if earliest_entry is None or pos.last_order.create_time < earliest_entry:
+            #                 earliest_entry = pos.last_order.create_time
+            #
+            #     if earliest_entry:
+            #         from datetime import datetime, timezone
+            #         position_duration_minutes = (datetime.now(timezone.utc) - earliest_entry).total_seconds() / 60
+
+            # Generate signal using dynamic thresholds
+            signal= self._ta_module.generate_signal(
+                source_book=source_book,
+                dest_book=dest_book,
+                hedge_book=hedge_book,
+            )
+
+            signals = signal.signals
+            # Log signal with dynamic threshold info
+
+            allowed_sides: List[PrimaryExchangeRole] = []
+
+            if signals:
+                self.logger.info(f"🎯 Arbitrage signals: {signals}",
+                                 current_spread=f"{signal.current_spread:.4f}%",
+                                 entry_threshold=f"{signal.entry_threshold:.4f}% (dynamic)",
+                                 exit_threshold=f"{signal.exit_threshold:.4f}% (dynamic)")
+
+            return signal
+
+        except Exception as e:
+            self.logger.error(f"❌ Error checking arbitrage signal: {e}")
+            return []
 
     async def _cancel_order_safe(
             self,
@@ -243,7 +329,6 @@ class CrossExchangeArbitrageTask(BaseStrategyTask[CrossExchangeArbitrageTaskCont
             self.logger.error(f"🚫 Failed to place order {tag_str}", error=str(e))
             return None
 
-
     async def _rebalance_hedge(self) -> bool:
         """Check if there is an imbalance for specific side and rebalance immediately."""
         source_qty = self.context.positions['source'].qty
@@ -260,11 +345,11 @@ class CrossExchangeArbitrageTask(BaseStrategyTask[CrossExchangeArbitrageTaskCont
         if delta > 0:
             await self._place_order_safe('hedge', Side.BUY, abs(delta),
                                          self._get_book_ticker('hedge').bid_price,
-                                         is_market=True, tag="Rebalance Hedge")
+                                         is_market=True, tag="⏫ Rebalance Hedge")
         else:
             await self._place_order_safe('hedge', Side.SELL, abs(delta),
                                          self._get_book_ticker('hedge').ask_price,
-                                         is_market=True, tag="Rebalance Hedge")
+                                         is_market=True, tag="⏬ Rebalance Hedge")
 
         return True
 
@@ -346,10 +431,9 @@ class CrossExchangeArbitrageTask(BaseStrategyTask[CrossExchangeArbitrageTaskCont
 
             await self._cancel_order_safe(exchange_role, order_id=curr_order.order_id)
 
-
         return should_cancel
 
-    async def _track_order_execution(self, exchange_role: ExchangeRoleType, order: Optional[Order]=None):
+    async def _track_order_execution(self, exchange_role: ExchangeRoleType, order: Optional[Order] = None):
         """Process filled order and update context for specific exchange side."""
 
         if not order:
@@ -378,7 +462,7 @@ class CrossExchangeArbitrageTask(BaseStrategyTask[CrossExchangeArbitrageTaskCont
         # filling direction
         if exchange_role == 'source':
             quantity = max(0.0, self.context.total_quantity - filled_qty)
-        else: # releasing direction
+        else:  # releasing direction
             quantity = filled_qty
 
         if quantity < self._symbol_info[exchange_role].min_base_quantity:
@@ -393,7 +477,6 @@ class CrossExchangeArbitrageTask(BaseStrategyTask[CrossExchangeArbitrageTaskCont
             self._sync_exchange_order(exchange_role) for exchange_role in self.context.positions.keys()
         ]
         await asyncio.gather(*sync_tasks)
-
 
     async def _manage_position(self, exchange_role: PrimaryExchangeRole):
         """Manage limit orders for one side."""
@@ -419,21 +502,35 @@ class CrossExchangeArbitrageTask(BaseStrategyTask[CrossExchangeArbitrageTaskCont
         ]
         await asyncio.gather(*manage_tasks)
 
+    async def _manage_arbitrage_signals(self):
+        # Check arbitrage signals using dynamic thresholds
+        signals = self._check_arbitrage_signal()
+        source_allowed = 'enter' in signals
+        dest_allowed = 'exit' in signals
+
+        if self._exchange_trading_allowed['source'] != source_allowed:
+            self._exchange_trading_allowed['source'] = source_allowed
+            state = "🟢 enabled" if source_allowed else "⛔️ disabled"
+            self.logger.info(f"🔔 Source trading {state} based on signal")
+
+        if self._exchange_trading_allowed['dest'] != dest_allowed:
+            self._exchange_trading_allowed['dest'] = dest_allowed
+            state = "🟢 enabled" if dest_allowed else "⛔️ disabled"
+            self.logger.info(f"🔔 Dest trading {state} based on signal")
 
     async def step(self):
         await self._sync_positions()
+
+        await self._manage_arbitrage_signals()
 
         await self._rebalance_hedge()
 
         await self._manage_positions()
 
-
-    async  def cleanup(self):
+    async def cleanup(self):
         await super().cleanup()
         # Close exchange connections
         close_tasks = []
         for exchange in self._exchanges.values():
             close_tasks.append(exchange.close())
         await asyncio.gather(*close_tasks)
-
-
