@@ -11,7 +11,7 @@ from datetime import datetime
 # Add parent directory to path
 sys.path.append('/Users/dasein/dev/cex_arbitrage/src')
 
-from trading.analysis.cross_arbitrage_ta import CrossArbitrageTA, CrossArbitrageSignalConfig
+from trading.analysis.cross_arbitrage_ta import CrossArbitrageDynamicSignalGenerator, CrossArbitrageSignalConfig
 from exchanges.structs import Symbol, AssetName
 from infrastructure.logging import get_logger
 
@@ -23,7 +23,7 @@ async def test_auto_refresh_features():
     # Test 1: Auto-refresh enabled
     print("\n📊 Test 1: Auto-refresh enabled (5 second interval)")
     
-    ta_auto = CrossArbitrageTA(
+    ta_auto = CrossArbitrageDynamicSignalGenerator(
         symbol=Symbol(base=AssetName("F"), quote=AssetName("USDT")),
         config=CrossArbitrageSignalConfig(
             lookback_hours=24,
@@ -62,7 +62,7 @@ async def test_auto_refresh_features():
     # Test 2: Auto-refresh disabled
     print(f"\n📊 Test 2: Auto-refresh disabled")
     
-    ta_manual = CrossArbitrageTA(
+    ta_manual = CrossArbitrageDynamicSignalGenerator(
         symbol=Symbol(base=AssetName("F"), quote=AssetName("USDT")),
         config=CrossArbitrageSignalConfig(
             lookback_hours=24,

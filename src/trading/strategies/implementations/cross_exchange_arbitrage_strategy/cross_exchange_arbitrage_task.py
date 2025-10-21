@@ -14,7 +14,7 @@ from utils import get_decrease_vector
 from .unfied_position import Position, PositionError
 
 from trading.strategies.implementations.base_strategy.base_strategy import BaseStrategyContext, BaseStrategyTask
-from trading.analysis.cross_arbitrage_ta import CrossArbitrageTA, CrossArbitrageSignalConfig, CrossArbitrageSignal
+from trading.analysis.cross_arbitrage_ta import CrossArbitrageDynamicSignalGenerator, CrossArbitrageSignalConfig, CrossArbitrageSignal
 
 type PrimaryExchangeRole = Literal['source', 'dest']
 
@@ -100,7 +100,7 @@ class CrossExchangeArbitrageTask(BaseStrategyTask[CrossExchangeArbitrageTaskCont
         self._exchange_trading_allowed: Dict[ExchangeRoleType, bool] = {'source': False, 'dest': False}
 
         # Initialize dynamic threshold TA module
-        self._ta_module = CrossArbitrageTA(
+        self._ta_module = CrossArbitrageDynamicSignalGenerator(
             symbol=context.symbol,
             config=context.signal_config,
             logger=logger

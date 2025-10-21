@@ -12,6 +12,7 @@ Domain-aware implementation respecting separated domain architecture:
 """
 
 import asyncio
+from abc import ABC, abstractmethod
 import numpy as np
 import pandas as pd
 from datetime import datetime, timedelta, timezone
@@ -23,6 +24,44 @@ from trading.analysis.data_loader import get_cached_book_ticker_data
 from infrastructure.logging import HFTLoggerInterface, get_logger
 from msgspec import Struct
 
+
+def calculate_realtime_spread(
+        source_book: BookTicker,  # MEXC spot
+        dest_book: BookTicker,  # Gate.io spot
+        hedge_book: BookTicker,  # Gate.io futures
+        total_fees: float
+) -> Dict[str, float]:
+    """
+    Calculate current arbitrage spread from live order book data.
+
+    Domain-aware calculation using public domain book ticker data.
+    HFT-optimized for sub-millisecond execution.
+
+    Returns:
+        Dict with current spread components and total
+    """
+    # HFT-optimized calculation (single pass)
+    # Source→Hedge: Buy MEXC ask, sell futures bid
+    source_hedge_arb = (
+            (hedge_book.bid_price - source_book.ask_price) /
+            hedge_book.bid_price * 100
+    )
+
+    # Dest→Hedge: Buy Gate.io spot bid, sell futures ask
+    dest_hedge_arb = (
+            (dest_book.bid_price - hedge_book.ask_price) /
+            dest_book.bid_price * 100
+    )
+
+    total_spread = source_hedge_arb + dest_hedge_arb
+    spread_after_fees = total_spread - total_fees
+
+    return {
+        'source_hedge_arb': source_hedge_arb,
+        'dest_hedge_arb': dest_hedge_arb,
+        'total_spread': total_spread,
+        'spread_after_fees': spread_after_fees,
+    }
 
 class CrossArbitrageSignalConfig(Struct):
     """Configuration for CrossArbitrageTA."""
@@ -57,7 +96,102 @@ class ArbitrageThresholds:
     exit_percentile_used: float  # Actual percentile used for exit
 
 
-class CrossArbitrageTA:
+class CrossArbitrageSignalGeneratorInterface(ABC):
+    """Interface for CrossArbitrageTA signal generation."""
+
+    @abstractmethod
+    async def initialize(self) -> None:
+        """Initialize the TA module, load historical data."""
+        pass
+
+    @abstractmethod
+    async def generate_signal(
+            self,
+            source_book: BookTicker,
+            dest_book: BookTicker,
+            hedge_book: BookTicker
+    ) -> CrossArbitrageSignal:
+        """Generate trading signal based on current market conditions."""
+        pass
+
+    @abstractmethod
+    async def shutdown(self) -> None:
+        """Shutdown the TA module and cleanup resources."""
+        pass
+
+class CrossArbitrageFixedSignalGenerator(CrossArbitrageSignalGeneratorInterface):
+
+    def __init__(self, entry_threshold, float, exit_threshold: float,
+                 total_fees: float,
+                 logger: Optional[HFTLoggerInterface] = None):
+        self.entry_threshold = entry_threshold
+        self.exit_threshold = exit_threshold
+        self.total_fees = total_fees
+        self.logger = logger or get_logger('cross_arbitrage_fixed_ta')
+
+    async def initialize(self) -> None:
+        pass
+
+    def generate_signal(
+            self,
+            source_book: BookTicker,
+            dest_book: BookTicker,
+            hedge_book: BookTicker
+    ) -> CrossArbitrageSignal:
+        """
+        Generate trading signal based on current market conditions.
+
+        Domain-aware signal generation using public domain market data.
+        HFT-optimized decision logic.
+
+        Args:
+            source_book: MEXC spot order book
+            dest_book: Gate.io spot order book
+            hedge_book: Gate.io futures order book
+
+        Returns:
+            Tuple of (signal, spread_data)
+        """
+        # Note: Historical data is automatically refreshed by background task if enabled
+        # Manual refresh can still be triggered by calling refresh_historical_data() directly
+
+        # Calculate current spread (HFT-optimized)
+        current = calculate_realtime_spread(source_book, dest_book, hedge_book, self.total_fees)
+        current_spread = current['spread_after_fees']
+
+        # Default signal
+        signals: List[CrossArbitrageSignalType] = []
+
+        # HFT-optimized signal generation logic
+        # Exit conditions (prioritized for speed)
+        if current_spread < self.exit_threshold:  # Max 2 hours
+            signals.append('exit')
+            self.logger.debug("📉 Exit signal generated",
+                              current_spread=f"{current_spread:.4f}%",
+                              exit_threshold=f"{self.exit_threshold:.4f}% (dynamic)")
+        else:
+            # Entry conditions
+            if (current_spread > self.entry_threshold or
+                    current_spread > 0.1):  # Minimum 0.1% profit after fees
+                signals.append('enter')
+                self.logger.debug("📈 Enter signal generated",
+                                  current_spread=f"{current_spread:.4f}%",
+                                  entry_threshold=f"{self.entry_threshold:.4f}% (dynamic)")
+
+        return CrossArbitrageSignal(
+            signals=signals,
+            current_spread=current_spread,
+            entry_threshold=self.entry_threshold,
+            exit_threshold=self.exit_threshold,
+            thresholds_age=0,
+            timestamp=datetime.now(timezone.utc)
+        )
+
+    async def shutdown(self) -> None:
+        pass
+
+
+class CrossArbitrageDynamicSignalGenerator(CrossArbitrageSignalGeneratorInterface):
     """
     Minimal technical analysis for cross-exchange arbitrage.
     
@@ -384,44 +518,44 @@ class CrossArbitrageTA:
         elapsed = (datetime.now(timezone.utc) - self.last_refresh).total_seconds() / 60
         return elapsed >= self.refresh_minutes
 
-    def calculate_realtime_spread(
-            self,
-            source_book: BookTicker,  # MEXC spot
-            dest_book: BookTicker,  # Gate.io spot
-            hedge_book: BookTicker  # Gate.io futures
-    ) -> Dict[str, float]:
-        """
-        Calculate current arbitrage spread from live order book data.
-        
-        Domain-aware calculation using public domain book ticker data.
-        HFT-optimized for sub-millisecond execution.
-        
-        Returns:
-            Dict with current spread components and total
-        """
-        # HFT-optimized calculation (single pass)
-        # Source→Hedge: Buy MEXC ask, sell futures bid
-        source_hedge_arb = (
-                (hedge_book.bid_price - source_book.ask_price) /
-                hedge_book.bid_price * 100
-        )
-
-        # Dest→Hedge: Buy Gate.io spot bid, sell futures ask
-        dest_hedge_arb = (
-                (dest_book.bid_price - hedge_book.ask_price) /
-                dest_book.bid_price * 100
-        )
-
-        total_spread = source_hedge_arb + dest_hedge_arb
-        spread_after_fees = total_spread - self.total_fees
-
-
-        return {
-            'source_hedge_arb': source_hedge_arb,
-            'dest_hedge_arb': dest_hedge_arb,
-            'total_spread': total_spread,
-            'spread_after_fees': spread_after_fees,
-        }
+    # def calculate_realtime_spread(
+    #         self,
+    #         source_book: BookTicker,  # MEXC spot
+    #         dest_book: BookTicker,  # Gate.io spot
+    #         hedge_book: BookTicker  # Gate.io futures
+    # ) -> Dict[str, float]:
+    #     """
+    #     Calculate current arbitrage spread from live order book data.
+    #
+    #     Domain-aware calculation using public domain book ticker data.
+    #     HFT-optimized for sub-millisecond execution.
+    #
+    #     Returns:
+    #         Dict with current spread components and total
+    #     """
+    #     # HFT-optimized calculation (single pass)
+    #     # Source→Hedge: Buy MEXC ask, sell futures bid
+    #     source_hedge_arb = (
+    #             (hedge_book.bid_price - source_book.ask_price) /
+    #             hedge_book.bid_price * 100
+    #     )
+    #
+    #     # Dest→Hedge: Buy Gate.io spot bid, sell futures ask
+    #     dest_hedge_arb = (
+    #             (dest_book.bid_price - hedge_book.ask_price) /
+    #             dest_book.bid_price * 100
+    #     )
+    #
+    #     total_spread = source_hedge_arb + dest_hedge_arb
+    #     spread_after_fees = total_spread - self.total_fees
+    #
+    #
+    #     return {
+    #         'source_hedge_arb': source_hedge_arb,
+    #         'dest_hedge_arb': dest_hedge_arb,
+    #         'total_spread': total_spread,
+    #         'spread_after_fees': spread_after_fees,
+    #     }
 
     def generate_signal(
             self,
@@ -447,7 +581,7 @@ class CrossArbitrageTA:
         # Manual refresh can still be triggered by calling refresh_historical_data() directly
 
         # Calculate current spread (HFT-optimized)
-        current = self.calculate_realtime_spread(source_book, dest_book, hedge_book)
+        current = calculate_realtime_spread(source_book, dest_book, hedge_book, self.total_fees)
         current_spread = current['spread_after_fees']
 
         # Default signal
@@ -504,7 +638,7 @@ async def example_usage():
     """Demonstrate how to use CrossArbitrageTA in a strategy."""
 
     # Initialize TA module with domain-aware configuration and auto-refresh
-    ta = CrossArbitrageTA(
+    ta = CrossArbitrageDynamicSignalGenerator(
         symbol=Symbol(base=AssetName("BTC"), quote=AssetName("USDT")),
         config=CrossArbitrageSignalConfig(
             lookback_hours=24,

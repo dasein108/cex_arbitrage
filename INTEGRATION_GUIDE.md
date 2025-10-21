@@ -26,7 +26,7 @@ Replace the current TA import in `multi_spot_futures_arbitrage_task.py`:
 
 ```python
 # OLD
-from trading.analysis.cross_arbitrage_ta import CrossArbitrageTA
+from trading.analysis.cross_arbitrage_ta import CrossArbitrageDynamicSignalGenerator
 
 # NEW
 from trading.analysis.optimized_cross_arbitrage_ta import (

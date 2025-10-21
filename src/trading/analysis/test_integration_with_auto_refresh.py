@@ -10,7 +10,7 @@ import os
 # Add parent directory to path
 sys.path.append('/Users/dasein/dev/cex_arbitrage/src')
 
-from trading.analysis.cross_arbitrage_ta import CrossArbitrageTA, CrossArbitrageSignalConfig
+from trading.analysis.cross_arbitrage_ta import CrossArbitrageDynamicSignalGenerator, CrossArbitrageSignalConfig
 from exchanges.structs import Symbol, AssetName
 from infrastructure.logging import get_logger
 
@@ -47,7 +47,7 @@ async def test_complete_integration():
         print(f"\n📊 Testing: {test_case['name']}")
         print("-" * 50)
         
-        ta = CrossArbitrageTA(
+        ta = CrossArbitrageDynamicSignalGenerator(
             symbol=Symbol(base=AssetName("F"), quote=AssetName("USDT")),
             config=test_case['config'],
             logger=get_logger(f"test_{test_case['name'].lower().replace(' ', '_')}")
