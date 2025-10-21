@@ -20,7 +20,7 @@ class TaskPersistenceManager:
             (self.base_path / dir_name).mkdir(parents=True, exist_ok=True)
     
 
-    def save_context(self, raw_context: str) -> bool:
+    def save_context(self, task_id: str, status: str, raw_context: str) -> bool:
         """Save task context to appropriate directory based on state.
         
         Args:
@@ -32,14 +32,13 @@ class TaskPersistenceManager:
         """
         try:
             # Determine directory based on state
-            if context.status == 'completed':
+            if status == 'completed':
                 dir_path = self.base_path / "completed"
-            elif context.status in ['error', 'cancelled']:
+            elif status in ['error', 'cancelled']:
                 dir_path = self.base_path / "errored"
             else:
                 dir_path = self.base_path / "active"
 
-            task_id = context.tag
             # Atomic write with temp file
             temp_path = dir_path / f".{task_id}.tmp"
             final_path = dir_path / f"{task_id}.json"

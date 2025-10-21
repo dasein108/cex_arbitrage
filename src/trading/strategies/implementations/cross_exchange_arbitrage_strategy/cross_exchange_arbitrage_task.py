@@ -249,15 +249,13 @@ class CrossExchangeArbitrageTask(BaseStrategyTask[CrossExchangeArbitrageTaskCont
             signals = signal.signals
             # Log signal with dynamic threshold info
 
-            allowed_sides: List[PrimaryExchangeRole] = []
-
             if signals:
                 self.logger.info(f"🎯 Arbitrage signals: {signals}",
                                  current_spread=f"{signal.current_spread:.4f}%",
                                  entry_threshold=f"{signal.entry_threshold:.4f}% (dynamic)",
                                  exit_threshold=f"{signal.exit_threshold:.4f}% (dynamic)")
 
-            return signal
+            return signals
 
         except Exception as e:
             self.logger.error(f"❌ Error checking arbitrage signal: {e}")

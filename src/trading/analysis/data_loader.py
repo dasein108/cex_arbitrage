@@ -79,7 +79,7 @@ class CachedDataLoader:
             return df
         
         # Load from database
-        print(f"  🗄️  Loading from database...")
+        print(f"  🗄️  Loading book ticker from database {exchange} {symbol_base} {symbol_quote}...")
         db_manager = await get_database_manager()
         df = await db_manager.get_book_ticker_dataframe(
             exchange=exchange,

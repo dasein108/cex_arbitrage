@@ -111,7 +111,7 @@ async def run_cross_exchange_arbitrage_demo():
     
     # Initialize StrategyTaskManager with persistence
     manager = StrategyTaskManager(logger, base_path="task_data")
-    
+    await manager.initialize()
     # Set up graceful shutdown
     shutdown_event = asyncio.Event()
     

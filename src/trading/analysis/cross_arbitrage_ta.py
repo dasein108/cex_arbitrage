@@ -285,7 +285,7 @@ class CrossArbitrageTA:
                 return pd.DataFrame()
 
             # Rename columns with exchange prefix (domain-safe)
-            df = df.set_index('timestamp')
+            # df = df.set_index('timestamp')
             for col in ['bid_price', 'ask_price', 'bid_qty', 'ask_qty']:
                 if col in df.columns:
                     df[f'{prefix}_{col}'] = df[col]
@@ -311,7 +311,7 @@ class CrossArbitrageTA:
         # Source→Hedge arbitrage (buy MEXC, sell Gate.io futures)
         # Domain: Public market data → calculated trading signal
         df['source_hedge_arb'] = (
-                (df['gateio_futures_bid_price'] - df['mexc_ask_price']) /
+                (df['gateio_futures_bid_price'] - df['mexc_spot_ask_price']) /
                 df['gateio_futures_bid_price'] * 100
         )
 
@@ -472,7 +472,7 @@ class CrossArbitrageTA:
                               exit_threshold=f"{self.thresholds.exit_spread:.4f}% (dynamic)")
         else:
             # Entry conditions
-            if (current_spread > self.thresholds.entry_spread and
+            if (current_spread > self.thresholds.entry_spread or
                     current_spread > 0.1):  # Minimum 0.1% profit after fees
                 signals.append('enter')
                 self.logger.debug("📈 Enter signal generated",

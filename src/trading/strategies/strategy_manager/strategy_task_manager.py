@@ -12,10 +12,13 @@ from .task_persistence_manager import TaskPersistenceManager
 from exchanges.structs import Symbol
 from trading.strategies.implementations.base_strategy.base_strategy import BaseStrategyTask, TaskResult
 from trading.strategies.implementations.cross_exchange_arbitrage_strategy.cross_exchange_arbitrage_task import CrossExchangeArbitrageTaskContext, CrossExchangeArbitrageTask
+from db.database_manager import initialize_database_manager
 
 TASK_TYPE_MAP = {
     CrossExchangeArbitrageTaskContext.task_type: (CrossExchangeArbitrageTaskContext, CrossExchangeArbitrageTask),
 }
+
+
 
 class StrategyTaskManager:
     """Simple external loop manager for trading tasks.
@@ -42,6 +45,12 @@ class StrategyTaskManager:
         # Initialize persistence manager and recovery helper
         self._persistence = TaskPersistenceManager(logger, base_path)
 
+    async def initialize(self):
+        # initialize database manager singletone
+        await initialize_database_manager()
+
+        return self
+
     @property
     def task_count(self):
         return len(self._tasks)
@@ -64,6 +73,8 @@ class StrategyTaskManager:
         self.logger.info(f"Added {task.tag} task {task_id}",
                          symbol=str(task.context.symbol),
                          state=task.status)
+
+        await task.start()
         
         return task_id
     
@@ -172,7 +183,7 @@ class StrategyTaskManager:
 
                 # Save task context to persistence
                 if task.context.should_save_flag:
-                    saved = self._persistence.save_context(task.context.to_json())
+                    saved = self._persistence.save_context(task.task_id, task.context.status, task.context.to_json())
                     if not saved:
                         self.logger.warning(f"Failed to save context for task {task.task_id}")
                     # reset save flag
@@ -213,9 +224,11 @@ class StrategyTaskManager:
                     for result in results:
                         if isinstance(result, TaskResult):
                             # Remove completed/cancelled/error tasks from persistence
-                            if result in ['completed', 'cancelled', 'error']:
-                                self._persistence.save_context(self._tasks[result.task_id].context.to_json())
-                            
+                            if result.status in ['completed', 'cancelled', 'error']:
+                                saved = self._persistence.save_context(result.task_id,
+                                                                       result.status,
+                                                                       self._tasks[result.task_id].context.to_json())
+
                                 await self.remove_task(result.task_id)
                                 self.logger.info(f"Task {result.task_id} ', removed from manager", state=result.status)
                 
