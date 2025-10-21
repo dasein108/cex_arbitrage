@@ -115,13 +115,13 @@ class CrossArbitrageSignalGeneratorInterface(ABC):
         pass
 
     @abstractmethod
-    async def shutdown(self) -> None:
+    async def cleanup(self) -> None:
         """Shutdown the TA module and cleanup resources."""
         pass
 
 class CrossArbitrageFixedSignalGenerator(CrossArbitrageSignalGeneratorInterface):
 
-    def __init__(self, entry_threshold, float, exit_threshold: float,
+    def __init__(self, entry_threshold: float, exit_threshold: float,
                  total_fees: float,
                  logger: Optional[HFTLoggerInterface] = None):
         self.entry_threshold = entry_threshold
@@ -187,7 +187,7 @@ class CrossArbitrageFixedSignalGenerator(CrossArbitrageSignalGeneratorInterface)
             timestamp=datetime.now(timezone.utc)
         )
 
-    async def shutdown(self) -> None:
+    async def cleanup(self) -> None:
         pass
 
 
@@ -358,7 +358,7 @@ class CrossArbitrageDynamicSignalGenerator(CrossArbitrageSignalGeneratorInterfac
         finally:
             self.logger.debug("🔄 Auto-refresh loop stopped")
 
-    async def shutdown(self) -> None:
+    async def cleanup(self) -> None:
         """
         Shutdown the TA module and cleanup resources.
         

@@ -14,7 +14,9 @@ from utils import get_decrease_vector
 from .unfied_position import Position, PositionError
 
 from trading.strategies.implementations.base_strategy.base_strategy import BaseStrategyContext, BaseStrategyTask
-from trading.analysis.cross_arbitrage_ta import CrossArbitrageDynamicSignalGenerator, CrossArbitrageSignalConfig, CrossArbitrageSignal
+from trading.analysis.cross_arbitrage_ta import (CrossArbitrageDynamicSignalGenerator,
+                                                 CrossArbitrageFixedSignalGenerator,
+                                                 CrossArbitrageSignalConfig, CrossArbitrageSignal)
 
 type PrimaryExchangeRole = Literal['source', 'dest']
 
@@ -100,10 +102,17 @@ class CrossExchangeArbitrageTask(BaseStrategyTask[CrossExchangeArbitrageTaskCont
         self._exchange_trading_allowed: Dict[ExchangeRoleType, bool] = {'source': False, 'dest': False}
 
         # Initialize dynamic threshold TA module
-        self._ta_module = CrossArbitrageDynamicSignalGenerator(
-            symbol=context.symbol,
-            config=context.signal_config,
-            logger=logger
+        # TODO: tmp disabled
+        # self._ta_module = CrossArbitrageDynamicSignalGenerator(
+        #     symbol=context.symbol,
+        #     config=context.signal_config,
+        #     logger=logger
+        # )
+
+        self._ta_module = CrossArbitrageFixedSignalGenerator(
+            entry_threshold=-0.5,
+            exit_threshold=-0.5,
+            total_fees=0.2
         )
 
     def create_exchanges(self):
@@ -173,7 +182,7 @@ class CrossExchangeArbitrageTask(BaseStrategyTask[CrossExchangeArbitrageTaskCont
 
     async def _force_load_active_orders(self):
         for exchange_role, exchange in self._exchanges.items():
-            pos = self.context.positions[exchange_role]
+            # pos = self.context.positions[exchange_role]
             last_order = self.context.positions[exchange_role].last_order
             if last_order:
                 try:
@@ -183,7 +192,7 @@ class CrossExchangeArbitrageTask(BaseStrategyTask[CrossExchangeArbitrageTaskCont
                                         f"during reload: {e}")
                     order = None
 
-                await self._track_order_execution(exchange_role, order)
+                self._track_order_execution(exchange_role, order)
 
     async def _sync_exchange_order(self, exchange_role: ExchangeRoleType) -> Order | None:
         """Get current order from exchange, track updates."""
@@ -193,7 +202,7 @@ class CrossExchangeArbitrageTask(BaseStrategyTask[CrossExchangeArbitrageTaskCont
             updated_order = await self._exchanges[exchange_role].private.get_active_order(
                 self.context.symbol, pos.last_order.order_id
             )
-            await self._track_order_execution(exchange_role, updated_order)
+            self._track_order_execution(exchange_role, updated_order)
 
     async def _load_symbol_info(self, force=False):
         for exchange_type, exchange in self._exchanges.items():
@@ -240,7 +249,7 @@ class CrossExchangeArbitrageTask(BaseStrategyTask[CrossExchangeArbitrageTaskCont
             #         position_duration_minutes = (datetime.now(timezone.utc) - earliest_entry).total_seconds() / 60
 
             # Generate signal using dynamic thresholds
-            signal= self._ta_module.generate_signal(
+            signal = self._ta_module.generate_signal(
                 source_book=source_book,
                 dest_book=dest_book,
                 hedge_book=hedge_book,
@@ -281,7 +290,7 @@ class CrossExchangeArbitrageTask(BaseStrategyTask[CrossExchangeArbitrageTaskCont
             # Try to fetch order status instead
             order = await exchange.fetch_order(symbol, order_id)
 
-        await self._track_order_execution(exchange_role, order)
+        self._track_order_execution(exchange_role, order)
         return order
 
     async def _place_order_safe(
@@ -314,11 +323,10 @@ class CrossExchangeArbitrageTask(BaseStrategyTask[CrossExchangeArbitrageTaskCont
                     price=price,
                 )
 
-            change = self._track_order_execution(exchange_role, order)
+            self._track_order_execution(exchange_role, order)
 
             self.logger.info(f"📈 Placed {tag_str} order",
                              order_id=order.order_id,
-                             change=str(change),
                              order=str(order))
 
             return order
@@ -420,7 +428,7 @@ class CrossExchangeArbitrageTask(BaseStrategyTask[CrossExchangeArbitrageTaskCont
 
         top_price = book_ticker.bid_price if side == Side.BUY else book_ticker.ask_price
         tick_difference = abs((order_price - top_price) / self._symbol_info[exchange_role].tick)
-        should_cancel = tick_difference > settings.tick_tolerance[exchange_role]
+        should_cancel = tick_difference > settings.tick_tolerance
 
         if should_cancel:
             self.logger.info(
@@ -431,7 +439,7 @@ class CrossExchangeArbitrageTask(BaseStrategyTask[CrossExchangeArbitrageTaskCont
 
         return should_cancel
 
-    async def _track_order_execution(self, exchange_role: ExchangeRoleType, order: Optional[Order] = None):
+    def _track_order_execution(self, exchange_role: ExchangeRoleType, order: Optional[Order] = None):
         """Process filled order and update context for specific exchange side."""
 
         if not order:
@@ -450,6 +458,7 @@ class CrossExchangeArbitrageTask(BaseStrategyTask[CrossExchangeArbitrageTaskCont
         except PositionError as pe:
             self.logger.error(f"🚫 Position update error on {exchange_role} after order fill {self._tag}",
                               error=str(pe))
+
         finally:
             self.context.save()
 
@@ -527,10 +536,10 @@ class CrossExchangeArbitrageTask(BaseStrategyTask[CrossExchangeArbitrageTaskCont
 
     async def cleanup(self):
         await super().cleanup()
-        
+
         # Cleanup TA module
         await self._ta_module.cleanup()
-        
+
         # Close exchange connections
         close_tasks = []
         for exchange in self._exchanges.values():
