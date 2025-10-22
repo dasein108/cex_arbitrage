@@ -49,7 +49,7 @@ class BaseStrategyContext(msgspec.Struct, frozen=False, kw_only=True):
         """Generate logging tag based on task_id."""
         return f"{self.task_type}.{self.task_id}"
 
-    def save(self):
+    def set_save_flag(self):
         self.should_save_flag = True
 
     @staticmethod

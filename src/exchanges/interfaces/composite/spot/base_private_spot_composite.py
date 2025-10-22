@@ -48,8 +48,6 @@ class CompositePrivateSpotExchange(BasePrivateComposite, WithdrawalMixin):
         
         # Update tag to indicate spot operations
 
-        # Asset info for withdrawal validation (spot-specific)
-        self.assets_info = {}
 
     # Spot-specific functionality extensions
 
@@ -59,4 +57,3 @@ class CompositePrivateSpotExchange(BasePrivateComposite, WithdrawalMixin):
         """
         # Initialize base private functionality first
         await super().initialize(*args, **kwargs)
-        await self._load_assets_info()
