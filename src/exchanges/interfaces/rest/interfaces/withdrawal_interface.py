@@ -10,7 +10,9 @@ from typing import Dict, List, Optional
 from exchanges.structs.common import (
     AssetInfo,
     WithdrawalRequest,
-    WithdrawalResponse
+    WithdrawalResponse,
+    DepositResponse,
+    DepositAddress
 )
 from exchanges.structs.types import AssetName
 
@@ -99,6 +101,71 @@ class WithdrawalInterface(ABC):
 
         Returns:
             List of historical withdrawals
+        """
+        pass
+
+    @abstractmethod
+    async def get_deposit_address(
+        self,
+        asset: AssetName,
+        network: Optional[str] = None
+    ) -> DepositAddress:
+        """
+        Get deposit address for the specified asset and network.
+
+        Args:
+            asset: Asset name to get deposit address for
+            network: Optional network/chain specification
+
+        Returns:
+            DepositAddress with address and memo information
+
+        Raises:
+            ExchangeAPIError: If unable to fetch deposit address
+            ValueError: If asset or network not supported
+        """
+        pass
+
+    @abstractmethod
+    async def get_deposit_history(
+        self,
+        asset: Optional[AssetName] = None,
+        limit: int = 100,
+        start_time: Optional[int] = None,
+        end_time: Optional[int] = None
+    ) -> List[DepositResponse]:
+        """
+        Get deposit history with optional time filtering.
+
+        Args:
+            asset: Optional asset filter
+            limit: Maximum number of deposits to return
+            start_time: Optional start time in milliseconds since epoch
+            end_time: Optional end time in milliseconds since epoch
+
+        Returns:
+            List of historical deposits
+
+        Raises:
+            ExchangeAPIError: If unable to fetch deposit history
+        """
+        pass
+
+    @abstractmethod
+    async def deposit_history(
+        self,
+        asset: Optional[AssetName] = None,
+        limit: int = 100
+    ) -> List[DepositResponse]:
+        """
+        Get deposit history.
+
+        Args:
+            asset: Optional asset filter
+            limit: Maximum number of deposits to return
+
+        Returns:
+            List of historical deposits
         """
         pass
 
@@ -200,3 +267,4 @@ class WithdrawalInterface(ABC):
             'max': max_amount if max_amount > 0 else float('inf'),
             'fee': min_fee if min_fee != float('inf') else 0.0
         }
+

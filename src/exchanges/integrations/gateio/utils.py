@@ -11,7 +11,7 @@ from typing import Dict, Optional, Any
 from exchanges.structs.common import (
     Side, OrderStatus, OrderType, TimeInForce, AssetName, AssetBalance, FuturesBalance, Order
 )
-from exchanges.structs.enums import WithdrawalStatus, KlineInterval
+from exchanges.structs.enums import WithdrawalStatus, DepositStatus, KlineInterval
 from exchanges.structs.types import OrderId
 from exchanges.integrations.gateio.services.spot_symbol_mapper import GateioSpotSymbol
 from exchanges.integrations.gateio.services.futures_symbol_mapper import GateioFuturesSymbol
@@ -61,6 +61,21 @@ _GATEIO_WITHDRAW_STATUS_MAP = {
     "INVALID": WithdrawalStatus.FAILED,
     "DMOVE": WithdrawalStatus.PENDING,
     "BCODE": WithdrawalStatus.PROCESSING,
+}
+
+# Gate.io Deposit Status Mapping - based on Gate.io API docs
+_GATEIO_DEPOSIT_STATUS_MAP = {
+    "DONE": DepositStatus.COMPLETED,
+    "CANCEL": DepositStatus.FAILED,
+    "REQUEST": DepositStatus.PENDING,
+    "PEND": DepositStatus.PENDING,
+    "VERIFY": DepositStatus.PROCESSING,
+    "MANUAL": DepositStatus.MANUAL_REVIEW,
+    "REVIEW": DepositStatus.MANUAL_REVIEW,
+    "PROCES": DepositStatus.PROCESSING,
+    "FAIL": DepositStatus.FAILED,
+    "INVALID": DepositStatus.FAILED,
+    "LOCK": DepositStatus.LOCKED,
 }
 
 # Reverse mappings for unified -> Gate.io
@@ -270,6 +285,11 @@ def rest_spot_to_order(order_data: Dict[str, Any]) -> Order:
 def to_withdrawal_status(status_str: str) -> WithdrawalStatus:
     """Convert GATEIO withdrawal status to unified WithdrawalStatus."""
     return _GATEIO_WITHDRAW_STATUS_MAP.get(status_str.upper(), WithdrawalStatus.UNKNOWN)
+
+
+def to_deposit_status(status_str: str) -> DepositStatus:
+    """Convert Gate.io deposit status to unified DepositStatus."""
+    return _GATEIO_DEPOSIT_STATUS_MAP.get(status_str.upper(), DepositStatus.UNKNOWN)
 
 def reverse_lookup_order_type(type_str: str) -> OrderType:
     """Reverse lookup for Gate.io order type strings to unified OrderType."""

@@ -11,7 +11,7 @@ from exchanges.structs.common import (
     Symbol,
     Order,
     AssetBalance,
-    Trade
+    Trade, AssetInfo
 )
 from exchanges.structs.types import AssetName, OrderId
 from exchanges.structs.enums import TimeInForce

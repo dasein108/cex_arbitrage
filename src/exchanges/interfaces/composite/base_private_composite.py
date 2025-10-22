@@ -536,10 +536,10 @@ class BasePrivateComposite(BalanceSyncMixin,
         await super().initialize()
 
         self._symbols_info = symbols_info
-        if not channels:
-            channels = [WebsocketChannelType.ORDER,
-                        WebsocketChannelType.BALANCE,
-                        WebsocketChannelType.EXECUTION]
+        # if not channels:
+        #     channels = [WebsocketChannelType.ORDER,
+        #                 WebsocketChannelType.BALANCE,
+        #                 WebsocketChannelType.EXECUTION]
 
         try:
             # Clients are already injected via constructor - no creation needed
@@ -552,7 +552,7 @@ class BasePrivateComposite(BalanceSyncMixin,
             if self._balance_sync_interval:
                 self.start_balance_sync()
             # Step 2: Initialize WebSocket if available
-            if self._ws:
+            if self._ws and channels:
                 self.logger.info(f"{self._tag} Initializing WebSocket client...")
                 await self._ws.initialize()
                 await self._ws.subscribe(channels)
@@ -621,6 +621,7 @@ class BasePrivateComposite(BalanceSyncMixin,
         self.publish(PrivateWebsocketChannelType.BALANCE, balance)
 
         self.logger.debug(f"Updated balance for {asset}: {balance}")
+
 
     async def close(self) -> None:
         """Close private exchange connections."""

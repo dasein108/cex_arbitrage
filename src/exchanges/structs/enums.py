@@ -100,3 +100,14 @@ class WithdrawalStatus(IntEnum):
     CANCELED = 5     # User canceled
     MANUAL_REVIEW = 6 # Under manual review
     UNKNOWN = -1     # Unknown status
+
+
+class DepositStatus(IntEnum):
+    """Deposit status enumeration."""
+    PENDING = 1      # Awaiting confirmations
+    PROCESSING = 2   # Being processed
+    COMPLETED = 3    # Successfully completed
+    FAILED = 4       # Failed/rejected
+    LOCKED = 5       # Temporarily locked
+    MANUAL_REVIEW = 6 # Under manual review
+    UNKNOWN = -1     # Unknown status

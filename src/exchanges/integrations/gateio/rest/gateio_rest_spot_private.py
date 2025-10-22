@@ -27,10 +27,10 @@ import msgspec
 from exchanges.structs.common import (
     Symbol, Order, AssetBalance,
     AssetInfo, NetworkInfo, TradingFee,
-    WithdrawalRequest, WithdrawalResponse
+    WithdrawalRequest, WithdrawalResponse, DepositResponse, DepositAddress
 )
 from exchanges.structs.types import AssetName, OrderId
-from exchanges.structs.enums import TimeInForce, WithdrawalStatus
+from exchanges.structs.enums import TimeInForce, WithdrawalStatus, DepositStatus
 from exchanges.structs import OrderType, Side
 from infrastructure.logging import HFTLoggerInterface
 from infrastructure.networking.http.structs import HTTPMethod
@@ -41,13 +41,14 @@ from infrastructure.exceptions.exchange import ExchangeRestError, OrderCancelled
 # Import direct utility functions
 from exchanges.integrations.gateio.utils import (
     from_side, from_order_type, format_quantity, format_price,
-    from_time_in_force, rest_spot_to_order, to_withdrawal_status
+    from_time_in_force, rest_spot_to_order, to_withdrawal_status, to_deposit_status
 )
 from exchanges.integrations.gateio.structs.exchange import GateioCurrencyResponse, GateioWithdrawStatusResponse
 from utils import get_current_timestamp
 from exchanges.integrations.gateio.services.spot_symbol_mapper import GateioSpotSymbol
 
 from .gateio_base_spot_rest import GateioBaseSpotRestInterface
+from exchanges.utils.network_mapping import get_unified_network_name
 
 class GateioPrivateSpotRestInterface(GateioBaseSpotRestInterface, PrivateSpotRestInterface):
     """
@@ -68,7 +69,7 @@ class GateioPrivateSpotRestInterface(GateioBaseSpotRestInterface, PrivateSpotRes
         """
         # Initialize base REST client (rate_limiter created internally)
         super().__init__(config, logger, is_private=True)
-        
+
         # Initialize HFT logger if not provided
         if logger is None:
             from infrastructure.logging import get_exchange_logger
@@ -571,7 +572,7 @@ class GateioPrivateSpotRestInterface(GateioBaseSpotRestInterface, PrivateSpotRes
                                     withdraw_max = None
                             
                         network_info = NetworkInfo(
-                            network=chain.name,  # Use name as the network identifier
+                            network=get_unified_network_name(chain.name),  # Use name as the network identifier
                             deposit_enable=deposit_enable,
                             withdraw_enable=withdraw_enable,
                             withdraw_fee=withdraw_fee,
@@ -885,6 +886,194 @@ class GateioPrivateSpotRestInterface(GateioBaseSpotRestInterface, PrivateSpotRes
             self.logger.error(f"Failed to get withdrawal history: {e}")
             raise ExchangeRestError(500, f"Failed to get withdrawal history: {e}")
 
+    async def deposit_history(
+        self,
+        asset: Optional[AssetName] = None,
+        limit: int = 100
+    ) -> List[DepositResponse]:
+        """
+        Get deposit history from Gate.io.
+        
+        Args:
+            asset: Optional asset filter
+            limit: Maximum number of deposits to return
+            
+        Returns:
+            List of historical deposits
+        """
+        params = {}
+        
+        if asset:
+            params['currency'] = asset
+            
+        # Gate.io supports up to 500 records  
+        params['limit'] = min(limit, 500)
+        
+        try:
+            response_data = await self.request(
+                HTTPMethod.GET,
+                '/deposits',
+                params=params
+            )
+            
+            deposits = []
+            
+            # Gate.io returns a list of deposit records
+            for deposit_data in response_data:
+                # Map Gate.io status to our enum
+                gateio_status = deposit_data.get('status', '')
+                status = to_deposit_status(gateio_status)
+                
+                deposit = DepositResponse(
+                    deposit_id=str(deposit_data.get('id', '')),
+                    asset=AssetName(deposit_data.get('currency', '')),
+                    amount=float(deposit_data.get('amount', 0)),
+                    address=deposit_data.get('address', ''),
+                    network=deposit_data.get('chain'),
+                    status=status,
+                    timestamp=int(deposit_data.get('timestamp', 0) * 1000),  # Gate.io uses seconds
+                    memo=deposit_data.get('memo'),
+                    tx_id=deposit_data.get('txid')
+                )
+                deposits.append(deposit)
+                
+            self.logger.info(f"Retrieved {len(deposits)} deposit records")
+            return deposits
+            
+        except Exception as e:
+            self.logger.error(f"Failed to get deposit history: {e}")
+            raise ExchangeRestError(500, f"Failed to get deposit history: {e}")
+
+    async def get_deposit_history(
+        self,
+        asset: Optional[AssetName] = None,
+        limit: int = 100,
+        start_time: Optional[int] = None,
+        end_time: Optional[int] = None
+    ) -> List[DepositResponse]:
+        """
+        Get deposit history from Gate.io with optional time filtering.
+        
+        Args:
+            asset: Optional asset filter
+            limit: Maximum number of deposits to return (max 500)
+            start_time: Optional start time in milliseconds since epoch
+            end_time: Optional end time in milliseconds since epoch
+            
+        Returns:
+            List of historical deposits
+            
+        Raises:
+            ExchangeAPIError: If unable to fetch deposit history
+        """
+        params = {}
+        
+        if asset:
+            params['currency'] = asset
+            
+        # Gate.io supports up to 500 records  
+        params['limit'] = min(limit, 500)
+        
+        # Add time filtering if provided (Gate.io uses seconds)
+        if start_time:
+            params['from'] = start_time // 1000  # Convert milliseconds to seconds
+        if end_time:
+            params['to'] = end_time // 1000  # Convert milliseconds to seconds
+        
+        try:
+            response_data = await self.request(
+                HTTPMethod.GET,
+                '/deposits',
+                params=params
+            )
+            
+            deposits = []
+            
+            # Gate.io returns a list of deposit records
+            for deposit_data in response_data:
+                # Map Gate.io status to our enum
+                gateio_status = deposit_data.get('status', '')
+                status = to_deposit_status(gateio_status)
+                
+                deposit = DepositResponse(
+                    deposit_id=str(deposit_data.get('id', '')),
+                    asset=AssetName(deposit_data.get('currency', '')),
+                    amount=float(deposit_data.get('amount', 0)),
+                    address=deposit_data.get('address', ''),
+                    network=deposit_data.get('chain'),
+                    status=status,
+                    timestamp=int(deposit_data.get('timestamp', 0) * 1000),  # Gate.io uses seconds
+                    memo=deposit_data.get('memo'),
+                    tx_id=deposit_data.get('txid')
+                )
+                deposits.append(deposit)
+                
+            self.logger.debug(f"Retrieved {len(deposits)} deposit records with time filtering")
+            return deposits
+            
+        except Exception as e:
+            self.logger.error(f"Failed to get deposit history: {e}")
+            raise ExchangeRestError(500, f"Failed to get deposit history: {e}")
+
+    async def get_deposit_address(
+        self,
+        asset: AssetName,
+        network: Optional[str] = None
+    ) -> DepositAddress:
+        """
+        Get deposit address for the specified asset and network from Gate.io.
+
+        Args:
+            asset: Asset name to get deposit address for
+            network: Optional network/chain specification
+
+        Returns:
+            DepositAddress with address and memo information
+
+        Raises:
+            ExchangeAPIError: If unable to fetch deposit address
+            ValueError: If asset or network not supported
+        """
+        params = {
+            'currency': asset
+        }
+        
+        # Add chain if specified
+        if network:
+            params['chain'] = network
+
+        try:
+            # Use Gate.io deposit address endpoint
+            response_data = await self.request(
+                HTTPMethod.GET,
+                '/wallet/deposit_address',
+                params=params
+            )
+
+            # Gate.io response format: {"currency": "BTC", "address": "...", "multichain_addresses": [...]}
+            address = response_data.get('address', '')
+            if not address:
+                raise ExchangeRestError(500, f"No deposit address returned for {asset}")
+
+            # Extract memo if present (Gate.io doesn't typically use memos in this endpoint)
+            memo = response_data.get('memo') or response_data.get('tag')
+            
+            # Get chain from response or use provided network
+            response_network = response_data.get('chain', network or 'default')
+
+            deposit_address = DepositAddress(
+                asset=asset,
+                address=address,
+                network=response_network,
+                memo=memo
+            )
+
+            self.logger.debug(f"Retrieved deposit address for {asset}: {address}")
+            return deposit_address
+
+        except Exception as e:
+            self.logger.error(f"Failed to get deposit address for {asset}: {e}")
+            raise ExchangeRestError(500, f"Failed to get deposit address for {asset}: {e}")
 
     async def close(self) -> None:
         """Close the REST client and clean up resources."""

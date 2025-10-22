@@ -27,10 +27,10 @@ import msgspec
 from exchanges.integrations.mexc.services.symbol_mapper import MexcSymbol
 from exchanges.structs.common import (
     Symbol, Order, AssetBalance, Trade,
-    AssetInfo, NetworkInfo, WithdrawalRequest, WithdrawalResponse
+    AssetInfo, NetworkInfo, WithdrawalRequest, WithdrawalResponse, DepositResponse, DepositAddress
 )
 from exchanges.structs.types import AssetName, OrderId
-from exchanges.structs.enums import TimeInForce, WithdrawalStatus
+from exchanges.structs.enums import TimeInForce, WithdrawalStatus, DepositStatus
 from exchanges.structs import OrderType, Side
 from infrastructure.logging import HFTLoggerInterface
 from infrastructure.networking.http.structs import HTTPMethod
@@ -43,13 +43,13 @@ from exchanges.integrations.mexc.structs.exchange import (MexcAccountResponse, M
 # Import direct utility functions
 from exchanges.integrations.mexc.utils import (
     from_side, from_order_type, format_quantity, format_price,
-    from_time_in_force, to_order_status, rest_to_order, rest_to_withdrawal_status, rest_to_trade
+    from_time_in_force, to_order_status, rest_to_order, rest_to_withdrawal_status, rest_to_deposit_status, rest_to_trade
 )
 from utils import get_current_timestamp
 
 # Import the new base REST implementation
 from .mexc_base_rest import MexcBaseRestInterface
-
+from exchanges.utils.network_mapping import get_unified_network_name
 
 class MexcPrivateSpotRestInterface(MexcBaseRestInterface, PrivateSpotRestInterface, ListenKeyInterface):
     """
@@ -72,7 +72,7 @@ class MexcPrivateSpotRestInterface(MexcBaseRestInterface, PrivateSpotRestInterfa
         # Initialize base REST client with constructor injection
         # Note: PrivateSpotRestInterface now inherits from BaseRestClient, so we only need to call super().__init__
         super().__init__(config, logger, is_private=True)
-        
+
         self.logger.debug("MEXC private spot REST client initialized",
                          exchange="mexc", api_type="private")
 
@@ -668,8 +668,9 @@ class MexcPrivateSpotRestInterface(MexcBaseRestInterface, PrivateSpotRestInterfa
             overall_withdraw_enable = False
 
             for network_data in currency_data.networkList:
+                network_name = get_unified_network_name(network_data.network)
                 network_info = NetworkInfo(
-                    network=network_data.network,
+                    network=network_name,
                     deposit_enable=network_data.depositEnable,
                     withdraw_enable=network_data.withdrawEnable,
                     withdraw_fee=float(network_data.withdrawFee),
@@ -679,7 +680,7 @@ class MexcPrivateSpotRestInterface(MexcBaseRestInterface, PrivateSpotRestInterfa
                     memo=None
                 )
 
-                networks[network_data.network] = network_info
+                networks[network_name] = network_info
 
                 if network_data.depositEnable:
                     overall_deposit_enable = True
@@ -726,7 +727,7 @@ class MexcPrivateSpotRestInterface(MexcBaseRestInterface, PrivateSpotRestInterfa
 
         # Add network if specified (required for multi-chain assets)
         if request.network:
-            params['network'] = request.network
+            params['netWork'] = request.network
 
         # Add memo if provided (for coins that require it)
         if request.memo:
@@ -858,7 +859,7 @@ class MexcPrivateSpotRestInterface(MexcBaseRestInterface, PrivateSpotRestInterfa
 
             # MEXC returns a list of withdrawal records
             for withdrawal_data in response_data:
-                # Map MEXC status to our enum
+                # Map MEXC status to our enum (status is integer 1-10)
                 mexc_status = withdrawal_data.get('status', 0)
                 status = rest_to_withdrawal_status(mexc_status)
 
@@ -871,8 +872,9 @@ class MexcPrivateSpotRestInterface(MexcBaseRestInterface, PrivateSpotRestInterfa
                     network=withdrawal_data.get('network'),
                     status=status,
                     timestamp=int(withdrawal_data.get('applyTime', 0)),
-                    memo=withdrawal_data.get('addressTag'),
-                    tx_id=withdrawal_data.get('txId')
+                    memo=withdrawal_data.get('memo'),  # Fixed: MEXC uses 'memo' not 'addressTag'
+                    tx_id=withdrawal_data.get('txId'),
+                    remark=withdrawal_data.get('remark')
                 )
                 withdrawals.append(withdrawal)
 
@@ -882,3 +884,192 @@ class MexcPrivateSpotRestInterface(MexcBaseRestInterface, PrivateSpotRestInterfa
         except Exception as e:
             self.logger.error(f"Failed to get withdrawal history: {e}")
             raise ExchangeRestError(500, f"Failed to get withdrawal history: {e}")
+
+    async def deposit_history(
+        self,
+        asset: Optional[AssetName] = None,
+        limit: int = 100
+    ) -> List[DepositResponse]:
+        """
+        Get deposit history from MEXC.
+        
+        Args:
+            asset: Optional asset filter
+            limit: Maximum number of deposits to return
+            
+        Returns:
+            List of historical deposits
+        """
+        params = {}
+        if asset:
+            params['coin'] = asset
+        # MEXC supports up to 1000 records
+        params['limit'] = min(limit, 1000)
+
+        try:
+            # Use base class request method with direct implementation
+            response_data = await self.request(
+                HTTPMethod.GET,
+                '/api/v3/capital/deposit/hisrec',
+                params=params
+            )
+
+            deposits = []
+            # MEXC returns a list of deposit records
+            for deposit_data in response_data:
+                # Map MEXC status to our enum
+                mexc_status = deposit_data.get('status', 0)
+                status = rest_to_deposit_status(mexc_status)
+                
+                deposit = DepositResponse(
+                    deposit_id=str(deposit_data.get('id', '')),
+                    asset=AssetName(deposit_data.get('coin', '')),
+                    amount=float(deposit_data.get('amount', 0)),
+                    address=deposit_data.get('address', ''),
+                    network=deposit_data.get('network'),
+                    status=status,
+                    timestamp=int(deposit_data.get('insertTime', 0)),
+                    memo=deposit_data.get('memo'),
+                    tx_id=deposit_data.get('txId'),
+                    confirmations=int(deposit_data.get('confirmTimes', 0)) if deposit_data.get('confirmTimes') else None,
+                    unlock_confirmations=int(deposit_data.get('unlockConfirm', 0)) if deposit_data.get('unlockConfirm') else None
+                )
+                deposits.append(deposit)
+
+            self.logger.debug(f"Retrieved {len(deposits)} deposit records")
+            return deposits
+
+        except Exception as e:
+            self.logger.error(f"Failed to get deposit history: {e}")
+            raise ExchangeRestError(500, f"Failed to get deposit history: {e}")
+
+    async def get_deposit_history(
+        self,
+        asset: Optional[AssetName] = None,
+        limit: int = 100,
+        start_time: Optional[int] = None,
+        end_time: Optional[int] = None
+    ) -> List[DepositResponse]:
+        """
+        Get deposit history from MEXC with optional time filtering.
+        
+        Args:
+            asset: Optional asset filter
+            limit: Maximum number of deposits to return (max 1000)
+            start_time: Optional start time in milliseconds since epoch
+            end_time: Optional end time in milliseconds since epoch
+            
+        Returns:
+            List of historical deposits
+            
+        Raises:
+            ExchangeAPIError: If unable to fetch deposit history
+        """
+        params = {}
+        if asset:
+            params['coin'] = asset
+        # MEXC supports up to 1000 records
+        params['limit'] = min(limit, 1000)
+        
+        # Add time filtering if provided
+        if start_time:
+            params['startTime'] = start_time
+        if end_time:
+            params['endTime'] = end_time
+
+        try:
+            # Use base class request method with direct implementation
+            response_data = await self.request(
+                HTTPMethod.GET,
+                '/api/v3/capital/deposit/hisrec',
+                params=params
+            )
+
+            deposits = []
+            # MEXC returns a list of deposit records
+            for deposit_data in response_data:
+                # Map MEXC status to our enum
+                mexc_status = deposit_data.get('status', 0)
+                status = rest_to_deposit_status(mexc_status)
+                
+                deposit = DepositResponse(
+                    deposit_id=str(deposit_data.get('id', '')),
+                    asset=AssetName(deposit_data.get('coin', '')),
+                    amount=float(deposit_data.get('amount', 0)),
+                    address=deposit_data.get('address', ''),
+                    network=deposit_data.get('network'),
+                    status=status,
+                    timestamp=int(deposit_data.get('insertTime', 0)),
+                    memo=deposit_data.get('memo'),
+                    tx_id=deposit_data.get('txId'),
+                    confirmations=int(deposit_data.get('confirmTimes', 0)) if deposit_data.get('confirmTimes') else None,
+                    unlock_confirmations=int(deposit_data.get('unlockConfirm', 0)) if deposit_data.get('unlockConfirm') else None
+                )
+                deposits.append(deposit)
+
+            self.logger.debug(f"Retrieved {len(deposits)} deposit records with time filtering")
+            return deposits
+
+        except Exception as e:
+            self.logger.error(f"Failed to get deposit history: {e}")
+            raise ExchangeRestError(500, f"Failed to get deposit history: {e}")
+
+    async def get_deposit_address(
+        self,
+        asset: AssetName,
+        network: Optional[str] = None
+    ) -> DepositAddress:
+        """
+        Get deposit address for the specified asset and network from MEXC.
+
+        Args:
+            asset: Asset name to get deposit address for
+            network: Optional network/chain specification
+
+        Returns:
+            DepositAddress with address and memo information
+
+        Raises:
+            ExchangeAPIError: If unable to fetch deposit address
+            ValueError: If asset or network not supported
+        """
+        params = {
+            'coin': asset
+        }
+        
+        # Add network if specified
+        if network:
+            params['network'] = network
+
+        try:
+            # Use MEXC deposit address endpoint
+            response_data = await self.request(
+                HTTPMethod.GET,
+                '/api/v3/capital/deposit/address',
+                params=params
+            )
+
+            # MEXC response format: {"coin": "BTC", "address": "...", "tag": "...", "url": "..."}
+            address = response_data.get('address', '')
+            if not address:
+                raise ExchangeRestError(500, f"No deposit address returned for {asset}")
+
+            # Extract memo/tag if present
+            memo = response_data.get('tag') or response_data.get('memo')
+            
+            # Get network from response or use provided network
+            response_network = response_data.get('network', network or 'default')
+
+            deposit_address = DepositAddress(
+                asset=asset,
+                address=address,
+                network=response_network,
+                memo=memo
+            )
+
+            self.logger.debug(f"Retrieved deposit address for {asset}: {address}")
+            return deposit_address
+
+        except Exception as e:
+            self.logger.error(f"Failed to get deposit address for {asset}: {e}")
+            raise ExchangeRestError(500, f"Failed to get deposit address for {asset}: {e}")

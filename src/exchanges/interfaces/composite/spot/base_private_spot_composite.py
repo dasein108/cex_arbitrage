@@ -49,7 +49,7 @@ class CompositePrivateSpotExchange(BasePrivateComposite, WithdrawalMixin):
         # Update tag to indicate spot operations
 
         # Asset info for withdrawal validation (spot-specific)
-        self._assets_info = {}
+        self.assets_info = {}
 
     # Spot-specific functionality extensions
 

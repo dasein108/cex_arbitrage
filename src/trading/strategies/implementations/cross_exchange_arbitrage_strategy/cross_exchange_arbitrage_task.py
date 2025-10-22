@@ -258,11 +258,11 @@ class CrossExchangeArbitrageTask(BaseStrategyTask[CrossExchangeArbitrageTaskCont
             signals = signal.signals
             # Log signal with dynamic threshold info
 
-            if signals:
-                self.logger.info(f"🎯 Arbitrage signals: {signals}",
-                                 current_spread=f"{signal.current_spread:.4f}%",
-                                 entry_threshold=f"{signal.entry_threshold:.4f}% (dynamic)",
-                                 exit_threshold=f"{signal.exit_threshold:.4f}% (dynamic)")
+            # if signals:
+            #     self.logger.info(f"🎯 Arbitrage signals: {signals}",
+            #                      current_spread=f"{signal.current_spread:.4f}%",
+            #                      entry_threshold=f"{signal.entry_threshold:.4f}% (dynamic)",
+            #                      exit_threshold=f"{signal.exit_threshold:.4f}% (dynamic)")
 
             return signals
 
@@ -335,6 +335,11 @@ class CrossExchangeArbitrageTask(BaseStrategyTask[CrossExchangeArbitrageTaskCont
             self.logger.error(f"🚫 Failed to place order {tag_str}", error=str(e))
             return None
 
+    def _get_min_base_qty(self, exchange_role: ExchangeRoleType) -> float:
+        price = self._get_book_ticker(exchange_role).bid_price  # approx. price to calc base qty for MEXC
+
+        return self._symbol_info[exchange_role].get_min_base_quantity(price)
+
     async def _rebalance_hedge(self) -> bool:
         """Check if there is an imbalance for specific side and rebalance immediately."""
         source_qty = self.context.positions['source'].qty
@@ -343,7 +348,9 @@ class CrossExchangeArbitrageTask(BaseStrategyTask[CrossExchangeArbitrageTaskCont
 
         delta = (source_qty + dest_qty) - hedge_qty
 
-        if abs(delta) < self._symbol_info['hedge'].min_base_quantity:
+        price = self._get_book_ticker('hedge').bid_price # approx. price to calc base qty for MEXC
+
+        if abs(delta) < self._get_min_base_qty('hedge'):
             return False
 
         self.logger.info(f"⚖️ Detected imbalance: delta={delta}:.f8, "
@@ -472,7 +479,7 @@ class CrossExchangeArbitrageTask(BaseStrategyTask[CrossExchangeArbitrageTaskCont
         else:  # releasing direction
             quantity = filled_qty
 
-        if quantity < self._symbol_info[exchange_role].min_base_quantity:
+        if quantity < self._get_min_base_qty(exchange_role):
             return 0.0
 
         return quantity

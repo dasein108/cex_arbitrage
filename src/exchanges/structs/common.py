@@ -16,7 +16,7 @@ Design Principles:
 from msgspec import Struct
 from typing import Optional, Dict, List
 
-from .enums import TimeInForce, KlineInterval, OrderStatus, OrderType, Side, WithdrawalStatus
+from .enums import TimeInForce, KlineInterval, OrderStatus, OrderType, Side, WithdrawalStatus, DepositStatus
 from .types import ExchangeName, AssetName, OrderId
 
 
@@ -167,6 +167,13 @@ class SymbolInfo(Struct, frozen=True):
             return round(quantity / self.quanto_multiplier) * self.quanto_multiplier
 
         return self.round_base(quantity)
+
+    def get_min_base_quantity(self, price: float) -> float:
+        """Get minimum base quantity."""
+        if self.min_base_quantity:
+            return self.min_base_quantity
+        else:
+            return (self.min_quote_quantity / price) * 1.1  # add 10% buffer
 
 # Type alias for collections
 SymbolsInfo = Dict[Symbol, SymbolInfo]
@@ -338,3 +345,27 @@ class WithdrawalResponse(Struct):
     memo: Optional[str] = None
     remark: Optional[str] = None
     tx_id: Optional[str] = None  # Transaction ID when available
+
+
+class DepositAddress(Struct):
+    """Deposit address information for receiving funds."""
+    asset: AssetName
+    address: str
+    network: str
+    memo: Optional[str] = None  # Required for some coins (XRP, EOS, etc.)
+    min_confirmations: Optional[int] = None
+    warning: Optional[str] = None  # Exchange warnings about deposits
+
+class DepositResponse(Struct):
+    """Deposit operation response."""
+    deposit_id: str
+    asset: AssetName
+    amount: float
+    address: str
+    status: DepositStatus
+    timestamp: int
+    network: Optional[str] = None
+    memo: Optional[str] = None
+    tx_id: Optional[str] = None  # Transaction ID when available
+    confirmations: Optional[int] = None  # Current confirmations
+    unlock_confirmations: Optional[int] = None  # Required confirmations

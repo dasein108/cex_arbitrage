@@ -17,7 +17,7 @@ from exchanges.structs.common import (
     Side, OrderStatus, OrderType, TimeInForce, Order, Symbol, Trade
 )
 from exchanges.structs.types import OrderId, AssetName
-from exchanges.structs.enums import WithdrawalStatus, KlineInterval
+from exchanges.structs.enums import WithdrawalStatus, DepositStatus, KlineInterval
 from exchanges.integrations.mexc.services.symbol_mapper import MexcSymbol
 
 # MEXC -> Unified mappings (these could be module-level constants)
@@ -56,16 +56,28 @@ _MEXC_TIF_MAP = {
 }
 
 _MEXC_WITHDRAW_STATUS_MAP = {
-    "APPLY": WithdrawalStatus.PENDING,
-    "AUDITING": WithdrawalStatus.PENDING,
-    "WAIT": WithdrawalStatus.PENDING,
-    "PROCESSING": WithdrawalStatus.PROCESSING,
-    "WAIT_PACKAGING": WithdrawalStatus.PROCESSING,
-    "WAIT_CONFIRM": WithdrawalStatus.PROCESSING,
-    "SUCCESS": WithdrawalStatus.COMPLETED,
-    "FAILED": WithdrawalStatus.FAILED,
-    "CANCEL": WithdrawalStatus.CANCELED,
-    "MANUAL": WithdrawalStatus.MANUAL_REVIEW
+    1: WithdrawalStatus.PENDING,      # APPLY
+    2: WithdrawalStatus.PENDING,      # AUDITING
+    3: WithdrawalStatus.PENDING,      # WAIT
+    4: WithdrawalStatus.PROCESSING,   # PROCESSING
+    5: WithdrawalStatus.PROCESSING,   # WAIT_PACKAGING
+    6: WithdrawalStatus.PROCESSING,   # WAIT_CONFIRM
+    7: WithdrawalStatus.COMPLETED,    # SUCCESS
+    8: WithdrawalStatus.FAILED,       # FAILED
+    9: WithdrawalStatus.CANCELED,     # CANCEL
+    10: WithdrawalStatus.MANUAL_REVIEW # MANUAL
+}
+
+# MEXC Deposit Status Mapping based on status field values from API docs
+_MEXC_DEPOSIT_STATUS_MAP = {
+    0: DepositStatus.PENDING,      # Pending
+    1: DepositStatus.PROCESSING,   # Processing
+    2: DepositStatus.PROCESSING,   # Waiting for confirmations
+    3: DepositStatus.PROCESSING,   # Confirming
+    4: DepositStatus.PROCESSING,   # Confirming
+    5: DepositStatus.COMPLETED,    # Successful
+    6: DepositStatus.FAILED,       # Failed
+    7: DepositStatus.MANUAL_REVIEW # Manual review
 }
 
 # Reverse mappings for unified -> MEXC
@@ -221,9 +233,14 @@ def rest_to_order(mexc_order_data: MexcOrderResponse) -> Order:
     )
 
 
-def rest_to_withdrawal_status(mexc_status: str) -> WithdrawalStatus:
+def rest_to_withdrawal_status(mexc_status: int) -> WithdrawalStatus:
     """Convert MEXC withdrawal status to unified WithdrawalStatus."""
-    return _MEXC_WITHDRAW_STATUS_MAP.get(mexc_status.upper(), WithdrawalStatus.UNKNOWN)
+    return _MEXC_WITHDRAW_STATUS_MAP.get(mexc_status, WithdrawalStatus.UNKNOWN)
+
+
+def rest_to_deposit_status(mexc_status: int) -> DepositStatus:
+    """Convert MEXC deposit status to unified DepositStatus."""
+    return _MEXC_DEPOSIT_STATUS_MAP.get(mexc_status, DepositStatus.UNKNOWN)
 
 
 _WS_ORDER_STATUS_MAPPING = {

@@ -202,11 +202,13 @@ class MexcBaseRestInterface(BaseRestClientInterface):
             message = error_response.msg if error_response.msg is not None else response_text
             
             # Comprehensive MEXC error code mapping based on official documentation
-            
+            # infrastructure.exceptions.exchange.ExchangeRestError: HTTP 500: Withdrawal submission failed: HTTP 400: MEXC no permission for endpoint: No permission to access the endpoint.
             # Rate Limiting Errors (Retryable with backoff)
             if status == 429 or code == 429:
                 return TooManyRequestsError(status, f"MEXC rate limit exceeded: {message}", code)
-            
+
+            elif code in [700007]:
+                return PermissionError(status, f"MEXC permissions error: {message}", code)
             # Authentication and Authorization Errors (Non-retryable)
             elif code in [400, 700001, 700002, 700003]:
                 if code == 400:
