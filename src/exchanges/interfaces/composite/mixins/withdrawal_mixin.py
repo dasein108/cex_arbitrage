@@ -84,19 +84,6 @@ class WithdrawalMixin:
         
         return await self._rest.submit_withdrawal(request)
     
-    async def withdraw(self, request: WithdrawalRequest) -> WithdrawalResponse:
-        """
-        Submit a withdrawal request (alias for submit_withdrawal).
-        Maintains backward compatibility with existing interface.
-        
-        Args:
-            request: Withdrawal request parameters
-            
-        Returns:
-            WithdrawalResponse with withdrawal details
-        """
-        return await self.submit_withdrawal(request)
-    
     async def cancel_withdrawal(self, withdrawal_id: str) -> bool:
         """
         Cancel a pending withdrawal.
@@ -112,12 +99,10 @@ class WithdrawalMixin:
             NotImplementedError: If private REST client is not available
             ExchangeAPIError: If cancellation fails
         """
-        if not hasattr(self, '_rest') or self._rest is None:
-            raise NotImplementedError("Private REST client required for withdrawal operations")
-        
+
         return await self._rest.cancel_withdrawal(withdrawal_id)
     
-    async def get_withdrawal_status(self, withdrawal_id: str) -> WithdrawalResponse:
+    async def get_withdrawal_status(self, withdrawal_id: str) -> WithdrawalResponse | None:
         """
         Get current status of a withdrawal.
         Delegates to REST client.
@@ -132,9 +117,7 @@ class WithdrawalMixin:
             NotImplementedError: If private REST client is not available
             ExchangeAPIError: If withdrawal not found or query fails
         """
-        if not hasattr(self, '_rest') or self._rest is None:
-            raise NotImplementedError("Private REST client required for withdrawal operations")
-        
+
         return await self._rest.get_withdrawal_status(withdrawal_id)
     
     async def get_withdrawal_history(

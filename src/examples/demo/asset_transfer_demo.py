@@ -185,7 +185,7 @@ class AssetTransferDemo:
             pre_balances = await self.check_balances(asset)
             
             # Execute transfer
-            transfer_request = await self.transfer_module.start_transfer_asset(
+            transfer_request = await self.transfer_module.transfer_asset(
                 asset=asset,
                 from_exchange=ExchangeEnum.MEXC,
                 to_exchange=ExchangeEnum.GATEIO,
@@ -194,7 +194,7 @@ class AssetTransferDemo:
             
             self.logger.info(f"✅ Transfer initiated successfully!")
             self.logger.info(f"  Transfer ID: {transfer_request.transfer_id}")
-            self.logger.info(f"  Transaction ID: {transfer_request.transfer_tx_id}")
+            self.logger.info(f"  Transaction ID: {transfer_request.withdrawal_id}")
             self.logger.info(f"  Estimated Fee: {transfer_request.fees} {asset}")
             self.logger.info(f"  Initiated: {transfer_request.initiated}")
             
@@ -215,7 +215,7 @@ class AssetTransferDemo:
         while datetime.now() < timeout_time:
             try:
                 # Check transfer status
-                is_complete = await self.transfer_module.check_transfer_status(transfer_request.transfer_id)
+                is_complete = await self.transfer_module.update_transfer_status(transfer_request.transfer_id)
                 
                 # Get updated transfer request with latest tracking info
                 updated_request = self.transfer_module.get_transfer_request(transfer_request.transfer_id)
@@ -223,8 +223,8 @@ class AssetTransferDemo:
                     self.logger.info(f"📊 Transfer tracking update:")
                     self.logger.info(f"  Initiated: {updated_request.initiated}")
                     self.logger.info(f"  Completed: {updated_request.completed}")
-                    if updated_request.current_status:
-                        self.logger.info(f"  Current status: {updated_request.current_status.name}")
+                    if updated_request.withdrawal_status:
+                        self.logger.info(f"  Current status: {updated_request.withdrawal_status.name}")
                     if updated_request.last_status_check:
                         self.logger.info(f"  Last checked: {updated_request.last_status_check.strftime('%H:%M:%S')}")
                 
@@ -233,7 +233,7 @@ class AssetTransferDemo:
                     return True
                 
                 # Check if transfer failed
-                if updated_request and updated_request.current_status == WithdrawalStatus.FAILED:
+                if updated_request and updated_request.withdrawal_status == WithdrawalStatus.FAILED:
                     self.logger.error(f"❌ Transfer failed on exchange")
                     return False
                 
@@ -253,11 +253,11 @@ class AssetTransferDemo:
         if final_request:
             self.logger.info(f"📊 Final transfer status:")
             self.logger.info(f"  Transfer ID: {final_request.transfer_id}")
-            self.logger.info(f"  Transaction ID: {final_request.transfer_tx_id}")
+            self.logger.info(f"  Transaction ID: {final_request.withdrawal_id}")
             self.logger.info(f"  Initiated: {final_request.initiated}")
             self.logger.info(f"  Completed: {final_request.completed}")
-            if final_request.current_status:
-                self.logger.info(f"  Final status: {final_request.current_status.name}")
+            if final_request.withdrawal_status:
+                self.logger.info(f"  Final status: {final_request.withdrawal_status.name}")
         
         return False
     
@@ -394,9 +394,9 @@ class AssetTransferDemo:
                 self.logger.info(f"    {transfer_id}:")
                 self.logger.info(f"      Asset: {transfer.amount} {transfer.asset}")
                 self.logger.info(f"      Route: {transfer.from_exchange.name} → {transfer.to_exchange.name}")
-                self.logger.info(f"      TX ID: {transfer.transfer_tx_id}")
-                if transfer.current_status:
-                    self.logger.info(f"      Status: {transfer.current_status.name}")
+                self.logger.info(f"      TX ID: {transfer.withdrawal_id}")
+                if transfer.withdrawal_status:
+                    self.logger.info(f"      Status: {transfer.withdrawal_status.name}")
                 if transfer.last_status_check:
                     self.logger.info(f"      Last check: {transfer.last_status_check.strftime('%H:%M:%S')}")
 

@@ -195,6 +195,7 @@ class NetworkInfo(Struct, frozen=True):
     contract_address: Optional[str] = None
     memo: Optional[str] = None
 
+
 class AssetInfo(Struct, frozen=True):
     """Currency information across all supported networks."""
     asset: AssetName

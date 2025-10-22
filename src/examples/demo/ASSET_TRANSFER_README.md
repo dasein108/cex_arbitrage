@@ -206,7 +206,7 @@ This demo shows how to integrate the AssetTransferModule into trading strategies
 transfer_module = AssetTransferModule(exchanges)
 
 # Execute transfer as part of arbitrage strategy
-transfer_request = await transfer_module.start_transfer_asset(
+transfer_request = await transfer_module.transfer_asset(
     asset=AssetName("USDT"),
     from_exchange=ExchangeEnum.MEXC,
     to_exchange=ExchangeEnum.GATEIO,
@@ -214,8 +214,8 @@ transfer_request = await transfer_module.start_transfer_asset(
 )
 
 # Monitor transfer completion
-while not await transfer_module.check_transfer_status(transfer_request.transfer_id):
+while not await transfer_module.update_transfer_status(transfer_request.transfer_id):
     await asyncio.sleep(30)
-    
+
 # Continue with trading strategy
 ```

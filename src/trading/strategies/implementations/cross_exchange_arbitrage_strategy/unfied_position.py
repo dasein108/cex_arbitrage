@@ -28,6 +28,7 @@ class Position(Struct):
     """Individual position information with float-only policy."""
     qty: float = 0.0
     price: float = 0.0
+    acc_quote_qty: float = 0.0 # in case of SELL accumulated quote qty
     side: Optional[Side] = None
     last_order: Optional[Order] = None
 
@@ -71,10 +72,15 @@ class Position(Struct):
             self.price = price
             self.side = side
 
+            if self.side == Side.SELL:
+                self.acc_quote_qty += quantity * price
+
             return PositionChange(0,0,quantity,price)
         else:
             multiplier = 1 if self.side == side else -1
             signed_quantity = quantity * multiplier
+
+            self.acc_quote_qty += signed_quantity * price
 
             new_price, new_qty = calculate_weighted_price(self.qty, self.price,signed_quantity, price)
             pos_change =  PositionChange(self.qty, self.price, new_price, new_qty)
