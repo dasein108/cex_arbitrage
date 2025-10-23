@@ -25,6 +25,19 @@ class WithdrawalInterface(ABC):
     available for spot exchanges, not futures/derivatives.
     """
 
+    @property
+    def asset_info(self) -> Dict[AssetName, AssetInfo]:
+        """
+        Synchronous property to get asset information.
+
+        Returns:
+            Dictionary mapping AssetName to AssetInfo with network configurations
+
+        Raises:
+            ExchangeAPIError: If unable to fetch currency information
+        """
+        raise NotImplementedError("Synchronous asset_info property not implemented. Use async get_assets_info() instead.")
+
     @abstractmethod
     async def get_assets_info(self) -> Dict[AssetName, AssetInfo]:
         """

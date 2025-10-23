@@ -58,6 +58,9 @@ class MexcPrivateSpotRestInterface(MexcBaseRestInterface, PrivateSpotRestInterfa
     Provides access to authenticated trading endpoints without WebSocket features.
     Optimized for high-frequency trading operations with minimal overhead.
     """
+    @property
+    def asset_info(self) -> Dict[AssetName, AssetInfo]:
+        return self._asset_info
 
     def __init__(self, config, logger: Optional[HFTLoggerInterface] = None, **kwargs):
         """
@@ -72,6 +75,7 @@ class MexcPrivateSpotRestInterface(MexcBaseRestInterface, PrivateSpotRestInterfa
         # Initialize base REST client with constructor injection
         # Note: PrivateSpotRestInterface now inherits from BaseRestClient, so we only need to call super().__init__
         super().__init__(config, logger, is_private=True)
+        self._asset_info: Dict[AssetName, AssetInfo] = {}
 
         self.logger.debug("MEXC private spot REST client initialized",
                          exchange="mexc", api_type="private")
@@ -698,6 +702,7 @@ class MexcPrivateSpotRestInterface(MexcBaseRestInterface, PrivateSpotRestInterfa
             currency_info_map[asset_name] = asset_info
 
         self.logger.debug(f"Retrieved currency info for {len(currency_info_map)} assets")
+        self._asset_info = currency_info_map  # Cache for synchronous access
         return currency_info_map
 
     # Withdrawal operations

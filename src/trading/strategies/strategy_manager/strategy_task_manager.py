@@ -11,11 +11,11 @@ from infrastructure.logging import HFTLoggerInterface
 from .task_persistence_manager import TaskPersistenceManager
 from exchanges.structs import Symbol
 from trading.strategies.implementations.base_strategy.base_strategy import BaseStrategyTask, TaskResult
-from trading.strategies.implementations.cross_exchange_arbitrage_strategy.cross_exchange_arbitrage_task import CrossExchangeArbitrageTaskContext, CrossExchangeArbitrageTask
+from trading.strategies.implementations.cross_exchange_arbitrage_strategy.cross_exchange_arbitrage_task import CrossExchangeArbitrageTaskContext, CrossExchangeArbitrageTask, CROSS_EXCHANGE_ARBITRAGE_TASK_TYPE
 from db.database_manager import initialize_database_manager
 
 TASK_TYPE_MAP = {
-    CrossExchangeArbitrageTaskContext.task_type: (CrossExchangeArbitrageTaskContext, CrossExchangeArbitrageTask),
+    CROSS_EXCHANGE_ARBITRAGE_TASK_TYPE: (CrossExchangeArbitrageTaskContext, CrossExchangeArbitrageTask),
 }
 
 
@@ -251,13 +251,14 @@ class StrategyTaskManager:
             for task_name, json_data in raw_contexts:
                 try:
                     # Extract task type
-                    task_type = task_name.split("_")[0]
+                    task_type = task_name.split(".")[0]
                     if task_type not in TASK_TYPE_MAP:
                         self.logger.warning(f"Unknown task type for {task_name}")
                         continue
 
                     context_cls, task_cls = TASK_TYPE_MAP[task_type]
-                    task = task_cls(context_cls.from_json(json_data))
+                    task_context = context_cls.from_json(json_data)
+                    task = task_cls(context=task_context)
                     # Recover task by type
 
                     if task:

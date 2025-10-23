@@ -36,6 +36,8 @@ class ActiveTransferState(Struct):
     transfer_id: Optional[str] = None
     exchange_enum: Optional[ExchangeEnum] = None
 
+CROSS_EXCHANGE_ARBITRAGE_TASK_TYPE = "cross_exchange_arbitrage_strategy"
+
 class CrossExchangeArbitrageTaskContext(BaseStrategyContext, kw_only=True):
     """Context for delta neutral execution.
 
@@ -46,8 +48,7 @@ class CrossExchangeArbitrageTaskContext(BaseStrategyContext, kw_only=True):
     symbol: Symbol
 
     # Override default task type
-    task_type: str = "cross_exchange_arbitrage_strategy"
-
+    task_type: str = CROSS_EXCHANGE_ARBITRAGE_TASK_TYPE
     # Optional fields with defaults
     total_quantity: Optional[float] = None
     order_qty: Optional[float] = None  # size of each order for limit orders
@@ -73,7 +74,13 @@ class CrossExchangeArbitrageTaskContext(BaseStrategyContext, kw_only=True):
     @property
     def tag(self) -> str:
         """Generate logging tag based on task_id and symbol."""
-        return f"{self.task_type}_{self.symbol.base}_{self.symbol.quote}"
+        return f"{self.task_type}.{self.symbol.base}_{self.symbol.quote}"
+
+    @staticmethod
+    def from_json(json_bytes: str) -> 'CrossExchangeArbitrageTaskContext':
+        """Deserialize context from dict data."""
+        return msgspec.json.decode(json_bytes, type=CrossExchangeArbitrageTaskContext)
+
 
 
 class CrossExchangeArbitrageTask(BaseStrategyTask[CrossExchangeArbitrageTaskContext]):
@@ -95,12 +102,12 @@ class CrossExchangeArbitrageTask(BaseStrategyTask[CrossExchangeArbitrageTaskCont
         self._tag = f'{self.name}_{self.context.symbol}'
 
     def __init__(self,
-                 logger: HFTLoggerInterface,
                  context: CrossExchangeArbitrageTaskContext,
+                 logger: HFTLoggerInterface = None,
                  **kwargs):
         """Initialize cross-exchange hedged arbitrage task.
         """
-        super().__init__(logger, context, **kwargs)
+        super().__init__(context, logger, **kwargs)
 
         # DualExchange instances for each side (unified public/private)
         self._exchanges: Dict[ExchangeRoleType, DualExchange] = self.create_exchanges()

@@ -54,9 +54,9 @@ class BaseStrategyContext(msgspec.Struct, frozen=False, kw_only=True):
         self.should_save_flag = True
 
     @staticmethod
-    def from_json(self, json_bytes: str) -> 'BaseStrategyContext':
+    def from_json(json_bytes: str) -> 'BaseStrategyContext':
         """Deserialize context from dict data."""
-        return msgspec.json.decode(json_bytes, type='BaseStrategyContext')
+        return msgspec.json.decode(json_bytes, type=BaseStrategyContext)
 
     def to_json(self) -> str:
         """Serialize context to JSON string."""
@@ -91,8 +91,8 @@ class BaseStrategyTask(Generic[T], ABC):
         pass
 
     def __init__(self,
-                 logger: HFTLoggerInterface,
                  context: T,
+                 logger: HFTLoggerInterface = None,
                  delay: float = 0.1):
         """Initialize task with context.
         
@@ -104,10 +104,11 @@ class BaseStrategyTask(Generic[T], ABC):
         # Validate provided context type
         if not isinstance(context, BaseStrategyContext):
             raise TypeError(f"Context must be a BaseStrategyContext, got {type(context)}")
-        
+
+        self.context: T = context
+
         self.logger = logger or get_strategy_logger(f"task.{self.context.tag}")
         self.delay = delay
-        self.context: T = context
 
     @property
     def status(self) -> StrategyTaskStus:

@@ -121,67 +121,69 @@ async def run_cross_exchange_arbitrage_demo():
     
     signal.signal(signal.SIGINT, signal_handler)
     signal.signal(signal.SIGTERM, signal_handler)
-    
+    # Start StrategyTaskManager (no recovery for this simple demo)
+    logger.info("🔄 Starting StrategyTaskManager...")
     try:
-        # Create F/USDT arbitrage task
-        symbol = Symbol(base=AssetName("F"), quote=AssetName("USDT"))
-        
-        logger.info(f"🚀 Creating cross exchange arbitrage task for {symbol}")
-        logger.info("📋 Strategy Configuration:",
-                   source="MEXC (spot)",
-                   destination="Gate.io (spot)", 
-                   hedge="Gate.io (futures)",
-                   strategy="Dynamic threshold arbitrage with TA signals")
+        await manager.start(recover_tasks=True)
 
-        exchange = create_rest_client(get_exchange_config(ExchangeEnum.MEXC.value), is_private=False)
+        if manager.task_count > 0:
+            logger.info(f"♻️ Recovered {manager.task_count} tasks from previous session")
+        else:
+            # Create F/USDT arbitrage task
+            symbol = Symbol(base=AssetName("F"), quote=AssetName("USDT"))
 
-        total_quantity_usdt = 20
-        order_qty_usdt = 2
+            logger.info(f"🚀 Creating cross exchange arbitrage task for {symbol}")
+            logger.info("📋 Strategy Configuration:",
+                       source="MEXC (spot)",
+                       destination="Gate.io (spot)",
+                       hedge="Gate.io (futures)",
+                       strategy="Dynamic threshold arbitrage with TA signals")
 
-        price = (await exchange.get_ticker_info(symbol))[symbol].last_price
+            exchange = create_rest_client(get_exchange_config(ExchangeEnum.MEXC.value), is_private=False)
 
-        total_quantity = total_quantity_usdt / price
-        order_qty = order_qty_usdt / price
+            total_quantity_usdt = 20
+            order_qty_usdt = 2
 
-        arbitrage_task = await create_cross_exchange_arbitrage_task(
-            symbol=symbol,
-            logger=logger,
-            total_quantity=total_quantity,
-            order_qty=order_qty
-        )
-        
-        # Add task to StrategyTaskManager
-        task_id = await manager.add_task(arbitrage_task)
-        logger.info(f"✅ Added cross exchange arbitrage task to StrategyTaskManager: {task_id}")
-        
-        # Start StrategyTaskManager (no recovery for this simple demo)
-        logger.info("🔄 Starting StrategyTaskManager...")
-        await manager.start(recover_tasks=False)
-        
-        # Monitor StrategyTaskManager execution
-        logger.info("📊 StrategyTaskManager started, monitoring execution...")
-        logger.info("💡 Strategy will automatically detect arbitrage opportunities using dynamic thresholds")
-        logger.info("🎯 TA module will analyze 24h historical data for optimal entry/exit signals")
-        
-        monitor_count = 0
-        
-        while not shutdown_event.is_set():
-            # Log status every 30 seconds
-            if monitor_count % 300 == 0:  # 300 * 0.1s = 30s
-                task_count = manager.task_count
-                logger.info("📈 Cross Exchange Arbitrage Monitor",
-                           active_tasks=task_count,
-                           symbol=str(symbol),
-                           strategy="MEXC → Gate.io spot → Gate.io futures hedge")
-                
-                if task_count == 0:
-                    logger.info("✅ All arbitrage tasks completed, shutting down")
-                    break
-            
-            monitor_count += 1
-            await asyncio.sleep(0.1)
-        
-        logger.info("🔄 Shutting down StrategyTaskManager...")
+            price = (await exchange.get_ticker_info(symbol))[symbol].last_price
+
+            total_quantity = total_quantity_usdt / price
+            order_qty = order_qty_usdt / price
+
+            arbitrage_task = await create_cross_exchange_arbitrage_task(
+                symbol=symbol,
+                logger=logger,
+                total_quantity=total_quantity,
+                order_qty=order_qty
+            )
+
+            # Add task to StrategyTaskManager
+            task_id = await manager.add_task(arbitrage_task)
+            logger.info(f"✅ Added cross exchange arbitrage task to StrategyTaskManager: {task_id}")
+
+
+
+            # Monitor StrategyTaskManager execution
+            logger.info("📊 StrategyTaskManager started, monitoring execution...")
+
+            monitor_count = 0
+
+            while not shutdown_event.is_set():
+                # Log status every 30 seconds
+                if monitor_count % 300 == 0:  # 300 * 0.1s = 30s
+                    task_count = manager.task_count
+                    logger.info("📈 Cross Exchange Arbitrage Monitor",
+                               active_tasks=task_count,
+                               symbol=str(symbol),
+                               strategy="MEXC → Gate.io spot → Gate.io futures hedge")
+
+                    if task_count == 0:
+                        logger.info("✅ All arbitrage tasks completed, shutting down")
+                        break
+
+                monitor_count += 1
+                await asyncio.sleep(0.1)
+
+            logger.info("🔄 Shutting down StrategyTaskManager...")
         
     except Exception as e:
         logger.error(f"❌ Cross exchange arbitrage demo execution failed: {e}")
