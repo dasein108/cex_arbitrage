@@ -44,6 +44,7 @@ class BaseStrategyContext(msgspec.Struct, frozen=False, kw_only=True):
     metadata: Dict[str, Any] = msgspec.field(default_factory=dict)
     should_save_flag: bool = True  # Whether to persist this task
 
+
     @property
     def tag(self) -> str:
         """Generate logging tag based on task_id."""

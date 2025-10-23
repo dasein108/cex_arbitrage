@@ -66,7 +66,20 @@ class CompositePrivateFuturesExchange(BasePrivateComposite[PrivateFuturesInterfa
 
     async def get_positions(self) -> List[Position]:
         """Get current positions via REST API."""
-        return await self._rest.get_positions()
+        positions = await self._rest.get_positions()
+        # adjust to base qty
+        for p in positions:
+            p.qty_base = self.contracts_to_base_quantity(p.symbol, p.size)
+
+        return positions
+
+
+    async def _load_positions(self) -> None:
+        """Load current positions from REST API into local cache."""
+        positions = await self.get_positions()
+        for position in positions:
+            self._positions[position.symbol] = position
+        self.logger.info(f"Loaded {len(positions)} futures positions from REST API")
 
     async def get_trading_fees(self, symbol: Symbol) -> Any:
         """Get trading fees for a symbol via REST API."""
@@ -142,7 +155,7 @@ class CompositePrivateFuturesExchange(BasePrivateComposite[PrivateFuturesInterfa
             # Load futures-specific private data
             # await self._load_leverage_settings()
             # await self._load_margin_info()
-            # await self._load_futures_positions()
+            await self._load_positions()
 
             self.logger.info(f"{self._tag} futures private data initialized")
 
@@ -154,6 +167,7 @@ class CompositePrivateFuturesExchange(BasePrivateComposite[PrivateFuturesInterfa
     # Futures-specific event handlers
     async def _position_handler(self, position: Position) -> None:
         """Handle position updates from WebSocket (futures-specific)."""
+        position.qty_base = self.contracts_to_base_quantity(position.symbol, position.size)
         self._positions[position.symbol] = position
         self.logger.debug(f"Updated futures position for {position.symbol}: {position}")
     

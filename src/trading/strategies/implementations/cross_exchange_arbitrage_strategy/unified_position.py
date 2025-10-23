@@ -19,10 +19,10 @@ class PositionChange(Struct):
 
     def __str__(self):
         if abs(self.qty_after - self.qty_before) < 1e-8:
-            return f"[No Change] {self.qty_before}:.4f @ {self.price_before}:.8f"
+            return f"[No Change] {self.qty_before:.4f} @ {self.price_before:.8f}"
 
-        return (f"Change: {self.qty_before}:.4f @ {self.price_before}:.8f -> "
-                f"{self.qty_after}:.4f @ {self.price_after}:.8f")
+        return (f"Change: {self.qty_before:.4f} @ {self.price_before:.8f} -> "
+                f"{self.qty_after:.4f} @ {self.price_after:.8f}")
 
 class Position(Struct):
     """Individual position information with float-only policy."""
@@ -32,8 +32,8 @@ class Position(Struct):
     side: Optional[Side] = None
     last_order: Optional[Order] = None
 
-    def _str__(self):
-        return f"{self.side.name} {self.qty}:.4f @{self.price}:.8f"
+    def __str__(self):
+        return f"{self.side.name} {self.qty:.4f} @{self.price:.8f}"
 
     @property
     def qty_usdt(self) -> float:
@@ -80,10 +80,12 @@ class Position(Struct):
             multiplier = 1 if self.side == side else -1
             signed_quantity = quantity * multiplier
 
-            self.acc_quote_qty += signed_quantity * price
+            # Only accumulate quote qty from actual SELL operations (USDT received)
+            if side == Side.SELL:
+                self.acc_quote_qty += quantity * price
 
-            new_price, new_qty = calculate_weighted_price(self.qty, self.price,signed_quantity, price)
-            pos_change =  PositionChange(self.qty, self.price, new_price, new_qty)
+            new_qty, new_price = calculate_weighted_price(self.price, self.qty, price, signed_quantity)
+            pos_change =  PositionChange(self.qty, self.price, new_qty, new_price)
 
             self.qty = new_qty
             self.price = new_price

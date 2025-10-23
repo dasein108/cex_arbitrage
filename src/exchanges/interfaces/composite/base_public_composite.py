@@ -203,7 +203,7 @@ class BasePublicComposite(BaseCompositeExchange[PublicRestType, PublicWebsocketT
         )
 
 
-    async def load_symbols_info(self) -> None:
+    async def load_symbols_info(self) -> SymbolsInfo:
         """Load symbol information from REST API with error handling."""
         if not self._rest:
             self.logger.warning("No public REST client available for symbols info loading")
@@ -216,6 +216,8 @@ class BasePublicComposite(BaseCompositeExchange[PublicRestType, PublicWebsocketT
             self.logger.info("Symbols info loaded successfully",
                              symbol_count=len(self._symbols_info) if self._symbols_info else 0,
                              load_time_ms=timer.elapsed_ms)
+
+            return self._symbols_info
 
         except Exception as e:
             self.logger.error("Failed to load symbols info", error=str(e))
@@ -290,9 +292,14 @@ class BasePublicComposite(BaseCompositeExchange[PublicRestType, PublicWebsocketT
 
             # Step 2: Load initial market data via REST (parallel loading, line 70)
             self.logger.info(f"{self._tag} Loading initial market data...")
+
+            tasks = [self.refresh_exchange_data()]
+
+            if not self._symbols_info:
+                tasks.append(self.load_symbols_info())
+
             await asyncio.gather(
-                self.load_symbols_info(),
-                self.refresh_exchange_data(),  # This now includes best bid/ask initialization
+                *tasks,
                 return_exceptions=True
             )
             self.logger.info(f"{self._tag} Creating public WebSocket client...")

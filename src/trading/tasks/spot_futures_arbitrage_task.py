@@ -450,7 +450,7 @@ class SpotFuturesArbitrageTask(BaseArbitrageTask):
     def round_to_contract_size(self, qty: float) -> float:
         """Round price based on exchange tick size."""
         symbol_info = self.exchange_manager.get_exchange('futures').public.symbols_info[self.context.symbol]
-        return symbol_info.adjust_to_contract_size(qty)
+        return symbol_info.base_to_contracts(qty)
 
     def get_tick_size(self, exchange_type: ArbitrageExchangeType) -> float:
         """Get tick size based on exchange type."""

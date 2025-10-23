@@ -126,8 +126,9 @@ class Position(Struct):
     """Trading position (for margin/futures)."""
     symbol: Symbol
     side: Side  # LONG = BUY, SHORT = SELL
-    size: float
+    size: float # size in contracts
     entry_price: float
+    qty_base: Optional[float] = None # Quantity in base asset
     mark_price: Optional[float] = None
     unrealized_pnl: Optional[float] = None
     realized_pnl: Optional[float] = None
@@ -161,12 +162,20 @@ class SymbolInfo(Struct, frozen=True):
         """Round quantity to the symbol's base precision."""
         return round(quantity, self.base_precision)
 
-    def adjust_to_contract_size(self, quantity: float) -> float:
+    def base_to_contracts(self, quantity: float) -> float:
         """Adjust quantity to meet minimum and step size requirements."""
         if  self.is_futures and self.quanto_multiplier:
             return round(quantity / self.quanto_multiplier) * self.quanto_multiplier
 
         return self.round_base(quantity)
+
+    def contracts_to_base(self, quantity: float) -> float:
+        """Adjust quantity to meet minimum and step size requirements."""
+        if  self.is_futures and self.quanto_multiplier:
+            return quantity * self.quanto_multiplier
+
+        return self.round_base(quantity)
+
 
     def get_min_base_quantity(self, price: float) -> float:
         """Get minimum base quantity."""

@@ -22,7 +22,7 @@ class DualExchange:
         """
         self.config = config
         self.logger = logger or get_logger(f'dual_exchange.{config.name.lower()}')
-        self.private = get_composite_implementation(config, is_private=True, balance_sync_interval=30)
+        self.private: BasePrivateComposite = get_composite_implementation(config, is_private=True, balance_sync_interval=30)
         self.public: BasePublicComposite = get_composite_implementation(config, is_private=False,
                                                                         balance_sync_interval=30)
         self.adapter_private = BindedEventHandlersAdapter(self.logger).bind_to_exchange(self.private)
@@ -58,10 +58,14 @@ class DualExchange:
             public_channels: Optional list of public WebSocket channels
             private_channels: Optional list of private WebSocket channels
         """
+        # symbol info is critical for position qty from contracts calculation
+
+        symbols_info = await self.public.load_symbols_info()
+
         await asyncio.gather(*[self.public.initialize(symbols, public_channels),
-                               self.private.initialize(None, private_channels)])
-        # deferred symbol info
-        self.private.set_symbol_info(self.public.symbols_info)
+                               self.private.initialize(symbols_info, private_channels)])
+
+
 
     async def subscribe_symbols(self, symbols: List) -> None:
         """Subscribe to symbols on both public and private exchanges."""

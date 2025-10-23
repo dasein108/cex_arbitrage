@@ -183,7 +183,7 @@ class StrategyTaskManager:
 
                 # Save task context to persistence
                 if task.context.should_save_flag:
-                    saved = self._persistence.save_context(task.task_id, task.context.status, task.context.to_json())
+                    saved = self._persistence.save_context(task.tag, task.context.status, task.context.to_json())
                     if not saved:
                         self.logger.warning(f"Failed to save context for task {task.task_id}")
                     # reset save flag
@@ -248,12 +248,12 @@ class StrategyTaskManager:
             # Load all active tasks
             raw_contexts = self._persistence.load_active_task_raw_context()
 
-            for task_id, json_data in raw_contexts:
+            for task_name, json_data in raw_contexts:
                 try:
                     # Extract task type
-                    task_type = task_id.split(".")[0]
+                    task_type = task_name.split("_")[0]
                     if task_type not in TASK_TYPE_MAP:
-                        self.logger.warning(f"Unknown task type for {task_id}")
+                        self.logger.warning(f"Unknown task type for {task_name}")
                         continue
 
                     context_cls, task_cls = TASK_TYPE_MAP[task_type]
@@ -262,16 +262,16 @@ class StrategyTaskManager:
 
                     if task:
                         # Add to manager
-                        self._tasks[task_id] = task
+                        self._tasks[task_name] = task
                         await task.start()
                         
-                        self.logger.info(f"✅ Recovered task {task_id}",
+                        self.logger.info(f"✅ Recovered task {task_name}",
                                          task_type=task_type,
                                          symbol=str(task.context.symbol) if task.context.symbol else "N/A",
                                          state=task.status)
 
                 except Exception as e:
-                    self.logger.error(f"Failed to recover task {task_id}", error=str(e))
+                    self.logger.error(f"Failed to recover task {task_name}", error=str(e))
                     traceback.print_exc()
 
             # Run cleanup of old completed tasks

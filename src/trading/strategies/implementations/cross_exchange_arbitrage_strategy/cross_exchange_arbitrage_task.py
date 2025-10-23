@@ -73,7 +73,7 @@ class CrossExchangeArbitrageTaskContext(BaseStrategyContext, kw_only=True):
     @property
     def tag(self) -> str:
         """Generate logging tag based on task_id and symbol."""
-        return f"{self.task_type}_{self.symbol}"
+        return f"{self.task_type}_{self.symbol.base}_{self.symbol.quote}"
 
 
 class CrossExchangeArbitrageTask(BaseStrategyTask[CrossExchangeArbitrageTaskContext]):
@@ -112,22 +112,26 @@ class CrossExchangeArbitrageTask(BaseStrategyTask[CrossExchangeArbitrageTaskCont
 
         # Initialize dynamic threshold TA module
         # TODO: tmp disabled
-        # self._ta_module = CrossArbitrageDynamicSignalGenerator(
-        #     symbol=context.symbol,
-        #     config=context.signal_config,
-        #     logger=logger
-        # )
+        USE_STATIC_TA = False
+        if USE_STATIC_TA:
+            self._ta_module = CrossArbitrageFixedSignalGenerator(
+                entry_threshold=-0.5,
+                exit_threshold=-0.5,
+                total_fees=0.2
+            )
+        else:
+            self._ta_module = CrossArbitrageDynamicSignalGenerator(
+                symbol=context.symbol,
+                config=context.signal_config,
+                logger=logger
+            )
 
-        self._ta_module = CrossArbitrageFixedSignalGenerator(
-            entry_threshold=-0.5,
-            exit_threshold=-0.5,
-            total_fees=0.2
-        )
-
+        source_exchange = self.context.settings['source'].exchange
+        dest_exchange = self.context.settings['dest'].exchange
         # Create transfer module
         self._transfer_module = AssetTransferModule(
-            exchanges={'source': self._exchanges['source'].private, # type: ignore
-                       'dest': self._exchanges['dest'].private},
+            exchanges={source_exchange: self._exchanges['source'].private, # type: ignore
+                       dest_exchange: self._exchanges['dest'].private},
             logger=self.logger
         )
 
@@ -151,12 +155,13 @@ class CrossExchangeArbitrageTask(BaseStrategyTask[CrossExchangeArbitrageTaskCont
         # Initialize DualExchanges in parallel for HFT performance
         init_tasks = []
         for exchange_type, exchange in self._exchanges.items():
+            private_channels = [PrivateWebsocketChannelType.POSITION] if exchange.is_futures else [PrivateWebsocketChannelType.BALANCE]
             init_tasks.append(
                 exchange.initialize(
                     [self.context.symbol],
                     public_channels=[PublicWebsocketChannelType.BOOK_TICKER],
                     # all balance/position sync is synthetic based on order fills
-                    private_channels=[PrivateWebsocketChannelType.ORDER]
+                    private_channels=[PrivateWebsocketChannelType.ORDER] + private_channels
                 )
             )
         await asyncio.gather(*init_tasks)
@@ -219,10 +224,9 @@ class CrossExchangeArbitrageTask(BaseStrategyTask[CrossExchangeArbitrageTaskCont
         for exchange_role, exchange in self._exchanges.items():
             current_position = self.context.positions[exchange_role]
             if exchange.is_futures:
-                position = await exchange.private.positions.get(self.context.symbol, None)
+                position = exchange.private.positions.get(self.context.symbol, None)
                 if position:
-                    current_position.qty = position.quantity
-                    current_position.acc_quote_qty = position.accumulated_quote_quantity
+                    current_position.qty = position.qty_base
                     current_position.side = position.side
                     self.logger.info(f"🔄 Loaded initial futures position for {exchange_role} {current_position}")
             else:
@@ -357,7 +361,7 @@ class CrossExchangeArbitrageTask(BaseStrategyTask[CrossExchangeArbitrageTaskCont
     async def _cancel_order_safe(
             self,
             exchange_role: ExchangeRoleType,
-            order_id: str,
+            order_id: OrderId,
             tag: str = ""
     ) -> Optional[Order]:
         """Safely cancel order with consistent error handling."""
@@ -438,13 +442,13 @@ class CrossExchangeArbitrageTask(BaseStrategyTask[CrossExchangeArbitrageTaskCont
         self.logger.info(f"⚖️ Detected imbalance: delta={delta:.8f}, "
                          f"source={source_qty}, dest={dest_qty}, hedge={hedge_qty}")
         if delta > 0:
-            await self._place_order_safe('hedge', Side.BUY, abs(delta),
-                                         self._get_book_ticker('hedge').bid_price,
-                                         is_market=True, tag="⏫ Rebalance Hedge")
-        else:
             await self._place_order_safe('hedge', Side.SELL, abs(delta),
+                                         self._get_book_ticker('hedge').bid_price,
+                                         is_market=True, tag="⏬ Increase Short Hedge")
+        else:
+            await self._place_order_safe('hedge', Side.BUY, abs(delta),
                                          self._get_book_ticker('hedge').ask_price,
-                                         is_market=True, tag="⏬ Rebalance Hedge")
+                                         is_market=True, tag="⏫ Decrease Short Hedge")
 
         return True
 
@@ -635,8 +639,8 @@ class CrossExchangeArbitrageTask(BaseStrategyTask[CrossExchangeArbitrageTaskCont
                 symbol = self.context.symbol
                 source = self.context.settings['source'].exchange
                 dest = self.context.settings['dest'].exchange
-                base_balance_qty = self._exchanges['source'].private.get_asset_balance(symbol.base).available
-                quote_balance_qty = self._exchanges['dest'].private.get_asset_balance(symbol.quote).available
+                base_balance_qty = self._exchanges['source'].private.balances[symbol.base].available
+                quote_balance_qty = self._exchanges['dest'].private.balances[symbol.quote].available
 
                 transfer_request = None
                 transfer_side = None
@@ -684,10 +688,9 @@ class CrossExchangeArbitrageTask(BaseStrategyTask[CrossExchangeArbitrageTaskCont
 
         await self._manage_arbitrage_signals()
 
-        await self._rebalance_hedge()
-
-
         await self._manage_positions()
+
+        await self._rebalance_hedge()
 
     async def cleanup(self):
         await super().cleanup()

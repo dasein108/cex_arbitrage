@@ -20,11 +20,11 @@ class TaskPersistenceManager:
             (self.base_path / dir_name).mkdir(parents=True, exist_ok=True)
     
 
-    def save_context(self, task_id: str, status: str, raw_context: str) -> bool:
+    def save_context(self, task_name: str, status: str, raw_context: str) -> bool:
         """Save task context to appropriate directory based on state.
         
         Args:
-            task_id: Unique task identifier
+            task_name: Unique task identifier
             context: Task context to save
             
         Returns:
@@ -40,8 +40,8 @@ class TaskPersistenceManager:
                 dir_path = self.base_path / "active"
 
             # Atomic write with temp file
-            temp_path = dir_path / f".{task_id}.tmp"
-            final_path = dir_path / f"{task_id}.json"
+            temp_path = dir_path / f".{task_name}.tmp"
+            final_path = dir_path / f"{task_name}.json"
             
 
             # Write atomically
@@ -49,12 +49,12 @@ class TaskPersistenceManager:
             temp_path.rename(final_path)
             
             # Clean up old location if task moved directories
-            self._cleanup_old_locations(task_id, dir_path)
+            self._cleanup_old_locations(task_name, dir_path)
             
             return True
             
         except Exception as e:
-            self.logger.error(f"Failed to save task {task_id}", error=str(e))
+            self.logger.error(f"Failed to save task {task_name}", error=str(e))
             return False
 
     def load_active_task_raw_context(self) -> List[Tuple[str, str]]:
@@ -68,9 +68,9 @@ class TaskPersistenceManager:
         
         for file_path in active_dir.glob("*.json"):
             try:
-                task_id = file_path.stem
+                task_name = file_path.stem
                 data = file_path.read_text()
-                tasks.append((task_id, data))
+                tasks.append((task_name, data))
             except Exception as e:
                 self.logger.error(f"Failed to load active task {file_path}", error=str(e))
         
