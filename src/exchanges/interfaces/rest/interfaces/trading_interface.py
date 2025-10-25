@@ -6,12 +6,12 @@ for both spot and futures exchanges.
 """
 
 from abc import abstractmethod, ABC
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Union
 from exchanges.structs.common import (
     Symbol,
     Order,
     AssetBalance,
-    Trade, AssetInfo
+    Trade, Fees
 )
 from exchanges.structs.types import AssetName, OrderId
 from exchanges.structs.enums import TimeInForce
@@ -30,6 +30,11 @@ class PrivateTradingInterface(ABC):
     @abstractmethod
     async def get_asset_balance(self, asset: AssetName) -> Optional[AssetBalance]:
         """Get balance for a specific asset"""
+        pass
+
+    @abstractmethod
+    async def get_trading_fees(self, symbol: Optional[Symbol] = None) -> Union[Fees, Dict[Symbol, Fees]]:
+        """Get trading fees for account or specific symbol"""
         pass
 
     @abstractmethod

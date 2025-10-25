@@ -323,6 +323,11 @@ class FuturesTicker(Struct):
     funding_time: Optional[int] = None  # Timestamp of next funding
 # Configuration structures
 
+class Fees(Struct):
+    maker_fee: float = 0.0  # Maker fee rate
+    taker_fee: float = 0.0  # Taker fee rate
+
+# TODO: Legacy
 class TradingFee(Struct):
     """Trading fee information for a user."""
     maker_rate: float = 0.0  # Maker fee rate (e.g., 0.001 for 0.1%)

@@ -7,11 +7,11 @@ which are only needed for spot exchanges.
 """
 
 import asyncio
-from typing import Dict, List, Optional, Any
+from typing import Dict, List, Optional, Any, Union
 
 from exchanges.integrations.mexc.utils import trades_to_order
 from exchanges.structs.common import (
-    Symbol, AssetBalance, Order, SymbolsInfo, AssetInfo
+    Symbol, AssetBalance, Order, SymbolsInfo, AssetInfo, Fees
 )
 from exchanges.structs.types import AssetName, OrderId
 from exchanges.structs import Side, Trade, OrderType, ExchangeEnum
@@ -85,6 +85,8 @@ class BasePrivateComposite(BalanceSyncMixin,
 
         # Balance sync configuration (now handled by BalanceSyncMixin)
         self._balance_sync_interval = balance_sync_interval
+
+        self.fees: Union[Dict[Symbol,Fees] | Fees ] = Fees(taker_fee=0.001, maker_fee=0.001) # default fees
 
         # Authentication validation
         if not config.has_credentials():
@@ -356,10 +358,6 @@ class BasePrivateComposite(BalanceSyncMixin,
         """
         Load account balances from REST API with error handling and metrics.
         """
-        if not self._rest:
-            self.logger.warning("No REST client available for balance loading")
-            return
-
         try:
             with LoggingTimer(self.logger, "load_balances") as timer:
                 balances_data = await self._rest.get_balances()
@@ -583,6 +581,7 @@ class BasePrivateComposite(BalanceSyncMixin,
 
             # Step 1: Load private data
             self.logger.info(f"{self._tag} Loading private data...")
+            await self._load_fees()
             await self.refresh_exchange_data()
 
             # Step 1.5: Start balance sync if configured (from BalanceSyncMixin)
@@ -637,6 +636,27 @@ class BasePrivateComposite(BalanceSyncMixin,
         # await self.publish('trades', trade)
 
     # Data refresh and utilities
+    def get_fees(self, symbol: Optional[Symbol] = None) -> Fees:
+        """
+        Get trading fees for a symbol or all symbols.
+
+        Args:
+            symbol: Optional symbol to get fees for
+        """
+        if isinstance(self.fees, Fees):
+            return self.fees
+        elif isinstance(self.fees, dict):
+            if symbol and symbol in self.fees:
+                return self.fees[symbol]
+            else:
+                raise ValueError(f"Fees for symbol {symbol} not found")
+        else:
+            raise ValueError("Fees data is not properly initialized")
+
+    async def _load_fees(self):
+        fees = await self._rest.get_trading_fees()
+        self.fees = fees
+        return fees
 
     async def refresh_exchange_data(self) -> None:
         """

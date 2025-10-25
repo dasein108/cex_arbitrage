@@ -6,7 +6,7 @@ from exchanges.dual_exchange import DualExchange
 from config.config_manager import get_exchange_config
 from exchanges.structs import Order, SymbolInfo, ExchangeEnum, Symbol, OrderId, BookTicker
 from exchanges.structs.common import Side
-from infrastructure.exceptions.exchange import OrderNotFoundError
+from infrastructure.exceptions.exchange import OrderNotFoundError, InsufficientBalanceError
 from infrastructure.logging import HFTLoggerInterface
 from infrastructure.networking.websocket.structs import PublicWebsocketChannelType, PrivateWebsocketChannelType
 
@@ -207,6 +207,9 @@ class CrossExchangeArbitrageTask(BaseStrategyTask[CrossExchangeArbitrageTaskCont
                          lookback_hours=self.context.signal_config.lookback_hours)
 
         self.context.status = 'active'
+
+    def _get_fees(self, exchange_role: ExchangeRoleType):
+        return self._exchanges[exchange_role].private.get_fees(self.context.symbol)
 
     async def _start_transfer_monitor(self):
         self._transfer_task = asyncio.create_task(self._update_transfer_status())
@@ -444,7 +447,12 @@ class CrossExchangeArbitrageTask(BaseStrategyTask[CrossExchangeArbitrageTaskCont
                              order=str(order))
 
             return order
+        except InsufficientBalanceError as ife:
+            pos = self.context.positions[exchange_role]
+            pos.acc_qty = pos.target_qty
 
+            self.logger.error(f"🚫 Insufficient balance to place order {tag_str} | adjust position amount", error=str(ife))
+            return None
         except Exception as e:
             self.logger.error(f"🚫 Failed to place order {tag_str}", error=str(e))
             return None
@@ -492,8 +500,9 @@ class CrossExchangeArbitrageTask(BaseStrategyTask[CrossExchangeArbitrageTaskCont
 
         if not self._exchange_trading_allowed[exchange_role]:
             return
-
-        max_quantity_to_fill = self.context.positions[exchange_role].get_remaining_qty(self._symbol_info[exchange_role].min_base_quantity)
+        pos = self.context.positions[exchange_role]
+        max_qty = pos.get_remaining_qty(self._symbol_info[exchange_role].min_base_quantity)
+        max_quantity_to_fill = max_qty - max_qty * self._get_fees(exchange_role).taker_fee
         if max_quantity_to_fill == 0:
             return
 
@@ -712,6 +721,10 @@ class CrossExchangeArbitrageTask(BaseStrategyTask[CrossExchangeArbitrageTaskCont
                     curr_side = 'dest'
 
                     qty = min(dest_pos.acc_quote_qty, quote_balance.available)
+
+                    # adjust qty to USDT in case of some troubles??
+                    if qty*self._get_book_ticker('dest').bid_price < quote_balance.available:
+                        qty = self.context.total_quantity * self._get_book_ticker('dest').bid_price
 
                     transfer_request = await self._transfer_module.transfer_asset(symbol.quote, dest, source, qty)
 

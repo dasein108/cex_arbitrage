@@ -1,8 +1,8 @@
 import time
-from typing import Dict, List, Optional, Any
+from typing import Dict, List, Optional, Any, Union
 
 from exchanges.interfaces import PrivateFuturesRestInterface
-from exchanges.structs.common import Symbol, Order, AssetBalance, FuturesBalance, TradingFee, Position
+from exchanges.structs.common import Symbol, Order, Fees, FuturesBalance, TradingFee, Position
 from exchanges.structs.types import AssetName, OrderId
 from exchanges.structs.enums import TimeInForce
 from exchanges.structs import OrderType, Side
@@ -366,23 +366,19 @@ class GateioPrivateFuturesRestInterface(
             self.logger.error(f"Failed to get position for {symbol}: {e}")
             raise
 
-    async def get_trading_fees(self, symbol: Optional[Symbol] = None) -> TradingFee:
+    async def get_trading_fees(self, symbol: Optional[Symbol] = None) -> Union[Fees, Dict[Symbol, Fees]]:
         """
         Get account-level futures fees.
         Gate.io may return account-level fees only.
         """
         try:
             response = await self.request(HTTPMethod.GET, "/futures/usdt/fee")
-            point_type = response.get("point_type", response.get("tier", None))
+            fees = {GateioFuturesSymbol.to_symbol(k): Fees(maker_fee=v['maker_fee'],
+                                                           taker_fee=v['taker_fee']) for k,v in response.items()}
+            if symbol is None:
+                return fees
 
-            return TradingFee(
-                symbol=symbol,
-                maker_rate=float(response.get("maker_fee", 0.0)),
-                taker_rate=float(response.get("taker_fee", 0.0)),
-                futures_maker=float(response.get("futures_maker_fee", 0.0)),
-                futures_taker=float(response.get("futures_taker_fee", 0.0)),
-                point_type=point_type,
-            )
+            return fees.get(symbol, Fees(maker_fee=0.0, taker_fee=0.0))
 
         except Exception as e:
             self.logger.error(f"Failed to fetch futures trading fees: {e}")

@@ -42,10 +42,10 @@ class Position(Struct):
 
     @property
     def acc_quote_qty(self) -> float:
-        return self.acc_qty / self.price if self.price > 1e-8 else 0.0
+        return self.acc_qty * self.price if self.price > 1e-8 else 0.0
 
     @property
-    def qty_usdt(self) -> float:
+    def quote_qty(self) -> float:
         """Calculate position value in USDT."""
         return self.qty * self.price if self.price > 1e-8 else 0.0
 
@@ -56,7 +56,7 @@ class Position(Struct):
     def __str__(self):
         return f"[{self.side.name}: {self.qty} @ {self.price}]" if self.side else "[No Position]"
 
-    def update_position(self, side: Side, quantity: float, price: float) -> PositionChange:
+    def update(self, side: Side, quantity: float, price: float) -> PositionChange:
         """Update position for specified exchange with automatic profit calculation.
 
         Args:
@@ -78,35 +78,46 @@ class Position(Struct):
         if self.mode != 'hedge':
             self.acc_qty += quantity
 
-        # No existing position
+        # No existing position - simple case
         if not self.has_position:
             self.qty = quantity
             self.price = price
             self.side = side
-
-            if self.side == Side.SELL:
-                self.acc_quote_qty += quantity / price
-                # self.acc_qty += quantity
-
-            # self.target_qty -= quantity
             return PositionChange(0, 0, quantity, price)
-        else:
-            multiplier = 1 if self.side == side else -1
-            signed_quantity = quantity * multiplier
-
-            # Only accumulate quote qty from actual SELL operations (USDT received)
-            if side == Side.SELL:
-                self.acc_quote_qty += quantity / price
-                # self.acc_qty += quantity
-
-            # self.target_qty -= quantity
-
-            new_qty, new_price = calculate_weighted_price(self.price, self.qty, price, signed_quantity)
+        
+        # Same side - add to position with weighted average
+        if self.side == side:
+            new_qty, new_price = calculate_weighted_price(self.price, self.qty, price, quantity)
             pos_change = PositionChange(self.qty, self.price, new_qty, new_price)
-
             self.qty = new_qty
             self.price = new_price
-
+            return pos_change
+        
+        # Opposite side - reducing or reversing position
+        else:
+            old_qty = self.qty
+            old_price = self.price
+            
+            if quantity < self.qty:
+                # Reducing position - keep original price, reduce quantity
+                new_qty = self.qty - quantity
+                pos_change = PositionChange(old_qty, old_price, new_qty, old_price)
+                self.qty = new_qty
+                # price stays the same
+            elif abs(quantity - self.qty) < 1e-8:  # Use epsilon comparison for floating point
+                # Closing position completely
+                pos_change = PositionChange(old_qty, old_price, 0, 0)
+                self.qty = 0
+                self.price = 0
+                self.side = None
+            else:
+                # Reversing position (quantity > self.qty)
+                remaining_qty = quantity - self.qty
+                pos_change = PositionChange(old_qty, old_price, remaining_qty, price)
+                self.qty = remaining_qty
+                self.price = price
+                self.side = side
+            
             return pos_change
 
     def update_position_with_order(self, order: Optional[Order] = None) -> PositionChange:
@@ -127,7 +138,7 @@ class Position(Struct):
 
         self.last_order = order if not is_order_done(order) else None
 
-        return self.update_position(order.side, filled_qty, order.price)
+        return self.update(order.side, filled_qty, order.price)
 
     def is_fulfilled(self, min_base_amount: float) -> bool:
         """Check if position has reached its target quantity."""

@@ -10,7 +10,7 @@ from abc import abstractmethod
 from typing import Dict, List, Optional, Any
 
 from exchanges.structs import Side
-from exchanges.structs.common import Symbol, Order, Position, SymbolsInfo, OrderId, FuturesBalance
+from exchanges.structs.common import Symbol, Order, Position, SymbolsInfo, OrderId, FuturesBalance, TradingFee
 from exchanges.interfaces.composite.base_private_composite import BasePrivateComposite
 from exchanges.interfaces.rest.interfaces import PrivateFuturesInterface
 from exchanges.interfaces.ws.ws_base_private import PrivateBaseWebsocket
@@ -81,11 +81,11 @@ class CompositePrivateFuturesExchange(BasePrivateComposite[PrivateFuturesInterfa
             self._positions[position.symbol] = position
         self.logger.info(f"Loaded {len(positions)} futures positions from REST API")
 
-    async def get_trading_fees(self, symbol: Symbol) -> Any:
-        """Get trading fees for a symbol via REST API."""
-        # return await self._rest.get_trading_fees(symbol)
-        raise NotImplementedError("get_trading_fees must be implemented by subclass")
-    
+    # async def get_trading_fees(self, symbol: Symbol) -> TradingFee:
+    #     """Get trading fees for a symbol via REST API."""
+    #     # return await self._rest.get_trading_fees(symbol)
+    #     raise NotImplementedError("get_trading_fees must be implemented by subclass")
+    #
     # async def get_futures_balance(self, asset: str) -> Optional[FuturesBalance]:
     #     """Get futures balance for a specific asset with margin information."""
     #     return await self._rest.get_asset_balance(asset)

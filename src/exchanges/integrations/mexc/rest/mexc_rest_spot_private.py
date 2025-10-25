@@ -21,7 +21,7 @@ Threading: Fully async/await compatible, thread-safe
 Memory: O(1) per request, optimized for trading operations
 """
 
-from typing import Dict, List, Optional, Any
+from typing import Dict, List, Optional, Any, Union
 import msgspec
 
 from exchanges.integrations.mexc.services.symbol_mapper import MexcSymbol
@@ -31,7 +31,7 @@ from exchanges.structs.common import (
 )
 from exchanges.structs.types import AssetName, OrderId
 from exchanges.structs.enums import TimeInForce, WithdrawalStatus, DepositStatus
-from exchanges.structs import OrderType, Side
+from exchanges.structs import OrderType, Side, Fees
 from infrastructure.logging import HFTLoggerInterface
 from infrastructure.networking.http.structs import HTTPMethod
 from infrastructure.exceptions.exchange import ExchangeRestError, OrderCancelledOrFilled
@@ -1076,3 +1076,6 @@ class MexcPrivateSpotRestInterface(MexcBaseRestInterface, PrivateSpotRestInterfa
         except Exception as e:
             self.logger.error(f"Failed to get deposit address for {asset}: {e}")
             raise ExchangeRestError(500, f"Failed to get deposit address for {asset}: {e}")
+
+    async def get_trading_fees(self, symbol: Optional[Symbol] = None) ->  Union[Fees, Dict[Symbol, Fees]]:
+        return Fees(maker_fee=0, taker_fee=0.0005)

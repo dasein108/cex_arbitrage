@@ -9,6 +9,7 @@ __all__ = [
     "BaseWebsocketInterface",
     "PublicBaseWebsocket",
     "PrivateBaseWebsocket",
+    "PublicFuturesRestInterface",
     # rest
 
     # composite

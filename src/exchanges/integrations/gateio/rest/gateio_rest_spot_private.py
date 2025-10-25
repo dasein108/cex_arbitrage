@@ -21,12 +21,12 @@ Threading: Fully async/await compatible, thread-safe
 Memory: O(1) per request, optimized for trading operations
 """
 
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Union
 import msgspec
 
 from exchanges.structs.common import (
     Symbol, Order, AssetBalance,
-    AssetInfo, NetworkInfo, TradingFee,
+    AssetInfo, NetworkInfo, Fees,
     WithdrawalRequest, WithdrawalResponse, DepositResponse, DepositAddress
 )
 from exchanges.structs.types import AssetName, OrderId
@@ -610,7 +610,7 @@ class GateioPrivateSpotRestInterface(GateioBaseSpotRestInterface, PrivateSpotRes
             raise ExchangeRestError(500, f"Currency info fetch failed: {str(e)}")
 
     
-    async def get_trading_fees(self, symbol: Optional[Symbol] = None) -> TradingFee:
+    async def get_trading_fees(self, symbol: Optional[Symbol] = None) ->  Union[Fees, Dict[Symbol, Fees]]:
         """
         Get personal trading fees for the account or a specific symbol.
         
@@ -633,13 +633,6 @@ class GateioPrivateSpotRestInterface(GateioBaseSpotRestInterface, PrivateSpotRes
             exchanges compatibility but Gate.io will always return account-level rates.
         """
         try:
-            # Log the request details
-            if symbol:
-                self.logger.debug(f"Retrieving trading fees for symbol {symbol.base}/{symbol.quote}")
-                self.logger.warning(f"Gate.io API limitation: Symbol-specific fees not supported, returning account-level fees")
-            else:
-                self.logger.debug("Retrieving account-level trading fees")
-            
             endpoint = '/spot/fee'
             
             response_data = await self.request(
@@ -663,27 +656,10 @@ class GateioPrivateSpotRestInterface(GateioBaseSpotRestInterface, PrivateSpotRes
                 raise ExchangeRestError(500, "Invalid trading fees response format")
             
             # Extract fee rates - Gate.io returns string values
-            maker_rate = float(response_data.get('maker_fee', '0.002'))
-            taker_rate = float(response_data.get('taker_fee', '0.002'))
-            point_type = response_data.get('point_type', '0')
-            
-            # Gate.io doesn't provide 30-day volume in fee response
-            # Could be fetched separately if needed
-            
-            trading_fee = TradingFee(
-                maker_rate=maker_rate,
-                taker_rate=taker_rate,
-                spot_maker=maker_rate,
-                spot_taker=taker_rate,
-                point_type=point_type,
-                symbol=symbol  # Include symbol in response (None for account-level)
-            )
-            
-            if symbol:
-                self.logger.debug(f"Retrieved trading fees for {symbol.base}/{symbol.quote}: maker {maker_rate*100:.3f}%, taker {taker_rate*100:.3f}%")
-            else:
-                self.logger.debug(f"Retrieved account-level trading fees: maker {maker_rate*100:.3f}%, taker {taker_rate*100:.3f}%")
-            return trading_fee
+            maker_fee = float(response_data.get('maker_fee', '0.002'))
+            taker_fee = float(response_data.get('taker_fee', '0.002'))
+
+            return Fees(maker_fee=maker_fee, taker_fee=taker_fee)
             
         except Exception as e:
             self.logger.error(f"Failed to get trading fees: {e}")
@@ -849,7 +825,7 @@ class GateioPrivateSpotRestInterface(GateioBaseSpotRestInterface, PrivateSpotRes
         try:
             response_data = await self.request(
                 HTTPMethod.GET,
-                '/withdrawals',
+                '/wallet/withdrawals',
                 params=params
             )
 
@@ -869,7 +845,7 @@ class GateioPrivateSpotRestInterface(GateioBaseSpotRestInterface, PrivateSpotRes
                     address=withdrawal_data.get('address', ''),
                     network=withdrawal_data.get('chain'),
                     status=status,
-                    timestamp=int(withdrawal_data.get('timestamp', 0) * 1000),  # Gate.io uses seconds
+                    timestamp=int(withdrawal_data.get('timestamp', 0)),  # Gate.io uses seconds
                     memo=withdrawal_data.get('memo'),
                     tx_id=withdrawal_data.get('txid')
                 )
@@ -880,6 +856,8 @@ class GateioPrivateSpotRestInterface(GateioBaseSpotRestInterface, PrivateSpotRes
 
         except Exception as e:
             self.logger.error(f"Failed to get withdrawal history: {e}")
+            import traceback
+            traceback.print_exc()
             raise ExchangeRestError(500, f"Failed to get withdrawal history: {e}")
 
     async def deposit_history(
