@@ -43,7 +43,7 @@ class WithdrawalMixin:
     
     # Type hint to resolve IDE warnings
     _rest: Optional['PrivateSpotRestInterface']
-    assets_info: Dict[AssetName, AssetInfo]
+    # assets_info: Dict[AssetName, AssetInfo]
     logger: 'HFTLoggerInterface'
     
     async def get_assets_info(self) -> Dict[AssetName, AssetInfo]:
@@ -168,9 +168,7 @@ class WithdrawalMixin:
             NotImplementedError: If private REST client is not available
             ExchangeAPIError: If unable to fetch deposit history
         """
-        if not hasattr(self, '_rest') or self._rest is None:
-            raise NotImplementedError("Private REST client required for deposit operations")
-        
+
         return await self._rest.get_deposit_history(asset, limit, start_time, end_time)
     
     async def deposit_history(

@@ -134,7 +134,7 @@ async def run_basic_strategy():
     try:
         # Add task to manager
         await task_manager.add_task(strategy_task)
-        logger.info(f"✅ Strategy task created: {strategy_task.task_id}")
+        logger.info(f"✅ Strategy task created: {strategy_task.tag}")
 
         # Start TaskManager
         manager_task = asyncio.create_task(task_manager.start())
@@ -279,10 +279,10 @@ class ProductionStrategyManager:
             await self.task_manager.add_task(strategy_task)
 
             # Track active task
-            self.active_tasks[strategy_task.task_id] = strategy_task
+            self.active_tasks[strategy_task.tag] = strategy_task
 
-            self.logger.info(f"✅ Strategy created for {symbol_str}: {strategy_task.task_id}")
-            return strategy_task.task_id
+            self.logger.info(f"✅ Strategy created for {symbol_str}: {strategy_task.tag}")
+            return strategy_task.tag
 
         except Exception as e:
             self.logger.error(f"❌ Strategy creation failed for {symbol_str}: {e}")

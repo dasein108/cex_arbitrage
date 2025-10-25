@@ -67,6 +67,13 @@ class Order(Struct):
     fee_asset: Optional[AssetName] = None
     time_in_force: TimeInForce = TimeInForce.GTC
 
+    @property
+    def qty_quote(self) -> Optional[float]:
+        """Calculate quantity in quote asset """
+        if self.price is not None:
+            return self.price * self.quantity
+        return None
+
     def __str__(self):
         return (f"{self.symbol} {self.side.name} "
                 f"{self.order_type.name} ({self.quantity}/{self.filled_quantity})@{self.price} status: {self.status.name}")
@@ -176,13 +183,21 @@ class SymbolInfo(Struct, frozen=True):
 
         return self.round_base(quantity)
 
+    def get_min_base_quantity_from_quote(self, price: float) -> float:
+        """Convert quote asset amount to base asset quantity."""
+        base_qty = (self.min_quote_quantity / price) * self.quanto_multiplier * 1.1 # add 10% buffer
+        return self.round_base(base_qty)
 
     def get_min_base_quantity(self, price: float) -> float:
         """Get minimum base quantity."""
         if self.min_base_quantity:
-            return self.min_base_quantity
+            return self.min_base_quantity * self.quanto_multiplier
         else:
-            return (self.min_quote_quantity / price) * 1.1  # add 10% buffer
+            return self.get_min_base_quantity_from_quote(price)
+
+    def get_abs_min_quantity(self, price):
+        """Get absolute minimum quantity considering both base and quote minimums."""
+        return max(self.get_min_base_quantity(price), self.get_min_base_quantity_from_quote(price))
 
 # Type alias for collections
 SymbolsInfo = Dict[Symbol, SymbolInfo]

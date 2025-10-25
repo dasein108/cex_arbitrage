@@ -11,7 +11,7 @@ from typing import Dict, List, Optional, Any
 
 from exchanges.integrations.mexc.utils import trades_to_order
 from exchanges.structs.common import (
-    Symbol, AssetBalance, Order, SymbolsInfo
+    Symbol, AssetBalance, Order, SymbolsInfo, AssetInfo
 )
 from exchanges.structs.types import AssetName, OrderId
 from exchanges.structs import Side, Trade, OrderType, ExchangeEnum
@@ -78,6 +78,7 @@ class BasePrivateComposite(BalanceSyncMixin,
 
         # Private data state (HFT COMPLIANT - no caching of real-time data)
         self._balances: Dict[AssetName, AssetBalance] = {}
+        self._assets_info: Dict[AssetName, AssetInfo] = {}
         # Unified order storage - single source of truth for all orders
         self._orders: Dict[OrderId, Order] = {}
         self._max_total_orders = 10000  # Memory management limit for total orders
@@ -121,6 +122,21 @@ class BasePrivateComposite(BalanceSyncMixin,
                                       error_message=str(e))
 
     # Properties for private data
+
+    @property
+    def assets_info(self) -> Dict[AssetName, AssetInfo]:
+        """
+        Synchronous property to get asset information.
+
+        Returns:
+            Dictionary mapping AssetName to AssetInfo with network configurations
+
+        Raises:
+            InitializationError: If asset information is not initialized
+        """
+        if not self._assets_info:
+            raise InitializationError("Asset information not initialized")
+        return self._assets_info.copy()
 
     @property
     def balances(self) -> Dict[AssetName, AssetBalance]:
@@ -360,6 +376,27 @@ class BasePrivateComposite(BalanceSyncMixin,
             self.logger.error("Failed to load balances", error=str(e))
             raise InitializationError(f"Balance loading failed: {e}")
 
+    async  def _load_asset_info(self) -> None:
+        """
+        Load asset information from REST API with error handling.
+        """
+        if not self._rest:
+            self.logger.warning("No REST client available for asset info loading")
+            return
+
+        try:
+            with LoggingTimer(self.logger, "load_asset_info") as timer:
+                # TODO: no such for futures - handle
+                assets_info = await self._rest.get_assets_info()
+                self._assets_info = assets_info
+
+            self.logger.debug("Asset info loaded successfully",
+                              asset_count=len(assets_info),
+                              load_time_ms=timer.elapsed_ms)
+
+        except Exception as e:
+            self.logger.error("Failed to load asset info", error=str(e))
+            raise InitializationError(f"Asset info loading failed: {e}")
     async def _load_open_orders(self, symbol: Optional[Symbol] = None) -> None:
         """
         Load open orders from REST API with error handling.
@@ -494,6 +531,7 @@ class BasePrivateComposite(BalanceSyncMixin,
                               order_id=order_id, error=str(e))
             return None
 
+
     async def get_asset_balance(self, asset: AssetName, force=False) -> Optional[AssetBalance]:
         """
         Get balance for a specific asset with fallback to REST if not cached.
@@ -506,22 +544,21 @@ class BasePrivateComposite(BalanceSyncMixin,
             AssetBalance object if found, None otherwise
         """
         # Step 1: Check local cache first
-        if asset in self._balances:
+        if asset in self._balances and not force:
             return self._balances[asset]
 
-        if force:
-            # Step 2: Fallback to REST API
-            try:
-                with LoggingTimer(self.logger, f"get_asset_balance_{asset}"):
-                    balance = await self._rest.get_asset_balance(asset)
-                    if balance:
-                        await self._update_balance(asset, balance)
-                    return balance
+        # Step 2: Fallback to REST API
+        try:
+            with LoggingTimer(self.logger, f"get_asset_balance_{asset}"):
+                balance = await self._rest.get_asset_balance(asset)
+                if balance:
+                    await self._update_balance(asset, balance)
+                return balance
 
-            except Exception as e:
-                self.logger.error("Failed to get asset balance via REST fallback",
-                                  asset=asset, error=str(e))
-                return None
+        except Exception as e:
+            self.logger.error("Failed to get asset balance via REST fallback",
+                              asset=asset, error=str(e))
+            return None
 
         return AssetBalance(asset=asset, available=0.0, locked=0.0)
 
@@ -611,6 +648,7 @@ class BasePrivateComposite(BalanceSyncMixin,
         await asyncio.gather(
             self._load_balances(),
             self._load_open_orders(),
+            self._load_asset_info(),
             return_exceptions=True
         )
 
@@ -647,7 +685,6 @@ class BasePrivateComposite(BalanceSyncMixin,
 
             # Reset connection status
             self._rest_connected = False
-            self._ws_connected = False
 
         except Exception as e:
             self.logger.error("Error closing private exchange", error=str(e))

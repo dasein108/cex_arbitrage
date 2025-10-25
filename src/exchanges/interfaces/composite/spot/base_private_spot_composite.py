@@ -48,6 +48,18 @@ class CompositePrivateSpotExchange(BasePrivateComposite, WithdrawalMixin):
         
         # Update tag to indicate spot operations
 
+    @property
+    def asset_info(self):
+        """
+        Synchronous property to get asset information.
+
+        Returns:
+            Dictionary mapping AssetName to AssetInfo with network configurations
+
+        Raises:
+            InitializationError: If asset information is not initialized
+        """
+        return self.rest_client.asset_info
 
     # Spot-specific functionality extensions
 

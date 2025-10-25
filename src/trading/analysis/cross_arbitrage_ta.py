@@ -164,6 +164,18 @@ class CrossArbitrageFixedSignalGenerator(CrossArbitrageSignalGeneratorInterface)
 
         # HFT-optimized signal generation logic
         # Exit conditions (prioritized for speed)
+
+        # TODO: TEST HARDCODED
+        signals.append('exit')
+        return CrossArbitrageSignal(
+            signals=signals,
+            current_spread=current_spread,
+            entry_threshold=self.entry_threshold,
+            exit_threshold=self.exit_threshold,
+            thresholds_age=0,
+            timestamp=datetime.now(timezone.utc)
+        )
+
         if current_spread < self.exit_threshold:  # Max 2 hours
             signals.append('exit')
             self.logger.debug("📉 Exit signal generated",
@@ -386,10 +398,6 @@ class CrossArbitrageDynamicSignalGenerator(CrossArbitrageSignalGeneratorInterfac
         
         self._refresh_task = None
         self.logger.info("✅ CrossArbitrageTA shutdown complete")
-
-    async def cleanup(self) -> None:
-        """Alias for shutdown() for consistency with other components."""
-        await self.shutdown()
 
     async def _load_exchange_data(
             self,

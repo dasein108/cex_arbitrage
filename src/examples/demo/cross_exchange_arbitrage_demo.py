@@ -21,7 +21,7 @@ if str(src_path) not in sys.path:
     sys.path.insert(0, str(src_path))
 from typing import Dict
 from exchanges.structs import Symbol, AssetName, ExchangeEnum
-from infrastructure.logging import get_logger
+from infrastructure.logging import get_logger, LoggerFactory
 from trading.strategies.strategy_manager.strategy_task_manager import StrategyTaskManager
 from trading.strategies.implementations import (
     CrossExchangeArbitrageTask,
@@ -125,6 +125,19 @@ async def run_cross_exchange_arbitrage_demo():
     logger.info("🔄 Starting StrategyTaskManager...")
     try:
         await manager.start(recover_tasks=True)
+        # Disable noisy GATEIO loggers by setting minimum level to ERROR
+        logger_names = [
+            "GATEIO_SPOT.ws.private", "GATEIO_SPOT.ws.public", "GATEIO_SPOT.GATEIO_SPOT_private",
+            "GATEIO_FUTURES.ws.private", "GATEIO_FUTURES.ws.public",
+            "GATEIO_FUTURES.GATEIO_FUTURES_private", "GATEIO_FUTURES.GATEIO_FUTURES_public",
+            "gateio.rest.private", "rest.client.gateio_futures",
+            "MEXC_SPOT.MEXC_SPOT_private", "MEXC_SPOT.MEXC_SPOT_public",
+
+        ]
+
+        for logger_name in logger_names:
+            # Use min_level instead of enabled=False which might be more reliable
+            LoggerFactory.override_logger(logger_name, min_level="ERROR")
 
         if manager.task_count > 0:
             logger.info(f"♻️ Recovered {manager.task_count} tasks from previous session")
@@ -162,29 +175,30 @@ async def run_cross_exchange_arbitrage_demo():
 
 
 
-            # Monitor StrategyTaskManager execution
-            logger.info("📊 StrategyTaskManager started, monitoring execution...")
+        # Monitor StrategyTaskManager execution
+        logger.info("📊 StrategyTaskManager started, monitoring execution...")
 
-            monitor_count = 0
+        monitor_count = 0
 
-            while not shutdown_event.is_set():
-                # Log status every 30 seconds
-                if monitor_count % 300 == 0:  # 300 * 0.1s = 30s
-                    task_count = manager.task_count
-                    logger.info("📈 Cross Exchange Arbitrage Monitor",
-                               active_tasks=task_count,
-                               symbol=str(symbol),
-                               strategy="MEXC → Gate.io spot → Gate.io futures hedge")
+        while not shutdown_event.is_set():
+            # Log status every 30 seconds
+            pass
+            # if monitor_count % 300 == 0:  # 300 * 0.1s = 30s
+            #     task_count = manager.task_count
+            #     logger.info("📈 Cross Exchange Arbitrage Monitor",
+            #                active_tasks=task_count,
+            #                symbol=str(symbol) if task_count > 0 else "N/A",
+            #                strategy="MEXC → Gate.io spot → Gate.io futures hedge")
+            #
+            #     if task_count == 0:
+            #         logger.info("✅ All arbitrage tasks completed, shutting down")
+            #         break
 
-                    if task_count == 0:
-                        logger.info("✅ All arbitrage tasks completed, shutting down")
-                        break
+            monitor_count += 1
+            await asyncio.sleep(0.1)
 
-                monitor_count += 1
-                await asyncio.sleep(0.1)
+        logger.info("🔄 Shutting down StrategyTaskManager...")
 
-            logger.info("🔄 Shutting down StrategyTaskManager...")
-        
     except Exception as e:
         logger.error(f"❌ Cross exchange arbitrage demo execution failed: {e}")
         import traceback

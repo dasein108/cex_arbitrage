@@ -180,10 +180,8 @@ class BasePublicComposite(BaseCompositeExchange[PublicRestType, PublicWebsocketT
     def get_min_base_quantity(self, symbol: Symbol) -> Optional[float]:
         """Get minimum order base size for all active symbols."""
         symbol_info = self._symbols_info.get(symbol)
-        if symbol_info.min_base_quantity:
-            return symbol_info.min_base_quantity
 
-        return (symbol_info.min_quote_quantity / self.book_ticker[symbol].ask_price) * 1.002
+        return symbol_info.get_min_base_quantity(self.book_ticker[symbol].ask_price)
 
     async def get_book_ticker(self, symbol: Symbol, force=False) -> Optional[BookTicker]:
         """Get current best bid/ask (book ticker) for a symbol."""
@@ -192,13 +190,13 @@ class BasePublicComposite(BaseCompositeExchange[PublicRestType, PublicWebsocketT
             return self.book_ticker.get(symbol)
 
         ob = await self._rest.get_orderbook(symbol, 1)
-
+        multiplier = self.symbols_info[symbol].quanto_multiplier
         return BookTicker(
             symbol=symbol,
             bid_price=ob.bids[0].price if ob.bids else 0.0,
-            bid_quantity=ob.bids[0].size if ob.bids else 0.0,
+            bid_quantity=ob.bids[0].size*multiplier if ob.bids else 0.0,
             ask_price=ob.asks[0].price if ob.asks else 0.0,
-            ask_quantity=ob.asks[0].size if ob.asks else 0.0,
+            ask_quantity=ob.asks[0].size*multiplier if ob.asks else 0.0,
             timestamp=int(time.time() * 1000),
         )
 
@@ -347,12 +345,14 @@ class BasePublicComposite(BaseCompositeExchange[PublicRestType, PublicWebsocketT
 
             # Initialize best bid/ask from orderbook data (eliminates redundant REST call)
             if orderbook and orderbook.bids and orderbook.asks:
+                multiplier = self.symbols_info[symbol].quanto_multiplier
+
                 book_ticker = BookTicker(
                     symbol=symbol,
                     bid_price=orderbook.bids[0].price,
-                    bid_quantity=orderbook.bids[0].size,
+                    bid_quantity=orderbook.bids[0].size*multiplier,
                     ask_price=orderbook.asks[0].price,
-                    ask_quantity=orderbook.asks[0].size,
+                    ask_quantity=orderbook.asks[0].size*multiplier,
                     timestamp=int(time.time() * 1000),
                     update_id=getattr(orderbook, 'update_id', None)
                 )
@@ -389,6 +389,7 @@ class BasePublicComposite(BaseCompositeExchange[PublicRestType, PublicWebsocketT
     async def _handle_orderbook(self, orderbook: OrderBook) -> None:
         """Handle orderbook updates from WebSocket (direct data object)."""
         try:
+            self.logger.warning("ADD QUANTO MULTIPLIER TO ORDERBOOK HANDLER")
             self._update_orderbook(orderbook.symbol, orderbook, OrderbookUpdateType.DIFF)
             self._track_operation("orderbook_update")
 
@@ -446,8 +447,15 @@ class BasePublicComposite(BaseCompositeExchange[PublicRestType, PublicWebsocketT
                                     symbol=book_ticker.symbol)
                 return
 
+            multiplier = self.symbols_info[book_ticker.symbol].quanto_multiplier
+            quote_book_ticker = BookTicker(symbol=book_ticker.symbol,
+                                           bid_price=book_ticker.bid_price,
+                                           bid_quantity=book_ticker.bid_quantity*multiplier,
+                                           ask_price=book_ticker.ask_price,
+                                           ask_quantity=book_ticker.ask_quantity*multiplier,
+                                           timestamp=book_ticker.timestamp)
             # Update internal best bid/ask state (HFT CRITICAL PATH)
-            self.book_ticker[book_ticker.symbol] = book_ticker
+            self.book_ticker[book_ticker.symbol] = quote_book_ticker
             self._book_ticker_update[book_ticker.symbol] = start_time
 
             # Track performance metrics for HFT monitoring
@@ -468,7 +476,7 @@ class BasePublicComposite(BaseCompositeExchange[PublicRestType, PublicWebsocketT
                               ask_price=book_ticker.ask_price,
                               processing_time_us=processing_time)
 
-            self.publish(PublicWebsocketChannelType.BOOK_TICKER, book_ticker)  # Publish to streams
+            self.publish(PublicWebsocketChannelType.BOOK_TICKER, quote_book_ticker)  # Publish to streams
 
 
         except Exception as e:

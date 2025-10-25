@@ -19,7 +19,7 @@ StrategyTaskStus = Literal[
 class TaskResult(msgspec.Struct):
     """Result of a task execution step."""
     status: StrategyTaskStus
-    task_id: str
+    tag: str
 
 # Type alias for cleaner signatures
 StateHandler = Callable[[], Awaitable[None]]
@@ -89,6 +89,10 @@ class BaseStrategyTask(Generic[T], ABC):
                 return MyTaskContext
         """
         pass
+
+    @property
+    def is_started(self):
+        return self.context.status == 'active'
 
     def __init__(self,
                  context: T,

@@ -51,15 +51,6 @@ from .gateio_base_spot_rest import GateioBaseSpotRestInterface
 from exchanges.utils.network_mapping import get_unified_network_name
 
 class GateioPrivateSpotRestInterface(GateioBaseSpotRestInterface, PrivateSpotRestInterface):
-    """
-    Gate.io private REST API client focused on trading operations.
-    
-    Provides access to authenticated trading endpoints without WebSocket features.
-    Optimized for high-frequency trading operations with minimal overhead.
-    """
-    @property
-    def asset_info(self) -> Dict[AssetName, AssetInfo]:
-        return self._asset_info
 
     def __init__(self, config: ExchangeConfig, logger: HFTLoggerInterface = None, **kwargs):
         """
@@ -72,7 +63,6 @@ class GateioPrivateSpotRestInterface(GateioBaseSpotRestInterface, PrivateSpotRes
         """
         # Initialize base REST client (rate_limiter created internally)
         super().__init__(config, logger, is_private=True)
-        self._asset_info: Dict[AssetName, AssetInfo] = {}
 
         # Initialize HFT logger if not provided
         if logger is None:
@@ -612,7 +602,6 @@ class GateioPrivateSpotRestInterface(GateioBaseSpotRestInterface, PrivateSpotRes
 
             self.logger.debug(f"Retrieved currency info for {len(currency_info_map)} assets")
 
-            self._asset_info = currency_info_map
 
             return currency_info_map
 
@@ -990,7 +979,7 @@ class GateioPrivateSpotRestInterface(GateioBaseSpotRestInterface, PrivateSpotRes
         try:
             response_data = await self.request(
                 HTTPMethod.GET,
-                '/deposits',
+                '/wallet/deposits',
                 params=params
             )
             
@@ -1009,7 +998,7 @@ class GateioPrivateSpotRestInterface(GateioBaseSpotRestInterface, PrivateSpotRes
                     address=deposit_data.get('address', ''),
                     network=deposit_data.get('chain'),
                     status=status,
-                    timestamp=int(deposit_data.get('timestamp', 0) * 1000),  # Gate.io uses seconds
+                    timestamp=int(deposit_data.get('timestamp', 0)),  # Gate.io uses seconds
                     memo=deposit_data.get('memo'),
                     tx_id=deposit_data.get('txid')
                 )

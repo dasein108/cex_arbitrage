@@ -21,6 +21,14 @@ from exchanges.structs.enums import ExchangeEnum, WithdrawalStatus, DepositStatu
 from infrastructure.logging import HFTLoggerInterface
 from utils import get_current_timestamp
 
+
+def fix_tx_id(tx_id: Optional[str]) -> Optional[str]:
+    """ Fix tx_id by removing any extra data after colon(MEXC specifics) """
+    if not tx_id:
+        return tx_id
+
+    return tx_id.split(":")[0]
+
 class TransferRequest(Struct, frozen=False, kw_only=True):
     """Enhanced transfer request with comprehensive deposit and withdrawal tracking."""
     transfer_id: str
@@ -54,8 +62,12 @@ class TransferRequest(Struct, frozen=False, kw_only=True):
     last_status_check: Optional[float] = None
 
     @property
+    def qty(self):
+        return self.amount - self.fees
+
+    @property
     def deposit_in_progress(self):
-        return self.deposit_status in [DepositStatus.PENDING, DepositStatus.PROCESSING]
+        return self.deposit_status in [DepositStatus.PENDING, DepositStatus.PROCESSING] or self.deposit_status is None
 
     @property
     def withdrawal_in_progress(self):
@@ -301,6 +313,8 @@ class AssetTransferModule:
         request = self.active_transfers[request.transfer_id]
         request.withdrawal_id = response.withdrawal_id
         request.deposit_address = deposit_info.address
+        request.withdrawal_status = response.status
+        request.deposit_status = DepositStatus.PENDING
         request.network = deposit_info.network
         request.memo = deposit_info.memo
 
@@ -323,7 +337,7 @@ class AssetTransferModule:
             amount=withdrawal_status.amount,
             withdrawal_id=withdrawal_id,
             withdrawal_status=withdrawal_status.status,
-            withdrawal_tx_id=withdrawal_status.tx_id,
+            withdrawal_tx_id=fix_tx_id(withdrawal_status.tx_id),
             created_at=withdrawal_status.timestamp,
             deposit_address=withdrawal_status.address,
         )
@@ -378,7 +392,7 @@ class AssetTransferModule:
             withdrawal_status = await source_exchange.get_withdrawal_status(request.withdrawal_id)
             request.withdrawal_status = withdrawal_status.status
             request.last_status_check = get_current_timestamp()
-            request.withdrawal_tx_id = withdrawal_status.tx_id
+            request.withdrawal_tx_id = fix_tx_id(withdrawal_status.tx_id)
 
             return request
 
@@ -394,13 +408,14 @@ class AssetTransferModule:
                 target_exchange = self.exchanges[exchange_enum]
                 deposit_history = await target_exchange.get_deposit_history(
                     asset=request.asset,
-                    start_time=int(request.created_at * 1000)  # Convert to milliseconds
+                    limit=20
+                    # start_time=int(request.created_at * 1000)  # Convert to milliseconds
                 )
 
                 # Find deposits that match our transfer criteria
                 for deposit in deposit_history:
                     if deposit.tx_id == request.withdrawal_tx_id:
-                        request.to_exchange = to_exchange_enum
+                        request.to_exchange = exchange_enum
                         request.deposit_id = deposit.tx_id
                         request.deposit_status = deposit.status
                         return request

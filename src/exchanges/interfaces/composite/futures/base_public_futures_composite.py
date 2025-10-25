@@ -65,23 +65,6 @@ class CompositePublicFuturesExchange(BasePublicComposite):
 
     # Enhanced data refresh for reconnections
 
-    async def refresh_exchange_data(self) -> None:
-        """
-        Refresh all exchange data after reconnection.
-        
-        Refreshes both standard market data and futures-specific data.
-        """
-        # Refresh composite market data
-        await super().refresh_exchange_data()
-
-        if self.active_symbols:
-            active_symbols_list = list(self.active_symbols)
-            try:
-                pass
-            except Exception as e:
-                self.logger.error(f"Failed to refresh futures data for {self._tag}: {e}")
-                raise
-    
     async def is_tradable(self, symbol: Symbol) -> bool:
         """
         Check if a symbol is tradable on this futures exchange.
@@ -100,4 +83,14 @@ class CompositePublicFuturesExchange(BasePublicComposite):
             
         symbol_info = self._symbols_info[symbol]
         return not symbol_info.inactive
+
+    async def get_book_ticker(self, symbol: Symbol, force=False) -> Optional[Dict[str, Any]]:
+        """
+        Get the best bid and ask prices for a futures symbol Make conversion from contract to quantity.
+
+        Args:
+            symbol: Symbol to get book ticker for
+            force: If True, force refresh from exchange
+        """
+
 

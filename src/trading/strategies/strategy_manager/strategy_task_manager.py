@@ -67,44 +67,43 @@ class StrategyTaskManager:
         Returns:
             Task ID for reference
         """
-        task_id = task.task_id
-        
-        self._tasks[task_id] = task
-        self.logger.info(f"Added {task.tag} task {task_id}",
+
+        self._tasks[task.tag] = task
+        self.logger.info(f"Added {task.tag} task ",
                          symbol=str(task.context.symbol),
                          state=task.status)
 
         await task.start()
         
-        return task_id
+        return task.tag
     
-    async def remove_task(self, task_id: str) -> bool:
+    async def remove_task(self, task_tag: str) -> bool:
         """Remove task from management.
         
         Args:
-            task_id: ID of task to remove
+            task_tag: ID of task to remove
             
         Returns:
             True if task was removed, False if not found
         """
-        if task_id in self._tasks:
-            del self._tasks[task_id]
+        if task_tag in self._tasks:
+            del self._tasks[task_tag]
 
-            self.logger.info(f"Removed task {task_id}")
+            self.logger.info(f"Removed task {task_tag}")
             return True
         
         return False
     
-    def get_task(self, task_id: str) -> Optional[BaseStrategyTask]:
+    def get_task(self, task_tag: str) -> Optional[BaseStrategyTask]:
         """Get task by ID.
         
         Args:
-            task_id: Task identifier
+            task_tag: Task identifier
             
         Returns:
             Task if found, None otherwise
         """
-        return self._tasks.get(task_id)
+        return self._tasks.get(task_tag)
     
 
     async def start(self, recover_tasks: bool = False):
@@ -185,14 +184,14 @@ class StrategyTaskManager:
                 if task.context.should_save_flag:
                     saved = self._persistence.save_context(task.tag, task.context.status, task.context.to_json())
                     if not saved:
-                        self.logger.warning(f"Failed to save context for task {task.task_id}")
+                        self.logger.warning(f"Failed to save context for task {task.tag}")
                     # reset save flag
                     task.context.should_save_flag = False
                 
             except Exception as e:
-                self.logger.error(f"Task {task.task_id} execution failed", error=str(e))
+                self.logger.error(f"Task {task.tag} execution failed", error=str(e))
 
-        return TaskResult(task_id=task.task_id, status=task.status)
+        return TaskResult(tag=task.tag, status=task.status)
 
     async def _execution_loop(self):
         """Main loop orchestrating all task executions."""
@@ -224,13 +223,13 @@ class StrategyTaskManager:
                     for result in results:
                         if isinstance(result, TaskResult):
                             # Remove completed/cancelled/error tasks from persistence
-                            if result.status in ['completed', 'cancelled', 'error']:
-                                saved = self._persistence.save_context(result.task_id,
+                            if result.status in ['completed', 'cancelled']: #, 'error'
+                                saved = self._persistence.save_context(result.tag,
                                                                        result.status,
-                                                                       self._tasks[result.task_id].context.to_json())
+                                                                       self._tasks[result.tag].context.to_json())
 
-                                await self.remove_task(result.task_id)
-                                self.logger.info(f"Task {result.task_id} ', removed from manager", state=result.status)
+                                await self.remove_task(result.tag)
+                                self.logger.info(f"Task {result.tag} ', removed from manager", state=result.status)
                 
                 # Minimal sleep for cooperative multitasking
                 await asyncio.sleep(0.001)
@@ -263,7 +262,7 @@ class StrategyTaskManager:
 
                     if task:
                         # Add to manager
-                        self._tasks[task_name] = task
+                        self._tasks[task.tag] = task
                         await task.start()
                         
                         self.logger.info(f"✅ Recovered task {task_name}",
