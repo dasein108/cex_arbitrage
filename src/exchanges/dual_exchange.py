@@ -6,7 +6,7 @@ from infrastructure.networking.websocket.structs import PublicWebsocketChannelTy
 from .exchange_factory import get_composite_implementation
 from typing import List, Optional, Awaitable, Callable, Dict
 from exchanges.adapters import BindedEventHandlersAdapter
-from exchanges.structs import Order, AssetBalance, BookTicker, Position, ExchangeEnum, Symbol
+from exchanges.structs import Order, AssetBalance, BookTicker, Position, ExchangeEnum, Symbol, AssetName
 from .interfaces.composite import BasePrivateComposite, BasePublicComposite
 
 _DUAL_CLIENTS: Dict[ExchangeEnum, 'DualExchange'] = {}
@@ -47,6 +47,10 @@ class DualExchange:
     async def force_refresh(self):
         """Force refresh both public and private exchanges."""
         await asyncio.gather(self.public.refresh_exchange_data(), self.private.refresh_exchange_data())
+
+    @property
+    def balances(self) -> Dict[AssetName,AssetBalance]:
+        return self.private.balances
 
     async def initialize(self, symbols=None, public_channels: List[PublicWebsocketChannelType] = None,
                          private_channels: List[PrivateWebsocketChannelType] = None) -> None:

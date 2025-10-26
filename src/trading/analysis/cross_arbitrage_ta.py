@@ -104,6 +104,10 @@ class CrossArbitrageSignalGeneratorInterface(ABC):
         """Initialize the TA module, load historical data."""
         pass
 
+    def set_forced_signal(self, signal: CrossArbitrageSignalType) -> None:
+        """Set a forced signal for testing purposes."""
+        pass
+
     @abstractmethod
     async def generate_signal(
             self,
@@ -128,9 +132,14 @@ class CrossArbitrageFixedSignalGenerator(CrossArbitrageSignalGeneratorInterface)
         self.exit_threshold = exit_threshold
         self.total_fees = total_fees
         self.logger = logger or get_logger('cross_arbitrage_fixed_ta')
+        self.debug_signal: Optional[CrossArbitrageSignalType] = None
 
     async def initialize(self) -> None:
         pass
+
+    def set_forced_signal(self, signal: CrossArbitrageSignalType) -> None:
+        self.debug_signal = signal
+
 
     def generate_signal(
             self,
@@ -166,7 +175,7 @@ class CrossArbitrageFixedSignalGenerator(CrossArbitrageSignalGeneratorInterface)
         # Exit conditions (prioritized for speed)
 
         # TODO: TEST HARDCODED
-        signals.append('exit')
+        signals.append(self.debug_signal)
         return CrossArbitrageSignal(
             signals=signals,
             current_spread=current_spread,

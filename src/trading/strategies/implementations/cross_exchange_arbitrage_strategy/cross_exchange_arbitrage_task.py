@@ -25,6 +25,7 @@ type ExchangeRoleType = PrimaryExchangeRole | Literal['hedge']
 
 TRANSFER_REFRESH_SECONDS = 30
 
+
 class ExchangeData(Struct):
     exchange: Optional[ExchangeEnum] = None
     tick_tolerance: int = 0
@@ -32,11 +33,14 @@ class ExchangeData(Struct):
     use_market: bool = False
     order_id: Optional[OrderId] = None
 
+
 class ActiveTransferState(Struct):
     transfer_id: Optional[str] = None
     exchange_enum: Optional[ExchangeEnum] = None
 
+
 CROSS_EXCHANGE_ARBITRAGE_TASK_TYPE = "cross_exchange_arbitrage_strategy"
+
 
 class CrossExchangeArbitrageTaskContext(BaseStrategyContext, kw_only=True):
     """Context for delta neutral execution.
@@ -52,6 +56,8 @@ class CrossExchangeArbitrageTaskContext(BaseStrategyContext, kw_only=True):
     # Optional fields with defaults
     total_quantity: Optional[float] = None
     order_qty: Optional[float] = None  # size of each order for limit orders
+
+    current_role: Optional[PrimaryExchangeRole] = None
 
     # Complex fields with factory defaults
     positions: Dict[ExchangeRoleType, Position] = msgspec.field(
@@ -70,8 +76,7 @@ class CrossExchangeArbitrageTaskContext(BaseStrategyContext, kw_only=True):
         total_fees=0.2  # Total round-trip fees percentage
     ))
 
-    active_transfer: Optional[ActiveTransferState] = None
-
+    transfer_request: Optional[TransferRequest] = None
 
     @property
     def tag(self) -> str:
@@ -82,7 +87,6 @@ class CrossExchangeArbitrageTaskContext(BaseStrategyContext, kw_only=True):
     def from_json(json_bytes: str) -> 'CrossExchangeArbitrageTaskContext':
         """Deserialize context from dict data."""
         return msgspec.json.decode(json_bytes, type=CrossExchangeArbitrageTaskContext)
-
 
 
 class CrossExchangeArbitrageTask(BaseStrategyTask[CrossExchangeArbitrageTaskContext]):
@@ -118,7 +122,6 @@ class CrossExchangeArbitrageTask(BaseStrategyTask[CrossExchangeArbitrageTaskCont
         self._symbol_info: Dict[ExchangeRoleType, Optional[SymbolInfo]] = {'source': None, 'dest': None, 'hedge': None}
         self._exchange_trading_allowed: Dict[ExchangeRoleType, bool] = {'source': False, 'dest': False}
 
-
         # Initialize dynamic threshold TA module
         # TODO: tmp disabled
         USE_STATIC_TA = True
@@ -139,12 +142,11 @@ class CrossExchangeArbitrageTask(BaseStrategyTask[CrossExchangeArbitrageTaskCont
         dest_exchange = self.context.settings['dest'].exchange
         # Create transfer module
         self._transfer_module = AssetTransferModule(
-            exchanges={source_exchange: self._exchanges['source'].private, # type: ignore
+            exchanges={source_exchange: self._exchanges['source'].private,  # type: ignore
                        dest_exchange: self._exchanges['dest'].private},
             logger=self.logger
         )
 
-        self.transfer_request: Optional[TransferRequest] = None
         self._transfer_task: Optional[asyncio.Task] = None
         self.context.status = 'inactive'
 
@@ -162,12 +164,13 @@ class CrossExchangeArbitrageTask(BaseStrategyTask[CrossExchangeArbitrageTaskCont
 
         await super().start()
 
-        self.context.status = 'inactive' # prevent step() while not loaded
+        self.context.status = 'inactive'  # prevent step() while not loaded
 
         # Initialize DualExchanges in parallel for HFT performance
         init_tasks = []
         for exchange_type, exchange in self._exchanges.items():
-            private_channels = [PrivateWebsocketChannelType.POSITION] if exchange.is_futures else [PrivateWebsocketChannelType.BALANCE]
+            private_channels = [PrivateWebsocketChannelType.POSITION] if exchange.is_futures else [
+                PrivateWebsocketChannelType.BALANCE]
             init_tasks.append(
                 exchange.initialize(
                     [self.context.symbol],
@@ -177,7 +180,6 @@ class CrossExchangeArbitrageTask(BaseStrategyTask[CrossExchangeArbitrageTaskCont
                 )
             )
         await asyncio.gather(*init_tasks)
-        print("STARTED EXCHANGES")
         # init symbol info, reload active orders
         await asyncio.gather(self._load_symbol_info(),
                              self._force_load_active_orders(),
@@ -187,17 +189,16 @@ class CrossExchangeArbitrageTask(BaseStrategyTask[CrossExchangeArbitrageTaskCont
         await self._ta_module.initialize()
 
         # if there is an active transfer, restore state
-        if self.context.active_transfer:
-            self.transfer_request = await self._transfer_module.get_transfer_request(
-                self.context.active_transfer.exchange_enum,
-                self.context.active_transfer.transfer_id
-            )
+        transfer_request = self.context.transfer_request
+        if transfer_request:
+            transfer_request = await self._transfer_module.update_transfer_request(transfer_request)
 
-            if not self.transfer_request:
+            if not transfer_request:
                 self.logger.warning(f"⚠️ Could not restore active transfer - remove")
-                self.context.active_transfer = None
+                self.context.transfer_request = None
                 self.context.set_save_flag()
             else:
+                self.context.transfer_request = transfer_request
                 self.logger.warning(f"Waiting for active transfer to complete")
                 await self._start_transfer_monitor()
 
@@ -224,12 +225,15 @@ class CrossExchangeArbitrageTask(BaseStrategyTask[CrossExchangeArbitrageTaskCont
             self._transfer_task = None
 
     async def _update_transfer_status(self):
-        while self.transfer_request:
-            if not self.transfer_request.in_progress:
+        transfer_request = self.context.transfer_request
+
+        while transfer_request:
+            if not transfer_request.in_progress:
                 break
             try:
-                self.transfer_request = await self._transfer_module.update_transfer_request(self.transfer_request)
-                if not self.transfer_request:
+                transfer_request = await self._transfer_module.update_transfer_request(transfer_request)
+                self.context.transfer_request = transfer_request
+                if not transfer_request:
                     break
             except Exception as e:
                 self.logger.error(f"❌ Error updating transfer status: {e}")
@@ -237,34 +241,64 @@ class CrossExchangeArbitrageTask(BaseStrategyTask[CrossExchangeArbitrageTaskCont
             await asyncio.sleep(TRANSFER_REFRESH_SECONDS)
 
     async def _load_initial_balances(self):
-        pass
-        for exchange_role, exchange in self._exchanges.items():
-            current_position = self.context.positions[exchange_role]
-            if exchange.is_futures:
-                position = exchange.private.positions.get(self.context.symbol, None)
-                if position:
-                    current_position.qty = position.qty_base
-                    current_position.price =position.entry_price
-                    self.logger.info(f"🔄 Loaded initial futures position for {exchange_role} {current_position}")
-                else:
-                    self.logger.info(f"ℹ️ No existing futures position for {exchange_role}")
-                    current_position.reset()
+        hedge_position = self.context.positions['hedge']
+        hedge_exchange = self._exchanges['hedge']
+
+        # load real position with real price
+        position = await hedge_exchange.private.get_position(self.context.symbol, force=True)
+
+        if position:
+            hedge_position.qty = position.qty_base
+            hedge_position.price = position.entry_price
+            self.logger.info(f"🔄 Loaded initial futures position for HEDGE {hedge_position}")
+        else:
+            self.logger.info(f"ℹ️ No existing futures position for HEDGE")
+            hedge_position.reset()
+
+        exchange_role: ExchangeRoleType
+
+        for exchange_role in ['source', 'dest']:
+            exchange = self._exchanges[exchange_role]
+            await exchange.private.load_balances()
+            balance = await exchange.private.get_asset_balance(self.context.symbol.base)
+
+            book_ticker = exchange.public.book_ticker.get(self.context.symbol)
+            min_qty = self._symbol_info[exchange_role].get_abs_min_quantity(book_ticker.bid_price)
+            pos = self.context.positions[exchange_role]
+
+            if balance.available > min_qty:
+                pos.qty = balance.available
+
+            # fix price if not set
+            if pos.qty > 0 and pos.price == 0:
+                self.logger.info(f"⚠️ Price was not set for {exchange_role} position, guessing from order book")
+                pos.price = book_ticker.bid_price if pos.mode == "accumulate" else book_ticker.ask_price
+
+            self.logger.info(f"🔄 Loaded initial spot position for {exchange_role.upper()} {pos}")
+
+        source = self.context.positions['source']
+        dest = self.context.positions['dest']
+
+        # guess role based on balances if not set
+        if not self.context.current_role:
+            if dest.qty == source.qty:
+                self.logger.info(f"⚠️ Both sides have equal quantity, defaulting to SOURCE role")
+                self.context.current_role = 'source'
+            elif source.qty > dest.qty:
+                self.logger.info(f"ℹ️ SOURCE has higher quantity, setting role to SOURCE")
+                self.context.current_role = 'source'
             else:
-                balance = await exchange.private.get_asset_balance(self.context.symbol.base)
-                if abs(current_position.qty - balance.available) > 1e-8:
-                    current_position.qty = balance.available
-                    current_position.side = Side.BUY
-                    book_ticker = exchange.public.book_ticker.get(self.context.symbol)
+                self.logger.info(f"ℹ️ DEST has higher quantity, setting role to DEST")
+                self.context.current_role = 'dest'
 
-                    # guess price from bid if not set
-                    if current_position.price == 0:
-                        current_position.price = book_ticker.bid_price
-                    self.logger.info(f"🔄 Loaded initial spot position for {exchange_role} {current_position}")
+        if self.context.current_role == 'dest':
+            dest.target_qty = min(self.context.total_quantity,
+                                    exchange.balances[self.context.symbol.base].available)
+        else:
+            source.target_qty = self.context.total_quantity
 
-                if exchange_role == "dest":
-                    current_position.target_qty = min(self.context.total_quantity, current_position.qty)
-                else:
-                    current_position.target_qty = self.context.total_quantity
+        # TODO: for debug
+        self._ta_module.set_forced_signal('exit' if self.context.current_role == 'dest' else 'enter')
 
     async def pause(self):
         """Pause task and cancel any active order."""
@@ -293,7 +327,6 @@ class CrossExchangeArbitrageTask(BaseStrategyTask[CrossExchangeArbitrageTaskCont
         canceled = await asyncio.gather(*cancel_tasks)
 
         self.logger.info(f"🛑 Canceled all orders", orders=str(canceled))
-
 
     async def _force_load_active_orders(self):
         for exchange_role, exchange in self._exchanges.items():
@@ -451,7 +484,8 @@ class CrossExchangeArbitrageTask(BaseStrategyTask[CrossExchangeArbitrageTaskCont
             pos = self.context.positions[exchange_role]
             pos.acc_qty = pos.target_qty
 
-            self.logger.error(f"🚫 Insufficient balance to place order {tag_str} | adjust position amount", error=str(ife))
+            self.logger.error(f"🚫 Insufficient balance to place order {tag_str} | adjust position amount",
+                              error=str(ife))
             return None
         except Exception as e:
             self.logger.error(f"🚫 Failed to place order {tag_str}", error=str(e))
@@ -468,11 +502,13 @@ class CrossExchangeArbitrageTask(BaseStrategyTask[CrossExchangeArbitrageTaskCont
         dest_qty = self.context.positions['dest'].qty
         hedge_qty = self.context.positions['hedge'].qty
 
-        external_qty = 0.0 # qty that is being transferred between exchanges
+        external_qty = 0.0  # qty that is being transferred between exchanges
 
         # has active transfer - inter exchange liquidity keep hedge
-        if self.transfer_request and self.transfer_request.asset == self.context.symbol.base:
-            external_qty = self.transfer_request.qty
+        transfer_request = self.context.transfer_request
+
+        if transfer_request and transfer_request == self.context.symbol.base:
+            external_qty = transfer_request.qty
 
         delta = (source_qty + dest_qty + external_qty) - hedge_qty
 
@@ -502,7 +538,7 @@ class CrossExchangeArbitrageTask(BaseStrategyTask[CrossExchangeArbitrageTaskCont
             return
         pos = self.context.positions[exchange_role]
         max_qty = pos.get_remaining_qty(self._symbol_info[exchange_role].min_base_quantity)
-        max_quantity_to_fill = max_qty - max_qty * self._get_fees(exchange_role).taker_fee
+        max_quantity_to_fill = max_qty - max_qty * self._get_fees(exchange_role).taker_fee*2
         if max_quantity_to_fill == 0:
             return
 
@@ -630,7 +666,7 @@ class CrossExchangeArbitrageTask(BaseStrategyTask[CrossExchangeArbitrageTaskCont
         is_fulfilled = self.context.positions[exchange_role].is_fulfilled(self._get_min_base_qty(exchange_role))
         # allowed_by_balance = self._is_allowed_by_position_balance(exchange_role)
 
-        if not allowed_to_trade or is_fulfilled: #  or not allowed_by_balance
+        if not allowed_to_trade or is_fulfilled:  # or not allowed_by_balance
             return
 
         # Cancel if price moved too much,
@@ -643,11 +679,17 @@ class CrossExchangeArbitrageTask(BaseStrategyTask[CrossExchangeArbitrageTaskCont
         await self._manage_order_place(exchange_role)
 
     async def _manage_positions(self):
-        manage_tasks = [
-            self._manage_position('source'),
-            self._manage_position('dest')
-        ]
-        await asyncio.gather(*manage_tasks)
+
+        # manage_tasks = [
+        #     self._manage_position('source'),
+        #     self._manage_position('dest')
+        # ]
+        # await asyncio.gather(*manage_tasks)
+        role = self.context.current_role
+        if role:
+            await self._manage_position(role)
+        else:
+            self.logger.error("❌ Current role is not set, cannot manage positions")
 
     async def _manage_arbitrage_signals(self):
         # Check arbitrage signals using dynamic thresholds
@@ -667,7 +709,7 @@ class CrossExchangeArbitrageTask(BaseStrategyTask[CrossExchangeArbitrageTaskCont
 
     async def _manage_transfer_between_exchanges(self) -> bool:
         try:
-            request = self.transfer_request
+            request = self.context.transfer_request
 
             symbol = self.context.symbol
             source = self.context.settings['source'].exchange
@@ -675,73 +717,69 @@ class CrossExchangeArbitrageTask(BaseStrategyTask[CrossExchangeArbitrageTaskCont
             dest_pos = self.context.positions['dest']
             source_pos = self.context.positions['source']
 
-            if request: # has active transfer
+            if request:  # has active transfer
                 if request.in_progress:
                     return True
-                else: # has completed or failed
+                else:  # has completed or failed
                     if request.completed:
                         self.logger.info(f"🔄 Transfer completed: {request.qty} {request.asset}, resuming trading")
+
                         if request.asset == symbol.base:
+                            self.context.current_role = 'dest'
+                            self._ta_module.set_forced_signal('exit')
+
+                            await self._load_initial_balances()
                             dest_pos.reset(request.qty)
                             source_pos.reset(self.context.total_quantity)
                         else:
+                            self.context.current_role = 'source'
+                            self._ta_module.set_forced_signal('enter')
+                            await self._load_initial_balances()
+
                             source_pos.reset(self.context.total_quantity)
                             dest_pos.reset(0.0)
 
                     else:
                         self.logger.error(f"❌ Transfer failed, check manually {request}")
 
-
-                    self.transfer_request = None
-                    self.context.active_transfer = None
+                    self.context.transfer_request = None
                     self.context.set_save_flag()
                     await self._stop_transfer_monitor()
                     return False
             else:
 
                 transfer_request = None
-                transfer_exchange_enum = None
-                curr_side = None
+                current_role = self.context.current_role
 
-                if source_pos.is_fulfilled(self._get_min_base_qty('source')):
+                if current_role == 'source' and source_pos.is_fulfilled(self._get_min_base_qty('source')):
                     base_balance = await self._exchanges['source'].private.get_asset_balance(symbol.base, force=True)
-
-                    transfer_exchange_enum = source
-                    curr_side = 'source'
 
                     qty = min(source_pos.qty, base_balance.available)
 
                     transfer_request = await self._transfer_module.transfer_asset(symbol.base, source, dest, qty)
 
                     self.logger.info(f"🚀 Starting transfer of {qty} {symbol.base} from {source.name} to {dest.name}")
-                elif dest_pos.is_fulfilled(self._get_min_base_qty('dest')):
-                    quote_balance = await self._exchanges['dest'].private.get_asset_balance(symbol.quote, force=True)
+                elif current_role == 'dest' and dest_pos.is_fulfilled(self._get_min_base_qty('dest')):
 
-                    transfer_exchange_enum = dest
-                    curr_side = 'dest'
+                    quote_balance = await self._exchanges['dest'].private.get_asset_balance(symbol.quote, force=True)
 
                     qty = min(dest_pos.acc_quote_qty, quote_balance.available)
 
                     # adjust qty to USDT in case of some troubles??
-                    if qty*self._get_book_ticker('dest').bid_price < quote_balance.available:
+                    if qty * self._get_book_ticker('dest').bid_price < quote_balance.available:
                         qty = self.context.total_quantity * self._get_book_ticker('dest').bid_price
 
                     transfer_request = await self._transfer_module.transfer_asset(symbol.quote, dest, source, qty)
 
                     self.logger.info(f"🚀 Started transfer of {qty} {symbol.quote} from {dest.name} to {source.name}")
 
-                if transfer_request and curr_side:
-                    self.transfer_request = transfer_request
-                    self.context.active_transfer = ActiveTransferState(
-                        transfer_id=self.transfer_request.withdrawal_id,
-                        exchange_enum=transfer_exchange_enum
-                    )
+                if transfer_request:
+                    self.context.transfer_request = transfer_request
 
-                    if curr_side == 'source':
+                    if current_role == 'source':
                         source_pos.reset()
                     else:
                         dest_pos.reset()
-
 
                     self.context.set_save_flag()
                     await self._start_transfer_monitor()
@@ -753,20 +791,25 @@ class CrossExchangeArbitrageTask(BaseStrategyTask[CrossExchangeArbitrageTaskCont
             return False
 
     async def step(self):
-        if self.context.status != 'active':
-            await asyncio.sleep(1)
-            return
-        # Check transfer completion first
-        if await self._manage_transfer_between_exchanges():
-            return
+        try:
+            if self.context.status != 'active':
+                await asyncio.sleep(1)
+                return
+            # Check transfer completion first
+            if await self._manage_transfer_between_exchanges():
+                return
 
-        await self._sync_positions()
+            await self._sync_positions()
 
-        await self._manage_arbitrage_signals()
+            await self._manage_arbitrage_signals()
 
-        await self._manage_positions()
+            await self._manage_positions()
 
-        await self._rebalance_hedge()
+            await self._rebalance_hedge()
+        except Exception as e:
+            self.logger.error(f"❌ Error in strategy step: {e}")
+            import traceback
+            traceback.print_exc()
 
     async def cleanup(self):
         await super().cleanup()

@@ -354,7 +354,7 @@ class BasePrivateComposite(BalanceSyncMixin,
 
     # Data loading methods
 
-    async def _load_balances(self) -> None:
+    async def load_balances(self) -> None:
         """
         Load account balances from REST API with error handling and metrics.
         """
@@ -666,7 +666,7 @@ class BasePrivateComposite(BalanceSyncMixin,
         (balances, orders).
         """
         await asyncio.gather(
-            self._load_balances(),
+            self.load_balances(),
             self._load_open_orders(),
             self._load_asset_info(),
             return_exceptions=True

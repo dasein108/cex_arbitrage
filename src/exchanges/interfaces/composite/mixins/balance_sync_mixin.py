@@ -141,7 +141,7 @@ class BalanceSyncMixin(ABC):
         """
         try:
             # Fetch balances using the existing load balances method
-            await self._load_balances()
+            await self.load_balances()
             
             # Get current balances
             current_balances = self.balances

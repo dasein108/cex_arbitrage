@@ -4,10 +4,10 @@
 
 The MEXC integration provides a comprehensive, production-ready implementation following the **separated domain architecture** with complete Protocol Buffer support for high-frequency trading operations. MEXC offers advanced binary message handling through extensive protobuf definitions for optimal performance.
 
-**Capabilities Integration**: MEXC implements protocol-based capabilities for flexible composition:
-- **MexcPublicExchange**: Pure market data interface (no capabilities)
-- **MexcPrivateExchange**: Implements TradingCapability + BalanceCapability protocols
-- **Runtime Detection**: Use `isinstance(exchange, SupportsTrading)` for capability checks
+**Implementation Pattern**: MEXC uses generic composite interfaces with exchange-specific components:
+- **CompositePublicSpotExchange**: Generic public interface using MexcPublicSpotRestInterface and MexcPublicSpotWebsocket
+- **CompositePrivateSpotExchange**: Generic private interface using MexcPrivateSpotRestInterface and MexcPrivateSpotWebsocket
+- **Component Injection**: REST and WebSocket clients are injected via constructor
 
 ## Exchange Characteristics
 
@@ -38,22 +38,23 @@ The MEXC integration provides a comprehensive, production-ready implementation f
 
 ### **Domain Separation Overview**
 
-MEXC implements complete domain separation between public (market data) and private (trading) operations with no inheritance or overlap:
+MEXC uses generic composite interfaces with MEXC-specific REST and WebSocket implementations, maintaining complete domain separation between public (market data) and private (trading) operations:
 
 ```
-MexcCompositePublicExchange  (parallel to)  MexcCompositePrivateExchange
-├── Market Data Domain                       ├── Trading Operations Domain
-├── No Authentication Required              ├── Authentication Required
-├── Orderbooks, Trades, Tickers            ├── Orders, Balances, Positions
-└── Public WebSocket Streams               └── Private WebSocket Streams
+CompositePublicSpotExchange        (parallel to)    CompositePrivateSpotExchange
+├── Uses MexcPublicSpotRestInterface               ├── Uses MexcPrivateSpotRestInterface
+├── Uses MexcPublicSpotWebsocket                   ├── Uses MexcPrivateSpotWebsocket
+├── No Authentication Required                     ├── Authentication Required
+├── Orderbooks, Trades, Tickers                    ├── Orders, Balances, Positions
+└── Public WebSocket Streams                       └── Private WebSocket Streams
 ```
 
-### **Public Domain (MexcCompositePublicExchange)**
+### **Public Domain (Generic Composite with MEXC Components)**
 
 **Purpose**: Pure market data operations with no authentication
 
 **Core Components**:
-- **MexcPublicSpotRest**: REST client for market data endpoints
+- **MexcPublicSpotRestInterface**: REST client for market data endpoints
 - **MexcPublicSpotWebsocket**: WebSocket client for real-time market streams
 - **Protocol Buffer Parser**: Binary message optimization for market data
 
@@ -77,12 +78,12 @@ await public_exchange.start_ticker_stream(symbols)
 - **Connection Pooling**: Persistent HTTP sessions and WebSocket connections
 - **Performance Metrics**: Sub-10ms response times for market data
 
-### **Private Domain (MexcCompositePrivateExchange)**
+### **Private Domain (Generic Composite with MEXC Components)**
 
 **Purpose**: Pure trading operations requiring authentication
 
 **Core Components**:
-- **MexcPrivateSpotRest**: Authenticated REST client for trading operations
+- **MexcPrivateSpotRestInterface**: Authenticated REST client for trading operations
 - **MexcPrivateSpotWebsocket**: Authenticated WebSocket for account updates
 - **Order Management**: Comprehensive order lifecycle management
 
@@ -166,9 +167,45 @@ class MexcProtobufParser:
 - **Sub-Millisecond Processing**: <1ms message handling
 - **Bandwidth Optimization**: 60-80% smaller message sizes
 
+## Integration Architecture
+
+### **Factory Integration**
+
+MEXC components are registered in the exchange factory for seamless creation:
+
+```python
+# Factory registration in exchange_factory.py
+EXCHANGE_REST_MAP = {
+    (ExchangeEnum.MEXC, False): MexcPublicSpotRestInterface,
+    (ExchangeEnum.MEXC, True): MexcPrivateSpotRestInterface,
+}
+
+EXCHANGE_WS_MAP = {
+    (ExchangeEnum.MEXC, False): MexcPublicSpotWebsocket,
+    (ExchangeEnum.MEXC, True): MexcPrivateSpotWebsocket,
+}
+
+# Usage example
+from exchanges.exchange_factory import get_composite_implementation
+from config.structs import ExchangeConfig
+
+mexc_config = ExchangeConfig(
+    exchange_enum=ExchangeEnum.MEXC,
+    api_key="${MEXC_API_KEY}",
+    secret_key="${MEXC_SECRET_KEY}",
+    # ... other settings
+)
+
+# Create public exchange (no auth required)
+public_exchange = get_composite_implementation(mexc_config, is_private=False)
+
+# Create private exchange (auth required)
+private_exchange = get_composite_implementation(mexc_config, is_private=True)
+```
+
 ## REST Implementation Architecture
 
-### **Public REST (MexcPublicSpotRest)**
+### **Public REST (MexcPublicSpotRestInterface)**
 
 **Endpoint Categories**:
 ```
@@ -191,7 +228,7 @@ Market Data Endpoints:
 
 **Implementation Example**:
 ```python
-class MexcPublicSpotRest(PublicSpotRest):
+class MexcPublicSpotRestInterface(BasePublicSpotRestInterface):
     async def get_orderbook(self, symbol: Symbol, limit: int = 100) -> OrderBook:
         """Get orderbook with MEXC-specific optimizations."""
         # Convert unified Symbol to MEXC format
@@ -213,7 +250,7 @@ class MexcPublicSpotRest(PublicSpotRest):
         return self._transform_orderbook(data, symbol)
 ```
 
-### **Private REST (MexcPrivateSpotRest)**
+### **Private REST (MexcPrivateSpotRestInterface)**
 
 **Endpoint Categories**:
 ```
@@ -317,7 +354,7 @@ async def _handle_protobuf_message(self, data: bytes):
 
 **Authentication Flow**:
 ```python
-class MexcPrivateSpotWebsocket(PrivateSpotWebsocket):
+class MexcPrivateSpotWebsocket(BasePrivateSpotWebsocket):
     async def _authenticate(self) -> bool:
         """Authenticate private WebSocket with listen key."""
         # Create listen key via REST API
@@ -1153,4 +1190,4 @@ class MexcSecureTransport:
 
 ---
 
-*This specification covers the complete MEXC exchange integration with Protocol Buffer support, separated domain architecture, and HFT-optimized performance features. For implementation details, refer to the source code in `/src/exchanges/integrations/mexc/`.*
+*This specification covers the complete MEXC exchange integration with Protocol Buffer support, separated domain architecture using generic composite interfaces, and HFT-optimized performance features. Last updated: October 2025. For implementation details, refer to the source code in `/src/exchanges/integrations/mexc/`.*

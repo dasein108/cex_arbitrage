@@ -414,9 +414,10 @@ class AssetTransferModule:
 
                 # Find deposits that match our transfer criteria
                 for deposit in deposit_history:
-                    if deposit.tx_id == request.withdrawal_tx_id:
+                    deposit_tx_id = fix_tx_id(deposit.tx_id)
+                    if deposit_tx_id == request.withdrawal_tx_id:
                         request.to_exchange = exchange_enum
-                        request.deposit_id = deposit.tx_id
+                        request.deposit_id = deposit_tx_id
                         request.deposit_status = deposit.status
                         return request
                 return request

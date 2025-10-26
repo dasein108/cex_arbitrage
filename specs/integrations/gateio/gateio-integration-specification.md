@@ -4,10 +4,11 @@
 
 The Gate.io integration provides a comprehensive, production-ready implementation following the **separated domain architecture** with full support for both **spot and futures trading**. Gate.io offers stable connectivity, advanced futures features, and comprehensive trading capabilities across multiple market types.
 
-**Capabilities Architecture Integration**: Gate.io provides the most comprehensive capability set:
-- **Spot Exchange**: TradingCapability + BalanceCapability + WithdrawalCapability
-- **Futures Exchange**: TradingCapability + BalanceCapability + PositionCapability + LeverageCapability
-- **Flexible Detection**: Runtime capability checking enables dynamic feature usage
+**Implementation Pattern**: Gate.io uses generic composite interfaces with exchange-specific components:
+- **Spot Trading**: CompositePublicSpotExchange and CompositePrivateSpotExchange with Gate.io-specific REST/WS
+- **Futures Trading**: CompositePublicFuturesExchange and CompositePrivateFuturesExchange with Gate.io futures components
+- **Component Injection**: REST and WebSocket clients are injected via constructor
+- **Dual Market Support**: Separate implementations for spot and futures markets
 
 ## Exchange Characteristics
 
@@ -42,30 +43,32 @@ The Gate.io integration provides a comprehensive, production-ready implementatio
 
 ### **Domain Separation Overview**
 
-Gate.io implements complete domain separation with **dual market type support** (spot and futures):
+Gate.io uses generic composite interfaces with exchange-specific components, maintaining complete domain separation with **dual market type support** (spot and futures):
 
 ```
 Gate.io Spot Domain:
-GateioCompositePublicExchange ⟷ GateioCompositePrivateExchange
-├── Spot Market Data                ├── Spot Trading Operations
-├── No Authentication              ├── Authentication Required
-└── Spot WebSocket Streams         └── Spot Private Streams
+CompositePublicSpotExchange        (parallel to)    CompositePrivateSpotExchange
+├── Uses GateioPublicSpotRestInterface            ├── Uses GateioPrivateSpotRestInterface
+├── Uses GateioPublicSpotWebsocket                ├── Uses GateioPrivateSpotWebsocket
+├── No Authentication                             ├── Authentication Required
+└── Spot WebSocket Streams                        └── Spot Private Streams
 
 Gate.io Futures Domain:
-GateioFuturesCompositePublicExchange ⟷ GateioFuturesCompositePrivateExchange
-├── Futures Market Data                  ├── Futures Trading Operations
-├── Funding Rates, Mark Prices          ├── Position Management, Leverage
-└── Futures WebSocket Streams           └── Futures Private Streams
+CompositePublicFuturesExchange     (parallel to)    CompositePrivateFuturesExchange
+├── Uses GateioPublicFuturesRestInterface         ├── Uses GateioPrivateFuturesRestInterface
+├── Uses GateioPublicFuturesWebsocket             ├── Uses GateioPrivateFuturesWebsocket
+├── Funding Rates, Mark Prices                    ├── Position Management, Leverage
+└── Futures WebSocket Streams                     └── Futures Private Streams
 ```
 
 ### **Spot Domain Implementation**
 
-#### **Public Spot (GateioCompositePublicExchange)**
+#### **Public Spot (Generic Composite with Gate.io Components)**
 
 **Purpose**: Pure spot market data operations with no authentication
 
 **Core Components**:
-- **GateioPublicSpotRest**: REST client for spot market data endpoints
+- **GateioPublicSpotRestInterface**: REST client for spot market data endpoints
 - **GateioPublicSpotWebsocket**: WebSocket client for real-time spot market streams
 - **Connection Strategy**: Gate.io-specific connection handling with custom ping
 
@@ -89,12 +92,12 @@ await public_exchange.start_ticker_stream(symbols)
 - **High Stability**: Less prone to 1005 errors compared to MEXC
 - **Compression Support**: Deflate compression for bandwidth optimization
 
-#### **Private Spot (GateioCompositePrivateExchange)**
+#### **Private Spot (Generic Composite with Gate.io Components)**
 
 **Purpose**: Pure spot trading operations requiring authentication
 
 **Core Components**:
-- **GateioPrivateSpotRest**: Authenticated REST client for spot trading operations
+- **GateioPrivateSpotRestInterface**: Authenticated REST client for spot trading operations
 - **GateioPrivateSpotWebsocket**: Authenticated WebSocket for spot account updates
 - **Order Management**: Comprehensive spot order lifecycle management
 
@@ -118,13 +121,13 @@ status = await private_exchange.get_withdrawal_status(withdrawal_id)
 
 ### **Futures Domain Implementation**
 
-#### **Public Futures (GateioFuturesCompositePublicExchange)**
+#### **Public Futures (Generic Composite with Gate.io Futures Components)**
 
 **Purpose**: Pure futures market data operations with futures-specific features
 
 **Core Components**:
-- **GateioPublicFuturesRest**: REST client for futures market data endpoints
-- **GateioFuturesPublicWebsocket**: WebSocket client for futures-specific streams
+- **GateioPublicFuturesRestInterface**: REST client for futures market data endpoints
+- **GateioPublicFuturesWebsocket**: WebSocket client for futures-specific streams
 - **Futures Data Management**: Funding rates, mark prices, index prices
 
 **Extended Capabilities**:
@@ -153,13 +156,13 @@ supported_channels = futures_public.get_supported_futures_channels()
 - **Liquidation Feeds**: Real-time liquidation order streams
 - **Open Interest Data**: Contract open interest monitoring
 
-#### **Private Futures (GateioFuturesCompositePrivateExchange)**
+#### **Private Futures (Generic Composite with Gate.io Futures Components)**
 
 **Purpose**: Pure futures trading operations with position and leverage management
 
 **Core Components**:
-- **GateioPrivateFuturesRest**: Authenticated REST client for futures trading
-- **GateioFuturesPrivateWebsocket**: Authenticated WebSocket for futures account updates
+- **GateioPrivateFuturesRestInterface**: Authenticated REST client for futures trading
+- **GateioPrivateFuturesWebsocket**: Authenticated WebSocket for futures account updates
 - **Position Management**: Long/short position control with leverage
 
 **Extended Capabilities**:
@@ -190,11 +193,67 @@ margin_info = await futures_private.get_margin_info(symbol)
 - **Margin Control**: Available and used margin tracking
 - **Risk Management**: Reduce-only and close-position order support
 
+## Integration Architecture
+
+### **Factory Integration**
+
+Gate.io components are registered in the exchange factory for seamless creation:
+
+```python
+# Factory registration in exchange_factory.py
+EXCHANGE_REST_MAP = {
+    # Spot
+    (ExchangeEnum.GATEIO, False): GateioPublicSpotRestInterface,
+    (ExchangeEnum.GATEIO, True): GateioPrivateSpotRestInterface,
+    # Futures
+    (ExchangeEnum.GATEIO_FUTURES, False): GateioPublicFuturesRestInterface,
+    (ExchangeEnum.GATEIO_FUTURES, True): GateioPrivateFuturesRestInterface,
+}
+
+EXCHANGE_WS_MAP = {
+    # Spot
+    (ExchangeEnum.GATEIO, False): GateioPublicSpotWebsocket,
+    (ExchangeEnum.GATEIO, True): GateioPrivateSpotWebsocket,
+    # Futures
+    (ExchangeEnum.GATEIO_FUTURES, False): GateioPublicFuturesWebsocket,
+    (ExchangeEnum.GATEIO_FUTURES, True): GateioPrivateFuturesWebsocket,
+}
+
+# Usage example
+from exchanges.exchange_factory import get_composite_implementation
+from config.structs import ExchangeConfig
+
+# Spot configuration
+gateio_spot_config = ExchangeConfig(
+    exchange_enum=ExchangeEnum.GATEIO,
+    api_key="${GATEIO_API_KEY}",
+    secret_key="${GATEIO_SECRET_KEY}",
+    # ... other settings
+)
+
+# Futures configuration
+gateio_futures_config = ExchangeConfig(
+    exchange_enum=ExchangeEnum.GATEIO_FUTURES,
+    api_key="${GATEIO_API_KEY}",
+    secret_key="${GATEIO_SECRET_KEY}",
+    is_futures=True,
+    # ... other settings
+)
+
+# Create spot exchanges
+spot_public = get_composite_implementation(gateio_spot_config, is_private=False)
+spot_private = get_composite_implementation(gateio_spot_config, is_private=True)
+
+# Create futures exchanges
+futures_public = get_composite_implementation(gateio_futures_config, is_private=False)
+futures_private = get_composite_implementation(gateio_futures_config, is_private=True)
+```
+
 ## REST Implementation Architecture
 
 ### **Spot REST Implementation**
 
-#### **Public Spot REST (GateioPublicSpotRest)**
+#### **Public Spot REST (GateioPublicSpotRestInterface)**
 
 **Endpoint Categories**:
 ```
@@ -207,7 +266,7 @@ Spot Market Data Endpoints:
 /api/v4/spot/candlesticks        - Kline/candlestick data
 ```
 
-#### **Private Spot REST (GateioPrivateSpotRest)**
+#### **Private Spot REST (GateioPrivateSpotRestInterface)**
 
 **Endpoint Categories**:
 ```
@@ -231,7 +290,7 @@ Spot Withdrawal Endpoints:
 
 ### **Futures REST Implementation**
 
-#### **Public Futures REST (GateioPublicFuturesRest)**
+#### **Public Futures REST (GateioPublicFuturesRestInterface)**
 
 **Endpoint Categories**:
 ```
@@ -1443,4 +1502,4 @@ class GateioRiskManager:
 
 ---
 
-*This specification covers the complete Gate.io exchange integration with both spot and futures support, separated domain architecture, and comprehensive trading capabilities. For implementation details, refer to the source code in `/src/exchanges/integrations/gateio/`.*
+*This specification covers the complete Gate.io exchange integration with both spot and futures support, separated domain architecture using generic composite interfaces, and comprehensive trading capabilities. Last updated: October 2025. For implementation details, refer to the source code in `/src/exchanges/integrations/gateio/`.*

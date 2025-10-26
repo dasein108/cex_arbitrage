@@ -248,20 +248,20 @@ The new factory eliminates complex validation and decision matrices by using sim
 ```python
 # Direct mapping tables for component lookup
 EXCHANGE_REST_MAP = {
-    (ExchangeEnum.MEXC, False): MexcPublicSpotRest,
-    (ExchangeEnum.MEXC, True): MexcPrivateSpotRest,
-    (ExchangeEnum.GATEIO, False): GateioPublicSpotRest,
-    (ExchangeEnum.GATEIO, True): GateioPrivateSpotRest,
-    (ExchangeEnum.GATEIO_FUTURES, False): GateioPublicFuturesRest,
-    (ExchangeEnum.GATEIO_FUTURES, True): GateioPrivateFuturesRest,
+    (ExchangeEnum.MEXC, False): MexcPublicSpotRestInterface,
+    (ExchangeEnum.MEXC, True): MexcPrivateSpotRestInterface,
+    (ExchangeEnum.GATEIO, False): GateioPublicSpotRestInterface,
+    (ExchangeEnum.GATEIO, True): GateioPrivateSpotRestInterface,
+    (ExchangeEnum.GATEIO_FUTURES, False): GateioPublicFuturesRestInterface,
+    (ExchangeEnum.GATEIO_FUTURES, True): GateioPrivateFuturesRestInterface,
 }
 
 EXCHANGE_WS_MAP = {
-    (ExchangeEnum.MEXC, False): MexcPublicSpotWebsocketBaseWebsocket,
+    (ExchangeEnum.MEXC, False): MexcPublicSpotWebsocket,
     (ExchangeEnum.MEXC, True): MexcPrivateSpotWebsocket,
-    (ExchangeEnum.GATEIO, False): GateioPublicSpotWebsocketBaseWebsocket,
+    (ExchangeEnum.GATEIO, False): GateioPublicSpotWebsocket,
     (ExchangeEnum.GATEIO, True): GateioPrivateSpotWebsocket,
-    (ExchangeEnum.GATEIO_FUTURES, False): GateioPublicFuturesWebsocketBaseWebsocket,
+    (ExchangeEnum.GATEIO_FUTURES, False): GateioPublicFuturesWebsocket,
     (ExchangeEnum.GATEIO_FUTURES, True): GateioPrivateFuturesWebsocket,
 }
 
@@ -390,40 +390,48 @@ class WebsocketBindHandlerInterface(Generic[T], ABC):
 
 ## Exchange Implementation Examples
 
-### **MEXC Public Exchange Implementation**
+### **Generic Composite Implementation**
+
+The system uses generic composite interfaces with exchange-specific REST and WebSocket implementations:
 
 ```python
-class MexcPublicExchange(BasePublicComposite):
-    """MEXC public exchange implementation with constructor injection."""
-    
-    def __init__(self, 
-                 config: ExchangeConfig,
-                 rest_client: MexcPublicSpotRest,
-                 websocket_client: MexcPublicSpotWebsocketBaseWebsocket,
-                 logger: Optional[HFTLoggerInterface] = None):
-        # Call parent with injected dependencies
-        super().__init__(config, rest_client, websocket_client, logger)
-        
-        # MEXC-specific initialization
-        self._symbol_mapper = MexcSymbolMapper()
+# Using generic composites with exchange-specific components
+from exchanges.interfaces.composite import (
+    CompositePublicSpotExchange,
+    CompositePrivateSpotExchange,
+    CompositePublicFuturesExchange,
+    CompositePrivateFuturesExchange
+)
+
+# MEXC example - using generic composite with MEXC-specific REST/WS
+mexc_public = CompositePublicSpotExchange(
+    config=mexc_config,
+    rest_client=MexcPublicSpotRestInterface(mexc_config),
+    websocket_client=MexcPublicSpotWebsocket(mexc_config)
+)
+
+# Gate.io example - using generic composite with Gate.io-specific REST/WS
+gateio_private = CompositePrivateSpotExchange(
+    config=gateio_config,
+    rest_client=GateioPrivateSpotRestInterface(gateio_config),
+    websocket_client=GateioPrivateSpotWebsocket(gateio_config)
+)
 ```
 
-### **Gate.io Private Exchange Implementation**
+### **Exchange-Specific Component Implementation**
+
+Exchanges provide their own REST and WebSocket implementations:
 
 ```python
-class GateioPrivateExchange(BasePrivateComposite):
-    """Gate.io private exchange implementation with constructor injection."""
-    
-    def __init__(self,
-                 config: ExchangeConfig,
-                 rest_client: GateioPrivateSpotRest,
-                 websocket_client: GateioPrivateSpotWebsocket,
-                 logger: Optional[HFTLoggerInterface] = None):
-        # Call parent with injected dependencies
-        super().__init__(config, rest_client, websocket_client, logger)
-        
-        # Gate.io-specific private initialization
-        self._trading_fees = self._load_trading_fees()
+# MEXC REST implementation
+class MexcPublicSpotRestInterface(BasePublicSpotRestInterface):
+    """MEXC-specific public REST implementation with protobuf support."""
+    pass
+
+# Gate.io WebSocket implementation  
+class GateioPrivateSpotWebsocket(BasePrivateSpotWebsocket):
+    """Gate.io-specific private WebSocket with custom ping/pong handling."""
+    pass
 ```
 
 ## HFT Performance Compliance
@@ -462,39 +470,41 @@ class GateioPrivateExchange(BasePrivateComposite):
 
 To add a new exchange using the separated domain pattern:
 
-1. **Create Public Domain Implementation**:
+1. **Create Exchange-Specific REST Implementations**:
 ```python
-class NewExchangePublicExchange(BasePublicComposite):
-    def __init__(self, config, rest_client, websocket_client, logger=None):
-        WebsocketBindHandlerInterface.__init__(self)  # Explicit inheritance
-        super().__init__(config, rest_client, websocket_client, logger)
-        
-        # Bind WebSocket handlers
-        websocket_client.bind(PublicWebsocketChannelType.ORDERBOOK, self._handle_orderbook)
+class NewExchangePublicSpotRestInterface(BasePublicSpotRestInterface):
+    """Exchange-specific public REST implementation."""
+    pass
+
+class NewExchangePrivateSpotRestInterface(BasePrivateSpotRestInterface):
+    """Exchange-specific private REST implementation."""
+    pass
 ```
 
-2. **Create Private Domain Implementation**:
+2. **Create Exchange-Specific WebSocket Implementations**:
 ```python
-class NewExchangePrivateExchange(BasePrivateComposite):
-    def __init__(self, config, rest_client, websocket_client, logger=None):
-        WebsocketBindHandlerInterface.__init__(self)  # Explicit inheritance
-        super().__init__(config, rest_client, websocket_client, logger)
-        
-        # Bind WebSocket handlers
-        websocket_client.bind(PrivateWebsocketChannelType.ORDER, self._order_handler)
+class NewExchangePublicSpotWebsocket(BasePublicSpotWebsocket):
+    """Exchange-specific public WebSocket implementation."""
+    pass
+
+class NewExchangePrivateSpotWebsocket(BasePrivateSpotWebsocket):
+    """Exchange-specific private WebSocket implementation."""
+    pass
 ```
 
 3. **Update Factory Mapping Tables**:
 ```python
 EXCHANGE_REST_MAP.update({
-    (ExchangeEnum.NEWEXCHANGE, False): NewExchangePublicRest,
-    (ExchangeEnum.NEWEXCHANGE, True): NewExchangePrivateRest,
+    (ExchangeEnum.NEWEXCHANGE, False): NewExchangePublicSpotRestInterface,
+    (ExchangeEnum.NEWEXCHANGE, True): NewExchangePrivateSpotRestInterface,
 })
 
-COMPOSITE_AGNOSTIC_MAP.update({
-    (False, False): NewExchangePublicExchange,  # Add to mapping
-    (False, True): NewExchangePrivateExchange,
+EXCHANGE_WS_MAP.update({
+    (ExchangeEnum.NEWEXCHANGE, False): NewExchangePublicSpotWebsocket,
+    (ExchangeEnum.NEWEXCHANGE, True): NewExchangePrivateSpotWebsocket,
 })
+
+# Generic composites are reused - no new composite classes needed!
 ```
 
 ### **Benefits of Separated Domain Extensibility**
@@ -507,4 +517,4 @@ COMPOSITE_AGNOSTIC_MAP.update({
 
 ---
 
-*This architecture documentation reflects the separated domain architecture with constructor injection patterns (September 2025). The design prioritizes complete domain isolation, explicit dependency management, and HFT performance while maintaining clear architectural boundaries between market data and trading operations.*
+*This architecture documentation reflects the separated domain architecture with constructor injection patterns and generic composite interfaces (October 2025). The design uses generic CompositePublicSpotExchange and CompositePrivateSpotExchange classes with exchange-specific REST and WebSocket implementations, prioritizing complete domain isolation, explicit dependency management, and HFT performance while maintaining clear architectural boundaries between market data and trading operations.*

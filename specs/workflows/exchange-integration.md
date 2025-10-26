@@ -93,120 +93,133 @@ KRAKEN_SECRET_KEY=your_kraken_secret_key
 - **Secure logging** with credential preview (e.g., "abc1...xyz9")
 - **Public-only mode** if credentials not provided
 
-### Step 3: Exchange Implementation
+### Step 3: Exchange Component Implementation
 
-**CRITICAL: All exchange implementations must inherit from `BaseExchangeInterface`**
+**CRITICAL: New exchanges provide REST and WebSocket implementations; generic composites handle orchestration**
 
-**Create exchange implementation following composition pattern**:
+**Create exchange-specific REST and WebSocket components**:
 
 ```python
-# src/exchanges/binance/binance_exchange.py
-from core.exchanges.base import BaseExchangeInterface
-from core.structs import (
-    Symbol, SymbolInfo, OrderBook, AssetBalance, ExchangeStatus, Order
-)
+# src/exchanges/integrations/binance/rest/binance_public_spot_rest.py
+from exchanges.interfaces.rest.spot import BasePublicSpotRestInterface
+from exchanges.structs.common import Symbol, OrderBook, Ticker, Trade
 
-
-class BinanceExchange(BaseExchangeInterface):
+class BinancePublicSpotRestInterface(BasePublicSpotRestInterface):
     """
-    Binance Exchange Implementation using Composition Pattern.
-    
-    MUST inherit from BaseExchangeInterface - NOT WebSocketExchange or other classes.
-    
-    Architecture:
-    - Delegates public market data operations to BinancePublicExchange
-    - Delegates private trading operations to BinancePrivateExchange  
-    - Manages WebSocket streaming for real-time data
-    - Coordinates between public and private operations
-    
-    HFT Compliance:
-    - No caching of real-time trading data (balances, orders, trades)
-    - Real-time streaming orderbook data only
-    - Fresh API calls for all trading operations
+    Binance-specific public REST implementation.
+    Handles market data endpoints without authentication.
     """
-
-    def __init__(self, api_key: Optional[str] = None, secret_key: Optional[str] = None):
-        # REQUIRED: Call parent constructor with exchange name
-        super().__init__('BINANCE', api_key, secret_key)
-
-        self.logger = logging.getLogger(f"{__name__}.{self.__class__.__name__}")
-
-        # Composition pattern - delegate to specialized components
-        self._public_api: Optional[BinancePublicExchange] = None
-        self._private_api: Optional[BinancePrivateExchange] = None
-        self._ws_client: Optional[BinanceWebsocketPublic] = None
-
-    @property
-    def status(self) -> ExchangeStatus:
-        """REQUIRED: Implement status property"""
-        # Implementation logic here
+    
+    async def get_orderbook(self, symbol: Symbol, limit: int = 100) -> OrderBook:
+        """Get orderbook with Binance-specific API call."""
+        pass
+    
+    async def get_recent_trades(self, symbol: Symbol, limit: int = 100) -> List[Trade]:
+        """Get recent trades from Binance."""
+        pass
+    
+    async def get_symbols_info(self) -> SymbolsInfo:
+        """Get trading rules and symbol information."""
         pass
 
-    @property
-    def orderbook(self) -> OrderBook:
-        """REQUIRED: Implement orderbook property"""
-        # Return current streaming orderbook data
+# src/exchanges/integrations/binance/rest/binance_private_spot_rest.py  
+from exchanges.interfaces.rest.spot import BasePrivateSpotRestInterface
+from exchanges.structs.common import Order, AssetBalance
+
+class BinancePrivateSpotRestInterface(BasePrivateSpotRestInterface):
+    """
+    Binance-specific private REST implementation.
+    Handles authenticated trading operations.
+    """
+    
+    async def place_limit_order(self, symbol: Symbol, side: Side, 
+                                quantity: float, price: float) -> Order:
+        """Place order with Binance-specific signing."""
+        pass
+    
+    async def get_balances(self) -> Dict[AssetName, AssetBalance]:
+        """Get account balances (HFT: no caching)."""
         pass
 
-    @property
-    def balances(self) -> Dict[Symbol, AssetBalance]:
-        """REQUIRED: Implement balances property"""
-        # HFT COMPLIANT: Fresh API call, no caching
+# src/exchanges/integrations/binance/ws/binance_public_websocket.py
+from exchanges.interfaces.websocket.spot import BasePublicSpotWebsocket
+
+class BinancePublicSpotWebsocket(BasePublicSpotWebsocket):
+    """
+    Binance-specific public WebSocket implementation.
+    Handles real-time market data streaming.
+    """
+    
+    async def _on_message(self, message):
+        """Process Binance WebSocket messages."""
+        pass
+    
+    async def subscribe_orderbook(self, symbol: Symbol):
+        """Subscribe to orderbook updates."""
         pass
 
-    @property
-    def symbol_info(self) -> Dict[Symbol, SymbolInfo]:
-        """REQUIRED: Implement symbol_info property"""
-        # Static data - safe to cache
-        pass
+# src/exchanges/integrations/binance/ws/binance_private_websocket.py
+from exchanges.interfaces.websocket.spot import BasePrivateSpotWebsocket
 
-    @property
-    def active_symbols(self) -> List[Symbol]:
-        """REQUIRED: Implement active_symbols property"""
+class BinancePrivateSpotWebsocket(BasePrivateSpotWebsocket):
+    """
+    Binance-specific private WebSocket implementation.
+    Handles authenticated account updates.
+    """
+    
+    async def _authenticate(self) -> bool:
+        """Binance-specific authentication."""
         pass
-
-    @property
-    def open_orders(self) -> Dict[Symbol, List[Order]]:
-        """REQUIRED: Implement open_orders property"""
-        # HFT COMPLIANT: Fresh API call, no caching
-        pass
-
-    async def init(self, symbols: List[Symbol] = None) -> None:
-        """REQUIRED: Implement initialization"""
-        pass
-
-    async def add_symbol(self, symbol: Symbol) -> None:
-        """REQUIRED: Implement symbol addition"""
-        pass
-
-    async def remove_symbol(self, symbol: Symbol) -> None:
-        """REQUIRED: Implement symbol removal"""
+    
+    async def _handle_order_update(self, message):
+        """Process order status updates."""
         pass
 ```
 
 **Key Implementation Rules**:
-1. **MUST inherit from BaseExchangeInterface** - Not WebSocketExchange or other classes
-2. **MUST implement ALL abstract methods** - No partial implementations allowed
-3. **Use composition pattern** - Delegate to specialized REST/WebSocket components  
+1. **Implement exchange-specific REST/WS components** - Not full exchange classes
+2. **Inherit from appropriate base interfaces** - BasePublicSpotRestInterface, etc.
+3. **Generic composites handle orchestration** - CompositePublicSpotExchange used for all exchanges
 4. **HFT compliance mandatory** - No caching of real-time trading data
-5. **Use unified data structures** - Only `Symbol`, `SymbolInfo`, etc. from `exchanges.interface.structs`
+5. **Use unified data structures** - msgspec.Struct types from exchanges.structs
 
 ### Step 4: Factory Registration
 
-**Add to ExchangeFactory.EXCHANGE_CLASSES**:
+**Update the factory mapping tables**:
 ```python
-# src/arbitrage/exchange_factory.py
+# src/exchanges/exchange_factory.py
 
-class ExchangeFactory:
-    """Factory for creating and managing exchange instances"""
-    
-    # EXCHANGE CLASS REGISTRY - Add new exchanges here
-    EXCHANGE_CLASSES: Dict[str, Type[BaseExchangeInterface]] = {
-        'MEXC': MexcExchange,
-        'GATEIO': GateioExchange,
-        'BINANCE': BinanceExchange,      # <- NEW EXCHANGE
-        'KRAKEN': KrakenExchange,        # <- ANOTHER NEW EXCHANGE
-    }
+from exchanges.integrations.binance.rest import (
+    BinancePublicSpotRestInterface, 
+    BinancePrivateSpotRestInterface
+)
+from exchanges.integrations.binance.ws import (
+    BinancePublicSpotWebsocket,
+    BinancePrivateSpotWebsocket
+)
+
+# Add to REST mapping
+EXCHANGE_REST_MAP = {
+    (ExchangeEnum.MEXC, False): MexcPublicSpotRestInterface,
+    (ExchangeEnum.MEXC, True): MexcPrivateSpotRestInterface,
+    (ExchangeEnum.GATEIO, False): GateioPublicSpotRestInterface,
+    (ExchangeEnum.GATEIO, True): GateioPrivateSpotRestInterface,
+    (ExchangeEnum.BINANCE, False): BinancePublicSpotRestInterface,  # NEW
+    (ExchangeEnum.BINANCE, True): BinancePrivateSpotRestInterface,  # NEW
+}
+
+# Add to WebSocket mapping
+EXCHANGE_WS_MAP = {
+    (ExchangeEnum.MEXC, False): MexcPublicSpotWebsocket,
+    (ExchangeEnum.MEXC, True): MexcPrivateSpotWebsocket,
+    (ExchangeEnum.GATEIO, False): GateioPublicSpotWebsocket,
+    (ExchangeEnum.GATEIO, True): GateioPrivateSpotWebsocket,
+    (ExchangeEnum.BINANCE, False): BinancePublicSpotWebsocket,  # NEW
+    (ExchangeEnum.BINANCE, True): BinancePrivateSpotWebsocket,  # NEW
+}
+
+# Generic composites are reused - no new composite classes needed!
+# CompositePublicSpotExchange and CompositePrivateSpotExchange work for all exchanges
 ```
 
 **That's it!** The unified configuration system handles:
@@ -223,67 +236,100 @@ class ExchangeFactory:
 # tests/test_binance_integration.py
 
 import pytest
-from exchanges.binance.binance_exchange import BinanceExchange
-from core.structs import Symbol, AssetName
-from core.config.config_manager import config
+from exchanges.exchange_factory import get_composite_implementation
+from exchanges.structs.enums import ExchangeEnum
+from exchanges.structs.common import Symbol, AssetName
+from config.structs import ExchangeConfig
+from config.config_manager import config
 
 
 @pytest.mark.asyncio
-async def test_binance_initialization():
-    """Test Binance exchange initialization"""
-
+async def test_binance_public_initialization():
+    """Test Binance public exchange initialization"""
+    
+    # Create configuration
+    binance_config = ExchangeConfig(
+        exchange_enum=ExchangeEnum.BINANCE,
+        name="binance",
+        base_url="https://api.binance.com",
+        websocket_url="wss://stream.binance.com:9443/ws"
+    )
+    
     # Test symbols
     symbols = [
         Symbol(base=AssetName("BTC"), quote=AssetName("USDT")),
         Symbol(base=AssetName("ETH"), quote=AssetName("USDT"))
     ]
-
-    # Initialize exchange
-    exchange = BinanceExchange()
-    await exchange.initialize(symbols)
-
+    
+    # Create public exchange using factory
+    public_exchange = get_composite_implementation(binance_config, is_private=False)
+    await public_exchange.init(symbols)
+    
     # Validate initialization
-    assert exchange.status == ExchangeStatus.ACTIVE
-    assert len(exchange.active_symbols) > 0
-
-    # Test configuration integration
-    binance_config = config.get_exchange_config('binance')
-    assert 'base_url' in binance_config
-
-    await exchange.close()
+    assert public_exchange.is_connected
+    assert len(public_exchange.active_symbols) > 0
+    
+    # Test market data
+    orderbook = await public_exchange.get_orderbook(symbols[0])
+    assert orderbook is not None
+    
+    await public_exchange.close()
 
 
 @pytest.mark.asyncio
-async def test_binance_with_credentials():
-    """Test Binance with private credentials"""
-
-    credentials = config.get_exchange_credentials('binance')
-    if credentials['api_key'] and credentials['secret_key']:
-        exchange = BinanceExchange(
-            api_key=credentials['api_key'],
-            secret_key=credentials['secret_key']
+async def test_binance_private_with_credentials():
+    """Test Binance private exchange with credentials"""
+    
+    # Get credentials from config
+    binance_creds = config.get_exchange_credentials('binance')
+    
+    if binance_creds['api_key'] and binance_creds['secret_key']:
+        binance_config = ExchangeConfig(
+            exchange_enum=ExchangeEnum.BINANCE,
+            name="binance",
+            api_key=binance_creds['api_key'],
+            secret_key=binance_creds['secret_key'],
+            base_url="https://api.binance.com",
+            websocket_url="wss://stream.binance.com:9443/ws"
         )
-
-        assert exchange.has_private == True
-        await exchange.close()
+        
+        # Create private exchange
+        private_exchange = get_composite_implementation(binance_config, is_private=True)
+        await private_exchange.init()
+        
+        # Test authenticated operations
+        balances = await private_exchange.get_balances()
+        assert balances is not None
+        
+        await private_exchange.close()
     else:
         pytest.skip("Binance credentials not configured")
 
 
 @pytest.mark.asyncio
-async def test_binance_factory_integration():
-    """Test integration with ExchangeFactory"""
-
-    from archive.trading.arbitrage import ExchangeFactory
-
-    factory = ExchangeFactory()
-
-    # Test exchange creation through factory
-    exchange = await factory.create_exchange('BINANCE')
-    assert isinstance(exchange, BinanceExchange)
-    assert exchange.status == ExchangeStatus.ACTIVE
-
-    await factory.close_all()
+async def test_binance_components():
+    """Test individual Binance components"""
+    
+    from exchanges.integrations.binance.rest import BinancePublicSpotRestInterface
+    from exchanges.integrations.binance.ws import BinancePublicSpotWebsocket
+    
+    binance_config = ExchangeConfig(
+        exchange_enum=ExchangeEnum.BINANCE,
+        name="binance",
+        base_url="https://api.binance.com",
+        websocket_url="wss://stream.binance.com:9443/ws"
+    )
+    
+    # Test REST component
+    rest_client = BinancePublicSpotRestInterface(binance_config)
+    symbols_info = await rest_client.get_symbols_info()
+    assert symbols_info is not None
+    
+    # Test WebSocket component  
+    ws_client = BinancePublicSpotWebsocket(binance_config)
+    await ws_client.connect()
+    assert ws_client.is_connected
+    await ws_client.close()
 ```
 
 **Automated Validation**:

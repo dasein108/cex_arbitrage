@@ -73,6 +73,16 @@ class CompositePrivateFuturesExchange(BasePrivateComposite[PrivateFuturesInterfa
 
         return positions
 
+    async def get_position(self, symbol: Symbol, force = False) -> Optional[Position]:
+        """Get current position for a specific symbol via REST API."""
+        position = self._positions.get(symbol) if not force else None
+        if not position:
+            positions = await self.get_positions()
+            symbol_positions = [p for p in positions if p.symbol == symbol]
+            position = symbol_positions[0] if symbol_positions else None
+
+        return position
+
 
     async def _load_positions(self) -> None:
         """Load current positions from REST API into local cache."""

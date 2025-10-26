@@ -50,20 +50,20 @@ The CEX Arbitrage Engine implements a **Simplified Direct Mapping Factory Patter
 
 # Direct mapping tables for component lookup
 EXCHANGE_REST_MAP = {
-    (ExchangeEnum.MEXC, False): MexcPublicSpotRest,
-    (ExchangeEnum.MEXC, True): MexcPrivateSpotRest,
-    (ExchangeEnum.GATEIO, False): GateioPublicSpotRest,
-    (ExchangeEnum.GATEIO, True): GateioPrivateSpotRest,
-    (ExchangeEnum.GATEIO_FUTURES, False): GateioPublicFuturesRest,
-    (ExchangeEnum.GATEIO_FUTURES, True): GateioPrivateFuturesRest,
+    (ExchangeEnum.MEXC, False): MexcPublicSpotRestInterface,
+    (ExchangeEnum.MEXC, True): MexcPrivateSpotRestInterface,
+    (ExchangeEnum.GATEIO, False): GateioPublicSpotRestInterface,
+    (ExchangeEnum.GATEIO, True): GateioPrivateSpotRestInterface,
+    (ExchangeEnum.GATEIO_FUTURES, False): GateioPublicFuturesRestInterface,
+    (ExchangeEnum.GATEIO_FUTURES, True): GateioPrivateFuturesRestInterface,
 }
 
 EXCHANGE_WS_MAP = {
-    (ExchangeEnum.MEXC, False): MexcPublicSpotWebsocketBaseWebsocket,
+    (ExchangeEnum.MEXC, False): MexcPublicSpotWebsocket,
     (ExchangeEnum.MEXC, True): MexcPrivateSpotWebsocket,
-    (ExchangeEnum.GATEIO, False): GateioPublicSpotWebsocketBaseWebsocket,
+    (ExchangeEnum.GATEIO, False): GateioPublicSpotWebsocket,
     (ExchangeEnum.GATEIO, True): GateioPrivateSpotWebsocket,
-    (ExchangeEnum.GATEIO_FUTURES, False): GateioPublicFuturesWebsocketBaseWebsocket,
+    (ExchangeEnum.GATEIO_FUTURES, False): GateioPublicFuturesWebsocket,
     (ExchangeEnum.GATEIO_FUTURES, True): GateioPrivateFuturesWebsocket,
 }
 
@@ -272,63 +272,53 @@ To add a new exchange, simply update the mapping tables - no other code changes 
 **Step 1: Add REST/WebSocket Implementations**:
 ```python
 # Create new exchange implementations
-class NewExchangePublicRest(BasePublicRest):
-    # Implementation details
+class NewExchangePublicSpotRestInterface(BasePublicSpotRestInterface):
+    # Exchange-specific REST implementation
+    pass
 
-class NewExchangePrivateRest(BasePrivateRest):
-    # Implementation details
+class NewExchangePrivateSpotRestInterface(BasePrivateSpotRestInterface):
+    # Exchange-specific private REST implementation
+    pass
 
-class NewExchangePublicWebsocket(BasePublicWebsocket):
-    # Implementation details
+class NewExchangePublicSpotWebsocket(BasePublicSpotWebsocket):
+    # Exchange-specific WebSocket implementation
+    pass
 
-class NewExchangePrivateWebsocket(BasePrivateWebsocket):
-    # Implementation details
+class NewExchangePrivateSpotWebsocket(BasePrivateSpotWebsocket):
+    # Exchange-specific private WebSocket implementation
+    pass
 ```
 
 **Step 2: Update Factory Mapping Tables**:
 ```python
 # Add to existing mapping tables
 EXCHANGE_REST_MAP.update({
-    (ExchangeEnum.NEWEXCHANGE, False): NewExchangePublicRest,
-    (ExchangeEnum.NEWEXCHANGE, True): NewExchangePrivateRest,
+    (ExchangeEnum.NEWEXCHANGE, False): NewExchangePublicSpotRestInterface,
+    (ExchangeEnum.NEWEXCHANGE, True): NewExchangePrivateSpotRestInterface,
 })
 
 EXCHANGE_WS_MAP.update({
-    (ExchangeEnum.NEWEXCHANGE, False): NewExchangePublicWebsocket,
-    (ExchangeEnum.NEWEXCHANGE, True): NewExchangePrivateWebsocket,
+    (ExchangeEnum.NEWEXCHANGE, False): NewExchangePublicSpotWebsocket,
+    (ExchangeEnum.NEWEXCHANGE, True): NewExchangePrivateSpotWebsocket,
 })
 
 SYMBOL_MAPPER_MAP.update({
     ExchangeEnum.NEWEXCHANGE: NewExchangeSymbolMapper,
 })
-```
 
-**Step 3: Add Composite Exchange Classes**:
-```python
-class NewExchangePublicExchange(BasePublicComposite):
-    """New exchange public implementation with constructor injection."""
-    
-    def __init__(self, config, rest_client, websocket_client, logger=None):
-        # Constructor injection with explicit cooperative inheritance
-        WebsocketBindHandlerInterface.__init__(self)
-        super().__init__(config, rest_client, websocket_client, logger)
-        
-        # Exchange-specific initialization
-        self._symbol_mapper = get_symbol_mapper(ExchangeEnum.NEWEXCHANGE)
-
-# Update composite mapping
-COMPOSITE_AGNOSTIC_MAP.update({
-    (False, False): NewExchangePublicExchange,  # Add to existing mapping
-})
+# NO NEED to update COMPOSITE_AGNOSTIC_MAP!
+# Generic composites (CompositePublicSpotExchange, CompositePrivateSpotExchange) 
+# are reused for all exchanges - no exchange-specific composite classes needed
 ```
 
 ### **Benefits of Simplified Exchange Addition**
 
-1. **Minimal Code Changes** - Only update mapping tables and add implementations
-2. **No Factory Logic Changes** - Factory functions work automatically with new mappings
-3. **Type Safety** - Mapping tables prevent runtime configuration errors
-4. **Constructor Injection** - New exchanges automatically get proper dependency injection
-5. **Handler Binding** - New exchanges automatically get handler binding support
+1. **Minimal Code Changes** - Only create REST/WS components and update mapping tables
+2. **No Composite Classes Needed** - Generic composites handle all exchanges
+3. **No Factory Logic Changes** - Factory functions work automatically with new mappings
+4. **Type Safety** - Mapping tables prevent runtime configuration errors
+5. **Constructor Injection** - Components automatically get proper dependency injection
+6. **Handler Binding** - Generic composites handle all WebSocket event binding
 
 ## Performance Optimizations
 
@@ -585,4 +575,4 @@ def get_composite_implementation(exchange_config, is_private):
 
 ---
 
-*This simplified factory pattern eliminates complex abstract factory hierarchies while providing clear component creation through direct mapping tables and constructor injection. The approach prioritizes performance, simplicity, and maintainability while supporting the separated domain architecture.*
+*This simplified factory pattern eliminates complex abstract factory hierarchies while providing clear component creation through direct mapping tables and constructor injection. The approach uses generic composite interfaces that are reused across all exchanges, requiring only exchange-specific REST and WebSocket implementations. Last updated: October 2025.*
