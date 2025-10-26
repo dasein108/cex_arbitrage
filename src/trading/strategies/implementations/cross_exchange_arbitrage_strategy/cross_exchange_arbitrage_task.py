@@ -803,9 +803,10 @@ class CrossExchangeArbitrageTask(BaseStrategyTask[CrossExchangeArbitrageTaskCont
 
             await self._manage_arbitrage_signals()
 
+            await self._rebalance_hedge()
+
             await self._manage_positions()
 
-            await self._rebalance_hedge()
         except Exception as e:
             self.logger.error(f"❌ Error in strategy step: {e}")
             import traceback

@@ -99,6 +99,7 @@ class WithdrawalStatus(IntEnum):
     FAILED = 4       # Failed/rejected
     CANCELED = 5     # User canceled
     MANUAL_REVIEW = 6 # Under manual review
+    REVIEW = 7
     UNKNOWN = -1     # Unknown status
 
 
@@ -111,3 +112,4 @@ class DepositStatus(IntEnum):
     LOCKED = 5       # Temporarily locked
     MANUAL_REVIEW = 6 # Under manual review
     UNKNOWN = -1     # Unknown status
+    REVIEW = 7

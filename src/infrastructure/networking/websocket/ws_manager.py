@@ -280,7 +280,7 @@ class WebSocketManager:
         start_time = time.perf_counter()
         try:
             if self._message_queue.full():
-                self.logger.warning("Message queue full, dropping oldest",
+                self.logger.debug("Message queue full, dropping oldest",
                                   queue_size=self._message_queue.qsize(),
                                   max_size=self.manager_config.max_pending_messages)
                 

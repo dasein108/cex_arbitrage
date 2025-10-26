@@ -71,7 +71,7 @@ _GATEIO_DEPOSIT_STATUS_MAP = {
     "PEND": DepositStatus.PENDING,
     "VERIFY": DepositStatus.PROCESSING,
     "MANUAL": DepositStatus.MANUAL_REVIEW,
-    "REVIEW": DepositStatus.MANUAL_REVIEW,
+    "REVIEW": DepositStatus.REVIEW,
     "PROCES": DepositStatus.PROCESSING,
     "FAIL": DepositStatus.FAILED,
     "INVALID": DepositStatus.FAILED,
