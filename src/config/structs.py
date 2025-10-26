@@ -483,7 +483,7 @@ class DatabaseConfig(Struct, frozen=True):
     max_pool_size: int = 20
     max_queries: int = 50000
     max_inactive_connection_lifetime: int = 300  # 5 minutes
-    command_timeout: int = 120  # 60 seconds
+    command_timeout: int = 180  # 60 seconds
     statement_cache_size: int = 1024
     
     def get_dsn(self) -> str:

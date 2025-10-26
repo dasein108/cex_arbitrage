@@ -154,7 +154,7 @@ async def run_cross_exchange_arbitrage_demo():
 
             exchange = create_rest_client(get_exchange_config(ExchangeEnum.MEXC.value), is_private=False)
 
-            total_quantity_usdt = 20
+            total_quantity_usdt = 30
             order_qty_usdt = 2
 
             price = (await exchange.get_ticker_info(symbol))[symbol].last_price

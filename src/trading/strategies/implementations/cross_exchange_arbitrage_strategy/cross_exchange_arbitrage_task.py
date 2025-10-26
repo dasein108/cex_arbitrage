@@ -124,7 +124,7 @@ class CrossExchangeArbitrageTask(BaseStrategyTask[CrossExchangeArbitrageTaskCont
 
         # Initialize dynamic threshold TA module
         # TODO: tmp disabled
-        USE_STATIC_TA = True
+        USE_STATIC_TA = False
         if USE_STATIC_TA:
             self._ta_module = CrossArbitrageFixedSignalGenerator(
                 entry_threshold=-0.75,

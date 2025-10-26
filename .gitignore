@@ -131,3 +131,4 @@ output/
 .claude/settings.local.json
 *.pkl
 *.json
+*/cache/*.*
