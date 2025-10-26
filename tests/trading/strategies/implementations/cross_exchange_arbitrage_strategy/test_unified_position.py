@@ -68,8 +68,7 @@ class TestPosition:
         position.qty = 150.0
         position.price = 53.33
         position.side = Side.BUY
-        position.acc_qty = 150.0  # Accumulated quantity
-        
+
         # First sell order: 80 @ 55.0 (reduces position)
         order1 = create_mock_order(Side.SELL, 55.0, 80.0, 80.0)
         position.last_order = None  # Reset to simulate new order

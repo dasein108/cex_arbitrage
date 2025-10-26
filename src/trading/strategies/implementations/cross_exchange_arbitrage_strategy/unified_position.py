@@ -151,7 +151,7 @@ class Position(Struct):
         """Calculate remaining quantity to reach target."""
         if self.mode == 'release':
             qty = self.target_qty - self.acc_qty
-        elif self.mode == 'accumulate':  # accumulate
+        elif self.mode == 'accumulate':
             qty = self.target_qty - self.acc_qty
         else:  # hedge
             qty = self.qty
