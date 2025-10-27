@@ -8,6 +8,7 @@ from exchanges.structs import Order, SymbolInfo, ExchangeEnum, Symbol, OrderId, 
 from exchanges.structs.common import Side
 from infrastructure.exceptions.exchange import OrderNotFoundError, InsufficientBalanceError
 from infrastructure.logging import HFTLoggerInterface
+from infrastructure.networking.telegram import send_to_telegram
 from infrastructure.networking.websocket.structs import PublicWebsocketChannelType, PrivateWebsocketChannelType
 
 from utils import get_decrease_vector
@@ -293,7 +294,7 @@ class CrossExchangeArbitrageTask(BaseStrategyTask[CrossExchangeArbitrageTaskCont
 
         if self.context.current_role == 'dest':
             dest.target_qty = min(self.context.total_quantity,
-                                    exchange.balances[self.context.symbol.base].available)
+                                  exchange.balances[self.context.symbol.base].available)
         else:
             source.target_qty = self.context.total_quantity
 
@@ -507,7 +508,7 @@ class CrossExchangeArbitrageTask(BaseStrategyTask[CrossExchangeArbitrageTaskCont
         # has active transfer - inter exchange liquidity keep hedge
         transfer_request = self.context.transfer_request
 
-        if transfer_request and transfer_request == self.context.symbol.base:
+        if transfer_request and transfer_request.asset == self.context.symbol.base:
             external_qty = transfer_request.qty
 
         delta = (source_qty + dest_qty + external_qty) - hedge_qty
@@ -538,7 +539,7 @@ class CrossExchangeArbitrageTask(BaseStrategyTask[CrossExchangeArbitrageTaskCont
             return
         pos = self.context.positions[exchange_role]
         max_qty = pos.get_remaining_qty(self._symbol_info[exchange_role].min_base_quantity)
-        max_quantity_to_fill = max_qty - max_qty * self._get_fees(exchange_role).taker_fee*2
+        max_quantity_to_fill = max_qty - max_qty * self._get_fees(exchange_role).taker_fee * 2
         if max_quantity_to_fill == 0:
             return
 
@@ -724,7 +725,8 @@ class CrossExchangeArbitrageTask(BaseStrategyTask[CrossExchangeArbitrageTaskCont
                     return True
                 else:  # has completed or failed
                     if request.completed:
-                        self.logger.info(f"🔄 Transfer completed: {request.qty} {request.asset}: {request} resuming trading")
+                        self.logger.info(
+                            f"🔄 Transfer completed: {request.qty} {request.asset}: {request} resuming trading")
 
                         if request.asset == symbol.base:
                             self.context.current_role = 'dest'
@@ -732,26 +734,25 @@ class CrossExchangeArbitrageTask(BaseStrategyTask[CrossExchangeArbitrageTaskCont
 
                             await self._load_initial_balances()
 
-                            dest_pos.reset(request.qty)
-                            dest_pos.qty = request.qty
-                            dest_pos.price = request.buy_price
-                            # source_pos.reset(self.context.total_quantity)
+                            dest_pos.reset(request.qty).update(Side.BUY,
+                                                               request.qty,
+                                                               request.buy_price,
+                                                               self._get_fees('source').taker_fee)
                         else:
                             self.context.current_role = 'source'
                             self._ta_module.set_forced_signal('enter')
                             await self._load_initial_balances()
 
                             # TRACK PNL
-                            pnl_pct = dest_pos.cumulative_pnl_pct
-                            pnl_pct_net = dest_pos.cumulative_pnl_pct_net
-                            pnl_usdt_net = dest_pos.cumulative_pnl_usdt_net
-                            hedge_pnl_pct_net = hedge_pos.cumulative_pnl_pct_net
-                            hedge_pnl_usdt_net = hedge_pos.cumulative_pnl_usdt_net
+                            total_pnl_net = dest_pos.pnl_tracker.pnl_usdt_net + hedge_pos.pnl_tracker.pnl_usdt_net
 
-                            self.logger.info(f"💰 Completed arbitrage cycle PnL | gross: {pnl_pct:.4f}%, "
-                                             f"net: {pnl_pct_net:.4f}% ({pnl_usdt_net:.4f} USDT) "
-                                             f"| Hedge: {hedge_pnl_pct_net:.4f} {hedge_pnl_usdt_net:.4f} "
-                                             f"| Pure PNL: {(pnl_usdt_net + hedge_pnl_usdt_net):.4f} USDT")
+                            msg = (f"💰 {self.context.symbol} Completed arbitrage"
+                                   f"\r\n Spot:     {dest_pos.pnl_tracker}, "
+                                   f"\r\n Hedge:    {hedge_pos.pnl_tracker} "
+                                   f"\r\n Total PNL:   {total_pnl_net:.4f}$")
+
+                            self.logger.info(msg)
+                            await send_to_telegram(msg)
 
                             source_pos.reset(self.context.total_quantity)
                             dest_pos.reset(0.0)
@@ -786,7 +787,8 @@ class CrossExchangeArbitrageTask(BaseStrategyTask[CrossExchangeArbitrageTaskCont
 
                     # adjust qty to USDT in case of some troubles??
                     if qty * self._get_book_ticker('dest').bid_price < quote_balance.available:
-                        qty = self.context.total_quantity * self._get_book_ticker('dest').bid_price
+                        # qty = self.context.total_quantity * self._get_book_ticker('dest').bid_price
+                        qty = quote_balance.available
 
                     transfer_request = await self._transfer_module.transfer_asset(symbol.quote, dest, source, qty)
 

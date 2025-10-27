@@ -1,6 +1,6 @@
 from itertools import accumulate
 
-from msgspec import Struct
+from msgspec import Struct, field
 from typing import Optional, Literal
 
 from exchanges.structs import Order
@@ -14,168 +14,178 @@ class PositionError(Exception):
     pass
 
 
-class PositionPnl(Struct):
-    """Self-contained PNL calculation module."""
-    entry_price: float
-    exit_price: float
-    quantity: float
-    position_side: Side  # Position side (BUY=long, SELL=short)
-    fee_rate: float = 0.0  # Fee rate for calculation
+class PnlTracker(Struct):
+    """Unified PNL tracking with weighted average entry/exit prices."""
+    # Weighted average prices for all trades
+    avg_entry_price: float = 0.0
+    avg_exit_price: float = 0.0
+    total_entry_qty: float = 0.0  # Total quantity entered
+    total_exit_qty: float = 0.0   # Total quantity exited
     
-    # Cached calculation results
-    _calculated: bool = False
-    _pnl_usdt: Optional[float] = None
-    _pnl_pct: Optional[float] = None
-    _pnl_usdt_net: Optional[float] = None
-    _pnl_pct_net: Optional[float] = None
-    _entry_fee_usdt: Optional[float] = None
-    _exit_fee_usdt: Optional[float] = None
-
-    def calculate(self):
-        """Perform all PNL calculations and cache results."""
-        if self._calculated:
-            return self
-            
-        # Calculate raw PNL based on position side
-        if self.position_side == Side.BUY:  # Long position
-            self._pnl_usdt = (self.exit_price - self.entry_price) * self.quantity
-        else:  # Side.SELL - Short position
-            self._pnl_usdt = (self.entry_price - self.exit_price) * self.quantity
+    # Cumulative PNL tracking
+    total_pnl_usdt: float = 0.0
+    total_fees: float = 0.0
+    
+    # Position side for PNL calculation
+    position_side: Optional[Side] = None
+    
+    # Cached calculations for performance
+    _pnl_usdt_net_cached: Optional[float] = None
+    _pnl_pct_cached: Optional[float] = None
+    _pnl_pct_net_cached: Optional[float] = None
+    _cache_valid: bool = False
+    
+    def add_entry(self, price: float, quantity: float, side: Side, fee_rate: float = 0.0):
+        """Record a position entry (buy for long, sell for short)."""
+        if not self.position_side:
+            self.position_side = side
         
-        # Calculate percentage PNL (based on entry value)
-        entry_value = self.entry_price * self.quantity
-        self._pnl_pct = (self._pnl_usdt / entry_value) * 100 if entry_value > 1e-8 else 0.0
-        
-        # Calculate fees if fee_rate provided
-        if self.fee_rate > 0:
-            self._entry_fee_usdt = entry_value * self.fee_rate
-            self._exit_fee_usdt = (self.exit_price * self.quantity) * self.fee_rate
-            total_fees = self._entry_fee_usdt + self._exit_fee_usdt
-            
-            # Calculate net PNL after fees
-            self._pnl_usdt_net = self._pnl_usdt - total_fees
-            self._pnl_pct_net = (self._pnl_usdt_net / entry_value) * 100 if entry_value > 1e-8 else 0.0
+        # Update weighted average entry price
+        if self.total_entry_qty > 0:
+            self.total_entry_qty, self.avg_entry_price = calculate_weighted_price(
+                self.avg_entry_price, self.total_entry_qty, price, quantity
+            )
         else:
-            self._entry_fee_usdt = 0.0
-            self._exit_fee_usdt = 0.0
-            self._pnl_usdt_net = self._pnl_usdt
-            self._pnl_pct_net = self._pnl_pct
+            self.avg_entry_price = price
+            self.total_entry_qty = quantity
         
-        self._calculated = True
-        return self
-
+        # Track entry fees
+        if fee_rate > 0:
+            self.total_fees += (price * quantity * fee_rate)
+        
+        self._cache_valid = False
+    
+    def add_exit(self, price: float, quantity: float, fee_rate: float = 0.0):
+        """Record a position exit and calculate realized PNL."""
+        if not self.position_side or self.avg_entry_price <= 0:
+            return
+        
+        # Calculate PNL for this exit
+        if self.position_side == Side.BUY:  # Long position
+            pnl = (price - self.avg_entry_price) * quantity
+        else:  # Short position
+            pnl = (self.avg_entry_price - price) * quantity
+        
+        self.total_pnl_usdt += pnl
+        
+        # Update weighted average exit price
+        if self.total_exit_qty > 0:
+            self.total_exit_qty, self.avg_exit_price = calculate_weighted_price(
+                self.avg_exit_price, self.total_exit_qty, price, quantity
+            )
+        else:
+            self.avg_exit_price = price
+            self.total_exit_qty = quantity
+        
+        # Track exit fees
+        if fee_rate > 0:
+            self.total_fees += (price * quantity * fee_rate)
+        
+        self._cache_valid = False
+    
+    def _recalculate_cache(self):
+        """Recalculate cached values."""
+        self._pnl_usdt_net_cached = self.total_pnl_usdt - self.total_fees
+        
+        # Calculate percentages based on total entry value
+        if self.total_entry_qty > 0 and self.avg_entry_price > 0:
+            entry_value = self.avg_entry_price * self.total_entry_qty
+            self._pnl_pct_cached = (self.total_pnl_usdt / entry_value) * 100
+            self._pnl_pct_net_cached = (self._pnl_usdt_net_cached / entry_value) * 100
+        else:
+            self._pnl_pct_cached = 0.0
+            self._pnl_pct_net_cached = 0.0
+        
+        self._cache_valid = True
+    
     @property
     def pnl_usdt(self) -> float:
-        """Get raw PNL in USDT."""
-        self.calculate()
-        return self._pnl_usdt
-
-    @property
-    def pnl_pct(self) -> float:
-        """Get raw PNL percentage."""
-        self.calculate()
-        return self._pnl_pct
-
+        """Get total raw PNL in USDT."""
+        return self.total_pnl_usdt
+    
     @property
     def pnl_usdt_net(self) -> float:
-        """Get net PNL in USDT after fees."""
-        self.calculate()
-        return self._pnl_usdt_net
-
+        """Get total net PNL after fees."""
+        if not self._cache_valid:
+            self._recalculate_cache()
+        return self._pnl_usdt_net_cached or 0.0
+    
+    @property
+    def pnl_pct(self) -> float:
+        """Get total PNL percentage."""
+        if not self._cache_valid:
+            self._recalculate_cache()
+        return self._pnl_pct_cached or 0.0
+    
     @property
     def pnl_pct_net(self) -> float:
-        """Get net PNL percentage after fees."""
-        self.calculate()
-        return self._pnl_pct_net
-
+        """Get total net PNL percentage."""
+        if not self._cache_valid:
+            self._recalculate_cache()
+        return self._pnl_pct_net_cached or 0.0
+    
     @property
-    def entry_fee_usdt(self) -> float:
-        """Get entry fee in USDT."""
-        self.calculate()
-        return self._entry_fee_usdt
-
+    def position_closed_percent(self) -> float:
+        """Calculate what percentage of entered position has been exited."""
+        if self.total_entry_qty > 0:
+            return (self.total_exit_qty / self.total_entry_qty) * 100
+        return 0.0
+    
     @property
-    def exit_fee_usdt(self) -> float:
-        """Get exit fee in USDT."""
-        self.calculate()
-        return self._exit_fee_usdt
-
-    @property
-    def total_fees(self) -> float:
-        """Get total fees (entry + exit)."""
-        self.calculate()
-        return self._entry_fee_usdt + self._exit_fee_usdt
+    def unrealized_qty(self) -> float:
+        """Get quantity that hasn't been exited yet."""
+        return max(0.0, self.total_entry_qty - self.total_exit_qty)
+    
+    def calculate_unrealized_pnl(self, current_price: float, fee_rate: float = 0.0) -> Optional[float]:
+        """Calculate unrealized PNL for remaining position."""
+        remaining = self.unrealized_qty
+        if remaining <= 0 or not self.position_side:
+            return None
+        
+        if self.position_side == Side.BUY:
+            pnl = (current_price - self.avg_entry_price) * remaining
+        else:
+            pnl = (self.avg_entry_price - current_price) * remaining
+        
+        # Subtract estimated exit fees
+        if fee_rate > 0:
+            pnl -= (current_price * remaining * fee_rate)
+            pnl -= (self.avg_entry_price * remaining * fee_rate)  # Entry fee for unrealized portion
+        
+        return pnl
+    
+    def reset(self):
+        """Reset all PNL tracking."""
+        self.avg_entry_price = 0.0
+        self.avg_exit_price = 0.0
+        self.total_entry_qty = 0.0
+        self.total_exit_qty = 0.0
+        self.total_pnl_usdt = 0.0
+        self.total_fees = 0.0
+        self.position_side = None
+        self._pnl_usdt_net_cached = None
+        self._pnl_pct_cached = None
+        self._pnl_pct_net_cached = None
+        self._cache_valid = False
 
     def __str__(self):
-        return (f"PNL: {self.pnl_usdt_net:.4f} USDT ({self.pnl_pct_net:.2f}%) "
-                f"[Raw: {self.pnl_usdt:.4f} USDT, Fees: {self.total_fees:.4f} USDT]")
-
+        return (f"PNL: {self.total_pnl_usdt:.4f}$ net: {self.pnl_usdt_net:.4f}$ |"
+                f" {self.avg_entry_price:.4f} -> {self.avg_exit_price:.4f} ({self.total_exit_qty:.4f})")
+    
 
 class PositionChange(Struct):
+    """Simplified position change tracking."""
     qty_before: float
     price_before: float
     qty_after: float
     price_after: float
-    pnl: Optional[PositionPnl] = None  # PNL module for this change
+    realized_pnl: float = 0.0  # Direct PNL value instead of object
+    realized_pnl_net: float = 0.0  # Net PNL after fees
 
     @property
     def has_pnl(self) -> bool:
         """Check if this position change includes PNL calculation."""
-        return self.pnl is not None
-
-    @property
-    def pnl_usdt(self) -> Optional[float]:
-        """Get raw PNL in USDT."""
-        return self.pnl.pnl_usdt if self.pnl else None
-
-    @property
-    def pnl_pct(self) -> Optional[float]:
-        """Get raw PNL percentage."""
-        return self.pnl.pnl_pct if self.pnl else None
-
-    @property
-    def pnl_usdt_net(self) -> Optional[float]:
-        """Get net PNL in USDT after fees."""
-        return self.pnl.pnl_usdt_net if self.pnl else None
-
-    @property
-    def pnl_pct_net(self) -> Optional[float]:
-        """Get net PNL percentage after fees."""
-        return self.pnl.pnl_pct_net if self.pnl else None
-
-    @property
-    def entry_fee_usdt(self) -> Optional[float]:
-        """Get entry fee in USDT."""
-        return self.pnl.entry_fee_usdt if self.pnl else None
-
-    @property
-    def exit_fee_usdt(self) -> Optional[float]:
-        """Get exit fee in USDT."""
-        return self.pnl.exit_fee_usdt if self.pnl else None
-
-    @property
-    def total_fees(self) -> float:
-        """Get total fees (entry + exit)."""
-        return self.pnl.total_fees if self.pnl else 0.0
-
-    @property
-    def close_quantity(self) -> Optional[float]:
-        """Get close quantity for backward compatibility."""
-        return self.pnl.quantity if self.pnl else None
-
-    @property
-    def entry_price(self) -> Optional[float]:
-        """Get entry price for backward compatibility."""
-        return self.pnl.entry_price if self.pnl else None
-
-    @property
-    def exit_price(self) -> Optional[float]:
-        """Get exit price for backward compatibility."""
-        return self.pnl.exit_price if self.pnl else None
-
-    def get_pnl_summary(self) -> str:
-        """Get PNL summary string."""
-        return str(self.pnl) if self.pnl else ""
+        return abs(self.realized_pnl) > 1e-8
 
     def __str__(self):
         if abs(self.qty_after - self.qty_before) < 1e-8:
@@ -184,12 +194,12 @@ class PositionChange(Struct):
         result = (f"Change: {self.qty_before:.4f} @ {self.price_before:.8f} -> "
                   f"{self.qty_after:.4f} @ {self.price_after:.8f}")
         if self.has_pnl:
-            result += f" | {self.get_pnl_summary()}"
+            result += f" | PNL: {self.realized_pnl_net:.4f} USDT"
         return result
 
 
 class Position(Struct):
-    """Individual position information with float-only policy."""
+    """Simplified position with integrated PNL tracking."""
     qty: float = 0.0
     price: float = 0.0
     acc_qty: float = 0.0  # in case of SELL accumulated base qty
@@ -197,15 +207,11 @@ class Position(Struct):
 
     mode: Literal['accumulate', 'release', 'hedge'] = 'accumulate'  # Position management mode
 
-    side: Side = None
+    side: Optional[Side] = None
     last_order: Optional[Order] = None
     
-    # Cumulative PNL tracking from max position to zero
-    max_position_qty: float = 0.0  # Track maximum position size achieved
-    max_position_price: float = 0.0  # Track price when max position was achieved
-    cumulative_pnl_usdt: float = 0.0  # Total realized PNL from max position to current
-    cumulative_pnl_usdt_net: float = 0.0  # Total realized PNL after fees
-    cumulative_fees: float = 0.0  # Total fees paid during position lifecycle
+    # Integrated PNL tracker with avg entry/exit prices
+    pnl_tracker: PnlTracker = field(default_factory=PnlTracker)
 
     @property
     def acc_quote_qty(self) -> float:
@@ -226,9 +232,10 @@ class Position(Struct):
         if remaining < 1e-8:
             return 0.0
         return remaining
-
+    
     def __str__(self):
         return f"[{self.side.name}: {self.qty} @ {self.price}]" if self.side else "[No Position]"
+    
 
     def update(self, side: Side, quantity: float, price: float, fee: float = 0.0) -> PositionChange:
         """Update position for specified exchange with automatic profit calculation.
@@ -259,10 +266,8 @@ class Position(Struct):
             self.price = price
             self.side = side
             
-            # Initialize max position tracking
-            if quantity > self.max_position_qty:
-                self.max_position_qty = quantity
-                self.max_position_price = price
+            # Track entry in PNL tracker
+            self.pnl_tracker.add_entry(price, quantity, side, fee)
             
             return PositionChange(0, 0, quantity, price)
         
@@ -273,10 +278,8 @@ class Position(Struct):
             self.qty = new_qty
             self.price = new_price
             
-            # Update max position tracking when adding to position
-            if new_qty > self.max_position_qty:
-                self.max_position_qty = new_qty
-                self.max_position_price = new_price
+            # Track additional entry in PNL tracker
+            self.pnl_tracker.add_entry(price, quantity, side, fee)
             
             return pos_change
         
@@ -285,40 +288,48 @@ class Position(Struct):
             old_qty = self.qty
             old_price = self.price
             
-            # Create PNL module if in release or hedge mode
-            pnl_module = None
+            # Track exit in PNL tracker if in release or hedge mode
+            realized_pnl = 0.0
+            realized_pnl_net = 0.0
             if self.mode in ('release', 'hedge') and self.side and old_price > 1e-8:
                 # Determine the quantity being closed
                 close_qty = min(quantity, self.qty)
                 
-                # Create PNL module for calculation
-                pnl_module = PositionPnl(
-                    entry_price=old_price,
-                    exit_price=price,
-                    quantity=close_qty,
-                    position_side=self.side,
-                    fee_rate=fee
-                )
+                # Calculate PNL for this exit
+                if self.side == Side.BUY:
+                    realized_pnl = (price - old_price) * close_qty
+                else:
+                    realized_pnl = (old_price - price) * close_qty
                 
-                # Update cumulative PNL tracking when closing position
-                self._update_cumulative_pnl(pnl_module)
+                # Calculate fees
+                total_fees = 0.0
+                if fee > 0:
+                    total_fees = (old_price * close_qty * fee) + (price * close_qty * fee)
+                
+                realized_pnl_net = realized_pnl - total_fees
+                
+                # Track exit in PNL tracker
+                self.pnl_tracker.add_exit(price, close_qty, fee)
             
             if quantity < self.qty:
                 # Reducing position - keep original price, reduce quantity
                 new_qty = self.qty - quantity
-                pos_change = PositionChange(old_qty, old_price, new_qty, old_price, pnl=pnl_module)
+                pos_change = PositionChange(old_qty, old_price, new_qty, old_price, 
+                                          realized_pnl=realized_pnl, realized_pnl_net=realized_pnl_net)
                 self.qty = new_qty
                 # price stays the same
             elif abs(quantity - self.qty) < 1e-8:  # Use epsilon comparison for floating point
                 # Closing position completely
-                pos_change = PositionChange(old_qty, old_price, 0, 0, pnl=pnl_module)
+                pos_change = PositionChange(old_qty, old_price, 0, 0, 
+                                          realized_pnl=realized_pnl, realized_pnl_net=realized_pnl_net)
                 self.qty = 0
                 self.price = 0
                 self.side = None
             else:
                 # Reversing position (quantity > self.qty)
                 remaining_qty = quantity - self.qty
-                pos_change = PositionChange(old_qty, old_price, remaining_qty, price, pnl=pnl_module)
+                pos_change = PositionChange(old_qty, old_price, remaining_qty, price, 
+                                          realized_pnl=realized_pnl, realized_pnl_net=realized_pnl_net)
                 self.qty = remaining_qty
                 self.price = price
                 self.side = side
@@ -368,56 +379,18 @@ class Position(Struct):
         return qty
 
     def reset(self, target_qty=0.0, reset_pnl: bool = True):
+        """Reset position and optionally reset PNL tracking."""
         self.target_qty = target_qty
         self.acc_qty = 0.0
         self.qty = 0.0
         self.price = 0.0
         self.last_order = None
+        # self.side = None
 
         if reset_pnl:
-            # Reset cumulative PNL tracking
-            self.max_position_qty = 0.0
-            self.max_position_price = 0.0
-            self.cumulative_pnl_usdt = 0.0
-            self.cumulative_pnl_usdt_net = 0.0
-            self.cumulative_fees = 0.0
+            self.pnl_tracker.reset()
+
+        return self
     
-    def _update_cumulative_pnl(self, pnl_module: PositionPnl):
-        """Update cumulative PNL tracking when position is reduced."""
-        self.cumulative_pnl_usdt += pnl_module.pnl_usdt
-        self.cumulative_pnl_usdt_net += pnl_module.pnl_usdt_net
-        self.cumulative_fees += pnl_module.total_fees
-    
-    @property
-    def cumulative_pnl_pct(self) -> float:
-        """Calculate cumulative PNL percentage based on max position value."""
-        if self.max_position_qty > 1e-8 and self.max_position_price > 1e-8:
-            max_position_value = self.max_position_qty * self.max_position_price
-            return (self.cumulative_pnl_usdt / max_position_value) * 100
-        return 0.0
-    
-    @property
-    def cumulative_pnl_pct_net(self) -> float:
-        """Calculate cumulative net PNL percentage based on max position value."""
-        if self.max_position_qty > 1e-8 and self.max_position_price > 1e-8:
-            max_position_value = self.max_position_qty * self.max_position_price
-            return (self.cumulative_pnl_usdt_net / max_position_value) * 100
-        return 0.0
-    
-    @property
-    def position_closed_percent(self) -> float:
-        """Calculate what percentage of max position has been closed."""
-        if self.max_position_qty > 1e-8:
-            closed_qty = self.max_position_qty - self.qty
-            return (closed_qty / self.max_position_qty) * 100
-        return 0.0
-    
-    def get_cumulative_pnl_summary(self) -> str:
-        """Get cumulative PNL summary string."""
-        if self.max_position_qty > 1e-8:
-            return (f"Cumulative PNL: {self.cumulative_pnl_usdt_net:.4f} USDT "
-                   f"({self.cumulative_pnl_pct_net:.2f}%) | "
-                   f"Closed: {self.position_closed_percent:.1f}% | "
-                   f"Fees: {self.cumulative_fees:.4f} USDT")
-        return "No cumulative PNL (no position history)"
+
     
