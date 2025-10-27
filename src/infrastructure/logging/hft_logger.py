@@ -275,7 +275,7 @@ class HFTLogger(HFTLoggerInterface):
                 self._py_logger.log(py_level, str(msg) + extra)
                 immediate_propagated = True
             
-            if self.is_development:
+            if self.is_development and not immediate_propagated:
                 self._sync_dispatch_immediate(record)
                 return
             

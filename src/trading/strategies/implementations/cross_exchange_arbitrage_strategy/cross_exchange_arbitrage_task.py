@@ -253,7 +253,7 @@ class CrossExchangeArbitrageTask(BaseStrategyTask[CrossExchangeArbitrageTaskCont
             self.logger.info(f"🔄 Loaded initial futures position for HEDGE {hedge_position}")
         else:
             self.logger.info(f"ℹ️ No existing futures position for HEDGE")
-            hedge_position.reset()
+            hedge_position.reset(reset_pnl=False)
 
         exchange_role: ExchangeRoleType
 
@@ -622,7 +622,8 @@ class CrossExchangeArbitrageTask(BaseStrategyTask[CrossExchangeArbitrageTaskCont
             return
 
         try:
-            pos_change = self.context.positions[exchange_role].update_position_with_order(order)
+            pos = self.context.positions[exchange_role]
+            pos_change = pos.update_position_with_order(order, fee=self._get_fees(exchange_role).taker_fee)
 
             self.logger.info(f"📊 Updated position on {exchange_role}",
                              side=order.side.name,
@@ -716,28 +717,45 @@ class CrossExchangeArbitrageTask(BaseStrategyTask[CrossExchangeArbitrageTaskCont
             dest = self.context.settings['dest'].exchange
             dest_pos = self.context.positions['dest']
             source_pos = self.context.positions['source']
+            hedge_pos = self.context.positions['hedge']
 
             if request:  # has active transfer
                 if request.in_progress:
                     return True
                 else:  # has completed or failed
                     if request.completed:
-                        self.logger.info(f"🔄 Transfer completed: {request.qty} {request.asset}, resuming trading")
+                        self.logger.info(f"🔄 Transfer completed: {request.qty} {request.asset}: {request} resuming trading")
 
                         if request.asset == symbol.base:
                             self.context.current_role = 'dest'
                             self._ta_module.set_forced_signal('exit')
 
                             await self._load_initial_balances()
+
                             dest_pos.reset(request.qty)
-                            source_pos.reset(self.context.total_quantity)
+                            dest_pos.qty = request.qty
+                            dest_pos.price = request.buy_price
+                            # source_pos.reset(self.context.total_quantity)
                         else:
                             self.context.current_role = 'source'
                             self._ta_module.set_forced_signal('enter')
                             await self._load_initial_balances()
 
+                            # TRACK PNL
+                            pnl_pct = dest_pos.cumulative_pnl_pct
+                            pnl_pct_net = dest_pos.cumulative_pnl_pct_net
+                            pnl_usdt_net = dest_pos.cumulative_pnl_usdt_net
+                            hedge_pnl_pct_net = hedge_pos.cumulative_pnl_pct_net
+                            hedge_pnl_usdt_net = hedge_pos.cumulative_pnl_usdt_net
+
+                            self.logger.info(f"💰 Completed arbitrage cycle PnL | gross: {pnl_pct:.4f}%, "
+                                             f"net: {pnl_pct_net:.4f}% ({pnl_usdt_net:.4f} USDT) "
+                                             f"| Hedge: {hedge_pnl_pct_net:.4f} {hedge_pnl_usdt_net:.4f} "
+                                             f"| Pure PNL: {(pnl_usdt_net + hedge_pnl_usdt_net):.4f} USDT")
+
                             source_pos.reset(self.context.total_quantity)
                             dest_pos.reset(0.0)
+                            hedge_pos.reset()
 
                     else:
                         self.logger.error(f"❌ Transfer failed, check manually {request}")
@@ -756,7 +774,8 @@ class CrossExchangeArbitrageTask(BaseStrategyTask[CrossExchangeArbitrageTaskCont
 
                     qty = min(source_pos.qty, base_balance.available)
 
-                    transfer_request = await self._transfer_module.transfer_asset(symbol.base, source, dest, qty)
+                    transfer_request = await self._transfer_module.transfer_asset(symbol.base, source, dest, qty,
+                                                                                  buy_price=source_pos.price)
 
                     self.logger.info(f"🚀 Starting transfer of {qty} {symbol.base} from {source.name} to {dest.name}")
                 elif current_role == 'dest' and dest_pos.is_fulfilled(self._get_min_base_qty('dest')):
@@ -777,9 +796,9 @@ class CrossExchangeArbitrageTask(BaseStrategyTask[CrossExchangeArbitrageTaskCont
                     self.context.transfer_request = transfer_request
 
                     if current_role == 'source':
-                        source_pos.reset()
+                        source_pos.reset(reset_pnl=False)
                     else:
-                        dest_pos.reset()
+                        dest_pos.reset(reset_pnl=False)
 
                     self.context.set_save_flag()
                     await self._start_transfer_monitor()

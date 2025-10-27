@@ -36,6 +36,7 @@ class TransferRequest(Struct, frozen=False, kw_only=True):
     from_exchange: ExchangeEnum
     to_exchange: Optional[ExchangeEnum] = None # can be lazy loaded
     amount: float = 0
+    buy_price: [float] = None
     fees: float = 0
     
     # Withdrawal tracking (existing)
@@ -110,6 +111,12 @@ class TransferRequest(Struct, frozen=False, kw_only=True):
         """Check if either side of transfer is still in progress."""
         return self.withdrawal_in_progress or self.deposit_in_progress
 
+    def __str__(self):
+        return (f"Transfer: {self.amount} {self.asset} "
+                f"from {self.from_exchange.name} to {self.to_exchange.name if self.to_exchange else 'Unknown'} | "
+                f"Withdrawal: {self.withdrawal_status.name if self.withdrawal_status else 'Unknown'} | "
+                f"Deposit: {self.deposit_status.name if self.deposit_status else 'Unknown'}")
+
 
 class TransferValidation(Struct):
     """Validation results for transfer feasibility."""
@@ -136,7 +143,6 @@ class AssetTransferModule:
     
     Attributes:
         exchanges: Dictionary of exchange interfaces by enum
-        active_transfers: Dictionary of active transfer requests by ID
     """
     
     def __init__(self, exchanges: Dict[ExchangeEnum, CompositePrivateSpotExchange],
@@ -147,7 +153,6 @@ class AssetTransferModule:
             exchanges: Dictionary mapping exchange enums to private spot interfaces
         """
         self.exchanges = exchanges
-        self.active_transfers: Dict[str, TransferRequest] = {}
         self.logger = logger
 
     async def initialize(self):
@@ -156,7 +161,7 @@ class AssetTransferModule:
             await exchange.initialize()
 
     async def transfer_asset(self, asset: AssetName, from_exchange: ExchangeEnum,
-                             to_exchange: ExchangeEnum, amount: float) -> TransferRequest:
+                             to_exchange: ExchangeEnum, amount: float, buy_price: Optional[float] =None) -> TransferRequest:
         """Start asset transfer between specified exchanges.
         
         Optimized for HFT performance with separated validation and execution phases.
@@ -166,6 +171,7 @@ class AssetTransferModule:
             from_exchange: Source exchange
             to_exchange: Target exchange  
             amount: Amount to transfer
+            buy_price: Optional buy price for tracking
             
         Returns:
             TransferRequest with transfer details and status
@@ -191,13 +197,12 @@ class AssetTransferModule:
             to_exchange=to_exchange,
             amount=amount,
             fees=validation.estimated_fee,
-            created_at=get_current_timestamp()
+            created_at=get_current_timestamp(),
+            buy_price=buy_price
         )
 
-        self.active_transfers[transfer_id] = request
-        
         # Execute transfer with just-in-time address retrieval
-        await self._execute_transfer(request, validation)
+        request = await self._execute_transfer(request, validation)
         return request
 
     async def _validate_transfer(self, asset: AssetName, from_exchange: ExchangeEnum, 
@@ -314,13 +319,14 @@ class AssetTransferModule:
         
         response = await source_exchange.submit_withdrawal(withdrawal_request)
 
-        request = self.active_transfers[request.transfer_id]
         request.withdrawal_id = response.withdrawal_id
         request.deposit_address = deposit_info.address
         request.withdrawal_status = response.status
         request.deposit_status = DepositStatus.PENDING
         request.network = deposit_info.network
         request.memo = deposit_info.memo
+
+        return request
 
 
     async def get_transfer_request(self, exchange_enum: ExchangeEnum,  withdrawal_id: str) -> Optional[TransferRequest]:
@@ -362,41 +368,14 @@ class AssetTransferModule:
 
         return request
 
-    async def update_transfer_status(self, transfer_id: str):
-        """Check transfer status with dual-side validation (withdrawal + deposit).
-        
-        Checks both withdrawal completion and deposit arrival for complete
-        end-to-end transfer validation. Only returns True when BOTH sides complete.
-        
-        Args:
-            transfer_id: Transfer ID to check
-            
-        Returns:
-            True if BOTH withdrawal and deposit completed, False otherwise
-        """
-        if transfer_id not in self.active_transfers:
-            return False
-        
-        request = self.active_transfers[transfer_id]
-
-        # Check withdrawal status (existing logic)
-        if request.withdrawal_in_progress:
-            request = await self.update_withdrawal_status(request)
-
-        # Check deposit status (new logic)
-        if request.deposit_in_progress:
-            request = await self.update_deposit_status(request)
-
-        return request.completed
-        
     async def update_withdrawal_status(self, request: TransferRequest) -> TransferRequest:
         source_exchange = self.exchanges[request.from_exchange]
 
         try:
-            withdrawal_status = await source_exchange.get_withdrawal_status(request.withdrawal_id)
-            request.withdrawal_status = withdrawal_status.status
+            withdrawal = await source_exchange.get_withdrawal_status(request.withdrawal_id)
+            request.withdrawal_status = withdrawal.status
             request.last_status_check = get_current_timestamp()
-            request.withdrawal_tx_id = fix_tx_id(withdrawal_status.tx_id)
+            request.withdrawal_tx_id = fix_tx_id(withdrawal.tx_id)
 
             return request
 
@@ -445,32 +424,5 @@ class AssetTransferModule:
             self.logger.error(f"Error checking deposit status for {request.transfer_id}: {e}")
             return request
 
-    async def prune_transfer(self, transfer_id: str) -> bool:
-        """Complete transfer and cleanup active tracking.
-        
-        Checks final status and removes from active transfers if completed.
-        
-        Args:
-            transfer_id: Transfer ID to complete
-            
-        Returns:
-            True if transfer completed and cleaned up, False otherwise
-        """
-        if transfer_id not in self.active_transfers:
-            return False
-        
-        if await self.update_transfer_status(transfer_id):
-            del self.active_transfers[transfer_id]
-            return True
-        
-        return False
 
-    
-    def get_all_active_transfers(self) -> Dict[str, TransferRequest]:
-        """Get copy of all active transfer requests.
-        
-        Returns:
-            Dictionary copy of all active transfers
-        """
-        return self.active_transfers.copy()
 

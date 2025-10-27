@@ -465,7 +465,7 @@ class BasePublicComposite(BaseCompositeExchange[PublicRestType, PublicWebsocketT
 
             # Log performance warnings for HFT compliance
             if processing_time > 500:  # 500μs threshold
-                self.logger.warning("Book ticker processing slow",
+                self.logger.debug("Book ticker processing slow",
                                     symbol=book_ticker.symbol,
                                     processing_time_us=processing_time)
 

@@ -373,8 +373,8 @@ class GateioPrivateFuturesRestInterface(
         """
         try:
             response = await self.request(HTTPMethod.GET, "/futures/usdt/fee")
-            fees = {GateioFuturesSymbol.to_symbol(k): Fees(maker_fee=v['maker_fee'],
-                                                           taker_fee=v['taker_fee']) for k,v in response.items()}
+            fees = {GateioFuturesSymbol.to_symbol(k): Fees(maker_fee=float(v.get('maker_fee','0')),
+                                                           taker_fee=float(v.get('taker_fee','0'))) for k,v in response.items()}
             if symbol is None:
                 return fees
 

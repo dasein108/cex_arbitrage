@@ -47,6 +47,22 @@ _GATEIO_TIF_MAP = {
     'fok': TimeInForce.FOK,
 }
 
+# Transaction status
+#
+# - DONE: Completed (block_number > 0 is considered to be truly completed)
+# - CANCEL: Canceled
+# - REQUEST: Requesting
+# - MANUAL: Pending manual review
+# - BCODE: Recharge code operation
+# - EXTPEND: Sent awaiting confirmation
+# - FAIL: Failure on the chain awaiting confirmation
+# - INVALID: Invalid order
+# - VERIFY: Verifying
+# - PROCES: Processing
+# - PEND: Processing
+# - DMOVE: pending manual review
+# - REVIEW: Under review
+
 _GATEIO_WITHDRAW_STATUS_MAP = {
     "DONE": WithdrawalStatus.COMPLETED,
     "CANCEL": WithdrawalStatus.CANCELED,
@@ -54,26 +70,32 @@ _GATEIO_WITHDRAW_STATUS_MAP = {
     "PEND": WithdrawalStatus.PENDING,
     "VERIFY": WithdrawalStatus.PENDING,
     "MANUAL": WithdrawalStatus.PENDING,
-    "REVIEW": WithdrawalStatus.PENDING,
+    "REVIEW": WithdrawalStatus.REVIEW,
     "EXTPEND": WithdrawalStatus.PROCESSING,
     "PROCES": WithdrawalStatus.PROCESSING,
     "FAIL": WithdrawalStatus.FAILED,
     "INVALID": WithdrawalStatus.FAILED,
-    "DMOVE": WithdrawalStatus.PENDING,
+    "DMOVE": WithdrawalStatus.MANUAL_REVIEW,
     "BCODE": WithdrawalStatus.PROCESSING,
 }
 
+# Trading Status
+#
+# - REVIEW: Recharge review (compliance review)
+# - PEND: Processing
+# - DONE: Waiting for funds to be unlocked
+# - INVALID: Invalid data
+# - TRACK: Track the number of confirmations, waiting to add funds to the user (spot)
+# - BLOCKED: Rejected Recharge
+# - DEP_CREDITED: Recharge to account, withdrawal is not unlocked
 # Gate.io Deposit Status Mapping - based on Gate.io API docs
 _GATEIO_DEPOSIT_STATUS_MAP = {
+    "DEP_CREDITED": DepositStatus.COMPLETED,
     "DONE": DepositStatus.COMPLETED,
-    "CANCEL": DepositStatus.FAILED,
-    "REQUEST": DepositStatus.PENDING,
+    "BLOCKED": DepositStatus.FAILED,
     "PEND": DepositStatus.PENDING,
-    "VERIFY": DepositStatus.PROCESSING,
-    "MANUAL": DepositStatus.MANUAL_REVIEW,
     "REVIEW": DepositStatus.REVIEW,
-    "PROCES": DepositStatus.PROCESSING,
-    "FAIL": DepositStatus.FAILED,
+    "TRACK": DepositStatus.PROCESSING,
     "INVALID": DepositStatus.FAILED,
     "LOCK": DepositStatus.LOCKED,
 }
@@ -267,8 +289,8 @@ def rest_spot_to_order(order_data: Dict[str, Any]) -> Order:
     
     # Calculate fee from order data if available
     fee = float(order_data.get('fee', '0'))
-    price=float(order_data.get('fill_price', order_data.get('price', '0')))
-
+    price=float(order_data.get('avg_deal_price', order_data.get('price', '0')))
+    # fill_price, filled_total - usdt value of filled amount in case sell market
     return Order(
         symbol=symbol,
         side=to_side(order_data['side']),
