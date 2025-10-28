@@ -6,10 +6,9 @@
 # KISS principle: Simple script to sync code and deploy to 139.180.134.54
 
 set -e
-
 # Configuration
 SERVER="31.192.233.13"
-SSH_KEY="~/.ssh/deploy_ci"
+SSH_KEY="~/.ssh/deploy_new"
 REMOTE_PATH="/opt/arbitrage"
 LOCAL_PATH="/Users/dasein/dev/cex_arbitrage"
 
