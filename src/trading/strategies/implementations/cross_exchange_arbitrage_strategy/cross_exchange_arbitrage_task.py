@@ -745,7 +745,9 @@ class CrossExchangeArbitrageTask(BaseStrategyTask[CrossExchangeArbitrageTaskCont
                             await self._load_initial_balances()
 
                             # TRACK PNL
-                            total_pnl_net = dest_pos.pnl_tracker.pnl_usdt_net + hedge_pos.pnl_tracker.pnl_usdt_net
+                            total_pnl_net = (dest_pos.pnl_tracker.pnl_usdt_net +
+                                             hedge_pos.pnl_tracker.pnl_usdt_net +
+                                             source_pos.pnl_tracker.pnl_usdt_net)
 
                             msg = (f"💰 {self.context.symbol} Completed arbitrage"
                                    f"\r\n Spot:     {dest_pos.pnl_tracker}, "
