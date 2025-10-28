@@ -737,7 +737,8 @@ class CrossExchangeArbitrageTask(BaseStrategyTask[CrossExchangeArbitrageTaskCont
                             dest_pos.reset(request.qty).update(Side.BUY,
                                                                request.qty,
                                                                request.buy_price,
-                                                               self._get_fees('source').taker_fee)
+                                                               0.0)
+                            dest_pos.acc_qty = 0.0
                         else:
                             self.context.current_role = 'source'
                             self._ta_module.set_forced_signal('enter')
@@ -824,9 +825,9 @@ class CrossExchangeArbitrageTask(BaseStrategyTask[CrossExchangeArbitrageTaskCont
 
             await self._manage_arbitrage_signals()
 
-            await self._rebalance_hedge()
-
             await self._manage_positions()
+
+            await self._rebalance_hedge()
 
         except Exception as e:
             self.logger.error(f"❌ Error in strategy step: {e}")
