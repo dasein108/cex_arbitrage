@@ -3,7 +3,7 @@ from .ws import PublicBaseWebsocket, PrivateBaseWebsocket, BaseWebsocketInterfac
 from .composite import (BaseCompositeExchange, CompositePrivateSpotExchange, CompositePublicSpotExchange,
                         CompositePublicFuturesExchange, CompositePrivateFuturesExchange)
 
-from .rest.base_rate_limit import BaseExchangeRateLimit
+# from .rest.base_rate_limit import BaseExchangeRateLimit
 __all__ = [
     # common
     "BaseWebsocketInterface",

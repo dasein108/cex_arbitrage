@@ -13,7 +13,7 @@ import os
 # Add src to path for imports
 sys.path.append(os.path.join(os.path.dirname(__file__), '..', '..'))
 
-from arbitrage_analyzer import ArbitrageAnalyzer
+from trading.research.cross_arbitrage.arbitrage_analyzer import ArbitrageAnalyzer
 
 
 async def test_single_symbol():

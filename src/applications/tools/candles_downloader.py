@@ -37,6 +37,7 @@ from exchanges.structs.enums import ExchangeEnum, KlineInterval
 from exchanges.structs.common import Symbol, Kline
 from exchanges.structs.types import AssetName
 from exchanges.exchange_factory import get_composite_implementation, get_rest_implementation
+from infrastructure.logging.factory import get_logger
 
 
 # Import exchange modules to trigger auto-registration
@@ -97,7 +98,6 @@ class CandlesDownloader:
         self.config = HftConfig()
         
         # Setup HFT logging for better performance
-        from infrastructure.logging.factory import get_logger
         self.logger = get_logger('CandlesDownloader')
         
         self.logger.info(f"CandlesDownloader initialized with output directory: {self.output_dir}")
@@ -268,7 +268,8 @@ class CandlesDownloader:
         client = get_rest_implementation(exchange_config, False)
         
         try:
-            klines = await self._fetch_klines(client, symbol_obj, timeframe_enum, start_date, end_date)
+            klines = await client.get_klines_batch(symbol_obj, timeframe_enum, date_from=start_date, date_to=end_date)
+
             if not klines:
                 self.logger.warning(f"No data received from exchange for {symbol_obj}")
                 return str(csv_path)
@@ -284,12 +285,6 @@ class CandlesDownloader:
         finally:
             if client:
                 await client.close()
-    
-    async def _fetch_klines(self, client, symbol_obj: Symbol, timeframe_enum: KlineInterval, start_date: datetime, end_date: datetime) -> List:
-        """Fetch klines data from exchange client."""
-        klines = await client.get_klines_batch(symbol_obj, timeframe_enum, date_from=start_date, date_to=end_date)
-        self.logger.info(f"Downloaded {len(klines)} candles")
-        return klines
     
     async def _save_to_csv(self, klines: List, exchange_name: str, timeframe: str, csv_path: Path) -> None:
         """Save klines data to CSV file."""
@@ -307,6 +302,7 @@ class CandlesDownloader:
         file_size = csv_path.stat().st_size
         self.logger.info(f"Successfully saved {len(klines)} candles to {csv_path}")
         self.logger.info(f"File size: {file_size / 1024:.1f} KB")
+
     async def download_multiple(
         self,
         download_configs: List[Dict[str, Any]]

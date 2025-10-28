@@ -16,13 +16,29 @@ from abc import ABC, abstractmethod
 import numpy as np
 import pandas as pd
 from datetime import datetime, timedelta, timezone
-from typing import Dict, Optional, Literal, Tuple, List
+from typing import Dict, Optional, Literal, Tuple, List, TypeAlias
 from dataclasses import dataclass
 
 from exchanges.structs import Symbol, BookTicker, AssetName, ExchangeEnum
 from trading.analysis.data_loader import get_cached_book_ticker_data
 from infrastructure.logging import HFTLoggerInterface, get_logger
 from msgspec import Struct
+
+
+def calculate_dynamic_fees(
+        source_fees: float = 0.05,  # MEXC spot taker fee (0.05%)
+        dest_fees: float = 0.1,     # Gate.io spot taker fee (0.1%)
+        hedge_fees: float = 0.05    # Gate.io futures taker fee (0.05%)
+) -> float:
+    """
+    Calculate total round-trip fees for arbitrage strategy.
+    
+    Returns:
+        Total fees as percentage (e.g., 0.2 = 0.2%)
+    """
+    # Round-trip fees: source entry + hedge entry + dest exit + hedge exit
+    total_fees = source_fees + hedge_fees + dest_fees + hedge_fees
+    return total_fees
 
 
 def calculate_realtime_spread(
@@ -40,17 +56,17 @@ def calculate_realtime_spread(
     Returns:
         Dict with current spread components and total
     """
-    # HFT-optimized calculation (single pass)
-    # Source→Hedge: Buy MEXC ask, sell futures bid
+    # FIXED: Corrected spread calculation formula
+    # Entry: Buy MEXC spot at ask, Sell futures at bid
+    # The spread opportunity is: (futures_bid / mexc_ask - 1) * 100
     source_hedge_arb = (
-            (hedge_book.bid_price - source_book.ask_price) /
-            hedge_book.bid_price * 100
+            (hedge_book.bid_price / source_book.ask_price - 1) * 100
     )
 
-    # Dest→Hedge: Buy Gate.io spot bid, sell futures ask
+    # Exit: Sell Gate.io spot at bid, Buy futures at ask  
+    # The spread opportunity is: (gateio_bid / futures_ask - 1) * 100
     dest_hedge_arb = (
-            (dest_book.bid_price - hedge_book.ask_price) /
-            dest_book.bid_price * 100
+            (dest_book.bid_price / hedge_book.ask_price - 1) * 100
     )
 
     total_spread = source_hedge_arb + dest_hedge_arb
@@ -63,15 +79,46 @@ def calculate_realtime_spread(
         'spread_after_fees': spread_after_fees,
     }
 
+
+def validate_profitable_spread(
+        current_spread: float,
+        position_value_usd: float,
+        min_profit_usd: float = 0.10  # Minimum $0.10 profit
+) -> Tuple[bool, float]:
+    """
+    Validate if current spread is profitable given position size.
+    
+    Args:
+        current_spread: Current spread after fees (%)
+        position_value_usd: Current position value in USD
+        min_profit_usd: Minimum required profit in USD
+        
+    Returns:
+        Tuple of (is_profitable, required_spread_bps)
+    """
+    required_spread = (min_profit_usd / position_value_usd) * 100  # Convert to percentage
+    required_spread_bps = required_spread * 100  # Convert to basis points
+    
+    is_profitable = current_spread >= required_spread
+    
+    return is_profitable, required_spread_bps
+
 class CrossArbitrageSignalConfig(Struct):
     """Configuration for CrossArbitrageTA."""
     lookback_hours: int = 24
     refresh_minutes: Optional[int] = None  # Auto-refresh interval in minutes (None = disabled)
     entry_percentile: int = 10  # Top 10% of spreads for dynamic entry threshold
     exit_percentile: int = 85  # 85th percentile for dynamic exit threshold
-    total_fees: float = 0.2  # Total round-trip fees percentage
+    total_fees: float = 0.2  # Total round-trip fees percentage (fallback for static calculation)
+    min_entry_threshold: float = 0.25  # Minimum 25 bps entry threshold (0.25%)
+    min_profit_after_fees: float = 0.1  # Minimum 10 bps profit after fees
+    # Dynamic fee configuration (overrides total_fees if provided)
+    source_fees: Optional[float] = None  # MEXC spot taker fee
+    dest_fees: Optional[float] = None    # Gate.io spot taker fee  
+    hedge_fees: Optional[float] = None   # Gate.io futures taker fee
+    use_dynamic_fees: bool = True        # Enable dynamic fee calculation
 
-type CrossArbitrageSignalType = Literal['enter', 'exit']
+CrossArbitrageSignalType: TypeAlias = Literal['enter', 'exit']
 
 class CrossArbitrageSignal(Struct):
     """Real-time arbitrage signals and spread data."""
@@ -174,30 +221,47 @@ class CrossArbitrageFixedSignalGenerator(CrossArbitrageSignalGeneratorInterface)
         # HFT-optimized signal generation logic
         # Exit conditions (prioritized for speed)
 
-        # TODO: TEST HARDCODED
-        signals.append(self.debug_signal)
-        return CrossArbitrageSignal(
-            signals=signals,
-            current_spread=current_spread,
-            entry_threshold=self.entry_threshold,
-            exit_threshold=self.exit_threshold,
-            thresholds_age=0,
-            timestamp=datetime.now(timezone.utc)
-        )
+        # FIXED: Removed debug signal override, use actual trading logic
+        # Check if forced signal is set (for testing only)
+        if self.debug_signal is not None:
+            self.logger.warning(f"⚠️ Using forced debug signal: {self.debug_signal}")
+            signals.append(self.debug_signal)
+            return CrossArbitrageSignal(
+                signals=signals,
+                current_spread=current_spread,
+                entry_threshold=self.entry_threshold,
+                exit_threshold=self.exit_threshold,
+                thresholds_age=0,
+                timestamp=datetime.now(timezone.utc)
+            )
 
-        if current_spread < self.exit_threshold:  # Max 2 hours
+        # Entry conditions - enter when spread widens (more profitable) with enhanced validation
+        min_threshold = max(self.entry_threshold, 0.25)  # Minimum 25 bps
+
+        # Exit conditions - exit when spread narrows (less profitable)
+        if current_spread < self.exit_threshold:
             signals.append('exit')
-            self.logger.debug("📉 Exit signal generated",
+            self.logger.info("📉 Exit signal generated",
                               current_spread=f"{current_spread:.4f}%",
-                              exit_threshold=f"{self.exit_threshold:.4f}% (dynamic)")
-        else:
-            # Entry conditions
-            if (current_spread > self.entry_threshold or
-                    current_spread > 0.1):  # Minimum 0.1% profit after fees
+                              exit_threshold=f"{self.exit_threshold:.4f}%")
+
+        elif current_spread > min_threshold and current_spread > 0.1:  # Minimum 10 bps profit after fees
+            # Additional profitability validation
+            estimated_position_value = 30.0  # USD (typical trade size)
+            is_profitable, required_spread_bps = validate_profitable_spread(
+                current_spread, estimated_position_value, min_profit_usd=0.10
+            )
+            
+            if is_profitable:
                 signals.append('enter')
-                self.logger.debug("📈 Enter signal generated",
-                                  current_spread=f"{current_spread:.4f}%",
-                                  entry_threshold=f"{self.entry_threshold:.4f}% (dynamic)")
+                self.logger.info("📈 Enter signal generated",
+                                      current_spread=f"{current_spread:.4f}%",
+                                      entry_threshold=f"{min_threshold:.4f}% (enhanced)",
+                                      required_spread_bps=f"{required_spread_bps:.1f}")
+            else:
+                self.logger.debug("⚠️ Fixed threshold spread not profitable",
+                                current_spread=f"{current_spread:.4f}%",
+                                required_spread_bps=f"{required_spread_bps:.1f}")
 
         return CrossArbitrageSignal(
             signals=signals,
@@ -237,10 +301,28 @@ class CrossArbitrageDynamicSignalGenerator(CrossArbitrageSignalGeneratorInterfac
         self.refresh_minutes = config.refresh_minutes
         self.entry_percentile = config.entry_percentile
         self.exit_percentile = config.exit_percentile
-        self.total_fees = config.total_fees
 
         # Domain-aware logging
         self.logger = logger or get_logger(f'cross_arbitrage_ta.{symbol}')
+
+        # Dynamic fee calculation
+        if config.use_dynamic_fees and all([
+            config.source_fees is not None,
+            config.dest_fees is not None, 
+            config.hedge_fees is not None
+        ]):
+            self.total_fees = calculate_dynamic_fees(
+                config.source_fees, config.dest_fees, config.hedge_fees
+            )
+            self.logger.info("Using dynamic fee calculation",
+                           source_fees=config.source_fees,
+                           dest_fees=config.dest_fees,
+                           hedge_fees=config.hedge_fees,
+                           total_calculated_fees=self.total_fees)
+        else:
+            self.total_fees = config.total_fees
+            self.logger.info("Using static fee configuration", total_fees=self.total_fees)
+
 
         # Data storage (HFT-optimized)
         self.historical_df: Optional[pd.DataFrame] = None
@@ -462,15 +544,13 @@ class CrossArbitrageDynamicSignalGenerator(CrossArbitrageSignalGeneratorInterfac
         # Source→Hedge arbitrage (buy MEXC, sell Gate.io futures)
         # Domain: Public market data → calculated trading signal
         df['source_hedge_arb'] = (
-                (df['gateio_futures_bid_price'] - df['mexc_spot_ask_price']) /
-                df['gateio_futures_bid_price'] * 100
+                (df['gateio_futures_bid_price'] / df['mexc_spot_ask_price'] - 1) * 100
         )
 
-        # Dest→Hedge arbitrage (buy Gate.io spot, sell Gate.io futures)  
+        # Dest→Hedge arbitrage (sell Gate.io spot, buy Gate.io futures)  
         # Domain: Public market data → calculated trading signal
         df['dest_hedge_arb'] = (
-                (df['gateio_spot_bid_price'] - df['gateio_futures_ask_price']) /
-                df['gateio_spot_bid_price'] * 100
+                (df['gateio_spot_bid_price'] / df['gateio_futures_ask_price'] - 1) * 100
         )
 
         # Total arbitrage opportunity
@@ -494,11 +574,17 @@ class CrossArbitrageDynamicSignalGenerator(CrossArbitrageSignalGeneratorInterfac
             self.logger.warning(f"Insufficient data for thresholds: {len(spreads)} points")
             return
 
-        # Dynamic entry threshold calculation (percentile-based)
-        entry_spread = np.percentile(spreads, 100 - self.entry_percentile)
-
-        # Dynamic exit threshold calculation (percentile-based)
-        exit_spread = np.percentile(spreads, self.exit_percentile)
+        # Dynamic entry threshold calculation (percentile-based with safety minimums)
+        calculated_entry_spread = np.percentile(spreads, 100 - self.entry_percentile)
+        entry_spread = max(calculated_entry_spread, 0.25)  # Enforce minimum 25 bps entry
+        
+        # Dynamic exit threshold calculation (percentile-based with safety minimums)
+        calculated_exit_spread = np.percentile(spreads, self.exit_percentile)
+        exit_spread = max(calculated_exit_spread, 0.05)  # Enforce minimum 5 bps exit
+        
+        # Ensure entry is always higher than exit
+        if entry_spread <= exit_spread:
+            entry_spread = exit_spread + 0.15  # Add 15 bps buffer
 
         # HFT-optimized threshold creation
         self.thresholds = ArbitrageThresholds(
@@ -512,12 +598,15 @@ class CrossArbitrageDynamicSignalGenerator(CrossArbitrageSignalGeneratorInterfac
             exit_percentile_used=self.exit_percentile
         )
 
-        self.logger.debug("📊 Dynamic thresholds updated",
-                          entry_spread=f"{self.thresholds.entry_spread:.4f}%",
-                          exit_spread=f"{self.thresholds.exit_spread:.4f}%",
+        self.logger.info("📊 Dynamic thresholds updated",
+                          calculated_entry=f"{calculated_entry_spread:.4f}%",
+                          enforced_entry=f"{self.thresholds.entry_spread:.4f}%",
+                          calculated_exit=f"{calculated_exit_spread:.4f}%",
+                          enforced_exit=f"{self.thresholds.exit_spread:.4f}%",
                           entry_percentile=f"{self.thresholds.entry_percentile_used:.1f}%",
                           exit_percentile=f"{self.thresholds.exit_percentile_used:.1f}%",
-                          data_points=self.thresholds.data_points)
+                          data_points=self.thresholds.data_points,
+                          spread_range=f"{spreads.min():.4f}% to {spreads.max():.4f}%")
 
     def should_refresh(self) -> bool:
         """
@@ -622,13 +711,30 @@ class CrossArbitrageDynamicSignalGenerator(CrossArbitrageSignalGeneratorInterfac
                               current_spread=f"{current_spread:.4f}%",
                               exit_threshold=f"{self.thresholds.exit_spread:.4f}% (dynamic)")
         else:
-            # Entry conditions
-            if (current_spread > self.thresholds.entry_spread or
-                    current_spread > 0.1):  # Minimum 0.1% profit after fees
+            # Entry conditions with enhanced validation
+            min_threshold = max(self.thresholds.entry_spread, 0.25)  # Minimum 25 bps
+            
+            # Calculate position value for profitability check
+            # Estimate position value based on typical trade size ($30 USD)
+            estimated_position_value = 30.0  # USD (should be passed from strategy)
+            is_profitable, required_spread_bps = validate_profitable_spread(
+                current_spread, estimated_position_value, min_profit_usd=0.10
+            )
+            
+            if (current_spread > min_threshold and
+                    current_spread > 0.1 and  # Minimum 10 bps profit after fees
+                    is_profitable):  # Additional profitability check
                 signals.append('enter')
                 self.logger.debug("📈 Enter signal generated",
                                   current_spread=f"{current_spread:.4f}%",
-                                  entry_threshold=f"{self.thresholds.entry_spread:.4f}% (dynamic)")
+                                  entry_threshold=f"{min_threshold:.4f}%",
+                                  required_spread_bps=f"{required_spread_bps:.1f}",
+                                  profitable=is_profitable)
+            elif not is_profitable:
+                self.logger.debug("⚠️ Spread not profitable",
+                                current_spread=f"{current_spread:.4f}%",
+                                required_spread_bps=f"{required_spread_bps:.1f}",
+                                estimated_value_usd=estimated_position_value)
 
         return CrossArbitrageSignal(
             signals=signals,

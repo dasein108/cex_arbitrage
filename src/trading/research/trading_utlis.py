@@ -460,7 +460,7 @@ async def generate_arbitrage_signal_from_db(
         - spread_percentile: Where current sits in distribution
         - historical_stats: Mean, std, min, max of historical spreads
     """
-    from arbitrage_signals import generate_arbitrage_signal, SignalConfig
+    from trading.research.cross_arbitrage.arbitrage_signals import generate_arbitrage_signal, SignalConfig
     
     # Load historical data
     end_date = datetime.now(timezone.utc)

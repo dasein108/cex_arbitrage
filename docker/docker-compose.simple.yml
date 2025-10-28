@@ -1,0 +1,33 @@
+version: '3.8'
+
+services:
+  # PostgreSQL database with TimescaleDB extension
+  database:
+    image: timescale/timescaledb:latest-pg15
+    container_name: arbitrage_db
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-arbitrage_data}
+      POSTGRES_USER: ${POSTGRES_USER:-arbitrage_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-dev_password_2024}
+      TIMESCALEDB_TELEMETRY: off
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./init-db.sql:/docker-entrypoint-initdb.d/init-db.sql:ro
+    ports:
+      - "5432:5432"
+    restart: unless-stopped
+    networks:
+      - arbitrage_network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U arbitrage_user -d arbitrage_data"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  postgres_data:
+    driver: local
+
+networks:
+  arbitrage_network:
+    driver: bridge

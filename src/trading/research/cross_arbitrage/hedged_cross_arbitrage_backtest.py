@@ -22,11 +22,10 @@ import pandas as pd
 import numpy as np
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Dict, Any, List, Tuple, Optional, NamedTuple
+from typing import Dict, Any, List, Optional, NamedTuple
 from dataclasses import dataclass
 from enum import Enum
 import matplotlib.pyplot as plt
-import seaborn as sns
 import sys
 import os
 
@@ -34,8 +33,8 @@ import os
 src_path = os.path.join(os.path.dirname(__file__), 'src')
 sys.path.insert(0, src_path)
 
-from trading.analysis.arbitrage_signals import calculate_arb_signals, Signal
-from trading.research.arbitrage_analyzer import ArbitrageAnalyzer
+from trading.analysis.structs import Signal
+from trading.research.cross_arbitrage.arbitrage_analyzer import ArbitrageAnalyzer
 
 
 
@@ -183,12 +182,6 @@ class HedgedCrossArbitrageBacktest:
         # Use existing analyzer to get prepared data
         df, _ = await self.analyzer.run_analysis(self.config.symbol, self.config.days)
         
-        # Ensure timestamp column is datetime
-        if 'timestamp' not in df.columns:
-            df['timestamp'] = pd.to_datetime(df['datetime'])
-        else:
-            df['timestamp'] = pd.to_datetime(df['timestamp'])
-        
         # Sort by timestamp
         df = df.sort_values('timestamp').reset_index(drop=True)
         
@@ -243,20 +236,20 @@ class HedgedCrossArbitrageBacktest:
         return df
     
     def _generate_signal(self, row: pd.Series) -> Any:
-        """Generate entry/exit signals using appropriate method based on mode."""
-        return self._generate_advanced_signal(row)
-
-    def _generate_advanced_signal(self, row: pd.Series) -> Any:
-        """Generate entry/exit signals using advanced signal logic."""
+        """Generate signals using synchronous arbitrage signal calculation."""
+        
+        # Ensure we have enough historical data
         if len(self.historical_spreads['mexc_vs_gateio_futures']) < 50:
-            # Not enough history for reliable signals
-            from trading.analysis.arbitrage_signals import ArbSignal, ArbStats
+            from trading.analysis.arbitrage_signals import ArbSignal, ArbStats, Signal
             return ArbSignal(
                 signal=Signal.HOLD,
                 mexc_vs_gateio_futures=ArbStats(0, 0, 0, row['mexc_vs_gateio_futures_arb']),
                 gateio_spot_vs_futures=ArbStats(0, 0, 0, row['gateio_spot_vs_futures_arb']),
-                reason="Insufficient history"
+                reason="Insufficient historical data"
             )
+        
+        # Use proven synchronous signal generation
+        from trading.analysis.arbitrage_signals import calculate_arb_signals
         
         return calculate_arb_signals(
             mexc_vs_gateio_futures_history=self.historical_spreads['mexc_vs_gateio_futures'],
@@ -265,50 +258,7 @@ class HedgedCrossArbitrageBacktest:
             current_gateio_spot_vs_futures=row['gateio_spot_vs_futures_arb']
         )
     
-    def _generate_simple_signal(self, row: pd.Series) -> Signal:
-        """Generate entry/exit signals using simple percentile-based logic."""
-        if len(self.historical_spreads['mexc_vs_gateio_futures']) < 50:
-            return Signal.HOLD
-        
-        # Calculate percentiles
-        mexc_futures_history = self.historical_spreads['mexc_vs_gateio_futures']
-        gateio_history = self.historical_spreads['gateio_spot_vs_futures']
-        
-        # Rolling minimums for entry signal
-        window_size = min(100, len(mexc_futures_history) // 10)
-        if window_size < 10:
-            window_size = 10
-            
-        mexc_mins = []
-        for i in range(0, len(mexc_futures_history) - window_size + 1, window_size // 2):
-            window = mexc_futures_history[i:i + window_size]
-            mexc_mins.append(min(window))
-        
-        gateio_maxs = []
-        for i in range(0, len(gateio_history) - window_size + 1, window_size // 2):
-            window = gateio_history[i:i + window_size]
-            gateio_maxs.append(max(window))
-        
-        if not mexc_mins or not gateio_maxs:
-            return Signal.HOLD
-            
-        mexc_entry_threshold = np.percentile(mexc_mins, 25)
-        gateio_exit_threshold = np.percentile(gateio_maxs, 25)
-        
-        # Check signals
-        current_mexc_spread = row['mexc_vs_gateio_futures_arb']
-        current_gateio_spread = row['gateio_spot_vs_futures_arb']
-        
-        # Entry: MEXC vs Gate.io futures spread below 25th percentile of minimums
-        if current_mexc_spread < mexc_entry_threshold:
-            return Signal.ENTER
-            
-        # Exit: Gate.io spot vs futures spread above 25th percentile of maximums
-        elif current_gateio_spread > gateio_exit_threshold:
-            return Signal.EXIT
-            
-        return Signal.HOLD
-    
+
     def _execute_trading_logic(self, current_time: datetime, row: pd.Series, signal_result: Any) -> Optional[str]:
         """Execute position management based on signals."""
         action = None
@@ -317,7 +267,7 @@ class HedgedCrossArbitrageBacktest:
         reason = signal_result.reason
 
         # Check for entry signals
-        if (signal == Signal.ENTER and 
+        if (signal == Signal.ENTER and
             len(self.open_positions) < self.config.max_concurrent_positions):
             action = self._open_position(current_time, row, reason)
         
@@ -688,39 +638,6 @@ async def main():
         # Run backtest (async if real data, sync if synthetic)
         results = await backtest.run_backtest()
 
-        # Print report
-        print(backtest.format_report(results))
-        
-        # Create visualizations
-        plots = backtest.create_visualizations(results)
-        
-        print(f"\n✅ Backtest completed successfully!")
-        print(f"📁 Results saved in: {backtest.cache_dir}")
-        
-    except Exception as e:
-        print(f"❌ Backtest failed: {e}")
-        import traceback
-        traceback.print_exc()
-
-def main_sync():
-    """Synchronous main function for synthetic data mode."""
-    print("🚀 Hedged Cross-Arbitrage Backtesting System - Synthetic Mode")
-    print("=" * 70)
-    
-    config = BacktestConfig(
-        symbol="F_USDT",
-        days=3,
-        min_transfer_time_minutes=10,
-        position_size_usd=1000,
-        max_concurrent_positions=2
-    )
-    
-    backtest = HedgedCrossArbitrageBacktest(config)
-    
-    try:
-        # Run synthetic backtest
-        results = backtest.run_backtest_simulation()
-        
         # Print report
         print(backtest.format_report(results))
         

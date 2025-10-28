@@ -1,5 +1,5 @@
 import asyncio
-from typing import Optional, Type, Dict, Literal, List
+from typing import Optional, Type, Dict, Literal, List, TypeAlias
 import msgspec
 from msgspec import Struct
 from exchanges.dual_exchange import DualExchange
@@ -8,21 +8,17 @@ from exchanges.structs import Order, SymbolInfo, ExchangeEnum, Symbol, OrderId, 
 from exchanges.structs.common import Side
 from infrastructure.exceptions.exchange import OrderNotFoundError, InsufficientBalanceError
 from infrastructure.logging import HFTLoggerInterface
-from infrastructure.networking.telegram import send_to_telegram
 from infrastructure.networking.websocket.structs import PublicWebsocketChannelType, PrivateWebsocketChannelType
 
 from utils import get_decrease_vector
-from .asset_transfer_module import AssetTransferModule, TransferRequest
-from .unified_position import Position, PositionError
+from trading.strategies.implementations.cross_exchange_arbitrage_strategy.asset_transfer_module import AssetTransferModule, TransferRequest
+from trading.strategies.implementations.cross_exchange_arbitrage_strategy.unified_position import Position, PositionError
 
 from trading.strategies.implementations.base_strategy.base_strategy import BaseStrategyContext, BaseStrategyTask
-from trading.analysis.cross_arbitrage_ta import (CrossArbitrageDynamicSignalGenerator,
-                                                 CrossArbitrageFixedSignalGenerator,
-                                                 CrossArbitrageSignalConfig, CrossArbitrageSignal)
 
-type PrimaryExchangeRole = Literal['source', 'dest']
+PrimaryExchangeRole: TypeAlias = Literal['source', 'dest']
 
-type ExchangeRoleType = PrimaryExchangeRole | Literal['hedge']
+ExchangeRoleType: TypeAlias = PrimaryExchangeRole | Literal['hedge']
 
 TRANSFER_REFRESH_SECONDS = 30
 
@@ -68,14 +64,6 @@ class CrossExchangeArbitrageTaskContext(BaseStrategyContext, kw_only=True):
     settings: Dict[ExchangeRoleType, ExchangeData] = msgspec.field(
         default_factory=lambda: {'source': ExchangeData(), 'dest': ExchangeData(), 'hedge': ExchangeData()})
 
-    # Dynamic threshold configuration for TA module
-    signal_config: CrossArbitrageSignalConfig = msgspec.field(default_factory=lambda: CrossArbitrageSignalConfig(
-        lookback_hours=24,  # Historical data lookback
-        refresh_minutes=30,  # How often to refresh thresholds
-        entry_percentile=10,  # Top 10% of spreads for entry
-        exit_percentile=85,  # 85th percentile for exit
-        total_fees=0.2  # Total round-trip fees percentage
-    ))
 
     transfer_request: Optional[TransferRequest] = None
 
@@ -123,21 +111,21 @@ class CrossExchangeArbitrageTask(BaseStrategyTask[CrossExchangeArbitrageTaskCont
         self._symbol_info: Dict[ExchangeRoleType, Optional[SymbolInfo]] = {'source': None, 'dest': None, 'hedge': None}
         self._exchange_trading_allowed: Dict[ExchangeRoleType, bool] = {'source': False, 'dest': False}
 
-        # Initialize dynamic threshold TA module
-        # TODO: tmp disabled
-        USE_STATIC_TA = False
-        if USE_STATIC_TA:
-            self._ta_module = CrossArbitrageFixedSignalGenerator(
-                entry_threshold=-0.75,
-                exit_threshold=-0.5,
-                total_fees=0.2
-            )
-        else:
-            self._ta_module = CrossArbitrageDynamicSignalGenerator(
-                symbol=context.symbol,
-                config=context.signal_config,
-                logger=logger
-            )
+        # Use unified signal generator with proven backtest logic
+        from trading.research.cross_arbitrage.arbitrage_analyzer import ArbitrageAnalyzer
+
+        # Initialize candle-based analyzer like in hedged backtest
+        self.analyzer = ArbitrageAnalyzer()
+        
+        # Initialize historical spreads for signal generation
+        self.historical_spreads = {
+            'mexc_vs_gateio_futures': [],
+            'gateio_spot_vs_futures': []
+        }
+        
+        # Initialize signal generator (will be populated from candles)
+        self._signal_generator = None
+        self._candle_data_loaded = False
 
         source_exchange = self.context.settings['source'].exchange
         dest_exchange = self.context.settings['dest'].exchange
@@ -152,9 +140,19 @@ class CrossExchangeArbitrageTask(BaseStrategyTask[CrossExchangeArbitrageTaskCont
         self.context.status = 'inactive'
 
     def create_exchanges(self):
+        """Create exchanges with optimized config loading for HFT performance."""
         exchanges = {}
+        
+        # Pre-load all unique exchange configs to avoid redundant calls
+        unique_exchanges = set(settings.exchange.value for settings in self.context.settings.values())
+        exchange_configs = {
+            exchange_name: get_exchange_config(exchange_name) 
+            for exchange_name in unique_exchanges
+        }
+        
+        # Create exchanges using cached configs
         for exchange_type, settings in self.context.settings.items():
-            config = get_exchange_config(settings.exchange.value)
+            config = exchange_configs[settings.exchange.value]
             exchanges[exchange_type] = DualExchange.get_instance(config, self.logger)
 
         return exchanges
@@ -186,8 +184,7 @@ class CrossExchangeArbitrageTask(BaseStrategyTask[CrossExchangeArbitrageTaskCont
                              self._force_load_active_orders(),
                              self._load_initial_balances())
 
-        # Initialize TA module for dynamic thresholds
-        await self._ta_module.initialize()
+        # Signal generator is ready to use immediately (no initialization needed)
 
         # if there is an active transfer, restore state
         transfer_request = self.context.transfer_request
@@ -203,10 +200,7 @@ class CrossExchangeArbitrageTask(BaseStrategyTask[CrossExchangeArbitrageTaskCont
                 self.logger.warning(f"Waiting for active transfer to complete")
                 await self._start_transfer_monitor()
 
-        self.logger.info("✅ Dynamic threshold TA module initialized",
-                         entry_percentile=self.context.signal_config.entry_percentile,
-                         exit_percentile=self.context.signal_config.exit_percentile,
-                         lookback_hours=self.context.signal_config.lookback_hours)
+        self.logger.info("✅ Candle-based signal generation initialized")
 
         self.context.status = 'active'
 
@@ -298,8 +292,6 @@ class CrossExchangeArbitrageTask(BaseStrategyTask[CrossExchangeArbitrageTaskCont
         else:
             source.target_qty = self.context.total_quantity
 
-        # TODO: for debug
-        self._ta_module.set_forced_signal('exit' if self.context.current_role == 'dest' else 'enter')
 
     async def pause(self):
         """Pause task and cancel any active order."""
@@ -367,12 +359,12 @@ class CrossExchangeArbitrageTask(BaseStrategyTask[CrossExchangeArbitrageTaskCont
         book_ticker = self._exchanges[exchange_role].public.book_ticker[self.context.symbol]
         return book_ticker
 
-    def _check_arbitrage_signal(self) -> List[CrossArbitrageSignal]:
+    async def _check_arbitrage_signal(self) -> List[str]:
         """
         Check for arbitrage entry/exit signals using dynamic thresholds.
         
         Returns:
-            Tuple of (signal, spread_data) where signal is 'enter', 'exit', or 'none'
+            List of signals ('enter', 'exit', or empty)
         """
 
         try:
@@ -380,46 +372,138 @@ class CrossExchangeArbitrageTask(BaseStrategyTask[CrossExchangeArbitrageTaskCont
             source_book = self._get_book_ticker('source')  # MEXC spot
             dest_book = self._get_book_ticker('dest')  # Gate.io spot
             hedge_book = self._get_book_ticker('hedge')  # Gate.io futures
+            
+            # Log current prices for debugging
+            self.logger.debug("📊 Current prices",
+                            mexc_ask=source_book.ask_price,
+                            mexc_bid=source_book.bid_price,
+                            gateio_bid=dest_book.bid_price,
+                            gateio_ask=dest_book.ask_price,
+                            futures_bid=hedge_book.bid_price,
+                            futures_ask=hedge_book.ask_price)
 
-            # TODO: position duration disabled for now
-            # # Check if we have positions open
-            # position_open = any(pos.qty > 0 for pos in self.context.positions.values())
-            #
-            # # Calculate position duration if open
-            # position_duration_minutes = 0.0
-            # if position_open:
-            #     # Find the earliest position entry time
-            #     earliest_entry = None
-            #     for pos in self.context.positions.values():
-            #         if pos.qty > 0 and pos.last_order and pos.last_order.create_time:
-            #             if earliest_entry is None or pos.last_order.create_time < earliest_entry:
-            #                 earliest_entry = pos.last_order.create_time
-            #
-            #     if earliest_entry:
-            #         from datetime import datetime, timezone
-            #         position_duration_minutes = (datetime.now(timezone.utc) - earliest_entry).total_seconds() / 60
 
-            # Generate signal using dynamic thresholds
-            signal = self._ta_module.generate_signal(
-                source_book=source_book,
-                dest_book=dest_book,
-                hedge_book=hedge_book,
-            )
-
-            signals = signal.signals
-            # Log signal with dynamic threshold info
-
-            # if signals:
-            #     self.logger.info(f"🎯 Arbitrage signals: {signals}",
-            #                      current_spread=f"{signal.current_spread:.4f}%",
-            #                      entry_threshold=f"{signal.entry_threshold:.4f}% (dynamic)",
-            #                      exit_threshold=f"{signal.exit_threshold:.4f}% (dynamic)")
+            # Load candle data if not already loaded
+            await self._load_candle_data_if_needed()
+            
+            # Generate signal using current market data with historical context
+            signal_result = self._generate_signal_from_current_data()
+            
+            # Convert signal to list format expected by existing code
+            if signal_result.signal.value == 'ENTER':
+                signals = ['enter']
+            elif signal_result.signal.value == 'EXIT':
+                signals = ['exit']
+            else:
+                signals = []
+            
+            # Log signal with reason for monitoring
+            if signals:
+                self.logger.info("🎯 Arbitrage signal generated",
+                                 signals=signals,
+                                 reason=signal_result.reason)
+            else:
+                self.logger.debug("⏸ No signal", reason=signal_result.reason)
 
             return signals
 
         except Exception as e:
             self.logger.error(f"❌ Error checking arbitrage signal: {e}")
             return []
+
+    async def _load_candle_data_if_needed(self):
+        """Load candle data and populate historical spreads for signal generation."""
+        if self._candle_data_loaded:
+            return
+            
+        try:
+            self.logger.info("📥 Loading candle data for signal generation...")
+            
+            # Extract symbol from context (e.g., "F/USDT" -> "F_USDT")
+            symbol_str = str(self.context.symbol).replace('/', '_')
+            
+            # Load 7 days of candle data like in hedged backtest
+            df, _ = await self.analyzer.run_analysis(symbol_str, days=7)
+            
+            if df.empty:
+                self.logger.warning("⚠️ No candle data received from analyzer")
+                return
+            
+            # Validate required columns exist
+            required_columns = ['mexc_vs_gateio_futures_arb', 'gateio_spot_vs_futures_arb']
+            missing_columns = [col for col in required_columns if col not in df.columns]
+            if missing_columns:
+                self.logger.error(f"❌ Missing required columns in candle data: {missing_columns}")
+                return
+            
+            # Populate historical spreads
+            self.historical_spreads['mexc_vs_gateio_futures'] = df['mexc_vs_gateio_futures_arb'].tolist()
+            self.historical_spreads['gateio_spot_vs_futures'] = df['gateio_spot_vs_futures_arb'].tolist()
+            
+            loaded_count = len(self.historical_spreads['mexc_vs_gateio_futures'])
+            
+            if loaded_count < 50:
+                self.logger.warning(f"⚠️ Insufficient historical data: {loaded_count} points (need at least 50)")
+            else:
+                self.logger.info(f"✅ Loaded {loaded_count} historical spread data points for signal generation")
+            
+            self._candle_data_loaded = True
+            
+        except Exception as e:
+            self.logger.error(f"❌ Failed to load candle data: {e}")
+            import traceback
+            self.logger.debug(f"Full error traceback: {traceback.format_exc()}")
+
+    def _generate_signal_from_current_data(self):
+        """Generate signals using current market data with historical candle context."""
+        
+        # Ensure we have enough historical data
+        if len(self.historical_spreads['mexc_vs_gateio_futures']) < 50:
+            from trading.analysis.arbitrage_signals import ArbSignal, ArbStats
+            from trading.analysis.structs import Signal
+            return ArbSignal(
+                signal=Signal.HOLD,
+                mexc_vs_gateio_futures=ArbStats(0, 0, 0, 0),
+                gateio_spot_vs_futures=ArbStats(0, 0, 0, 0),
+                reason="Insufficient historical data"
+            )
+        
+        # Calculate current spreads from live market data
+        current_mexc_vs_gateio_futures = self._calculate_current_mexc_futures_spread()
+        current_gateio_spot_vs_futures = self._calculate_current_gateio_spread()
+        
+        return calculate_arb_signals(
+            mexc_vs_gateio_futures_history=self.historical_spreads['mexc_vs_gateio_futures'],
+            gateio_spot_vs_futures_history=self.historical_spreads['gateio_spot_vs_futures'],
+            current_mexc_vs_gateio_futures=current_mexc_vs_gateio_futures,
+            current_gateio_spot_vs_futures=current_gateio_spot_vs_futures
+        )
+    
+    def _calculate_current_mexc_futures_spread(self) -> float:
+        """Calculate current MEXC vs Gate.io futures spread from live market data."""
+        try:
+            mexc_ticker = self._get_book_ticker('source')  # MEXC
+            gateio_futures_ticker = self._get_book_ticker('hedge')  # Gate.io futures
+            
+            # Use exact backtest formula for consistency
+            spread = (gateio_futures_ticker.bid_price - mexc_ticker.ask_price) / gateio_futures_ticker.bid_price * 100
+            return spread
+        except Exception as e:
+            self.logger.error(f"❌ Error calculating MEXC futures spread: {e}")
+            return 0.0
+    
+    def _calculate_current_gateio_spread(self) -> float:
+        """Calculate current Gate.io spot vs futures spread from live market data."""
+        try:
+            gateio_spot_ticker = self._get_book_ticker('dest')  # Gate.io spot
+            gateio_futures_ticker = self._get_book_ticker('hedge')  # Gate.io futures
+            
+            # Use exact backtest formula for consistency
+            spread = (gateio_spot_ticker.bid_price - gateio_futures_ticker.ask_price) / gateio_spot_ticker.bid_price * 100
+            return spread
+        except Exception as e:
+            self.logger.error(f"❌ Error calculating Gate.io spread: {e}")
+            return 0.0
 
     async def _cancel_order_safe(
             self,
@@ -666,9 +750,7 @@ class CrossExchangeArbitrageTask(BaseStrategyTask[CrossExchangeArbitrageTaskCont
         # Skip if no quantity to fill
         allowed_to_trade = self._exchange_trading_allowed[exchange_role]
         is_fulfilled = self.context.positions[exchange_role].is_fulfilled(self._get_min_base_qty(exchange_role))
-        # allowed_by_balance = self._is_allowed_by_position_balance(exchange_role)
-
-        if not allowed_to_trade or is_fulfilled:  # or not allowed_by_balance
+        if not allowed_to_trade or is_fulfilled:
             return
 
         # Cancel if price moved too much,
@@ -681,12 +763,6 @@ class CrossExchangeArbitrageTask(BaseStrategyTask[CrossExchangeArbitrageTaskCont
         await self._manage_order_place(exchange_role)
 
     async def _manage_positions(self):
-
-        # manage_tasks = [
-        #     self._manage_position('source'),
-        #     self._manage_position('dest')
-        # ]
-        # await asyncio.gather(*manage_tasks)
         role = self.context.current_role
         if role:
             await self._manage_position(role)
@@ -695,7 +771,7 @@ class CrossExchangeArbitrageTask(BaseStrategyTask[CrossExchangeArbitrageTaskCont
 
     async def _manage_arbitrage_signals(self):
         # Check arbitrage signals using dynamic thresholds
-        signals = self._check_arbitrage_signal()
+        signals = await self._check_arbitrage_signal()
         source_allowed = 'enter' in signals
         dest_allowed = 'exit' in signals
 
@@ -709,57 +785,92 @@ class CrossExchangeArbitrageTask(BaseStrategyTask[CrossExchangeArbitrageTaskCont
             state = "🟢 enabled" if dest_allowed else "⛔️ disabled"
             self.logger.info(f"🔔 Dest trading {state} based on signal")
 
+    async def _handle_completed_transfer(self, request: TransferRequest) -> None:
+        """Handle a completed transfer and update positions accordingly."""
+        symbol = self.context.symbol
+        dest_pos = self.context.positions['dest']
+        source_pos = self.context.positions['source']
+        hedge_pos = self.context.positions['hedge']
+        
+        self.logger.info(f"🔄 Transfer completed: {request.qty} {request.asset}: {request} resuming trading")
+
+        if request.asset == symbol.base:
+            self.context.current_role = 'dest'
+            await self._load_initial_balances()
+            
+            dest_pos.reset(request.qty).update(Side.BUY, request.qty, request.buy_price, 0.0)
+            dest_pos.acc_qty = 0.0
+        else:
+            self.context.current_role = 'source'
+            await self._load_initial_balances()
+
+            # Track PnL for completed arbitrage cycle
+            total_pnl_net = (dest_pos.pnl_tracker.pnl_usdt_net +
+                             hedge_pos.pnl_tracker.pnl_usdt_net +
+                             source_pos.pnl_tracker.pnl_usdt_net)
+
+            msg = (f"💰 {self.context.symbol} Completed arbitrage"
+                   f"\\r\\n Spot:     {dest_pos.pnl_tracker}, "
+                   f"\\r\\n Hedge:    {hedge_pos.pnl_tracker} "
+                   f"\\r\\n Total PNL:   {total_pnl_net:.4f}$")
+
+            self.logger.info(msg)
+            from infrastructure.networking.telegram import send_to_telegram
+            await send_to_telegram(msg)
+
+            source_pos.reset(self.context.total_quantity)
+            dest_pos.reset(0.0)
+            hedge_pos.reset()
+
+    async def _initiate_new_transfer(self) -> Optional[TransferRequest]:
+        """Initiate a new transfer if position is fulfilled."""
+        symbol = self.context.symbol
+        current_role = self.context.current_role
+        source_pos = self.context.positions['source']
+        dest_pos = self.context.positions['dest']
+        
+        if current_role == 'source' and source_pos.is_fulfilled(self._get_min_base_qty('source')):
+            source_exchange = self.context.settings['source'].exchange
+            dest_exchange = self.context.settings['dest'].exchange
+            base_balance = await self._exchanges['source'].private.get_asset_balance(symbol.base, force=True)
+            qty = min(source_pos.qty, base_balance.available)
+            
+            transfer_request = await self._transfer_module.transfer_asset(
+                symbol.base, source_exchange, dest_exchange, qty, buy_price=source_pos.price
+            )
+            
+            self.logger.info(f"🚀 Starting transfer of {qty} {symbol.base} from {source_exchange.name} to {dest_exchange.name}")
+            return transfer_request
+            
+        elif current_role == 'dest' and dest_pos.is_fulfilled(self._get_min_base_qty('dest')):
+            source_exchange = self.context.settings['source'].exchange
+            dest_exchange = self.context.settings['dest'].exchange
+            quote_balance = await self._exchanges['dest'].private.get_asset_balance(symbol.quote, force=True)
+            qty = min(dest_pos.acc_quote_qty, quote_balance.available)
+            
+            # Adjust qty to USDT if needed
+            if qty * self._get_book_ticker('dest').bid_price < quote_balance.available:
+                qty = quote_balance.available
+            
+            transfer_request = await self._transfer_module.transfer_asset(
+                symbol.quote, dest_exchange, source_exchange, qty
+            )
+            
+            self.logger.info(f"🚀 Started transfer of {qty} {symbol.quote} from {dest_exchange.name} to {source_exchange.name}")
+            return transfer_request
+            
+        return None
+
     async def _manage_transfer_between_exchanges(self) -> bool:
         try:
             request = self.context.transfer_request
-
-            symbol = self.context.symbol
-            source = self.context.settings['source'].exchange
-            dest = self.context.settings['dest'].exchange
-            dest_pos = self.context.positions['dest']
-            source_pos = self.context.positions['source']
-            hedge_pos = self.context.positions['hedge']
 
             if request:  # has active transfer
                 if request.in_progress:
                     return True
                 else:  # has completed or failed
                     if request.completed:
-                        self.logger.info(
-                            f"🔄 Transfer completed: {request.qty} {request.asset}: {request} resuming trading")
-
-                        if request.asset == symbol.base:
-                            self.context.current_role = 'dest'
-                            self._ta_module.set_forced_signal('exit')
-
-                            await self._load_initial_balances()
-
-                            dest_pos.reset(request.qty).update(Side.BUY,
-                                                               request.qty,
-                                                               request.buy_price,
-                                                               0.0)
-                            dest_pos.acc_qty = 0.0
-                        else:
-                            self.context.current_role = 'source'
-                            self._ta_module.set_forced_signal('enter')
-                            await self._load_initial_balances()
-
-                            # TRACK PNL
-                            total_pnl_net = (dest_pos.pnl_tracker.pnl_usdt_net +
-                                             hedge_pos.pnl_tracker.pnl_usdt_net +
-                                             source_pos.pnl_tracker.pnl_usdt_net)
-
-                            msg = (f"💰 {self.context.symbol} Completed arbitrage"
-                                   f"\r\n Spot:     {dest_pos.pnl_tracker}, "
-                                   f"\r\n Hedge:    {hedge_pos.pnl_tracker} "
-                                   f"\r\n Total PNL:   {total_pnl_net:.4f}$")
-
-                            self.logger.info(msg)
-                            await send_to_telegram(msg)
-
-                            source_pos.reset(self.context.total_quantity)
-                            dest_pos.reset(0.0)
-                            hedge_pos.reset()
+                        await self._handle_completed_transfer(request)
 
                     else:
                         self.logger.error(f"❌ Transfer failed, check manually {request}")
@@ -769,49 +880,25 @@ class CrossExchangeArbitrageTask(BaseStrategyTask[CrossExchangeArbitrageTaskCont
                     await self._stop_transfer_monitor()
                     return False
             else:
-
-                transfer_request = None
-                current_role = self.context.current_role
-
-                if current_role == 'source' and source_pos.is_fulfilled(self._get_min_base_qty('source')):
-                    base_balance = await self._exchanges['source'].private.get_asset_balance(symbol.base, force=True)
-
-                    qty = min(source_pos.qty, base_balance.available)
-
-                    transfer_request = await self._transfer_module.transfer_asset(symbol.base, source, dest, qty,
-                                                                                  buy_price=source_pos.price)
-
-                    self.logger.info(f"🚀 Starting transfer of {qty} {symbol.base} from {source.name} to {dest.name}")
-                elif current_role == 'dest' and dest_pos.is_fulfilled(self._get_min_base_qty('dest')):
-
-                    quote_balance = await self._exchanges['dest'].private.get_asset_balance(symbol.quote, force=True)
-
-                    qty = min(dest_pos.acc_quote_qty, quote_balance.available)
-
-                    # adjust qty to USDT in case of some troubles??
-                    if qty * self._get_book_ticker('dest').bid_price < quote_balance.available:
-                        # qty = self.context.total_quantity * self._get_book_ticker('dest').bid_price
-                        qty = quote_balance.available
-
-                    transfer_request = await self._transfer_module.transfer_asset(symbol.quote, dest, source, qty)
-
-                    self.logger.info(f"🚀 Started transfer of {qty} {symbol.quote} from {dest.name} to {source.name}")
-
+                # No active transfer, check if we should initiate one
+                transfer_request = await self._initiate_new_transfer()
+                
                 if transfer_request:
                     self.context.transfer_request = transfer_request
-
+                    
+                    # Reset position tracking but keep PnL
+                    current_role = self.context.current_role
                     if current_role == 'source':
-                        source_pos.reset(reset_pnl=False)
+                        self.context.positions['source'].reset(reset_pnl=False)
                     else:
-                        dest_pos.reset(reset_pnl=False)
-
+                        self.context.positions['dest'].reset(reset_pnl=False)
+                    
                     self.context.set_save_flag()
                     await self._start_transfer_monitor()
                     return True
 
         except Exception as e:
             self.logger.error(f"❌ Error managing transfer between exchanges: {e}")
-        finally:
             return False
 
     async def step(self):
@@ -838,9 +925,6 @@ class CrossExchangeArbitrageTask(BaseStrategyTask[CrossExchangeArbitrageTaskCont
 
     async def cleanup(self):
         await super().cleanup()
-
-        # Cleanup TA module
-        await self._ta_module.cleanup()
 
         # Close exchange connections
         close_tasks = []

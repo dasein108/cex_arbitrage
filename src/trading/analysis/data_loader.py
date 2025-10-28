@@ -4,11 +4,12 @@ Simple data loader utility with file-based caching for book ticker snapshots.
 Rounds timestamps to 5-minute intervals to enable efficient caching and reduce DB calls.
 """
 
+import asyncio
 import os
 import pickle
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Optional
+from typing import Dict, List, Optional
 import pandas as pd
 
 from db.database_manager import get_database_manager
@@ -96,6 +97,45 @@ class CachedDataLoader:
             print(f"  💾 Cached as: {cache_key}")
         
         return df
+    
+    async def get_multi_exchange_data(self, exchanges: List[str], symbol_base: str, symbol_quote: str,
+                                     start_time: datetime, end_time: datetime) -> Dict[str, pd.DataFrame]:
+        """Load data for multiple exchanges simultaneously."""
+        tasks = [
+            self.get_book_ticker_dataframe(exchange, symbol_base, symbol_quote, start_time, end_time)
+            for exchange in exchanges
+        ]
+        results = await asyncio.gather(*tasks)
+        return {exchange: df for exchange, df in zip(exchanges, results)}
+    
+    def rescale_to_5min(self, df: pd.DataFrame) -> pd.DataFrame:
+        """Rescale book ticker data to 5-minute intervals using OHLC logic."""
+        return self.rescale_to_window(df, 5)
+    
+    def rescale_to_window(self, df: pd.DataFrame, window_minutes: int) -> pd.DataFrame:
+        """Rescale book ticker data to any window size using OHLC logic."""
+        if df.empty:
+            return df
+        
+        # Ensure timestamp is datetime
+        if 'timestamp' not in df.columns:
+            return df
+            
+        df = df.copy()
+        df['timestamp'] = pd.to_datetime(df['timestamp'])
+        
+        # Round timestamps to window boundaries
+        df['timestamp_window'] = df['timestamp'].dt.floor(f'{window_minutes}T')
+        
+        # Group by window intervals and aggregate
+        aggregated = df.groupby('timestamp_window').agg({
+            'bid_price': 'last',    # Use closing prices
+            'ask_price': 'last',
+            'bid_qty': 'mean',      # Average quantities
+            'ask_qty': 'mean'
+        }).reset_index().rename(columns={'timestamp_window': 'timestamp'})
+        
+        return aggregated
 
 
 # Global instance for convenience

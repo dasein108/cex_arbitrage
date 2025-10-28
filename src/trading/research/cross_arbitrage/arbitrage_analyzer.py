@@ -16,7 +16,7 @@ import asyncio
 import pandas as pd
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Dict, Any, Tuple, Optional
+from typing import Dict, Any, Tuple, Optional, List
 import sys
 import os
 
@@ -36,10 +36,12 @@ class ArbitrageAnalyzer:
     """
     
     SPREAD_BPS = 5  # 0.05% spread assumption for bid/ask simulation
-    TOTAL_FEES = 0.2  # 0.1% + 0.05% + 0.05% total fees
+    TOTAL_FEES = 0.25  # 0.1% + 0.05% + 0.05% total fees
     
-    def __init__(self, cache_dir: str = "cache"):
+    def __init__(self, cache_dir: str = "cache", exchanges: Optional[List[ExchangeEnum]] = None):
         """Initialize analyzer with configurable cache directory."""
+        self.exchanges = exchanges or [ExchangeEnum.MEXC, ExchangeEnum.GATEIO, ExchangeEnum.GATEIO_FUTURES]
+
         self.cache_dir = Path(__file__).parent / cache_dir
         self.cache_dir.mkdir(exist_ok=True)
         self.downloader = CandlesDownloader(output_dir=str(self.cache_dir))
@@ -83,15 +85,11 @@ class ArbitrageAnalyzer:
         """Download candles from all 3 exchanges and merge by timestamp."""
         print(f"📥 Downloading {symbol} candles from 3 exchanges...")
         
-        exchanges = [
-            (ExchangeEnum.MEXC, "mexc_spot"),
-            (ExchangeEnum.GATEIO, "gateio_spot"), 
-            (ExchangeEnum.GATEIO_FUTURES, "gateio_futures")
-        ]
-        
+
         dfs = {}
-        for exchange, prefix in exchanges:
+        for exchange in self.exchanges:
             try:
+                prefix = exchange.value.lower()
                 csv_path = await self.downloader.download_candles(
                     exchange=exchange,
                     symbol=symbol,
@@ -126,11 +124,12 @@ class ArbitrageAnalyzer:
         """Simulate bid/ask prices from close prices using spread assumption."""
         spread_factor = self.SPREAD_BPS / 10000  # Convert bps to decimal
         
-        for exchange in ['mexc_spot', 'gateio_spot', 'gateio_futures']:
-            close_col = f"{exchange}_close"
+        for exchange in self.exchanges:
+            prefix = exchange.value.lower()
+            close_col = f"{prefix}_close"
             if close_col in df.columns:
-                df[f"{exchange}_bid_price"] = df[close_col] * (1 - spread_factor)
-                df[f"{exchange}_ask_price"] = df[close_col] * (1 + spread_factor)
+                df[f"{prefix}_bid_price"] = df[close_col] * (1 - spread_factor)
+                df[f"{prefix}_ask_price"] = df[close_col] * (1 + spread_factor)
         
         return df
     
@@ -147,18 +146,6 @@ class ArbitrageAnalyzer:
         df['gateio_spot_vs_futures_arb'] = (
             (df['gateio_spot_bid_price'] - df['gateio_futures_ask_price']) / 
             df['gateio_spot_bid_price'] * 100
-        )
-        
-        # 3. MEXC vs Gate.io Futures (limit order)
-        df['mexc_vs_gateio_futures_arb_limit'] = (
-            (df['gateio_futures_bid_price'] - df['mexc_spot_bid_price']) / 
-            df['gateio_futures_bid_price'] * 100
-        )
-        
-        # 4. Gate.io Spot vs Futures (limit order)
-        df['gateio_spot_vs_futures_arb_limit'] = (
-            (df['gateio_spot_ask_price'] - df['gateio_futures_bid_price']) / 
-            df['gateio_spot_ask_price'] * 100
         )
         
         # Calculate total arbitrage sum

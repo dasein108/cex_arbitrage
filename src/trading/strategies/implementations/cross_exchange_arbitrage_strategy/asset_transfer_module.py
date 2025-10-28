@@ -36,7 +36,7 @@ class TransferRequest(Struct, frozen=False, kw_only=True):
     from_exchange: ExchangeEnum
     to_exchange: Optional[ExchangeEnum] = None # can be lazy loaded
     amount: float = 0
-    buy_price: [float] = None
+    buy_price: Optional[float] = None
     fees: float = 0
     
     # Withdrawal tracking (existing)

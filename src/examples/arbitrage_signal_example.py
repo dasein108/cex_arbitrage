@@ -4,9 +4,9 @@ import asyncio
 import numpy as np
 from trading.analysis.arbitrage_signals import (
     calculate_arb_signals,
-    calculate_arb_signals_simple,
-    Signal
+    calculate_arb_signals_simple
 )
+from trading.analysis.structs import Signal
 
 
 def simulate_spread_data(size: int = 1000) -> tuple:

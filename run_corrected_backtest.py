@@ -9,13 +9,11 @@ resolves the negative returns issue.
 
 import asyncio
 import sys
-import os
-from datetime import datetime
 
 # Add src to path
 sys.path.insert(0, '/Users/dasein/dev/cex_arbitrage/src')
 
-from trading.research.hedged_cross_arbitrage_backtest import HedgedCrossArbitrageBacktest, BacktestConfig
+from trading.research.cross_arbitrage.hedged_cross_arbitrage_backtest import HedgedCrossArbitrageBacktest, BacktestConfig
 
 
 async def run_corrected_backtest():

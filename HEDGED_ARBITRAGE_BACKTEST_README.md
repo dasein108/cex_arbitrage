@@ -93,7 +93,8 @@ class BacktestConfig:
 ### Basic Usage with Real Data
 
 ```python
-from trading.research.hedged_cross_arbitrage_backtest import HedgedCrossArbitrageBacktest, BacktestConfig
+from trading.research.cross_arbitrage.hedged_cross_arbitrage_backtest import HedgedCrossArbitrageBacktest,
+    BacktestConfig
 
 # Configure backtest
 config = BacktestConfig(

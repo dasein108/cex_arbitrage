@@ -1,15 +1,10 @@
 """Arbitrage signal generation based on statistical thresholds."""
 
-from typing import Dict, List, Tuple, Optional
+from typing import Dict, List, Tuple
 from dataclasses import dataclass
 import numpy as np
-from enum import Enum
 
-
-class Signal(Enum):
-    ENTER = "ENTER"
-    EXIT = "EXIT"
-    HOLD = "HOLD"
+from trading.analysis.structs import Signal
 
 
 @dataclass

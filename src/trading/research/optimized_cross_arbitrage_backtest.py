@@ -26,19 +26,18 @@ Usage:
 import asyncio
 import pandas as pd
 import numpy as np
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Dict, Any, List, Tuple, Optional, NamedTuple, Literal
+from typing import Dict, Any, List, Tuple, Optional, NamedTuple
 from dataclasses import dataclass
 from enum import Enum
-import matplotlib.pyplot as plt
 import sys
 import os
 
 # Add src to path for imports
 sys.path.append(os.path.join(os.path.dirname(__file__), '..', '..'))
 
-from trading.research.arbitrage_analyzer import ArbitrageAnalyzer
+from trading.research.cross_arbitrage.arbitrage_analyzer import ArbitrageAnalyzer
 
 
 class PositionStatus(Enum):

@@ -7,7 +7,8 @@ from dataclasses import dataclass, field
 from datetime import datetime
 import numpy as np
 
-from trading.analysis.arbitrage_signals import calculate_arb_signals, Signal, ArbSignal
+from trading.analysis.arbitrage_signals import calculate_arb_signals, ArbSignal
+from trading.analysis.structs import Signal
 from infrastructure.logging import HFTLoggerInterface
 
 
