@@ -24,6 +24,7 @@ from exchanges.exchange_factory import get_composite_implementation
 from exchanges.adapters import BindedEventHandlersAdapter
 from infrastructure.networking.websocket.structs import PublicWebsocketChannelType
 from db.models import TradeSnapshot, FundingRateSnapshot, BookTickerSnapshot
+from db.operations import insert_book_ticker_snapshots_batch, insert_funding_rate_snapshots_batch
 from .analytics import RealTimeAnalytics, ArbitrageOpportunity
 from config.config_manager import get_exchange_config
 from infrastructure.logging import get_logger, LoggingTimer
@@ -1300,25 +1301,31 @@ class DataCollector:
 
             self.logger.debug(f"Storing {len(snapshots)} normalized snapshots to database...")
 
-            # Store snapshots using optimized DatabaseManager (PROJECT_GUIDES.md compliant)
-            start_time = datetime.now()
+            # Store snapshots using optimized batch operations with HFT performance monitoring
+            with LoggingTimer(self.logger, "snapshot_storage") as timer:
+                # Use the existing normalized batch insert function
+                count = await insert_book_ticker_snapshots_batch(snapshots)
             
-            # Use simplified batch insert with auto-resolution
-            try:
-                # Note: This will need to be updated to use the new API with exchange/symbol parameters
-                # For now, use legacy method until API is fully migrated
-                count = len(snapshots)  # Placeholder - will need proper implementation
-                
-                # Database storage operation completed
-            except Exception as e:
-                self.logger.warning(f"Failed to insert batch of {len(snapshots)} snapshots: {e}")
-                count = 0
-                    
-            storage_duration = (datetime.now() - start_time).total_seconds() * 1000
+            # Validate HFT performance requirement (<5ms target)
+            if timer.elapsed_ms > 5.0:
+                self.logger.warning(f"Snapshot storage exceeded HFT target: {timer.elapsed_ms:.1f}ms > 5ms")
+                self.logger.metric("storage_hft_violations", 1, tags={"operation": "book_ticker_storage"})
+            elif timer.elapsed_ms > 2.0:  # Warning threshold
+                self.logger.warning(f"Storage performance degraded: {timer.elapsed_ms:.1f}ms")
+                self.logger.metric("storage_performance_warnings", 1, tags={"operation": "book_ticker_storage"})
 
             self.logger.debug(
-                f"Successfully stored {count} snapshots in {storage_duration:.1f}ms"
+                f"Successfully stored {count} snapshots in {timer.elapsed_ms:.1f}ms"
             )
+
+            # Track performance metrics
+            self.logger.metric("snapshots_stored", count)
+            self.logger.metric("storage_time_ms", timer.elapsed_ms, tags={"operation": "book_ticker_storage"})
+            
+            # Track throughput metrics
+            if timer.elapsed_ms > 0:
+                snapshots_per_second = len(snapshots) / (timer.elapsed_ms / 1000)
+                self.logger.metric("storage_throughput_snapshots_per_second", snapshots_per_second)
 
             # Log sample of what was stored for verification
             if snapshots:
@@ -1330,8 +1337,15 @@ class DataCollector:
 
         except Exception as e:
             self.logger.error(f"Error storing normalized snapshots: {e}")
+            
+            # Track error metrics
+            self.logger.metric("snapshot_storage_errors", 1, tags={"error_type": type(e).__name__})
+            
             import traceback
-            self.logger.error(traceback.format_exc())
+            self.logger.error("Full storage error traceback", traceback=traceback.format_exc())
+            
+            # Don't re-raise to allow data collection to continue
+            # Storage errors shouldn't break the WebSocket data collection loop
 
     async def _handle_trade_storage(self, trade_snapshots: List[TradeSnapshot]) -> None:
         """
@@ -1382,27 +1396,44 @@ class DataCollector:
             if not funding_rate_snapshots:
                 return
 
-            # Store funding rate snapshots using simplified DatabaseManager
-            start_time = datetime.now()
-            # Note: This will need to be updated to use the new API with exchange/symbol parameters
-            # For now, use legacy method until API is fully migrated
-            count = len(funding_rate_snapshots)  # Placeholder - will need proper implementation
-            
-            # Funding rate database storage operation completed
+            self.logger.debug(f"Storing {len(funding_rate_snapshots)} funding rate snapshots to database...")
+
+            # Store funding rate snapshots using batch operations with HFT performance monitoring
+            with LoggingTimer(self.logger, "funding_rate_storage") as timer:
+                count = await insert_funding_rate_snapshots_batch(funding_rate_snapshots)
                 
-            storage_duration = (datetime.now() - start_time).total_seconds() * 1000
-            
             # Validate HFT performance requirement (<5ms target)
-            if storage_duration > 5.0:
-                self.logger.warning(f"Funding rate storage exceeded HFT target: {storage_duration:.1f}ms > 5ms")
+            if timer.elapsed_ms > 5.0:
+                self.logger.warning(f"Funding rate storage exceeded HFT target: {timer.elapsed_ms:.1f}ms > 5ms")
+                self.logger.metric("storage_hft_violations", 1, tags={"operation": "funding_rate_storage"})
+            elif timer.elapsed_ms > 2.0:  # Warning threshold
+                self.logger.warning(f"Funding rate storage performance degraded: {timer.elapsed_ms:.1f}ms")
+                self.logger.metric("storage_performance_warnings", 1, tags={"operation": "funding_rate_storage"})
 
             self.logger.debug(
-                f"Stored {count} funding rate snapshots in {storage_duration:.1f}ms"
+                f"Stored {count} funding rate snapshots in {timer.elapsed_ms:.1f}ms"
             )
+            
+            # Track performance metrics
+            self.logger.metric("funding_rates_stored", count)
+            self.logger.metric("storage_time_ms", timer.elapsed_ms, tags={"operation": "funding_rate_storage"})
+            
+            # Track throughput metrics
+            if timer.elapsed_ms > 0:
+                funding_rates_per_second = len(funding_rate_snapshots) / (timer.elapsed_ms / 1000)
+                self.logger.metric("storage_throughput_funding_rates_per_second", funding_rates_per_second)
+                
         except Exception as e:
             self.logger.error(f"Error storing funding rate snapshots: {e}")
+            
+            # Track error metrics
+            self.logger.metric("funding_rate_storage_errors", 1, tags={"error_type": type(e).__name__})
+            
             import traceback
-            self.logger.error(traceback.format_exc())
+            self.logger.error("Full funding rate storage error traceback", traceback=traceback.format_exc())
+            
+            # Don't re-raise to allow data collection to continue
+            # Storage errors shouldn't break the WebSocket data collection loop
 
     def get_status(self) -> Dict[str, any]:
         """

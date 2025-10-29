@@ -56,12 +56,12 @@ def time_range_iterator(
             current_start.timestamp() + chunk_seconds, 
             date_to.timestamp()
         )
-        chunk_end = datetime.fromtimestamp(chunk_end_timestamp)
+        chunk_end = datetime.fromtimestamp(chunk_end_timestamp, tz=date_to.tzinfo)
         
         yield current_start, chunk_end
         
         # Move to next chunk with precise stepping to avoid gaps/overlaps
-        current_start = datetime.fromtimestamp(chunk_end.timestamp() + interval_seconds)
+        current_start = datetime.fromtimestamp(chunk_end.timestamp() + interval_seconds, tz=date_to.tzinfo)
         
         # Stop if we've passed the end
         if current_start >= date_to:

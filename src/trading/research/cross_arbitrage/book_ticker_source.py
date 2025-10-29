@@ -63,7 +63,10 @@ class BookTickerDbSource(BookTickerSourceProtocol):
              continue
          # Prefix all column names with the exchange key (use enum name)
          prefixed = df.copy()
-         prefixed.columns = [f"{exchange.name}_{col}" for col in prefixed.columns]
+         cols_to_keep = ["timeframe", "bid_price", "ask_price"]
+         prefixed = prefixed[cols_to_keep]
+         prefixed.set_index("timestamp", inplace=True)
+         prefixed.columns = [f"{exchange.value}_{col}" for col in prefixed.columns]
          exchange_df_map[exchange] = prefixed
 
         # Merge all available dataframes into a single dataframe (outer join on index)
@@ -75,7 +78,7 @@ class BookTickerDbSource(BookTickerSourceProtocol):
 
 class CandlesBookTickerSource(BookTickerSourceProtocol):
     """Book ticker data source using candles loader."""
-
+    SPREAD_FACTOR = 0.0005  # 0.05% spread assumption for bid/ask simulation
     def __init__(self, window_minutes: int = 1):
         super().__init__(window_minutes)
         self.candles_loader = CandlesLoader()
@@ -105,13 +108,17 @@ class CandlesBookTickerSource(BookTickerSourceProtocol):
         exchange_df_map: dict[ExchangeEnum, Optional[pd.DataFrame]] = {}
 
         for exchange, df in zip(exchanges, results):
-         if df is None or df.empty:
-             exchange_df_map[exchange] = None
-             continue
-         # Prefix all column names with the exchange key (use enum name)
-         prefixed = df.copy()
-         prefixed.columns = [f"{exchange.name}_{col}" for col in prefixed.columns]
-         exchange_df_map[exchange] = prefixed
+            if df is None or df.empty:
+                 exchange_df_map[exchange] = None
+                 continue
+            # Prefix all column names with the exchange key (use enum name)
+            prefixed = df.copy()
+            prefixed[f"bid_price"] = prefixed['close'] * (1 - self.SPREAD_FACTOR)
+            prefixed[f"ask_price"] = prefixed['close'] * (1 + self.SPREAD_FACTOR)
+            prefixed = prefixed[["timestamp", "bid_price", "ask_price"]]
+            prefixed.set_index("timestamp", inplace=True)
+            prefixed.columns = [f"{exchange.value}_{col}" for col in prefixed.columns]
+            exchange_df_map[exchange] = prefixed
 
         # Merge all available dataframes into a single dataframe (outer join on index)
         available = [df for df in exchange_df_map.values() if df is not None]
@@ -120,20 +127,19 @@ class CandlesBookTickerSource(BookTickerSourceProtocol):
 
         return merged_df
 
-
 if __name__ == "__main__":
     import asyncio
     from exchanges.structs import Symbol
 
     async def main():
-        await get_database_manager()
-        source = BookTickerDbSource()
+        # await get_database_manager()
+        source = CandlesBookTickerSource()
         symbol = Symbol(base=AssetName("F"), quote=AssetName("USDT"))
         df = await source.get_multi_exchange_data(
             exchanges=[ExchangeEnum.MEXC, ExchangeEnum.GATEIO, ExchangeEnum.GATEIO_FUTURES],
             symbol=symbol,
             hours=1,
-            timeframe_minutes=5
+            timeframe=KlineInterval.MINUTE_5
         )
         print(df)
 

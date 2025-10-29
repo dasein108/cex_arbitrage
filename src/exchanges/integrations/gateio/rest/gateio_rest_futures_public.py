@@ -498,10 +498,11 @@ class GateioPublicFuturesRestInterface(GateioBaseFuturesRestInterface, PublicFut
         current_start = date_from
 
         while current_start < date_to:
-            chunk_end = datetime.fromtimestamp(min(current_start.timestamp() + chunk_duration_seconds, date_to.timestamp()))
+            chunk_end = datetime.fromtimestamp(min(current_start.timestamp() + chunk_duration_seconds,
+                                                   date_to.timestamp()), tz=date_to.tzinfo)
             chunk = await self.get_klines(symbol, timeframe, current_start, chunk_end)
             all_klines.extend(chunk)
-            current_start = datetime.fromtimestamp(chunk_end.timestamp() + interval_seconds)
+            current_start = datetime.fromtimestamp(chunk_end.timestamp() + interval_seconds, tz=date_to.tzinfo)
             if not chunk or current_start >= date_to:
                 break
             await asyncio.sleep(0.3)  # rate limit guard

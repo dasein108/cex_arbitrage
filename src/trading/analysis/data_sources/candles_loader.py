@@ -160,7 +160,7 @@ class CandlesLoader:
                 return pd.DataFrame(columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
             
             # Convert to DataFrame
-            df = self._klines_to_dataframe(klines, exchange.value, kline_interval_to_timeframe(timeframe_enum))
+            df = self._klines_to_dataframe(klines)
             
             # Save to cache
             await self._save_to_pickle(df, pickle_path)
