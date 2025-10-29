@@ -759,20 +759,33 @@ async def insert_funding_rate_snapshots_batch(snapshots: List[FundingRateSnapsho
     # Prepare data for batch insert
     batch_data = []
     for snapshot in snapshots:
-        # Validate funding_time to prevent constraint violations
-        funding_time = snapshot.funding_time
-        if funding_time is None or funding_time <= 0:
+        # Validate next_funding_time to prevent constraint violations
+        funding_time = snapshot.next_funding_time
+        
+        # Handle both datetime and int types for funding_time
+        if funding_time is None:
             # Generate a valid funding_time (current time + 8 hours in milliseconds)
             import time
             funding_time = int(time.time() * 1000) + (8 * 60 * 60 * 1000)
-            logger.warning(f"Invalid funding_time ({snapshot.funding_time}) for symbol_id {snapshot.symbol_id}, using fallback: {funding_time}")
+            logger.warning(f"Invalid next_funding_time (None) for symbol_id {snapshot.symbol_id}, using fallback: {funding_time}")
+        elif isinstance(funding_time, datetime):
+            # Convert datetime to Unix timestamp in milliseconds
+            funding_time = int(funding_time.timestamp() * 1000)
+        elif isinstance(funding_time, (int, float)) and funding_time <= 0:
+            # Generate a valid funding_time for invalid numeric values
+            import time
+            funding_time = int(time.time() * 1000) + (8 * 60 * 60 * 1000)
+            logger.warning(f"Invalid next_funding_time ({snapshot.next_funding_time}) for symbol_id {snapshot.symbol_id}, using fallback: {funding_time}")
+        elif isinstance(funding_time, (int, float)):
+            # Ensure it's an integer
+            funding_time = int(funding_time)
         
         batch_data.append((
             snapshot.timestamp,
             snapshot.symbol_id,
-            snapshot.funding_rate,
-            funding_time,
-            snapshot.next_funding_time,  # Include the new field
+            float(snapshot.funding_rate),  # Float-only policy
+            funding_time,                  # Already converted to int above
+            funding_time,                  # Use same value for next_funding_time field
             snapshot.created_at or datetime.now()
         ))
     

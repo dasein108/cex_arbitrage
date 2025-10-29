@@ -2,6 +2,7 @@ import asyncio
 from typing import Optional, Type, Dict, Literal, List, TypeAlias
 import msgspec
 from msgspec import Struct
+import numpy as np
 from exchanges.dual_exchange import DualExchange
 from config.config_manager import get_exchange_config
 from exchanges.structs import Order, SymbolInfo, ExchangeEnum, Symbol, OrderId, BookTicker
@@ -15,6 +16,8 @@ from trading.strategies.implementations.cross_exchange_arbitrage_strategy.asset_
 from trading.strategies.implementations.cross_exchange_arbitrage_strategy.unified_position import Position, PositionError
 
 from trading.strategies.implementations.base_strategy.base_strategy import BaseStrategyContext, BaseStrategyTask
+from trading.analysis.arbitrage_signals import calculate_arb_signals
+from trading.analysis.structs import Signal
 
 PrimaryExchangeRole: TypeAlias = Literal['source', 'dest']
 
@@ -55,6 +58,10 @@ class CrossExchangeArbitrageTaskContext(BaseStrategyContext, kw_only=True):
     order_qty: Optional[float] = None  # size of each order for limit orders
 
     current_role: Optional[PrimaryExchangeRole] = None
+    
+    # Spread validation parameters
+    min_profit_margin: float = 0.1  # Minimum required profit margin in percentage (0.1%)
+    max_acceptable_spread: float = 0.2  # Maximum acceptable total spread across exchanges in percentage (0.2%)
 
     # Complex fields with factory defaults
     positions: Dict[ExchangeRoleType, Position] = msgspec.field(
@@ -117,15 +124,22 @@ class CrossExchangeArbitrageTask(BaseStrategyTask[CrossExchangeArbitrageTaskCont
         # Initialize candle-based analyzer like in hedged backtest
         self.analyzer = ArbitrageAnalyzer()
         
-        # Initialize historical spreads for signal generation
+        # Initialize historical spreads for signal generation with numpy arrays
         self.historical_spreads = {
-            'mexc_vs_gateio_futures': [],
-            'gateio_spot_vs_futures': []
+            'mexc_vs_gateio_futures': np.array([], dtype=np.float64),
+            'gateio_spot_vs_futures': np.array([], dtype=np.float64)
         }
         
         # Initialize signal generator (will be populated from candles)
         self._signal_generator = None
         self._candle_data_loaded = False
+        
+        # Spread monitoring
+        self._spread_check_counter = 0
+        self._spread_rejection_counter = 0
+        self._last_spread_log_time = asyncio.get_event_loop().time()
+
+        self.round_trip_fees = 0.0
 
         source_exchange = self.context.settings['source'].exchange
         dest_exchange = self.context.settings['dest'].exchange
@@ -202,6 +216,11 @@ class CrossExchangeArbitrageTask(BaseStrategyTask[CrossExchangeArbitrageTaskCont
 
         self.logger.info("✅ Candle-based signal generation initialized")
 
+        # setup roundtrip fees
+        self.round_trip_fees = (self._get_fees('source').taker_fee +
+                                self._get_fees('dest').taker_fee +
+                                self._get_fees('hedge').taker_fee * 2)
+
         self.context.status = 'active'
 
     def _get_fees(self, exchange_role: ExchangeRoleType):
@@ -257,7 +276,7 @@ class CrossExchangeArbitrageTask(BaseStrategyTask[CrossExchangeArbitrageTaskCont
             await exchange.private.load_balances()
             balance = await exchange.private.get_asset_balance(self.context.symbol.base)
 
-            book_ticker = exchange.public.book_ticker.get(self.context.symbol)
+            book_ticker = self._get_book_ticker(exchange_role)
             min_qty = self._symbol_info[exchange_role].get_abs_min_quantity(book_ticker.bid_price)
             pos = self.context.positions[exchange_role]
 
@@ -359,12 +378,12 @@ class CrossExchangeArbitrageTask(BaseStrategyTask[CrossExchangeArbitrageTaskCont
         book_ticker = self._exchanges[exchange_role].public.book_ticker[self.context.symbol]
         return book_ticker
 
-    async def _check_arbitrage_signal(self) -> List[str]:
+    async def _check_arbitrage_signal(self) -> Signal:
         """
         Check for arbitrage entry/exit signals using dynamic thresholds.
         
         Returns:
-            List of signals ('enter', 'exit', or empty)
+            Signal enum (ENTER, EXIT, or HOLD)
         """
 
         try:
@@ -389,27 +408,18 @@ class CrossExchangeArbitrageTask(BaseStrategyTask[CrossExchangeArbitrageTaskCont
             # Generate signal using current market data with historical context
             signal_result = self._generate_signal_from_current_data()
             
-            # Convert signal to list format expected by existing code
-            if signal_result.signal.value == 'ENTER':
-                signals = ['enter']
-            elif signal_result.signal.value == 'EXIT':
-                signals = ['exit']
-            else:
-                signals = []
-            
-            # Log signal with reason for monitoring
-            if signals:
+            # Log signal for monitoring
+            if signal_result != Signal.HOLD:
                 self.logger.info("🎯 Arbitrage signal generated",
-                                 signals=signals,
-                                 reason=signal_result.reason)
+                                 signal=signal_result.value)
             else:
-                self.logger.debug("⏸ No signal", reason=signal_result.reason)
+                self.logger.debug("⏸ No signal")
 
-            return signals
+            return signal_result
 
         except Exception as e:
             self.logger.error(f"❌ Error checking arbitrage signal: {e}")
-            return []
+            return Signal.HOLD
 
     async def _load_candle_data_if_needed(self):
         """Load candle data and populate historical spreads for signal generation."""
@@ -419,11 +429,8 @@ class CrossExchangeArbitrageTask(BaseStrategyTask[CrossExchangeArbitrageTaskCont
         try:
             self.logger.info("📥 Loading candle data for signal generation...")
             
-            # Extract symbol from context (e.g., "F/USDT" -> "F_USDT")
-            symbol_str = str(self.context.symbol).replace('/', '_')
-            
             # Load 7 days of candle data like in hedged backtest
-            df, _ = await self.analyzer.run_analysis(symbol_str, days=7)
+            df, _ = await self.analyzer.run_analysis(self.context.symbol, days=7)
             
             if df.empty:
                 self.logger.warning("⚠️ No candle data received from analyzer")
@@ -436,9 +443,9 @@ class CrossExchangeArbitrageTask(BaseStrategyTask[CrossExchangeArbitrageTaskCont
                 self.logger.error(f"❌ Missing required columns in candle data: {missing_columns}")
                 return
             
-            # Populate historical spreads
-            self.historical_spreads['mexc_vs_gateio_futures'] = df['mexc_vs_gateio_futures_arb'].tolist()
-            self.historical_spreads['gateio_spot_vs_futures'] = df['gateio_spot_vs_futures_arb'].tolist()
+            # Populate historical spreads with numpy arrays for better performance
+            self.historical_spreads['mexc_vs_gateio_futures'] = df['mexc_vs_gateio_futures_arb'].values.astype(np.float64)
+            self.historical_spreads['gateio_spot_vs_futures'] = df['gateio_spot_vs_futures_arb'].values.astype(np.float64)
             
             loaded_count = len(self.historical_spreads['mexc_vs_gateio_futures'])
             
@@ -459,51 +466,159 @@ class CrossExchangeArbitrageTask(BaseStrategyTask[CrossExchangeArbitrageTaskCont
         
         # Ensure we have enough historical data
         if len(self.historical_spreads['mexc_vs_gateio_futures']) < 50:
-            from trading.analysis.arbitrage_signals import ArbSignal, ArbStats
-            from trading.analysis.structs import Signal
-            return ArbSignal(
-                signal=Signal.HOLD,
-                mexc_vs_gateio_futures=ArbStats(0, 0, 0, 0),
-                gateio_spot_vs_futures=ArbStats(0, 0, 0, 0),
-                reason="Insufficient historical data"
-            )
+            return Signal.HOLD
         
-        # Calculate current spreads from live market data
-        current_mexc_vs_gateio_futures = self._calculate_current_mexc_futures_spread()
-        current_gateio_spot_vs_futures = self._calculate_current_gateio_spread()
-        
-        return calculate_arb_signals(
+        arb_signal =  calculate_arb_signals(
             mexc_vs_gateio_futures_history=self.historical_spreads['mexc_vs_gateio_futures'],
             gateio_spot_vs_futures_history=self.historical_spreads['gateio_spot_vs_futures'],
-            current_mexc_vs_gateio_futures=current_mexc_vs_gateio_futures,
-            current_gateio_spot_vs_futures=current_gateio_spot_vs_futures
+            current_mexc_vs_gateio_futures=self.mexc_vs_gateio_futures_spread,
+            current_gateio_spot_vs_futures=self.gateio_spot_vs_futures_spread
         )
+
+        return arb_signal.signal
+
+    @property
+    def mexc_vs_gateio_futures_spread(self) -> float:
+        mexc_ticker = self._get_book_ticker('source')  # MEXC
+        gateio_futures_ticker = self._get_book_ticker('hedge')  # Gate.io futures
+
+        # Use exact backtest formula for consistency
+        spread = (gateio_futures_ticker.bid_price - mexc_ticker.ask_price) / gateio_futures_ticker.bid_price * 100
+        return spread
+
+    @property
+    def gateio_spot_vs_futures_spread(self) -> float:
+        gateio_spot_ticker = self._get_book_ticker('dest')  # Gate.io spot
+        gateio_futures_ticker = self._get_book_ticker('hedge')  # Gate.io futures
+
+        # Use exact backtest formula for consistency
+        spread = (gateio_spot_ticker.bid_price - gateio_futures_ticker.ask_price) / gateio_spot_ticker.bid_price * 100
+        return spread
     
-    def _calculate_current_mexc_futures_spread(self) -> float:
-        """Calculate current MEXC vs Gate.io futures spread from live market data."""
-        try:
-            mexc_ticker = self._get_book_ticker('source')  # MEXC
-            gateio_futures_ticker = self._get_book_ticker('hedge')  # Gate.io futures
-            
-            # Use exact backtest formula for consistency
-            spread = (gateio_futures_ticker.bid_price - mexc_ticker.ask_price) / gateio_futures_ticker.bid_price * 100
-            return spread
-        except Exception as e:
-            self.logger.error(f"❌ Error calculating MEXC futures spread: {e}")
-            return 0.0
+    def _calculate_execution_spreads(self) -> Dict[str, float]:
+        """Calculate current bid-ask spreads for each exchange in percentage."""
+        spreads = {}
+        
+        # Source exchange (MEXC) spread
+        source_ticker = self._get_book_ticker('source')
+        source_spread = ((source_ticker.ask_price - source_ticker.bid_price) / 
+                        source_ticker.ask_price * 100)
+        spreads['source'] = source_spread
+        
+        # Destination exchange (Gate.io spot) spread
+        dest_ticker = self._get_book_ticker('dest')
+        dest_spread = ((dest_ticker.ask_price - dest_ticker.bid_price) / 
+                      dest_ticker.ask_price * 100)
+        spreads['dest'] = dest_spread
+        
+        # Hedge exchange (Gate.io futures) spread
+        hedge_ticker = self._get_book_ticker('hedge')
+        hedge_spread = ((hedge_ticker.ask_price - hedge_ticker.bid_price) / 
+                       hedge_ticker.ask_price * 100)
+        spreads['hedge'] = hedge_spread
+        
+        # Total execution spread (entry + exit costs)
+        spreads['total'] = source_spread + dest_spread + hedge_spread
+        
+        return spreads
     
-    def _calculate_current_gateio_spread(self) -> float:
-        """Calculate current Gate.io spot vs futures spread from live market data."""
-        try:
-            gateio_spot_ticker = self._get_book_ticker('dest')  # Gate.io spot
-            gateio_futures_ticker = self._get_book_ticker('hedge')  # Gate.io futures
+    async def _validate_spread_profitability(self, signal: Signal) -> bool:
+        """
+        Validate that current execution spreads allow profitable trading.
+        
+        Returns:
+            True if spreads are acceptable for trading, False otherwise
+        """
+        # Track validation attempts
+        self._spread_check_counter += 1
+        
+        # Get current execution spreads (in percentage)
+        execution_spreads = self._calculate_execution_spreads()
+        total_spread_cost = execution_spreads['total']
+        
+        # Get current arbitrage spreads (already in percentage)
+        mexc_vs_futures_spread = self.mexc_vs_gateio_futures_spread
+        gateio_spot_vs_futures_spread = self.gateio_spot_vs_futures_spread
+        
+        # Check if total spreads exceed maximum acceptable threshold
+        if total_spread_cost > self.context.max_acceptable_spread:
+            self._spread_rejection_counter += 1
+            self.logger.warning(
+                f"⚠️ Spread validation failed: total spreads {total_spread_cost:.3f}% > "
+                f"max acceptable {self.context.max_acceptable_spread:.3f}%",
+                source_spread=f"{execution_spreads['source']:.3f}%",
+                dest_spread=f"{execution_spreads['dest']:.3f}%",
+                hedge_spread=f"{execution_spreads['hedge']:.3f}%"
+            )
+            return False
+        
+        # Use configurable minimum profit margin
+        min_profit_margin = self.context.min_profit_margin
+        
+        # Calculate required edge based on signal type
+        required_edge = total_spread_cost + self.round_trip_fees + min_profit_margin
+        
+        # Validate based on signal type
+        validation_failed = False
+        if signal == Signal.ENTER:
+            # For entry, we need MEXC vs futures spread to be profitable
+            signal_opportunity = abs(mexc_vs_futures_spread)
             
-            # Use exact backtest formula for consistency
-            spread = (gateio_spot_ticker.bid_price - gateio_futures_ticker.ask_price) / gateio_spot_ticker.bid_price * 100
-            return spread
-        except Exception as e:
-            self.logger.error(f"❌ Error calculating Gate.io spread: {e}")
-            return 0.0
+            if signal_opportunity < required_edge:
+                self._spread_rejection_counter += 1
+                validation_failed = True
+                self.logger.warning(
+                    f"⚠️ ENTRY spread validation failed: opportunity={signal_opportunity:.3f}% < "
+                    f"required={required_edge:.3f}% (spreads={total_spread_cost:.3f}%, "
+                    f"fees={self.round_trip_fees:.3f}%)",
+                    source_spread=f"{execution_spreads['source']:.3f}%",
+                    dest_spread=f"{execution_spreads['dest']:.3f}%",
+                    hedge_spread=f"{execution_spreads['hedge']:.3f}%",
+                    rejection_rate=f"{self._spread_rejection_counter}/{self._spread_check_counter}"
+                )
+                
+        elif signal == Signal.EXIT:
+            # For exit, we need Gate.io spot vs futures spread to be profitable
+            signal_opportunity = abs(gateio_spot_vs_futures_spread)
+            
+            if signal_opportunity < required_edge:
+                self._spread_rejection_counter += 1
+                validation_failed = True
+                self.logger.warning(
+                    f"⚠️ EXIT spread validation failed: opportunity={signal_opportunity:.3f}% < "
+                    f"required={required_edge:.3f}% (spreads={total_spread_cost:.3f}%, "
+                    f"fees={self.round_trip_fees:.3f}%)",
+                    source_spread=f"{execution_spreads['source']:.3f}%",
+                    dest_spread=f"{execution_spreads['dest']:.3f}%",
+                    hedge_spread=f"{execution_spreads['hedge']:.3f}%",
+                    rejection_rate=f"{self._spread_rejection_counter}/{self._spread_check_counter}"
+                )
+        
+        # Log successful validation with quality score
+        if signal != Signal.HOLD and not validation_failed:
+            self.logger.info(
+                f"✅ Spread validation passed for {signal.value}: "
+                f"spreads={total_spread_cost:.3f}%, fees={self.round_trip_fees:.3f}%, ",
+                mexc_spread=f"{execution_spreads['source']:.3f}%",
+                gateio_spot_spread=f"{execution_spreads['dest']:.3f}%",
+                gateio_futures_spread=f"{execution_spreads['hedge']:.3f}%"
+            )
+        
+        # Periodic spread monitoring (every 60 seconds)
+        current_time = asyncio.get_event_loop().time()
+        if current_time - self._last_spread_log_time > 60:
+            self._last_spread_log_time = current_time
+            rejection_rate = (self._spread_rejection_counter / max(1, self._spread_check_counter)) * 100
+            self.logger.info(
+                f"📊 Spread monitoring stats: checks={self._spread_check_counter}, "
+                f"rejections={self._spread_rejection_counter} ({rejection_rate:.1f}%), "
+                f"current_spreads={total_spread_cost:.3f}%",
+                mexc_spread=f"{execution_spreads['source']:.3f}%",
+                gateio_spot_spread=f"{execution_spreads['dest']:.3f}%",
+                gateio_futures_spread=f"{execution_spreads['hedge']:.3f}%"
+            )
+        
+        return not validation_failed
 
     async def _cancel_order_safe(
             self,
@@ -771,19 +886,26 @@ class CrossExchangeArbitrageTask(BaseStrategyTask[CrossExchangeArbitrageTaskCont
 
     async def _manage_arbitrage_signals(self):
         # Check arbitrage signals using dynamic thresholds
-        signals = await self._check_arbitrage_signal()
-        source_allowed = 'enter' in signals
-        dest_allowed = 'exit' in signals
+        signal = await self._check_arbitrage_signal()
+        
+        # Validate spreads before allowing trading
+        spread_valid = await self._validate_spread_profitability(signal)
+        
+        # Only allow trading if both signal and spreads are favorable
+        source_allowed = (signal == Signal.ENTER) and spread_valid
+        dest_allowed = (signal == Signal.EXIT) and spread_valid
 
         if self._exchange_trading_allowed['source'] != source_allowed:
             self._exchange_trading_allowed['source'] = source_allowed
             state = "🟢 enabled" if source_allowed else "⛔️ disabled"
-            self.logger.info(f"🔔 Source trading {state} based on signal")
+            reason = " (spread validation failed)" if signal == Signal.ENTER and not spread_valid else ""
+            self.logger.info(f"🔔 Source trading {state} based on signal{reason}")
 
         if self._exchange_trading_allowed['dest'] != dest_allowed:
             self._exchange_trading_allowed['dest'] = dest_allowed
             state = "🟢 enabled" if dest_allowed else "⛔️ disabled"
-            self.logger.info(f"🔔 Dest trading {state} based on signal")
+            reason = " (spread validation failed)" if signal == Signal.EXIT and not spread_valid else ""
+            self.logger.info(f"🔔 Dest trading {state} based on signal{reason}")
 
     async def _handle_completed_transfer(self, request: TransferRequest) -> None:
         """Handle a completed transfer and update positions accordingly."""
@@ -896,6 +1018,8 @@ class CrossExchangeArbitrageTask(BaseStrategyTask[CrossExchangeArbitrageTaskCont
                     self.context.set_save_flag()
                     await self._start_transfer_monitor()
                     return True
+                else:
+                    return False
 
         except Exception as e:
             self.logger.error(f"❌ Error managing transfer between exchanges: {e}")

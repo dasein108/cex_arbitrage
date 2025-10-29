@@ -13,6 +13,7 @@ Key Features:
 
 import asyncio
 import time
+import numpy as np
 from typing import Optional, Dict, Type, Literal
 
 from trading.tasks.base_arbitrage_task import BaseArbitrageTask
@@ -26,6 +27,8 @@ from trading.tasks.arbitrage_task_context import (
 from exchanges.structs import Symbol, Side, ExchangeEnum, Order
 from infrastructure.logging import HFTLoggerInterface, get_logger
 from utils import flip_side
+from trading.analysis.arbitrage_signals import calculate_arb_signals, Signal
+from trading.research.cross_arbitrage.arbitrage_analyzer import ArbitrageAnalyzer
 
 # Import existing arbitrage components
 from trading.task_manager.exchange_manager import (
@@ -61,6 +64,36 @@ class SpotFuturesArbitrageTask(BaseArbitrageTask):
     def futures_ticker(self):
         return self.exchange_manager.get_exchange('futures').public.book_ticker.get(self.context.symbol)
 
+    @property
+    def spot_vs_futures_spread(self) -> float:
+        """Calculate current spot vs futures spread using same formula as backtest."""
+        spot_ticker = self.spot_ticker
+        futures_ticker = self.futures_ticker
+        
+        # Use spot ask (buy price) vs futures bid (sell price) for entry opportunity
+        spread = (futures_ticker.bid_price - spot_ticker.ask_price) / futures_ticker.bid_price * 100
+        return spread
+    
+    def _calculate_execution_spreads(self) -> Dict[str, float]:
+        """Calculate current bid-ask spreads for each exchange in percentage."""
+        spreads = {}
+        
+        # Spot exchange spread
+        spot_ticker = self.spot_ticker
+        spot_spread = ((spot_ticker.ask_price - spot_ticker.bid_price) / 
+                      spot_ticker.ask_price * 100)
+        spreads['spot'] = spot_spread
+        
+        # Futures exchange spread
+        futures_ticker = self.futures_ticker
+        futures_spread = ((futures_ticker.ask_price - futures_ticker.bid_price) / 
+                         futures_ticker.ask_price * 100)
+        spreads['futures'] = futures_spread
+        
+        # Total execution spread (entry + exit costs)
+        spreads['total'] = spot_spread + futures_spread
+        
+        return spreads
 
     def __init__(self,
                  logger: HFTLoggerInterface,
@@ -71,7 +104,369 @@ class SpotFuturesArbitrageTask(BaseArbitrageTask):
         """Initialize exchange-agnostic spot-futures arbitrage strategy."""
         # Initialize base arbitrage task with common setup
         super().__init__(logger, context, spot_exchange, futures_exchange, **kwargs)
+        
+        # Initialize historical spreads for signal generation with numpy arrays
+        self.historical_spreads = {
+            'spot_vs_futures': np.array([], dtype=np.float64),  # Spot vs Futures spread
+            'execution_spreads': np.array([], dtype=np.float64)  # Combined execution spread
+        }
+        
+        # Signal generation setup
+        self._candle_data_loaded = False
+        self._spread_check_counter = 0
+        self._spread_rejection_counter = 0
+        self._last_spread_log_time = asyncio.get_event_loop().time()
+        
+        # Spread validation parameters  
+        self.min_profit_margin = 0.1  # 0.1% minimum profit margin
+        self.max_acceptable_spread = 0.2  # 0.2% maximum acceptable total spread
 
+    async def _load_initial_spread_history(self):
+        """Load initial spread history from candles once during initialization."""
+        if self._candle_data_loaded:
+            return
+            
+        try:
+            self.logger.info("📥 Loading initial spread history from candles...")
+            
+            # Import analyzer here to avoid circular imports
+            from trading.research.cross_arbitrage.arbitrage_analyzer import ArbitrageAnalyzer
+            
+            analyzer = ArbitrageAnalyzer()
+            # Load 7 days of candle data for historical context
+            df, _ = await analyzer.run_analysis(self.context.symbol, days=7)
+            
+            if df.empty:
+                self.logger.warning("⚠️ No candle data received from analyzer")
+                return
+            
+            # Extract spot vs futures spread from candle data
+            # For spot-futures arbitrage, we use the spread between spot and futures prices
+            if 'spot_vs_futures_arb' in df.columns:
+                self.historical_spreads['spot_vs_futures'] = df['spot_vs_futures_arb'].values.astype(np.float64)
+            else:
+                # Calculate from individual exchange data if available
+                self.logger.warning("⚠️ No pre-calculated spread column found, using current real-time data only")
+                
+            loaded_count = len(self.historical_spreads['spot_vs_futures'])
+            
+            if loaded_count < 50:
+                self.logger.warning(f"⚠️ Insufficient historical data: {loaded_count} points (need at least 50)")
+            else:
+                self.logger.info(f"✅ Loaded {loaded_count} historical spread data points")
+            
+            self._candle_data_loaded = True
+            
+        except Exception as e:
+            self.logger.error(f"❌ Failed to load initial spread history: {e}")
+            import traceback
+            self.logger.debug(f"Full error traceback: {traceback.format_exc()}")
+
+    def _update_historical_spreads(self):
+        """Update historical spreads with current real-time data."""
+        try:
+            # Calculate current spreads
+            current_spot_vs_futures = self.spot_vs_futures_spread
+            execution_spreads = self._calculate_execution_spreads()
+            current_execution_spread = execution_spreads['total']
+            
+            # Append to historical data
+            self.historical_spreads['spot_vs_futures'] = np.append(
+                self.historical_spreads['spot_vs_futures'], 
+                current_spot_vs_futures
+            )
+            self.historical_spreads['execution_spreads'] = np.append(
+                self.historical_spreads['execution_spreads'], 
+                current_execution_spread
+            )
+            
+            # Keep only recent history (e.g., last 500 periods for signal calculation)
+            max_history = 500
+            if len(self.historical_spreads['spot_vs_futures']) > max_history:
+                self.historical_spreads['spot_vs_futures'] = self.historical_spreads['spot_vs_futures'][-max_history:]
+                self.historical_spreads['execution_spreads'] = self.historical_spreads['execution_spreads'][-max_history:]
+                
+        except Exception as e:
+            self.logger.error(f"❌ Error updating historical spreads: {e}")
+
+    async def _validate_spread_profitability(self, signal: Signal = None) -> bool:
+        """
+        Enhanced spread validation using ArbStats for dynamic thresholds and entry/exit specific logic.
+        
+        Args:
+            signal: Current arbitrage signal for context-specific validation
+            
+        Returns:
+            True if spreads are acceptable for trading, False otherwise
+        """
+        # Track validation attempts
+        self._spread_check_counter += 1
+        
+        # Get current signal and ArbStats if not provided
+        if signal is None:
+            signal_result = self._get_current_signal_with_stats()
+            signal = signal_result.signal
+        else:
+            signal_result = self._get_current_signal_with_stats()
+        
+        # Get current execution spreads and fees
+        execution_spreads = self._calculate_execution_spreads()
+        total_spread_cost = execution_spreads['total']
+        actual_fees = self._calculate_actual_fees()
+        
+        # Entry/Exit specific validation
+        if signal == Signal.ENTER:
+            validation_result = self._validate_entry_spreads(
+                signal_result, total_spread_cost, actual_fees, execution_spreads
+            )
+        elif signal == Signal.EXIT:
+            validation_result = self._validate_exit_spreads(
+                signal_result, total_spread_cost, actual_fees, execution_spreads
+            )
+        else:  # HOLD
+            return False  # Don't trade on HOLD signals
+        
+        # Update rejection counter
+        if not validation_result:
+            self._spread_rejection_counter += 1
+        
+        # Periodic spread monitoring (every 60 seconds)
+        current_time = asyncio.get_event_loop().time()
+        if current_time - self._last_spread_log_time > 60:
+            self._last_spread_log_time = current_time
+            rejection_rate = (self._spread_rejection_counter / max(1, self._spread_check_counter)) * 100
+            self.logger.info(
+                f"📊 Spread monitoring stats: checks={self._spread_check_counter}, "
+                f"rejections={self._spread_rejection_counter} ({rejection_rate:.1f}%), "
+                f"current_spreads={total_spread_cost:.3f}%",
+                spot_spread=f"{execution_spreads['spot']:.3f}%",
+                futures_spread=f"{execution_spreads['futures']:.3f}%"
+            )
+        
+        return validation_result
+
+    def _get_current_signal_with_stats(self):
+        """Get current arbitrage signal with full ArbStats."""
+        if len(self.historical_spreads['spot_vs_futures']) < 50:
+            # Return fallback signal for insufficient data
+            from trading.analysis.arbitrage_signals import ArbSignal, ArbStats
+            return ArbSignal(
+                signal=Signal.HOLD,
+                mexc_vs_gateio_futures=ArbStats(0, 0, 0, self.spot_vs_futures_spread),
+                gateio_spot_vs_futures=ArbStats(0, 0, 0, self._calculate_execution_spreads()['total'])
+            )
+        
+        return calculate_arb_signals(
+            mexc_vs_gateio_futures_history=self.historical_spreads['spot_vs_futures'],
+            gateio_spot_vs_futures_history=self.historical_spreads['execution_spreads'],
+            current_mexc_vs_gateio_futures=self.spot_vs_futures_spread,
+            current_gateio_spot_vs_futures=self._calculate_execution_spreads()['total']
+        )
+
+    def _calculate_actual_fees(self) -> float:
+        """Calculate actual trading fees from exchange configurations."""
+        # Get fees from context parameters (these should be set from exchange configs)
+        spot_fee = getattr(self.context.params, 'spot_fee', 0.001)  # 0.1% default
+        futures_fee = getattr(self.context.params, 'fut_fee', 0.001)  # 0.1% default
+        
+        # Convert to percentage
+        return (spot_fee + futures_fee) * 100
+
+    def _validate_entry_spreads(self, signal_result, total_spread_cost: float, 
+                               actual_fees: float, execution_spreads: dict) -> bool:
+        """
+        Validate spreads for ENTRY signals using dynamic ArbStats thresholds.
+        
+        For entries, we care most about:
+        1. The arbitrage opportunity exceeds statistical entry threshold
+        2. Total costs (spreads + fees) don't consume too much of the edge
+        3. Current spreads aren't abnormally high
+        """
+        # Extract ArbStats for dynamic thresholds
+        mexc_stats = signal_result.mexc_vs_gateio_futures
+        
+        # 1. Check if opportunity exceeds dynamic entry threshold (25th percentile of mins)
+        entry_edge = abs(mexc_stats.current - mexc_stats.min_25pct)
+        
+        # 2. Calculate total trading costs
+        total_costs = total_spread_cost + actual_fees
+        
+        # 3. Ensure sufficient profit margin after costs
+        net_edge = abs(mexc_stats.current) - total_costs
+        required_profit = self.min_profit_margin
+        
+        # Entry validation logic
+        if net_edge < required_profit:
+            self.logger.warning(
+                f"⚠️ Entry validation failed: net_edge={net_edge:.3f}% < "
+                f"required={required_profit:.3f}% | "
+                f"opportunity={abs(mexc_stats.current):.3f}%, costs={total_costs:.3f}%",
+                entry_threshold=f"{mexc_stats.min_25pct:.3f}%",
+                spot_spread=f"{execution_spreads['spot']:.3f}%",
+                futures_spread=f"{execution_spreads['futures']:.3f}%",
+                fees=f"{actual_fees:.3f}%"
+            )
+            return False
+        
+        # 4. Check if current spreads are within acceptable range (relaxed for good opportunities)
+        max_spread_multiplier = 2.0 if abs(mexc_stats.current) > abs(mexc_stats.mean) * 1.5 else 1.0
+        adjusted_max_spread = self.max_acceptable_spread * max_spread_multiplier
+        
+        if total_spread_cost > adjusted_max_spread:
+            self.logger.warning(
+                f"⚠️ Entry validation failed: spreads={total_spread_cost:.3f}% > "
+                f"adjusted_max={adjusted_max_spread:.3f}% (multiplier={max_spread_multiplier:.1f})",
+                opportunity_quality=f"{abs(mexc_stats.current):.3f}% vs mean {abs(mexc_stats.mean):.3f}%"
+            )
+            return False
+        
+        # Success logging
+        self.logger.info(
+            f"✅ Entry validation passed: net_edge={net_edge:.3f}% > required={required_profit:.3f}%",
+            opportunity=f"{abs(mexc_stats.current):.3f}%",
+            entry_threshold=f"{mexc_stats.min_25pct:.3f}%",
+            costs=f"{total_costs:.3f}%",
+            spreads=f"{total_spread_cost:.3f}%",
+            fees=f"{actual_fees:.3f}%"
+        )
+        return True
+
+    def _validate_exit_spreads(self, signal_result, total_spread_cost: float,
+                              actual_fees: float, execution_spreads: dict) -> bool:
+        """
+        Validate spreads for EXIT signals using dynamic ArbStats thresholds.
+        
+        For exits, we care most about:
+        1. We're in a profitable exit zone (above 25th percentile of maxes)
+        2. Exit costs don't erode existing profit too much
+        3. Better to exit with lower costs than wait for perfect opportunity
+        """
+        # Extract ArbStats for dynamic thresholds
+        gateio_stats = signal_result.gateio_spot_vs_futures
+        
+        # For exits, be more permissive on spreads since timing is critical
+        exit_edge = gateio_stats.current - gateio_stats.max_25pct
+        
+        # Calculate exit costs (generally should be lower threshold than entry)
+        total_costs = total_spread_cost + actual_fees
+        
+        # For exits, allow higher spread costs if we're in good exit territory
+        exit_spread_tolerance = self.max_acceptable_spread * 1.5  # 50% more permissive
+        
+        if total_spread_cost > exit_spread_tolerance:
+            self.logger.warning(
+                f"⚠️ Exit validation failed: spreads={total_spread_cost:.3f}% > "
+                f"exit_tolerance={exit_spread_tolerance:.3f}%",
+                exit_signal_strength=f"{exit_edge:.3f}%",
+                exit_threshold=f"{gateio_stats.max_25pct:.3f}%"
+            )
+            return False
+        
+        # More permissive profit check for exits (preserve capital, don't optimize for max profit)
+        min_exit_profit = self.min_profit_margin * 0.5  # Half the entry requirement
+        if exit_edge < min_exit_profit:
+            self.logger.warning(
+                f"⚠️ Exit validation failed: exit_edge={exit_edge:.3f}% < "
+                f"min_exit_profit={min_exit_profit:.3f}%",
+                current_signal=f"{gateio_stats.current:.3f}%",
+                exit_threshold=f"{gateio_stats.max_25pct:.3f}%"
+            )
+            return False
+        
+        # Success logging
+        self.logger.info(
+            f"✅ Exit validation passed: exit_edge={exit_edge:.3f}% > min={min_exit_profit:.3f}%",
+            exit_signal=f"{gateio_stats.current:.3f}%",
+            exit_threshold=f"{gateio_stats.max_25pct:.3f}%",
+            costs=f"{total_costs:.3f}%",
+            spread_tolerance=f"{exit_spread_tolerance:.3f}%"
+        )
+        return True
+
+    def _check_arbitrage_signal(self) -> Signal:
+        """
+        Check for arbitrage entry/exit signals using dynamic thresholds.
+        
+        Returns:
+            Signal enum (ENTER, EXIT, or HOLD)
+        """
+        try:
+            # Ensure we have enough historical data
+            if len(self.historical_spreads['spot_vs_futures']) < 50:
+                return Signal.HOLD
+            
+            # Generate signal using current market data with historical context
+            signal_result = calculate_arb_signals(
+                mexc_vs_gateio_futures_history=self.historical_spreads['spot_vs_futures'],
+                gateio_spot_vs_futures_history=self.historical_spreads['execution_spreads'],
+                current_mexc_vs_gateio_futures=self.spot_vs_futures_spread,
+                current_gateio_spot_vs_futures=self._calculate_execution_spreads()['total']
+            )
+            
+            return signal_result.signal
+            
+        except Exception as e:
+            self.logger.error(f"❌ Error checking arbitrage signal: {e}")
+            return Signal.HOLD
+
+    async def _should_exit_positions_signal_based(self) -> bool:
+        """Check if should exit existing positions using signal-based approach."""
+        if not self.context.positions_state.has_positions:
+            return False
+
+        # Check for EXIT signal or timeout/profit conditions
+        signal = self._check_arbitrage_signal()
+        
+        # Traditional exit conditions (timeout, profit target)
+        traditional_exit = await self._should_exit_positions()
+        
+        # Exit if signal says EXIT OR traditional conditions are met
+        if signal == Signal.EXIT:
+            self.logger.info("🔄 EXIT signal detected - closing positions")
+            return True
+        elif traditional_exit:
+            return True
+            
+        return False
+
+    async def _create_opportunity_from_signal(self) -> Optional[ArbitrageOpportunity]:
+        """Create arbitrage opportunity based on current signal and market conditions."""
+        try:
+            spot_ticker = self.spot_ticker
+            futures_ticker = self.futures_ticker
+            
+            # Calculate current spread (this is our opportunity)
+            spread_pct = self.spot_vs_futures_spread
+            
+            # Calculate max quantity based on available liquidity
+            max_quantity = self.round_to_contract_size(
+                min(
+                    spot_ticker.ask_quantity,
+                    futures_ticker.bid_quantity,
+                    self.context.single_order_size_usdt / spot_ticker.ask_price
+                )
+            )
+            
+            # Ensure meets minimum requirements
+            min_spot_qty = self._get_minimum_order_base_quantity('spot')
+            min_futures_qty = self._get_minimum_order_base_quantity('futures')
+            min_required = max(min_spot_qty, min_futures_qty)
+            
+            if max_quantity < min_required:
+                self.logger.debug(f"📊 Insufficient quantity: {max_quantity:.6f} < {min_required:.6f}")
+                return None
+            
+            return ArbitrageOpportunity(
+                direction='enter',
+                spread_pct=spread_pct,
+                buy_price=spot_ticker.ask_price,   # Buy spot
+                sell_price=futures_ticker.bid_price,  # Sell futures
+                max_quantity=max_quantity
+            )
+            
+        except Exception as e:
+            self.logger.error(f"❌ Error creating opportunity from signal: {e}")
+            return None
 
     def get_unified_state_handlers(self) -> Dict[str, StateHandler]:
         """Provide complete unified state handler mapping.
@@ -117,9 +512,15 @@ class SpotFuturesArbitrageTask(BaseArbitrageTask):
 
 
     async def _handle_arbitrage_monitoring(self):
-        """Monitor market and manage positions."""
+        """Monitor market and manage positions with real-time spread validation."""
         try:
             await self.exchange_manager.check_connection(True)
+
+            # Load historical spread data once during first run
+            await self._load_initial_spread_history()
+            
+            # Update historical spreads with current real-time data
+            self._update_historical_spreads()
 
             # Check order updates first
             await self._check_order_updates()
@@ -130,28 +531,28 @@ class SpotFuturesArbitrageTask(BaseArbitrageTask):
 
             await self._process_imbalance()
 
-
-
-            # Check if should exit positions
-            if await self._should_exit_positions():
+            # Check if should exit positions using signal-based approach
+            if await self._should_exit_positions_signal_based():
                 await self._exit_all_positions()
                 return
-            # else:
-            #     # first try market exit if enabled
-            #     if self.context.params.limit_orders_enabled:
-            #         await self._place_limit_orders()
 
-            # Look for new opportunities
+            # Look for new opportunities using signal-based approach
             if not self.context.positions_state.has_positions:
-                opportunity = await self._identify_arbitrage_opportunity()
-                if opportunity:
-                    self.logger.info(f"💰 Opportunity: {opportunity.spread_pct:.4f}% spread")
-                    self.evolve_context(current_opportunity=opportunity)
-                    self._transition_arbitrage_state('analyzing')
-                # else:
-                #     # No opportunity found, place limit orders if enabled
-                #     if self.context.params.limit_orders_enabled:
-                #         await self._place_limit_orders()
+                # Check arbitrage signal and validate spreads
+                signal = self._check_arbitrage_signal()
+                spread_valid = await self._validate_spread_profitability(signal)
+                
+                if signal == Signal.ENTER and spread_valid:
+                    # Create opportunity based on current market conditions
+                    opportunity = await self._create_opportunity_from_signal()
+                    if opportunity:
+                        self.logger.info(f"💰 Signal-based opportunity: {opportunity.spread_pct:.4f}% spread")
+                        self.evolve_context(current_opportunity=opportunity)
+                        self._transition_arbitrage_state('analyzing')
+                elif signal == Signal.ENTER and not spread_valid:
+                    self.logger.debug("🚫 Entry signal detected but spread validation failed")
+                elif signal != Signal.HOLD:
+                    self.logger.debug(f"📊 Signal: {signal.value} (not applicable for current state)")
 
         except Exception as e:
             self.logger.error(f"Monitoring failed: {e}")
@@ -866,6 +1267,10 @@ async def create_spot_futures_arbitrage_task(
         futures_exchange=futures_exchange
     )
     await task.start()
+    
+    # Load initial spread history after exchange connections are established
+    await task._load_initial_spread_history()
+    
     return task
 
 

@@ -7,7 +7,7 @@ datasources:
     database: arbitrage_data
     user: arbitrage_user
     secureJsonData:
-      password: qCcmLMmWTL9f3su9rK4dbc4I
+      password: dev_password_2024
     jsonData:
       sslmode: disable
       maxOpenConns: 5

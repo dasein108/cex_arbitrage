@@ -1,23 +1,18 @@
 
-import asyncio
-import argparse
 import pickle
-import traceback
-from datetime import datetime, timedelta
+from datetime import datetime
 from pathlib import Path
-from typing import Dict, List, Optional, Any, Tuple
-import logging
+from typing import  List, Optional
 import pandas as pd
 
 # Import exchange factory for simplified factory pattern
 from config.config_manager import HftConfig
 from exchanges.structs.enums import ExchangeEnum, KlineInterval
 from exchanges.structs.common import Symbol, Kline
-from exchanges.structs.types import AssetName
-from exchanges.exchange_factory import get_composite_implementation, get_rest_implementation
+from exchanges.exchange_factory import get_rest_implementation
 from infrastructure.logging import HFTLoggerInterface
 from infrastructure.logging.factory import get_logger
-from utils.kline_utils import kline_interval_to_timeframe, round_datetime_to_interval, get_interval_seconds
+from utils.kline_utils import kline_interval_to_timeframe, round_datetime_to_interval
 
 
 # Import exchange modules to trigger auto-registration
@@ -31,20 +26,20 @@ class CandlesLoader:
     with consistent output format and comprehensive error handling.
     """
     
-    def __init__(self, output_dir: str = "data", logger: HFTLoggerInterface = None):
+    def __init__(self, output_dir: str = "klines", logger: HFTLoggerInterface = None):
         """
         Initialize the candles downloader.
         
         Args:
             output_dir: Directory to save CSV files (default: data)
         """
-        self.output_dir = Path(output_dir)
-        self.output_dir.mkdir(parents=True, exist_ok=True)
+        self.cache_dir = HftConfig.cache_dir / output_dir
+        self.cache_dir.mkdir(parents=True, exist_ok=True)
         self.logger = logger or get_logger(__name__)
         # Initialize configuration manager
         self.config = HftConfig()
         
-        self.logger.info(f"CandlesDownloader initialized with output directory: {self.output_dir}")
+        self.logger.info(f"CandlesDownloader initialized with output directory: {self.cache_dir}")
 
     def _generate_filename(self, exchange: str, symbol: Symbol, timeframe: KlineInterval,
                           start_date: datetime, end_date: datetime) -> str:
@@ -54,8 +49,8 @@ class CandlesLoader:
         Format: {exchange}_{symbol}_{timeframe}_{start}_{end}.pkl
         Example: mexc_BTC_USDT_1h_20240101_20240201.pkl
         """
-        start_str = start_date.strftime('%Y%m%d')
-        end_str = end_date.strftime('%Y%m%d')
+        start_str = start_date.strftime('%Y%m%d%H%M')
+        end_str = end_date.strftime('%Y%m%d%H%M')
         tf = kline_interval_to_timeframe(timeframe)
 
         return f"{exchange}_{symbol.base}_{symbol.quote}_{tf}_{start_str}_{end_str}.pkl"
@@ -66,9 +61,7 @@ class CandlesLoader:
         
         Args:
             klines: List of Kline objects from exchange
-            exchange: Exchange name
-            timeframe: Timeframe string
-            
+
         Returns:
             DataFrame with klines data
         """
@@ -125,7 +118,7 @@ class CandlesLoader:
         
         # Generate paths
         filename = filename or self._generate_filename(exchange.value, symbol, timeframe, start_date, end_date)
-        pickle_path = self.output_dir / filename
+        pickle_path = self.cache_dir / filename
         
         # Check cache first
         if not force_download and pickle_path.exists():

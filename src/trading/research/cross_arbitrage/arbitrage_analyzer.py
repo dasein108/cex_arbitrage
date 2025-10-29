@@ -23,8 +23,25 @@ import os
 # Add src to path for imports
 sys.path.append(os.path.join(os.path.dirname(__file__), '..', '..'))
 
-from applications.tools.candles_downloader import CandlesDownloader
-from exchanges.structs.enums import ExchangeEnum
+from trading.research.cross_arbitrage.book_ticker_source import CandlesBookTickerSource
+from exchanges.structs.enums import ExchangeEnum, KlineInterval
+from exchanges.structs import Symbol, AssetName
+
+
+class AnalyzerKeys:
+    """Static keys for column names and arbitrage calculations."""
+    
+    # Exchange column keys
+    mexc_bid = f'{ExchangeEnum.MEXC.value}_bid_price'
+    mexc_ask = f'{ExchangeEnum.MEXC.value}_ask_price'
+    gateio_spot_bid = f'{ExchangeEnum.GATEIO.value}_bid_price'
+    gateio_spot_ask = f'{ExchangeEnum.GATEIO.value}_ask_price'
+    gateio_futures_bid = f'{ExchangeEnum.GATEIO_FUTURES.value}_bid_price'
+    gateio_futures_ask = f'{ExchangeEnum.GATEIO_FUTURES.value}_ask_price'
+    
+    # Arbitrage calculation keys
+    mexc_vs_gateio_futures_arb = f'{ExchangeEnum.MEXC.value}_vs_{ExchangeEnum.GATEIO_FUTURES.value}_arb'
+    gateio_spot_vs_futures_arb = f'{ExchangeEnum.GATEIO.value}_vs_{ExchangeEnum.GATEIO_FUTURES.value}_arb'
 
 
 class ArbitrageAnalyzer:
@@ -35,18 +52,15 @@ class ArbitrageAnalyzer:
     accounting for trading fees and market spreads.
     """
     
-    SPREAD_BPS = 5  # 0.05% spread assumption for bid/ask simulation
+    # Remove SPREAD_BPS - now handled by BookTickerSource
     TOTAL_FEES = 0.25  # 0.1% + 0.05% + 0.05% total fees
     
-    def __init__(self, cache_dir: str = "cache", exchanges: Optional[List[ExchangeEnum]] = None):
-        """Initialize analyzer with configurable cache directory."""
+    def __init__(self, exchanges: Optional[List[ExchangeEnum]] = None):
+        """Initialize analyzer with modern BookTickerSource."""
         self.exchanges = exchanges or [ExchangeEnum.MEXC, ExchangeEnum.GATEIO, ExchangeEnum.GATEIO_FUTURES]
-
-        self.cache_dir = Path(__file__).parent / cache_dir
-        self.cache_dir.mkdir(exist_ok=True)
-        self.downloader = CandlesDownloader(output_dir=str(self.cache_dir))
+        self.book_ticker_source = CandlesBookTickerSource()
     
-    async def run_analysis(self, symbol: str, days: int = 7) -> Tuple[pd.DataFrame, Dict[str, Any]]:
+    async def run_analysis(self, symbol: Symbol, days: int = 7) -> Tuple[pd.DataFrame, Dict[str, Any]]:
         """
         Run complete arbitrage analysis for given symbol and time period.
         
@@ -59,11 +73,8 @@ class ArbitrageAnalyzer:
         """
         print(f"🚀 Starting arbitrage analysis for {symbol} ({days} days)")
         
-        # Download candle data
+        # Load data using BookTickerSource (includes bid/ask prices)
         df = await self._download_and_merge_data(symbol, days)
-        
-        # Simulate bid/ask prices
-        df = self._simulate_bid_ask_prices(df)
         
         # Calculate arbitrage opportunities
         df = self._calculate_arbitrage_metrics(df)
@@ -74,83 +85,63 @@ class ArbitrageAnalyzer:
         results['days_analyzed'] = days
         results['total_periods'] = len(df)
         
-        # Save results
-        output_file = self.cache_dir / f"{symbol}_arbitrage_analysis_{days}d.csv"
-        df.to_csv(output_file, index=False)
-        print(f"💾 Results saved to: {output_file}")
+        # Analysis completed
+        print(f"💾 Analysis completed: {len(df)} periods analyzed")
         
         return df, results
     
-    async def _download_and_merge_data(self, symbol: str, days: int) -> pd.DataFrame:
-        """Download candles from all 3 exchanges and merge by timestamp."""
-        print(f"📥 Downloading {symbol} candles from 3 exchanges...")
+    async def _download_and_merge_data(self, symbol: Symbol, days: int) -> pd.DataFrame:
+        """Download book ticker data using modern BookTickerSource architecture."""
+        print(f"📥 Loading {symbol} book ticker data from 3 exchanges...")
         
 
-        dfs = {}
-        for exchange in self.exchanges:
-            try:
-                prefix = exchange.value.lower()
-                csv_path = await self.downloader.download_candles(
-                    exchange=exchange,
-                    symbol=symbol,
-                    timeframe="5m",
-                    days=days
-                )
-                
-                df = pd.read_csv(csv_path)
-                df['timestamp'] = pd.to_datetime(df['datetime'])
-                df = df.set_index('timestamp')
-                
-                # Rename columns with exchange prefix
-                price_cols = ['open', 'high', 'low', 'close', 'volume']
-                for col in price_cols:
-                    df[f"{prefix}_{col}"] = df[col]
-                
-                dfs[prefix] = df[[f"{prefix}_{col}" for col in price_cols]]
-                print(f"✅ {exchange.value}: {len(df)} candles")
-                
-            except Exception as e:
-                print(f"❌ Failed to download {exchange.value}: {e}")
-                raise
-        
-        # Merge all dataframes by timestamp
-        merged_df = pd.concat(dfs.values(), axis=1)
-        merged_df = merged_df.fillna(method='ffill').dropna()
-        
-        print(f"🔀 Merged data: {len(merged_df)} aligned periods")
-        return merged_df.reset_index()
-    
-    def _simulate_bid_ask_prices(self, df: pd.DataFrame) -> pd.DataFrame:
-        """Simulate bid/ask prices from close prices using spread assumption."""
-        spread_factor = self.SPREAD_BPS / 10000  # Convert bps to decimal
-        
-        for exchange in self.exchanges:
-            prefix = exchange.value.lower()
-            close_col = f"{prefix}_close"
-            if close_col in df.columns:
-                df[f"{prefix}_bid_price"] = df[close_col] * (1 - spread_factor)
-                df[f"{prefix}_ask_price"] = df[close_col] * (1 + spread_factor)
-        
-        return df
-    
-    def _calculate_arbitrage_metrics(self, df: pd.DataFrame) -> pd.DataFrame:
-        """Calculate the 4 arbitrage opportunities as specified."""
-        
-        # 1. MEXC vs Gate.io Futures (market order)
-        df['mexc_vs_gateio_futures_arb'] = (
-            (df['gateio_futures_bid_price'] - df['mexc_spot_ask_price']) / 
-            df['gateio_futures_bid_price'] * 100
+        # Use BookTickerSource for data loading
+        df = await self.book_ticker_source.get_multi_exchange_data(
+            exchanges=self.exchanges,
+            symbol=symbol,
+            hours=days * 24,
+            timeframe=KlineInterval.MINUTE_5
         )
         
-        # 2. Gate.io Spot vs Futures
-        df['gateio_spot_vs_futures_arb'] = (
-            (df['gateio_spot_bid_price'] - df['gateio_futures_ask_price']) / 
-            df['gateio_spot_bid_price'] * 100
+        print(f"🔀 Loaded data: {len(df)} aligned periods")
+        return df
+    
+    def _validate_required_columns(self, df: pd.DataFrame) -> None:
+        """Validate that all required columns exist in the dataframe."""
+        required_columns = [
+            AnalyzerKeys.mexc_ask,
+            AnalyzerKeys.mexc_bid,
+            AnalyzerKeys.gateio_spot_bid,
+            AnalyzerKeys.gateio_spot_ask,
+            AnalyzerKeys.gateio_futures_bid,
+            AnalyzerKeys.gateio_futures_ask
+        ]
+        
+        missing_columns = [col for col in required_columns if col not in df.columns]
+        if missing_columns:
+            raise ValueError(f"Missing required columns: {missing_columns}")
+    
+    def _calculate_arbitrage_metrics(self, df: pd.DataFrame) -> pd.DataFrame:
+        """Calculate arbitrage opportunities using AnalyzerKeys."""
+        
+        # Validate required columns exist
+        self._validate_required_columns(df)
+        
+        # 1. MEXC vs Gate.io Futures arbitrage
+        df[AnalyzerKeys.mexc_vs_gateio_futures_arb] = (
+            (df[AnalyzerKeys.gateio_futures_bid] - df[AnalyzerKeys.mexc_ask]) / 
+            df[AnalyzerKeys.gateio_futures_bid] * 100
+        )
+        
+        # 2. Gate.io Spot vs Futures arbitrage
+        df[AnalyzerKeys.gateio_spot_vs_futures_arb] = (
+            (df[AnalyzerKeys.gateio_spot_bid] - df[AnalyzerKeys.gateio_futures_ask]) / 
+            df[AnalyzerKeys.gateio_spot_bid] * 100
         )
         
         # Calculate total arbitrage sum
         df['total_arbitrage_sum'] = (
-            df['mexc_vs_gateio_futures_arb'] + df['gateio_spot_vs_futures_arb']
+            df[AnalyzerKeys.mexc_vs_gateio_futures_arb] + df[AnalyzerKeys.gateio_spot_vs_futures_arb]
         )
         
         # Apply fees
@@ -171,23 +162,23 @@ class ArbitrageAnalyzer:
             'avg_profit_when_profitable': profitable_df['total_arbitrage_sum_fees'].mean() if len(profitable_df) > 0 else 0,
             'max_profit': df['total_arbitrage_sum_fees'].max(),
             'min_profit': df['total_arbitrage_sum_fees'].min(),
-            
+
             # Entry point analysis (percentiles of total arbitrage sum)
             'entry_thresholds': {
                 '25th_percentile': df['total_arbitrage_sum'].quantile(0.25),
                 '10th_percentile': df['total_arbitrage_sum'].quantile(0.10),
                 '5th_percentile': df['total_arbitrage_sum'].quantile(0.05),
             },
-            
+
             # Individual arbitrage metrics
-            'mexc_futures_arb_stats': self._metric_stats(df, 'mexc_vs_gateio_futures_arb'),
-            'spot_futures_arb_stats': self._metric_stats(df, 'gateio_spot_vs_futures_arb'),
+            'mexc_futures_arb_stats': self._metric_stats(df, AnalyzerKeys.mexc_vs_gateio_futures_arb),
+            'spot_futures_arb_stats': self._metric_stats(df, AnalyzerKeys.gateio_spot_vs_futures_arb),
             'total_arb_stats': self._metric_stats(df, 'total_arbitrage_sum_fees'),
         }
         
         # Profitable streak analysis
         results['profitable_streaks'] = self._analyze_streaks(df['is_profitable'])
-        
+
         return results
     
     def _metric_stats(self, df: pd.DataFrame, column: str) -> Dict[str, float]:

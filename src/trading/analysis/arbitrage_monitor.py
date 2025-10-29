@@ -68,10 +68,10 @@ class ArbMonitor:
         if len(self.mexc_vs_gateio_history) < 100:
             return None
         
-        # Calculate signal
+        # Calculate signal using numpy arrays for better performance
         result = calculate_arb_signals(
-            list(self.mexc_vs_gateio_history),
-            list(self.gateio_spot_vs_futures_history),
+            np.array(self.mexc_vs_gateio_history, dtype=np.float64),
+            np.array(self.gateio_spot_vs_futures_history, dtype=np.float64),
             mexc_vs_gateio_futures_spread,
             gateio_spot_vs_futures_spread
         )
@@ -95,15 +95,13 @@ class ArbMonitor:
             self.logger.info(
                 "🟢 ENTER SIGNAL - Start arbitrage",
                 mexc_vs_gateio=f"{signal.mexc_vs_gateio_futures.current:.4f}",
-                threshold=f"{signal.mexc_vs_gateio_futures.min_25pct:.4f}",
-                reason=signal.reason
+                threshold=f"{signal.mexc_vs_gateio_futures.min_25pct:.4f}"
             )
         elif signal.signal == Signal.EXIT:
             self.logger.info(
                 "🔴 EXIT SIGNAL - Close arbitrage",
                 gateio_spot_vs_futures=f"{signal.gateio_spot_vs_futures.current:.4f}",
-                threshold=f"{signal.gateio_spot_vs_futures.max_25pct:.4f}",
-                reason=signal.reason
+                threshold=f"{signal.gateio_spot_vs_futures.max_25pct:.4f}"
             )
         else:
             self.logger.debug(

@@ -430,7 +430,6 @@ class GateioPublicFuturesRestInterface(GateioBaseFuturesRestInterface, PublicFut
             klines: List[Kline] = []
             for k in response_data:
                 try:
-                    # Поддержка формата dict
                     ts = int(k.get("t", 0)) * 1000
                     open_price = float(k.get("o", 0))
                     high_price = float(k.get("h", 0))
@@ -476,19 +475,6 @@ class GateioPublicFuturesRestInterface(GateioBaseFuturesRestInterface, PublicFut
         interval_seconds = self._get_interval_seconds(timeframe)
         if interval_seconds == 0:
             return await self.get_klines(symbol, timeframe, date_from, date_to)
-
-        # Conservative safety window similar to spot implementation
-        MAX_SAFE_DAYS = 2
-        MAX_SAFE_DURATION_SECONDS = MAX_SAFE_DAYS * 24 * 3600
-        total_duration_seconds = int((date_to - date_from).total_seconds())
-
-        if total_duration_seconds > MAX_SAFE_DURATION_SECONDS:
-            adjusted_date_from = datetime.fromtimestamp(date_to.timestamp() - MAX_SAFE_DURATION_SECONDS)
-            self.logger.warning(
-                f"Adjusted futures start date from {date_from} to {adjusted_date_from} due to API historical limits"
-            )
-            date_from = adjusted_date_from
-            total_duration_seconds = MAX_SAFE_DURATION_SECONDS
 
         # Compute batch size similar to spot conservative defaults
         batch_size = 500  # Fixed batch size for simplicity, same as spot implementation

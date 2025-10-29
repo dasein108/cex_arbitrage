@@ -8,7 +8,7 @@
 set -e
 # Configuration
 SERVER="31.192.233.13"
-SSH_KEY="~/.ssh/deploy_new"
+SSH_KEY="~/.ssh/deploy_ci_o"
 REMOTE_PATH="/opt/arbitrage"
 LOCAL_PATH="/Users/dasein/dev/cex_arbitrage"
 

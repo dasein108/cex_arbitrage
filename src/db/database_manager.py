@@ -532,7 +532,10 @@ class DatabaseManager:
     
     async def insert_book_ticker_snapshots_batch(self, exchange_enum: ExchangeEnum, symbol: Symbol, snapshots: List[BookTickerSnapshot]) -> int:
         """
-        Insert multiple book ticker snapshots with compatibility for existing schema.
+        Insert multiple book ticker snapshots with HFT-optimized batch processing.
+        
+        Uses proper batch inserts with chunking for optimal performance targeting <5ms operations.
+        Maintains existing deduplication logic and schema compatibility.
         
         Args:
             exchange_enum: Exchange enum
@@ -569,24 +572,32 @@ class DatabaseManager:
                 created_at = NOW()
         """
         
-        count = 0
+        # Prepare batch data with float-only policy
+        batch_data = []
+        for snapshot in deduplicated_snapshots:
+            batch_data.append((
+                exchange_name,
+                symbol.base.upper(),
+                symbol.quote.upper(),
+                float(snapshot.bid_price),    # Float-only policy
+                float(snapshot.bid_qty),      # Float-only policy
+                float(snapshot.ask_price),    # Float-only policy
+                float(snapshot.ask_qty),      # Float-only policy
+                snapshot.timestamp
+            ))
+        
+        # Process in chunks of 10 for optimal performance as per HFT requirements
+        total_inserted = 0
+        chunk_size = 10
+        
         async with self._pool.acquire() as conn:
             async with conn.transaction():
-                for snapshot in deduplicated_snapshots:
-                    await conn.execute(
-                        query,
-                        exchange_name,
-                        symbol.base.upper(),
-                        symbol.quote.upper(),
-                        float(snapshot.bid_price),    # Float-only policy
-                        float(snapshot.bid_qty),      # Float-only policy
-                        float(snapshot.ask_price),    # Float-only policy
-                        float(snapshot.ask_qty),      # Float-only policy
-                        snapshot.timestamp
-                    )
-                    count += 1
+                for i in range(0, len(batch_data), chunk_size):
+                    chunk = batch_data[i:i + chunk_size]
+                    await conn.executemany(query, chunk)
+                    total_inserted += len(chunk)
         
-        return count
+        return total_inserted
     
     async def get_latest_book_ticker_snapshots(
         self, 

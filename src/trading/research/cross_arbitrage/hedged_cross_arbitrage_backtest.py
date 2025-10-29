@@ -29,13 +29,15 @@ import matplotlib.pyplot as plt
 import sys
 import os
 
+from exchanges.structs import Symbol, AssetName
+
 # Add src to path for imports
 src_path = os.path.join(os.path.dirname(__file__), 'src')
 sys.path.insert(0, src_path)
 
 from trading.analysis.structs import Signal
-from trading.research.cross_arbitrage.arbitrage_analyzer import ArbitrageAnalyzer
-
+from trading.research.cross_arbitrage.arbitrage_analyzer import ArbitrageAnalyzer, AnalyzerKeys
+from trading.analysis.arbitrage_signals import ArbSignal, ArbStats, Signal, calculate_arb_signals
 
 
 class PositionStatus(Enum):
@@ -68,8 +70,8 @@ class Position:
 @dataclass
 class BacktestConfig:
     """Backtesting configuration parameters."""
-    symbol: str = "F_USDT"
-    days: int = 7
+    symbol: Symbol = Symbol(AssetName("F"), AssetName("USDT"))
+    days: int = 3
     timeframe: str = "5m"
     min_transfer_time_minutes: int = 10
     entry_threshold_percentile: float = 25.0  # Use 25th percentile for entry
@@ -117,19 +119,19 @@ class HedgedCrossArbitrageBacktest:
         self.cache_dir = Path(__file__).parent / cache_dir
         self.cache_dir.mkdir(exist_ok=True)
         
-        # Initialize data analyzer if available
-        self.analyzer = ArbitrageAnalyzer(cache_dir=str(self.cache_dir))
+        # Initialize data analyzer with new constructor
+        self.analyzer = ArbitrageAnalyzer()
 
         
         # Track positions and state
         self.positions: List[Position] = []
         self.open_positions: List[Position] = []
         self.historical_spreads = {
-            'mexc_vs_gateio_futures': [],
-            'gateio_spot_vs_futures': []
+            'mexc_vs_gateio_futures': np.array([], dtype=np.float64),
+            'gateio_spot_vs_futures': np.array([], dtype=np.float64)
         }
     
-    async def run_backtest(self, symbol: Optional[str] = None, days: Optional[int] = None) -> Dict[str, Any]:
+    async def run_backtest(self, symbol: Optional[Symbol] = None, days: Optional[int] = None) -> Dict[str, Any]:
         """
         Run complete backtest for specified symbol and period.
         
@@ -166,8 +168,8 @@ class HedgedCrossArbitrageBacktest:
             'positions': self.positions,
             'df': df_with_signals,
             'total_periods': len(df_with_signals),
-            'backtest_start': df_with_signals['timestamp'].min(),
-            'backtest_end': df_with_signals['timestamp'].max()
+            'backtest_start': df_with_signals.index.min(),
+            'backtest_end': df_with_signals.index.max()
         }
         
         # Save results
@@ -182,10 +184,7 @@ class HedgedCrossArbitrageBacktest:
         # Use existing analyzer to get prepared data
         df, _ = await self.analyzer.run_analysis(self.config.symbol, self.config.days)
         
-        # Sort by timestamp
-        df = df.sort_values('timestamp').reset_index(drop=True)
-        
-        print(f"✅ Loaded {len(df)} periods from {df['timestamp'].min()} to {df['timestamp'].max()}")
+        print(f"✅ Loaded {len(df)} periods from {df.index.min()} to {df.index.max()}")
         
         return df
 
@@ -202,11 +201,17 @@ class HedgedCrossArbitrageBacktest:
         cumulative_pnl = 0.0
         
         for idx, row in df.iterrows():
-            current_time = row['timestamp']
+            current_time = idx
             
-            # Update historical spreads for signal calculation
-            self.historical_spreads['mexc_vs_gateio_futures'].append(row['mexc_vs_gateio_futures_arb'])
-            self.historical_spreads['gateio_spot_vs_futures'].append(row['gateio_spot_vs_futures_arb'])
+            # Update historical spreads for signal calculation using numpy arrays
+            self.historical_spreads['mexc_vs_gateio_futures'] = np.append(
+                self.historical_spreads['mexc_vs_gateio_futures'], 
+                row[AnalyzerKeys.mexc_vs_gateio_futures_arb]
+            )
+            self.historical_spreads['gateio_spot_vs_futures'] = np.append(
+                self.historical_spreads['gateio_spot_vs_futures'], 
+                row[AnalyzerKeys.gateio_spot_vs_futures_arb]
+            )
             
             # Keep only recent history (e.g., last 500 periods for signal calculation)
             max_history = 500
@@ -240,22 +245,18 @@ class HedgedCrossArbitrageBacktest:
         
         # Ensure we have enough historical data
         if len(self.historical_spreads['mexc_vs_gateio_futures']) < 50:
-            from trading.analysis.arbitrage_signals import ArbSignal, ArbStats, Signal
             return ArbSignal(
                 signal=Signal.HOLD,
-                mexc_vs_gateio_futures=ArbStats(0, 0, 0, row['mexc_vs_gateio_futures_arb']),
-                gateio_spot_vs_futures=ArbStats(0, 0, 0, row['gateio_spot_vs_futures_arb']),
-                reason="Insufficient historical data"
+                mexc_vs_gateio_futures=ArbStats(0, 0, 0, row[AnalyzerKeys.mexc_vs_gateio_futures_arb]),
+                gateio_spot_vs_futures=ArbStats(0, 0, 0, row[AnalyzerKeys.gateio_spot_vs_futures_arb])
             )
         
-        # Use proven synchronous signal generation
-        from trading.analysis.arbitrage_signals import calculate_arb_signals
-        
+
         return calculate_arb_signals(
             mexc_vs_gateio_futures_history=self.historical_spreads['mexc_vs_gateio_futures'],
             gateio_spot_vs_futures_history=self.historical_spreads['gateio_spot_vs_futures'],
-            current_mexc_vs_gateio_futures=row['mexc_vs_gateio_futures_arb'],
-            current_gateio_spot_vs_futures=row['gateio_spot_vs_futures_arb']
+            current_mexc_vs_gateio_futures=row[AnalyzerKeys.mexc_vs_gateio_futures_arb],
+            current_gateio_spot_vs_futures=row[AnalyzerKeys.gateio_spot_vs_futures_arb]
         )
     
 
@@ -264,30 +265,29 @@ class HedgedCrossArbitrageBacktest:
         action = None
         
         signal = signal_result.signal
-        reason = signal_result.reason
 
         # Check for entry signals
         if (signal == Signal.ENTER and
             len(self.open_positions) < self.config.max_concurrent_positions):
-            action = self._open_position(current_time, row, reason)
+            action = self._open_position(current_time, row)
         
         # Check for exit signals on ready positions
         elif signal == Signal.EXIT:
-            action = self._close_ready_positions(current_time, row, reason)
+            action = self._close_ready_positions(current_time, row)
         
         # Force close positions that have been open too long
         self._force_close_expired_positions(current_time, row)
         
         return action
     
-    def _open_position(self, current_time: datetime, row: pd.Series, reason: str) -> str:
+    def _open_position(self, current_time: datetime, row: pd.Series) -> str:
         """Open a new hedged arbitrage position."""
         position = Position(
             entry_time=current_time,
-            entry_price_mexc=row['mexc_spot_ask_price'],  # Buy MEXC spot
-            entry_price_gateio_futures=row['gateio_futures_bid_price'],  # Sell Gate.io futures
-            entry_spread=row['mexc_vs_gateio_futures_arb'],
-            entry_signal_reason=reason,
+            entry_price_mexc=row[AnalyzerKeys.mexc_ask],  # Buy MEXC spot
+            entry_price_gateio_futures=row[AnalyzerKeys.gateio_futures_bid],  # Sell Gate.io futures
+            entry_spread=row[AnalyzerKeys.mexc_vs_gateio_futures_arb],
+            entry_signal_reason="ENTER signal triggered",
             status=PositionStatus.WAITING_TRANSFER
         )
         
@@ -305,7 +305,7 @@ class HedgedCrossArbitrageBacktest:
                     position.status = PositionStatus.READY_TO_EXIT
                     position.transfer_complete_time = current_time
     
-    def _close_ready_positions(self, current_time: datetime, row: pd.Series, reason: str) -> Optional[str]:
+    def _close_ready_positions(self, current_time: datetime, row: pd.Series) -> Optional[str]:
         """Close positions that are ready to exit."""
         ready_positions = [p for p in self.open_positions if p.status == PositionStatus.READY_TO_EXIT]
         
@@ -314,7 +314,7 @@ class HedgedCrossArbitrageBacktest:
         
         closed_count = 0
         for position in ready_positions:
-            self._close_position(position, current_time, row, reason)
+            self._close_position(position, current_time, row, "EXIT signal triggered")
             closed_count += 1
         
         return f"CLOSE_{closed_count}_POSITIONS"
@@ -334,15 +334,15 @@ class HedgedCrossArbitrageBacktest:
     def _close_position(self, position: Position, current_time: datetime, row: pd.Series, reason: str):
         """Close a specific position and calculate PnL - CORRECTED ARBITRAGE LOGIC."""
         # Exit prices
-        exit_price_gateio_spot = row['gateio_spot_bid_price']  # Sell Gate.io spot
-        exit_price_gateio_futures = row['gateio_futures_ask_price']  # Buy Gate.io futures
+        exit_price_gateio_spot = row[AnalyzerKeys.gateio_spot_bid]  # Sell Gate.io spot
+        exit_price_gateio_futures = row[AnalyzerKeys.gateio_futures_ask]  # Buy Gate.io futures
         
         # CORRECTED ARBITRAGE P&L CALCULATION
         # The profit comes from capturing the spread improvement between entry and exit
         
         # Calculate spread improvement (exit spread - entry spread)
         entry_spread = position.entry_spread / 100  # Convert from percentage to decimal
-        exit_spread = row['gateio_spot_vs_futures_arb'] / 100  # Convert from percentage to decimal
+        exit_spread = row[AnalyzerKeys.gateio_spot_vs_futures_arb] / 100  # Convert from percentage to decimal
         spread_improvement = exit_spread - entry_spread
         
         # Gross profit = spread improvement applied to position size
@@ -358,7 +358,7 @@ class HedgedCrossArbitrageBacktest:
         position.exit_time = current_time
         position.exit_price_gateio_spot = exit_price_gateio_spot
         position.exit_price_gateio_futures = exit_price_gateio_futures
-        position.exit_spread = row['gateio_spot_vs_futures_arb']
+        position.exit_spread = row[AnalyzerKeys.gateio_spot_vs_futures_arb]
         position.exit_signal_reason = reason
         position.pnl = pnl_usd
         position.holding_period_minutes = int((current_time - position.entry_time).total_seconds() / 60)
@@ -535,7 +535,7 @@ class HedgedCrossArbitrageBacktest:
         # 1. Cumulative PnL Chart
         fig1, ax1 = plt.subplots(figsize=(12, 6))
         df = results['df']
-        ax1.plot(df['timestamp'], df['cumulative_pnl'], linewidth=2, color='darkblue')
+        ax1.plot(df.index, df['cumulative_pnl'], linewidth=2, color='darkblue')
         ax1.set_title(f'Cumulative P&L - {results["config"].symbol}', fontsize=14, fontweight='bold')
         ax1.set_xlabel('Time')
         ax1.set_ylabel('Cumulative P&L ($)')
@@ -577,14 +577,14 @@ class HedgedCrossArbitrageBacktest:
         fig3, (ax3a, ax3b) = plt.subplots(2, 1, figsize=(15, 10))
         
         # MEXC vs Gate.io Futures spread
-        ax3a.plot(df['timestamp'], df['mexc_vs_gateio_futures_arb'], alpha=0.7, label='MEXC vs Gate.io Futures')
+        ax3a.plot(df.index, df[AnalyzerKeys.mexc_vs_gateio_futures_arb], alpha=0.7, label='MEXC vs Gate.io Futures')
         ax3a.set_title('Arbitrage Spreads Over Time')
         ax3a.set_ylabel('Spread (%)')
         ax3a.legend()
         ax3a.grid(True, alpha=0.3)
         
         # Gate.io Spot vs Futures spread
-        ax3b.plot(df['timestamp'], df['gateio_spot_vs_futures_arb'], alpha=0.7, 
+        ax3b.plot(df.index, df[AnalyzerKeys.gateio_spot_vs_futures_arb], alpha=0.7, 
                  color='orange', label='Gate.io Spot vs Futures')
         ax3b.set_xlabel('Time')
         ax3b.set_ylabel('Spread (%)')
@@ -595,13 +595,13 @@ class HedgedCrossArbitrageBacktest:
         entry_points = df[df['position_action'].str.contains('OPEN', na=False)]
         exit_points = df[df['position_action'].str.contains('CLOSE', na=False)]
         
-        for _, point in entry_points.iterrows():
-            ax3a.axvline(point['timestamp'], color='green', alpha=0.3, linestyle=':')
-            ax3b.axvline(point['timestamp'], color='green', alpha=0.3, linestyle=':')
+        for idx, point in entry_points.iterrows():
+            ax3a.axvline(idx, color='green', alpha=0.3, linestyle=':')
+            ax3b.axvline(idx, color='green', alpha=0.3, linestyle=':')
             
-        for _, point in exit_points.iterrows():
-            ax3a.axvline(point['timestamp'], color='red', alpha=0.3, linestyle=':')
-            ax3b.axvline(point['timestamp'], color='red', alpha=0.3, linestyle=':')
+        for idx, point in exit_points.iterrows():
+            ax3a.axvline(idx, color='red', alpha=0.3, linestyle=':')
+            ax3b.axvline(idx, color='red', alpha=0.3, linestyle=':')
         
         plt.xticks(rotation=45)
         plt.tight_layout()
@@ -625,8 +625,8 @@ async def main():
     
     # Create backtester with custom config
     config = BacktestConfig(
-        symbol="F_USDT",
-        days=3,
+        symbol=Symbol(AssetName("F"), AssetName("USDT")),
+        days=5,
         min_transfer_time_minutes=10,
         position_size_usd=1000,
         max_concurrent_positions=2

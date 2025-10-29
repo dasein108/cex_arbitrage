@@ -7,7 +7,7 @@
       "Port": 5432,
       "MaintenanceDB": "arbitrage_data",
       "Username": "arbitrage_user",
-      "Password": "",
+      "Password": "dev_password_2024",
       "SSLMode": "prefer",
       "Comment": "Production CEX Arbitrage database on 31.192.233.13",
       "DBRestriction": "arbitrage_data"

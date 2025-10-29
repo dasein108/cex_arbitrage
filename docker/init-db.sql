@@ -135,15 +135,15 @@ CREATE TABLE IF NOT EXISTS funding_rate_snapshots (
     
     -- Funding rate data
     funding_rate NUMERIC(12,8) NOT NULL,  -- Current funding rate (e.g., 0.00010000 for 0.01%)
-    next_funding_time BIGINT NOT NULL,         -- Next funding time (Unix timestamp in milliseconds)
-    next_funding_time TIMESTAMPTZ,       -- Next funding time as datetime for easier analysis
+    next_funding_time BIGINT NOT NULL,    -- Next funding time (Unix timestamp in milliseconds)
+    funding_time BIGINT,                  -- Computed funding time for constraint compatibility
     
     -- Metadata
     created_at TIMESTAMPTZ DEFAULT NOW(),
     
     -- HFT Performance Constraints
     CONSTRAINT chk_funding_rate_bounds CHECK (funding_rate >= -1.0 AND funding_rate <= 1.0),
-    CONSTRAINT chk_funding_time_valid CHECK (funding_time > 0),
+    CONSTRAINT chk_funding_time_valid CHECK (next_funding_time > 0),
     CONSTRAINT chk_funding_timestamp_valid CHECK (timestamp >= '2020-01-01'::timestamptz),
     
     -- Optimized primary key for time-series partitioning

@@ -75,8 +75,11 @@ class BookTickerSnapshotLoader:
         df = self._load_from_cache(cache_key)
         if df is not None:
             self.logger.info(f"  📁 Loaded from cache: {cache_key}")
+            if rounding_seconds:
+                df = self.rescale_to_window(df, rounding_seconds // 60)
+
             return df
-        
+
         # Load from database
         self.logger.info(f"  🗄️  Loading book ticker from database {exchange} {symbol_base} {symbol_quote}...")
         db_manager = await get_database_manager()
@@ -97,32 +100,34 @@ class BookTickerSnapshotLoader:
             df = self.rescale_to_window(df, rounding_seconds // 60)
         
         return df
-    
+
+    # python
     def rescale_to_window(self, df: pd.DataFrame, window_minutes: int = 1) -> pd.DataFrame:
-        """Rescale book ticker data to any window size using OHLC logic."""
-
-        # if window_minutes is None:
-        #     window_minutes = self.rounding_seconds // 60 or 1
-
+        """Rescale book ticker data using the dataframe index as the timestamp."""
         if df.empty:
             return df
-        
-        # Ensure timestamp is datetime
-        if 'timestamp' not in df.columns:
-            return df
-            
+
         df = df.copy()
-        df['timestamp'] = pd.to_datetime(df['timestamp'])
-        
-        # Round timestamps to window boundaries
-        df['timestamp_window'] = df['timestamp'].dt.floor(f'{window_minutes}T')
-        
-        # Group by window intervals and aggregate
-        aggregated = df.groupby('timestamp_window').agg({
-            'bid_price': 'last',    # Use closing prices
-            'ask_price': 'last',
-            'bid_qty': 'mean',      # Average quantities
-            'ask_qty': 'mean'
-        }).reset_index().rename(columns={'timestamp_window': 'timestamp'})
-        
+
+        # Drop rows with invalid timestamps
+        df = df[~df.index.isna()]
+        if df.empty:
+            return df
+
+        # Floor index to window boundaries
+        window_str = f"{max(int(window_minutes), 1)}T"
+        df["timestamp_window"] = df.index.floor(window_str)
+
+        # Build aggregation map for available columns
+        agg_map = {"bid_price": "last", "ask_price": "last"}
+
+        aggregated = (
+            df.groupby("timestamp_window", sort=True)
+            .agg(agg_map)
+            .reset_index()
+            .rename(columns={"timestamp_window": "timestamp"})
+        )
+
+        aggregated.set_index("timestamp", inplace=True)
+
         return aggregated
