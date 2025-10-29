@@ -23,8 +23,7 @@ from exchanges.structs import Symbol, BookTicker, Trade, ExchangeEnum
 from exchanges.exchange_factory import get_composite_implementation
 from exchanges.adapters import BindedEventHandlersAdapter
 from infrastructure.networking.websocket.structs import PublicWebsocketChannelType
-from db import BookTickerSnapshot
-from db.models import TradeSnapshot, FundingRateSnapshot
+from db.models import TradeSnapshot, FundingRateSnapshot, BookTickerSnapshot
 from .analytics import RealTimeAnalytics, ArbitrageOpportunity
 from config.config_manager import get_exchange_config
 from infrastructure.logging import get_logger, LoggingTimer

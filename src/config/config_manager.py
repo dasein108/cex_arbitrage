@@ -59,31 +59,6 @@ from .logging.logging_config import LoggingConfigManager
 T = TypeVar('T')
 
 
-# Performance monitoring - PRESERVED FROM ORIGINAL
-@dataclass
-class ConfigLoadingMetrics:
-    """HFT performance metrics for configuration loading."""
-    yaml_load_time: float = 0.0
-    env_substitution_time: float = 0.0
-    validation_time: float = 0.0
-    total_load_time: float = 0.0
-
-    def is_hft_compliant(self) -> bool:
-        """Check if configuration loading meets HFT requirements (<50ms)."""
-        return self.total_load_time < 0.050  # 50ms in seconds
-
-    def get_performance_report(self) -> str:
-        """Generate human-readable performance report."""
-        return (
-            f"Configuration Loading Performance:\n"
-            f"  YAML Load: {self.yaml_load_time * 1000:.2f}ms\n"
-            f"  Env Substitution: {self.env_substitution_time * 1000:.2f}ms\n"
-            f"  Validation: {self.validation_time * 1000:.2f}ms\n"
-            f"  Total: {self.total_load_time * 1000:.2f}ms\n"
-            f"  HFT Compliant: {'✓' if self.is_hft_compliant() else '✗'}"
-        )
-
-
 # Pre-compiled regex patterns for performance - PRESERVED FROM ORIGINAL
 ENV_VAR_PATTERN = re.compile(r'\$\{([^}]+)\}')
 ENV_VAR_DEFAULT_PATTERN = re.compile(r'^([^:]+):(.*)$')
@@ -346,11 +321,7 @@ class HftConfig:
         
         # Get network configuration
         network_config = config.get_network_config()
-        
-        # Check performance metrics
-        metrics = config.get_loading_metrics()
-        if not metrics.is_hft_compliant():
-            logger.warning("Configuration loading exceeds HFT requirements")
+
     """
 
     # Class-level cache for singleton pattern
@@ -360,9 +331,7 @@ class HftConfig:
     # Class-level configuration state
     ENVIRONMENT: Optional[str] = None
     DEBUG_MODE: bool = True
-
-    # Performance monitoring
-    _loading_metrics: Optional[ConfigLoadingMetrics] = None
+    cache_dir: Path = Path('./cache/')
 
     def __new__(cls) -> 'HftConfig':
         """Singleton pattern for configuration management."""
@@ -377,7 +346,6 @@ class HftConfig:
 
         # Initialize performance tracking
         start_time = time.perf_counter()
-        HftConfig._loading_metrics = ConfigLoadingMetrics()
 
         self._logger = logging.getLogger(__name__)
 
@@ -391,21 +359,12 @@ class HftConfig:
             # Initialize specialized managers
             self._initialize_managers()
 
-            # Calculate total loading time
-            total_time = time.perf_counter() - start_time
-            HftConfig._loading_metrics.total_load_time = total_time
-
             # Mark as initialized
             HftConfig._initialized = True
 
-            # Log performance metrics
-            self._logger.info(f"HFT configuration initialized for environment: {HftConfig.ENVIRONMENT}")
-            if HftConfig._loading_metrics.is_hft_compliant():
-                self._logger.info(f"Configuration loading: {total_time * 1000:.2f}ms (HFT compliant)")
-            else:
-                self._logger.warning(
-                    f"Configuration loading: {total_time * 1000:.2f}ms (EXCEEDS HFT requirement of 50ms)"
-                )
+            HftConfig.cache_dir = Path(os.getenv('CACHE_DIR', './cache/'))
+            HftConfig.cache_dir.mkdir(parents=True, exist_ok=True)
+
 
         except Exception as e:
             self._logger.error(f"Failed to initialize HFT configuration: {e}")
@@ -479,10 +438,7 @@ class HftConfig:
                         raw_content = f.read()
 
                     # Time environment variable substitution
-                    env_start = time.perf_counter()
                     substituted_content = self._substitute_env_vars(raw_content)
-                    env_time = time.perf_counter() - env_start
-                    HftConfig._loading_metrics.env_substitution_time = env_time
 
                     # Parse YAML
                     config_data = yaml.safe_load(substituted_content)
@@ -506,17 +462,11 @@ class HftConfig:
                 "config_file"
             )
 
-        # Record YAML loading time
-        yaml_time = time.perf_counter() - yaml_start
-        HftConfig._loading_metrics.yaml_load_time = yaml_time
 
         self._logger.info(f"Configuration loaded from: {config_file_path}")
 
         # Validate and process configuration
-        validation_start = time.perf_counter()
         self._validate_and_process_config(config_data)
-        validation_time = time.perf_counter() - validation_start
-        HftConfig._loading_metrics.validation_time = validation_time
 
     def _validate_and_process_config(self, config_data: Dict[str, Any]) -> None:
         """Validate and process configuration data with comprehensive error checking.
@@ -685,35 +635,6 @@ class HftConfig:
 
     # ==== PRESERVED FUNCTIONALITY: All existing methods maintained ====
 
-    def get_loading_metrics(self) -> ConfigLoadingMetrics:
-        """
-        Get configuration loading performance metrics.
-        
-        Returns:
-            ConfigLoadingMetrics with performance data
-        """
-        if HftConfig._loading_metrics is None:
-            return ConfigLoadingMetrics()  # Return empty metrics if not initialized
-        return HftConfig._loading_metrics
-
-    def validate_hft_compliance(self) -> bool:
-        """
-        Validate that configuration loading meets HFT performance requirements.
-        
-        Returns:
-            True if configuration loading is HFT compliant (<50ms)
-        """
-        return self.get_loading_metrics().is_hft_compliant()
-
-    def get_performance_report(self) -> str:
-        """
-        Get detailed configuration loading performance report.
-        
-        Returns:
-            Formatted performance report string
-        """
-        return self.get_loading_metrics().get_performance_report()
-
     def get_network_config(self) -> NetworkConfig:
         """
         Get network configuration as structured object.
@@ -866,14 +787,6 @@ class HftConfig:
             auth_status = "authenticated" if config.has_credentials() else "public-only"
             summary_lines.append(f"  - {name.upper()}: {status}, {auth_status}")
 
-        # Add performance metrics
-        if HftConfig._loading_metrics:
-            summary_lines.extend([
-                "",
-                "=== Performance Metrics ===",
-                HftConfig._loading_metrics.get_performance_report()
-            ])
-
         return "\n".join(summary_lines)
 
 
@@ -965,36 +878,6 @@ def get_logging_config() -> Dict[str, Any]:
         Dictionary with logging configuration settings
     """
     return config.get_logging_config()
-
-
-def validate_hft_compliance() -> bool:
-    """
-    Validate that configuration loading meets HFT performance requirements.
-    
-    Returns:
-        True if configuration loading is HFT compliant (<50ms)
-    """
-    return config.validate_hft_compliance()
-
-
-def get_performance_report() -> str:
-    """
-    Get detailed configuration loading performance report.
-    
-    Returns:
-        Formatted performance report string
-    """
-    return config.get_performance_report()
-
-
-def get_loading_metrics() -> ConfigLoadingMetrics:
-    """
-    Get configuration loading performance metrics.
-    
-    Returns:
-        ConfigLoadingMetrics with performance data
-    """
-    return config.get_loading_metrics()
 
 
 def get_database_config() -> DatabaseConfig:

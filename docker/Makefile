@@ -199,21 +199,21 @@ pgadmin:
 
 prod-monitoring:
 	@echo "📊 Starting production monitoring services on server..."
-	ssh -i ~/.ssh/deploy_ci root@31.192.233.13 'cd /opt/arbitrage/docker && docker-compose --env-file .env.prod -f docker-compose.yml -f docker-compose.prod.yml --profile monitoring up -d grafana'
+	ssh -i ~/.ssh/deploy_new root@31.192.233.13 'cd /opt/arbitrage/docker && docker-compose --env-file .env.prod -f docker-compose.yml -f docker-compose.prod.yml --profile monitoring up -d grafana'
 	@echo "✅ Production Grafana started"
 
 prod-admin:
 	@echo "🔧 Starting production admin services on server..."
-	ssh -i ~/.ssh/deploy_ci root@31.192.233.13 'cd /opt/arbitrage/docker && docker-compose --env-file .env.prod -f docker-compose.yml -f docker-compose.prod.yml --profile admin up -d pgadmin'
+	ssh -i ~/.ssh/deploy_new root@31.192.233.13 'cd /opt/arbitrage/docker && docker-compose --env-file .env.prod -f docker-compose.yml -f docker-compose.prod.yml --profile admin up -d pgadmin'
 	@echo "✅ Production PgAdmin started"
 
 prod-status:
 	@echo "📊 Production server status..."
-	ssh -i ~/.ssh/deploy_ci root@31.192.233.13 'cd /opt/arbitrage/docker && docker-compose --env-file .env.prod -f docker-compose.yml -f docker-compose.prod.yml ps'
+	ssh -i ~/.ssh/deploy_new root@31.192.233.13 'cd /opt/arbitrage/docker && docker-compose --env-file .env.prod -f docker-compose.yml -f docker-compose.prod.yml ps'
 
 prod-logs:
 	@echo "📋 Production data collector logs..."
-	ssh -i ~/.ssh/deploy_ci root@31.192.233.13 'cd /opt/arbitrage/docker && docker-compose --env-file .env.prod -f docker-compose.yml -f docker-compose.prod.yml logs --tail=50 data_collector'
+	ssh -i ~/.ssh/deploy_new root@31.192.233.13 'cd /opt/arbitrage/docker && docker-compose --env-file .env.prod -f docker-compose.yml -f docker-compose.prod.yml logs --tail=50 data_collector'
 
 # =============================================================================
 # Environment Setup

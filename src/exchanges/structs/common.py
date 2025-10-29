@@ -30,7 +30,7 @@ class Symbol(Struct, frozen=True):
     
     def __str__(self) -> str:
         """String representation for compatibility."""
-        return f"{self.base}/{self.quote}"
+        return f"{self.base}_{self.quote}"
 
 # Core enums used across the system
 
