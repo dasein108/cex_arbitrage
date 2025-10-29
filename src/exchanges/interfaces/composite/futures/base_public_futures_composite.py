@@ -63,34 +63,3 @@ class CompositePublicFuturesExchange(BasePublicComposite):
                 self.logger.error(f"Failed to initialize futures data for {self._tag}: {e}")
                 raise
 
-    # Enhanced data refresh for reconnections
-
-    async def is_tradable(self, symbol: Symbol) -> bool:
-        """
-        Check if a symbol is tradable on this futures exchange.
-        
-        Args:
-            symbol: Symbol to check
-            
-        Returns:
-            True if symbol is tradable for futures, False otherwise
-        """
-        if not self._symbols_info:
-            await self.load_symbols_info()
-        
-        if symbol not in self._symbols_info:
-            return False
-            
-        symbol_info = self._symbols_info[symbol]
-        return not symbol_info.inactive
-
-    async def get_book_ticker(self, symbol: Symbol, force=False) -> Optional[Dict[str, Any]]:
-        """
-        Get the best bid and ask prices for a futures symbol Make conversion from contract to quantity.
-
-        Args:
-            symbol: Symbol to get book ticker for
-            force: If True, force refresh from exchange
-        """
-
-
