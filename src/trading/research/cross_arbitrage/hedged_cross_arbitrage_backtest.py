@@ -29,7 +29,10 @@ import matplotlib.pyplot as plt
 import sys
 import os
 
+from config.config_manager import get_arbitrage_config
+from db import get_database_manager
 from exchanges.structs import Symbol, AssetName
+from exchanges.structs.enums import KlineInterval
 
 # Add src to path for imports
 src_path = os.path.join(os.path.dirname(__file__), 'src')
@@ -77,7 +80,7 @@ class BacktestConfig:
     entry_threshold_percentile: float = 25.0  # Use 25th percentile for entry
     exit_threshold_percentile: float = 75.0   # Use 75th percentile for exit
     max_position_duration_hours: int = 24     # Force close after 24 hours
-    fees_bps: float = 20.0                    # Total fees in basis points (0.2%)
+    fees_bps: float = 25.0                    # Total fees in basis points (0.2%)
     spread_bps: float = 5.0                   # Bid/ask spread assumption
     position_size_usd: float = 1000.0         # Position size for PnL calculation
     max_concurrent_positions: int = 3          # Limit concurrent positions
@@ -120,7 +123,7 @@ class HedgedCrossArbitrageBacktest:
         self.cache_dir.mkdir(exist_ok=True)
         
         # Initialize data analyzer with new constructor
-        self.analyzer = ArbitrageAnalyzer()
+        self.analyzer = ArbitrageAnalyzer(use_db_book_tickers=True, tf=KlineInterval.MINUTE_1)
 
         
         # Track positions and state
@@ -622,7 +625,7 @@ async def main():
     """Example usage and testing."""
     print("🚀 Hedged Cross-Arbitrage Backtesting System")
     print("=" * 60)
-    
+    await get_database_manager()
     # Create backtester with custom config
     config = BacktestConfig(
         symbol=Symbol(AssetName("F"), AssetName("USDT")),

@@ -20,10 +20,12 @@ from typing import Dict, Any, Tuple, Optional, List
 import sys
 import os
 
+from db import initialize_database_manager
+
 # Add src to path for imports
 sys.path.append(os.path.join(os.path.dirname(__file__), '..', '..'))
 
-from trading.research.cross_arbitrage.book_ticker_source import CandlesBookTickerSource
+from trading.research.cross_arbitrage.book_ticker_source import CandlesBookTickerSource, BookTickerDbSource
 from exchanges.structs.enums import ExchangeEnum, KlineInterval
 from exchanges.structs import Symbol, AssetName
 
@@ -55,10 +57,12 @@ class ArbitrageAnalyzer:
     # Remove SPREAD_BPS - now handled by BookTickerSource
     TOTAL_FEES = 0.25  # 0.1% + 0.05% + 0.05% total fees
     
-    def __init__(self, exchanges: Optional[List[ExchangeEnum]] = None):
+    def __init__(self, exchanges: Optional[List[ExchangeEnum]] = None, use_db_book_tickers = False,
+                 tf: KlineInterval = KlineInterval.MINUTE_5):
         """Initialize analyzer with modern BookTickerSource."""
+        self.tf = tf
         self.exchanges = exchanges or [ExchangeEnum.MEXC, ExchangeEnum.GATEIO, ExchangeEnum.GATEIO_FUTURES]
-        self.book_ticker_source = CandlesBookTickerSource()
+        self.book_ticker_source = BookTickerDbSource() if use_db_book_tickers else  CandlesBookTickerSource()
     
     async def run_analysis(self, symbol: Symbol, days: int = 7) -> Tuple[pd.DataFrame, Dict[str, Any]]:
         """
@@ -100,10 +104,17 @@ class ArbitrageAnalyzer:
             exchanges=self.exchanges,
             symbol=symbol,
             hours=days * 24,
-            timeframe=KlineInterval.MINUTE_5
+            timeframe=self.tf
         )
-        
-        print(f"🔀 Loaded data: {len(df)} aligned periods")
+
+        len_before = len(df)
+
+        df.dropna(inplace=True)
+
+        print(f"🔀 Loaded data: {len(df)}(with nan: {len_before}) aligned periods")
+
+
+
         return df
     
     def _validate_required_columns(self, df: pd.DataFrame) -> None:
@@ -267,6 +278,7 @@ class ArbitrageAnalyzer:
 
 if __name__ == "__main__":
     async def main():
+        await initialize_database_manager()  # Ensure DB manager is initialized
         analyzer = ArbitrageAnalyzer()
         
         # Quick test with 1 day of data
