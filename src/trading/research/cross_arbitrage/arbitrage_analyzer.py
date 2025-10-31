@@ -64,7 +64,8 @@ class ArbitrageAnalyzer:
         self.exchanges = exchanges or [ExchangeEnum.MEXC, ExchangeEnum.GATEIO, ExchangeEnum.GATEIO_FUTURES]
         self.book_ticker_source = BookTickerDbSource() if use_db_book_tickers else  CandlesBookTickerSource()
     
-    async def run_analysis(self, symbol: Symbol, days: int = 7) -> Tuple[pd.DataFrame, Dict[str, Any]]:
+    async def run_analysis(self, symbol: Symbol, days: int = 7,
+                           df_data: Optional[pd.DataFrame] = None) -> Tuple[pd.DataFrame, Dict[str, Any]]:
         """
         Run complete arbitrage analysis for given symbol and time period.
         
@@ -78,8 +79,12 @@ class ArbitrageAnalyzer:
         print(f"🚀 Starting arbitrage analysis for {symbol} ({days} days)")
         
         # Load data using BookTickerSource (includes bid/ask prices)
-        df = await self._download_and_merge_data(symbol, days)
-        
+        if df_data is not None:
+            df = df_data
+            print(f"💾 Using provided dataframe with {len(df)} periods")
+        else:
+            df = await self._download_and_merge_data(symbol, days)
+
         # Calculate arbitrage opportunities
         df = self._calculate_arbitrage_metrics(df)
         

@@ -17,8 +17,9 @@ class BookTickerSourceProtocol(Protocol):
         self,
         exchanges: list[ExchangeEnum],
         symbol: Symbol,
-        hours: int,
-        timeframe: KlineInterval
+        date_to: Optional[datetime] = None,
+        hours: int = 24,
+        timeframe: KlineInterval = KlineInterval.MINUTE_1
     ) -> pd.DataFrame:
         """Fetch book ticker data from multiple exchanges."""
         ...
@@ -35,11 +36,12 @@ class BookTickerDbSource(BookTickerSourceProtocol):
         self,
         exchanges: list[ExchangeEnum],
         symbol: Symbol,
-        hours: int,
-        timeframe: KlineInterval
+        date_to: Optional[datetime] = None,
+        hours: int = 24,
+        timeframe: KlineInterval = KlineInterval.MINUTE_1
     ) -> pd.DataFrame:
         """Fetch book ticker data from multiple exchanges."""
-        end_time = datetime.now(UTC)
+        end_time = datetime.now(UTC) if date_to is None else date_to
         start_time = end_time - pd.Timedelta(hours=hours)
         timeframe_seconds = get_interval_seconds(timeframe)
         tasks = [
@@ -86,11 +88,12 @@ class CandlesBookTickerSource(BookTickerSourceProtocol):
         self,
         exchanges: list[ExchangeEnum],
         symbol: Symbol,
-        hours: int,
-        timeframe: KlineInterval
+        date_to: Optional[datetime] = None,
+        hours: int = 24,
+        timeframe: KlineInterval = KlineInterval.MINUTE_1
     ) -> pd.DataFrame:
         """Fetch book ticker data from multiple exchanges."""
-        end_time = datetime.now(UTC)
+        end_time = datetime.now(UTC) if date_to is None else date_to
         start_time = end_time - pd.Timedelta(hours=hours)
         tasks = [
             self.candles_loader.download_candles(

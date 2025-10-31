@@ -8,7 +8,7 @@ from config.config_manager import get_exchange_config
 from exchanges.structs import Order, SymbolInfo, ExchangeEnum, Symbol, OrderId, BookTicker
 from exchanges.structs.common import Side
 from infrastructure.exceptions.exchange import OrderNotFoundError, InsufficientBalanceError
-from infrastructure.logging import HFTLoggerInterface
+from infrastructure.logging import HFTLoggerInterface, get_logger
 from infrastructure.networking.websocket.structs import PublicWebsocketChannelType, PrivateWebsocketChannelType
 from trading.research.cross_arbitrage.arbitrage_analyzer import AnalyzerKeys
 
@@ -100,10 +100,6 @@ class CrossExchangeArbitrageTask(BaseStrategyTask[CrossExchangeArbitrageTaskCont
         """Return the delta-neutral context class."""
         return CrossExchangeArbitrageTaskContext
 
-    def _build_tag(self) -> None:
-        """Build logging tag with exchange-specific fields."""
-        self._tag = f'{self.name}_{self.context.symbol}'
-
     def __init__(self,
                  context: CrossExchangeArbitrageTaskContext,
                  logger: HFTLoggerInterface = None,
@@ -111,7 +107,7 @@ class CrossExchangeArbitrageTask(BaseStrategyTask[CrossExchangeArbitrageTaskCont
         """Initialize cross-exchange hedged arbitrage task.
         """
         super().__init__(context, logger, **kwargs)
-
+        self.logger = get_logger(self.context.tag) if logger is None else logger
         # DualExchange instances for each side (unified public/private)
         self._exchanges: Dict[ExchangeRoleType, DualExchange] = self.create_exchanges()
 
@@ -599,13 +595,13 @@ class CrossExchangeArbitrageTask(BaseStrategyTask[CrossExchangeArbitrageTaskCont
         # Get current execution spreads and fees
         execution_spreads = self._calculate_execution_spreads()
         total_spread_cost = execution_spreads['total']
-
+        is_enter_mode = self.context.current_role == 'source'
         # Entry/Exit specific validation
-        if signal == Signal.ENTER:
+        if signal == Signal.ENTER and is_enter_mode:
             validation_result = self._validate_entry_spreads(
                 arb_signal_result, total_spread_cost, execution_spreads
             )
-        elif signal == Signal.EXIT:
+        elif signal == Signal.EXIT and not is_enter_mode:
             validation_result = self._validate_exit_spreads(
                 arb_signal_result, total_spread_cost, execution_spreads
             )
@@ -659,7 +655,7 @@ class CrossExchangeArbitrageTask(BaseStrategyTask[CrossExchangeArbitrageTaskCont
         
         # Entry validation logic
         if net_edge < required_profit:
-            self.logger.warning(
+            self.logger.debug(
                 f"⚠️ Entry validation failed: net_edge={net_edge:.3f}% < "
                 f"required={required_profit:.3f}% | "
                 f"opportunity={abs(mexc_stats.current):.3f}%, costs={total_costs:.3f}%",
@@ -676,7 +672,7 @@ class CrossExchangeArbitrageTask(BaseStrategyTask[CrossExchangeArbitrageTaskCont
         adjusted_max_spread = self.context.max_acceptable_spread * max_spread_multiplier
         
         if total_spread_cost > adjusted_max_spread:
-            self.logger.warning(
+            self.logger.debug(
                 f"⚠️ Entry validation failed: spreads={total_spread_cost:.3f}% > "
                 f"adjusted_max={adjusted_max_spread:.3f}% (multiplier={max_spread_multiplier:.1f})",
                 opportunity_quality=f"{abs(mexc_stats.current):.3f}% vs mean {abs(mexc_stats.mean):.3f}%"
@@ -812,7 +808,8 @@ class CrossExchangeArbitrageTask(BaseStrategyTask[CrossExchangeArbitrageTaskCont
             pos = self.context.positions[exchange_role]
             pos.acc_qty = pos.target_qty
 
-            self.logger.error(f"🚫 Insufficient balance to place order {tag_str} | adjust position amount",
+            self.logger.error(f"🚫 Insufficient balance to place order {tag_str} |"
+                              f" pos: {pos}, order: {side} {quantity} @ {price}",
                               error=str(ife))
             return None
         except Exception as e:

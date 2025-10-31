@@ -70,13 +70,15 @@ class TransferRequest(Struct, frozen=False, kw_only=True):
     def deposit_in_progress(self):
         return self.deposit_status in [DepositStatus.PENDING,
                                        DepositStatus.PROCESSING,
-                                       DepositStatus.REVIEW] or self.deposit_status is None
+                                       DepositStatus.REVIEW,
+                                       DepositStatus.UNKNOWN] or self.deposit_status is None
 
     @property
     def withdrawal_in_progress(self):
         return self.withdrawal_status in [WithdrawalStatus.PENDING,
                                           WithdrawalStatus.PROCESSING,
-                                          WithdrawalStatus.REVIEW] or self.withdrawal_status is None
+                                          WithdrawalStatus.REVIEW,
+                                          WithdrawalStatus.UNKNOWN] or self.withdrawal_status is None
 
     @property
     def deposit_completed(self) -> bool:

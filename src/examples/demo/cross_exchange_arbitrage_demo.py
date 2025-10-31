@@ -19,9 +19,9 @@ from config import get_exchange_config
 src_path = Path(__file__).parent.parent.parent
 if str(src_path) not in sys.path:
     sys.path.insert(0, str(src_path))
-from typing import Dict
+from typing import Dict, Optional
 from exchanges.structs import Symbol, AssetName, ExchangeEnum
-from infrastructure.logging import get_logger, LoggerFactory
+from infrastructure.logging import get_logger, LoggerFactory, HFTLoggerInterface
 from trading.strategies.strategy_manager.strategy_task_manager import StrategyTaskManager
 from trading.strategies.implementations import (
     CrossExchangeArbitrageTask,
@@ -34,7 +34,7 @@ from exchanges.exchange_factory import create_rest_client
 
 async def create_cross_exchange_arbitrage_task(
     symbol: Symbol,
-    logger,
+    logger: Optional[HFTLoggerInterface] = None,
     total_quantity: float = 10.0,
     order_qty: float = 2.0
 ) -> CrossExchangeArbitrageTask:
@@ -77,15 +77,7 @@ async def create_cross_exchange_arbitrage_task(
         symbol=symbol,
         total_quantity=total_quantity,
         order_qty=order_qty,
-        settings=settings,
-        # Dynamic threshold configuration for TA module
-        signal_config=CrossArbitrageSignalConfig(
-            lookback_hours=24,
-            refresh_minutes=15,
-            entry_percentile=10,
-            exit_percentile=85,
-            total_fees=0.2
-        )
+        settings=settings
     )
     
     # Create and return the arbitrage task
@@ -93,15 +85,7 @@ async def create_cross_exchange_arbitrage_task(
         logger=logger,
         context=context
     )
-    
-    logger.info("✅ Created Cross Exchange Arbitrage Task",
-               symbol=str(symbol),
-               total_quantity=total_quantity,
-               order_qty=order_qty,
-               source_exchange="MEXC",
-               dest_exchange="GATEIO",
-               hedge_exchange="GATEIO_FUTURES")
-    
+
     return task
 
 
@@ -142,38 +126,49 @@ async def run_cross_exchange_arbitrage_demo():
         if manager.task_count > 0:
             logger.info(f"♻️ Recovered {manager.task_count} tasks from previous session")
         else:
-            # Create F/USDT arbitrage task
-            symbol = Symbol(base=AssetName("F"), quote=AssetName("USDT"))
+            async def add_tasks(symbol: Symbol):
+                # Create F/USDT arbitrage task
 
-            logger.info(f"🚀 Creating cross exchange arbitrage task for {symbol}")
-            logger.info("📋 Strategy Configuration:",
-                       source="MEXC (spot)",
-                       destination="Gate.io (spot)",
-                       hedge="Gate.io (futures)",
-                       strategy="Dynamic threshold arbitrage with TA signals")
+                logger.info(f"🚀 Creating cross exchange arbitrage task for {symbol}")
+                logger.info("📋 Strategy Configuration:",
+                           source="MEXC (spot)",
+                           destination="Gate.io (spot)",
+                           hedge="Gate.io (futures)",
+                           strategy="Dynamic threshold arbitrage with TA signals")
 
-            exchange = create_rest_client(get_exchange_config(ExchangeEnum.MEXC.value), is_private=False)
+                exchange = create_rest_client(get_exchange_config(ExchangeEnum.MEXC.value), is_private=False)
 
-            total_quantity_usdt = 30
-            order_qty_usdt = 2
+                total_quantity_usdt = 20
+                order_qty_usdt = 2
 
-            price = (await exchange.get_ticker_info(symbol))[symbol].last_price
+                price = (await exchange.get_ticker_info(symbol))[symbol].last_price
 
-            total_quantity = total_quantity_usdt / price
-            order_qty = order_qty_usdt / price
+                total_quantity = total_quantity_usdt / price
+                order_qty = order_qty_usdt / price
 
-            arbitrage_task = await create_cross_exchange_arbitrage_task(
-                symbol=symbol,
-                logger=logger,
-                total_quantity=total_quantity,
-                order_qty=order_qty
-            )
+                arbitrage_task = await create_cross_exchange_arbitrage_task(
+                    symbol=symbol,
+                    # logger=logger,
+                    total_quantity=total_quantity,
+                    order_qty=order_qty
+                )
 
-            # Add task to StrategyTaskManager
-            task_id = await manager.add_task(arbitrage_task)
-            logger.info(f"✅ Added cross exchange arbitrage task to StrategyTaskManager: {task_id}")
+                # Add task to StrategyTaskManager
+                task_id = await manager.add_task(arbitrage_task)
+                logger.info("✅ Created Cross Exchange Arbitrage Task",
+                            symbol=str(symbol),
+                            total_quantity=total_quantity,
+                            order_qty=order_qty,
+                            source_exchange="MEXC",
+                            dest_exchange="GATEIO",
+                            hedge_exchange="GATEIO_FUTURES")
 
 
+            await add_tasks(Symbol(base=AssetName("SUNDOG"), quote=AssetName("USDT")))
+            await add_tasks(Symbol(base=AssetName("ZRC"), quote=AssetName("USDT")))
+            await add_tasks(Symbol(base=AssetName("PIGGY"), quote=AssetName("USDT")))
+            # await add_tasks(Symbol(base=AssetName("SWELL"), quote=AssetName("USDT")))
+            await add_tasks(Symbol(base=AssetName("NAVX"), quote=AssetName("USDT")))
 
         # Monitor StrategyTaskManager execution
         logger.info("📊 StrategyTaskManager started, monitoring execution...")

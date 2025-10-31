@@ -549,8 +549,7 @@ class GateioSpotSymbolMapper(SymbolMapperInterface):
         base, quote = pair.upper().split('_', 1)
         return Symbol(
             base=AssetName(base),
-            quote=AssetName(quote),
-            is_futures=False
+            quote=AssetName(quote)
         )
 ```
 

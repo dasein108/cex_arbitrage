@@ -134,7 +134,8 @@ class HedgedCrossArbitrageBacktest:
             'gateio_spot_vs_futures': np.array([], dtype=np.float64)
         }
     
-    async def run_backtest(self, symbol: Optional[Symbol] = None, days: Optional[int] = None) -> Dict[str, Any]:
+    async def run_backtest(self, symbol: Optional[Symbol] = None, days: Optional[int] = None,
+                           df_data: Optional[pd.DataFrame] = None) -> Dict[str, Any]:
         """
         Run complete backtest for specified symbol and period.
         
@@ -154,9 +155,9 @@ class HedgedCrossArbitrageBacktest:
         print(f"🚀 Starting hedged cross-arbitrage backtest for {self.config.symbol} ({self.config.days} days)")
         print(f"📊 Configuration: Transfer delay={self.config.min_transfer_time_minutes}min, "
               f"Fees={self.config.fees_bps}bps, Position size=${self.config.position_size_usd}")
-        
+
         # Load and prepare data
-        df = await self._load_and_prepare_data()
+        df = await self._load_and_prepare_data(df_data=df_data)
 
         # Run simulation
         df_with_signals = self._simulate_trading(df)
@@ -180,12 +181,12 @@ class HedgedCrossArbitrageBacktest:
         
         return results
     
-    async def _load_and_prepare_data(self) -> pd.DataFrame:
+    async def _load_and_prepare_data(self, df_data: Optional[pd.DataFrame]= None) -> pd.DataFrame:
         """Load candle data and calculate arbitrage spreads."""
         print(f"📥 Loading {self.config.symbol} data for {self.config.days} days...")
         
         # Use existing analyzer to get prepared data
-        df, _ = await self.analyzer.run_analysis(self.config.symbol, self.config.days)
+        df, _ = await self.analyzer.run_analysis(self.config.symbol, self.config.days, df_data=df_data)
         
         print(f"✅ Loaded {len(df)} periods from {df.index.min()} to {df.index.max()}")
         

@@ -530,7 +530,7 @@ class BasePrivateComposite(BalanceSyncMixin,
             return None
 
 
-    async def get_asset_balance(self, asset: AssetName, force=False) -> Optional[AssetBalance]:
+    async def get_asset_balance(self, asset: AssetName, force=False) -> AssetBalance:
         """
         Get balance for a specific asset with fallback to REST if not cached.
 
@@ -551,14 +551,15 @@ class BasePrivateComposite(BalanceSyncMixin,
                 balance = await self._rest.get_asset_balance(asset)
                 if balance:
                     await self._update_balance(asset, balance)
-                return balance
+                    return balance
+                else:
+                    return AssetBalance(asset=asset, available=0.0, locked=0.0)
 
         except Exception as e:
             self.logger.error("Failed to get asset balance via REST fallback",
                               asset=asset, error=str(e))
-            return None
+            raise e
 
-        return AssetBalance(asset=asset, available=0.0, locked=0.0)
 
     def set_symbol_info(self, symbol_info: SymbolsInfo):
         self._symbols_info = symbol_info

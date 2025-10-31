@@ -297,7 +297,7 @@ class SpotFuturesArbitrageTask(BaseArbitrageTask):
         
         # Entry validation logic
         if net_edge < required_profit:
-            self.logger.warning(
+            self.logger.debug(
                 f"⚠️ Entry validation failed: net_edge={net_edge:.3f}% < "
                 f"required={required_profit:.3f}% | "
                 f"opportunity={abs(mexc_stats.current):.3f}%, costs={total_costs:.3f}%",
@@ -313,7 +313,7 @@ class SpotFuturesArbitrageTask(BaseArbitrageTask):
         adjusted_max_spread = self.max_acceptable_spread * max_spread_multiplier
         
         if total_spread_cost > adjusted_max_spread:
-            self.logger.warning(
+            self.logger.debug(
                 f"⚠️ Entry validation failed: spreads={total_spread_cost:.3f}% > "
                 f"adjusted_max={adjusted_max_spread:.3f}% (multiplier={max_spread_multiplier:.1f})",
                 opportunity_quality=f"{abs(mexc_stats.current):.3f}% vs mean {abs(mexc_stats.mean):.3f}%"
@@ -354,7 +354,7 @@ class SpotFuturesArbitrageTask(BaseArbitrageTask):
         exit_spread_tolerance = self.max_acceptable_spread * 1.5  # 50% more permissive
         
         if total_spread_cost > exit_spread_tolerance:
-            self.logger.warning(
+            self.logger.debug(
                 f"⚠️ Exit validation failed: spreads={total_spread_cost:.3f}% > "
                 f"exit_tolerance={exit_spread_tolerance:.3f}%",
                 exit_signal_strength=f"{exit_edge:.3f}%",
@@ -365,7 +365,7 @@ class SpotFuturesArbitrageTask(BaseArbitrageTask):
         # More permissive profit check for exits (preserve capital, don't optimize for max profit)
         min_exit_profit = self.min_profit_margin * 0.5  # Half the entry requirement
         if exit_edge < min_exit_profit:
-            self.logger.warning(
+            self.logger.debug(
                 f"⚠️ Exit validation failed: exit_edge={exit_edge:.3f}% < "
                 f"min_exit_profit={min_exit_profit:.3f}%",
                 current_signal=f"{gateio_stats.current:.3f}%",
