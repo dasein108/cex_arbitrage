@@ -6,6 +6,8 @@ from exchanges.structs.common import Side
 import msgspec
 from msgspec import Struct
 
+from utils.exchange_utils import is_order_done
+
 
 class PositionError(Exception):
     """Custom exception for position-related errors."""
@@ -78,6 +80,10 @@ class Position(Struct):
         
         return self
 
+    @property
+    def actual_qty(self) -> float:
+        return self.qty - self.acc_qty
+
     def update(self, side: Side, filled_qty: float, filled_price: float, fee: float) -> 'Position':
         """Update position with a new fill."""
         if filled_qty <= 0:
@@ -110,6 +116,7 @@ class Position(Struct):
         self.price = total_cost / new_qty if new_qty > 0 else filled_price
         self.qty = new_qty
         self.acc_qty += filled_qty
+
         
         # Update PnL (for accumulate, PnL is unrealized until release)
         self.pnl_tracker.update(0.0, 0.0, fee * filled_qty * filled_price)
@@ -196,9 +203,13 @@ class Position(Struct):
         
         if filled_qty > 0:
             self.update(order.side, filled_qty, avg_price, fee)
-        
-        # Store order reference
-        self.last_order = order
+
+        if is_order_done(order):
+            self.last_order = None
+        else:
+            # Store order reference
+            self.last_order = order
+
         
         return PositionChange(qty_before, price_before, self.qty, self.price)
 
@@ -207,7 +218,6 @@ class Position(Struct):
         if mode not in ['accumulate', 'release', 'hedge']:
             raise PositionError(f"Invalid mode: {mode}")
         self.mode = mode
-        self.entry_price = self.price if self.qty != 0 else 0.0
         return self
 
     def get_remaining_qty(self, min_quantity: float = 0.0) -> float:

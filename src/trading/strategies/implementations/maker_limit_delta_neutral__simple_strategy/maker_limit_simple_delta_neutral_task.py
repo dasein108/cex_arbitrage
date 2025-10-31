@@ -8,7 +8,7 @@ from config.config_manager import get_exchange_config
 from exchanges.structs import Order, SymbolInfo, ExchangeEnum, Symbol, OrderId, BookTicker
 from exchanges.structs.common import Side
 from infrastructure.exceptions.exchange import OrderNotFoundError, InsufficientBalanceError
-from infrastructure.logging import HFTLoggerInterface, get_logger
+from infrastructure.logging import HFTLoggerInterface, get_logger, LoggerFactory
 from infrastructure.networking.websocket.structs import PublicWebsocketChannelType, PrivateWebsocketChannelType
 
 from utils import get_decrease_vector
@@ -23,7 +23,7 @@ class MakerLimitDeltaNeutralTaskContext(BaseSpotFuturesTaskContext, kw_only=True
     task_type: str = MAKER_LIMIT_DELTA_NEUTRAL_TASK_TYPE
 
 
-class MakerLimitDeltaNeutralTask(BaseSpotFuturesArbitrageTask[MakerLimitDeltaNeutralTaskContext]):
+class MakerLimitDeltaNeutralTask(BaseSpotFuturesArbitrageTask):
     """State machine for executing cross-exchange spot-futures arbitrage strategies.
 
     Executes simultaneous spot positions on one exchange and futures positions on another
@@ -45,30 +45,33 @@ class MakerLimitDeltaNeutralTask(BaseSpotFuturesArbitrageTask[MakerLimitDeltaNeu
         super().__init__(context, logger, **kwargs)
         self.logger = get_logger(self.context.tag) if logger is None else logger
 
-    @property
-    def spot_pos(self):
-        """Shortcut to spot position."""
-        return self.context.positions[MarketType.SPOT]
+        # Reduce noisy exchange logs
+        logger_names = [
+            "GATEIO_SPOT.ws.private", "GATEIO_SPOT.ws.public",
+            "GATEIO_FUTURES.ws.private", "GATEIO_FUTURES.ws.public",
+            "MEXC_SPOT.ws.private", "MEXC_SPOT.ws.public",
+            "MEXC_SPOT.MEXC_SPOT_private", "GATEIO_FUTURES.GATEIO_FUTURES_private"
+                                           "rest.client.gateio", "rest.client.mexc", "rest.client.mexc_spot"
+        ]
 
-    @property
-    def futures_pos(self):
-        """Shortcut to futures position."""
-        return self.context.positions[MarketType.FUTURES]
+        for logger_name in logger_names:
+            LoggerFactory.override_logger(logger_name, min_level="ERROR")
+
 
     async def _adjust_futures_position(self):
         """Manage limit orders for one market."""
         # Skip if no quantity to fill
-
-        delta = self.spot_pos.qty - self.futures_pos.qty
-        if abs(delta) < self._get_min_base_qty(MarketType.FUTURES):
+        spot_qty = self.spot_pos.qty if self.spot_pos.qty > self._get_min_base_qty('spot') else 0
+        delta = spot_qty - self.futures_pos.qty
+        if abs(delta) < self._get_min_base_qty('futures'):
             return
 
         quantity_to_fill = abs(delta)
         side = Side.BUY if delta > 0 else Side.SELL
-        book_ticker = self._get_book_ticker(MarketType.FUTURES)
+        book_ticker = self._get_book_ticker('futures')
         order_price = book_ticker.bid_price if side == Side.SELL else book_ticker.ask_price
 
-        await self._place_order_safe(
+        order = await self._place_order_safe(
             'futures',
             side,
             quantity_to_fill,
@@ -77,16 +80,26 @@ class MakerLimitDeltaNeutralTask(BaseSpotFuturesArbitrageTask[MakerLimitDeltaNeu
             tag=f"futures:{side.name}:market"
         )
 
+        pass
+
     def _get_limit_order_side(self)-> Side:
         """Determine side for limit order based on current position delta."""
 
-        return Side.BUY if not  self.spot_pos.mode == 'accumulate' else Side.SELL
+        return Side.BUY if self.spot_pos.mode == 'accumulate' else Side.SELL
+
+    @property
+    def spot_balance(self):
+        return self._exchanges['spot'].balances[self.context.symbol.base].available
 
     async def _manage_spot_limit_order_place(self):
         """Place limit order to top-offset price or market order."""
-        max_qty = self.spot_pos.get_remaining_qty(self._symbol_info['spot'].min_base_quantity)
+        if self.spot_pos.last_order:
+            return
 
-        if max_qty == 0:
+        max_qty = self.spot_pos.get_remaining_qty(self._get_min_base_qty('spot'))
+        max_quantity_to_fill = max_qty - max_qty * self._get_fees('spot').taker_fee * 2
+
+        if max_quantity_to_fill == 0:
             return
 
         book_ticker = self._get_book_ticker('spot')
@@ -102,9 +115,11 @@ class MakerLimitDeltaNeutralTask(BaseSpotFuturesArbitrageTask[MakerLimitDeltaNeu
         order_price = top_price + vector_ticks * self._symbol_info['spot'].tick
 
         # Adjust to rest unfilled total amount
-        limit_order_qty = min(self.context.order_qty, max_qty)
+        limit_order_qty = min(self.context.order_qty, max_quantity_to_fill)
+        if side == Side.SELL:
+            limit_order_qty = min(limit_order_qty, self.spot_balance)
 
-        await self._place_order_safe(
+        order = await self._place_order_safe(
             'spot',
             side,
             limit_order_qty,
@@ -112,6 +127,7 @@ class MakerLimitDeltaNeutralTask(BaseSpotFuturesArbitrageTask[MakerLimitDeltaNeu
             is_market=False,
             tag=f"spot:{side.name}:limit"
         )
+        pass
 
     async def _manage_spot_order_cancel(self) -> bool:
         """Determine if current order should be cancelled due to price movement."""
@@ -139,7 +155,7 @@ class MakerLimitDeltaNeutralTask(BaseSpotFuturesArbitrageTask[MakerLimitDeltaNeu
         return should_cancel
 
     def handle_spot_mode(self):
-        if self.spot_pos.is_fulfilled(self._symbol_info['spot'].min_base_quantity):
+        if self.spot_pos.is_fulfilled(self._get_min_base_qty('spot')):
             if self.spot_pos.mode == 'accumulate':
                 self.logger.info("Switching SPOT position mode to 'release'")
                 self.spot_pos.set_mode('release')

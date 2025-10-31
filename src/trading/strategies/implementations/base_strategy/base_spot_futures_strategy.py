@@ -9,6 +9,7 @@ from exchanges.structs import Order, SymbolInfo, ExchangeEnum, Symbol, OrderId, 
 from exchanges.structs.common import Side
 from infrastructure.exceptions.exchange import OrderNotFoundError, InsufficientBalanceError
 from infrastructure.logging import HFTLoggerInterface, get_logger
+from utils.exchange_utils import is_order_filled
 from .base_strategy import BaseStrategyContext, BaseStrategyTask
 from .unified_position import Position, PositionError
 from infrastructure.networking.websocket.structs import PublicWebsocketChannelType, PrivateWebsocketChannelType
@@ -88,6 +89,16 @@ class BaseSpotFuturesArbitrageTask(BaseStrategyTask[BaseSpotFuturesTaskContext])
     @property
     def has_position(self):
         return self.context.positions['spot'].qty > 0 and self.context.positions['futures'].qty > 0
+
+    @property
+    def spot_pos(self):
+        """Shortcut to spot position."""
+        return self.context.positions['spot']
+
+    @property
+    def futures_pos(self):
+        """Shortcut to futures position."""
+        return self.context.positions['futures']
 
     def __init__(self,
                  context: BaseSpotFuturesTaskContext,
@@ -274,6 +285,7 @@ class BaseSpotFuturesArbitrageTask(BaseStrategyTask[BaseSpotFuturesTaskContext])
         except Exception as e:
             self.logger.error(f"🚫 Failed to cancel {tag_str} order", error=str(e))
             # Try to fetch order status instead
+        finally:
             order = await exchange.fetch_order(symbol, order_id)
 
         self._track_order_execution(market_type, order)
@@ -337,18 +349,19 @@ class BaseSpotFuturesArbitrageTask(BaseStrategyTask[BaseSpotFuturesTaskContext])
     def _track_order_execution(self, market_type: MarketType, order: Optional[Order] = None):
         """Process filled order and update context for specific market."""
         if not order:
+            self.context.positions[market_type].last_order = None
             return
 
         try:
             pos = self.context.positions[market_type]
             pos_change = pos.update_position_with_order(order, fee=self._get_fees(market_type).taker_fee)
-
-            self.logger.info(f"📊 Updated position on {market_type}",
-                             side=order.side.name,
-                             qty_before=pos_change.qty_before,
-                             price_before=pos_change.price_before,
-                             qty_after=pos_change.qty_after,
-                             price_after=pos_change.price_after)
+            if is_order_filled(order):
+                self.logger.info(f"📊 Updated position on {market_type}",
+                                 side=order.side.name,
+                                 qty_before=pos_change.qty_before,
+                                 price_before=pos_change.price_before,
+                                 qty_after=pos_change.qty_after,
+                                 price_after=pos_change.price_after)
 
         except PositionError as pe:
             self.logger.error(f"🚫 Position update error on {market_type} after order fill",

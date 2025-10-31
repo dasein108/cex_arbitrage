@@ -71,7 +71,7 @@ async def create_maker_limit_mexc_gateio_futures_task(
             'spot': MarketData(
                 exchange=ExchangeEnum.MEXC,  # MEXC spot market
                 tick_tolerance=2,
-                ticks_offset=3,
+                ticks_offset=2,
                 use_market=False  # Use limit orders for better fills
             ),
             'futures': MarketData(
@@ -220,18 +220,7 @@ async def run_spot_futures_arbitrage_demo():
     
     try:
         await manager.start(recover_tasks=True)
-        
-        # Reduce noisy exchange logs
-        logger_names = [
-            "GATEIO_SPOT.ws.private", "GATEIO_SPOT.ws.public",
-            "GATEIO_FUTURES.ws.private", "GATEIO_FUTURES.ws.public",
-            "MEXC_SPOT.ws.private", "MEXC_SPOT.ws.public",
-            "rest.client.gateio", "rest.client.mexc"
-        ]
-        
-        for logger_name in logger_names:
-            LoggerFactory.override_logger(logger_name, min_level="ERROR")
-        
+
         if manager.task_count > 0:
             logger.info(f"♻️ Recovered {manager.task_count} spot-futures arbitrage tasks")
         else:
@@ -254,22 +243,22 @@ async def run_spot_futures_arbitrage_demo():
                 total_quantity_usdt = 10  # $50 total position
                 order_qty_usdt = 5  # $5 per order
 
-                total_quantity = total_quantity_usdt / current_price
-                order_qty = order_qty_usdt / current_price
+                # total_quantity = total_quantity_usdt / current_price
+                # order_qty = order_qty_usdt / current_price
 
                 # Create cross-exchange arbitrage task
                 task = await create_maker_limit_mexc_gateio_futures_task(
                     symbol=symbol,
-                    total_quantity=total_quantity,
-                    order_qty=order_qty
+                    total_quantity=11,
+                    order_qty=11
                 )
 
                 # Add to manager
                 task_id = await manager.add_task(task)
                 logger.info("✅ Created Cross-Exchange Spot-Futures Task",
                             symbol=str(symbol),
-                            total_quantity=f"{total_quantity:.4f}",
-                            total_value_usdt=total_quantity_usdt,
+                            # total_quantity=f"{total_quantity:.4f}",
+                            # total_value_usdt=total_quantity_usdt,
                             spot_exchange="MEXC",
                             futures_exchange="GATEIO_FUTURES",
                             signal_type="Z-score based")
@@ -337,7 +326,7 @@ async def run_spot_futures_arbitrage_demo():
                 
                 # Smaller positions for same-exchange (lower opportunity)
                 total_quantity_usdt = 25  # $25 total position
-                order_qty_usdt = 2.5     # $2.5 per order
+                order_qty_usdt = 20    # $2.5 per order
                 
                 total_quantity = total_quantity_usdt / current_price
                 order_qty = order_qty_usdt / current_price

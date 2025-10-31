@@ -191,7 +191,7 @@ class SymbolInfo(Struct, frozen=True):
     def get_min_base_quantity(self, price: float) -> float:
         """Get minimum base quantity."""
         if self.min_base_quantity:
-            return self.min_base_quantity * self.quanto_multiplier
+            return self.min_base_quantity #* self.quanto_multiplier
         else:
             return self.get_min_base_quantity_from_quote(price)
 
