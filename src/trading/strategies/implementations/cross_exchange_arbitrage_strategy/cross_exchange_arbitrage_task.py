@@ -1,5 +1,5 @@
 import asyncio
-from typing import Optional, Type, Dict, Literal, List, TypeAlias
+from typing import Optional, Type, Dict, Literal, TypeAlias
 import msgspec
 from msgspec import Struct
 import numpy as np
@@ -14,7 +14,7 @@ from trading.research.cross_arbitrage.arbitrage_analyzer import AnalyzerKeys
 
 from utils import get_decrease_vector
 from trading.strategies.implementations.cross_exchange_arbitrage_strategy.asset_transfer_module import AssetTransferModule, TransferRequest
-from trading.strategies.implementations.cross_exchange_arbitrage_strategy.unified_position import Position, PositionError
+from trading.strategies.implementations.base_strategy.unified_position import Position, PositionError
 
 from trading.strategies.implementations.base_strategy.base_strategy import BaseStrategyContext, BaseStrategyTask
 from trading.analysis.arbitrage_signals import calculate_arb_signals, ArbSignal

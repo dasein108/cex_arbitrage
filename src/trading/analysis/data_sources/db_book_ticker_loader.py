@@ -76,7 +76,7 @@ class BookTickerSnapshotLoader:
         if df is not None:
             self.logger.info(f"  📁 Loaded from cache: {cache_key}")
             if rounding_seconds:
-                df = self.rescale_to_window(df, rounding_seconds // 60)
+                df = self.rescale_to_seconds(df, rounding_seconds)
 
             return df
 
@@ -97,12 +97,12 @@ class BookTickerSnapshotLoader:
             print(f"  💾 Cached as: {cache_key}")
 
         if rounding_seconds:
-            df = self.rescale_to_window(df, rounding_seconds // 60)
+            df = self.rescale_to_seconds(df, rounding_seconds)
         
         return df
 
     # python
-    def rescale_to_window(self, df: pd.DataFrame, window_minutes: int = 1) -> pd.DataFrame:
+    def rescale_to_seconds(self, df: pd.DataFrame, window_seconds: int = 1) -> pd.DataFrame:
         """Rescale book ticker data using the dataframe index as the timestamp."""
         if df.empty:
             return df
@@ -115,7 +115,7 @@ class BookTickerSnapshotLoader:
             return df
 
         # Floor index to window boundaries
-        window_str = f"{max(int(window_minutes), 1)}T"
+        window_str = f"{max(int(window_seconds), 1)}S"
         df["timestamp_window"] = df.index.floor(window_str)
 
         # Build aggregation map for available columns

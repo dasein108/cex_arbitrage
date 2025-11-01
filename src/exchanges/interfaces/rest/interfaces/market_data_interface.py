@@ -7,6 +7,7 @@ from exchanges.structs.common import (
     OrderBook,
     Trade,
     Kline,
+    AssetName,
     Ticker, FuturesTicker
 )
 from exchanges.structs.enums import KlineInterval
@@ -65,12 +66,14 @@ class MarketDataInterface(ABC):
         pass
 
     @abstractmethod
-    async def get_ticker_info(self, symbol: Optional[Symbol] = None) -> Dict[Symbol, Union[Ticker, FuturesTicker]]:
+    async def get_ticker_info(self, symbol: Optional[Symbol] = None,
+                              quote_asset: Optional[AssetName]= None) -> Dict[Symbol, Union[Ticker, FuturesTicker]]:
         """Get 24hr ticker price change statistics
 
         Args:
             symbol: Specific symbol to get ticker for (optional)
                    If None, returns tickers for all symbols
+            quote_asset: Asset to filter
 
         Returns:
             Dictionary mapping Symbol to Ticker with 24hr statistics

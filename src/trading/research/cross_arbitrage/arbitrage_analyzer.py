@@ -14,9 +14,10 @@ Usage:
 
 import asyncio
 import pandas as pd
+import numpy as np
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Dict, Any, Tuple, Optional, List
+from typing import Dict, Any, Tuple, Optional, List, Union
 import sys
 import os
 
@@ -28,6 +29,7 @@ sys.path.append(os.path.join(os.path.dirname(__file__), '..', '..'))
 from trading.research.cross_arbitrage.book_ticker_source import CandlesBookTickerSource, BookTickerDbSource
 from exchanges.structs.enums import ExchangeEnum, KlineInterval
 from exchanges.structs import Symbol, AssetName
+from trading.analysis.arbitrage_signals import calculate_arb_signals
 
 
 class AnalyzerKeys:
@@ -58,7 +60,7 @@ class ArbitrageAnalyzer:
     TOTAL_FEES = 0.25  # 0.1% + 0.05% + 0.05% total fees
     
     def __init__(self, exchanges: Optional[List[ExchangeEnum]] = None, use_db_book_tickers = False,
-                 tf: KlineInterval = KlineInterval.MINUTE_5):
+                 tf: Union[KlineInterval, int] = KlineInterval.MINUTE_5):
         """Initialize analyzer with modern BookTickerSource."""
         self.tf = tf
         self.exchanges = exchanges or [ExchangeEnum.MEXC, ExchangeEnum.GATEIO, ExchangeEnum.GATEIO_FUTURES]
@@ -89,15 +91,11 @@ class ArbitrageAnalyzer:
         df = self._calculate_arbitrage_metrics(df)
         
         # Perform statistical analysis
-        results = self._analyze_profitability(df)
-        results['symbol'] = symbol
-        results['days_analyzed'] = days
-        results['total_periods'] = len(df)
-        
+
         # Analysis completed
         print(f"💾 Analysis completed: {len(df)} periods analyzed")
         
-        return df, results
+        return df, {}
     
     async def _download_and_merge_data(self, symbol: Symbol, days: int) -> pd.DataFrame:
         """Download book ticker data using modern BookTickerSource architecture."""
@@ -108,11 +106,12 @@ class ArbitrageAnalyzer:
         df = await self.book_ticker_source.get_multi_exchange_data(
             exchanges=self.exchanges,
             symbol=symbol,
-            hours=days * 24,
+            hours=round(days * 24),
             timeframe=self.tf
         )
 
         len_before = len(df)
+        # df.fillna(method='ffill', inplace=True)
 
         df.dropna(inplace=True)
 
@@ -155,58 +154,170 @@ class ArbitrageAnalyzer:
             df[AnalyzerKeys.gateio_spot_bid] * 100
         )
         
-        # Calculate total arbitrage sum
-        df['total_arbitrage_sum'] = (
-            df[AnalyzerKeys.mexc_vs_gateio_futures_arb] + df[AnalyzerKeys.gateio_spot_vs_futures_arb]
-        )
-        
-        # Apply fees
-        df['total_arbitrage_sum_fees'] = df['total_arbitrage_sum'] - self.TOTAL_FEES
-        
-        # Mark profitable periods
-        df['is_profitable'] = df['total_arbitrage_sum_fees'] > 0
-        
+        df = self.add_arb_signals_with_pnl(df)
         return df
-    
-    def _analyze_profitability(self, df: pd.DataFrame) -> Dict[str, Any]:
-        """Perform statistical analysis to find optimal entry/exit points."""
-        profitable_df = df[df['is_profitable']]
-        
-        results = {
-            # Overall profitability
-            'profitability_pct': len(profitable_df) / len(df) * 100,
-            'avg_profit_when_profitable': profitable_df['total_arbitrage_sum_fees'].mean() if len(profitable_df) > 0 else 0,
-            'max_profit': df['total_arbitrage_sum_fees'].max(),
-            'min_profit': df['total_arbitrage_sum_fees'].min(),
 
-            # Entry point analysis (percentiles of total arbitrage sum)
-            'entry_thresholds': {
-                '25th_percentile': df['total_arbitrage_sum'].quantile(0.25),
-                '10th_percentile': df['total_arbitrage_sum'].quantile(0.10),
-                '5th_percentile': df['total_arbitrage_sum'].quantile(0.05),
-            },
+    def add_arb_signals_with_pnl(
+            self,
+            df: pd.DataFrame,
+            window_size: int = 10,
+            total_fees: float = 0.0025,  # 0.25% total fees
+            lookback_periods: int = 500,  # Fixed lookback like hedged backtest
+            min_history: int = 50,  # Minimum periods before trading
+    ) -> pd.DataFrame:
+        """
+        Add arbitrage signals with bidirectional position tracking and P&L calculation.
+        Uses unified logic for both MEXC_TO_GATEIO and GATEIO_TO_MEXC directions.
 
-            # Individual arbitrage metrics
-            'mexc_futures_arb_stats': self._metric_stats(df, AnalyzerKeys.mexc_vs_gateio_futures_arb),
-            'spot_futures_arb_stats': self._metric_stats(df, AnalyzerKeys.gateio_spot_vs_futures_arb),
-            'total_arb_stats': self._metric_stats(df, 'total_arbitrage_sum_fees'),
-        }
-        
-        # Profitable streak analysis
-        results['profitable_streaks'] = self._analyze_streaks(df['is_profitable'])
+        Args:
+            df: DataFrame with price and arb columns
+            window_size: Rolling window size for statistics (default: 10)
+            total_fees: Total trading fees (default: 0.25%)
+            lookback_periods: Fixed lookback period for percentile calculation (default: 500)
+            min_history: Minimum periods before generating signals (default: 50)
 
-        return results
-    
-    def _metric_stats(self, df: pd.DataFrame, column: str) -> Dict[str, float]:
-        """Calculate basic statistics for a metric column."""
-        return {
-            'mean': df[column].mean(),
-            'std': df[column].std(),
-            'min': df[column].min(),
-            'max': df[column].max(),
-            'median': df[column].median(),
-        }
-    
+        Returns:
+            DataFrame with signals, positions, and P&L for both directions
+        """
+        mexc_col = AnalyzerKeys.mexc_vs_gateio_futures_arb
+        gateio_col = AnalyzerKeys.gateio_spot_vs_futures_arb
+
+        # Initialize unified signal columns for bidirectional trading
+        df['signal'] = 'HOLD'
+        df['direction'] = 'NONE'
+        df['mexc_gateio_min_25pct'] = np.nan
+        df['gateio_spot_max_25pct'] = np.nan
+        df['mexc_gateio_mean'] = np.nan
+        df['gateio_spot_mean'] = np.nan
+
+        # Calculate signals using unified methodology from hedged backtest
+        for i in range(len(df)):
+            # Skip if insufficient history
+            if i < min_history:
+                continue
+                
+            # Get historical data (fixed lookback period like hedged backtest)
+            start_idx = max(0, i - lookback_periods)
+            mexc_history = df[mexc_col].iloc[start_idx:i+1].values
+            gateio_history = df[gateio_col].iloc[start_idx:i+1].values
+            
+            # Use unified signal detection like hedged backtest
+            if len(mexc_history) >= min_history:
+                signal_result = calculate_arb_signals(
+                    mexc_vs_gateio_futures_history=mexc_history,
+                    gateio_spot_vs_futures_history=gateio_history,
+                    current_mexc_vs_gateio_futures=df.iloc[i][mexc_col],
+                    current_gateio_spot_vs_futures=df.iloc[i][gateio_col],
+                    window_size=window_size
+                )
+                
+                # Store statistics
+                df.iloc[i, df.columns.get_loc('mexc_gateio_min_25pct')] = signal_result.mexc_vs_gateio_futures.min_25pct
+                df.iloc[i, df.columns.get_loc('gateio_spot_max_25pct')] = signal_result.gateio_spot_vs_futures.max_25pct
+                df.iloc[i, df.columns.get_loc('mexc_gateio_mean')] = signal_result.mexc_vs_gateio_futures.mean
+                df.iloc[i, df.columns.get_loc('gateio_spot_mean')] = signal_result.gateio_spot_vs_futures.mean
+                
+                # Determine signal and direction using unified logic
+                if signal_result.signal.value == 'ENTER':
+                    # Choose direction based on spread magnitude (like hedged backtest)
+                    mexc_spread_magnitude = abs(signal_result.mexc_vs_gateio_futures.current)
+                    gateio_spread_magnitude = abs(signal_result.gateio_spot_vs_futures.current)
+                    
+                    if mexc_spread_magnitude >= gateio_spread_magnitude:
+                        # MEXC spread is larger, go MEXC_TO_GATEIO
+                        df.iloc[i, df.columns.get_loc('signal')] = 'ENTER'
+                        df.iloc[i, df.columns.get_loc('direction')] = 'MEXC_TO_GATEIO'
+                    else:
+                        # Gate.io spread is larger, go GATEIO_TO_MEXC
+                        df.iloc[i, df.columns.get_loc('signal')] = 'ENTER'
+                        df.iloc[i, df.columns.get_loc('direction')] = 'GATEIO_TO_MEXC'
+                elif signal_result.signal.value == 'EXIT':
+                    df.iloc[i, df.columns.get_loc('signal')] = 'EXIT'
+                    # Direction remains same as current position
+
+        # --- Unified Bidirectional Position Tracking and P&L Calculation ---
+        df['position_open'] = False
+        df['source_spot_entry'] = np.nan
+        df['hedge_futures_entry'] = np.nan
+        df['dest_spot_exit'] = np.nan
+        df['hedge_futures_exit'] = np.nan
+        df['trade_pnl'] = 0.0
+        df['cumulative_pnl'] = 0.0
+
+        position_open = False
+        position_direction = None
+        source_spot_entry = 0.0
+        hedge_futures_entry = 0.0
+        cumulative_pnl = 0.0
+
+        for idx in df.index:
+            signal = df.loc[idx, 'signal']
+            direction = df.loc[idx, 'direction']
+
+            if signal == 'ENTER' and not position_open:
+                # Open unified position based on direction
+                position_direction = direction
+                
+                if direction == 'MEXC_TO_GATEIO':
+                    # Buy MEXC spot, Sell Gate.io futures
+                    source_spot_entry = df.loc[idx, AnalyzerKeys.mexc_ask]
+                    hedge_futures_entry = df.loc[idx, AnalyzerKeys.gateio_futures_bid]
+                elif direction == 'GATEIO_TO_MEXC':
+                    # Buy Gate.io spot, Sell Gate.io futures
+                    source_spot_entry = df.loc[idx, AnalyzerKeys.gateio_spot_ask]
+                    hedge_futures_entry = df.loc[idx, AnalyzerKeys.gateio_futures_bid]
+
+                df.loc[idx, 'position_open'] = True
+                df.loc[idx, 'source_spot_entry'] = source_spot_entry
+                df.loc[idx, 'hedge_futures_entry'] = hedge_futures_entry
+                position_open = True
+
+            elif signal == 'EXIT' and position_open:
+                # Close unified position based on current direction
+                if position_direction == 'MEXC_TO_GATEIO':
+                    # Transfer complete: Sell Gate.io spot, Buy Gate.io futures
+                    dest_spot_exit = df.loc[idx, AnalyzerKeys.gateio_spot_bid]
+                    hedge_futures_exit = df.loc[idx, AnalyzerKeys.gateio_futures_ask]
+                elif position_direction == 'GATEIO_TO_MEXC':
+                    # Transfer complete: Sell MEXC spot, Buy Gate.io futures
+                    dest_spot_exit = df.loc[idx, AnalyzerKeys.mexc_bid]
+                    hedge_futures_exit = df.loc[idx, AnalyzerKeys.gateio_futures_ask]
+
+                # THREE-EXCHANGE DELTA-NEUTRAL P&L CALCULATION
+                # Gate.io Futures always provides hedging reference
+                # Calculate actual position values for proper delta-neutral P&L
+                
+                # Spot leg P&L: Exit price vs Entry price (percentage)
+                spot_leg_pnl_pct = (dest_spot_exit - source_spot_entry) / source_spot_entry
+                
+                # Futures hedge P&L: We sold futures at entry, buy back at exit
+                futures_leg_pnl_pct = (hedge_futures_entry - hedge_futures_exit) / hedge_futures_entry
+                
+                # Total delta-neutral P&L (both legs combined)
+                gross_pnl_pct = spot_leg_pnl_pct + futures_leg_pnl_pct
+                trade_pnl = gross_pnl_pct - total_fees
+
+                df.loc[idx, 'dest_spot_exit'] = dest_spot_exit
+                df.loc[idx, 'hedge_futures_exit'] = hedge_futures_exit
+                df.loc[idx, 'trade_pnl'] = trade_pnl * 100  # Convert to percentage
+                cumulative_pnl += trade_pnl * 100
+                df.loc[idx, 'cumulative_pnl'] = cumulative_pnl
+
+                position_open = False
+                position_direction = None
+
+            # Forward fill position state
+            if position_open:
+                df.loc[idx, 'position_open'] = True
+                df.loc[idx, 'direction'] = position_direction
+                df.loc[idx, 'source_spot_entry'] = source_spot_entry
+                df.loc[idx, 'hedge_futures_entry'] = hedge_futures_entry
+
+            # Forward fill cumulative P&L
+            df.loc[idx, 'cumulative_pnl'] = cumulative_pnl
+
+        return df
+
     def _analyze_streaks(self, is_profitable: pd.Series) -> Dict[str, Any]:
         """Analyze consecutive profitable periods."""
         streaks = []

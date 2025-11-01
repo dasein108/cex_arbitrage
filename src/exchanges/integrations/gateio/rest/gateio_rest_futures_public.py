@@ -6,7 +6,7 @@ from datetime import datetime
 from exchanges.interfaces.rest import PublicFuturesRestInterface
 from exchanges.structs.common import (
     Symbol, SymbolInfo, OrderBook, OrderBookEntry, Trade, Kline,
-    Ticker, FuturesTicker
+    Ticker, FuturesTicker, AssetName
 )
 from exchanges.structs.enums import KlineInterval
 from exchanges.structs import Side
@@ -295,7 +295,8 @@ class GateioPublicFuturesRestInterface(GateioBaseFuturesRestInterface, PublicFut
             self.logger.error(f"Failed to get futures historical trades for {symbol}: {e}")
             raise ExchangeRestError(500, f"Futures historical trades fetch failed: {str(e)}")
 
-    async def get_ticker_info(self, symbol: Optional[Symbol] = None) -> Dict[Symbol, FuturesTicker]:
+    async def get_ticker_info(self, symbol: Optional[Symbol] = None,
+                              quote_asset: Optional[AssetName]= None) -> Dict[Symbol, FuturesTicker]:
         """
         Get futures tickers with comprehensive market data including funding rates.
         Endpoint: /futures/usdt/tickers
@@ -304,6 +305,9 @@ class GateioPublicFuturesRestInterface(GateioBaseFuturesRestInterface, PublicFut
         """
         try:
             params = {}
+            if quote_asset:
+                params['settle'] = quote_asset
+
             if symbol:
                 params['contract'] = GateioFuturesSymbol.to_pair(symbol)
 
@@ -366,7 +370,11 @@ class GateioPublicFuturesRestInterface(GateioBaseFuturesRestInterface, PublicFut
                     index_price=index_price,
                     funding_rate=funding_rate,
                     funding_rate_indicative=funding_rate_indicative,
-                    funding_time=funding_time
+                    funding_time=funding_time,
+                    bid_price=float(td.get('highest_bid', 0)),
+                    bid_qty=float(td.get('highest_size', 0)),
+                    ask_price=float(td.get('lowest_ask', 0)),
+                    ask_qty=float(td.get('lowest_size', 0))
                 )
 
                 tickers[symbol_obj] = ticker

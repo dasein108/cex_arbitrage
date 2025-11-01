@@ -269,7 +269,7 @@ arbitrage:
 #      is_enabled: true
 #      priority: 3
     - id: "aiot_usdt_spot_arb"
-      base_asset: "NODE"
+      base_asset: "REI"
       quote_asset: "USDT"
       opportunity_type: "SPOT_SPOT"
       min_profit_bps: 40  # Higher for volatile asset
@@ -278,7 +278,7 @@ arbitrage:
       priority: 4
     # Additional pairs can be added - symbol info auto-discovered
     - id: "neiroeth_usdt_spot_arb"
-      base_asset: "NEIROETH"
+      base_asset: "SWTCH"
       quote_asset: "USDT"
       opportunity_type: "SPOT_SPOT"
       min_profit_bps: 45
@@ -302,7 +302,7 @@ arbitrage:
 #      is_enabled: true
 #      priority: 8
     - id: "myx_usdt_spot_arb"
-      base_asset: "VVV"
+      base_asset: "LQTY"
       quote_asset: "USDT"
       opportunity_type: "SPOT_SPOT"
       min_profit_bps: 50
@@ -334,7 +334,7 @@ arbitrage:
 #      is_enabled: true
 #      priority: 12
     - id: "lunc_usdt_spot_arb"
-      base_asset: "LUNC"
+      base_asset: "ZRC"
       quote_asset: "USDT"
       opportunity_type: "SPOT_SPOT"
       min_profit_bps: 50
@@ -342,7 +342,7 @@ arbitrage:
       is_enabled: true
       priority: 12
     - id: "velvet_usdt_spot_arb"
-      base_asset: "VELVET"
+      base_asset: "NAVX"
       quote_asset: "USDT"
       opportunity_type: "SPOT_SPOT"
       min_profit_bps: 50
@@ -365,16 +365,16 @@ arbitrage:
       max_exposure_usd: 7000
       is_enabled: true
       priority: 12
-    - id: "lever_usdt_spot_arb"
-      base_asset: "BICO"
+    - id: "адл_usdt_spot_arb"
+      base_asset: "FLK"
       quote_asset: "USDT"
       opportunity_type: "SPOT_SPOT"
       min_profit_bps: 50
       max_exposure_usd: 7000
       is_enabled: true
       priority: 12
-    - id: "prcl_usdt_spot_arb"
-      base_asset: "PRCL"
+    - id: "SUNDOG_usdt_spot_arb"
+      base_asset: "SUNDOG"
       quote_asset: "USDT"
       opportunity_type: "SPOT_SPOT"
       min_profit_bps: 50
@@ -389,8 +389,8 @@ arbitrage:
 #      max_exposure_usd: 7000
 #      is_enabled: true
 #      priority: 12
-    - id: "XPIN_usdt_spot_arb"
-      base_asset: "XPIN"
+    - id: "PIGGY_usdt_spot_arb"
+      base_asset: "PIGGY"
       quote_asset: "USDT"
       opportunity_type: "SPOT_SPOT"
       min_profit_bps: 50

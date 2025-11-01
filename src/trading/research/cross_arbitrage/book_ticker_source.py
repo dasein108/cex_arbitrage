@@ -1,4 +1,4 @@
-from typing import Optional, Protocol
+from typing import Optional, Protocol, Union
 from datetime import datetime, UTC
 import asyncio
 
@@ -19,7 +19,7 @@ class BookTickerSourceProtocol(Protocol):
         symbol: Symbol,
         date_to: Optional[datetime] = None,
         hours: int = 24,
-        timeframe: KlineInterval = KlineInterval.MINUTE_1
+        timeframe: Union[KlineInterval, int] = KlineInterval.MINUTE_1
     ) -> pd.DataFrame:
         """Fetch book ticker data from multiple exchanges."""
         ...
@@ -38,12 +38,15 @@ class BookTickerDbSource(BookTickerSourceProtocol):
         symbol: Symbol,
         date_to: Optional[datetime] = None,
         hours: int = 24,
-        timeframe: KlineInterval = KlineInterval.MINUTE_1
+        timeframe: Union[KlineInterval, int] = KlineInterval.MINUTE_1
     ) -> pd.DataFrame:
         """Fetch book ticker data from multiple exchanges."""
         end_time = datetime.now(UTC) if date_to is None else date_to
         start_time = end_time - pd.Timedelta(hours=hours)
-        timeframe_seconds = get_interval_seconds(timeframe)
+        if isinstance(timeframe, int):
+            timeframe_seconds = timeframe
+        else:
+            timeframe_seconds = get_interval_seconds(timeframe)
         tasks = [
             self.snapshot_loader.get_book_ticker_dataframe(
                 exchange=exchange.value,
@@ -83,6 +86,18 @@ class CandlesBookTickerSource(BookTickerSourceProtocol):
     def __init__(self, window_minutes: int = 1):
         self.window_minutes = window_minutes
         self.candles_loader = CandlesLoader()
+
+    # async def download_exchange_data(self, exchange: ExchangeEnum, symbol,
+    #                                  start_time: datetime, end_time: datetime,
+    #                                  timeframe: KlineInterval) -> Optional[pd.DataFrame]:
+    #     df = await self.candles_loader.download_candles(
+    #         exchange=exchange,
+    #         symbol=symbol,
+    #         timeframe=timeframe,
+    #         start_date=start_time,
+    #         end_date=end_time,
+    #     )
+    #     return df
 
     async def get_multi_exchange_data(
         self,
@@ -130,6 +145,47 @@ class CandlesBookTickerSource(BookTickerSourceProtocol):
 
         return merged_df
 
+    async def get_multi_exchange_candles_data(
+            self,
+            exchanges: list[ExchangeEnum],
+            symbol: Symbol,
+            date_to: Optional[datetime] = None,
+            hours: int = 24,
+            timeframe: KlineInterval = KlineInterval.MINUTE_1
+    ) -> pd.DataFrame:
+        """Fetch book ticker data from multiple exchanges."""
+        end_time = datetime.now(UTC) if date_to is None else date_to
+        start_time = end_time - pd.Timedelta(hours=hours)
+        tasks = [
+            self.candles_loader.download_candles(
+                exchange=exchange,
+                symbol=symbol,
+                timeframe=timeframe,
+                start_date=start_time,
+                end_date=end_time,
+            )
+            for exchange in exchanges
+        ]
+        results = await asyncio.gather(*tasks)
+
+        exchange_df_map: dict[ExchangeEnum, Optional[pd.DataFrame]] = {}
+
+        for exchange, df in zip(exchanges, results):
+            if df is None or df.empty:
+                exchange_df_map[exchange] = None
+                continue
+            # Prefix all column names with the exchange key (use enum name)
+            prefixed = df[['open', 'high', 'low', 'close', 'volume']].copy()
+            prefixed.columns = [f"{exchange.value}_{col}" for col in prefixed.columns]
+            exchange_df_map[exchange] = prefixed
+
+        # Merge all available dataframes into a single dataframe (outer join on index)
+        available = [df for df in exchange_df_map.values() if df is not None]
+        merged_df = pd.concat(available, axis=1, join="outer") if available else pd.DataFrame()
+        merged_df.sort_index(inplace=True)
+
+        return merged_df
+
 if __name__ == "__main__":
     import asyncio
     from exchanges.structs import Symbol
@@ -138,9 +194,9 @@ if __name__ == "__main__":
         # await get_database_manager()
         # source = CandlesBookTickerSource()
         await get_database_manager()
-        source = BookTickerDbSource()
+        source = CandlesBookTickerSource()
         symbol = Symbol(base=AssetName("F"), quote=AssetName("USDT"))
-        df = await source.get_multi_exchange_data(
+        df = await source.get_multi_exchange_candles_data(
             exchanges=[ExchangeEnum.MEXC, ExchangeEnum.GATEIO, ExchangeEnum.GATEIO_FUTURES],
             symbol=symbol,
             hours=24,

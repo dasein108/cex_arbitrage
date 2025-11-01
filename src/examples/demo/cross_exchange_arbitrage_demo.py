@@ -138,8 +138,8 @@ async def run_cross_exchange_arbitrage_demo():
 
                 exchange = create_rest_client(get_exchange_config(ExchangeEnum.MEXC.value), is_private=False)
 
-                total_quantity_usdt = 20
-                order_qty_usdt = 2
+                total_quantity_usdt = 10
+                order_qty_usdt = 10
 
                 price = (await exchange.get_ticker_info(symbol))[symbol].last_price
 
@@ -164,11 +164,11 @@ async def run_cross_exchange_arbitrage_demo():
                             hedge_exchange="GATEIO_FUTURES")
 
 
-            await add_tasks(Symbol(base=AssetName("SUNDOG"), quote=AssetName("USDT")))
-            await add_tasks(Symbol(base=AssetName("ZRC"), quote=AssetName("USDT")))
+            # await add_tasks(Symbol(base=AssetName("SUNDOG"), quote=AssetName("USDT")))
+            # await add_tasks(Symbol(base=AssetName("ZRC"), quote=AssetName("USDT")))
             await add_tasks(Symbol(base=AssetName("PIGGY"), quote=AssetName("USDT")))
-            # await add_tasks(Symbol(base=AssetName("SWELL"), quote=AssetName("USDT")))
-            await add_tasks(Symbol(base=AssetName("NAVX"), quote=AssetName("USDT")))
+            await add_tasks(Symbol(base=AssetName("FLK"), quote=AssetName("USDT")))
+            # await add_tasks(Symbol(base=AssetName("NAVX"), quote=AssetName("USDT")))
 
         # Monitor StrategyTaskManager execution
         logger.info("📊 StrategyTaskManager started, monitoring execution...")

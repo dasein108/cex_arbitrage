@@ -10,7 +10,7 @@ This example demonstrates:
 """
 
 from exchanges.structs.common import Side
-from trading.strategies.implementations.cross_exchange_arbitrage_strategy.unified_position import Position
+from trading.strategies.implementations.base_strategy.unified_position import Position
 
 
 def demo_position_pnl():

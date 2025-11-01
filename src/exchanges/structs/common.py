@@ -321,6 +321,10 @@ class FuturesTicker(Struct):
     funding_rate: Optional[float] = None
     funding_rate_indicative: Optional[float] = None
     funding_time: Optional[int] = None  # Timestamp of next funding
+    bid_price: Optional[float] = None
+    bid_qty: Optional[float] = None
+    ask_price: Optional[float] = None
+    ask_qty: Optional[float] = None
 # Configuration structures
 
 class Fees(Struct):

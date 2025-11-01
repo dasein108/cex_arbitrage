@@ -22,13 +22,9 @@ from .spot_futures_arbitrage_task import (
     SpotFuturesArbitrageTaskContext,
     SPOT_FUTURES_ARBITRAGE_TASK_TYPE
 )
-from trading.strategies.implementations.base_strategy.unified_position import Position, PositionError, PnLTracker
 
 __all__ = [
     'SpotFuturesArbitrageTask',
     'SpotFuturesArbitrageTaskContext', 
     'SPOT_FUTURES_ARBITRAGE_TASK_TYPE',
-    'Position',
-    'PositionError',
-    'PnLTracker'
 ]

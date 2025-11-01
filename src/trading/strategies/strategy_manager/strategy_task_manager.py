@@ -12,10 +12,12 @@ from .task_persistence_manager import TaskPersistenceManager
 from exchanges.structs import Symbol
 from trading.strategies.implementations.base_strategy.base_strategy import BaseStrategyTask, TaskResult
 from trading.strategies.implementations.cross_exchange_arbitrage_strategy.cross_exchange_arbitrage_task import CrossExchangeArbitrageTaskContext, CrossExchangeArbitrageTask, CROSS_EXCHANGE_ARBITRAGE_TASK_TYPE
+from trading.strategies.implementations.maker_limit_delta_neutral__simple_strategy.maker_limit_simple_delta_neutral_task import MakerLimitDeltaNeutralTask, MakerLimitDeltaNeutralTaskContext, MAKER_LIMIT_DELTA_NEUTRAL_TASK_TYPE
 from db.database_manager import initialize_database_manager
 
 TASK_TYPE_MAP = {
     CROSS_EXCHANGE_ARBITRAGE_TASK_TYPE: (CrossExchangeArbitrageTaskContext, CrossExchangeArbitrageTask),
+    # MAKER_LIMIT_DELTA_NEUTRAL_TASK_TYPE: (MakerLimitDeltaNeutralTaskContext, MakerLimitDeltaNeutralTask),
 }
 
 

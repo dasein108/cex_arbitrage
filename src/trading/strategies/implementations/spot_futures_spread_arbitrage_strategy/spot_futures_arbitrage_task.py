@@ -573,45 +573,45 @@ class SpotFuturesArbitrageTask(BaseStrategyTask[SpotFuturesArbitrageTaskContext]
         
         # Entry/Exit logic based on analyzer
         signal = Signal.HOLD
-        self.fut_max_spread = max(self.fut_max_spread, self.futures_vs_spot_spread)
-        self.fut_min_spread = min(self.fut_min_spread, self.futures_vs_spot_spread)
-        self.spot_max_spread = max(self.spot_max_spread, self.spot_vs_futures_spread)
-        self.spot_min_spread = min(self.spot_min_spread, self.spot_vs_futures_spread)
-        spot_vs_futures = self.spot_vs_futures_spread
-        futures_vs_spot = self.futures_vs_spot_spread
-        diff_fut_vs_spot = self.fut_max_spread - self.spot_min_spread
-        diff_spot_vs_fut = self.spot_max_spread - self.fut_min_spread
-        spot_bid_ask = self._get_book_ticker('spot')
-        futures_bid_ask = self._get_book_ticker('futures')
-        if spot_vs_futures < -0.4 and not self.paper_position:
-            self.paper_position = {'enter_spot': spot_bid_ask.ask_price,
-                                   'enter_futures': futures_bid_ask.bid_price}
-            self.logger.info(f"📋 Paper position ENTER: {self.paper_position}")
-        elif futures_vs_spot > -0.1 and self.paper_position:
-            enter_spot = self.paper_position['enter_spot']
-            enter_futures = self.paper_position['enter_futures']
-            exit_spot = spot_bid_ask.bid_price
-            exit_futures = futures_bid_ask.ask_price
-            spot_return = (exit_spot - enter_spot) / enter_spot * 100
-            futures_return = (enter_futures - exit_futures) / enter_futures * 100
-            total_return = spot_return + futures_return - total_fees
-            self.logger.info(f"📋 Paper position EXIT: {{'exit_spot': {exit_spot}, 'exit_futures': {exit_futures}}} "
-                             f"Returns: spot={spot_return:.4f}%, futures={futures_return:.4f}%, "
-                             f"total={total_return:.4f}% after fees={total_fees:.4f}%")
-            self.paper_position = None
-
-        if spot_vs_futures < -0.4 or futures_vs_spot > 0.1:
-            self.logger.info(f"enter: {spot_vs_futures:.4f} ({self.spot_min_spread:.4f}, {self.spot_max_spread:.4f}) diff: {diff_spot_vs_fut:.4f}   "
-                             f"exit: {futures_vs_spot:.4f}  ({self.fut_min_spread:.4f}, {self.fut_max_spread:.4f}) diff: {diff_fut_vs_spot:.4f}")
-
-        if futures_bid_ask.ask_price - spot_bid_ask.bid_price < 0:
-            self.logger.info(f"arb opportunity: spot_bid {spot_bid_ask.bid_price}  futures_ask {futures_bid_ask.ask_price} "
-                             f"diff: {futures_bid_ask.ask_price - spot_bid_ask.bid_price:.4f}")
-        if futures_bid_ask.bid_price - spot_bid_ask.ask_price > 0:
-            self.logger.info(f"arb opportunity: spot_ask {spot_bid_ask.ask_price}  futures_bid {futures_bid_ask.bid_price} "
-                             f"diff: {futures_bid_ask.bid_price - spot_bid_ask.ask_price:.4f}")
-
-         # Entry/Exit logic from analyzer:
+        # self.fut_max_spread = max(self.fut_max_spread, self.futures_vs_spot_spread)
+        # self.fut_min_spread = min(self.fut_min_spread, self.futures_vs_spot_spread)
+        # self.spot_max_spread = max(self.spot_max_spread, self.spot_vs_futures_spread)
+        # self.spot_min_spread = min(self.spot_min_spread, self.spot_vs_futures_spread)
+        # spot_vs_futures = self.spot_vs_futures_spread
+        # futures_vs_spot = self.futures_vs_spot_spread
+        # diff_fut_vs_spot = self.fut_max_spread - self.spot_min_spread
+        # diff_spot_vs_fut = self.spot_max_spread - self.fut_min_spread
+        # spot_bid_ask = self._get_book_ticker('spot')
+        # futures_bid_ask = self._get_book_ticker('futures')
+        # if spot_vs_futures < -0.4 and not self.paper_position:
+        #     self.paper_position = {'enter_spot': spot_bid_ask.ask_price,
+        #                            'enter_futures': futures_bid_ask.bid_price}
+        #     self.logger.info(f"📋 Paper position ENTER: {self.paper_position}")
+        # elif futures_vs_spot > -0.1 and self.paper_position:
+        #     enter_spot = self.paper_position['enter_spot']
+        #     enter_futures = self.paper_position['enter_futures']
+        #     exit_spot = spot_bid_ask.bid_price
+        #     exit_futures = futures_bid_ask.ask_price
+        #     spot_return = (exit_spot - enter_spot) / enter_spot * 100
+        #     futures_return = (enter_futures - exit_futures) / enter_futures * 100
+        #     total_return = spot_return + futures_return - total_fees
+        #     self.logger.info(f"📋 Paper position EXIT: {{'exit_spot': {exit_spot}, 'exit_futures': {exit_futures}}} "
+        #                      f"Returns: spot={spot_return:.4f}%, futures={futures_return:.4f}%, "
+        #                      f"total={total_return:.4f}% after fees={total_fees:.4f}%")
+        #     self.paper_position = None
+        #
+        # if spot_vs_futures < -0.4 or futures_vs_spot > 0.1:
+        #     self.logger.info(f"enter: {spot_vs_futures:.4f} ({self.spot_min_spread:.4f}, {self.spot_max_spread:.4f}) diff: {diff_spot_vs_fut:.4f}   "
+        #                      f"exit: {futures_vs_spot:.4f}  ({self.fut_min_spread:.4f}, {self.fut_max_spread:.4f}) diff: {diff_fut_vs_spot:.4f}")
+        #
+        # if futures_bid_ask.ask_price - spot_bid_ask.bid_price < 0:
+        #     self.logger.info(f"arb opportunity: spot_bid {spot_bid_ask.bid_price}  futures_ask {futures_bid_ask.ask_price} "
+        #                      f"diff: {futures_bid_ask.ask_price - spot_bid_ask.bid_price:.4f}")
+        # if futures_bid_ask.bid_price - spot_bid_ask.ask_price > 0:
+        #     self.logger.info(f"arb opportunity: spot_ask {spot_bid_ask.ask_price}  futures_bid {futures_bid_ask.bid_price} "
+        #                      f"diff: {futures_bid_ask.bid_price - spot_bid_ask.ask_price:.4f}")
+        #
+        #  # Entry/Exit logic from analyzer:
          # Entry condition: no position and abs(z_score) > 2 and spread > fees
          # Exit conditions handled in separate method
         if not self.has_position:
@@ -621,7 +621,7 @@ class SpotFuturesArbitrageTask(BaseStrategyTask[SpotFuturesArbitrageTaskContext]
         elif self.has_position:
             # Exit logic: mean reversion, max holding time, or sign flip
             signal = self._check_exit_conditions(z_score, current_spread)
-        
+
         # Log signal for monitoring
         self.logger.debug("📊 Z-score based signal analysis",
                          current_spread=current_spread,

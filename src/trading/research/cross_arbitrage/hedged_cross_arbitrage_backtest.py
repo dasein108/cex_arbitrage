@@ -22,7 +22,7 @@ import pandas as pd
 import numpy as np
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Dict, Any, List, Optional, NamedTuple
+from typing import Dict, Any, List, Optional, NamedTuple, Tuple
 from dataclasses import dataclass
 from enum import Enum
 import matplotlib.pyplot as plt
@@ -53,21 +53,35 @@ class PositionStatus(Enum):
 
 @dataclass
 class Position:
-    """Represents a hedged arbitrage position."""
+    """Represents a unified bidirectional hedged arbitrage position."""
     entry_time: datetime
-    entry_price_mexc: float
-    entry_price_gateio_futures: float
+    direction: str  # "MEXC_TO_GATEIO" or "GATEIO_TO_MEXC"
     entry_spread: float
     entry_signal_reason: str
+    
+    # Unified role-based pricing
+    source_spot_entry: float      # Buy source spot
+    hedge_futures_entry: float    # Sell Gate.io futures (hedge)
+    dest_spot_exit: Optional[float] = None      # Sell destination spot
+    hedge_futures_exit: Optional[float] = None  # Buy Gate.io futures (close hedge)
+    
+    # Exchange identification
+    source_exchange: str = ""     # "MEXC" or "GATEIO"
+    dest_exchange: str = ""       # "GATEIO" or "MEXC" 
+    hedge_exchange: str = "GATEIO_FUTURES"  # Always Gate.io futures
+    
+    # Position lifecycle
     status: PositionStatus = PositionStatus.OPEN
     transfer_complete_time: Optional[datetime] = None
     exit_time: Optional[datetime] = None
-    exit_price_gateio_spot: Optional[float] = None
-    exit_price_gateio_futures: Optional[float] = None
     exit_spread: Optional[float] = None
     exit_signal_reason: Optional[str] = None
     pnl: Optional[float] = None
     holding_period_minutes: Optional[int] = None
+    
+    # Cost tracking
+    entry_cost_usd: Optional[float] = None
+    exit_cost_usd: Optional[float] = None
 
 
 @dataclass
@@ -123,7 +137,7 @@ class HedgedCrossArbitrageBacktest:
         self.cache_dir.mkdir(exist_ok=True)
         
         # Initialize data analyzer with new constructor
-        self.analyzer = ArbitrageAnalyzer(use_db_book_tickers=True, tf=KlineInterval.MINUTE_1)
+        self.analyzer = ArbitrageAnalyzer(use_db_book_tickers=True, tf=1) #KlineInterval.MINUTE_1
 
         
         # Track positions and state
@@ -198,6 +212,7 @@ class HedgedCrossArbitrageBacktest:
         
         # Initialize tracking columns
         df['signal'] = 'HOLD'
+        df['direction'] = 'NONE'
         df['position_action'] = None
         df['active_positions'] = 0
         df['cumulative_pnl'] = 0.0
@@ -227,11 +242,12 @@ class HedgedCrossArbitrageBacktest:
             self._update_position_statuses(current_time)
             
             # Generate signals
-            signal_result = self._generate_signal(row)
+            signal_result, direction = self._generate_signal(row)
             df.at[idx, 'signal'] = signal_result.signal.value
+            df.at[idx, 'direction'] = direction or 'NONE'
             
             # Execute trading logic
-            action = self._execute_trading_logic(current_time, row, signal_result)
+            action = self._execute_trading_logic(current_time, row, signal_result, direction)
             df.at[idx, 'position_action'] = action
             df.at[idx, 'active_positions'] = len(self.open_positions)
             
@@ -244,8 +260,8 @@ class HedgedCrossArbitrageBacktest:
         
         return df
     
-    def _generate_signal(self, row: pd.Series) -> Any:
-        """Generate signals using synchronous arbitrage signal calculation."""
+    def _generate_signal(self, row: pd.Series) -> Tuple[Any, Optional[str]]:
+        """Generate unified bidirectional signals."""
         
         # Ensure we have enough historical data
         if len(self.historical_spreads['mexc_vs_gateio_futures']) < 50:
@@ -253,27 +269,49 @@ class HedgedCrossArbitrageBacktest:
                 signal=Signal.HOLD,
                 mexc_vs_gateio_futures=ArbStats(0, 0, 0, row[AnalyzerKeys.mexc_vs_gateio_futures_arb]),
                 gateio_spot_vs_futures=ArbStats(0, 0, 0, row[AnalyzerKeys.gateio_spot_vs_futures_arb])
-            )
+            ), None
         
-
-        return calculate_arb_signals(
+        # Calculate arbitrage opportunities in both directions
+        mexc_to_gateio_spread = row[AnalyzerKeys.mexc_vs_gateio_futures_arb]  # MEXC cheaper
+        gateio_to_mexc_spread = -mexc_to_gateio_spread  # Gate.io cheaper (opposite)
+        
+        # Use existing signal calculation for both directions
+        signal_result = calculate_arb_signals(
             mexc_vs_gateio_futures_history=self.historical_spreads['mexc_vs_gateio_futures'],
             gateio_spot_vs_futures_history=self.historical_spreads['gateio_spot_vs_futures'],
-            current_mexc_vs_gateio_futures=row[AnalyzerKeys.mexc_vs_gateio_futures_arb],
+            current_mexc_vs_gateio_futures=mexc_to_gateio_spread,
             current_gateio_spot_vs_futures=row[AnalyzerKeys.gateio_spot_vs_futures_arb]
         )
+        
+        # Detect best direction based on spread magnitude
+        mexc_opportunity = mexc_to_gateio_spread  # Negative = MEXC cheaper
+        gateio_opportunity = gateio_to_mexc_spread  # Positive = Gate.io cheaper
+        
+        # Determine preferred direction
+        direction = None
+        if signal_result.signal == Signal.ENTER:
+            # Choose direction based on which spread is more favorable
+            if abs(mexc_opportunity) > abs(gateio_opportunity) and mexc_opportunity < 0:
+                direction = "MEXC_TO_GATEIO"  # MEXC cheaper, buy MEXC
+            elif abs(gateio_opportunity) > abs(mexc_opportunity) and gateio_opportunity > 0:
+                direction = "GATEIO_TO_MEXC"  # Gate.io cheaper, buy Gate.io
+            else:
+                # Default to original direction if unclear
+                direction = "MEXC_TO_GATEIO" if mexc_opportunity < 0 else "GATEIO_TO_MEXC"
+        
+        return signal_result, direction
     
 
-    def _execute_trading_logic(self, current_time: datetime, row: pd.Series, signal_result: Any) -> Optional[str]:
-        """Execute position management based on signals."""
+    def _execute_trading_logic(self, current_time: datetime, row: pd.Series, signal_result: Any, direction: Optional[str]) -> Optional[str]:
+        """Execute unified position management based on signals and direction."""
         action = None
         
         signal = signal_result.signal
 
-        # Check for entry signals
-        if (signal == Signal.ENTER and
+        # Check for entry signals with direction
+        if (signal == Signal.ENTER and direction and
             len(self.open_positions) < self.config.max_concurrent_positions):
-            action = self._open_position(current_time, row)
+            action = self._open_position(current_time, row, direction)
         
         # Check for exit signals on ready positions
         elif signal == Signal.EXIT:
@@ -284,21 +322,47 @@ class HedgedCrossArbitrageBacktest:
         
         return action
     
-    def _open_position(self, current_time: datetime, row: pd.Series) -> str:
-        """Open a new hedged arbitrage position."""
+    def _open_position(self, current_time: datetime, row: pd.Series, direction: str) -> str:
+        """Open a unified bidirectional hedged arbitrage position."""
+        
+        if direction == "MEXC_TO_GATEIO":
+            # Buy MEXC spot + Sell Gate.io futures → transfer to Gate.io
+            source_spot_entry = row[AnalyzerKeys.mexc_ask]  # Buy MEXC spot
+            hedge_futures_entry = row[AnalyzerKeys.gateio_futures_bid]  # Sell Gate.io futures
+            source_exchange = "MEXC"
+            dest_exchange = "GATEIO"
+            entry_spread = row[AnalyzerKeys.mexc_vs_gateio_futures_arb]
+            entry_cost = source_spot_entry - hedge_futures_entry
+            
+        elif direction == "GATEIO_TO_MEXC":
+            # Buy Gate.io spot + Sell Gate.io futures → transfer to MEXC
+            source_spot_entry = row[AnalyzerKeys.gateio_spot_ask]  # Buy Gate.io spot
+            hedge_futures_entry = row[AnalyzerKeys.gateio_futures_bid]  # Sell Gate.io futures
+            source_exchange = "GATEIO"
+            dest_exchange = "MEXC"
+            entry_spread = -row[AnalyzerKeys.mexc_vs_gateio_futures_arb]  # Reverse spread
+            entry_cost = source_spot_entry - hedge_futures_entry
+            
+        else:
+            raise ValueError(f"Unknown direction: {direction}")
+        
         position = Position(
             entry_time=current_time,
-            entry_price_mexc=row[AnalyzerKeys.mexc_ask],  # Buy MEXC spot
-            entry_price_gateio_futures=row[AnalyzerKeys.gateio_futures_bid],  # Sell Gate.io futures
-            entry_spread=row[AnalyzerKeys.mexc_vs_gateio_futures_arb],
-            entry_signal_reason="ENTER signal triggered",
-            status=PositionStatus.WAITING_TRANSFER
+            direction=direction,
+            entry_spread=entry_spread,
+            entry_signal_reason=f"ENTER signal triggered ({direction})",
+            source_spot_entry=source_spot_entry,
+            hedge_futures_entry=hedge_futures_entry,
+            source_exchange=source_exchange,
+            dest_exchange=dest_exchange,
+            status=PositionStatus.WAITING_TRANSFER,
+            entry_cost_usd=entry_cost
         )
         
         self.positions.append(position)
         self.open_positions.append(position)
         
-        return f"OPEN_POSITION_{len(self.positions)}"
+        return f"OPEN_{direction}_{len(self.positions)}"
     
     def _update_position_statuses(self, current_time: datetime):
         """Update position statuses based on time elapsed."""
@@ -336,37 +400,61 @@ class HedgedCrossArbitrageBacktest:
             self._close_position(position, current_time, row, "FORCED_CLOSE_EXPIRED")
     
     def _close_position(self, position: Position, current_time: datetime, row: pd.Series, reason: str):
-        """Close a specific position and calculate PnL - CORRECTED ARBITRAGE LOGIC."""
-        # Exit prices
-        exit_price_gateio_spot = row[AnalyzerKeys.gateio_spot_bid]  # Sell Gate.io spot
-        exit_price_gateio_futures = row[AnalyzerKeys.gateio_futures_ask]  # Buy Gate.io futures
+        """Close a unified bidirectional hedged arbitrage position."""
         
-        # CORRECTED ARBITRAGE P&L CALCULATION
-        # The profit comes from capturing the spread improvement between entry and exit
+        if position.direction == "MEXC_TO_GATEIO":
+            # Close: Sell Gate.io spot + Buy Gate.io futures
+            dest_spot_exit = row[AnalyzerKeys.gateio_spot_bid]  # Sell Gate.io spot
+            hedge_futures_exit = row[AnalyzerKeys.gateio_futures_ask]  # Buy Gate.io futures
+            exit_spread = row[AnalyzerKeys.gateio_spot_vs_futures_arb]
+            exit_cost = hedge_futures_exit - dest_spot_exit
+            
+        elif position.direction == "GATEIO_TO_MEXC":
+            # Close: Sell MEXC spot + Buy Gate.io futures  
+            dest_spot_exit = row[AnalyzerKeys.mexc_bid]  # Sell MEXC spot
+            hedge_futures_exit = row[AnalyzerKeys.gateio_futures_ask]  # Buy Gate.io futures
+            exit_spread = -row[AnalyzerKeys.mexc_vs_gateio_futures_arb]  # Reverse spread
+            exit_cost = hedge_futures_exit - dest_spot_exit
+            
+        else:
+            raise ValueError(f"Unknown direction: {position.direction}")
         
-        # Calculate spread improvement (exit spread - entry spread)
-        entry_spread = position.entry_spread / 100  # Convert from percentage to decimal
-        exit_spread = row[AnalyzerKeys.gateio_spot_vs_futures_arb] / 100  # Convert from percentage to decimal
-        spread_improvement = exit_spread - entry_spread
+        # THREE-EXCHANGE DELTA-NEUTRAL P&L CALCULATION
+        # Gate.io Futures always provides hedging reference price
+        # Calculate actual position values relative to current futures price
         
-        # Gross profit = spread improvement applied to position size
-        gross_profit = spread_improvement * self.config.position_size_usd
+        current_futures_price = hedge_futures_exit  # Current Gate.io futures price
+        
+        # THREE-EXCHANGE DELTA-NEUTRAL P&L (Your Method)
+        # Calculate P&L for each leg separately, then combine
+        
+        # Spot leg: What we get from selling vs what we paid for buying
+        spot_pnl_per_unit = dest_spot_exit - position.source_spot_entry
+        spot_pnl_usd = (spot_pnl_per_unit / position.source_spot_entry) * self.config.position_size_usd
+        
+        # Futures hedge leg: We sold futures at entry, buy back at current price
+        futures_pnl_per_unit = position.hedge_futures_entry - hedge_futures_exit  # Profit when futures drops
+        futures_pnl_usd = (futures_pnl_per_unit / position.hedge_futures_entry) * self.config.position_size_usd
+        
+        # Total delta-neutral P&L = spot + futures hedge
+        gross_profit_usd = spot_pnl_usd + futures_pnl_usd
         
         # Apply fees (entry + exit + transfer fees)
         fee_cost = (self.config.fees_bps / 10000) * self.config.position_size_usd
         
         # Net profit after fees
-        pnl_usd = gross_profit - fee_cost
+        pnl_usd = gross_profit_usd - fee_cost
         
-        # Update position
+        # Update position with unified structure
         position.exit_time = current_time
-        position.exit_price_gateio_spot = exit_price_gateio_spot
-        position.exit_price_gateio_futures = exit_price_gateio_futures
-        position.exit_spread = row[AnalyzerKeys.gateio_spot_vs_futures_arb]
+        position.dest_spot_exit = dest_spot_exit
+        position.hedge_futures_exit = hedge_futures_exit
+        position.exit_spread = exit_spread
         position.exit_signal_reason = reason
         position.pnl = pnl_usd
         position.holding_period_minutes = int((current_time - position.entry_time).total_seconds() / 60)
         position.status = PositionStatus.CLOSED
+        position.exit_cost_usd = exit_cost
         
         # Remove from open positions
         self.open_positions.remove(position)
@@ -455,10 +543,17 @@ class HedgedCrossArbitrageBacktest:
             for i, pos in enumerate(self.positions):
                 positions_data.append({
                     'position_id': i + 1,
+                    'direction': pos.direction,
+                    'source_exchange': pos.source_exchange,
+                    'dest_exchange': pos.dest_exchange,
                     'entry_time': pos.entry_time,
                     'exit_time': pos.exit_time,
                     'entry_spread': pos.entry_spread,
                     'exit_spread': pos.exit_spread,
+                    'source_spot_entry': pos.source_spot_entry,
+                    'hedge_futures_entry': pos.hedge_futures_entry,
+                    'dest_spot_exit': getattr(pos, 'dest_spot_exit', None),
+                    'hedge_futures_exit': getattr(pos, 'hedge_futures_exit', None),
                     'pnl_usd': pos.pnl,
                     'holding_period_minutes': pos.holding_period_minutes,
                     'status': pos.status.value,
@@ -629,7 +724,7 @@ async def main():
     await get_database_manager()
     # Create backtester with custom config
     config = BacktestConfig(
-        symbol=Symbol(AssetName("F"), AssetName("USDT")),
+        symbol=Symbol(AssetName("FLK"), AssetName("USDT")),
         days=5,
         min_transfer_time_minutes=10,
         position_size_usd=1000,

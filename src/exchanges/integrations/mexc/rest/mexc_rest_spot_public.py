@@ -337,7 +337,9 @@ class MexcPublicSpotRestInterface(MexcBaseRestInterface, PublicSpotRestInterface
         return trades
 
     
-    async def get_ticker_info(self, symbol: Optional[Symbol] = None) -> Dict[Symbol, Ticker]:
+    async def get_ticker_info(self, symbol: Optional[Symbol] = None,
+                              quote_asset: Optional[AssetName] = None
+                              ) -> Dict[Symbol, Ticker]:
         """
         Get 24hr ticker price change statistics.
         
@@ -347,6 +349,7 @@ class MexcPublicSpotRestInterface(MexcBaseRestInterface, PublicSpotRestInterface
         Args:
             symbol: Specific symbol to get ticker for (optional)
                    If None, returns tickers for all symbols
+            quote_asset: asset to filter tickers by quote currency (optional)
             
         Returns:
             Dictionary mapping Symbol to Ticker with 24hr statistics
@@ -385,6 +388,8 @@ class MexcPublicSpotRestInterface(MexcBaseRestInterface, PublicSpotRestInterface
             
             try:
                 symbol_obj = MexcSymbol.to_symbol(pair_str)
+                if quote_asset and symbol_obj.quote != quote_asset:
+                    continue
             except:
                 # Skip symbols we can't parse
                 continue

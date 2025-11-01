@@ -3,7 +3,7 @@ from exchanges.exchange_factory import get_rest_implementation
 from exchanges.structs import SymbolInfo, Symbol
 from exchanges.structs.common import AssetInfo
 from exchanges.structs.enums import ExchangeEnum, KlineInterval
-from typing import List, Optional, Dict, Any, NamedTuple
+from typing import List, Optional, Dict, Any, Set
 import asyncio
 from datetime import datetime, UTC
 import pandas as pd
@@ -76,40 +76,25 @@ class CrossArbitrageCandidateAnalyzer:
 
     async def get_common_symbols(self, exchanges_count: int = 3):
         si_result = await asyncio.gather(*[c.get_symbols_info() for c in self.clients.values()])
-
+        inactive = set()
         symbols_info: Dict[ExchangeEnum, SymbolInfo] = {}
         symbol_exchanges: Dict[Symbol, List[ExchangeEnum]] = {}
         for exchange, symbols in zip(self.clients.keys(), si_result):
             symbols_info[exchange] = symbols
             for symbol in symbols.keys():
-                if symbol not in symbol_exchanges and symbols[symbol].is_tradable:
+                if  symbols[symbol].inactive or symbol in inactive:
+                    inactive.add(symbol)
+                    continue
+
+                if symbol not in symbol_exchanges:
                     symbol_exchanges[symbol] = []
+
                 symbol_exchanges[symbol].append(exchange)
 
 
         common_symbols = {symbol: exchanges for symbol, exchanges in symbol_exchanges.items() if len(exchanges) >= exchanges_count}
         return common_symbols, symbols_info
 
-    # async def get_candles(self, exchanges: List[ExchangeEnum], symbol: Symbol, tf: KlineInterval,
-    #                         start_date: datetime, end_date: datetime):
-    #     tasks = [
-    #         self.candle_loader.download_candles(
-    #             exchange=exchange,
-    #             symbol=symbol,
-    #             timeframe=tf,
-    #             start_date=start_date,
-    #             end_date=end_date,
-    #         )
-    #         for exchange in exchanges
-    #     ]
-    #
-    #     results = await asyncio.gather(*tasks)
-    #
-    #     exchange_df_map: dict[ExchangeEnum, Optional[pd.DataFrame]] = {}
-    #     for exchange, df in zip(exchanges, results):
-    #         exchange_df_map[exchange] = df
-    #
-    #     return exchange_df_map
 
     def calculate_quick_metrics(self, df: pd.DataFrame, symbol: Symbol) -> Optional[CandidateMetrics]:
         """Calculate quick screening metrics for a symbol."""

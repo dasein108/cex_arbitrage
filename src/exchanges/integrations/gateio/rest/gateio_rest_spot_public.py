@@ -34,7 +34,7 @@ def get_minimal_step(precision: int) -> float:
     return 10**-precision
 from exchanges.structs.common import (
     Symbol, SymbolInfo, OrderBook, OrderBookEntry, Trade, Kline,
-    Ticker
+    Ticker, AssetName
 )
 from exchanges.structs.enums import KlineInterval
 from exchanges.interfaces.rest import PublicSpotRestInterface
@@ -419,7 +419,7 @@ class GateioPublicSpotRestInterface(GateioBaseSpotRestInterface, PublicSpotRestI
             self.logger.error(f"Failed to get historical trades for {symbol}: {e}")
             raise ExchangeRestError(500, f"Historical trades fetch failed: {str(e)}")
     
-    async def get_ticker_info(self, symbol: Optional[Symbol] = None) -> Dict[Symbol, Ticker]:
+    async def get_ticker_info(self, symbol: Optional[Symbol] = None, quote_asset: Optional[AssetName] = None) -> Dict[Symbol, Ticker]:
         """
         Get 24hr ticker price change statistics.
         
@@ -459,6 +459,7 @@ class GateioPublicSpotRestInterface(GateioBaseSpotRestInterface, PublicSpotRestI
             tickers: Dict[Symbol, Ticker] = {}
             
             for ticker_data in tickers_data:
+
                 # Parse symbol from Gate.io format
                 pair_str = ticker_data.get('currency_pair', '')
                 if not pair_str:
@@ -470,6 +471,8 @@ class GateioPublicSpotRestInterface(GateioBaseSpotRestInterface, PublicSpotRestI
                 
                 try:
                     symbol_obj = GateioSpotSymbol.to_symbol(pair_str)
+                    if quote_asset and symbol_obj != quote_asset:
+                        continue
                 except:
                     # Skip symbols we can't parse
                     continue

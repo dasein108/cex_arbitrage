@@ -13,10 +13,7 @@ from pathlib import Path
 from dataclasses import dataclass, field
 from infrastructure.logging import get_logger
 from trading.analysis.data_sources import CandlesLoader
-from trading.research.cross_arbitrage.book_ticker_source import BookTickerDbSource, CandlesBookTickerSource
-from trading.research.cross_arbitrage.hedged_cross_arbitrage_backtest import HedgedCrossArbitrageBacktest, BacktestConfig
-from trading.research.cross_arbitrage.arbitrage_analyzer import ArbitrageAnalyzer, AnalyzerKeys
-from db import get_database_manager
+
 from scipy import stats
 from enum import Enum
 import warnings
@@ -24,6 +21,8 @@ warnings.filterwarnings('ignore')
 
 ANALYZER_TF = KlineInterval.MINUTE_1
 
+pd.set_option('display.precision', 10)
+pd.set_option('display.float_format', None)
 
 
 
@@ -49,6 +48,7 @@ class MakerOrderCandidateAnalyzer:
         self.fees: Dict[ExchangeEnum, float] = {ExchangeEnum.MEXC: 0.0,
                                                 ExchangeEnum.GATEIO_FUTURES: 0.0005}
 
+        self.si: Dict[ExchangeEnum, SymbolInfo] = {}
 
     def _get_exchange_client(self, exchange: ExchangeEnum):
         return get_rest_implementation(self.config.get_exchange_config(exchange.value), False)
@@ -59,7 +59,7 @@ class MakerOrderCandidateAnalyzer:
         symbols_info: Dict[ExchangeEnum, SymbolInfo] = {}
         symbol_exchanges: Dict[Symbol, List[ExchangeEnum]] = {}
         for exchange, symbols in zip(self.clients.keys(), si_result):
-            symbols_info[exchange] = symbols
+            self.si[exchange] = symbols_info[exchange] = symbols
             for symbol in symbols.keys():
                 if symbol not in symbol_exchanges:
                     symbol_exchanges[symbol] = []
@@ -772,6 +772,49 @@ class MakerOrderCandidateAnalyzer:
                 'action_items': ['Analysis failed - manual review required']
             }
 
+    async def get_real_spread_info(self, symbols: List[Symbol]):
+        mexc_ti =await self.clients[ExchangeEnum.MEXC].get_ticker_info(quote_asset='USDT')
+        gateio_ti = await self.clients[ExchangeEnum.GATEIO_FUTURES].get_ticker_info(quote_asset='USDT')
+        data = {ExchangeEnum.MEXC: mexc_ti,
+                ExchangeEnum.GATEIO_FUTURES: gateio_ti}
+        results = {}
+        for client, ti in data.items():
+            prefix = client.value
+            for symbol, info in ti.items():
+                ti_info = {}
+                ti_info[f'{prefix}_bid_price'] = info.bid_price
+                ti_info[f'{prefix}_ask_price'] = info.ask_price
+                ti_info[f'{prefix}_spread_ticks'] = round((info.ask_price - info.bid_price)/ self.si[client][symbol].tick)
+                if info.ask_price > 0:
+                    ti_info[f'{prefix}_spread'] = round((info.ask_price-info.bid_price)/info.ask_price, 2)
+                else:
+                    ti_info[f'{prefix}_spread'] = np.NAN
+
+                results[symbol] = ti_info if symbol not in results else {**results[symbol], **ti_info}
+
+        items = [{**info, 'symbol': symbol} for symbol, info in results.items() if symbol in symbols]
+        df = pd.DataFrame(items)
+        df['diff_bid_price'] = abs(df[f'{self.spot_ex.value}_bid_price'] - df[f'{self.futures_ex.value}_bid_price'])
+        df['diff_ask_price'] = abs(df[f'{self.spot_ex.value}_ask_price'] - df[f'{self.futures_ex.value}_ask_price'])
+        df['diff_spread'] = df[f'{self.spot_ex.value}_spread'] - df[f'{self.futures_ex.value}_spread']
+        df['spot_ask_higher'] = df[f'{self.spot_ex.value}_ask_price'] > df[f'{self.futures_ex.value}_ask_price']
+        df['spot_bid_lower'] = df[f'{self.spot_ex.value}_bid_price'] < df[f'{self.futures_ex.value}_bid_price']
+        df['spot_spread_wider'] = df[f'{self.spot_ex.value}_spread'] > df[f'{self.futures_ex.value}_spread']
+
+        df['buy_cost'] =  df[f'{self.futures_ex.value}_bid_price'] - df[f'{self.spot_ex.value}_ask_price']
+        df['sell_cost'] = df[f'{self.spot_ex.value}_bid_price'] - df[f'{self.futures_ex.value}_ask_price']
+
+        df['buy_cost_lim'] = df[f'{self.futures_ex.value}_bid_price'] -  df[f'{self.spot_ex.value}_bid_price']
+        df['sell_cost_lim'] = df[f'{self.spot_ex.value}_ask_price'] - df[f'{self.futures_ex.value}_ask_price']
+
+        df['total_cost'] = df['buy_cost'] + df['sell_cost']
+        df['total_cost_lim'] = df['buy_cost_lim'] + df['sell_cost_lim']
+        # candidates = df[df['spot_ask_higher'] & df['spot_bid_lower'] & df['spot_spread_wider']]
+        df.sort_values('total_cost_lim', ascending=False, inplace=True)
+        # df.sort_values('diff_spread', ascending=False, inplace=True)
+        df.set_index('symbol', inplace=True)
+        return df
+
     async def pick_candidates(self, date_to: datetime, hours: int = 24) -> List[Dict]:
         """Stage 1: Screen all common symbols and identify candidates."""
         self.logger.info("🔍 Stage 1: Picking candidates...")
@@ -779,10 +822,10 @@ class MakerOrderCandidateAnalyzer:
         # Get all tradable exchanges for arbitrage by symbol
         tradable_pairs = await self.get_tradable_pairs()
         self.logger.info(f"Found {len(tradable_pairs)} tradable pairs...")
-        
+        spread_info = await self.get_real_spread_info(tradable_pairs)
         # Process symbols with concurrency limit
         semaphore = asyncio.Semaphore(5)  # Limit concurrent processing
-        
+
         async def process_symbol(pair):
             async with semaphore:
                 return await self.quick_screening(pair, date_to, hours)

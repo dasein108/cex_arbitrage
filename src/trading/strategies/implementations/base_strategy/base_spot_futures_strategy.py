@@ -244,6 +244,12 @@ class BaseSpotFuturesArbitrageTask(BaseStrategyTask[BaseSpotFuturesTaskContext])
                                         f"during reload: {e}")
                     order = None
 
+                # fix: websocket sync lags
+                # ----------
+                pos = self.context.positions[market_type]
+                if pos.last_order is None:
+                    self.logger.info(f"Lag detected: SKIPPING {order} update as no last_order is set", )
+
                 self._track_order_execution(market_type, order)
 
     async def _sync_exchange_order(self, market_type: MarketType) -> Order | None:
@@ -354,6 +360,7 @@ class BaseSpotFuturesArbitrageTask(BaseStrategyTask[BaseSpotFuturesTaskContext])
 
         try:
             pos = self.context.positions[market_type]
+
             pos_change = pos.update_position_with_order(order, fee=self._get_fees(market_type).taker_fee)
             if is_order_filled(order):
                 self.logger.info(f"📊 Updated position on {market_type}",

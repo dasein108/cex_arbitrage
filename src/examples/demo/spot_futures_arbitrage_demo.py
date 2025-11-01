@@ -42,7 +42,9 @@ async def create_maker_limit_mexc_gateio_futures_task(
         symbol: Symbol,
         logger: Optional[HFTLoggerInterface] = None,
         total_quantity: float = 20.0,
-        order_qty: float = 10.0
+        order_qty: float = 10.0,
+        tick_tolerance=3,
+        ticks_offset=6,
 ) -> MakerLimitDeltaNeutralTask:
     """Create a MEXC spot vs Gate.io futures arbitrage task.
 
@@ -70,8 +72,8 @@ async def create_maker_limit_mexc_gateio_futures_task(
         settings={
             'spot': MarketData(
                 exchange=ExchangeEnum.MEXC,  # MEXC spot market
-                tick_tolerance=2,
-                ticks_offset=2,
+                tick_tolerance=tick_tolerance,
+                ticks_offset=ticks_offset,
                 use_market=False  # Use limit orders for better fills
             ),
             'futures': MarketData(
@@ -240,17 +242,21 @@ async def run_spot_futures_arbitrage_demo():
                 current_price = ticker_info[symbol].last_price
 
                 # Size positions in USDT terms
-                total_quantity_usdt = 10  # $50 total position
+                total_quantity_usdt = 5  # $50 total position
                 order_qty_usdt = 5  # $5 per order
 
-                # total_quantity = total_quantity_usdt / current_price
-                # order_qty = order_qty_usdt / current_price
+                total_quantity = total_quantity_usdt / current_price
+                order_qty = order_qty_usdt / current_price
 
                 # Create cross-exchange arbitrage task
                 task = await create_maker_limit_mexc_gateio_futures_task(
                     symbol=symbol,
-                    total_quantity=11,
-                    order_qty=11
+                    total_quantity=total_quantity,
+                    order_qty=order_qty,
+                    ticks_offset=7,
+                    tick_tolerance=3
+                    # total_quantity=11,
+                    # order_qty=11
                 )
 
                 # Add to manager
@@ -325,8 +331,8 @@ async def run_spot_futures_arbitrage_demo():
                 current_price = ticker_info[symbol].last_price
                 
                 # Smaller positions for same-exchange (lower opportunity)
-                total_quantity_usdt = 25  # $25 total position
-                order_qty_usdt = 20    # $2.5 per order
+                total_quantity_usdt = 10  # $25 total position
+                order_qty_usdt = 10    # $2.5 per order
                 
                 total_quantity = total_quantity_usdt / current_price
                 order_qty = order_qty_usdt / current_price
@@ -348,10 +354,12 @@ async def run_spot_futures_arbitrage_demo():
                            signal_type="Z-score based")
             
             # Add cross-exchange tasks (most profitable)
-            await add_maker_limit_task(Symbol(base=AssetName("COAI"), quote=AssetName("USDT")))
-
-            # await add_cross_exchange_task(Symbol(base=AssetName("TREE"), quote=AssetName("USDT")))
-            # await add_cross_exchange_task(Symbol(base=AssetName("COAI"), quote=AssetName("USDT")))
+            # await add_maker_limit_task(Symbol(base=AssetName("EVAA"), quote=AssetName("USDT")))
+            # await add_maker_limit_task(Symbol(base=AssetName("WAVES"), quote=AssetName("USDT")))
+            # await add_maker_limit_task(Symbol(base=AssetName("METAX"), quote=AssetName("USDT")))
+            # await add_maker_limit_task(Symbol(base=AssetName("AIOT"), quote=AssetName("USDT")))
+            await add_cross_exchange_task(Symbol(base=AssetName("FLK"), quote=AssetName("USDT")))
+            await add_cross_exchange_task(Symbol(base=AssetName("PIGGY"), quote=AssetName("USDT")))
             # await add_same_exchange_task(Symbol(base=AssetName("FHE"), quote=AssetName("USDT")))
 
             #TODO: map ARCSOL for MEXC
@@ -428,32 +436,4 @@ async def main():
 
 
 if __name__ == "__main__":
-    print("🚀 Starting Spot-Futures Arbitrage Strategy Demo")
-    print("=" * 60)
-    print("📋 Strategy Configuration:")
-    print("   • Signal Logic: Z-score based (from analyzer integration)")
-    print("   • Entry Condition: abs(z_score) > 2 AND spread > total_fees")
-    print("   • Exit Conditions: Mean reversion (z<0.5) OR max 4h OR sign flip")
-    print("   • Rolling Statistics: 20-period window for basis mean/std")
-    print()
-    print("🎯 Cross-Exchange Setup (Most Profitable):")
-    print("   • MEXC Spot ↔ Gate.io Futures")
-    print("   • Asset transfers handled automatically")
-    print("   • Higher profit margins (0.15% minimum)")
-    print()
-    print("📊 Same-Exchange Setup (Traditional):")
-    print("   • Gate.io Spot ↔ Gate.io Futures")
-    print("   • No transfers required")
-    print("   • Tighter thresholds (0.1% minimum)")
-    print()
-    print("💡 Key Features:")
-    print("   • Real-time basis spread monitoring")
-    print("   • Dynamic threshold calculation")
-    print("   • Cross-exchange asset transfer management")
-    print("   • Comprehensive PnL tracking")
-    print()
-    print("📊 Use Ctrl+C for graceful shutdown")
-    print("=" * 60)
-    print()
-    
     asyncio.run(main())

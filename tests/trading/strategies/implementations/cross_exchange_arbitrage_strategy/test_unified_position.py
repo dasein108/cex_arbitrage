@@ -10,12 +10,11 @@ Test Coverage:
 - Short position PNL calculations
 """
 
-import pytest
 from unittest.mock import MagicMock, patch
 from exchanges.structs.common import Side
 from exchanges.structs import Order
-from trading.strategies.implementations.cross_exchange_arbitrage_strategy.unified_position import (
-    Position, PositionChange, PositionPnl
+from trading.strategies.implementations.base_strategy.unified_position import (
+    Position, PositionPnl
 )
 
 
