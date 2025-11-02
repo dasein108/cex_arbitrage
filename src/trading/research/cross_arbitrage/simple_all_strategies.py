@@ -176,6 +176,16 @@ async def run_optimized_spike_capture_tests(symbol: str = "BTC_USDT",
     }
     configs.append(mean_reversion_config)
     
+    # Prepare data information for reports
+    data_info = {
+        'symbol': symbol,
+        'data_source': 'Real market data' if not use_test_data else 'Synthetic test data',
+        'timeframe': timeframe.value if not use_test_data else 'N/A',
+        'data_period_hours': hours if not use_test_data else 'N/A',
+        'data_points': len(df),
+        'test_mode': 'Quick' if quick_mode else 'Complete'
+    }
+    
     for i, config in enumerate(configs, 1):
         print(f"\n{i}️⃣ {config['name']} for {symbol}...")
         try:
@@ -187,7 +197,9 @@ async def run_optimized_spike_capture_tests(symbol: str = "BTC_USDT",
                     max_hold_minutes=config['max_hold_minutes'],
                     profit_target_multiplier=config['profit_target_multiplier'],
                     momentum_exit_threshold=config['momentum_exit_threshold'],
-                    symbol=symbol
+                    symbol=symbol,
+                    save_report=True,
+                    data_info=data_info
                 )
             else:  # mean_reversion
                 result = backtester.backtest_mean_reversion(
@@ -196,7 +208,9 @@ async def run_optimized_spike_capture_tests(symbol: str = "BTC_USDT",
                     exit_z_threshold=config['exit_z_threshold'],
                     stop_loss_pct=config['stop_loss_pct'],
                     max_hold_minutes=config['max_hold_minutes'],
-                    symbol=symbol
+                    symbol=symbol,
+                    save_report=True,
+                    data_info=data_info
                 )
             
             results[config['name'].lower().replace(' ', '_')] = result

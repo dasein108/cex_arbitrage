@@ -108,13 +108,15 @@ The script will:
                 timeframe=timeframe
             )
             
-            if df is None or len(df) == 0:
-                print("❌ Failed to load real data, falling back to synthetic test data...")
-                df = backtester.create_test_data(
-                    symbol=args.symbol, 
-                    periods=args.periods,
-                    spike_frequency=100
-                )
+        # Prepare data information for report
+        data_info = {
+            'symbol': args.symbol,
+            'data_source': 'Real market data' if not args.use_test_data else 'Synthetic test data',
+            'timeframe': args.timeframe if not args.use_test_data else 'N/A',
+            'data_period_hours': args.hours if not args.use_test_data else 'N/A',
+            'data_points': len(df),
+            'test_mode': 'Quick' if args.quick else 'Standard'
+        }
         
         # Run backtest
         print("\n🔄 Running backtest...")
@@ -125,7 +127,9 @@ The script will:
                 min_single_move=min_single_move,
                 max_hold_minutes=max_hold_minutes,
                 profit_target_multiplier=profit_target_multiplier,
-                symbol=args.symbol
+                symbol=args.symbol,
+                save_report=True,
+                data_info=data_info
             )
         else:  # mean_reversion
             # Use mean reversion specific parameters
@@ -138,7 +142,9 @@ The script will:
                 exit_z_threshold=exit_z_threshold,
                 stop_loss_pct=stop_loss_pct,
                 max_hold_minutes=max_hold_minutes * 6,  # Mean reversion needs longer
-                symbol=args.symbol
+                symbol=args.symbol,
+                save_report=True,
+                data_info=data_info
             )
         
         # Display comprehensive results

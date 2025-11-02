@@ -16,6 +16,7 @@ import argparse
 from typing import Dict, List, Optional
 from enum import Enum
 from dataclasses import dataclass
+import os
 
 # Add project root to Python path
 project_root = Path(__file__).parent.parent.parent.parent
@@ -277,7 +278,10 @@ class SymbolBacktester:
                               exit_z_threshold: float = 0.5,
                               stop_loss_pct: float = 0.5,
                               max_hold_minutes: int = 120,
-                              symbol: str = "UNKNOWN") -> Dict:
+                              symbol: str = "UNKNOWN",
+                              save_report: bool = True,
+                              report_dir: str = "reports",
+                              data_info: Dict = None) -> Dict:
         """
         Backtest mean reversion strategy (profitable for QUBIC)
         
@@ -410,7 +414,26 @@ class SymbolBacktester:
                     position = None
         
         # Calculate metrics
-        return self._calculate_metrics(trades, symbol)
+        results = self._calculate_metrics(trades, symbol)
+        
+        # Save report if requested
+        if save_report:
+            strategy_params = {
+                'entry_z_threshold': entry_z_threshold,
+                'exit_z_threshold': exit_z_threshold,
+                'stop_loss_pct': stop_loss_pct,
+                'max_hold_minutes': max_hold_minutes
+            }
+            
+            self.save_backtest_report(
+                results=results,
+                strategy_name="Mean Reversion",
+                strategy_params=strategy_params,
+                data_info=data_info,
+                output_dir=report_dir
+            )
+        
+        return results
     
     def backtest_optimized_spike_capture(self, 
                                         df: pd.DataFrame,
@@ -419,7 +442,10 @@ class SymbolBacktester:
                                         max_hold_minutes: int = 10,
                                         profit_target_multiplier: float = 0.4,
                                         momentum_exit_threshold: float = 1.5,
-                                        symbol: str = "UNKNOWN") -> Dict:
+                                        symbol: str = "UNKNOWN",
+                                        save_report: bool = True,
+                                        report_dir: str = "reports",
+                                        data_info: Dict = None) -> Dict:
         """
         Optimized spike capture strategy - the best performer from research
         
@@ -560,7 +586,28 @@ class SymbolBacktester:
                     trades.append(trade)
                     position = None
         
-        return self._calculate_metrics(trades, symbol)
+        # Calculate metrics
+        results = self._calculate_metrics(trades, symbol)
+        
+        # Save report if requested
+        if save_report:
+            strategy_params = {
+                'min_differential': min_differential,
+                'min_single_move': min_single_move,
+                'max_hold_minutes': max_hold_minutes,
+                'profit_target_multiplier': profit_target_multiplier,
+                'momentum_exit_threshold': momentum_exit_threshold
+            }
+            
+            self.save_backtest_report(
+                results=results,
+                strategy_name="Optimized Spike Capture",
+                strategy_params=strategy_params,
+                data_info=data_info,
+                output_dir=report_dir
+            )
+        
+        return results
     
     def _calculate_metrics(self, trades: List[Trade], symbol: str) -> Dict:
         """Calculate comprehensive performance metrics"""
@@ -623,6 +670,267 @@ class SymbolBacktester:
             'sharpe_ratio': sharpe_ratio,
             'trades_df': trades_df
         }
+    
+    def save_backtest_report(self, 
+                           results: Dict, 
+                           strategy_name: str,
+                           strategy_params: Dict,
+                           data_info: Dict = None,
+                           output_dir: str = "reports") -> Dict[str, str]:
+        """
+        Save comprehensive backtest report in markdown format and trades in CSV
+        
+        Args:
+            results: Results dictionary from backtest methods
+            strategy_name: Name of the strategy (e.g., "Optimized Spike Capture")
+            strategy_params: Dictionary of strategy parameters used
+            data_info: Information about the data used (timeframe, period, etc.)
+            output_dir: Directory to save reports (default: "reports")
+            
+        Returns:
+            Dict with paths to saved files: {'markdown': path, 'csv': path}
+        """
+        # Create output directory
+        os.makedirs(output_dir, exist_ok=True)
+        
+        # Generate timestamp for file naming
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        symbol = results['symbol']
+        
+        # Generate safe filename
+        strategy_safe = strategy_name.lower().replace(' ', '_').replace('-', '_')
+        markdown_filename = f"{symbol}_{strategy_safe}_{timestamp}.md"
+        csv_filename = f"{symbol}_{strategy_safe}_trades_{timestamp}.csv"
+        
+        markdown_path = os.path.join(output_dir, markdown_filename)
+        csv_path = os.path.join(output_dir, csv_filename)
+        
+        # Generate markdown report
+        self._generate_markdown_report(results, strategy_name, strategy_params, data_info, markdown_path)
+        
+        # Save trades CSV
+        self._save_trades_csv(results, csv_path)
+        
+        # Log the saved files
+        self.logger.info(f"📄 Backtest report saved: {markdown_path}")
+        self.logger.info(f"📊 Trades data saved: {csv_path}")
+        
+        return {
+            'markdown': markdown_path,
+            'csv': csv_path
+        }
+    
+    def _generate_markdown_report(self, 
+                                results: Dict, 
+                                strategy_name: str,
+                                strategy_params: Dict,
+                                data_info: Dict,
+                                file_path: str):
+        """Generate detailed markdown report"""
+        
+        symbol = results['symbol']
+        trades_df = results['trades_df']
+        
+        # Calculate additional metrics for the report
+        profit_factor = self._calculate_profit_factor(trades_df)
+        max_drawdown = self._calculate_max_drawdown(trades_df)
+        
+        # Generate report content
+        report_content = f"""# Backtest Report: {symbol} - {strategy_name}
+
+Generated: {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}
+
+## Strategy Overview
+
+- **Symbol**: {symbol}
+- **Strategy**: {strategy_name}
+- **Backtest Period**: {datetime.now().strftime("%Y-%m-%d")}
+
+### Strategy Parameters
+"""
+        
+        # Add strategy parameters
+        for param, value in strategy_params.items():
+            if isinstance(value, float):
+                report_content += f"- **{param.replace('_', ' ').title()}**: {value:.3f}\n"
+            else:
+                report_content += f"- **{param.replace('_', ' ').title()}**: {value}\n"
+        
+        # Add data information if provided
+        if data_info:
+            report_content += f"\n### Data Information\n"
+            for key, value in data_info.items():
+                report_content += f"- **{key.replace('_', ' ').title()}**: {value}\n"
+        
+        # Add performance summary
+        report_content += f"""
+## Performance Summary
+
+### Key Metrics
+- **Total Trades**: {results['total_trades']}
+- **Win Rate**: {results['win_rate']:.1f}%
+- **Total P&L**: {results['total_pnl_pct']:.3f}%
+- **Average P&L per Trade**: {results['avg_pnl_pct']:.3f}%
+- **Best Trade**: {results['max_pnl_pct']:.3f}%
+- **Worst Trade**: {results['min_pnl_pct']:.3f}%
+- **Average Hold Time**: {results['avg_hold_time']:.1f} minutes
+- **Sharpe Ratio**: {results['sharpe_ratio']:.2f}
+- **Profit Factor**: {profit_factor:.2f}
+- **Maximum Drawdown**: {max_drawdown:.3f}%
+
+### Profitability Analysis
+"""
+        
+        if results['total_pnl_pct'] > 0:
+            hourly_return = 0
+            if results['avg_hold_time'] > 0:
+                trades_per_hour = 60 / results['avg_hold_time']
+                hourly_return = results['avg_pnl_pct'] * trades_per_hour
+            
+            report_content += f"""
+✅ **STRATEGY IS PROFITABLE**
+- Net profit after all costs: {results['total_pnl_pct']:.3f}%
+- Estimated hourly return: {hourly_return:.3f}%
+"""
+        else:
+            report_content += f"""
+❌ **STRATEGY SHOWS LOSSES**
+- Net loss: {results['total_pnl_pct']:.3f}%
+- Requires parameter optimization
+"""
+        
+        # Add trade distribution analysis
+        if not trades_df.empty:
+            winning_trades = len(trades_df[trades_df['net_pnl_pct'] > 0])
+            losing_trades = len(trades_df[trades_df['net_pnl_pct'] <= 0])
+            
+            report_content += f"""
+### Trade Distribution
+- **Winning Trades**: {winning_trades}
+- **Losing Trades**: {losing_trades}
+"""
+            
+            if winning_trades > 0:
+                avg_win = trades_df[trades_df['net_pnl_pct'] > 0]['net_pnl_pct'].mean()
+                report_content += f"- **Average Win**: {avg_win:.3f}%\n"
+            
+            if losing_trades > 0:
+                avg_loss = trades_df[trades_df['net_pnl_pct'] <= 0]['net_pnl_pct'].mean()
+                report_content += f"- **Average Loss**: {avg_loss:.3f}%\n"
+            
+            # Exit reason analysis
+            if 'exit_reason' in trades_df.columns:
+                report_content += f"\n### Exit Reasons\n"
+                exit_counts = trades_df['exit_reason'].value_counts()
+                for reason, count in exit_counts.items():
+                    pct = (count / len(trades_df)) * 100
+                    report_content += f"- **{reason.replace('_', ' ').title()}**: {count} ({pct:.1f}%)\n"
+        
+        # Add recommendations
+        report_content += f"""
+## Recommendations
+
+### Next Steps
+"""
+        
+        if results['total_trades'] > 0 and results['total_pnl_pct'] > 0:
+            report_content += """
+1. ✅ Strategy shows promise - proceed to live testing
+2. 📊 Test with longer time periods for validation
+3. ⚖️ Parameter optimization for better performance
+4. 📝 Paper trading implementation
+5. 🚀 Consider live trading with small position sizes
+"""
+        else:
+            report_content += """
+1. 🔧 Parameter optimization required
+2. 🎯 Test with different symbols
+3. 📊 Analyze market conditions
+4. 📈 Consider strategy modifications
+"""
+        
+        # Add technical details
+        report_content += f"""
+## Technical Details
+
+### Trading Costs
+- **MEXC Fee**: {self.mexc_fee:.3f}%
+- **Gate.io Fee**: {self.gateio_fee:.3f}%
+- **Slippage Estimate**: {self.slippage_estimate:.3f}%
+- **Total Round-trip Cost**: {self.total_cost:.3f}%
+
+### Data Quality
+- **Total Data Points**: {len(trades_df) if not trades_df.empty else 0}
+- **Data Source**: Real market data
+- **Generated**: {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}
+
+---
+*Report generated by SymbolBacktester v1.0*
+"""
+        
+        # Write to file
+        with open(file_path, 'w', encoding='utf-8') as f:
+            f.write(report_content)
+    
+    def _save_trades_csv(self, results: Dict, file_path: str):
+        """Save detailed trades data to CSV"""
+        trades_df = results['trades_df']
+        
+        if not trades_df.empty:
+            # Add additional columns for analysis
+            trades_df_enhanced = trades_df.copy()
+            trades_df_enhanced['symbol'] = results['symbol']
+            trades_df_enhanced['timestamp'] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            
+            # Reorder columns for better readability
+            column_order = [
+                'symbol', 'timestamp', 'entry_idx', 'exit_idx', 'hold_time',
+                'direction', 'entry_spread', 'exit_spread', 'raw_pnl_pct', 
+                'net_pnl_pct', 'exit_reason'
+            ]
+            
+            # Only include columns that exist
+            available_columns = [col for col in column_order if col in trades_df_enhanced.columns]
+            trades_df_enhanced = trades_df_enhanced[available_columns]
+            
+            trades_df_enhanced.to_csv(file_path, index=False)
+        else:
+            # Create empty CSV with headers
+            empty_df = pd.DataFrame(columns=[
+                'symbol', 'timestamp', 'entry_idx', 'exit_idx', 'hold_time',
+                'direction', 'entry_spread', 'exit_spread', 'raw_pnl_pct', 
+                'net_pnl_pct', 'exit_reason'
+            ])
+            empty_df.to_csv(file_path, index=False)
+    
+    def _calculate_profit_factor(self, trades_df: pd.DataFrame) -> float:
+        """Calculate profit factor (gross profit / gross loss)"""
+        if trades_df.empty:
+            return 0.0
+        
+        winning_trades = trades_df[trades_df['net_pnl_pct'] > 0]['net_pnl_pct']
+        losing_trades = trades_df[trades_df['net_pnl_pct'] <= 0]['net_pnl_pct']
+        
+        gross_profit = winning_trades.sum() if not winning_trades.empty else 0
+        gross_loss = abs(losing_trades.sum()) if not losing_trades.empty else 0
+        
+        return gross_profit / gross_loss if gross_loss > 0 else float('inf') if gross_profit > 0 else 0.0
+    
+    def _calculate_max_drawdown(self, trades_df: pd.DataFrame) -> float:
+        """Calculate maximum drawdown"""
+        if trades_df.empty:
+            return 0.0
+        
+        # Calculate cumulative P&L
+        cumulative_pnl = trades_df['net_pnl_pct'].cumsum()
+        
+        # Calculate running maximum
+        running_max = cumulative_pnl.expanding().max()
+        
+        # Calculate drawdown
+        drawdown = cumulative_pnl - running_max
+        
+        return abs(drawdown.min()) if not drawdown.empty else 0.0
     
     def create_test_data(self, symbol: str = "TEST", periods: int = 1000, spike_frequency: int = 100) -> pd.DataFrame:
         """
