@@ -5,6 +5,7 @@ Simple All Strategies Runner
 A simplified version that directly tests all strategies with real market data.
 Supports both real market data and synthetic test data for development.
 """
+from typing import Union
 
 import pandas as pd
 import numpy as np
@@ -25,7 +26,7 @@ from exchanges.structs import Symbol
 
 async def run_optimized_spike_capture_tests(symbol: Symbol,
                                            hours: int = 24, 
-                                           timeframe: KlineInterval = KlineInterval.MINUTE_5,
+                                           timeframe: KlineInterval =Union[KlineInterval.MINUTE_5, int],
                                            use_test_data: bool = False,
                                            use_book_ticker: bool = False,
                                            periods: int = 1000, 
@@ -52,7 +53,7 @@ async def run_optimized_spike_capture_tests(symbol: Symbol,
     
 
     if use_book_ticker:
-        print(f"📊 Loading real order book snapshots ({hours} hours, {timeframe.value})...")
+        print(f"📊 Loading real order book snapshots ({hours} hours, {timeframe})...")
         df = await backtester.load_book_ticker_data(
             symbol=symbol,
             hours=hours,
@@ -121,11 +122,11 @@ async def run_optimized_spike_capture_tests(symbol: Symbol,
     # Prepare data information for reports
     if use_book_ticker:
         data_source = 'Real order book snapshots'
-        data_timeframe = timeframe.value
+        data_timeframe = timeframe
         data_hours = hours
     else:
         data_source = 'Real candle data'
-        data_timeframe = timeframe.value
+        data_timeframe = timeframe
         data_hours = hours
     
     data_info = {
@@ -170,6 +171,8 @@ async def run_optimized_spike_capture_tests(symbol: Symbol,
                   f"Win Rate: {result.get('win_rate', 0):.1f}%")
         except Exception as e:
             print(f"   ❌ Error: {e}")
+            import traceback
+            traceback.print_exc()
             results[config['name'].lower().replace(' ', '_')] = {'total_trades': 0, 'error': str(e)}
     
     # Summary
@@ -276,12 +279,13 @@ async def main():
     # Convert timeframe string to KlineInterval
     timeframe = KlineInterval.MINUTE_1 if args.timeframe == '1m' else KlineInterval.MINUTE_5
     symbol = Symbol(base='PIGGY', quote='USDT')  # Example symbol
+    use_book_ticker = True
     results = await run_optimized_spike_capture_tests(
         symbol=symbol, # args.symbol,
         hours=args.hours,
-        timeframe=timeframe,
-        use_test_data=args.use_test_data,
-        use_book_ticker=args.book_ticker,
+        timeframe=KlineInterval.MINUTE_1, #KlineInterval.MINUTE_5,#timeframe,
+        use_test_data=False,
+        use_book_ticker=True, # args.book_ticker,
         periods=args.periods,
         quick_mode=args.quick
     )

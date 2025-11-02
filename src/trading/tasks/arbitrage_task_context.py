@@ -21,7 +21,7 @@ from exchanges.structs import Symbol, Side, Order, ExchangeEnum, BookTicker, Ord
 from trading.task_manager.exchange_manager import (
     ArbitrageExchangeType
 )
-from utils import calculate_weighted_price
+from utils.math_utils import calculate_weighted_price
 
 # Arbitrage strategy states using Literal strings for optimal performance
 # Includes base states and arbitrage-specific states

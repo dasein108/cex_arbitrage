@@ -13,11 +13,12 @@ from datetime import datetime, timedelta, UTC
 from pathlib import Path
 import sys
 import argparse
-from typing import Dict, List, Optional
+from typing import Dict, List, Union
 from enum import Enum
 from dataclasses import dataclass
 import os
 
+from utils.kline_utils import get_interval_seconds
 
 # Add project root to Python path
 project_root = Path(__file__).parent.parent.parent.parent
@@ -64,6 +65,14 @@ class Trade:
     entry_price_gateio: float
     exit_price_mexc: float
     exit_price_gateio: float
+
+    def __str__(self):
+        return (f"Trade({self.direction}, EntryIdx: {self.entry_idx}, ExitIdx: {self.exit_idx}, "
+                f"HoldTime: {self.hold_time} mins, EntrySpread: {self.entry_spread:.3f}%, "
+                f"ExitSpread: {self.exit_spread:.3f}%, RawPnL: {self.raw_pnl_pct:.3f}%, "
+                f"NetPnL: {self.net_pnl_pct:.3f}%, ExitReason: {self.exit_reason.value}) "
+                f"mexc delta {self.entry_price_mexc} -> {self.exit_price_mexc} {self.entry_price_mexc - self.exit_price_mexc:.4f}, "
+                f"gateio delta {self.entry_price_gateio} -> {self.exit_price_gateio} {self.entry_price_gateio - self.exit_price_gateio}:.3f")
 
 
 class SymbolBacktester:
@@ -161,14 +170,16 @@ class SymbolBacktester:
         
         mexc_return = (mexc_price - position['mexc_entry_price']) / position['mexc_entry_price'] * 100
         gateio_return = (gateio_price - position['gateio_entry_price']) / position['gateio_entry_price'] * 100
-        
+
         if position['action'] == DirectionalAction.LONG_MEXC_SHORT_GATEIO:
             # Profit when MEXC outperforms Gate.io
             pnl = mexc_return - gateio_return
         else:  # SHORT_MEXC_LONG_GATEIO
             # Profit when Gate.io outperforms MEXC  
             pnl = gateio_return - mexc_return
-        
+
+        print(f"log: spike {position['action'].name}: mexc delta {position['mexc_entry_price'] - mexc_price}, "
+              f"gateio delata {gateio_price - position['gateio_entry_price']} {pnl}")
         return pnl
 
     async def load_real_data(self, symbol: Symbol, hours: int = 24,
@@ -192,7 +203,7 @@ class SymbolBacktester:
         start_time = end_time - timedelta(hours=hours)
         
         self.logger.info(f"📊 Loading real candle data for {symbol}")
-        self.logger.info(f"   Timeframe: {timeframe.value}")
+        self.logger.info(f"   Timeframe: {timeframe}")
         self.logger.info(f"   Period: {start_time} to {end_time} ({hours}h)")
         
         try:
@@ -219,7 +230,7 @@ class SymbolBacktester:
             return pd.DataFrame()
 
     async def load_book_ticker_data(self, symbol: Symbol, hours: int = 24,
-                                  timeframe: KlineInterval = KlineInterval.MINUTE_1) -> pd.DataFrame:
+                                  timeframe: Union[KlineInterval, int] = KlineInterval.MINUTE_1) -> pd.DataFrame:
         """
         Load real order book ticker data from database
         
@@ -238,10 +249,12 @@ class SymbolBacktester:
         start_time = end_time - timedelta(hours=hours)
         
         self.logger.info(f"📊 Loading real book ticker data for {symbol}")
-        self.logger.info(f"   Timeframe: {timeframe.value}")
+        self.logger.info(f"   Timeframe: {timeframe}")
         self.logger.info(f"   Period: {start_time} to {end_time} ({hours}h)")
         
         try:
+            if isinstance(timeframe, KlineInterval):
+                timeframe = get_interval_seconds(timeframe)
             df = await self.book_ticker_source.get_multi_exchange_data(
                 exchanges=self.exchanges,
                 symbol=symbol,
@@ -484,7 +497,9 @@ class SymbolBacktester:
                 stop_loss = abs(spread_change) > stop_loss_pct
                 
                 # Time stop: held too long
-                time_stop = hold_time > max_hold_minutes
+                # Convert periods to minutes (assuming 5-minute intervals)
+                hold_time_minutes = hold_time * 5  # 5 minutes per period
+                time_stop = hold_time_minutes > max_hold_minutes
                 
                 # Correlation breakdown: venues decorrelated
                 correlation_stop = rolling_corr < 0.6
@@ -515,7 +530,7 @@ class SymbolBacktester:
                         exit_idx=idx,
                         entry_time=position['entry_time'],
                         exit_time=row.name if hasattr(row, 'name') else idx,
-                        hold_time=hold_time,
+                        hold_time=hold_time_minutes,
                         entry_spread=position['entry_spread'],
                         exit_spread=current_spread,
                         raw_pnl_pct=raw_pnl,
@@ -528,6 +543,8 @@ class SymbolBacktester:
                         exit_price_gateio=row[gateio_c_col]
                     )
                     trades.append(trade)
+
+                    print(f"log M/R: {trade}")
                     position = None
         
         # Calculate metrics
@@ -643,7 +660,10 @@ class SymbolBacktester:
                 
                 # Exit conditions (optimized from research)
                 profit_target_hit = actual_pnl >= position['profit_target']
-                time_limit_hit = hold_time >= max_hold_minutes
+                if isinstance(hold_time, int):
+                    hold_time = timedelta(seconds=hold_time)  # assuming 5-minute intervals
+
+                time_limit_hit = hold_time.total_seconds() / 60 >= max_hold_minutes
                 stop_loss_hit = actual_pnl < -position['expected_profit'] * 1.0
                 
                 # Less aggressive momentum reversal (key optimization)
@@ -658,7 +678,7 @@ class SymbolBacktester:
                 
                 # For spike scenarios, be more patient with momentum reversals
                 if momentum_reversal and abs(position['entry_differential']) > 0.3:
-                    should_exit = should_exit or (hold_time >= max_hold_minutes * 0.8)
+                    should_exit = should_exit or (hold_time.total_seconds() / 60 >= max_hold_minutes * 0.8)
                 elif momentum_reversal:
                     should_exit = True
                 
@@ -687,7 +707,7 @@ class SymbolBacktester:
                         exit_idx=current_time,
                         entry_time=position['entry_time'],
                         exit_time=current_time,
-                        hold_time=hold_time,
+                        hold_time=hold_time.total_seconds() / 60,
                         entry_spread=entry_spread,
                         exit_spread=exit_spread,
                         raw_pnl_pct=gross_pnl,

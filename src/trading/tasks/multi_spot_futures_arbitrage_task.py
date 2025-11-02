@@ -30,7 +30,7 @@ from trading.tasks.arbitrage_task_context import (
 from exchanges.structs import Symbol, Side, ExchangeEnum, Order
 from infrastructure.logging import HFTLoggerInterface, get_logger
 from utils.exchange_utils import is_order_done
-from utils import flip_side
+from utils.exchange_utils import flip_side
 
 # Import existing arbitrage components
 from trading.task_manager.exchange_manager import (

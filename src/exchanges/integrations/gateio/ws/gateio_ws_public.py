@@ -33,7 +33,7 @@ from config.structs import ExchangeConfig
 from exchanges.interfaces.ws import PublicBaseWebsocket
 from infrastructure.networking.websocket.structs import SubscriptionAction, WebsocketChannelType, \
     PublicWebsocketChannelType
-from utils import get_current_timestamp
+from utils.time_utils import get_current_timestamp
 from exchanges.integrations.gateio.utils import (
     from_subscription_action, 
     to_side

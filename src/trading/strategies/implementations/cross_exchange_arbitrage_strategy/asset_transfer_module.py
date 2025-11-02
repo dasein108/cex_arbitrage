@@ -19,7 +19,7 @@ from exchanges.interfaces.composite.spot.base_private_spot_composite import Comp
 from exchanges.structs.common import AssetName, AssetInfo, WithdrawalRequest, DepositResponse, NetworkInfo
 from exchanges.structs.enums import ExchangeEnum, WithdrawalStatus, DepositStatus
 from infrastructure.logging import HFTLoggerInterface
-from utils import get_current_timestamp
+from utils.time_utils import get_current_timestamp
 
 
 def fix_tx_id(tx_id: Optional[str]) -> Optional[str]:

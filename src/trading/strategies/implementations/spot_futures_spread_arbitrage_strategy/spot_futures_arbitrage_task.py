@@ -11,7 +11,7 @@ from infrastructure.exceptions.exchange import OrderNotFoundError, InsufficientB
 from infrastructure.logging import HFTLoggerInterface, get_logger
 from infrastructure.networking.websocket.structs import PublicWebsocketChannelType, PrivateWebsocketChannelType
 
-from utils import get_decrease_vector
+from utils.math_utils import get_decrease_vector
 from trading.strategies.implementations.base_strategy.unified_position import Position, PositionError
 
 from trading.strategies.implementations.base_strategy.base_strategy import BaseStrategyContext, BaseStrategyTask

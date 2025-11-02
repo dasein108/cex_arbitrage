@@ -10,7 +10,7 @@ from infrastructure.networking.websocket.structs import PublicWebsocketChannelTy
 from trading.struct import TradingStrategyState
 
 from trading.tasks.base_task import TaskContext, BaseTradingTask
-from utils import get_decrease_vector, calculate_weighted_price
+from utils.math_utils import get_decrease_vector, calculate_weighted_price
 
 
 class IcebergTaskContext(TaskContext):

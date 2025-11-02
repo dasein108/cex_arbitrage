@@ -12,7 +12,7 @@ from infrastructure.logging import HFTLoggerInterface, get_logger
 from infrastructure.networking.websocket.structs import PublicWebsocketChannelType, PrivateWebsocketChannelType
 from trading.research.cross_arbitrage.arbitrage_analyzer import AnalyzerKeys
 
-from utils import get_decrease_vector
+from utils.math_utils import get_decrease_vector
 from trading.strategies.implementations.cross_exchange_arbitrage_strategy.asset_transfer_module import AssetTransferModule, TransferRequest
 from trading.strategies.implementations.base_strategy.unified_position import Position, PositionError
 

@@ -15,7 +15,7 @@ from infrastructure.logging import HFTLoggerInterface
 from infrastructure.networking.http.structs import HTTPMethod
 from config.structs import ExchangeConfig
 from infrastructure.exceptions.exchange import ExchangeRestError
-from utils import get_minimal_step, count_decimal_places
+from utils.math_utils import get_minimal_step, count_decimal_places
 # Inline utility function to avoid import issues
 
 # Import direct utility functions

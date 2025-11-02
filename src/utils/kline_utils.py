@@ -1,11 +1,16 @@
 from datetime import datetime, timezone
-from typing import Union, Dict
+from typing import Union, Dict, TYPE_CHECKING
 
-from exchanges.structs.enums import KlineInterval
+# Lazy import to avoid circular dependency
+if TYPE_CHECKING:
+    from exchanges.structs.enums import KlineInterval
 
 
-def get_interval_seconds(interval: KlineInterval) -> int:
+def get_interval_seconds(interval) -> int:
     """Get interval duration in seconds for batch processing."""
+    # Lazy import to avoid circular dependency
+    from exchanges.structs.enums import KlineInterval
+    
     interval_map = {
         KlineInterval.MINUTE_1: 60,
         KlineInterval.MINUTE_5: 300,
@@ -21,7 +26,7 @@ def get_interval_seconds(interval: KlineInterval) -> int:
     return interval_map.get(interval, 0)
 
 
-def round_datetime_to_interval(dt: datetime, interval: Union[KlineInterval | int]) -> datetime:
+def round_datetime_to_interval(dt: datetime, interval) -> datetime:
     """Round datetime down to the nearest interval boundary.
     
     Examples:
@@ -43,6 +48,9 @@ def round_datetime_to_interval(dt: datetime, interval: Union[KlineInterval | int
     
     # Get timestamp in seconds
     timestamp = int(dt.timestamp())
+    
+    # Lazy import to avoid circular dependency
+    from exchanges.structs.enums import KlineInterval
     
     # Get interval duration in seconds
     if isinstance(interval, KlineInterval):
@@ -78,25 +86,29 @@ def round_datetime_to_interval(dt: datetime, interval: Union[KlineInterval | int
 
 
 
-TIMEFRAME_MAP: Dict[str, KlineInterval] = {
-    '1m': KlineInterval.MINUTE_1,
-    '5m': KlineInterval.MINUTE_5,
-    '15m': KlineInterval.MINUTE_15,
-    '30m': KlineInterval.MINUTE_30,
-    '1h': KlineInterval.HOUR_1,
-    '4h': KlineInterval.HOUR_4,
-    '12h': KlineInterval.HOUR_12,
-    '1d': KlineInterval.DAY_1,
-    '1w': KlineInterval.WEEK_1,
-    '1M': KlineInterval.MONTH_1,
-}
+def _get_timeframe_map():
+    """Get timeframe map with lazy import to avoid circular dependency."""
+    from exchanges.structs.enums import KlineInterval
+    return {
+        '1m': KlineInterval.MINUTE_1,
+        '5m': KlineInterval.MINUTE_5,
+        '15m': KlineInterval.MINUTE_15,
+        '30m': KlineInterval.MINUTE_30,
+        '1h': KlineInterval.HOUR_1,
+        '4h': KlineInterval.HOUR_4,
+        '12h': KlineInterval.HOUR_12,
+        '1d': KlineInterval.DAY_1,
+        '1w': KlineInterval.WEEK_1,
+        '1M': KlineInterval.MONTH_1,
+    }
 
-def kline_interval_to_timeframe(interval: KlineInterval) -> str:
+def kline_interval_to_timeframe(interval) -> str:
     """
     Convert a KlineInterval to its timeframe string (reverse of `TIMEFRAME_MAP`).
     Builds the reverse map locally so it does not rely on `globals()`.
     """
-    reverse_map = {v: k for k, v in TIMEFRAME_MAP.items()}
+    timeframe_map = _get_timeframe_map()
+    reverse_map = {v: k for k, v in timeframe_map.items()}
     try:
         return reverse_map[interval]
     except KeyError:

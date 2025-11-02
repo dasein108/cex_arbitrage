@@ -1,6 +1,3 @@
-from exchanges.structs.common import Side
-
-
 def get_minimal_step(precision: int) -> float:
     return 10**-precision
 
@@ -12,8 +9,10 @@ def count_decimal_places(number):
     return 0
 
 
-def get_decrease_vector(side: Side, tick: int = 1) -> int:
+def get_decrease_vector(side, tick: int = 1) -> int:
     """Get decrease vector based on side, up for selling, down for buying."""
+    # Lazy import to avoid circular dependency
+    from exchanges.structs.common import Side
     return -tick if side == Side.BUY else tick
 
 

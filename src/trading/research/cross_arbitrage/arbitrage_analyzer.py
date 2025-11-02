@@ -21,7 +21,7 @@ from typing import Dict, Any, Tuple, Optional, List, Union
 import sys
 import os
 
-from db import initialize_database_manager
+from db import initialize_database_manager, get_database_manager
 
 # Add src to path for imports
 sys.path.append(os.path.join(os.path.dirname(__file__), '..', '..'))
@@ -65,6 +65,7 @@ class ArbitrageAnalyzer:
         self.tf = tf
         self.exchanges = exchanges or [ExchangeEnum.MEXC, ExchangeEnum.GATEIO, ExchangeEnum.GATEIO_FUTURES]
         self.book_ticker_source = BookTickerDbSource() if use_db_book_tickers else  CandlesBookTickerSource()
+        self.use_db_book_tickers = use_db_book_tickers
     
     async def run_analysis(self, symbol: Symbol, days: int = 7,
                            df_data: Optional[pd.DataFrame] = None) -> Tuple[pd.DataFrame, Dict[str, Any]]:
@@ -79,7 +80,8 @@ class ArbitrageAnalyzer:
             Tuple of (dataframe with all calculations, analysis results dict)
         """
         print(f"🚀 Starting arbitrage analysis for {symbol} ({days} days)")
-        
+        if self.use_db_book_tickers:
+            await get_database_manager()
         # Load data using BookTickerSource (includes bid/ask prices)
         if df_data is not None:
             df = df_data
@@ -835,8 +837,7 @@ class ArbitrageAnalyzer:
                     gateio_exit_price = df.loc[idx, AnalyzerKeys.gateio_futures_ask]
                     mexc_entry_price = pos['mexc_entry_price']
                     gateio_entry_price = pos['gateio_entry_price']
-                    print(f"Volatility Harvest Exit {pos['entry_spread']} -> {current_spread} PnL% {net_pnl} Reason: {exit_reason}"
-                          f" MEXC {mexc_entry_price}->{mexc_exit_price} Gate.io {gateio_entry_price}->{gateio_exit_price}")
+                    print(f"Volatility Harvest Exit {pos['entry_spread']} -> {current_spread} PnL% {net_pnl} Reason: {exit_reason} MEXC {mexc_entry_price}->{mexc_exit_price} Gate.io {gateio_entry_price}->{gateio_exit_price}")
                     positions_to_remove.append(pos)
                     
                     # Record exit

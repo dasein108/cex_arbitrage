@@ -167,7 +167,7 @@ async def demonstrate_reverse_strategies():
     
     try:
         # Initialize the analyzer
-        analyzer = ArbitrageAnalyzer() #tf=1
+        analyzer = ArbitrageAnalyzer(use_db_book_tickers=True) #tf=1
         
         # Load some sample data (you can replace this with your actual data loading)
         print("📊 Loading market data...")

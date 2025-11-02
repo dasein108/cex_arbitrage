@@ -5,7 +5,7 @@ from typing import Optional, Literal
 
 from exchanges.structs import Order
 from exchanges.structs.common import Side
-from utils import calculate_weighted_price
+from utils.math_utils import calculate_weighted_price
 from utils.exchange_utils import is_order_done
 
 
