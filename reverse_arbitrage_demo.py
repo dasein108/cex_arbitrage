@@ -14,6 +14,8 @@ Usage:
 import sys
 import asyncio
 from pathlib import Path
+import pandas as pd
+from datetime import datetime
 
 from exchanges.structs import Symbol
 
@@ -22,6 +24,140 @@ src_path = Path(__file__).parent / 'src'
 sys.path.insert(0, str(src_path))
 
 from trading.research.cross_arbitrage.arbitrage_analyzer import ArbitrageAnalyzer
+
+
+def extract_reverse_delta_neutral_trades(df: pd.DataFrame) -> pd.DataFrame:
+    """Extract all RDN trades with entry/exit details."""
+    trades = []
+    
+    for idx in df.index:
+        if df.loc[idx, 'rdn_signal'].startswith('EXIT_'):
+            # Found an exit, extract the trade details
+            exit_reason = df.loc[idx, 'rdn_signal'].replace('EXIT_', '')
+            
+            trade = {
+                'strategy': 'Reverse Delta-Neutral',
+                'entry_time': df.loc[idx, 'rdn_entry_time'],
+                'exit_time': idx,
+                'entry_spread': df.loc[idx, 'rdn_entry_spread'],
+                'exit_spread': df.loc[idx, 'rdn_combined_spread'],
+                'spot_entry_price': df.loc[idx, 'rdn_spot_entry'],
+                'futures_entry_price': df.loc[idx, 'rdn_futures_entry'],
+                'spot_exit_price': df.loc[idx, 'rdn_spot_exit'],
+                'futures_exit_price': df.loc[idx, 'rdn_futures_exit'],
+                'holding_hours': df.loc[idx, 'rdn_holding_hours'],
+                'trade_pnl_pct': df.loc[idx, 'rdn_trade_pnl'],
+                'exit_reason': exit_reason,
+                'spread_compression': df.loc[idx, 'rdn_entry_spread'] - df.loc[idx, 'rdn_combined_spread']
+            }
+            trades.append(trade)
+    
+    return pd.DataFrame(trades)
+
+
+def extract_inventory_arbitrage_trades(df: pd.DataFrame) -> pd.DataFrame:
+    """Extract all inventory arbitrage trades with details."""
+    trades = []
+    
+    for idx in df.index:
+        if df.loc[idx, 'inv_signal'] == 'TRADE':
+            trade = {
+                'strategy': 'Inventory Spot Arbitrage',
+                'trade_time': idx,
+                'direction': df.loc[idx, 'inv_trade_direction'],
+                'trade_size_usd': df.loc[idx, 'inv_trade_size_usd'],
+                'spread_captured_pct': df.loc[idx, 'inv_spread_captured'],
+                'trade_pnl_pct': df.loc[idx, 'inv_trade_pnl'],
+                'mexc_balance_before': df.shift(1).loc[idx, 'inv_mexc_balance'] if idx in df.shift(1).index else df.loc[idx, 'inv_mexc_balance'],
+                'gateio_balance_before': df.shift(1).loc[idx, 'inv_gateio_balance'] if idx in df.shift(1).index else df.loc[idx, 'inv_gateio_balance'],
+                'mexc_balance_after': df.loc[idx, 'inv_mexc_balance'],
+                'gateio_balance_after': df.loc[idx, 'inv_gateio_balance'],
+                'total_balance_after': df.loc[idx, 'inv_total_balance'],
+                'balance_ratio_after': df.loc[idx, 'inv_balance_ratio'],
+                'imbalance_penalty': df.loc[idx, 'inv_imbalance_penalty']
+            }
+            trades.append(trade)
+    
+    return pd.DataFrame(trades)
+
+
+def extract_volatility_harvesting_trades(df: pd.DataFrame) -> pd.DataFrame:
+    """Extract all volatility harvesting position entries and exits."""
+    trades = []
+    
+    # Track entries
+    for idx in df.index:
+        if df.loc[idx, 'svh_signal'] == 'ENTER':
+            trade = {
+                'strategy': 'Spread Volatility Harvesting',
+                'action': 'ENTRY',
+                'time': idx,
+                'position_id': df.loc[idx, 'svh_position_id'],
+                'position_tier': df.loc[idx, 'svh_position_tier'],
+                'position_size': df.loc[idx, 'svh_position_size'],
+                'entry_spread': df.loc[idx, 'svh_entry_spread'],
+                'exit_spread': None,
+                'spread_volatility': df.loc[idx, 'svh_spread_volatility'],
+                'active_positions': df.loc[idx, 'svh_active_positions'],
+                'trade_pnl_pct': 0.0,
+                'exit_reason': None
+            }
+            trades.append(trade)
+        
+        elif df.loc[idx, 'svh_signal'].startswith('EXIT_'):
+            exit_reason = df.loc[idx, 'svh_signal'].replace('EXIT_', '')
+            trade = {
+                'strategy': 'Spread Volatility Harvesting',
+                'action': 'EXIT',
+                'time': idx,
+                'position_id': None,  # Not tracked in current implementation
+                'position_tier': None,
+                'position_size': None,
+                'entry_spread': None,
+                'exit_spread': df.loc[idx, 'svh_combined_spread'],
+                'spread_volatility': df.loc[idx, 'svh_spread_volatility'],
+                'active_positions': df.loc[idx, 'svh_active_positions'],
+                'trade_pnl_pct': df.loc[idx, 'svh_trade_pnl'],
+                'exit_reason': exit_reason
+            }
+            trades.append(trade)
+    
+    return pd.DataFrame(trades)
+
+
+def save_trades_to_csv(df_strategies: dict, symbol: str, output_dir: str = "reverse_arbitrage_results"):
+    """Save all trades from each strategy to separate CSV files."""
+    
+    # Create output directory
+    output_path = Path(output_dir)
+    output_path.mkdir(exist_ok=True)
+    
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    saved_files = []
+    
+    # Extract and save trades for each strategy
+    for strategy_name, df in df_strategies.items():
+        if strategy_name == 'reverse_delta_neutral':
+            trades_df = extract_reverse_delta_neutral_trades(df)
+            filename = f"rdn_trades_{symbol}_{timestamp}.csv"
+        elif strategy_name == 'inventory_arbitrage':
+            trades_df = extract_inventory_arbitrage_trades(df)
+            filename = f"inv_trades_{symbol}_{timestamp}.csv"
+        elif strategy_name == 'volatility_harvesting':
+            trades_df = extract_volatility_harvesting_trades(df)
+            filename = f"svh_trades_{symbol}_{timestamp}.csv"
+        else:
+            continue
+        
+        if not trades_df.empty:
+            filepath = output_path / filename
+            trades_df.to_csv(filepath, index=False)
+            saved_files.append(filepath)
+            print(f"   💾 Saved {len(trades_df)} {strategy_name} trades to: {filepath}")
+        else:
+            print(f"   ⚠️  No trades found for {strategy_name}")
+    
+    return saved_files
 
 
 async def demonstrate_reverse_strategies():
@@ -35,13 +171,17 @@ async def demonstrate_reverse_strategies():
         
         # Load some sample data (you can replace this with your actual data loading)
         print("📊 Loading market data...")
-        df, results = await analyzer.run_analysis(Symbol(base='PIGGY', quote='USDT'), days=3)
+        symbol = Symbol(base='PIGGY', quote='USDT')
+        df, results = await analyzer.run_analysis(symbol, days=3)
 
         if df is None or len(df) == 0:
             print("❌ No data available for analysis")
             return
         
         print(f"✅ Loaded {len(df)} data points")
+        
+        # Store strategy DataFrames for CSV export
+        strategy_dataframes = {}
         
         # Strategy 1: Reverse Delta-Neutral
         print("\n🔄 Testing Reverse Delta-Neutral Strategy...")
@@ -53,6 +193,7 @@ async def demonstrate_reverse_strategies():
             max_holding_hours=24,          # Max 24 hours per position
             total_fees=0.0067             # 0.67% total fees
         )
+        strategy_dataframes['reverse_delta_neutral'] = df_rdn
         
         # Display RDN results
         rdn_trades = (df_rdn['rdn_trade_pnl'] != 0).sum()
@@ -77,6 +218,7 @@ async def demonstrate_reverse_strategies():
             max_trade_size_usd=2000.0,
             total_fees=0.0025                  # 0.25% fees
         )
+        strategy_dataframes['inventory_arbitrage'] = df_inv
         
         # Display Inventory results
         inv_trades = (df_inv['inv_trade_pnl'] != 0).sum()
@@ -98,6 +240,7 @@ async def demonstrate_reverse_strategies():
             max_positions=3,                       # Max concurrent positions
             tail_hedge_cost=0.01                   # 1% monthly hedge cost
         )
+        strategy_dataframes['volatility_harvesting'] = df_svh
         
         # Display SVH results
         svh_final_pnl = df_svh['svh_cumulative_pnl'].iloc[-1]
@@ -187,6 +330,19 @@ async def demonstrate_reverse_strategies():
         elif best_pnl <= 0:
             print(f"   • No strategies were profitable in this period")
             print(f"   • Wait for different market conditions or adjust parameters")
+        
+        # Export all trades to CSV files
+        print(f"\n💾 Exporting trades to CSV files...")
+        try:
+            saved_files = save_trades_to_csv(strategy_dataframes, symbol.base, "reverse_arbitrage_results")
+            if saved_files:
+                print(f"✅ Successfully exported trades to {len(saved_files)} CSV files")
+                for file_path in saved_files:
+                    print(f"   📄 {file_path}")
+            else:
+                print(f"⚠️  No trade files were created (no trades found in strategies)")
+        except Exception as csv_error:
+            print(f"❌ Error exporting trades to CSV: {csv_error}")
         
         print(f"\n✅ Demo completed successfully!")
         

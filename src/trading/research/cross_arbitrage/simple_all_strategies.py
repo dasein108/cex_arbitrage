@@ -20,93 +20,14 @@ sys.path.append(str(project_root))
 
 from symbol_backtester import SymbolBacktester
 from exchanges.structs.enums import KlineInterval
+from exchanges.structs import Symbol
 
-def create_test_data(periods: int = 1000, add_spikes: bool = True) -> pd.DataFrame:
-    """
-    Create realistic test data for strategy testing
-    
-    Args:
-        periods: Number of time periods
-        add_spikes: Whether to add directional spikes for testing
-    """
-    
-    print(f"📊 Creating test data: {periods} periods, spikes: {add_spikes}")
-    
-    # Create timestamps
-    timestamps = pd.date_range(start='2024-01-01', periods=periods, freq='1min')
-    
-    # Base prices with realistic movements
-    mexc_base = 100.0
-    gateio_base = 100.0
-    
-    mexc_prices = []
-    gateio_prices = []
-    
-    for i in range(periods):
-        # Add random walk with some correlation
-        mexc_change = np.random.normal(0, 0.1)
-        gateio_change = mexc_change * 0.8 + np.random.normal(0, 0.05)  # 80% correlation + noise
-        
-        # Add directional spikes periodically
-        if add_spikes and i % 200 == 50:  # Every ~200 periods, add a spike
-            spike_magnitude = np.random.uniform(0.5, 1.5)  # 0.5% to 1.5% spike
-            if np.random.random() > 0.5:
-                mexc_change += spike_magnitude  # MEXC spikes up more
-                gateio_change += spike_magnitude * 0.6  # Gate.io follows less
-            else:
-                gateio_change += spike_magnitude  # Gate.io spikes up more
-                mexc_change += spike_magnitude * 0.6  # MEXC follows less
-        
-        mexc_price = mexc_base + mexc_change
-        gateio_price = gateio_base + gateio_change
-        
-        mexc_prices.append(mexc_price)
-        gateio_prices.append(gateio_price)
-        
-        # Update base for next iteration
-        mexc_base = mexc_price
-        gateio_base = gateio_price
-    
-    # Create DataFrame
-    df = pd.DataFrame({
-        'timestamp': timestamps,
-        'mexc_close': mexc_prices,
-        'gateio_close': gateio_prices,
-        'gateio_futures_close': [p * 0.999 for p in gateio_prices],  # Futures slightly lower
-    })
-    
-    # Add derived columns
-    df['mexc_vs_gateio_pct'] = ((df['mexc_close'] - df['gateio_close']) / df['gateio_close']) * 100
-    df['gateio_vs_futures_pct'] = ((df['gateio_close'] - df['gateio_futures_close']) / df['gateio_futures_close']) * 100
-    
-    # Add technical indicators required by advanced strategies
-    spread_window = 20
-    df['spread_mean'] = df['mexc_vs_gateio_pct'].rolling(window=spread_window).mean()
-    df['spread_std'] = df['mexc_vs_gateio_pct'].rolling(window=spread_window).std()
-    df['spread_z_score'] = (df['mexc_vs_gateio_pct'] - df['spread_mean']) / df['spread_std']
-    
-    # Add spread velocity (rate of change)
-    df['spread_velocity'] = df['mexc_vs_gateio_pct'].diff()
-    
-    # Add volume ratio (mock data since we don't have real volume)
-    df['vol_ratio'] = np.random.uniform(0.8, 1.2, len(df))  # Mock volume ratio
-    
-    # Set column name attributes for compatibility
-    df.attrs['mexc_c_col'] = 'mexc_close'
-    df.attrs['gateio_c_col'] = 'gateio_close'
-    df.attrs['gateio_futures_c_col'] = 'gateio_futures_close'
-    
-    print(f"✅ Test data created: {len(df)} rows")
-    print(f"   Price range MEXC: ${df['mexc_close'].min():.2f} - ${df['mexc_close'].max():.2f}")
-    print(f"   Price range Gate.io: ${df['gateio_close'].min():.2f} - ${df['gateio_close'].max():.2f}")
-    print(f"   Max spread: {df['mexc_vs_gateio_pct'].abs().max():.3f}%")
-    
-    return df
 
-async def run_optimized_spike_capture_tests(symbol: str = "BTC_USDT", 
+async def run_optimized_spike_capture_tests(symbol: Symbol,
                                            hours: int = 24, 
                                            timeframe: KlineInterval = KlineInterval.MINUTE_5,
                                            use_test_data: bool = False,
+                                           use_book_ticker: bool = False,
                                            periods: int = 1000, 
                                            quick_mode: bool = False):
     """Run both spike capture and mean reversion strategies with different parameter combinations"""
@@ -117,32 +38,53 @@ async def run_optimized_spike_capture_tests(symbol: str = "BTC_USDT",
     print(f"Symbol: {symbol}")
     if use_test_data:
         print(f"Data: Synthetic test data ({periods} periods)")
+    elif use_book_ticker:
+        timeframe_str = "5m" if timeframe == KlineInterval.MINUTE_5 else "1m"
+        print(f"Data: Real order book snapshots ({hours} hours, {timeframe_str} timeframe)")
     else:
         timeframe_str = "5m" if timeframe == KlineInterval.MINUTE_5 else "1m"
-        print(f"Data: Real market data ({hours} hours, {timeframe_str} timeframe)")
+        print(f"Data: Real candle data ({hours} hours, {timeframe_str} timeframe)")
     print(f"Mode: {'Quick' if quick_mode else 'Complete'}")
     print()
     
     # Initialize backtester
     backtester = SymbolBacktester()
     
-    # Load data (real or test)
-    if use_test_data:
-        print("📊 Creating synthetic test data...")
-        df = create_test_data(periods=periods, add_spikes=True)
-    else:
-        print(f"📊 Loading real market data ({hours} hours, {timeframe.value})...")
-        df = await backtester.load_real_data(
-            symbol_str=symbol,
+
+    if use_book_ticker:
+        print(f"📊 Loading real order book snapshots ({hours} hours, {timeframe.value})...")
+        df = await backtester.load_book_ticker_data(
+            symbol=symbol,
             hours=hours,
             timeframe=timeframe
         )
         
         if df is None or len(df) == 0:
-            print("❌ Failed to load real data, falling back to synthetic test data...")
-            df = create_test_data(periods=periods, add_spikes=True)
+            print("❌ Failed to load book ticker data, falling back to candle data...")
+            df = await backtester.load_real_data(
+                symbol=symbol,
+                hours=hours,
+                timeframe=timeframe
+            )
+            
+            if df is None or len(df) == 0:
+                print("❌ Failed to load candle data...")
+                exit()
+            else:
+                print(f"✅ Loaded {len(df)} data points from real candle data (fallback)")
         else:
-            print(f"✅ Loaded {len(df)} data points from real market data")
+            print(f"✅ Loaded {len(df)} data points from real order book snapshots")
+    else:
+        print(f"📊 Loading real candle data ({hours} hours, {timeframe.value})...")
+        df = await backtester.load_real_data(
+            symbol=symbol,
+            hours=hours,
+            timeframe=timeframe
+        )
+        
+        if df is None or len(df) == 0:
+            print("❌ Failed to load real candle data...")
+            exit()
     
     results = {}
     
@@ -177,11 +119,20 @@ async def run_optimized_spike_capture_tests(symbol: str = "BTC_USDT",
     configs.append(mean_reversion_config)
     
     # Prepare data information for reports
+    if use_book_ticker:
+        data_source = 'Real order book snapshots'
+        data_timeframe = timeframe.value
+        data_hours = hours
+    else:
+        data_source = 'Real candle data'
+        data_timeframe = timeframe.value
+        data_hours = hours
+    
     data_info = {
         'symbol': symbol,
-        'data_source': 'Real market data' if not use_test_data else 'Synthetic test data',
-        'timeframe': timeframe.value if not use_test_data else 'N/A',
-        'data_period_hours': hours if not use_test_data else 'N/A',
+        'data_source': data_source,
+        'timeframe': data_timeframe,
+        'data_period_hours': data_hours,
         'data_points': len(df),
         'test_mode': 'Quick' if quick_mode else 'Complete'
     }
@@ -309,6 +260,8 @@ async def main():
                        help='Timeframe for real data (default: 5m)')
     parser.add_argument('--use-test-data', action='store_true',
                        help='Use synthetic test data instead of real data')
+    parser.add_argument('--book-ticker', action='store_true',
+                       help='Use real order book snapshots (requires database connection)')
     parser.add_argument('--periods', type=int, default=1000,
                        help='Number of synthetic test periods (default: 1000)')
     parser.add_argument('--quick', action='store_true',
@@ -322,12 +275,13 @@ async def main():
     
     # Convert timeframe string to KlineInterval
     timeframe = KlineInterval.MINUTE_1 if args.timeframe == '1m' else KlineInterval.MINUTE_5
-    
+    symbol = Symbol(base='PIGGY', quote='USDT')  # Example symbol
     results = await run_optimized_spike_capture_tests(
-        symbol=args.symbol,
+        symbol=symbol, # args.symbol,
         hours=args.hours,
         timeframe=timeframe,
         use_test_data=args.use_test_data,
+        use_book_ticker=args.book_ticker,
         periods=args.periods,
         quick_mode=args.quick
     )

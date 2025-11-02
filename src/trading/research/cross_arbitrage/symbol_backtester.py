@@ -18,16 +18,19 @@ from enum import Enum
 from dataclasses import dataclass
 import os
 
+
 # Add project root to Python path
 project_root = Path(__file__).parent.parent.parent.parent
 sys.path.append(str(project_root))
+from db import get_database_manager
 
-from config import HftConfig
+from config.config_manager import HftConfig
 from exchanges.structs import Symbol
 from exchanges.structs.common import AssetName
 from exchanges.structs.enums import ExchangeEnum, KlineInterval
 from infrastructure.logging import get_logger
 from trading.research.cross_arbitrage.multi_candles_source import MultiCandlesSource
+from trading.research.cross_arbitrage.book_ticker_source import BookTickerDbSource
 
 
 class DirectionalAction(Enum):
@@ -99,6 +102,7 @@ class SymbolBacktester:
         self.config = HftConfig()
         self.logger = get_logger("SymbolBacktester")
         self.candles_source = MultiCandlesSource()
+        self.book_ticker_source = BookTickerDbSource()
         
         # Exchanges for real data loading
         self.exchanges = [
@@ -167,7 +171,7 @@ class SymbolBacktester:
         
         return pnl
 
-    async def load_real_data(self, symbol_str: str, hours: int = 24, 
+    async def load_real_data(self, symbol: Symbol, hours: int = 24,
                            timeframe: KlineInterval = KlineInterval.MINUTE_5) -> pd.DataFrame:
         """
         Load real market data from exchanges
@@ -182,9 +186,7 @@ class SymbolBacktester:
         """
         
         # Parse symbol
-        base, quote = symbol_str.split('_')
-        symbol = Symbol(base=AssetName(base), quote=AssetName(quote))
-        
+
         # Time range
         end_time = datetime.now(UTC)
         start_time = end_time - timedelta(hours=hours)
@@ -214,6 +216,52 @@ class SymbolBacktester:
             
         except Exception as e:
             self.logger.error(f"❌ Error loading real data: {e}")
+            return pd.DataFrame()
+
+    async def load_book_ticker_data(self, symbol: Symbol, hours: int = 24,
+                                  timeframe: KlineInterval = KlineInterval.MINUTE_1) -> pd.DataFrame:
+        """
+        Load real order book ticker data from database
+        
+        Args:
+            symbol_str: Symbol as string (e.g., "BTC_USDT") 
+            hours: Hours of historical data to load
+            timeframe: Data aggregation timeframe (MINUTE_1, MINUTE_5, etc.)
+            
+        Returns:
+            DataFrame with bid/ask prices from all exchanges
+        """
+        await get_database_manager()  # Ensure DB manager is initialized
+
+        # Time range
+        end_time = datetime.now(UTC)
+        start_time = end_time - timedelta(hours=hours)
+        
+        self.logger.info(f"📊 Loading real book ticker data for {symbol}")
+        self.logger.info(f"   Timeframe: {timeframe.value}")
+        self.logger.info(f"   Period: {start_time} to {end_time} ({hours}h)")
+        
+        try:
+            df = await self.book_ticker_source.get_multi_exchange_data(
+                exchanges=self.exchanges,
+                symbol=symbol,
+                date_to=end_time,
+                hours=hours,
+                timeframe=timeframe
+            )
+            
+            if df.empty:
+                self.logger.warning(f"⚠️ No book ticker data available for {symbol}")
+                return pd.DataFrame()
+            
+            # Process book ticker data to add mid prices and spreads
+            self._process_book_ticker_data(df)
+            
+            self.logger.info(f"✅ Loaded book ticker data: {len(df)} snapshots")
+            return df
+            
+        except Exception as e:
+            self.logger.error(f"❌ Error loading book ticker data: {e}")
             return pd.DataFrame()
     
     def _process_real_data(self, df: pd.DataFrame) -> None:
@@ -272,13 +320,82 @@ class SymbolBacktester:
         self.logger.info(f"   Spread range: {df['mexc_vs_gateio_pct'].min():.3f}% to {df['mexc_vs_gateio_pct'].max():.3f}%")
         self.logger.info(f"   Correlation: {df['rolling_corr'].mean():.3f} avg")
     
+    def _process_book_ticker_data(self, df: pd.DataFrame) -> None:
+        """Process real book ticker data to add mid prices and spreads"""
+        
+        # Column names based on exchange enums - book ticker data has bid/ask prices
+        mexc_bid_col = f'{ExchangeEnum.MEXC.value}_bid_price'
+        mexc_ask_col = f'{ExchangeEnum.MEXC.value}_ask_price'
+        gateio_bid_col = f'{ExchangeEnum.GATEIO.value}_bid_price'
+        gateio_ask_col = f'{ExchangeEnum.GATEIO.value}_ask_price'
+        gateio_fut_bid_col = f'{ExchangeEnum.GATEIO_FUTURES.value}_bid_price'
+        gateio_fut_ask_col = f'{ExchangeEnum.GATEIO_FUTURES.value}_ask_price'
+        
+        # Calculate mid prices from bid/ask (more realistic than using close price)
+        mexc_mid_col = f'{ExchangeEnum.MEXC.value}_mid'
+        gateio_mid_col = f'{ExchangeEnum.GATEIO.value}_mid'
+        gateio_fut_mid_col = f'{ExchangeEnum.GATEIO_FUTURES.value}_mid'
+        
+        # Calculate mid prices
+        df[mexc_mid_col] = (df[mexc_bid_col] + df[mexc_ask_col]) / 2
+        df[gateio_mid_col] = (df[gateio_bid_col] + df[gateio_ask_col]) / 2
+        df[gateio_fut_mid_col] = (df[gateio_fut_bid_col] + df[gateio_fut_ask_col]) / 2
+        
+        # Calculate bid-ask spreads (important for realistic trading costs)
+        df['mexc_spread_bps'] = ((df[mexc_ask_col] - df[mexc_bid_col]) / df[mexc_mid_col]) * 10000
+        df['gateio_spread_bps'] = ((df[gateio_ask_col] - df[gateio_bid_col]) / df[gateio_mid_col]) * 10000
+        df['gateio_fut_spread_bps'] = ((df[gateio_fut_ask_col] - df[gateio_fut_bid_col]) / df[gateio_fut_mid_col]) * 10000
+        
+        def diff_perc(col1, col2):
+            denom = df[col2]
+            num = df[col1] - denom
+            pct = num.div(denom).mul(100)
+            # avoid division-by-zero and replace NaN/inf with 0
+            pct = pct.where(denom != 0, 0).fillna(0)
+            return pct
+        
+        # Basic spread calculations using mid prices
+        df['mexc_vs_gateio_pct'] = diff_perc(mexc_mid_col, gateio_mid_col)
+        df['mexc_vs_gateio_fut_pct'] = diff_perc(mexc_mid_col, gateio_fut_mid_col)
+        df['gateio_vs_gateio_fut_pct'] = diff_perc(gateio_mid_col, gateio_fut_mid_col)
+        
+        # Store column names for strategies (use mid prices as "close" equivalents)
+        df.attrs['mexc_c_col'] = mexc_mid_col
+        df.attrs['gateio_c_col'] = gateio_mid_col
+        df.attrs['gateio_futures_c_col'] = gateio_fut_mid_col
+        
+        # For book ticker data, we don't have high/low, so use bid/ask as approximations
+        df.attrs['mexc_h_col'] = mexc_ask_col  # Ask is the "high"
+        df.attrs['mexc_l_col'] = mexc_bid_col  # Bid is the "low"
+        df.attrs['gateio_h_col'] = gateio_ask_col
+        df.attrs['gateio_l_col'] = gateio_bid_col
+        
+        # Technical indicators for mean reversion
+        window = 20
+        df['spread_mean'] = df['mexc_vs_gateio_pct'].rolling(window).mean()
+        df['spread_std'] = df['mexc_vs_gateio_pct'].rolling(window).std()
+        df['spread_z_score'] = (df['mexc_vs_gateio_pct'] - df['spread_mean']) / df['spread_std']
+        df['spread_velocity'] = df['mexc_vs_gateio_pct'].diff()
+        
+        # Rolling correlation between mid prices
+        df['rolling_corr'] = df[mexc_mid_col].rolling(window).corr(df[gateio_mid_col])
+        
+        # "Volatility" indicators using bid-ask ranges instead of high-low ranges
+        df['mexc_range'] = df['mexc_spread_bps'] / 100  # Convert bps to percentage
+        df['gateio_range'] = df['gateio_spread_bps'] / 100
+        
+        self.logger.info(f"📊 Book ticker data processed:")
+        self.logger.info(f"   Spread range: {df['mexc_vs_gateio_pct'].min():.3f}% to {df['mexc_vs_gateio_pct'].max():.3f}%")
+        self.logger.info(f"   Avg bid-ask spreads: MEXC {df['mexc_spread_bps'].mean():.1f}bps, Gate.io {df['gateio_spread_bps'].mean():.1f}bps")
+        self.logger.info(f"   Correlation: {df['rolling_corr'].mean():.3f} avg")
+    
     def backtest_mean_reversion(self, 
                               df: pd.DataFrame,
                               entry_z_threshold: float = 1.5,
                               exit_z_threshold: float = 0.5,
                               stop_loss_pct: float = 0.5,
                               max_hold_minutes: int = 120,
-                              symbol: str = "UNKNOWN",
+                              symbol: Symbol= Symbol("UNKNOWN", "UNKNOWN"),
                               save_report: bool = True,
                               report_dir: str = "reports",
                               data_info: Dict = None) -> Dict:
@@ -442,7 +559,7 @@ class SymbolBacktester:
                                         max_hold_minutes: int = 10,
                                         profit_target_multiplier: float = 0.4,
                                         momentum_exit_threshold: float = 1.5,
-                                        symbol: str = "UNKNOWN",
+                                        symbol: Symbol = Symbol("UNKNOWN", "UNKNOWN"),
                                         save_report: bool = True,
                                         report_dir: str = "reports",
                                         data_info: Dict = None) -> Dict:
@@ -1004,7 +1121,7 @@ Generated: {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}
         return df
 
 
-def test_symbol_backtester():
+def test_symbol_backtester(symbol: str = "TEST_USDT", use_book_ticker: bool = False, periods: int = 500):
     """Quick test of the symbol backtester"""
     
     print("🚀 SYMBOL BACKTESTER TEST")
@@ -1013,18 +1130,59 @@ def test_symbol_backtester():
     # Initialize backtester
     backtester = SymbolBacktester()
     
-    # Create test data
-    df = backtester.create_test_data(symbol="TEST_USDT", periods=500)
-    
-    # Run backtest
-    results = backtester.backtest_optimized_spike_capture(
-        df,
-        min_differential=0.15,
-        min_single_move=0.1,
-        max_hold_minutes=10,
-        profit_target_multiplier=0.4,
-        symbol="TEST_USDT"
-    )
+    if use_book_ticker and symbol != "TEST_USDT":
+        print(f"📊 Using real order book snapshots for {symbol}")
+        # Use async test for real data
+        import asyncio
+        
+        async def test_with_book_ticker():
+            # Load real book ticker data
+            df = await backtester.load_book_ticker_data(symbol, hours=6, timeframe=KlineInterval.MINUTE_5)
+            
+            if df.empty:
+                print(f"❌ No book ticker data available for {symbol}, falling back to test data")
+                df = backtester.create_test_data(symbol=symbol, periods=periods)
+            
+            # Run backtest
+            results = backtester.backtest_optimized_spike_capture(
+                df,
+                min_differential=0.15,
+                min_single_move=0.1,
+                max_hold_minutes=10,
+                profit_target_multiplier=0.4,
+                symbol=symbol,
+                data_info={
+                    "data_source": "Real order book snapshots" if not df.empty else "Test data",
+                    "timeframe": "5m",
+                    "data_period_hours": 6,
+                    "data_points": len(df),
+                    "test_mode": "Book Ticker"
+                }
+            )
+            return results
+        
+        results = asyncio.run(test_with_book_ticker())
+    else:
+        print(f"📊 Using synthetic test data for {symbol}")
+        # Create test data
+        df = backtester.create_test_data(symbol=symbol, periods=periods)
+        
+        # Run backtest
+        results = backtester.backtest_optimized_spike_capture(
+            df,
+            min_differential=0.15,
+            min_single_move=0.1,
+            max_hold_minutes=10,
+            profit_target_multiplier=0.4,
+            symbol=symbol,
+            data_info={
+                "data_source": "Synthetic test data",
+                "timeframe": "5m",
+                "data_period_hours": periods / 12,  # 5min periods
+                "data_points": periods,
+                "test_mode": "Standard"
+            }
+        )
     
     # Display results
     print("\n📊 BACKTEST RESULTS:")
@@ -1059,14 +1217,17 @@ if __name__ == "__main__":
                        help='Number of periods for test data (default: 1000)')
     parser.add_argument('--quick', action='store_true',
                        help='Quick test mode')
+    parser.add_argument('--book-ticker', action='store_true',
+                       help='Use real order book snapshots (requires real symbol like BTC_USDT)')
     
     args = parser.parse_args()
     
     print(f"🎯 Testing symbol: {args.symbol}")
     print(f"📈 Data periods: {args.periods}")
+    print(f"📊 Book ticker mode: {args.book_ticker}")
     
     # Run test
-    test_symbol_backtester()
+    test_symbol_backtester(symbol=args.symbol, use_book_ticker=args.book_ticker, periods=args.periods)
     
     print("\n🎯 NEXT STEPS:")
     print("1. Replace test data with real market data")

@@ -657,7 +657,7 @@ class ArbitrageAnalyzer:
                     
                     net_pnl = sell_proceeds - buy_cost - fees
                     pnl_percentage = (net_pnl / trade_size) * 100
-                    
+                    print(f"MEXC->Gate.io Trade at idx {idx}: {buy_price} -> {sell_price} Size {trade_size}, PnL% {pnl_percentage}")
                     # Update balances
                     mexc_balance -= buy_cost + (buy_cost * total_fees / 2)
                     gateio_balance += sell_proceeds - (sell_proceeds * total_fees / 2)
@@ -707,7 +707,8 @@ class ArbitrageAnalyzer:
                     df.loc[idx, 'inv_trade_size_usd'] = trade_size
                     df.loc[idx, 'inv_spread_captured'] = gateio_to_mexc_spread
                     df.loc[idx, 'inv_trade_pnl'] = pnl_percentage
-                    
+                    print(f"MEXC->Gate.io Trade at idx {idx}: {buy_price} -> {sell_price} Size {trade_size}, PnL% {pnl_percentage}")
+
                     cumulative_pnl += pnl_percentage
                     trade_executed = True
             
@@ -830,6 +831,12 @@ class ArbitrageAnalyzer:
                     net_pnl = gross_pnl - (total_fees * 100)  # Apply fees
                     
                     period_pnl += net_pnl
+                    mexc_exit_price = df.loc[idx, AnalyzerKeys.mexc_bid]
+                    gateio_exit_price = df.loc[idx, AnalyzerKeys.gateio_futures_ask]
+                    mexc_entry_price = pos['mexc_entry_price']
+                    gateio_entry_price = pos['gateio_entry_price']
+                    print(f"Volatility Harvest Exit {pos['entry_spread']} -> {current_spread} PnL% {net_pnl} Reason: {exit_reason}"
+                          f" MEXC {mexc_entry_price}->{mexc_exit_price} Gate.io {gateio_entry_price}->{gateio_exit_price}")
                     positions_to_remove.append(pos)
                     
                     # Record exit
@@ -857,6 +864,8 @@ class ArbitrageAnalyzer:
                     'id': next_position_id,
                     'entry_time': current_time,
                     'entry_spread': current_spread,
+                    'mexc_entry_price': df.loc[idx, AnalyzerKeys.mexc_ask],
+                    'gateio_entry_price': df.loc[idx, AnalyzerKeys.gateio_futures_bid],
                     'tier': current_regime,
                     'position_size': adjusted_size,
                     'position_weight': regime_weight
