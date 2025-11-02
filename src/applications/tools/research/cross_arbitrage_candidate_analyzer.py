@@ -112,11 +112,9 @@ class CrossArbitrageCandidateAnalyzer:
             gateio_fut_ask_col = AnalyzerKeys.gateio_futures_ask
             
             if all([mexc_bid_col, mexc_ask_col, gateio_fut_bid_col, gateio_fut_ask_col]):
-                mexc_mid = (df[mexc_bid_col] + df[mexc_ask_col]) / 2
-                gateio_fut_mid = (df[gateio_fut_bid_col] + df[gateio_fut_ask_col]) / 2
-                
-                # Calculate spread percentage
-                spread = ((mexc_mid - gateio_fut_mid) / mexc_mid * 100).dropna()
+                # Use execution prices: Buy MEXC (at ask), Sell Gate.io futures (at bid)
+                # Spread = (selling_price - buying_price) / selling_price * 100
+                spread = ((df[gateio_fut_bid_col] - df[mexc_ask_col]) / df[gateio_fut_bid_col] * 100).dropna()
                 spreads.extend(spread.tolist())
             
             # GATEIO spot vs GATEIO_FUTURES arbitrage (hedging leg)
@@ -124,11 +122,9 @@ class CrossArbitrageCandidateAnalyzer:
             gateio_spot_ask_col = AnalyzerKeys.gateio_spot_ask
             
             if all([gateio_spot_bid_col, gateio_spot_ask_col, gateio_fut_bid_col, gateio_fut_ask_col]):
-                gateio_spot_mid = (df[gateio_spot_bid_col] + df[gateio_spot_ask_col]) / 2
-                gateio_fut_mid = (df[gateio_fut_bid_col] + df[gateio_fut_ask_col]) / 2
-                
-                # Calculate spread percentage  
-                spread = ((gateio_spot_mid - gateio_fut_mid) / gateio_spot_mid * 100).dropna()
+                # Use execution prices: Buy Gate.io spot (at ask), Sell Gate.io futures (at bid)
+                # Spread = (selling_price - buying_price) / selling_price * 100  
+                spread = ((df[gateio_fut_bid_col] - df[gateio_spot_ask_col]) / df[gateio_fut_bid_col] * 100).dropna()
                 spreads.extend(spread.tolist())
             
             if not spreads:

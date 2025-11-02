@@ -137,23 +137,62 @@ class ArbitrageAnalyzer:
             raise ValueError(f"Missing required columns: {missing_columns}")
     
     def _calculate_arbitrage_metrics(self, df: pd.DataFrame) -> pd.DataFrame:
-        """Calculate arbitrage opportunities using AnalyzerKeys."""
+        """
+        Calculate arbitrage opportunities with proper cost modeling.
+        
+        Fixed calculation considers:
+        1. Proper execution prices (buy at ask, sell at bid)
+        2. Mid-price denominators for accurate percentage calculations
+        3. Realistic cost structure including fees and spreads
+        """
         
         # Validate required columns exist
         self._validate_required_columns(df)
         
-        # 1. MEXC vs Gate.io Futures arbitrage
+        # Calculate mid prices for proper percentage calculation
+        df['mexc_mid'] = (df[AnalyzerKeys.mexc_bid] + df[AnalyzerKeys.mexc_ask]) / 2
+        df['gateio_spot_mid'] = (df[AnalyzerKeys.gateio_spot_bid] + df[AnalyzerKeys.gateio_spot_ask]) / 2
+        df['gateio_futures_mid'] = (df[AnalyzerKeys.gateio_futures_bid] + df[AnalyzerKeys.gateio_futures_ask]) / 2
+
+        # Calculate internal spreads (bid/ask spreads) for cost modeling - using percentages
+        df['mexc_spread_pct'] = ((df[AnalyzerKeys.mexc_ask] - df[AnalyzerKeys.mexc_bid]) / df['mexc_mid']) * 100
+        df['gateio_spot_spread_pct'] = ((df[AnalyzerKeys.gateio_spot_ask] - df[AnalyzerKeys.gateio_spot_bid]) / df['gateio_spot_mid']) * 100
+        df['gateio_futures_spread_pct'] = ((df[AnalyzerKeys.gateio_futures_ask] - df[AnalyzerKeys.gateio_futures_bid]) / df['gateio_futures_mid']) * 100
+        
+        # 1. MEXC vs Gate.io Futures arbitrage (ORIGINAL)
+        # Buy MEXC spot (at ask), Sell Gate.io futures (at bid)
         df[AnalyzerKeys.mexc_vs_gateio_futures_arb] = (
             (df[AnalyzerKeys.gateio_futures_bid] - df[AnalyzerKeys.mexc_ask]) / 
             df[AnalyzerKeys.gateio_futures_bid] * 100
         )
         
-        # 2. Gate.io Spot vs Futures arbitrage
+        # 2. Gate.io Spot vs Futures arbitrage (ORIGINAL)
+        # Buy Gate.io spot (at ask), Sell Gate.io futures (at bid) 
         df[AnalyzerKeys.gateio_spot_vs_futures_arb] = (
-            (df[AnalyzerKeys.gateio_spot_bid] - df[AnalyzerKeys.gateio_futures_ask]) / 
-            df[AnalyzerKeys.gateio_spot_bid] * 100
+            (df[AnalyzerKeys.gateio_futures_bid] - df[AnalyzerKeys.gateio_spot_ask]) / 
+            df[AnalyzerKeys.gateio_futures_bid] * 100
         )
         
+        # Calculate net arbitrage after transaction costs - all in percentages
+        # Total cost = trading fees + bid/ask spreads + transfer costs
+        df['total_cost_pct'] = (
+            0.25 +  # Trading fees (0.25%)
+            (df['mexc_spread_pct'] + df['gateio_futures_spread_pct']) / 2 +  # Avg spread cost
+            0.0    # Transfer/withdrawal costs (0.1%)
+        )
+        
+        # Net arbitrage = gross arbitrage - total costs (all in percentages)
+        df['mexc_vs_gateio_futures_net'] = df[AnalyzerKeys.mexc_vs_gateio_futures_arb] - df['total_cost_pct']
+        df['gateio_spot_vs_futures_net'] = df[AnalyzerKeys.gateio_spot_vs_futures_arb] - df['total_cost_pct']
+
+        print(f'{AnalyzerKeys.gateio_spot_vs_futures_arb}: min {df[AnalyzerKeys.gateio_spot_vs_futures_arb].min()}, '
+              f'max {df[AnalyzerKeys.gateio_spot_vs_futures_arb].max()}')
+        print(f'{AnalyzerKeys.mexc_vs_gateio_futures_arb}: min {df[AnalyzerKeys.mexc_vs_gateio_futures_arb].min()}, '
+              f'max {df[AnalyzerKeys.mexc_vs_gateio_futures_arb].max()}')
+        print(f"mexc_spread_pct: {df['mexc_spread_pct'].min()}, max {df['mexc_spread_pct'].max()}")
+        print(f"gateio_spot_spread_pct: {df['gateio_spot_spread_pct'].min()}, max {df['gateio_spot_spread_pct'].max()}")
+        print(f"gateio_futures_spread_pct: {df['gateio_futures_spread_pct'].min()}, max {df['gateio_futures_spread_pct'].max()}")
+        print(f"Total Cost %: min {df['total_cost_pct'].min()}, max {df['total_cost_pct'].max()}")
         df = self.add_arb_signals_with_pnl(df)
         return df
 
@@ -217,23 +256,44 @@ class ArbitrageAnalyzer:
                 df.iloc[i, df.columns.get_loc('mexc_gateio_mean')] = signal_result.mexc_vs_gateio_futures.mean
                 df.iloc[i, df.columns.get_loc('gateio_spot_mean')] = signal_result.gateio_spot_vs_futures.mean
                 
-                # Determine signal and direction using unified logic
+                # IMPROVED SIGNAL LOGIC WITH PROFITABILITY VALIDATION
                 if signal_result.signal.value == 'ENTER':
-                    # Choose direction based on spread magnitude (like hedged backtest)
-                    mexc_spread_magnitude = abs(signal_result.mexc_vs_gateio_futures.current)
-                    gateio_spread_magnitude = abs(signal_result.gateio_spot_vs_futures.current)
+                    # Get current net spreads (after costs) for profitability check
+                    current_mexc_net = df.iloc[i]['mexc_vs_gateio_futures_net']
+                    current_gateio_net = df.iloc[i]['gateio_spot_vs_futures_net']
                     
-                    if mexc_spread_magnitude >= gateio_spread_magnitude:
-                        # MEXC spread is larger, go MEXC_TO_GATEIO
+                    # Only enter if net spread is positive and significant
+                    min_profit_threshold = 0.05  # Minimum 0.05% profit after all costs
+                    
+                    # Choose best direction based on net profitability
+                    mexc_profitable = current_mexc_net > min_profit_threshold
+                    gateio_profitable = current_gateio_net > min_profit_threshold
+                    
+                    if mexc_profitable and current_mexc_net >= current_gateio_net:
+                        # MEXC direction is most profitable
                         df.iloc[i, df.columns.get_loc('signal')] = 'ENTER'
                         df.iloc[i, df.columns.get_loc('direction')] = 'MEXC_TO_GATEIO'
-                    else:
-                        # Gate.io spread is larger, go GATEIO_TO_MEXC
+                    elif gateio_profitable and current_gateio_net > current_mexc_net:
+                        # Gate.io direction is most profitable
                         df.iloc[i, df.columns.get_loc('signal')] = 'ENTER'
                         df.iloc[i, df.columns.get_loc('direction')] = 'GATEIO_TO_MEXC'
+                    else:
+                        # No profitable opportunity, stay in HOLD
+                        df.iloc[i, df.columns.get_loc('signal')] = 'HOLD'
+                        df.iloc[i, df.columns.get_loc('direction')] = 'NONE'
+                        
                 elif signal_result.signal.value == 'EXIT':
-                    df.iloc[i, df.columns.get_loc('signal')] = 'EXIT'
-                    # Direction remains same as current position
+                    # Additional exit validation: only exit if spread has normalized
+                    current_mexc_net = df.iloc[i]['mexc_vs_gateio_futures_net']
+                    current_gateio_net = df.iloc[i]['gateio_spot_vs_futures_net']
+                    
+                    # Exit if spreads are no longer profitable or have reversed
+                    max_exit_threshold = 0.02  # Exit if spread < 0.02%
+                    if abs(current_mexc_net) < max_exit_threshold and abs(current_gateio_net) < max_exit_threshold:
+                        df.iloc[i, df.columns.get_loc('signal')] = 'EXIT'
+                    else:
+                        # Don't exit yet, wait for better conditions
+                        df.iloc[i, df.columns.get_loc('signal')] = 'HOLD'
 
         # --- Unified Bidirectional Position Tracking and P&L Calculation ---
         df['position_open'] = False
@@ -283,24 +343,37 @@ class ArbitrageAnalyzer:
                     dest_spot_exit = df.loc[idx, AnalyzerKeys.mexc_bid]
                     hedge_futures_exit = df.loc[idx, AnalyzerKeys.gateio_futures_ask]
 
-                # THREE-EXCHANGE DELTA-NEUTRAL P&L CALCULATION
-                # Gate.io Futures always provides hedging reference
-                # Calculate actual position values for proper delta-neutral P&L
+                # CORRECTED DELTA-NEUTRAL P&L CALCULATION
+                # Properly account for actual execution costs and position sizing
                 
-                # Spot leg P&L: Exit price vs Entry price (percentage)
-                spot_leg_pnl_pct = (dest_spot_exit - source_spot_entry) / source_spot_entry
+                # Get entry and exit costs for this trade
+                entry_cost_pct = df.loc[idx, 'total_cost_pct']
                 
-                # Futures hedge P&L: We sold futures at entry, buy back at exit
-                futures_leg_pnl_pct = (hedge_futures_entry - hedge_futures_exit) / hedge_futures_entry
+                # Calculate actual USD values to ensure proper P&L calculation
+                position_size_usd = 1000.0  # Standard position size
                 
-                # Total delta-neutral P&L (both legs combined)
-                gross_pnl_pct = spot_leg_pnl_pct + futures_leg_pnl_pct
-                trade_pnl = gross_pnl_pct - total_fees
+                # Entry positions (negative for buys, positive for sells)
+                spot_entry_usd = -position_size_usd  # Bought spot (cash outflow)
+                futures_entry_usd = position_size_usd * (hedge_futures_entry / source_spot_entry)  # Sold futures (cash inflow)
+                
+                # Exit positions (positive for sells, negative for buys)
+                spot_exit_usd = position_size_usd * (dest_spot_exit / source_spot_entry)  # Sold spot (cash inflow)
+                futures_exit_usd = -position_size_usd * (hedge_futures_exit / source_spot_entry)  # Bought futures (cash outflow)
+                
+                # Net cash flow = Exit flows - Entry flows
+                total_cash_flow = (spot_exit_usd + futures_exit_usd) - (spot_entry_usd + futures_entry_usd)
+                
+                # Apply transaction costs
+                total_transaction_cost = position_size_usd * (entry_cost_pct / 100)
+                
+                # Net P&L as percentage of position size
+                net_pnl_usd = total_cash_flow - total_transaction_cost
+                trade_pnl = (net_pnl_usd / position_size_usd) * 100  # Convert to percentage
 
                 df.loc[idx, 'dest_spot_exit'] = dest_spot_exit
                 df.loc[idx, 'hedge_futures_exit'] = hedge_futures_exit
-                df.loc[idx, 'trade_pnl'] = trade_pnl * 100  # Convert to percentage
-                cumulative_pnl += trade_pnl * 100
+                df.loc[idx, 'trade_pnl'] = trade_pnl  # Already in percentage
+                cumulative_pnl += trade_pnl
                 df.loc[idx, 'cumulative_pnl'] = cumulative_pnl
 
                 position_open = False

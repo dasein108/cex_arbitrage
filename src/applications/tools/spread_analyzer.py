@@ -149,16 +149,16 @@ class SpreadAnalyzer:
             spreads['gateio_mexc_sell_buy_abs'] = cross_spreads['gateio_mexc_sell_buy']
             spreads['gateio_mexc_sell_buy_pct'] = self._calculate_spread_percentage(
                 cross_spreads['gateio_mexc_sell_buy'],
-                snapshot.gateio_spot_bid,
-                snapshot.mexc_spot_ask
+                snapshot.gateio_spot_bid,  # Sell price (denominator)
+                snapshot.mexc_spot_ask     # Buy price
             )
             
         if 'mexc_gateio_sell_buy' in cross_spreads:
             spreads['mexc_gateio_sell_buy_abs'] = cross_spreads['mexc_gateio_sell_buy']
             spreads['mexc_gateio_sell_buy_pct'] = self._calculate_spread_percentage(
                 cross_spreads['mexc_gateio_sell_buy'],
-                snapshot.mexc_spot_bid,
-                snapshot.gateio_spot_ask
+                snapshot.mexc_spot_bid,     # Sell price (denominator)
+                snapshot.gateio_spot_ask   # Buy price
             )
         
         # Delta neutral spreads
@@ -166,8 +166,8 @@ class SpreadAnalyzer:
             spreads['spot_futures_long_short_abs'] = cross_spreads['spot_futures_long_short']
             spreads['spot_futures_long_short_pct'] = self._calculate_spread_percentage(
                 cross_spreads['spot_futures_long_short'],
-                snapshot.gateio_spot_bid,
-                snapshot.gateio_futures_ask
+                snapshot.gateio_spot_bid,    # Sell spot price (denominator)
+                snapshot.gateio_futures_ask  # Buy futures price
             )
             
         # Individual exchange spreads
@@ -354,13 +354,14 @@ class SpreadAnalyzer:
         
         return metrics
     
-    def _calculate_spread_percentage(self, spread_abs: float, price1: Optional[float], price2: Optional[float]) -> float:
-        """Calculate spread as percentage of average price."""
-        if not price1 or not price2:
+    def _calculate_spread_percentage(self, spread_abs: float, sell_price: Optional[float], buy_price: Optional[float]) -> float:
+        """Calculate spread as percentage of sell price (execution-based calculation)."""
+        if not sell_price or not buy_price:
             return 0.0
         
-        avg_price = (price1 + price2) / 2
-        return abs(spread_abs / avg_price) * 100 if avg_price > 0 else 0.0
+        # Use the selling price as denominator for execution-based calculation
+        # This represents the actual return percentage on capital deployed
+        return abs(spread_abs / sell_price) * 100 if sell_price > 0 else 0.0
     
     def _get_mid_price_for_spread(self, snapshot: UnifiedSnapshot, spread_key: str) -> float:
         """Get appropriate mid price for spread calculation."""

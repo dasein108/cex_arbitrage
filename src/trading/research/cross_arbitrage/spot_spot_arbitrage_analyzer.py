@@ -13,7 +13,7 @@ from pathlib import Path
 from config import HftConfig
 from exchanges.exchange_factory import get_rest_implementation
 from exchanges.structs import Symbol
-from exchanges.structs.common import AssetName
+from exchanges.structs.common import AssetName, Fees
 from exchanges.structs.enums import ExchangeEnum, KlineInterval
 from infrastructure.logging import get_logger
 from trading.research.cross_arbitrage.multi_candles_source import MultiCandlesSource
@@ -21,9 +21,15 @@ from trading.research.cross_arbitrage.multi_candles_source import MultiCandlesSo
 pd.set_option('display.precision', 12)
 pd.set_option('display.float_format', None)
 
+TRADING_FEES = {
+    ExchangeEnum.MEXC: Fees(taker_fee=0.05, maker_fee=0),
+    ExchangeEnum.GATEIO: Fees(taker_fee=0.1, maker_fee=0.1),
+    ExchangeEnum.GATEIO_FUTURES: Fees(taker_fee=0.05, maker_fee=0.02),
+}
+
 class SpotSpotArbitrageAnalyzer:
     """Minimal candle loader for cross-exchange analysis"""
-
+    
     def __init__(self):
         self.config = HftConfig()
         self.logger = get_logger("SpotSpotArbitrageAnalyzer")
@@ -35,7 +41,7 @@ class SpotSpotArbitrageAnalyzer:
             ExchangeEnum.GATEIO,
             ExchangeEnum.GATEIO_FUTURES
         ]
-
+    
     async def load_symbol_data(self, symbol: Symbol, hours: int = 24) -> pd.DataFrame:
         """Load candle data for symbol from all exchanges and merge into single DataFrame"""
 
@@ -144,52 +150,9 @@ class SpotSpotArbitrageAnalyzer:
         df['rolling_corr'] = df[mexc_c_col].rolling(window).corr(df[gateio_c_col])
         df['decorrelation_event'] = df['rolling_corr'] < 0.8  # threshold to tune
 
-        # Mean price calculation based on both exchanges
-        df['mean_close'] = (df[mexc_c_col] + df[gateio_c_col]) / 2
-        df['mean_high'] = (df[mexc_h_col] + df[gateio_h_col]) / 2
-        df['mean_low'] = (df[mexc_l_col] + df[gateio_l_col]) / 2
-        
-        # Spike deviation measurements using high/low prices
-        # MEXC deviations from mean
-        df['mexc_high_spike'] = (df[mexc_h_col] - df['mean_high']) / df['mean_high'] * 100
-        df['mexc_low_spike'] = (df['mean_low'] - df[mexc_l_col]) / df['mean_low'] * 100
-        df['mexc_close_deviation'] = (df[mexc_c_col] - df['mean_close']) / df['mean_close'] * 100
-        
-        # Gate.io deviations from mean
-        df['gateio_high_spike'] = (df[gateio_h_col] - df['mean_high']) / df['mean_high'] * 100
-        df['gateio_low_spike'] = (df['mean_low'] - df[gateio_l_col]) / df['mean_low'] * 100
-        df['gateio_close_deviation'] = (df[gateio_c_col] - df['mean_close']) / df['mean_close'] * 100
-        
-        # Maximum spike intensity for each exchange
-        df['mexc_max_spike'] = df[['mexc_high_spike', 'mexc_low_spike']].max(axis=1)
-        df['gateio_max_spike'] = df[['gateio_high_spike', 'gateio_low_spike']].max(axis=1)
-        
-        # Spike direction (positive for upward spikes, negative for downward)
-        df['mexc_spike_direction'] = df['mexc_high_spike'] - df['mexc_low_spike']
-        df['gateio_spike_direction'] = df['gateio_high_spike'] - df['gateio_low_spike']
-        
-        # Bounce rate calculation (how quickly price returns to mean)
-        # Rolling deviation from mean over multiple periods
-        bounce_window = 5  # 5-minute window for bounce calculation
-        df['mexc_deviation_rolling'] = df['mexc_close_deviation'].rolling(bounce_window).std()
-        df['gateio_deviation_rolling'] = df['gateio_close_deviation'].rolling(bounce_window).std()
-        
-        # Bounce rate: inverse of deviation persistence (higher = faster mean reversion)
-        df['mexc_bounce_rate'] = 1 / (df['mexc_deviation_rolling'] + 0.01)  # Add small constant to avoid division by zero
-        df['gateio_bounce_rate'] = 1 / (df['gateio_deviation_rolling'] + 0.01)
-        
-        # Exchange deviation comparison metrics
-        df['mexc_vs_gateio_deviation_ratio'] = df['mexc_max_spike'] / (df['gateio_max_spike'] + 0.01)
-        df['dominant_exchange'] = df['mexc_vs_gateio_deviation_ratio'].apply(
-            lambda x: 'MEXC' if x > 1.2 else 'GATEIO' if x < 0.8 else 'BALANCED'
-        )
-        
-        # Spike correlation (do exchanges spike together or independently?)
-        df['spike_correlation'] = df['mexc_max_spike'].rolling(window).corr(df['gateio_max_spike'])
-        
         # Signal for spike capture strategy
         df['signal'] = (
-            (df['spread_z_score'].abs() > 2.0) &  # Spread deviation
+            (df['spread_z_score'].abs() < -2.0) &  # Spread deviation
             (df['vol_ratio'] > 1.2) &  # MEXC more volatile
             (df['mexc_static'] > 40) &  # Low liquidity
             (df['spread_velocity'].abs() > 0.1)  # Momentum
@@ -214,63 +177,60 @@ class SpotSpotArbitrageAnalyzer:
         backtest_results = self.backtest_mean_reversion(df)
         self.print_backtest_results(backtest_results)
 
-        # Print enhanced spike and deviation statistics
-        self.print_spike_analysis(df)
-        
-        # Print basic statistics
-        for e in ['mexc', 'gateio', 'gateio_fut']:
-            for col in ['_ch', '_cl']:
-                full_col = f'{e}{col}'
-                print(f'{full_col} {df[full_col].describe()}')
-
-        return df, backtest_results
+        # # Print basic statistics
+        # for e in ['mexc', 'gateio', 'gateio_fut']:
+        #     for col in ['_ch', '_cl']:
+        #         full_col = f'{e}{col}'
+        #         print(f'{full_col} {df[full_col].describe()}')
+        #
+        # return df, backtest_results
 
     def backtest_mean_reversion(self, df: pd.DataFrame) -> dict:
         """
         Backtest mean reversion strategy with realistic execution
-
+        
         Strategy:
         - Enter: When spread Z-score > threshold and spread contracting
         - Exit: When spread returns to mean or stop-loss hit
         - Execution: Simulate limit orders with realistic fill assumptions
         """
-
+        
         # Strategy parameters
         entry_z_threshold = 1.5
         exit_z_threshold = 0.5
         stop_loss_pct = 0.5  # Stop if spread moves 0.5% against us
-
+        
         # Exchange parameters
         mexc_fee = 0.10  # 0.10% taker fee
-        gateio_fee = 0.15  # 0.15% taker fee
+        gateio_fee = 0.15  # 0.15% taker fee  
         futures_fee = 0.05  # 0.05% futures fee
         slippage_estimate = 0.05  # 0.05% slippage per leg
-
+        
         total_entry_cost = mexc_fee + gateio_fee + futures_fee + 3 * slippage_estimate
         total_exit_cost = total_entry_cost
-
+        
         # Get column names from DataFrame attributes
         mexc_c_col = df.attrs.get('mexc_c_col', 'mexc_close')
         gateio_c_col = df.attrs.get('gateio_c_col', 'gateio_close')
-
+        
         # Position tracking
         position = None  # {entry_idx, entry_spread, entry_price_mexc, entry_price_gateio, entry_time}
         trades = []
-
+        
         for idx in range(len(df)):
             if idx < 20:  # Skip until indicators are ready
                 continue
-
+                
             row = df.iloc[idx]
-
+            
             # Skip if any critical data is missing
             if pd.isna(row['spread_z_score']) or pd.isna(row['spread_mean']):
                 continue
-
+            
             current_spread = row['mexc_vs_gateio_pct']
             z_score = row['spread_z_score']
             spread_velocity = row['spread_velocity']
-
+            
             # ENTRY LOGIC
             if position is None:
                 # Enter when spread is wide and starting to contract
@@ -279,7 +239,7 @@ class SpotSpotArbitrageAnalyzer:
                     spread_velocity < 0 and  # Spread contracting (converging)
                     row['rolling_corr'] > 0.7  # Venues still correlated
                 )
-
+                
                 if entry_signal:
                     position = {
                         'entry_idx': idx,
@@ -290,38 +250,38 @@ class SpotSpotArbitrageAnalyzer:
                         'entry_price_gateio': row[gateio_c_col],
                         'direction': 'long' if current_spread > 0 else 'short',  # Long MEXC if it's expensive
                     }
-
+                    
             # EXIT LOGIC
             else:
                 hold_time = idx - position['entry_idx']
                 spread_change = current_spread - position['entry_spread']
-
+                
                 # Profit target: spread returned to mean
                 profit_target = abs(z_score) < exit_z_threshold
-
+                
                 # Stop loss: spread moved against us
                 stop_loss = abs(spread_change) > stop_loss_pct
-
+                
                 # Time stop: held too long (120 minutes = 2 hours)
                 time_stop = hold_time > 120
-
+                
                 # Correlation breakdown: venues decorrelated
                 correlation_stop = row['rolling_corr'] < 0.6
-
+                
                 exit_signal = profit_target or stop_loss or time_stop or correlation_stop
-
+                
                 if exit_signal:
                     # Calculate P&L
                     # If we longed MEXC (expecting it to fall relative to gateio):
                     # PnL = entry_spread - exit_spread - costs
                     raw_pnl = position['entry_spread'] - current_spread
-
+                    
                     # Adjust for direction
                     if position['direction'] == 'short':
                         raw_pnl = -raw_pnl
-
+                    
                     net_pnl = raw_pnl - total_entry_cost - total_exit_cost
-
+                    
                     # Record trade
                     trade = {
                         'entry_idx': position['entry_idx'],
@@ -345,46 +305,46 @@ class SpotSpotArbitrageAnalyzer:
                     }
                     trades.append(trade)
                     position = None
-
+        
         # Calculate performance metrics
         if not trades:
             return {
                 'total_trades': 0,
                 'message': 'No trades generated'
             }
-
+        
         trades_df = pd.DataFrame(trades)
-
+        
         winning_trades = trades_df[trades_df['net_pnl_pct'] > 0]
         losing_trades = trades_df[trades_df['net_pnl_pct'] <= 0]
-
+        
         total_pnl = trades_df['net_pnl_pct'].sum()
         avg_pnl = trades_df['net_pnl_pct'].mean()
         median_pnl = trades_df['net_pnl_pct'].median()
-
+        
         win_rate = len(winning_trades) / len(trades_df) * 100 if len(trades_df) > 0 else 0
-
+        
         avg_win = winning_trades['net_pnl_pct'].mean() if len(winning_trades) > 0 else 0
         avg_loss = losing_trades['net_pnl_pct'].mean() if len(losing_trades) > 0 else 0
-
+        
         profit_factor = (
             abs(winning_trades['net_pnl_pct'].sum() / losing_trades['net_pnl_pct'].sum())
             if len(losing_trades) > 0 and losing_trades['net_pnl_pct'].sum() != 0
             else float('inf') if len(winning_trades) > 0 else 0
         )
-
+        
         avg_hold_time = trades_df['hold_time'].mean()
-
+        
         # Sharpe-like ratio (return / volatility)
         returns_std = trades_df['net_pnl_pct'].std()
         sharpe_ratio = avg_pnl / returns_std if returns_std > 0 else 0
-
+        
         # Max drawdown
         cumulative_pnl = trades_df['net_pnl_pct'].cumsum()
         running_max = cumulative_pnl.expanding().max()
         drawdown = cumulative_pnl - running_max
         max_drawdown = drawdown.min()
-
+        
         return {
             'total_trades': len(trades_df),
             'winning_trades': len(winning_trades),
@@ -403,40 +363,40 @@ class SpotSpotArbitrageAnalyzer:
             'entry_costs_pct': total_entry_cost,
             'exit_costs_pct': total_exit_cost,
         }
-
+    
     def print_backtest_results(self, results: dict):
         """Pretty print backtest results"""
         if results['total_trades'] == 0:
             self.logger.warning("⚠️ No trades generated in backtest")
             return
-
+        
         self.logger.info("=" * 80)
         self.logger.info("📊 BACKTEST RESULTS - Mean Reversion Strategy")
         self.logger.info("=" * 80)
-
+        
         self.logger.info(f"\n📈 TRADE STATISTICS:")
         self.logger.info(f"  Total Trades:        {results['total_trades']}")
         self.logger.info(f"  Winning Trades:      {results['winning_trades']} ({results['win_rate']:.1f}%)")
         self.logger.info(f"  Losing Trades:       {results['losing_trades']}")
-
+        
         self.logger.info(f"\n💰 P&L METRICS:")
         self.logger.info(f"  Total P&L:           {results['total_pnl_pct']:.3f}%")
         self.logger.info(f"  Average P&L:         {results['avg_pnl_pct']:.3f}%")
         self.logger.info(f"  Median P&L:          {results['median_pnl_pct']:.3f}%")
         self.logger.info(f"  Average Win:         {results['avg_win_pct']:.3f}%")
         self.logger.info(f"  Average Loss:        {results['avg_loss_pct']:.3f}%")
-
+        
         self.logger.info(f"\n📊 RISK METRICS:")
         self.logger.info(f"  Profit Factor:       {results['profit_factor']:.2f}")
         self.logger.info(f"  Sharpe Ratio:        {results['sharpe_ratio']:.2f}")
         self.logger.info(f"  Max Drawdown:        {results['max_drawdown_pct']:.3f}%")
-
+        
         self.logger.info(f"\n⏱️  EXECUTION:")
         self.logger.info(f"  Avg Hold Time:       {results['avg_hold_time_minutes']:.1f} minutes")
         self.logger.info(f"  Entry Costs:         {results['entry_costs_pct']:.2f}%")
         self.logger.info(f"  Exit Costs:          {results['exit_costs_pct']:.2f}%")
         self.logger.info(f"  Total Round Trip:    {results['entry_costs_pct'] + results['exit_costs_pct']:.2f}%")
-
+        
         # Exit reason breakdown
         if 'trades_df' in results:
             self.logger.info(f"\n🚪 EXIT REASONS:")
@@ -444,111 +404,7 @@ class SpotSpotArbitrageAnalyzer:
             for reason, count in exit_reasons.items():
                 pct = count / results['total_trades'] * 100
                 self.logger.info(f"  {reason:20s} {count:3d} ({pct:5.1f}%)")
-
-        self.logger.info("=" * 80)
-
-    def print_spike_analysis(self, df: pd.DataFrame):
-        """Print comprehensive spike and deviation analysis"""
-        self.logger.info("=" * 80)
-        self.logger.info("📊 SPIKE & DEVIATION ANALYSIS")
-        self.logger.info("=" * 80)
-
-        # Overall exchange deviation comparison
-        mexc_avg_spike = df['mexc_max_spike'].mean()
-        gateio_avg_spike = df['gateio_max_spike'].mean()
         
-        self.logger.info(f"\n🎯 EXCHANGE DEVIATION COMPARISON:")
-        self.logger.info(f"  MEXC Average Max Spike:     {mexc_avg_spike:.3f}%")
-        self.logger.info(f"  Gate.io Average Max Spike:  {gateio_avg_spike:.3f}%")
-        
-        more_volatile = "MEXC" if mexc_avg_spike > gateio_avg_spike else "Gate.io"
-        volatility_ratio = max(mexc_avg_spike, gateio_avg_spike) / min(mexc_avg_spike, gateio_avg_spike)
-        self.logger.info(f"  More Volatile Exchange:     {more_volatile} ({volatility_ratio:.2f}x)")
-        
-        # Dominant exchange breakdown
-        dominant_counts = df['dominant_exchange'].value_counts()
-        total_periods = len(df)
-        
-        self.logger.info(f"\n⚖️  EXCHANGE DOMINANCE BREAKDOWN:")
-        for exchange, count in dominant_counts.items():
-            percentage = count / total_periods * 100
-            self.logger.info(f"  {exchange:8s}: {count:4d} periods ({percentage:5.1f}%)")
-        
-        # Spike intensity statistics
-        self.logger.info(f"\n📈 SPIKE INTENSITY STATISTICS:")
-        
-        # MEXC spike stats
-        mexc_high_avg = df['mexc_high_spike'].mean()
-        mexc_low_avg = df['mexc_low_spike'].mean()
-        mexc_spike_max = df['mexc_max_spike'].max()
-        
-        self.logger.info(f"  MEXC High Spikes:          {mexc_high_avg:.3f}% avg, {df['mexc_high_spike'].max():.3f}% max")
-        self.logger.info(f"  MEXC Low Spikes:           {mexc_low_avg:.3f}% avg, {df['mexc_low_spike'].max():.3f}% max")
-        self.logger.info(f"  MEXC Maximum Spike:        {mexc_spike_max:.3f}%")
-        
-        # Gate.io spike stats
-        gateio_high_avg = df['gateio_high_spike'].mean()
-        gateio_low_avg = df['gateio_low_spike'].mean()
-        gateio_spike_max = df['gateio_max_spike'].max()
-        
-        self.logger.info(f"  Gate.io High Spikes:       {gateio_high_avg:.3f}% avg, {df['gateio_high_spike'].max():.3f}% max")
-        self.logger.info(f"  Gate.io Low Spikes:        {gateio_low_avg:.3f}% avg, {df['gateio_low_spike'].max():.3f}% max")
-        self.logger.info(f"  Gate.io Maximum Spike:     {gateio_spike_max:.3f}%")
-        
-        # Bounce rate analysis
-        mexc_bounce_avg = df['mexc_bounce_rate'].mean()
-        gateio_bounce_avg = df['gateio_bounce_rate'].mean()
-        
-        self.logger.info(f"\n🏀 BOUNCE RATE ANALYSIS:")
-        self.logger.info(f"  MEXC Bounce Rate:          {mexc_bounce_avg:.2f} (higher = faster mean reversion)")
-        self.logger.info(f"  Gate.io Bounce Rate:       {gateio_bounce_avg:.2f}")
-        
-        faster_reversion = "MEXC" if mexc_bounce_avg > gateio_bounce_avg else "Gate.io"
-        reversion_ratio = max(mexc_bounce_avg, gateio_bounce_avg) / min(mexc_bounce_avg, gateio_bounce_avg)
-        self.logger.info(f"  Faster Mean Reversion:     {faster_reversion} ({reversion_ratio:.2f}x)")
-        
-        # Spike correlation analysis
-        avg_spike_correlation = df['spike_correlation'].mean()
-        self.logger.info(f"\n🔗 SPIKE CORRELATION:")
-        self.logger.info(f"  Average Spike Correlation: {avg_spike_correlation:.3f}")
-        
-        if avg_spike_correlation > 0.7:
-            correlation_desc = "HIGH (exchanges spike together)"
-        elif avg_spike_correlation > 0.3:
-            correlation_desc = "MODERATE (partially independent)"
-        else:
-            correlation_desc = "LOW (independent spiking)"
-            
-        self.logger.info(f"  Correlation Level:         {correlation_desc}")
-        
-        # Identify best spike capture opportunities
-        # High spike intensity + low correlation = good opportunity
-        spike_opportunities = df[
-            (df['mexc_max_spike'] > mexc_avg_spike * 1.5) | 
-            (df['gateio_max_spike'] > gateio_avg_spike * 1.5)
-        ]
-        
-        opportunity_count = len(spike_opportunities)
-        opportunity_pct = opportunity_count / total_periods * 100
-        
-        self.logger.info(f"\n🎯 SPIKE CAPTURE OPPORTUNITIES:")
-        self.logger.info(f"  High Spike Periods:        {opportunity_count} ({opportunity_pct:.1f}%)")
-        
-        if opportunity_count > 0:
-            avg_opportunity_spike = spike_opportunities[['mexc_max_spike', 'gateio_max_spike']].max(axis=1).mean()
-            self.logger.info(f"  Average Opportunity Spike: {avg_opportunity_spike:.3f}%")
-        
-        # Mean deviation from fair price
-        mexc_close_dev_avg = abs(df['mexc_close_deviation']).mean()
-        gateio_close_dev_avg = abs(df['gateio_close_deviation']).mean()
-        
-        self.logger.info(f"\n📏 MEAN PRICE DEVIATION:")
-        self.logger.info(f"  MEXC Avg Deviation:        {mexc_close_dev_avg:.3f}%")
-        self.logger.info(f"  Gate.io Avg Deviation:     {gateio_close_dev_avg:.3f}%")
-        
-        more_deviant = "MEXC" if mexc_close_dev_avg > gateio_close_dev_avg else "Gate.io"
-        self.logger.info(f"  More Price Deviant:        {more_deviant}")
-
         self.logger.info("=" * 80)
 
 
@@ -558,7 +414,7 @@ async def main():
     # Initialize loader
     analyzer = SpotSpotArbitrageAnalyzer()
     symbol = Symbol(base=AssetName("QUBIC"), quote=AssetName("USDT"))
-
+    
     try:
         await analyzer.analyze_symbol(symbol, 8)
     except Exception as e:

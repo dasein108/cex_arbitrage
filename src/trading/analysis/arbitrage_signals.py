@@ -114,12 +114,17 @@ def calculate_arb_signals(
     # Generate signal
     signal = Signal.HOLD
     
-    # Check ENTER condition: mexc_vs_gateio_futures < 25th percentile of minimums
-    if current_mexc_vs_gateio_futures < mexc_gateio_min_25pct:
+    # IMPROVED SIGNAL LOGIC WITH PROFIT VALIDATION
+    # Check ENTER condition: mexc_vs_gateio_futures < 25th percentile of minimums AND is profitable
+    min_profit_threshold =0 # 0.05  # Minimum 0.05% profit after costs
+    
+    if (current_mexc_vs_gateio_futures < mexc_gateio_min_25pct and 
+        current_mexc_vs_gateio_futures > min_profit_threshold):
         signal = Signal.ENTER
     
-    # Check EXIT condition: gateio_spot_vs_futures > 25th percentile of maximums
-    elif current_gateio_spot_vs_futures > gateio_max_25pct:
+    # Check EXIT condition: gateio_spot_vs_futures > 25th percentile of maximums OR spreads normalized
+    elif (current_gateio_spot_vs_futures > gateio_max_25pct or 
+          (abs(current_mexc_vs_gateio_futures) < 0.02 and abs(current_gateio_spot_vs_futures) < 0.02)):
         signal = Signal.EXIT
     
     return ArbSignal(
