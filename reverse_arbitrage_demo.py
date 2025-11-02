@@ -171,8 +171,8 @@ async def demonstrate_reverse_strategies():
         
         # Load some sample data (you can replace this with your actual data loading)
         print("📊 Loading market data...")
-        symbol = Symbol(base='PIGGY', quote='USDT')
-        df, results = await analyzer.run_analysis(symbol, days=3)
+        symbol = Symbol(base='FLK', quote='USDT')
+        df, results = await analyzer.run_analysis(symbol, days=1)
 
         if df is None or len(df) == 0:
             print("❌ No data available for analysis")

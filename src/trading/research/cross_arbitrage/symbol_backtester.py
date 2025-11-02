@@ -178,8 +178,8 @@ class SymbolBacktester:
             # Profit when Gate.io outperforms MEXC  
             pnl = gateio_return - mexc_return
 
-        print(f"log: spike {position['action'].name}: mexc delta {position['mexc_entry_price'] - mexc_price}, "
-              f"gateio delata {gateio_price - position['gateio_entry_price']} {pnl}")
+        print(f"log: spike {position['action'].name}: mexc  {position['mexc_entry_price']} -> {mexc_price} delta {position['mexc_entry_price'] - mexc_price:.5f}, "
+              f"gateio {gateio_price} -> {position['gateio_entry_price']} delta {gateio_price - position['gateio_entry_price']:.5f} pnl {pnl}")
         return pnl
 
     async def load_real_data(self, symbol: Symbol, hours: int = 24,
