@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 """
-Strategy Compatibility Demonstration
+Strategy Compatibility Demonstration - New Implementation
 
 Demonstrates the dual-mode compatibility between backtesting and live trading
-using the same strategy code. Shows performance characteristics and validates
-that identical logic works in both modes.
+using the new ArbitrageSignalStrategy framework. Shows performance characteristics 
+and validates that identical logic works in both modes.
 
 Usage:
     python strategy_compatibility_demo.py
@@ -16,12 +16,9 @@ import numpy as np
 from datetime import datetime, UTC
 import time
 
-from exchanges.structs import Symbol, AssetName, ExchangeEnum
-from trading.analysis.base_arbitrage_strategy import (
-    create_backtesting_strategy, 
-    create_live_trading_strategy,
-    StrategyConfig
-)
+from exchanges.structs import Symbol, AssetName, ExchangeEnum, BookTicker
+from trading.analysis.arbitrage_signal_strategy import ArbitrageSignalStrategy
+from trading.analysis.signal_types import Signal
 
 
 def calculate_strategy_performance(df: pd.DataFrame, strategy_name: str) -> dict:
@@ -155,25 +152,125 @@ def find_best_strategy_config(results: dict, configs: list) -> dict:
     return best_strategy
 
 
+async def backtest_strategy_new_framework(strategy_type: str, symbol: Symbol, days: int = 1) -> dict:
+    """Run backtest using new ArbitrageSignalStrategy framework."""
+    try:
+        # Create strategy in backtesting mode
+        strategy = ArbitrageSignalStrategy(
+            symbol=symbol,
+            strategy_type=strategy_type,
+            is_live_mode=False
+        )
+        
+        # Initialize with historical data
+        init_start = time.perf_counter()
+        await strategy.initialize(days=days)
+        init_time = (time.perf_counter() - init_start) * 1000
+        
+        # Get historical data for backtesting
+        historical_df = strategy.get_historical_data()
+        
+        if historical_df.empty:
+            return {'error': f'No historical data for {symbol}'}
+        
+        # Simulate backtesting by processing each row
+        backtest_start = time.perf_counter()
+        signals = []
+        
+        for _, row in historical_df.iterrows():
+            # Create mock BookTicker objects from row data
+            spot_book_tickers = {}
+            
+            # MEXC spot - check both naming conventions
+            mexc_bid = row.get('MEXC_SPOT_bid_price', row.get('MEXC_bid_price'))
+            mexc_ask = row.get('MEXC_SPOT_ask_price', row.get('MEXC_ask_price'))
+            if pd.notna(mexc_bid) and pd.notna(mexc_ask):
+                spot_book_tickers['MEXC'] = BookTicker(
+                    symbol=Symbol(base=symbol.base, quote=symbol.quote),
+                    bid_price=float(mexc_bid),
+                    ask_price=float(mexc_ask),
+                    bid_quantity=float(row.get('MEXC_bid_qty', row.get('MEXC_SPOT_bid_qty', 1000))),
+                    ask_quantity=float(row.get('MEXC_ask_qty', row.get('MEXC_SPOT_ask_qty', 1000))),
+                    timestamp=int(pd.Timestamp.now().timestamp() * 1000)
+                )
+            
+            # Gate.io spot - check both naming conventions
+            gateio_bid = row.get('GATEIO_SPOT_bid_price', row.get('GATEIO_bid_price'))
+            gateio_ask = row.get('GATEIO_SPOT_ask_price', row.get('GATEIO_ask_price'))
+            if pd.notna(gateio_bid) and pd.notna(gateio_ask):
+                spot_book_tickers['GATEIO'] = BookTicker(
+                    symbol=Symbol(base=symbol.base, quote=symbol.quote),
+                    bid_price=float(gateio_bid),
+                    ask_price=float(gateio_ask),
+                    bid_quantity=float(row.get('GATEIO_bid_qty', row.get('GATEIO_SPOT_bid_qty', 1000))),
+                    ask_quantity=float(row.get('GATEIO_ask_qty', row.get('GATEIO_SPOT_ask_qty', 1000))),
+                    timestamp=int(pd.Timestamp.now().timestamp() * 1000)
+                )
+            
+            # Gate.io futures - check both naming conventions
+            futures_book_ticker = None
+            futures_bid = row.get('GATEIO_FUTURES_bid_price')
+            futures_ask = row.get('GATEIO_FUTURES_ask_price')
+            if pd.notna(futures_bid) and pd.notna(futures_ask):
+                futures_book_ticker = BookTicker(
+                    symbol=Symbol(base=symbol.base, quote=symbol.quote),
+                    bid_price=float(futures_bid),
+                    ask_price=float(futures_ask),
+                    bid_quantity=float(row.get('GATEIO_FUTURES_bid_qty', 1000)),
+                    ask_quantity=float(row.get('GATEIO_FUTURES_ask_qty', 1000)),
+                    timestamp=int(pd.Timestamp.now().timestamp() * 1000)
+                )
+            
+            # Generate signal if we have sufficient data
+            if spot_book_tickers and futures_book_ticker:
+                signal = strategy.update_with_live_data(
+                    spot_book_tickers=spot_book_tickers,
+                    futures_book_ticker=futures_book_ticker
+                )
+                signals.append(signal.value)
+            else:
+                signals.append(Signal.HOLD.value)
+        
+        backtest_time = (time.perf_counter() - backtest_start) * 1000
+        
+        # Add signals to DataFrame
+        historical_df['signal'] = signals[:len(historical_df)]
+        
+        # Calculate performance metrics
+        performance = calculate_strategy_performance(historical_df, strategy_type)
+        performance.update({
+            'execution_time_ms': init_time + backtest_time,
+            'data_points': len(historical_df),
+            'strategy_metrics': strategy.get_strategy_metrics()
+        })
+        
+        return performance
+        
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return {'error': str(e)}
+
+
 async def demo_best_strategy_live_mode(symbol: Symbol, best_config: dict) -> pd.DataFrame:
-    """Demo the best performing strategy in live mode."""
+    """Demo the best performing strategy in live mode using new framework."""
     print(f"\n🥇 BEST STRATEGY: {best_config['name']}")
     print("=" * 50)
     
     try:
         # Create live strategy using best configuration
-        live_strategy = create_live_trading_strategy(
-            strategy_type=best_config['type'],
+        strategy = ArbitrageSignalStrategy(
             symbol=symbol,
-            use_db_source=False,
-            **best_config['params']
+            strategy_type=best_config['type'],
+            is_live_mode=True
         )
         
         # Initialize with historical context
         init_start = time.perf_counter()
-        context_df = await live_strategy.data_provider.get_historical_data(symbol, 1)
+        await strategy.initialize(days=1)
         init_time = (time.perf_counter() - init_start) * 1000
         
+        context_df = strategy.get_historical_data()
         print(f"✅ Best strategy initialized: {len(context_df)} periods in {init_time:.2f}ms")
         
         # Simulate live updates
@@ -186,27 +283,62 @@ async def demo_best_strategy_live_mode(symbol: Symbol, best_config: dict) -> pd.
             sample_data = context_df.tail(3)  # Use last 3 rows for simulation
             
             for idx, row in sample_data.iterrows():
-                new_data = {
-                    'MEXC_bid_price': row.get('MEXC_bid_price', 50000),
-                    'MEXC_ask_price': row.get('MEXC_ask_price', 50001),
-                    'GATEIO_bid_price': row.get('GATEIO_bid_price', 49999),
-                    'GATEIO_ask_price': row.get('GATEIO_ask_price', 50000),
-                    'GATEIO_FUTURES_bid_price': row.get('GATEIO_FUTURES_bid_price', 49998),
-                    'GATEIO_FUTURES_ask_price': row.get('GATEIO_FUTURES_ask_price', 49999),
-                    'timestamp': datetime.now(UTC)
-                }
+                # Create mock BookTickers from historical data
+                spot_book_tickers = {}
+                
+                # MEXC - check both naming conventions
+                mexc_bid = row.get('MEXC_SPOT_bid_price', row.get('MEXC_bid_price'))
+                mexc_ask = row.get('MEXC_SPOT_ask_price', row.get('MEXC_ask_price'))
+                if pd.notna(mexc_bid) and pd.notna(mexc_ask):
+                    spot_book_tickers['MEXC'] = BookTicker(
+                        symbol=Symbol(base=symbol.base, quote=symbol.quote),
+                        bid_price=float(mexc_bid),
+                        ask_price=float(mexc_ask),
+                        bid_quantity=1000.0,
+                        ask_quantity=1000.0,
+                        timestamp=int(pd.Timestamp.now().timestamp() * 1000)
+                    )
+                
+                # Gate.io spot - check both naming conventions
+                gateio_bid = row.get('GATEIO_SPOT_bid_price', row.get('GATEIO_bid_price'))
+                gateio_ask = row.get('GATEIO_SPOT_ask_price', row.get('GATEIO_ask_price'))
+                if pd.notna(gateio_bid) and pd.notna(gateio_ask):
+                    spot_book_tickers['GATEIO'] = BookTicker(
+                        symbol=Symbol(base=symbol.base, quote=symbol.quote),
+                        bid_price=float(gateio_bid),
+                        ask_price=float(gateio_ask),
+                        bid_quantity=1000.0,
+                        ask_quantity=1000.0,
+                        timestamp=int(pd.Timestamp.now().timestamp() * 1000)
+                    )
+                
+                # Gate.io futures - check both naming conventions
+                futures_book_ticker = None
+                futures_bid = row.get('GATEIO_FUTURES_bid_price')
+                futures_ask = row.get('GATEIO_FUTURES_ask_price')
+                if pd.notna(futures_bid) and pd.notna(futures_ask):
+                    futures_book_ticker = BookTicker(
+                        symbol=Symbol(base=symbol.base, quote=symbol.quote),
+                        bid_price=float(futures_bid),
+                        ask_price=float(futures_ask),
+                        bid_quantity=1000.0,
+                        ask_quantity=1000.0,
+                        timestamp=int(pd.Timestamp.now().timestamp() * 1000)
+                    )
                 
                 try:
                     update_start = time.perf_counter()
-                    signal_result = await live_strategy.update_live(new_data)
+                    signal = strategy.update_with_live_data(
+                        spot_book_tickers=spot_book_tickers,
+                        futures_book_ticker=futures_book_ticker
+                    )
                     update_time = (time.perf_counter() - update_start) * 1000
                     
                     total_update_time += update_time
                     successful_updates += 1
                     
-                    print(f"   Update {successful_updates}: {signal_result['signal']} "
-                          f"(confidence: {signal_result['confidence']:.2f}, "
-                          f"time: {update_time:.3f}ms)")
+                    print(f"   Update {successful_updates}: {signal.value} "
+                          f"(time: {update_time:.3f}ms)")
                     
                 except Exception as e:
                     print(f"   Update failed: {e}")
@@ -221,6 +353,8 @@ async def demo_best_strategy_live_mode(symbol: Symbol, best_config: dict) -> pd.
         
     except Exception as e:
         print(f"❌ Best strategy live demo failed: {e}")
+        import traceback
+        traceback.print_exc()
         return pd.DataFrame()
 
 
@@ -279,39 +413,33 @@ async def demo_strategy_compatibility():
         print("-" * 40)
         
         try:
-            # Create strategy
-            strategy = create_backtesting_strategy(
+            # Run backtest using new framework
+            result = await backtest_strategy_new_framework(
                 strategy_type=config['type'],
                 symbol=symbol,
-                days=1,  # Use 1 day for quick demo
-                use_db_source=True,
-                **config['params']
+                days=1  # Use 1 day for quick demo
             )
             
-            # Run backtest analysis
-            backtest_start = time.perf_counter()
-            backtest_df = await strategy.run_analysis()
-            backtest_time = (time.perf_counter() - backtest_start) * 1000
-            
-            # Calculate strategy performance metrics
-            result = calculate_strategy_performance(backtest_df, config['name'])
-            result['execution_time_ms'] = backtest_time
-            result['data_points'] = len(backtest_df)
+            if 'error' in result:
+                print(f"❌ {config['name']} failed: {result['error']}")
+                backtest_results[config['name']] = result
+                continue
             
             backtest_results[config['name']] = result
             
-            print(f"✅ {config['name']} completed: {len(backtest_df)} periods in {backtest_time:.2f}ms")
-            print(f"   Signals: {backtest_df['signal'].value_counts().to_dict()}")
+            print(f"✅ {config['name']} completed: {result['data_points']} periods in {result['execution_time_ms']:.2f}ms")
             print(f"   Total Trades: {result['total_trades']}")
             print(f"   Win Rate: {result['win_rate']:.1f}%")
             print(f"   Total P&L: {result['total_pnl_pct']:.3f}%")
             print(f"   Max Drawdown: {result['max_drawdown_pct']:.3f}%")
             
-            # Show component performance
-            strategy_stats = strategy.get_performance_summary()
-            print(f"   Component Performance:")
-            print(f"     - Indicators: {strategy_stats['component_stats']['indicators']['avg_calculation_time_ms']:.2f}ms avg")
-            print(f"     - Signal engine: {strategy_stats['component_stats']['signal_engine']['avg_signal_time_ms']:.2f}ms avg")
+            # Show strategy metrics
+            if 'strategy_metrics' in result:
+                metrics = result['strategy_metrics']
+                print(f"   Strategy State:")
+                print(f"     - Context ready: {metrics['context_ready']}")
+                print(f"     - Total signals: {metrics['total_signals']}")
+                print(f"     - Signal distribution: {metrics['signal_distribution']}")
             
         except Exception as e:
             print(f"❌ {config['name']} failed: {e}")
@@ -330,13 +458,13 @@ async def demo_strategy_compatibility():
     # Use the best performing strategy for live mode demo
     best_strategy_config = find_best_strategy_config(backtest_results, strategy_configs)
     
-    if best_strategy_config:
-        backtest_df = await demo_best_strategy_live_mode(symbol, best_strategy_config)
-    else:
-        # Fallback to first strategy if no profitable strategies
-        print("\n⚠️ No profitable strategies found, using first strategy for live demo")
-        backtest_df = await demo_best_strategy_live_mode(symbol, strategy_configs[0])
-    
+    # if best_strategy_config:
+    #     backtest_df = await demo_best_strategy_live_mode(symbol, best_strategy_config)
+    # else:
+    #     # Fallback to first strategy if no profitable strategies
+    #     print("\n⚠️ No profitable strategies found, using first strategy for live demo")
+    #     backtest_df = await demo_best_strategy_live_mode(symbol, strategy_configs[0])
+    #
     # Add final insights and recommendations
     print_final_insights_and_recommendations(backtest_results, symbol)
     
@@ -418,57 +546,84 @@ def print_final_insights_and_recommendations(results: dict, symbol: Symbol):
 
 async def demo_performance_benchmarks():
     """
-    Demonstrate performance characteristics under different loads.
+    Demonstrate performance characteristics using new framework.
     """
-    print("\n🔥 Performance Benchmarks")
+    print("\n🔥 Performance Benchmarks - New Framework")
     print("=" * 40)
     
-    symbol = Symbol(base=AssetName("ETH"), quote=AssetName("USDT"))
+    symbol = Symbol(base=AssetName("F"), quote=AssetName("USDT"))
     
     # Benchmark 1: Backtesting scalability
     print("\n📊 Backtesting Scalability Test")
     for days in [1]: #, 3, 7
-        strategy = create_backtesting_strategy(
-            strategy_type='reverse_delta_neutral',
-            symbol=symbol,
-            days=days,
-            use_db_source=False
-        )
-        
         try:
             start_time = time.perf_counter()
-            df = await strategy.run_analysis()
+            result = await backtest_strategy_new_framework(
+                strategy_type='inventory_spot', #'reverse_delta_neutral',
+                symbol=symbol,
+                days=days
+            )
             execution_time = (time.perf_counter() - start_time) * 1000
             
-            rows_per_ms = len(df) / execution_time if execution_time > 0 else 0
-            print(f"   {days} days: {len(df)} rows in {execution_time:.1f}ms ({rows_per_ms:.1f} rows/ms)")
+            if 'error' not in result:
+                rows_per_ms = result['data_points'] / execution_time if execution_time > 0 else 0
+                print(f"   {days} days: {result['data_points']} rows in {execution_time:.1f}ms ({rows_per_ms:.1f} rows/ms)")
+            else:
+                print(f"   {days} days: Failed - {result['error']}")
             
         except Exception as e:
             print(f"   {days} days: Failed - {e}")
     
     # Benchmark 2: Live update frequency
     print("\n⚡ Live Update Frequency Test")
-    live_strategy = create_live_trading_strategy(
-        strategy_type='reverse_delta_neutral',
-        symbol=symbol
-    )
-    
-    # Initialize
     try:
-        await live_strategy.data_provider.get_historical_data(symbol, 1)
+        # Create live strategy  
+        from trading.analysis.arbitrage_signal_strategy import ArbitrageSignalStrategy
+        strategy = ArbitrageSignalStrategy(
+            symbol=symbol,
+            strategy_type='reverse_delta_neutral',
+            is_live_mode=True
+        )
+        
+        # Initialize
+        await strategy.initialize(days=1)
         
         # Test rapid updates
         update_times = []
         for i in range(10):
-            test_data = {
-                'MEXC_bid_price': 3000 + i, 'MEXC_ask_price': 3001 + i,
-                'GATEIO_bid_price': 2999 + i, 'GATEIO_ask_price': 3000 + i,
-                'GATEIO_FUTURES_bid_price': 2998 + i, 'GATEIO_FUTURES_ask_price': 2999 + i,
-                'timestamp': datetime.now(UTC)
+            spot_book_tickers = {
+                'MEXC': BookTicker(
+                    symbol=Symbol(base=symbol.base, quote=symbol.quote),
+                    bid_price=3000.0 + i,
+                    ask_price=3001.0 + i,
+                    bid_quantity=1000.0,
+                    ask_quantity=1000.0,
+                    timestamp=int(pd.Timestamp.now().timestamp() * 1000)
+                ),
+                'GATEIO': BookTicker(
+                    symbol=Symbol(base=symbol.base, quote=symbol.quote),
+                    bid_price=2999.0 + i,
+                    ask_price=3000.0 + i,
+                    bid_quantity=1000.0,
+                    ask_quantity=1000.0,
+                    timestamp=int(pd.Timestamp.now().timestamp() * 1000)
+                )
             }
             
+            futures_book_ticker = BookTicker(
+                symbol=Symbol(base=symbol.base, quote=symbol.quote),
+                bid_price=2998.0 + i,
+                ask_price=2999.0 + i,
+                bid_quantity=1000.0,
+                ask_quantity=1000.0,
+                timestamp=int(pd.Timestamp.now().timestamp() * 1000)
+            )
+            
             start_time = time.perf_counter()
-            await live_strategy.update_live(test_data)
+            signal = strategy.update_with_live_data(
+                spot_book_tickers=spot_book_tickers,
+                futures_book_ticker=futures_book_ticker
+            )
             update_time = (time.perf_counter() - start_time) * 1000
             update_times.append(update_time)
         
@@ -483,6 +638,8 @@ async def demo_performance_benchmarks():
         
     except Exception as e:
         print(f"   Live benchmark failed: {e}")
+        import traceback
+        traceback.print_exc()
 
 
 if __name__ == "__main__":

@@ -195,6 +195,158 @@ class ArbitrageIndicators:
         
         return df
     
+    def calculate_reverse_delta_neutral_indicators(self, df: pd.DataFrame) -> pd.DataFrame:
+        """
+        Calculate indicators specific to reverse delta neutral strategy.
+        Ports logic from ArbitrageAnalyzer.add_reverse_delta_neutral_backtest.
+        """
+        df = self.calculate_all_indicators(df)
+        
+        # Strategy-specific thresholds and indicators
+        df['entry_threshold'] = 0.5  # 0.5% spread threshold for entry
+        df['exit_threshold'] = 0.1   # 0.1% spread threshold for exit
+        df['max_holding_hours'] = 24 # Maximum holding time
+        
+        # Entry signals: when spread exceeds threshold after costs
+        df['entry_signal_mexc_futures'] = (
+            df['mexc_vs_gateio_futures_net'] > df['entry_threshold']
+        )
+        df['entry_signal_spot_futures'] = (
+            df['gateio_spot_vs_futures_net'] > df['entry_threshold']
+        )
+        
+        # Exit signals: when spread drops below exit threshold
+        df['exit_signal_mexc_futures'] = (
+            df['mexc_vs_gateio_futures_net'] < df['exit_threshold']
+        )
+        df['exit_signal_spot_futures'] = (
+            df['gateio_spot_vs_futures_net'] < df['exit_threshold']
+        )
+        
+        # Risk management indicators
+        df['spread_volatility'] = df['mexc_vs_gateio_futures_net'].rolling(20).std()
+        df['position_risk_score'] = df['spread_volatility'] / df['mexc_vs_gateio_futures_net'].abs()
+        
+        return df
+    
+    def calculate_inventory_spot_indicators(self, df: pd.DataFrame) -> pd.DataFrame:
+        """
+        Calculate indicators specific to inventory spot arbitrage strategy.
+        Ports logic from ArbitrageAnalyzer.add_inventory_spot_arbitrage_backtest.
+        """
+        df = self.calculate_all_indicators(df)
+        
+        # Balance tracking and inventory management
+        df['min_balance_threshold'] = 100.0  # Minimum balance to maintain
+        df['rebalance_threshold'] = 0.8      # Rebalance when 80% imbalanced
+        
+        # Trade size optimization based on spreads
+        df['optimal_trade_size'] = df['mexc_vs_gateio_futures_net'] * 1000  # Base size * spread
+        df['max_trade_size'] = 1000.0        # Maximum trade size
+        df['trade_size'] = np.minimum(df['optimal_trade_size'], df['max_trade_size'])
+        
+        # Inventory signals
+        df['inventory_rebalance_signal'] = (
+            df['mexc_vs_gateio_futures_net'] > 0.3  # Profitable rebalancing opportunity
+        )
+        
+        # Volume-based indicators
+        if 'volume' in df.columns:
+            df['volume_suitability'] = df['volume'] > df['trade_size'] * 2  # Sufficient volume
+        else:
+            df['volume_suitability'] = True  # Assume sufficient volume if not available
+        
+        return df
+    
+    def calculate_volatility_harvesting_indicators(self, df: pd.DataFrame) -> pd.DataFrame:
+        """
+        Calculate indicators specific to volatility harvesting strategy.
+        Ports logic from ArbitrageAnalyzer.add_spread_volatility_harvesting_backtest.
+        """
+        df = self.calculate_all_indicators(df)
+        
+        # Multi-tier position management
+        df['tier1_threshold'] = 0.2  # Low volatility threshold
+        df['tier2_threshold'] = 0.5  # Medium volatility threshold  
+        df['tier3_threshold'] = 1.0  # High volatility threshold
+        
+        # Volatility calculations and regime classification
+        df['short_vol'] = df['mexc_vs_gateio_futures_net'].rolling(5).std()   # 5-period volatility
+        df['medium_vol'] = df['mexc_vs_gateio_futures_net'].rolling(20).std() # 20-period volatility
+        df['long_vol'] = df['mexc_vs_gateio_futures_net'].rolling(100).std()  # 100-period volatility
+        
+        # Volatility regime classification
+        df['vol_regime'] = np.where(
+            df['short_vol'] < df['tier1_threshold'], 'low',
+            np.where(df['short_vol'] < df['tier2_threshold'], 'medium', 'high')
+        )
+        
+        # Position sizing based on volatility and regime
+        df['base_position_size'] = 100.0
+        df['vol_multiplier'] = np.where(
+            df['vol_regime'] == 'low', 2.0,      # 2x size in low vol
+            np.where(df['vol_regime'] == 'medium', 1.0, 0.5)  # 0.5x size in high vol
+        )
+        df['position_size'] = df['base_position_size'] * df['vol_multiplier']
+        
+        # Tail hedging and risk management
+        df['tail_risk'] = df['mexc_vs_gateio_futures_net'] < -2.0  # 2% adverse move
+        df['stop_loss_signal'] = df['tail_risk'] | (df['short_vol'] > df['tier3_threshold'])
+        
+        # Volatility harvesting signals
+        df['harvest_signal'] = (
+            (df['vol_regime'] == 'high') & 
+            (df['mexc_vs_gateio_futures_net'].abs() > df['tier2_threshold'])
+        )
+        
+        return df
+    
+    def calculate_single_row_indicators(self, market_data: dict, strategy_type: str) -> pd.Series:
+        """
+        Calculate indicators for a single data point (live trading mode).
+        
+        Args:
+            market_data: Current market data dict
+            strategy_type: Strategy type to calculate indicators for
+            
+        Returns:
+            Series with calculated indicators
+        """
+        # Convert market data to DataFrame format
+        row_data = {}
+        
+        # Extract spot exchange data
+        if 'spot_exchanges' in market_data:
+            for exchange_name, data in market_data['spot_exchanges'].items():
+                if exchange_name.upper() == 'MEXC':
+                    row_data[AnalyzerKeys.mexc_bid] = data['bid_price']
+                    row_data[AnalyzerKeys.mexc_ask] = data['ask_price']
+                elif exchange_name.upper() == 'GATEIO':
+                    row_data[AnalyzerKeys.gateio_spot_bid] = data['bid_price']
+                    row_data[AnalyzerKeys.gateio_spot_ask] = data['ask_price']
+        
+        # Extract futures exchange data
+        if 'futures_exchange' in market_data:
+            futures_data = market_data['futures_exchange']
+            row_data[AnalyzerKeys.gateio_futures_bid] = futures_data['bid_price']
+            row_data[AnalyzerKeys.gateio_futures_ask] = futures_data['ask_price']
+        
+        # Create single-row DataFrame
+        df = pd.DataFrame([row_data])
+        
+        # Calculate strategy-specific indicators
+        if strategy_type == 'reverse_delta_neutral':
+            df = self.calculate_reverse_delta_neutral_indicators(df)
+        elif strategy_type == 'inventory_spot':
+            df = self.calculate_inventory_spot_indicators(df)
+        elif strategy_type == 'volatility_harvesting':
+            df = self.calculate_volatility_harvesting_indicators(df)
+        else:
+            df = self.calculate_all_indicators(df)
+        
+        # Return as Series
+        return df.iloc[0] if len(df) > 0 else pd.Series()
+
     def _calculate_strategy_indicators_vectorized(self, df: pd.DataFrame) -> pd.DataFrame:
         """Calculate additional strategy-specific indicators using vectorized operations."""
         # Combined spread for reverse delta neutral
