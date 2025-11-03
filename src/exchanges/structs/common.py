@@ -74,6 +74,22 @@ class Order(Struct):
             return self.price * self.quantity
         return None
 
+    @property
+    def is_done(self) -> bool:
+        """Check if order is done (filled or cancelled)."""
+        return self.status in {OrderStatus.FILLED,
+                                OrderStatus.CANCELED,
+                                OrderStatus.REJECTED,
+                                OrderStatus.EXPIRED,
+                                OrderStatus.PARTIALLY_CANCELED}
+
+    @property
+    def is_filled(self) -> bool:
+        """Check if order is completely filled."""
+        return self.status in [OrderStatus.FILLED,
+                               OrderStatus.PARTIALLY_FILLED,
+                               OrderStatus.PARTIALLY_CANCELED]
+
     def __str__(self):
         return (f"{self.symbol} {self.side.name} "
                 f"{self.order_type.name} ({self.quantity}/{self.filled_quantity})@{self.price} status: {self.status.name}")

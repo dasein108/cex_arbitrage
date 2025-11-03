@@ -38,7 +38,7 @@ import os
 import re
 import logging
 import time
-from typing import Dict, Optional, Any, TypeVar, Type
+from typing import Dict, Optional, Any, TypeVar, Type, Union
 from pathlib import Path
 import yaml
 from dotenv import load_dotenv
@@ -837,7 +837,7 @@ def get_arbitrage_risk_limits() -> Dict[str, Any]:
 
 # New structured convenience functions (HFT-optimized) - ALL PRESERVED
 
-def get_exchange_config(exchange_name: str) -> ExchangeConfig:
+def get_exchange_config(exchange_name: Union[str, ExchangeEnum]) -> ExchangeConfig:
     """
     Get exchange configuration as structured object.
     
@@ -847,6 +847,8 @@ def get_exchange_config(exchange_name: str) -> ExchangeConfig:
     Returns:
         ExchangeConfig struct with complete exchange configuration
     """
+    if isinstance(exchange_name, ExchangeEnum):
+        exchange_name = exchange_name.value
     return config.get_exchange_config(exchange_name)
 
 

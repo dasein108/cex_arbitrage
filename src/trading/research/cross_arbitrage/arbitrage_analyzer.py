@@ -396,12 +396,10 @@ class ArbitrageAnalyzer:
     def add_reverse_delta_neutral_backtest(
         self,
         df: pd.DataFrame,
-        entry_spread_threshold: float = -2.5,  # Enter when spread < -2.5%
-        exit_spread_threshold: float = -0.3,   # Exit when spread > -0.3%
-        stop_loss_threshold: float = -6.0,     # Emergency exit at -6%
-        max_holding_hours: int = 24,           # Force close after 24 hours
-        position_size_usd: float = 1000.0,     # Position size
-        total_fees: float = 0.0067,            # 0.67% round-trip fees
+        base_capital: float = 100000.0,        # Portfolio capital for risk management
+        use_enhanced_validation: bool = True,   # Use comprehensive validation
+        use_advanced_risk_mgmt: bool = True,   # Use advanced risk management
+        **legacy_params                        # Legacy parameters for backward compatibility
     ) -> pd.DataFrame:
         """
         Backtest reverse delta-neutral arbitrage strategy.
@@ -446,6 +444,14 @@ class ArbitrageAnalyzer:
         
         # Add spread momentum indicator
         df['rdn_spread_momentum'] = df['rdn_combined_spread'].diff(5)  # 5-period momentum
+        
+        # Extract legacy parameters with defaults
+        entry_spread_threshold = legacy_params.get('entry_spread_threshold', -2.5)
+        exit_spread_threshold = legacy_params.get('exit_spread_threshold', -0.3)
+        stop_loss_threshold = legacy_params.get('stop_loss_threshold', -6.0)
+        max_holding_hours = legacy_params.get('max_holding_hours', 24)
+        position_size_usd = legacy_params.get('position_size_usd', 1000.0)
+        total_fees = legacy_params.get('total_fees', 0.0067)
         
         # State tracking variables
         position_open = False

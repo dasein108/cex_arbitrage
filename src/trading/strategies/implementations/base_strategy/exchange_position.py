@@ -1,17 +1,16 @@
 import asyncio
-from itertools import accumulate
 
 from msgspec import Struct, field
-from typing import Optional, Literal, Callable
+from typing import Optional, Callable
 
 from exchanges.dual_exchange import DualExchange
-from exchanges.structs import Order, SymbolInfo, Symbol, Fees
+from exchanges.structs import Order, Symbol
 from exchanges.structs.common import Side
 from infrastructure.exceptions.exchange import OrderNotFoundError, InsufficientBalanceError
 from infrastructure.logging import HFTLoggerInterface
+from trading.strategies.implementations.base_strategy.pnl_tracker import PnlTracker, PositionChange
 from utils.math_utils import calculate_weighted_price
 from utils.exchange_utils import is_order_done
-from trading.strategies.implementations.base_strategy.pnl_tracker import PnlTracker, PositionChange
 
 
 class PositionError(Exception):
@@ -19,24 +18,18 @@ class PositionError(Exception):
     pass
 
 
-class Position(Struct):
+class ExchangePosition(Struct):
     """Simplified position with integrated PNL tracking."""
     qty: float = 0.0
     price: float = 0.0
-    acc_qty: float = 0.0  # in case of SELL accumulated base qty
     target_qty: float = 0.0
-
-    mode: Literal['accumulate', 'release', 'hedge'] = 'accumulate'  # Position management mode
+    symbol: Symbol = None
 
     side: Optional[Side] = None
     last_order: Optional[Order] = None
 
     # Integrated PNL tracker with avg entry/exit prices
     pnl_tracker: PnlTracker = field(default_factory=PnlTracker)
-
-    @property
-    def acc_quote_qty(self) -> float:
-        return self.acc_qty * self.price if self.price > 1e-8 else 0.0
 
     @property
     def quote_qty(self) -> float:
@@ -47,22 +40,8 @@ class Position(Struct):
     def has_position(self):
         return self.qty > 1e-8
 
-    @property
-    def remaining_qty(self) -> float:
-        remaining = self.qty - self.acc_qty
-        if remaining < 1e-8:
-            return 0.0
-        return remaining
-
     def __str__(self):
         return f"[{self.side.name}: {self.qty} @ {self.price}]" if self.side else "[No Position]"
-
-    def set_mode(self, mode: Literal['accumulate', 'release', 'hedge']):
-        if self.mode == 'accumulate' and mode == 'release':
-            self.qty = self.acc_qty
-            self.acc_qty = 0.0
-
-        self.mode = mode
 
     def _is_closing_operation(self, side: Side) -> bool:
         """Check if this side operation would close/reduce the current position."""
@@ -72,7 +51,7 @@ class Position(Struct):
         return (self.side == Side.BUY and side == Side.SELL) or (self.side == Side.SELL and side == Side.BUY)
 
     def update(self, side: Side, quantity: float, price: float, fee: float = 0.0) -> PositionChange:
-        """Update position for specified exchange with automatic profit calculation.
+        """Update position with simplified entry/exit logic based on order side.
 
         Args:
             side: Order side (BUY/SELL) for position direction
@@ -84,17 +63,15 @@ class Position(Struct):
             New PositionChange with before/after qty and price and optional PNL
 
         Note:
-            - Maintains position weighted average price for accurate P&L calculation
-            - PNL calculated when mode is 'release' or 'hedge' and fee > 0
+            - When order.side == position.side: Add to position (entry)
+            - When order.side != position.side: Reduce position (exit)
+            - Maintains weighted average price for accurate P&L calculation
         """
 
         if quantity <= 0:
             return PositionChange(self.qty, self.price, self.qty, self.price)
 
-        if self.mode != 'hedge':
-            self.acc_qty += quantity
-
-        # No existing position - simple case
+        # No existing position - always entry
         if not self.has_position:
             self.qty = quantity
             self.price = price
@@ -105,33 +82,30 @@ class Position(Struct):
 
             return PositionChange(0, 0, quantity, price)
 
-        # Same side - add to position with weighted average
+        # Same side as position = add to position (entry)
         if self.side == side:
             new_qty, new_price = calculate_weighted_price(self.price, self.qty, price, quantity)
             pos_change = PositionChange(self.qty, self.price, new_qty, new_price)
             self.qty = new_qty
             self.price = new_price
 
-            # Track additional entry in PNL tracker only if we're actually increasing position size
-            # In accumulate mode, this is always adding to position
-            if self.mode == 'accumulate' or self.mode == 'hedge':
-                self.pnl_tracker.add_entry(price, quantity, side, fee)
+            # Always track entry when adding to position
+            self.pnl_tracker.add_entry(price, quantity, side, fee)
 
             return pos_change
 
-        # Opposite side - reducing or reversing position
+        # Opposite side = close/reduce position (exit)
         else:
             old_qty = self.qty
             old_price = self.price
 
-            # Track exit in PNL tracker if in release or hedge mode
+            # Determine the quantity being closed
+            close_qty = min(quantity, self.qty)
+
+            # Calculate PNL for this exit
             realized_pnl = 0.0
             realized_pnl_net = 0.0
-            if self.mode in ('release', 'hedge') and self.side and old_price > 1e-8:
-                # Determine the quantity being closed
-                close_qty = min(quantity, self.qty)
-
-                # Calculate PNL for this exit
+            if self.side and old_price > 1e-8:
                 if self.side == Side.BUY:
                     realized_pnl = (price - old_price) * close_qty
                 else:
@@ -144,8 +118,8 @@ class Position(Struct):
 
                 realized_pnl_net = realized_pnl - total_fees
 
-                # Track exit in PNL tracker
-                self.pnl_tracker.add_exit(price, close_qty, fee)
+            # Track exit in PNL tracker
+            self.pnl_tracker.add_exit(price, close_qty, fee)
 
             if quantity < self.qty:
                 # Reducing position - keep original price, reduce quantity
@@ -199,43 +173,32 @@ class Position(Struct):
 
     def is_fulfilled(self, min_base_amount: float) -> bool:
         """Check if position has reached its target quantity."""
-        if self.mode == 'hedge':
-            return False
-        else:
-            return self.get_remaining_qty(min_base_amount) <= 1e-8 and self.target_qty > 1e-8
+        return abs(self.qty - self.target_qty) < min_base_amount and self.target_qty > 1e-8
 
     def get_remaining_qty(self, min_base_amount: float) -> float:
         """Calculate remaining quantity to reach target."""
-        if self.mode == 'release':
-            qty = self.target_qty - self.acc_qty
-        elif self.mode == 'accumulate':
-            qty = self.target_qty - self.acc_qty
-        else:  # hedge
-            qty = self.qty
-
-        if qty < min_base_amount:
+        if self.target_qty <= 1e-8:
+            return 0.0
+            
+        remaining = abs(self.target_qty - self.qty)
+        
+        if remaining < min_base_amount:
             return 0.0
 
-        return qty
+        return remaining
 
     def reset(self, target_qty=0.0, reset_pnl: bool = True):
         """Reset position and optionally reset PNL tracking."""
         self.target_qty = target_qty
-        self.acc_qty = 0.0
         self.qty = 0.0
         self.price = 0.0
         self.last_order = None
-        # self.side = None
+        self.side = None
 
         if reset_pnl:
             self.pnl_tracker.reset()
 
         return self
-
-
-class ActivePosition(Position):
-    symbol: Symbol = None
-
     # def __init__(self, *args, **kwargs):
     #     super().__init__(*args, **kwargs)
     #     self._ex: Optional[DualExchange] = None
@@ -300,7 +263,12 @@ class ActivePosition(Position):
             return False
 
         try:
-
+            if self.last_order.timestamp > order.timestamp:
+                self._logger.warning(f"⚠️ {self.tag} Received out-of-order update for order "
+                                     f"{order.order_id}: last_order timestamp {self.last_order.timestamp} > "
+                                     f"order timestamp {order.timestamp}. Skipping update.")
+                return False
+            
             pos_change = self.update_position_with_order(order, fee=self._fees.taker_fee)
             if pos_change.is_changed:
                 self._save_context and self._save_context()
@@ -420,7 +388,8 @@ class ActivePosition(Position):
             return order
 
         except InsufficientBalanceError as ife:
-            self.acc_qty = self.target_qty
+            # Mark position as fulfilled if we can't place more orders due to balance
+            self.qty = self.target_qty
 
             self._logger.error(f"🚫 {self.tag} Insufficient balance to place order "
                               f"| pos: {self}, order: {quantity} @ {price}  adjust position amount",
