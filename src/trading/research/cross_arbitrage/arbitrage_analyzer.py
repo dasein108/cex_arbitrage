@@ -1246,10 +1246,12 @@ if __name__ == "__main__":
         
         # Quick test with 1 day of data
         try:
-            df, results = await analyzer.run_analysis("F_USDT", days=1)
+            df, results = await analyzer.run_analysis(Symbol(base='F', quote='USDT'), days=1)
             print(analyzer.format_report(results))
             
         except Exception as e:
             print(f"❌ Analysis failed: {e}")
+            import traceback
+            traceback.print_exc()
     
     asyncio.run(main())

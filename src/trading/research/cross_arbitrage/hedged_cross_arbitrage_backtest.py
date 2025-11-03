@@ -137,7 +137,7 @@ class HedgedCrossArbitrageBacktest:
         self.cache_dir.mkdir(exist_ok=True)
         
         # Initialize data analyzer with new constructor
-        self.analyzer = ArbitrageAnalyzer(use_db_book_tickers=True, tf=1) #KlineInterval.MINUTE_1
+        self.analyzer = ArbitrageAnalyzer(use_db_book_tickers=True, tf=KlineInterval.MINUTE_5) #KlineInterval.MINUTE_1
 
         
         # Track positions and state
