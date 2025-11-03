@@ -40,6 +40,10 @@ from trading.task_manager.exchange_manager import (
     ArbitrageExchangeType
 )
 
+# Import new position management
+from trading.strategies.implementations.base_strategy.position_manager import PositionManager
+from trading.strategies.implementations.base_strategy.position_data import PositionData
+
 
 class MultiSpotFuturesArbitrageTask(SpotFuturesArbitrageTask):
     """
@@ -81,6 +85,9 @@ class MultiSpotFuturesArbitrageTask(SpotFuturesArbitrageTask):
         self.operation_mode = operation_mode
         self.spot_exchange_keys = [f"{ex.name.lower()}_spot" for ex in spot_exchanges]
         
+        # Initialize position manager
+        self.position_manager = PositionManager(self.logger, self._save_context_callback)
+        
         self.logger.info(f"✅ {self.name} initialized: {len(spot_exchanges)} spots + {futures_exchange.name} futures (mode: {operation_mode})")
         
         self._build_multi_spot_tag()
@@ -90,14 +97,20 @@ class MultiSpotFuturesArbitrageTask(SpotFuturesArbitrageTask):
         spot_names = "_".join([ex.name for ex in self.spot_exchanges])
         self._tag = f'{self.name}_{self.context.symbol}_{spot_names}_{self.futures_exchange.name}'
 
+    def _save_context_callback(self):
+        """Callback for position manager to save context after position updates."""
+        # This method can be used to trigger context saves when positions change
+        # For now, it's a placeholder for potential future context synchronization
+        pass
+
     @property
     def futures_ticker(self):
         """Get futures ticker (unchanged from parent)."""
-        return self.exchange_manager.get_exchange('futures').public.book_ticker.get(self.context.symbol)
+        return self.position_manager.get_book_ticker('futures')
 
     def get_spot_ticker(self, exchange_key: str):
         """Get spot ticker for specific exchange."""
-        return self.exchange_manager.get_exchange(exchange_key).public.book_ticker.get(self.context.symbol)
+        return self.position_manager.get_book_ticker(exchange_key)
 
     async def _initialize_exchange_manager(self) -> bool:
         """Initialize exchange manager with multiple spot exchanges + single futures."""
@@ -134,6 +147,9 @@ class MultiSpotFuturesArbitrageTask(SpotFuturesArbitrageTask):
                     symbol_info = exchange.public.symbols_info.get(self.context.symbol)
                     self.min_quote_quantity[exchange_key] = symbol_info.min_quote_quantity
 
+                # Initialize position manager with exchange connections
+                await self._initialize_position_manager()
+
                 self.logger.info(f"✅ Multi-spot exchange manager initialized: {len(self.spot_exchanges)} spots + 1 futures")
                 return True
             else:
@@ -142,6 +158,34 @@ class MultiSpotFuturesArbitrageTask(SpotFuturesArbitrageTask):
                 
         except Exception as e:
             self.logger.error(f"❌ Exception during multi-spot exchange manager initialization: {e}")
+            return False
+
+    async def _initialize_position_manager(self) -> bool:
+        """Initialize position manager with position data and exchanges."""
+        try:
+            # Create position data for each spot exchange
+            for exchange_key in self.spot_exchange_keys:
+                position_data = PositionData(symbol=str(self.context.symbol))
+                exchange = self.exchange_manager.get_exchange(exchange_key)
+                self.position_manager.add_position(exchange_key, position_data, exchange)
+            
+            # Create futures position data
+            futures_position_data = PositionData(symbol=str(self.context.symbol))
+            futures_exchange = self.exchange_manager.get_exchange('futures')
+            self.position_manager.add_position('futures', futures_position_data, futures_exchange)
+            
+            # Initialize all positions
+            success = await self.position_manager.initialize_all()
+            
+            if success:
+                self.logger.info(f"✅ Position manager initialized with {len(self.spot_exchange_keys)} spots + 1 futures")
+            else:
+                self.logger.error("❌ Position manager initialization failed")
+                
+            return success
+            
+        except Exception as e:
+            self.logger.error(f"❌ Exception during position manager initialization: {e}")
             return False
 
     async def _handle_arbitrage_monitoring(self):
@@ -553,7 +597,14 @@ class MultiSpotFuturesArbitrageTask(SpotFuturesArbitrageTask):
             return False
 
     def _has_active_positions(self) -> bool:
-        """Check if strategy has active positions (multi-spot aware)."""
+        """Check if strategy has active positions using position manager."""
+        # Check if any position in the position manager has a position
+        for key in self.spot_exchange_keys + ['futures']:
+            position = self.position_manager.get_position(key)
+            if position and position.has_position:
+                return True
+        
+        # Fallback to context-based check if position manager positions are not set
         if self.context.multi_spot_positions:
             return self.context.multi_spot_positions.has_positions
         return self.context.positions_state.has_positions
@@ -631,15 +682,17 @@ class MultiSpotFuturesArbitrageTask(SpotFuturesArbitrageTask):
                     self._update_active_spot_exchange(exchange_key)
 
     def _process_spot_order_fill(self, exchange_key: str, order: Order):
-        """Process spot order fill for multi-spot position tracking."""
-        if not self.context.multi_spot_positions:
-            return
-        
+        """Process spot order fill using position manager."""
         try:
-            updated_positions = self.context.multi_spot_positions.update_active_spot_position(
-                exchange_key, order.filled_quantity, order.price, order.side
-            )
-            self.evolve_context(multi_spot_positions=updated_positions)
+            # Update position through position manager
+            pos_change = self.position_manager.update_position_with_order(exchange_key, order)
+            
+            # Update multi-spot context if available
+            if self.context.multi_spot_positions:
+                updated_positions = self.context.multi_spot_positions.update_active_spot_position(
+                    exchange_key, order.filled_quantity, order.price, order.side
+                )
+                self.evolve_context(multi_spot_positions=updated_positions)
             
             self.logger.info(f"📝 Spot order processed: {order} on {exchange_key}")
             
@@ -647,15 +700,17 @@ class MultiSpotFuturesArbitrageTask(SpotFuturesArbitrageTask):
             self.logger.error(f"Error processing spot order fill: {e}")
 
     def _process_futures_order_fill(self, order: Order):
-        """Process futures order fill for multi-spot position tracking."""
-        if not self.context.multi_spot_positions:
-            return
-        
+        """Process futures order fill using position manager."""
         try:
-            updated_positions = self.context.multi_spot_positions.update_futures_position(
-                order.filled_quantity, order.price, order.side
-            )
-            self.evolve_context(multi_spot_positions=updated_positions)
+            # Update position through position manager
+            pos_change = self.position_manager.update_position_with_order('futures', order)
+            
+            # Update multi-spot context if available
+            if self.context.multi_spot_positions:
+                updated_positions = self.context.multi_spot_positions.update_futures_position(
+                    order.filled_quantity, order.price, order.side
+                )
+                self.evolve_context(multi_spot_positions=updated_positions)
             
             self.logger.info(f"📝 Futures order processed: {order}")
             

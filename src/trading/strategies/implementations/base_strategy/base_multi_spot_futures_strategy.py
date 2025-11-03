@@ -12,8 +12,10 @@ from infrastructure.exceptions.exchange import OrderNotFoundError, InsufficientB
 from infrastructure.logging import HFTLoggerInterface, get_logger
 from utils.exchange_utils import is_order_filled
 from .base_strategy import BaseStrategyContext, BaseStrategyTask
-from .exchange_position import ExchangePosition, PositionError
+from .position_data import PositionData
+from .exchange_position import PositionError
 from infrastructure.networking.websocket.structs import PublicWebsocketChannelType, PrivateWebsocketChannelType
+from .position_manager import PositionManager
 
 MarketType: TypeAlias = Literal['spot', 'futures']
 
@@ -42,10 +44,10 @@ class BaseMultiSpotFuturesTaskContext(BaseStrategyContext, kw_only=True):
     total_quantity: Optional[float] = None
     order_qty: Optional[float] = None  # size of each order for limit orders
 
-    hedge: Optional[ExchangePosition] = None
+    hedge: Optional[PositionData] = None
 
     # Complex fields with factory defaults
-    positions: List[ExchangePosition] = msgspec.field(default_factory=lambda: [])
+    positions: List[PositionData] = msgspec.field(default_factory=lambda: [])
 
     settings: List[MarketData] = msgspec.field(default_factory=lambda: [])
 
@@ -54,7 +56,7 @@ class BaseMultiSpotFuturesTaskContext(BaseStrategyContext, kw_only=True):
     @property
     def tag(self) -> str:
         """Generate logging tag based on task_id and symbol."""
-        return f"{self.task_type}.{self.symbol.base}_{self.symbol.quote}"
+        return f"{self.task_type}.{self.symbol}"
 
     @staticmethod
     def from_json(json_bytes: str) -> 'BaseMultiSpotFuturesTaskContext':
@@ -87,6 +89,22 @@ class BaseMultiSpotFuturesArbitrageTask(BaseStrategyTask[BaseMultiSpotFuturesTas
         """Shortcut to futures position."""
         return self.context.hedge
 
+    @property
+    def hedge_manager(self) -> Optional[PositionManager]:
+        """Shortcut to hedge position manager."""
+        return self._hedge_manager
+
+    @property 
+    def spot_managers(self) -> List[PositionManager]:
+        """Shortcut to spot position managers."""
+        return self._spot_managers
+
+    def get_spot_manager(self, index: int) -> Optional[PositionManager]:
+        """Get spot manager by index."""
+        if 0 <= index < len(self._spot_managers):
+            return self._spot_managers[index]
+        return None
+
     def __init__(self,
                  context: BaseMultiSpotFuturesTaskContext,
                  logger: HFTLoggerInterface = None,
@@ -103,9 +121,21 @@ class BaseMultiSpotFuturesArbitrageTask(BaseStrategyTask[BaseMultiSpotFuturesTas
 
         self._symbol_info: List[SymbolInfo] = []
 
-        self._all_positions: List[ActivePosition] = []
+        # Single position managers - one per position
+        self._hedge_manager: Optional[PositionManager] = None
+        self._spot_managers: List[PositionManager] = []
 
         self.context.status = 'inactive'
+
+    def save_context(self, position_data: PositionData, index: Optional[int] = None,
+                     is_hedge: bool = False):
+        """Save context callback for position managers."""
+        if is_hedge:
+            self.context.hedge = position_data
+        else:
+            self.context.positions[index] = position_data
+        # This can be overridden by subclasses if needed
+        pass
 
     async def _start_hedge_exchange(self):
         await self._hedge_ex.initialize(
@@ -140,32 +170,43 @@ class BaseMultiSpotFuturesArbitrageTask(BaseStrategyTask[BaseMultiSpotFuturesTas
 
         # create hedge if not exists
         if not self.context.hedge:
-            self.context.hedge = ExchangePosition(
+            self.context.hedge = PositionData(
                 symbol=self.context.symbol,
                 side=Side.SELL)
 
         # create spot positions if not exists
         if not self.context.positions:
             for setting in self.context.settings:
-                pos = ExchangePosition(
+                pos = PositionData(
                     symbol=self.context.symbol,
                     side=Side.BUY)
                 self.context.positions.append(pos)
 
-        self._all_positions = [self.hedge_pos] + self.context.positions
+        # Create position managers - one per position
+        self._hedge_manager = PositionManager(
+            position_data=self.context.hedge,
+            exchange=self._hedge_ex,
+            logger=self.logger,
+            save_context=lambda pd: self.save_context(position_data=pd, is_hedge=True)
+        )
 
-        # ==================
-        # Initialize all positions
-
-        load_tasks = [self.hedge_pos.initialize(self.logger, self._hedge_ex,
-                                                self.context.total_quantity)]
-
+        self._spot_managers = []
         for i, pos in enumerate(self.context.positions):
-            load_tasks.append(pos.initialize(self.logger, self._spot_ex[i],
-                                             self.context.total_quantity))
+            manager = PositionManager(
+                position_data=pos,
+                exchange=self._spot_ex[i],
+                logger=self.logger,
+                save_context=lambda pd: self.save_context(index=i, position_data=pd, is_hedge=False)
+            )
+            self._spot_managers.append(manager)
 
-        # load all exchange public/private data
-        await asyncio.gather(*load_tasks)
+        # Initialize all position managers
+        init_tasks = [self._hedge_manager.initialize(self.context.total_quantity)]
+        for manager in self._spot_managers:
+            init_tasks.append(manager.initialize(self.context.total_quantity))
+
+        # Initialize all positions
+        await asyncio.gather(*init_tasks)
 
         self.context.status = 'active'
 
@@ -185,12 +226,34 @@ class BaseMultiSpotFuturesArbitrageTask(BaseStrategyTask[BaseMultiSpotFuturesTas
         await self._cancel_all()
 
     async def _cancel_all(self):
-        canceled = await asyncio.gather(*[p.cancel_order(p) for p in self._all_positions])
-        self.logger.info(f"🛑 Canceled all orders", orders=str(canceled))
+        cancel_tasks = []
+        
+        # Cancel hedge order
+        if self._hedge_manager:
+            cancel_tasks.append(self._hedge_manager.cancel_order())
+        
+        # Cancel spot orders
+        for manager in self._spot_managers:
+            cancel_tasks.append(manager.cancel_order())
+        
+        if cancel_tasks:
+            canceled = await asyncio.gather(*cancel_tasks, return_exceptions=True)
+            self.logger.info(f"🛑 Canceled all orders", orders=str(canceled))
 
     async def _sync_positions(self):
         """Sync order status from exchanges in parallel."""
-        await asyncio.gather(*[p.sync_with_exchange() for p in self._all_positions])
+        sync_tasks = []
+        
+        # Sync hedge position
+        if self._hedge_manager:
+            sync_tasks.append(self._hedge_manager.sync_with_exchange())
+        
+        # Sync spot positions
+        for manager in self._spot_managers:
+            sync_tasks.append(manager.sync_with_exchange())
+        
+        if sync_tasks:
+            await asyncio.gather(*sync_tasks, return_exceptions=True)
 
     async def _manage_positions(self):
         """Manage positions for both spot and futures markets."""

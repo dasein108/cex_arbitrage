@@ -268,7 +268,7 @@ class ExchangePosition(Struct):
                                      f"{order.order_id}: last_order timestamp {self.last_order.timestamp} > "
                                      f"order timestamp {order.timestamp}. Skipping update.")
                 return False
-            
+
             pos_change = self.update_position_with_order(order, fee=self._fees.taker_fee)
             if pos_change.is_changed:
                 self._save_context and self._save_context()
