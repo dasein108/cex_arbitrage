@@ -41,6 +41,10 @@ class BookTickerDbSource(BookTickerSourceProtocol):
         timeframe: Union[KlineInterval, int] = KlineInterval.MINUTE_1
     ) -> pd.DataFrame:
         """Fetch book ticker data from multiple exchanges."""
+
+
+        await get_database_manager()
+
         end_time = datetime.now(UTC) if date_to is None else date_to
         start_time = end_time - pd.Timedelta(hours=hours)
         if isinstance(timeframe, int):

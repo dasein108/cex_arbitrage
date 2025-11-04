@@ -20,11 +20,11 @@ from dataclasses import dataclass
 import time
 
 # Import strategy signal architecture
-from trading.strategies.base.strategy_signal_factory import create_strategy_signal, normalize_strategy_type
-from trading.analysis.signal_types import Signal
+from ..base.strategy_signal_factory import create_strategy_signal, normalize_strategy_type
+from ..types.signal_types import Signal
 
 # Ensure strategy registrations are loaded
-import trading.strategies.implementations
+from .. import registry
 
 
 @dataclass
