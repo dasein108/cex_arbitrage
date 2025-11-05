@@ -179,9 +179,6 @@ class InventorySpotStrategySignal(BaseStrategySignal):
         # Add position time tracking
         df = self._add_position_time_tracking(df)
         
-        # Run internal position tracking for this backtest
-        self._emulate_trading(df)
-        
         return df
     
     def open_position(self, signal: Signal, market_data: Dict[str, Any]) -> None:

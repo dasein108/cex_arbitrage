@@ -10,9 +10,9 @@ import pandas as pd
 import logging
 from datetime import datetime
 
-from ..base.strategy_signal_factory import create_strategy_signal, normalize_strategy_type
-from ..base.strategy_signal_interface import StrategySignalInterface
-from ..types.signal_types import Signal
+from trading.strategies.base.strategy_signal_factory import create_strategy_signal, normalize_strategy_type
+from trading.strategies.base.strategy_signal_interface import StrategySignalInterface
+from trading.signals.types import Signal
 
 
 class StrategySignalEngine:
@@ -116,7 +116,7 @@ class StrategySignalEngine:
             await strategy.preload(df, **params)
             
             # Apply signals to backtest
-            result_df = strategy.apply_signal_to_backtest(df, **params)
+            result_df = strategy.backtest(df, **params)
             
             # Add metadata
             result_df['strategy_type'] = strategy_type
@@ -204,7 +204,6 @@ class StrategySignalEngine:
             return {
                 'strategy_type': strategy_type,
                 'required_lookback': strategy.get_required_lookback(),
-                'parameters': strategy.get_strategy_params(),
                 'class_name': strategy.__class__.__name__
             }
             

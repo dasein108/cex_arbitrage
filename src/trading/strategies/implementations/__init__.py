@@ -1,7 +1,8 @@
-from .base_strategy.base_strategy import BaseStrategyTask, BaseStrategyContext
-from .cross_exchange_arbitrage_strategy.cross_exchange_arbitrage_task import (CrossExchangeArbitrageTask,
-                                                                              CrossExchangeArbitrageTaskContext,
-                                                                              ExchangeData, ExchangeRoleType)
+# Temporarily commented to fix missing analysis module dependencies
+# from .base_strategy.base_strategy import BaseStrategyTask, BaseStrategyContext
+# from .cross_exchange_arbitrage_strategy.cross_exchange_arbitrage_task import (CrossExchangeArbitrageTask,
+#                                                                              CrossExchangeArbitrageTaskContext,
+#                                                                              ExchangeData, ExchangeRoleType)
 
 # Strategy Signal Implementations
 from .reverse_delta_neutral_strategy_signal import ReverseDeltaNeutralStrategySignal
@@ -13,7 +14,7 @@ from trading.strategies.base.strategy_signal_factory import register_strategy_si
 
 # Import V2 implementations from signals module
 from trading.signals.implementations.inventory_spot_strategy_signal_v2 import InventorySpotStrategySignalV2
-from trading.signals.implementations.volatility_harvesting_strategy_signal_v2 import VolatilityHarvestingStrategySignalV2
+from trading.signals.implementations.unsupported.volatility_harvesting_strategy_signal_v2 import VolatilityHarvestingStrategySignalV2
 
 # Register all strategy signals with the factory
 register_strategy_signal('reverse_delta_neutral', ReverseDeltaNeutralStrategySignal)

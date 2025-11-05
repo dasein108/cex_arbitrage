@@ -1,9 +1,8 @@
 from config import HftConfig
 from exchanges.exchange_factory import get_rest_implementation
 from exchanges.structs import SymbolInfo, Symbol
-from exchanges.structs.common import AssetInfo
 from exchanges.structs.enums import ExchangeEnum, KlineInterval
-from typing import List, Optional, Dict, Any, Set
+from typing import List, Optional, Dict
 import asyncio
 from datetime import datetime, UTC
 import pandas as pd
@@ -12,11 +11,9 @@ import json
 from pathlib import Path
 from dataclasses import dataclass
 from infrastructure.logging import get_logger
-from trading.analysis.data_sources import CandlesLoader
-from trading.research.cross_arbitrage.book_ticker_source import BookTickerDbSource, CandlesBookTickerSource
+from trading.data_sources.book_ticker.book_ticker_source import CandlesBookTickerSource
 from trading.research.cross_arbitrage.hedged_cross_arbitrage_backtest import HedgedCrossArbitrageBacktest, BacktestConfig
-from trading.research.cross_arbitrage.arbitrage_analyzer import ArbitrageAnalyzer, AnalyzerKeys
-from db import get_database_manager
+from trading.research.cross_arbitrage.arbitrage_analyzer import AnalyzerKeys
 
 ANALYZER_TF = KlineInterval.MINUTE_5
 

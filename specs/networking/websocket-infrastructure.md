@@ -329,7 +329,7 @@ await ws_manager.send_message({'method': 'custom_request', 'params': {}})
 
 ```python
 # Get current performance metrics
-metrics = ws_manager.get_performance_metrics()
+metrics = ws_manager._get_performance_metrics()
 print(f"Messages processed: {metrics['messages_processed']}")
 print(f"Average latency: {metrics['avg_processing_time_ms']:.3f}ms")
 print(f"HFT compliance: {metrics['sub_1ms_messages'] / metrics['messages_processed'] * 100:.1f}%")

@@ -102,7 +102,7 @@ class ArbitrageSignalEngine:
             await strategy.preload(df, **params)
             
             # Apply signals to backtest data
-            result_df = strategy.apply_signal_to_backtest(df, **params)
+            result_df = strategy.backtest(df, **params)
             
             # Add metadata
             result_df['strategy_type'] = strategy_type

@@ -1,9 +1,8 @@
 from config import HftConfig
 from exchanges.exchange_factory import get_rest_implementation
 from exchanges.structs import SymbolInfo, Symbol
-from exchanges.structs.common import AssetInfo
 from exchanges.structs.enums import ExchangeEnum, KlineInterval
-from typing import List, Optional, Dict, Any, NamedTuple, Tuple
+from typing import List, Optional, Dict, Tuple
 import asyncio
 from datetime import datetime, UTC, timedelta
 import pandas as pd
@@ -13,11 +12,6 @@ from pathlib import Path
 from dataclasses import dataclass, field
 from infrastructure.logging import get_logger
 from trading.analysis.data_sources import CandlesLoader
-from trading.research.cross_arbitrage.book_ticker_source import BookTickerDbSource, CandlesBookTickerSource
-from trading.research.cross_arbitrage.hedged_cross_arbitrage_backtest import HedgedCrossArbitrageBacktest, BacktestConfig
-from trading.research.cross_arbitrage.arbitrage_analyzer import ArbitrageAnalyzer, AnalyzerKeys
-from db import get_database_manager
-from scipy import stats
 from enum import Enum
 import warnings
 warnings.filterwarnings('ignore')

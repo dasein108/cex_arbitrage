@@ -18,7 +18,6 @@ from trading.strategies.implementations.base_strategy.unified_position import Po
 
 from trading.strategies.implementations.base_strategy.base_strategy import BaseStrategyContext, BaseStrategyTask
 from trading.analysis.arbitrage_signals import calculate_arb_signals, ArbSignal
-from trading.analysis.structs import Signal
 
 PrimaryExchangeRole: TypeAlias = Literal['source', 'dest']
 

@@ -4,7 +4,7 @@ from typing import Dict, Tuple, Union
 from dataclasses import dataclass
 import numpy as np
 
-from trading.analysis.structs import Signal
+from trading.signals.types import Signal
 
 
 @dataclass

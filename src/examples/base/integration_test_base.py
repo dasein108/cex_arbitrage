@@ -273,7 +273,7 @@ class WebSocketIntegrationTestMixin:
             await asyncio.sleep(monitor_duration)
             
             # Get performance metrics
-            metrics = self.websocket_client.get_performance_metrics()
+            metrics = self.websocket_client._get_performance_metrics()
             data_summary = self.data_collector.get_summary()
             performance = self.measure_performance(start_time)
             

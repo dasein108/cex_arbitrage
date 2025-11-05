@@ -17,7 +17,7 @@ from trading.strategies.implementations.base_strategy.unified_position import Po
 from trading.strategies.implementations.base_strategy.base_strategy import BaseStrategyContext, BaseStrategyTask
 from trading.analysis.arbitrage_signals import ArbSignal, ArbStats
 
-from trading.analysis.structs import Signal
+from trading.signals.structs import Signal
 
 MarketType: TypeAlias = Literal['spot', 'futures']
 

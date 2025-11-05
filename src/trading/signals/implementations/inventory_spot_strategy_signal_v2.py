@@ -19,8 +19,10 @@ import pandas as pd
 import numpy as np
 from datetime import datetime
 
-from ..base.base_strategy_signal import BaseStrategySignal
-from ..types.signal_types import Signal
+from trading.strategies.base.base_strategy_signal import BaseStrategySignal, TradeEntry, Position
+from ..types import PerformanceMetrics
+from trading.signals.types import Signal
+from exchanges.structs.enums import ExchangeEnum, Side
 
 
 class InventorySpotStrategySignalV2(BaseStrategySignal):
@@ -64,7 +66,7 @@ class InventorySpotStrategySignalV2(BaseStrategySignal):
         self.safe_offset_pct = safe_offset_pct / 100.0  # Convert to decimal
         self.execution_confidence_threshold = execution_confidence_threshold
         self.volatility_window = volatility_window
-        
+
         super().__init__(
             strategy_type=strategy_type,
             min_profit_bps=min_profit_bps,
@@ -79,11 +81,19 @@ class InventorySpotStrategySignalV2(BaseStrategySignal):
         # Strategy-specific tracking (matches OpportunityDetector)
         self.current_opportunity = None
         self.volatility_metrics = {}
+
+        self.col_mexc_bid = f'{ExchangeEnum.MEXC.value}:bid'
+        self.col_mexc_ask = f'{ExchangeEnum.MEXC.value}:ask'
+        self.col_gateio_bid = f'{ExchangeEnum.GATEIO.value}:bid'
+        self.col_gateio_ask = f'{ExchangeEnum.GATEIO.value}:ask'
+        self.col_mexc_balance = f'{ExchangeEnum.MEXC.value}:balance_usd'
+        self.col_gateio_balance = f'{ExchangeEnum.GATEIO.value}:balance_usd'
+
         self.price_history = {
-            'mexc_bid': [],
-            'mexc_ask': [],
-            'gateio_bid': [],
-            'gateio_ask': []
+            self.col_mexc_bid: [],
+            self.col_mexc_ask: [],
+            self.col_gateio_bid: [],
+            self.col_gateio_ask: []
         }
     
     def generate_live_signal(self, market_data: Dict[str, Any], **params) -> Tuple[Signal, float]:
@@ -100,15 +110,17 @@ class InventorySpotStrategySignalV2(BaseStrategySignal):
         # Validate market data
         if not self.validate_market_data(market_data):
             return Signal.HOLD, 0.0
-        
-        # Extract bid/ask prices (matches analyze_current_prices logic)
-        mexc_bid, mexc_ask, gateio_bid, gateio_ask = self._extract_current_prices(market_data)
-        
-        if not all([mexc_bid, mexc_ask, gateio_bid, gateio_ask]):
+
+        mexc_spot_bid_price = market_data.get('MEXC_SPOT:bid_price', 0)
+        mexc_spot_ask_price = market_data.get('MEXC_SPOT:ask_price', 0)
+        gateio_spot_bid_price = market_data.get('GATEIO_SPOT:bid_price', 0)
+        gateio_spot_ask_price = market_data.get('GATEIO_SPOT:ask_price', 0)
+
+        if not all([mexc_spot_bid_price, mexc_spot_ask_price, gateio_spot_bid_price, gateio_spot_ask_price]):
             return Signal.HOLD, 0.0
         
         # Update price history for volatility calculation
-        self._update_price_history(mexc_bid, mexc_ask, gateio_bid, gateio_ask)
+        self._update_price_history(mexc_spot_bid_price, mexc_spot_ask_price, gateio_spot_bid_price, gateio_spot_ask_price)
         
         # Calculate safe offset using volatility analysis
         safe_offset = self._calculate_safe_offset(**params)
@@ -120,7 +132,7 @@ class InventorySpotStrategySignalV2(BaseStrategySignal):
         
         # Detect market-market opportunities (core arbitrage logic)
         opportunity = self._detect_market_market_opportunity(
-            mexc_bid, mexc_ask, gateio_bid, gateio_ask, safe_offset, min_profit
+            mexc_spot_bid_price, mexc_spot_ask_price, gateio_spot_bid_price, gateio_spot_ask_price, safe_offset, min_profit
         )
         
         if not opportunity:
@@ -142,7 +154,7 @@ class InventorySpotStrategySignalV2(BaseStrategySignal):
         
         return signal, confidence
     
-    def apply_signal_to_backtest(self, df: pd.DataFrame, **params) -> pd.DataFrame:
+    def _emulate_trading(self, df: pd.DataFrame, **params) -> pd.DataFrame:
         """
         Apply strategy signals to historical data using arbitrage analyzer logic.
         
@@ -153,50 +165,71 @@ class InventorySpotStrategySignalV2(BaseStrategySignal):
         Returns:
             DataFrame with added signal columns
         """
-        # Ensure required columns exist
-        required_cols = ['MEXC_SPOT_bid_price', 'MEXC_SPOT_ask_price',
-                        'GATEIO_SPOT_bid_price', 'GATEIO_SPOT_ask_price']
-        
-        if not all(col in df.columns for col in required_cols):
-            self.logger.warning(f"Missing required columns for inventory spot V2 strategy")
-            df['signal'] = Signal.HOLD.value
-            df['confidence'] = 0.0
-            return df
-        
+
         # Override parameters
-        min_profit = params.get('min_profit_bps', self.min_profit_bps)
+        min_profit_bps = params.get('min_profit_bps', self.min_profit_bps)
         confidence_threshold = params.get('execution_confidence_threshold', 
                                         self.execution_confidence_threshold)
         
         # Calculate safe offset for entire DataFrame
         df = self._calculate_vectorized_safe_offset(df)
-        
-        # Detect opportunities using vectorized operations
-        df = self._detect_vectorized_opportunities(df, min_profit)
-        
+
+        # df['inv_mexc_to_gateio_spread'] = ((df[AnalyzerKeys.gateio_spot_bid] - df[AnalyzerKeys.mexc_ask]) /
+        #                                    df[AnalyzerKeys.mexc_ask] * 100)
+        # df['inv_gateio_to_mexc_spread'] = ((df[AnalyzerKeys.mexc_bid] - df[AnalyzerKeys.gateio_spot_ask]) /
+        #                                    df[AnalyzerKeys.gateio_spot_ask] * 100)
+        #
+
+        # gateio_bid_opps = df[self.col_gateio_bid] > df[self.col_mexc_bid]
+        gateio_spread_bps = ((df[self.col_gateio_bid] - df[self.col_mexc_ask]) /
+                             df[self.col_mexc_ask] * 10000)
+        gateio_profit = gateio_spread_bps - (df['safe_offset'] * 10000)
+        # gateio_profitable = (gateio_profit > min_profit_bps) & gateio_bid_opps
+        gateio_profitable = (gateio_profit > min_profit_bps)
+
+        df['gateio_profitable'] = gateio_profitable
+
+
+        # Check MEXC bid > GATEIO ask opportunities
+        # mexc_bid_opps = df['MEXC_SPOT:bid_price'] > df['GATEIO_SPOT:ask_price']
+        mexc_spread_bps = ((df[self.col_mexc_bid] - df[self.col_gateio_ask]) /
+                           df[self.col_gateio_ask] * 10000)
+
+        mexc_profit = mexc_spread_bps - (df['safe_offset'] * 10000)
+        # mexc_profitable = (mexc_profit > min_profit_bps) & mexc_bid_opps
+        mexc_profitable = (mexc_profit > min_profit_bps)
+        df['mexc_profitable'] = mexc_profitable
+
+        #         df['inv_mexc_to_gateio_spread'] = ((df[AnalyzerKeys.gateio_spot_bid] - df[AnalyzerKeys.mexc_ask]) /
+        #                                            df[AnalyzerKeys.mexc_ask] * 100)
+        # Combine opportunities
+        df['opportunity_detected'] = gateio_profitable | mexc_profitable
+        df['spread_bps'] = np.where(gateio_profitable, gateio_spread_bps,
+                                    np.where(mexc_profitable, mexc_spread_bps, 0))
+        df['expected_profit_bps'] = np.where(gateio_profitable, gateio_profit,
+                                             np.where(mexc_profitable, mexc_profit, 0))
+
+
         # Initialize signal columns
         df['signal'] = Signal.HOLD.value
         df['confidence'] = 0.0
         
         # Apply signals based on opportunities and confidence
         enter_condition = (
-            (df['opportunity_detected'] == True) & 
-            (df['execution_confidence'] >= confidence_threshold)
+            (df['opportunity_detected'] == True)
         )
         
         exit_condition = (
-            (df['opportunity_detected'] == False) & 
-            (df['execution_confidence'] < confidence_threshold * 0.5)
+            (df['opportunity_detected'] == False)
         )
         
         # Apply signals
         df.loc[enter_condition, 'signal'] = Signal.ENTER.value
         df.loc[exit_condition, 'signal'] = Signal.EXIT.value
-        df.loc[enter_condition | exit_condition, 'confidence'] = df['execution_confidence']
-        
+
         return df
-    
-    def open_position(self, signal: Signal, market_data: Dict[str, Any], **params) -> Dict[str, Any]:
+
+    def _open_position(self, signal: Signal, row: pd.Series, **params) -> Dict[str, Any]:
         """
         Calculate position opening details with support for same-exchange trading.
         
@@ -205,7 +238,7 @@ class InventorySpotStrategySignalV2(BaseStrategySignal):
         
         Args:
             signal: Trading signal (should be ENTER)
-            market_data: Current market data (can include direct entry prices)
+            row: Current market data (can include direct entry prices)
             **params: Position parameters including:
                 - position_size_usd: Position size in USD
                 - entry_buy_price: Direct buy price (optional)
@@ -218,15 +251,35 @@ class InventorySpotStrategySignalV2(BaseStrategySignal):
         """
         if signal != Signal.ENTER:
             return {}
-        
+
         position_size = params.get('position_size_usd', self.position_size_usd)
         same_exchange = params.get('same_exchange', False)
         rotating_amount = params.get('rotating_amount', 1.0)
+
+        mexc_spot_bid_price = row.get('MEXC_SPOT:bid_price', 0)
+        mexc_spot_ask_price = row.get('MEXC_SPOT:ask_price', 0)
+        gateio_spot_bid_price = row.get('GATEIO_SPOT:bid_price', 0)
+        gateio_spot_ask_price = row.get('GATEIO_SPOT:ask_price', 0)
+
         
         # Handle direct price input
-        entry_buy_price = params.get('entry_buy_price') or market_data.get('entry_buy_price')
-        entry_sell_price = params.get('entry_sell_price') or market_data.get('entry_sell_price')
-        
+        entry_buy_price = params.get('entry_buy_price') or row.get('entry_buy_price')
+        entry_sell_price = params.get('entry_sell_price') or row.get('entry_sell_price')
+
+        if row['mexc_profitable']:
+            buy_price = row[self.col_mexc_ask]
+            sell_price = row[self.col_gateio_bid]
+            trade_size_usd = 10
+            quantity = trade_size_usd / buy_price
+            buy_cost = trade_size_usd
+            sell_proceeds = quantity * sell_price
+            total_fees: float = 0.0015 # 0.1% gateio, 0.05% mexc fees
+
+            fees = (buy_cost + sell_proceeds) * total_fees  # Fees on both sides
+            net_pnl = sell_proceeds - buy_cost - fees
+            pnl_percentage = (net_pnl / trade_size_usd) * 100
+            print(f"MEXC->Gate.io Trade at idx {row.index}: {buy_price} -> {sell_price} Size {trade_size_usd}, PnL% {pnl_percentage}")
+
         if same_exchange:
             # Same-exchange trading scenario (e.g., rotating amounts on Gate.io)
             exchange = params.get('exchange', 'GATEIO_SPOT')
@@ -238,28 +291,43 @@ class InventorySpotStrategySignalV2(BaseStrategySignal):
                 action = f'same_exchange_rotation_{exchange.lower()}'
                 spread_bps = ((sell_price - buy_price) / buy_price) * 10000
             else:
-                # Derive from market data for same-exchange
-                mexc_bid, mexc_ask, gateio_bid, gateio_ask = self._extract_current_prices(market_data)
-                
                 if exchange == 'GATEIO_SPOT':
                     # Use Gate.io prices with rotation
-                    buy_price = gateio_ask * rotating_amount  # Buy at ask with rotation
-                    sell_price = gateio_bid * (2.0 - rotating_amount)  # Sell at bid with inverse rotation
+                    buy_price = gateio_spot_ask_price * rotating_amount  # Buy at ask with rotation
+                    sell_price = gateio_spot_bid_price * (2.0 - rotating_amount)  # Sell at bid with inverse rotation
                     action = 'same_exchange_gateio_rotation'
                 else:
                     # Use MEXC prices with rotation
-                    buy_price = mexc_ask * rotating_amount
-                    sell_price = mexc_bid * (2.0 - rotating_amount)
+                    buy_price = mexc_spot_ask_price * rotating_amount
+                    sell_price = mexc_spot_bid_price * (2.0 - rotating_amount)
                     action = 'same_exchange_mexc_rotation'
                 
                 spread_bps = ((sell_price - buy_price) / buy_price) * 10000
             
-            position = {
-                'strategy_type': self.strategy_type,
-                'signal': signal.value,
-                'timestamp': datetime.now(),
-                'position_size_usd': position_size,
-                
+            # Create TradeEntry objects for same-exchange trading
+            exchange_enum = ExchangeEnum.GATEIO if exchange == 'GATEIO_SPOT' else ExchangeEnum.MEXC
+            
+            # For same-exchange: buy and sell on same exchange with different sides
+            buy_trade_entry = TradeEntry(
+                side=Side.BUY,
+                entry_price=buy_price,
+                exit_price=None
+            )
+            
+            sell_trade_entry = TradeEntry(
+                side=Side.SELL,
+                entry_price=sell_price,
+                exit_price=None
+            )
+            
+            # Create entries dict for position
+            trade_entries = {
+                exchange_enum: buy_trade_entry,  # Primary trade entry
+                # Note: For same-exchange, we track both buy and sell as separate concepts
+            }
+            
+            # Create entry_data for backward compatibility and additional data
+            entry_data = {
                 # Same-exchange details
                 'opportunity_type': 'same_exchange',
                 'action': action,
@@ -267,7 +335,7 @@ class InventorySpotStrategySignalV2(BaseStrategySignal):
                 'buy_exchange': exchange,
                 'sell_exchange': exchange,
                 
-                # Entry prices
+                # Entry prices (kept for backward compatibility)
                 'buy_price': buy_price,
                 'sell_price': sell_price,
                 'rotating_amount': rotating_amount,
@@ -285,6 +353,18 @@ class InventorySpotStrategySignalV2(BaseStrategySignal):
                 'max_loss_bps': -30,  # Tighter stop loss
             }
             
+            position = Position(
+                entry_time=datetime.now(),
+                strategy_type=self.strategy_type,
+                entry_signal=signal,
+                entry_data=entry_data,
+                position_size_usd=position_size,
+                entries=trade_entries,
+                unrealized_pnl_usd=0.0,
+                unrealized_pnl_pct=0.0,
+                hold_time_minutes=0.0
+            )
+            
         else:
             # Cross-exchange arbitrage (handle cross_exchange parameter)
             cross_exchange = params.get('cross_exchange', False)
@@ -300,19 +380,32 @@ class InventorySpotStrategySignalV2(BaseStrategySignal):
                 action = 'direct_price_arbitrage'
                 spread_bps = ((sell_price - buy_price) / buy_price) * 10000
                 
-                position = {
-                    'strategy_type': self.strategy_type,
-                    'signal': signal.value,
-                    'timestamp': datetime.now(),
-                    'position_size_usd': position_size,
-                    
+                # Create TradeEntry objects for direct price arbitrage
+                buy_exchange_enum = ExchangeEnum.GATEIO if buy_exchange == 'GATEIO_SPOT' else ExchangeEnum.MEXC
+                sell_exchange_enum = ExchangeEnum.GATEIO if sell_exchange == 'GATEIO_SPOT' else ExchangeEnum.MEXC
+                
+                trade_entries = {
+                    buy_exchange_enum: TradeEntry(
+                        side=Side.BUY,
+                        entry_price=buy_price,
+                        exit_price=None
+                    ),
+                    sell_exchange_enum: TradeEntry(
+                        side=Side.SELL,
+                        entry_price=sell_price,
+                        exit_price=None
+                    )
+                }
+                
+                # Create entry_data for backward compatibility and additional data
+                entry_data = {
                     # Direct price details
                     'opportunity_type': 'direct_price',
                     'action': action,
                     'buy_exchange': buy_exchange,
                     'sell_exchange': sell_exchange,
                     
-                    # Entry prices
+                    # Entry prices (kept for backward compatibility)
                     'buy_price': buy_price,
                     'sell_price': sell_price,
                     
@@ -329,58 +422,88 @@ class InventorySpotStrategySignalV2(BaseStrategySignal):
                     'max_loss_bps': -50,
                 }
                 
+                position = Position(
+                    entry_time=datetime.now(),
+                    strategy_type=self.strategy_type,
+                    entry_signal=signal,
+                    entry_data=entry_data,
+                    position_size_usd=position_size,
+                    entries=trade_entries,
+                    unrealized_pnl_usd=0.0,
+                    unrealized_pnl_pct=0.0,
+                    hold_time_minutes=0.0
+                )
+                
             elif cross_exchange:
                 # Handle cross-exchange with market data prices
-                mexc_bid, mexc_ask, gateio_bid, gateio_ask = self._extract_current_prices(market_data)
+                mexc_spot_bid_price, mexc_spot_ask_price, gateio_spot_bid_price, gateio_spot_ask_price = self._extract_current_prices(row)
                 
-                if not all([mexc_bid, mexc_ask, gateio_bid, gateio_ask]):
+                if not all([mexc_spot_bid_price, mexc_spot_ask_price, gateio_spot_bid_price, gateio_spot_ask_price]):
                     return {}
                 
                 # Determine buy/sell prices based on exchanges
                 if buy_exchange == 'MEXC_SPOT' and sell_exchange == 'GATEIO_SPOT':
-                    buy_price = mexc_ask  # Buy on MEXC at ask
-                    sell_price = gateio_bid  # Sell on Gate.io at bid
+                    buy_price = mexc_spot_ask_price  # Buy on MEXC at ask
+                    sell_price = gateio_spot_bid_price  # Sell on Gate.io at bid
                     action = 'mexc_buy_gateio_sell'
                 elif buy_exchange == 'GATEIO_SPOT' and sell_exchange == 'MEXC_SPOT':
-                    buy_price = gateio_ask  # Buy on Gate.io at ask
-                    sell_price = mexc_bid  # Sell on MEXC at bid
+                    buy_price = gateio_spot_ask_price  # Buy on Gate.io at ask
+                    sell_price = mexc_spot_bid_price  # Sell on MEXC at bid
                     action = 'gateio_buy_mexc_sell'
                 else:
                     # Default to MEXC buy, Gate.io sell
-                    buy_price = mexc_ask
-                    sell_price = gateio_bid
+                    buy_price = mexc_spot_ask_price
+                    sell_price = gateio_spot_bid_price
                     action = f'{buy_exchange.lower()}_buy_{sell_exchange.lower()}_sell'
                 
                 spread_bps = ((sell_price - buy_price) / buy_price) * 10000
                 
-                position = {
-                    'strategy_type': self.strategy_type,
-                    'signal': signal.value,
-                    'timestamp': datetime.now(),
-                    'position_size_usd': position_size,
-                    
-                    # Cross-exchange details
+                # Create TradeEntry objects for cross-exchange arbitrage
+                buy_exchange_enum = ExchangeEnum.GATEIO if buy_exchange == 'GATEIO_SPOT' else ExchangeEnum.MEXC
+                sell_exchange_enum = ExchangeEnum.GATEIO if sell_exchange == 'GATEIO_SPOT' else ExchangeEnum.MEXC
+                
+                trade_entries = {
+                    buy_exchange_enum: TradeEntry(
+                        side=Side.BUY,
+                        entry_price=buy_price,
+                        exit_price=None
+                    ),
+                    sell_exchange_enum: TradeEntry(
+                        side=Side.SELL,
+                        entry_price=sell_price,
+                        exit_price=None
+                    )
+                }
+                
+                # Create entry_data for backward compatibility and additional data
+                entry_data = {
                     'opportunity_type': 'cross_exchange',
                     'action': action,
                     'buy_exchange': buy_exchange,
                     'sell_exchange': sell_exchange,
-                    
-                    # Entry prices
                     'buy_price': buy_price,
                     'sell_price': sell_price,
-                    
-                    # Metrics
                     'spread_bps': spread_bps,
                     'expected_profit_bps': max(0, spread_bps - 20),  # Minus costs
                     'safe_offset': 0.001,  # 10 bps for cross-exchange
                     'execution_confidence': 0.85,  # High confidence for cross-exchange
-                    
-                    # Risk metrics
                     'volatility_risk': 0.2,
                     'liquidity_risk': 0.1,
                     'timing_risk': 0.15,
                     'max_loss_bps': -40,
                 }
+                
+                position = Position(
+                    entry_time=datetime.now(),
+                    strategy_type=self.strategy_type,
+                    entry_signal=signal,
+                    entry_data=entry_data,
+                    position_size_usd=position_size,
+                    entries=trade_entries,
+                    unrealized_pnl_usd=0.0,
+                    unrealized_pnl_pct=0.0,
+                    hold_time_minutes=0.0
+                )
                 
             else:
                 # Original opportunity-based logic (fallback)
@@ -388,39 +511,57 @@ class InventorySpotStrategySignalV2(BaseStrategySignal):
                     return {}
                     
                 opp = self.current_opportunity
-                position = {
-                    'strategy_type': self.strategy_type,
-                    'signal': signal.value,
-                    'timestamp': datetime.now(),
-                    'position_size_usd': position_size,
-                    
-                    # Opportunity details
+                # Create TradeEntry objects from opportunity data
+                buy_exchange_enum = ExchangeEnum.GATEIO if opp['buy_exchange'] == 'GATEIO_SPOT' else ExchangeEnum.MEXC
+                sell_exchange_enum = ExchangeEnum.GATEIO if opp['sell_exchange'] == 'GATEIO_SPOT' else ExchangeEnum.MEXC
+                
+                trade_entries = {
+                    buy_exchange_enum: TradeEntry(
+                        side=Side.BUY,
+                        entry_price=opp['buy_price'],
+                        exit_price=None
+                    ),
+                    sell_exchange_enum: TradeEntry(
+                        side=Side.SELL,
+                        entry_price=opp['sell_price'],
+                        exit_price=None
+                    )
+                }
+                
+                # Create entry_data for backward compatibility and additional data
+                entry_data = {
                     'opportunity_type': opp['opportunity_type'],
                     'action': opp['action'],
                     'buy_exchange': opp['buy_exchange'],
                     'sell_exchange': opp['sell_exchange'],
-                    
-                    # Entry prices
                     'buy_price': opp['buy_price'],
                     'sell_price': opp['sell_price'],
-                    
-                    # Metrics
                     'spread_bps': opp['spread_bps'],
                     'expected_profit_bps': opp['expected_profit_bps'],
                     'safe_offset': opp['safe_offset'],
                     'execution_confidence': opp['execution_confidence'],
-                    
-                    # Risk metrics
                     'volatility_risk': 0.3,
                     'liquidity_risk': 0.2,
                     'timing_risk': 0.1,
                     'max_loss_bps': -50,
                 }
+                
+                position = Position(
+                    entry_time=datetime.now(),
+                    strategy_type=self.strategy_type,
+                    entry_signal=signal,
+                    entry_data=entry_data,
+                    position_size_usd=position_size,
+                    entries=trade_entries,
+                    unrealized_pnl_usd=0.0,
+                    unrealized_pnl_pct=0.0,
+                    hold_time_minutes=0.0
+                )
         
         self.current_position = position
         return position
     
-    def close_position(self, position: Dict[str, Any], market_data: Dict[str, Any], **params) -> Dict[str, Any]:
+    def _close_position(self, position: Dict[str, Any], row: pd.Series, **params) -> Dict[str, Any]:
         """
         Calculate position closing details and P&L with support for same-exchange trading.
         
@@ -429,7 +570,7 @@ class InventorySpotStrategySignalV2(BaseStrategySignal):
         
         Args:
             position: Current position details
-            market_data: Current market data (can include direct exit prices)
+            row: Current market data (can include direct exit prices)
             **params: Exit parameters including:
                 - exit_buy_price: Direct exit buy price (optional)
                 - exit_sell_price: Direct exit sell price (optional)
@@ -438,9 +579,15 @@ class InventorySpotStrategySignalV2(BaseStrategySignal):
         Returns:
             Trade closure details with P&L
         """
+
+        mexc_spot_bid_price = row.get('MEXC_SPOT:bid_price', 0)
+        mexc_spot_ask_price = row.get('MEXC_SPOT:ask_price', 0)
+        gateio_spot_bid_price = row.get('GATEIO_SPOT:bid_price', 0)
+        gateio_spot_ask_price = row.get('GATEIO_SPOT:ask_price', 0)
+
         # Handle direct exit price input
-        exit_buy_price = params.get('exit_buy_price') or market_data.get('exit_buy_price')
-        exit_sell_price = params.get('exit_sell_price') or market_data.get('exit_sell_price')
+        exit_buy_price = params.get('exit_buy_price') or row.get('exit_buy_price')
+        exit_sell_price = params.get('exit_sell_price') or row.get('exit_sell_price')
         simulate_only = params.get('simulate_only', False)
         
         # Extract position details
@@ -470,15 +617,12 @@ class InventorySpotStrategySignalV2(BaseStrategySignal):
                 current_buy_price = exit_buy_price
                 current_sell_price = exit_sell_price
             else:
-                # Derive from market data
-                mexc_bid, mexc_ask, gateio_bid, gateio_ask = self._extract_current_prices(market_data)
-                
                 if exchange == 'GATEIO_SPOT':
-                    current_buy_price = gateio_ask * rotating_amount
-                    current_sell_price = gateio_bid * (2.0 - rotating_amount)
+                    current_buy_price = gateio_spot_ask_price * rotating_amount
+                    current_sell_price = gateio_spot_bid_price * (2.0 - rotating_amount)
                 else:
-                    current_buy_price = mexc_ask * rotating_amount
-                    current_sell_price = mexc_bid * (2.0 - rotating_amount)
+                    current_buy_price = mexc_spot_ask_price * rotating_amount
+                    current_sell_price = mexc_spot_bid_price * (2.0 - rotating_amount)
             
             # Same-exchange P&L: profit from price spread changes
             entry_spread = entry_sell_price - entry_buy_price
@@ -492,16 +636,15 @@ class InventorySpotStrategySignalV2(BaseStrategySignal):
         elif opportunity_type == 'direct_price':
             # Direct price arbitrage P&L
             if exit_buy_price and exit_sell_price:
-                exit_mexc_price = exit_buy_price if 'mexc' in action else exit_sell_price
-                exit_gateio_price = exit_sell_price if 'mexc' in action else exit_buy_price
+                exit_mexc_spot_price = exit_buy_price if 'mexc' in action else exit_sell_price
+                exit_gateio_spot_price = exit_sell_price if 'mexc' in action else exit_buy_price
             else:
-                mexc_bid, mexc_ask, gateio_bid, gateio_ask = self._extract_current_prices(market_data)
-                exit_mexc_price = mexc_bid  # Default exit
-                exit_gateio_price = gateio_bid
+                exit_mexc_spot_price = mexc_spot_bid_price  # Default exit
+                exit_gateio_spot_price = gateio_spot_bid_price
             
             # Cross-exchange P&L calculation
             entry_profit = entry_sell_price - entry_buy_price
-            exit_cost = exit_gateio_price - exit_mexc_price if 'gateio' in position.get('buy_exchange', '') else exit_mexc_price - exit_gateio_price
+            exit_cost = exit_gateio_spot_price - exit_mexc_spot_price if 'gateio' in position.get('buy_exchange', '') else exit_mexc_spot_price - exit_gateio_spot_price
             
             units = position_size / entry_buy_price if entry_buy_price > 0 else 0
             gross_pnl_usd = (entry_profit + exit_cost) * units
@@ -516,25 +659,23 @@ class InventorySpotStrategySignalV2(BaseStrategySignal):
                 current_buy_price = exit_buy_price
                 current_sell_price = exit_sell_price
             else:
-                # Extract current market prices
-                mexc_bid, mexc_ask, gateio_bid, gateio_ask = self._extract_current_prices(market_data)
-                
-                if not all([mexc_bid, mexc_ask, gateio_bid, gateio_ask]):
+
+                if not all([mexc_spot_bid_price, mexc_spot_ask_price, gateio_spot_bid_price, gateio_spot_ask_price]):
                     return {'pnl_usd': 0.0, 'pnl_pct': 0.0, 'fees_usd': 2.5}
                 
                 # Determine exit prices (reverse the entry)
                 if buy_exchange == 'MEXC_SPOT' and sell_exchange == 'GATEIO_SPOT':
                     # Entry: bought MEXC, sold Gate.io -> Exit: sell MEXC, buy Gate.io
-                    current_buy_price = gateio_ask  # Buy back Gate.io at ask
-                    current_sell_price = mexc_bid   # Sell MEXC at bid
+                    current_buy_price = gateio_spot_ask_price  # Buy back Gate.io at ask
+                    current_sell_price = mexc_spot_bid_price   # Sell MEXC at bid
                 elif buy_exchange == 'GATEIO_SPOT' and sell_exchange == 'MEXC_SPOT':
                     # Entry: bought Gate.io, sold MEXC -> Exit: sell Gate.io, buy MEXC
-                    current_buy_price = mexc_ask    # Buy back MEXC at ask
-                    current_sell_price = gateio_bid # Sell Gate.io at bid
+                    current_buy_price = mexc_spot_ask_price    # Buy back MEXC at ask
+                    current_sell_price = gateio_spot_bid_price # Sell Gate.io at bid
                 else:
                     # Default
-                    current_buy_price = mexc_ask
-                    current_sell_price = gateio_bid
+                    current_buy_price = mexc_spot_ask_price
+                    current_sell_price = gateio_spot_bid_price
             
             # Cross-exchange P&L: Entry spread + Exit spread (both should be positive)
             entry_spread = entry_sell_price - entry_buy_price  # Profit from entry
@@ -548,33 +689,33 @@ class InventorySpotStrategySignalV2(BaseStrategySignal):
             
         else:
             # Original cross-exchange arbitrage logic
-            mexc_bid, mexc_ask, gateio_bid, gateio_ask = self._extract_current_prices(market_data)
-            
-            if not all([mexc_bid, mexc_ask, gateio_bid, gateio_ask]):
+
+
+            if not all([mexc_spot_bid_price, mexc_spot_ask_price, gateio_spot_bid_price, gateio_spot_ask_price]):
                 return {'pnl_usd': 0.0, 'pnl_pct': 0.0, 'fees_usd': 0.0}
             
             # Determine exit prices based on original action
             if 'gateio_bid_spike' in action:
                 # Original: sell MEXC, buy GATEIO -> reverse: sell GATEIO, buy MEXC
-                exit_mexc_price = mexc_ask  # Buy MEXC at ask
-                exit_gateio_price = gateio_bid  # Sell GATEIO at bid
+                exit_mexc_spot_price = mexc_spot_ask_price  # Buy MEXC at ask
+                exit_gateio_spot_price = gateio_spot_bid_price  # Sell GATEIO at bid
             elif 'mexc_bid_spike' in action:
                 # Original: sell GATEIO, buy MEXC -> reverse: sell MEXC, buy GATEIO
-                exit_mexc_price = mexc_bid  # Sell MEXC at bid
-                exit_gateio_price = gateio_ask  # Buy GATEIO at ask
+                exit_mexc_spot_price = mexc_spot_bid_price  # Sell MEXC at bid
+                exit_gateio_spot_price = gateio_spot_ask_price  # Buy GATEIO at ask
             else:
                 # Default exit
-                exit_mexc_price = mexc_bid
-                exit_gateio_price = gateio_bid
+                exit_mexc_spot_price = mexc_spot_bid_price
+                exit_gateio_spot_price = gateio_spot_bid_price
             
             # P&L calculation
             if 'gateio_bid_spike' in action:
                 entry_profit = entry_sell_price - entry_buy_price
-                exit_cost = exit_gateio_price - exit_mexc_price
+                exit_cost = exit_gateio_spot_price - exit_mexc_spot_price
                 gross_pnl_per_unit = entry_profit + exit_cost
             else:
                 entry_profit = entry_sell_price - entry_buy_price
-                exit_cost = exit_mexc_price - exit_gateio_price
+                exit_cost = exit_mexc_spot_price - exit_gateio_spot_price
                 gross_pnl_per_unit = entry_profit + exit_cost
             
             units = position_size / entry_buy_price if entry_buy_price > 0 else 0
@@ -635,28 +776,28 @@ class InventorySpotStrategySignalV2(BaseStrategySignal):
         
         return trade_result
     
-    def update_indicators(self, new_data: Union[Dict[str, Any], pd.DataFrame]) -> None:
-        """
-        Update rolling indicators with new market data.
-        
-        Args:
-            new_data: New market data (single row or snapshot)
-        """
-        if isinstance(new_data, pd.DataFrame) and not new_data.empty:
-            latest_row = new_data.iloc[-1]
-            mexc_bid = latest_row.get('MEXC_SPOT_bid_price', 0)
-            mexc_ask = latest_row.get('MEXC_SPOT_ask_price', 0)
-            gateio_bid = latest_row.get('GATEIO_SPOT_bid_price', 0)
-            gateio_ask = latest_row.get('GATEIO_SPOT_ask_price', 0)
-        else:
-            mexc_bid = new_data.get('mexc_bid', new_data.get('MEXC_SPOT_bid_price', 0))
-            mexc_ask = new_data.get('mexc_ask', new_data.get('MEXC_SPOT_ask_price', 0))
-            gateio_bid = new_data.get('gateio_bid', new_data.get('GATEIO_SPOT_bid_price', 0))
-            gateio_ask = new_data.get('gateio_ask', new_data.get('GATEIO_SPOT_ask_price', 0))
-        
-        if all([mexc_bid, mexc_ask, gateio_bid, gateio_ask]):
-            self._update_price_history(mexc_bid, mexc_ask, gateio_bid, gateio_ask)
-    
+    # def update_indicators(self, new_data: Union[Dict[str, Any], pd.DataFrame]) -> None:
+    #     """
+    #     Update rolling indicators with new market data.
+    #
+    #     Args:
+    #         new_data: New market data (single row or snapshot)
+    #     """
+    #     if isinstance(new_data, pd.DataFrame) and not new_data.empty:
+    #         latest_row = new_data.iloc[-1]
+    #         mexc_spot_bid_price = latest_row.get('MEXC_SPOT:bid_price', 0)
+    #         mexc_spot_ask_price = latest_row.get('MEXC_SPOT:ask_price', 0)
+    #         gateio_spot_bid_price = latest_row.get('GATEIO_SPOT:bid_price', 0)
+    #         gateio_spot_ask_price = latest_row.get('GATEIO_SPOT:ask_price', 0)
+    #     else:
+    #         mexc_spot_bid_price = new_data.get('MEXC_SPOT:bid_price', 0)
+    #         mexc_spot_ask_price = new_data.get('MEXC_SPOT:ask_price', 0)
+    #         gateio_spot_bid_price = new_data.get('GATEIO_SPOT:bid_price', 0)
+    #         gateio_spot_ask_price = new_data.get('GATEIO_SPOT:ask_price', 0)
+    #
+    #     if all([mexc_spot_bid_price, mexc_spot_ask_price, gateio_spot_bid_price, gateio_spot_ask_price]):
+    #         self._update_price_history(mexc_spot_bid_price, mexc_spot_ask_price, gateio_spot_bid_price, gateio_spot_ask_price)
+    #
     def calculate_signal_confidence(self, indicators: Dict[str, float]) -> float:
         """
         Calculate confidence score using arbitrage analyzer logic.
@@ -691,24 +832,13 @@ class InventorySpotStrategySignalV2(BaseStrategySignal):
             confidence = confidence * 0.9
         
         return max(min(confidence, 1.0), 0.0)
-    
-    # Private helper methods matching arbitrage analyzer logic
-    
-    def _extract_current_prices(self, market_data: Dict[str, Any]) -> Tuple[float, float, float, float]:
-        """Extract current bid/ask prices matching analyze_current_prices logic."""
-        mexc_bid = market_data.get('mexc_bid', market_data.get('MEXC_SPOT_bid_price', 0))
-        mexc_ask = market_data.get('mexc_ask', market_data.get('MEXC_SPOT_ask_price', 0))
-        gateio_bid = market_data.get('gateio_bid', market_data.get('GATEIO_SPOT_bid_price', 0))
-        gateio_ask = market_data.get('gateio_ask', market_data.get('GATEIO_SPOT_ask_price', 0))
-        
-        return float(mexc_bid or 0), float(mexc_ask or 0), float(gateio_bid or 0), float(gateio_ask or 0)
-    
-    def _update_price_history(self, mexc_bid: float, mexc_ask: float, 
-                             gateio_bid: float, gateio_ask: float) -> None:
+
+    def _update_price_history(self, mexc_spot_bid_price: float, mexc_spot_ask_price: float, 
+                             gateio_spot_bid_price: float, gateio_spot_ask_price: float) -> None:
         """Update price history for volatility calculation."""
         for key, value in [
-            ('mexc_bid', mexc_bid), ('mexc_ask', mexc_ask),
-            ('gateio_bid', gateio_bid), ('gateio_ask', gateio_ask)
+            (self.col_mexc_bid, mexc_spot_bid_price), (self.col_mexc_ask, mexc_spot_ask_price),
+            (self.col_gateio_bid, gateio_spot_bid_price), (self.col_gateio_ask, gateio_spot_ask_price)
         ]:
             self.price_history[key].append(value)
             if len(self.price_history[key]) > self.volatility_window:
@@ -719,12 +849,12 @@ class InventorySpotStrategySignalV2(BaseStrategySignal):
         safe_offset_pct = params.get('safe_offset_pct', self.safe_offset_pct)
         
         # Calculate volatility from price history
-        if len(self.price_history['mexc_bid']) < 5:
+        if len(self.price_history[self.col_mexc_bid]) < 5:
             return safe_offset_pct  # Default if insufficient data
         
         # Calculate price volatility
-        mexc_prices = np.array(self.price_history['mexc_bid'])
-        gateio_prices = np.array(self.price_history['gateio_bid'])
+        mexc_prices = np.array(self.price_history[self.col_mexc_bid])
+        gateio_prices = np.array(self.price_history[self.col_mexc_ask])
         
         mexc_volatility = np.std(mexc_prices / mexc_prices[0] - 1) if len(mexc_prices) > 1 else 0.01
         gateio_volatility = np.std(gateio_prices / gateio_prices[0] - 1) if len(gateio_prices) > 1 else 0.01
@@ -741,14 +871,14 @@ class InventorySpotStrategySignalV2(BaseStrategySignal):
 
         return 0.0
     
-    def _detect_market_market_opportunity(self, mexc_bid: float, mexc_ask: float,
-                                         gateio_bid: float, gateio_ask: float,
+    def _detect_market_market_opportunity(self, mexc_spot_bid_price: float, mexc_spot_ask_price: float,
+                                         gateio_spot_bid_price: float, gateio_spot_ask_price: float,
                                          safe_offset: float, min_profit_bps: float) -> Dict[str, Any]:
         """Detect market-market opportunities (matches detect_market_market_opportunity)."""
         
         # Check GATEIO bid > MEXC ask (sell MEXC, buy GATEIO)
-        if gateio_bid > mexc_ask:
-            spread_bps = ((gateio_bid - mexc_ask) / mexc_ask) * 10000
+        if gateio_spot_bid_price > mexc_spot_ask_price:
+            spread_bps = ((gateio_spot_bid_price - mexc_spot_ask_price) / mexc_spot_ask_price) * 10000
             expected_profit = spread_bps - (safe_offset * 10000)
             
             if expected_profit > min_profit_bps:
@@ -757,8 +887,8 @@ class InventorySpotStrategySignalV2(BaseStrategySignal):
                     'action': 'gateio_bid_spike',
                     'buy_exchange': 'GATEIO_SPOT',
                     'sell_exchange': 'MEXC_SPOT',
-                    'buy_price': gateio_bid,
-                    'sell_price': mexc_ask,
+                    'buy_price': gateio_spot_bid_price,
+                    'sell_price': mexc_spot_ask_price,
                     'spread_bps': spread_bps,
                     'safe_offset': safe_offset,
                     'execution_confidence': 0.9,  # High confidence for market orders
@@ -769,8 +899,8 @@ class InventorySpotStrategySignalV2(BaseStrategySignal):
                 }
         
         # Check MEXC bid > GATEIO ask (sell GATEIO, buy MEXC)
-        if mexc_bid > gateio_ask:
-            spread_bps = ((mexc_bid - gateio_ask) / gateio_ask) * 10000
+        if mexc_spot_bid_price > gateio_spot_ask_price:
+            spread_bps = ((mexc_spot_bid_price - gateio_spot_ask_price) / gateio_spot_ask_price) * 10000
             expected_profit = spread_bps - (safe_offset * 10000)
             
             if expected_profit > min_profit_bps:
@@ -779,8 +909,8 @@ class InventorySpotStrategySignalV2(BaseStrategySignal):
                     'action': 'mexc_bid_spike',
                     'buy_exchange': 'MEXC_SPOT',
                     'sell_exchange': 'GATEIO_SPOT',
-                    'buy_price': mexc_bid,
-                    'sell_price': gateio_ask,
+                    'buy_price': mexc_spot_bid_price,
+                    'sell_price': gateio_spot_ask_price,
                     'spread_bps': spread_bps,
                     'safe_offset': safe_offset,
                     'execution_confidence': 0.9,
@@ -803,8 +933,8 @@ class InventorySpotStrategySignalV2(BaseStrategySignal):
         window = min(self.volatility_window, len(df))
         
         # Calculate rolling volatility
-        mexc_returns = df['MEXC_SPOT_bid_price'].pct_change()
-        gateio_returns = df['GATEIO_SPOT_bid_price'].pct_change()
+        mexc_returns = df['MEXC_SPOT:bid_price'].pct_change()
+        gateio_returns = df['GATEIO_SPOT:bid_price'].pct_change()
         
         mexc_vol = mexc_returns.rolling(window=window).std().fillna(0.01)
         gateio_vol = gateio_returns.rolling(window=window).std().fillna(0.01)
@@ -817,39 +947,7 @@ class InventorySpotStrategySignalV2(BaseStrategySignal):
         # df['safe_offset'] = np.maximum(df['safe_offset'], 0.0005)
         
         return df
-    
-    def _detect_vectorized_opportunities(self, df: pd.DataFrame, min_profit_bps: float) -> pd.DataFrame:
-        """Detect opportunities using vectorized operations."""
-        # Check GATEIO bid > MEXC ask opportunities
-        gateio_bid_opps = df['GATEIO_SPOT_bid_price'] > df['MEXC_SPOT_ask_price']
-        gateio_spread_bps = ((df['GATEIO_SPOT_bid_price'] - df['MEXC_SPOT_ask_price']) / 
-                            df['MEXC_SPOT_ask_price'] * 10000)
-        gateio_profit = gateio_spread_bps - (df['safe_offset'] * 10000)
-        gateio_profitable = (gateio_profit > min_profit_bps) & gateio_bid_opps
-        
-        # Check MEXC bid > GATEIO ask opportunities  
-        mexc_bid_opps = df['MEXC_SPOT_bid_price'] > df['GATEIO_SPOT_ask_price']
-        mexc_spread_bps = ((df['MEXC_SPOT_bid_price'] - df['GATEIO_SPOT_ask_price']) / 
-                          df['GATEIO_SPOT_ask_price'] * 10000)
-        mexc_profit = mexc_spread_bps - (df['safe_offset'] * 10000)
-        mexc_profitable = (mexc_profit > min_profit_bps) & mexc_bid_opps
-        #         df['inv_mexc_to_gateio_spread'] = ((df[AnalyzerKeys.gateio_spot_bid] - df[AnalyzerKeys.mexc_ask]) /
-        #                                            df[AnalyzerKeys.mexc_ask] * 100)
-        # Combine opportunities
-        df['opportunity_detected'] = gateio_profitable | mexc_profitable
-        df['spread_bps'] = np.where(gateio_profitable, gateio_spread_bps,
-                                   np.where(mexc_profitable, mexc_spread_bps, 0))
-        df['expected_profit_bps'] = np.where(gateio_profitable, gateio_profit,
-                                           np.where(mexc_profitable, mexc_profit, 0))
-        
-        # Calculate execution confidence
-        df['execution_confidence'] = np.where(
-            df['opportunity_detected'],
-            0.9,  # High confidence for market-market opportunities
-            0.0
-        )
-        
-        return df
+
     
     def update_indicators(self, new_data: Union[Dict[str, Any], pd.DataFrame]) -> None:
         """
@@ -880,25 +978,7 @@ class InventorySpotStrategySignalV2(BaseStrategySignal):
         """
         return max(self.lookback_periods, self.volatility_window * 2)
     
-    def get_strategy_params(self) -> Dict[str, Any]:
-        """
-        Get current strategy parameters.
-        
-        Returns:
-            Dictionary of strategy configuration parameters
-        """
-        return {
-            'strategy_type': self.strategy_type,
-            'min_profit_bps': self.min_profit_bps,
-            'min_execution_confidence': self.min_execution_confidence,
-            'safe_offset_percentile': self.safe_offset_percentile,
-            'safe_offset_pct': self.safe_offset_pct,
-            'volatility_window': self.volatility_window,
-            'lookback_periods': self.lookback_periods,
-            'min_history': self.min_history,
-            'position_size_usd': self.position_size_usd,
-            'total_fees': self.total_fees
-        }
+
     
     def validate_market_data(self, data: Union[Dict[str, Any], pd.DataFrame]) -> bool:
         """
@@ -911,16 +991,16 @@ class InventorySpotStrategySignalV2(BaseStrategySignal):
             True if data is valid, False otherwise
         """
         if isinstance(data, dict):
-            # Check for required price fields (both naming conventions)
+            # Check for required price fields
             required_fields = [
-                ('mexc_bid', 'MEXC_SPOT_bid_price'),
-                ('mexc_ask', 'MEXC_SPOT_ask_price'),
-                ('gateio_spot_bid', 'GATEIO_SPOT_bid_price'),
-                ('gateio_spot_ask', 'GATEIO_SPOT_ask_price')
+                'MEXC_SPOT:bid_price',
+                'MEXC_SPOT:ask_price',
+                'GATEIO_SPOT:bid_price',
+                'GATEIO_SPOT:ask_price'
             ]
             
-            for field_pair in required_fields:
-                if not any(field in data and data[field] > 0 for field in field_pair):
+            for field in required_fields:
+                if field not in data or data[field] <= 0:
                     return False
             
             return True
@@ -931,8 +1011,8 @@ class InventorySpotStrategySignalV2(BaseStrategySignal):
             
             # Check for required columns
             required_columns = [
-                'MEXC_SPOT_bid_price', 'MEXC_SPOT_ask_price',
-                'GATEIO_SPOT_bid_price', 'GATEIO_SPOT_ask_price'
+                'MEXC_SPOT:bid_price', 'MEXC_SPOT:ask_price',
+                'GATEIO_SPOT:bid_price', 'GATEIO_SPOT:ask_price'
             ]
             
             for col in required_columns:
@@ -996,32 +1076,32 @@ class InventorySpotStrategySignalV2(BaseStrategySignal):
         Returns:
             Dictionary of calculated spreads
         """
-        # Extract prices (supporting both naming conventions)
-        mexc_bid = market_data.get('mexc_bid', market_data.get('MEXC_SPOT_bid_price', 0))
-        mexc_ask = market_data.get('mexc_ask', market_data.get('MEXC_SPOT_ask_price', 0))
-        gateio_spot_bid = market_data.get('gateio_spot_bid', market_data.get('GATEIO_SPOT_bid_price', 0))
-        gateio_spot_ask = market_data.get('gateio_spot_ask', market_data.get('GATEIO_SPOT_ask_price', 0))
+        # Extract prices
+        mexc_spot_bid_price = market_data.get('MEXC_SPOT:bid_price', 0)
+        mexc_spot_ask_price = market_data.get('MEXC_SPOT:ask_price', 0)
+        gateio_spot_bid_price = market_data.get('GATEIO_SPOT:bid_price', 0)
+        gateio_spot_ask_price = market_data.get('GATEIO_SPOT:ask_price', 0)
         
-        if not all([mexc_bid, mexc_ask, gateio_spot_bid, gateio_spot_ask]):
+        if not all([mexc_spot_bid_price, mexc_spot_ask_price, gateio_spot_bid_price, gateio_spot_ask_price]):
             return {}
         
         # Calculate spreads matching arbitrage analyzer logic
-        mexc_mid = (mexc_bid + mexc_ask) / 2
-        gateio_spot_mid = (gateio_spot_bid + gateio_spot_ask) / 2
+        mexc_spot_mid_price = (mexc_spot_bid_price + mexc_spot_ask_price) / 2
+        gateio_spot_mid_price = (gateio_spot_bid_price + gateio_spot_ask_price) / 2
         
         # Main spread for analysis
-        mexc_vs_gateio_spot = (mexc_mid - gateio_spot_mid) / gateio_spot_mid
+        mexc_vs_gateio_spot = (mexc_spot_mid_price - gateio_spot_mid_price) / gateio_spot_mid_price
         
         # Additional spreads for comprehensive analysis
-        mexc_spread = (mexc_ask - mexc_bid) / mexc_mid
-        gateio_spot_spread = (gateio_spot_ask - gateio_spot_bid) / gateio_spot_mid
+        mexc_spot_spread = (mexc_spot_ask_price - mexc_spot_bid_price) / mexc_spot_mid_price
+        gateio_spot_spread = (gateio_spot_ask_price - gateio_spot_bid_price) / gateio_spot_mid_price
         
         return {
             'mexc_vs_gateio_spot': mexc_vs_gateio_spot,
-            'mexc_spread': mexc_spread,
-            'gateio_spot_spread': gateio_spot_spread,
-            'mexc_mid': mexc_mid,
-            'gateio_spot_mid': gateio_spot_mid
+            'MEXC_SPOT:spread': mexc_spot_spread,
+            'GATEIO_SPOT:spread': gateio_spot_spread,
+            'MEXC_SPOT:mid_price': mexc_spot_mid_price,
+            'GATEIO_SPOT:mid_price': gateio_spot_mid_price
         }
     
     def _update_historical_data(self, spreads: Dict[str, float]) -> None:

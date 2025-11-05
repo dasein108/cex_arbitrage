@@ -82,9 +82,10 @@ async with exchange.session([Symbol(base=AssetName("BTC"), quote=AssetName("USDT
 - **Memory Optimization**: O(1) per request, efficient data structures
 
 #### Monitoring and Metrics
+
 ```python
 # Get performance metrics
-metrics = exchange.get_performance_metrics()
+metrics = exchange._get_performance_metrics()
 print(f"Cache hit rate: {metrics['cache_hit_rate_percent']}%")
 print(f"API calls saved: {metrics['api_calls_saved']}")
 print(f"Orderbook updates: {metrics['orderbook_updates']}")
@@ -632,9 +633,10 @@ except RateLimitError as e:
 ```
 
 ### Performance Debugging
+
 ```python
 # Monitor performance metrics
-metrics = exchange.get_performance_metrics()
+metrics = exchange._get_performance_metrics()
 if metrics['cache_hit_rate_percent'] < 80:
     print("Low cache hit rate - investigate cache efficiency")
 

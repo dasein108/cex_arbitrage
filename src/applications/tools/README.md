@@ -360,7 +360,7 @@ if stats.opportunity_rate > 2.0:  # At least 2 opportunities per hour
 ## Support
 
 For technical issues or feature requests:
-1. Check the [PROJECT_GUIDES.md](../../../PROJECT_GUIDES.md) for development patterns
+1. Check the [PROJECT_GUIDES.md](../../../docs/GUIDES/PROJECT_GUIDES.md) for development patterns
 2. Review the [HFT Requirements Compliance](../../../specs/performance/hft-requirements-compliance.md)
 3. Contact the HFT development team
 

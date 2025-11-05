@@ -8,15 +8,13 @@ Includes comprehensive backtesting framework for mean reversion strategies.
 import asyncio
 import pandas as pd
 from datetime import datetime, UTC, timedelta
-from pathlib import Path
 
 from config import HftConfig
-from exchanges.exchange_factory import get_rest_implementation
 from exchanges.structs import Symbol
 from exchanges.structs.common import AssetName
 from exchanges.structs.enums import ExchangeEnum, KlineInterval
 from infrastructure.logging import get_logger
-from trading.research.cross_arbitrage.multi_candles_source import MultiCandlesSource
+from trading.data_sources.candles_loader import CandlesLoader
 
 pd.set_option('display.precision', 12)
 pd.set_option('display.float_format', None)
@@ -27,7 +25,7 @@ class SpotSpotArbitrageAnalyzer:
     def __init__(self):
         self.config = HftConfig()
         self.logger = get_logger("SpotSpotArbitrageAnalyzer")
-        self.candles_source = MultiCandlesSource()
+        self.candles_source = CandlesLoader()
 
         # Exchanges to fetch data from
         self.exchanges = [

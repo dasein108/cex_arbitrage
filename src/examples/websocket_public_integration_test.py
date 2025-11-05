@@ -364,7 +364,7 @@ class WebSocketPublicIntegrationTest:
         
         try:
             # Get WebSocket performance metrics
-            metrics = self.websocket.get_performance_metrics()
+            metrics = self.websocket._get_performance_metrics()
             execution_time = (time.time() - start_time) * 1000
             
             # Analyze performance data

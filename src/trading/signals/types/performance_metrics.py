@@ -54,33 +54,8 @@ class PerformanceMetrics:
     strategy_type: str = ""
     signal_count: int = 0
     last_signal_time: Optional[datetime] = None
-    
-    # Trading statistics
-    long_trades: int = 0
-    short_trades: int = 0
-    winning_trades: int = 0
-    losing_trades: int = 0
-    break_even_trades: int = 0
-    
-    # Exchange-specific metrics (for multi-exchange strategies)
-    exchange_pnl: Dict[str, float] = None
-    exchange_trades: Dict[str, int] = None
-    
-    # Additional metadata
-    creation_time: datetime = None
-    last_update_time: datetime = None
-    
-    def __post_init__(self):
-        """Initialize default values for complex types."""
-        if self.exchange_pnl is None:
-            self.exchange_pnl = {}
-        if self.exchange_trades is None:
-            self.exchange_trades = {}
-        if self.creation_time is None:
-            self.creation_time = datetime.now()
-        if self.last_update_time is None:
-            self.last_update_time = datetime.now()
-    
+
+
     def to_dict(self) -> Dict[str, Any]:
         """
         Convert to dictionary for backward compatibility.

@@ -244,18 +244,19 @@ class ConfigurablePerformanceMonitor:
 ```
 
 ### HFT Compliance Checking
+
 ```python
 def validate_hft_logging_compliance() -> bool:
     """Validate HFT logging compliance using configuration."""
     from src.config.config_manager import get_config
-    
+
     config = get_config()
     logging_config = config.get_logging_config()
-    
+
     # Get performance metrics from active logger
     logger = get_hft_logger()
-    metrics = logger.get_performance_metrics()
-    
+    metrics = logger._get_performance_metrics()
+
     # Validate against configuration thresholds
     monitor = ConfigurablePerformanceMonitor(logging_config)
     return monitor.validate_logging_performance(metrics)
@@ -419,29 +420,30 @@ def setup_hft_system_with_logging() -> None:
 ```
 
 ### Performance Monitoring Integration
+
 ```python
 async def monitor_hft_logging_performance() -> None:
     """Monitor HFT logging performance using configuration thresholds."""
     from src.config.config_manager import get_config
-    
+
     config = get_config()
     logging_config = config.get_logging_config()
-    
+
     monitor = ConfigurablePerformanceMonitor(logging_config)
     logger = get_exchange_logger_with_config('system', 'performance')
-    
+
     while True:
         # Get current performance metrics
         hft_logger = get_hft_logger()
-        metrics = hft_logger.get_performance_metrics()
-        
+        metrics = hft_logger._get_performance_metrics()
+
         # Validate against configuration
         is_compliant = monitor.validate_logging_performance(metrics)
-        
+
         logger.metric("logging_performance_compliant", 1 if is_compliant else 0)
         logger.metric("logging_latency_us", metrics.avg_latency_us)
         logger.metric("logging_throughput_msgs_per_sec", metrics.throughput_msgs_per_sec)
-        
+
         await asyncio.sleep(10)  # Check every 10 seconds
 ```
 

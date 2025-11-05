@@ -14,8 +14,15 @@ import logging
 from dataclasses import dataclass, field
 
 from trading.strategies.base.strategy_signal_interface import StrategySignalInterface
-from trading.analysis.signal_types import Signal
+from trading.signals.types.signal_types import Signal
+from trading.signals.types.performance_metrics import PerformanceMetrics
+from exchanges.structs.enums import ExchangeEnum, Side
 
+@dataclass
+class TradeEntry:
+    side: Side
+    entry_price: float
+    exit_price: Optional[float]
 
 @dataclass
 class Position:
@@ -25,10 +32,11 @@ class Position:
     entry_signal: Signal
     entry_data: Dict[str, Any]
     position_size_usd: float
-    entry_prices: Dict[str, float]  # e.g., {'mexc': 0.054, 'gateio': 0.053}
+    entries: Dict[ExchangeEnum, TradeEntry]  # e.g., {ExchangeEnum.MEXC: TradeEntry(...)}
     unrealized_pnl_usd: float = 0.0
     unrealized_pnl_pct: float = 0.0
     hold_time_minutes: float = 0.0
+
 
 
 @dataclass
@@ -40,8 +48,8 @@ class Trade:
     entry_signal: Signal
     exit_signal: Signal
     position_size_usd: float
-    entry_prices: Dict[str, float]
-    exit_prices: Dict[str, float]
+    entries: Dict[ExchangeEnum, TradeEntry]  # Entry side trades
+    exits: Dict[ExchangeEnum, TradeEntry]    # Exit side trades
     pnl_usd: float
     pnl_pct: float
     hold_time_minutes: float
@@ -136,9 +144,9 @@ class BaseStrategySignal(StrategySignalInterface):
         if isinstance(data, pd.DataFrame):
             # Required columns for DataFrame
             required_columns = [
-                'MEXC_SPOT_bid_price', 'MEXC_SPOT_ask_price',
-                'GATEIO_SPOT_bid_price', 'GATEIO_SPOT_ask_price',
-                'GATEIO_FUTURES_bid_price', 'GATEIO_FUTURES_ask_price'
+                'MEXC_SPOT:bid_price', 'MEXC_SPOT:ask_price',
+                'GATEIO_SPOT:bid_price', 'GATEIO_SPOT:ask_price',
+                'GATEIO_FUTURES:bid_price', 'GATEIO_FUTURES:ask_price'
             ]
             return all(col in data.columns for col in required_columns)
         else:
@@ -153,17 +161,6 @@ class BaseStrategySignal(StrategySignalInterface):
     def get_required_lookback(self) -> int:
         """Get the minimum lookback period required."""
         return self.lookback_periods
-    
-    def get_strategy_params(self) -> Dict[str, Any]:
-        """Get current strategy parameters."""
-        return {
-            'strategy_type': self.strategy_type,
-            'lookback_periods': self.lookback_periods,
-            'min_history': self.min_history,
-            'position_size_usd': self.position_size_usd,
-            'total_fees': self.total_fees,
-            **self.params
-        }
     
     def calculate_signal_confidence(self, indicators: Dict[str, float]) -> float:
         """
@@ -190,29 +187,24 @@ class BaseStrategySignal(StrategySignalInterface):
     
     # Internal Position Tracking Implementation
     
-    def get_performance_metrics(self) -> Dict[str, Any]:
+    def _get_performance_metrics(self) -> PerformanceMetrics:
         """
         Get comprehensive performance metrics from internal position tracking.
         
         Returns:
-            Dictionary containing complete trading performance data
+            PerformanceMetrics object containing complete trading performance data
         """
         total_trades = len(self._completed_trades)
         
+        # Initialize PerformanceMetrics with strategy type
+        metrics = PerformanceMetrics(
+            strategy_type=self.strategy_type,
+            total_positions=len(self._positions_history),
+            completed_trades=total_trades
+        )
+        
         if total_trades == 0:
-            return {
-                'completed_trades': [],
-                'total_trades': 0,
-                'total_pnl_usd': 0.0,
-                'total_pnl_pct': 0.0,
-                'win_rate': 0.0,
-                'avg_trade_duration': 0.0,
-                'current_position': self._get_current_position_dict(),
-                'max_drawdown': 0.0,
-                'sharpe_ratio': 0.0,
-                'avg_win': 0.0,
-                'avg_loss': 0.0
-            }
+            return metrics
         
         # Calculate basic metrics
         total_pnl_usd = sum(trade.pnl_usd for trade in self._completed_trades)
@@ -220,14 +212,15 @@ class BaseStrategySignal(StrategySignalInterface):
         
         # Win rate calculation
         winning_trades = [t for t in self._completed_trades if t.pnl_usd > 0]
-        win_rate = len(winning_trades) / total_trades * 100
+        losing_trades = [t for t in self._completed_trades if t.pnl_usd < 0]
+        win_rate = len(winning_trades) / total_trades * 100 if total_trades > 0 else 0.0
         
         # Average trade duration
         avg_duration = sum(trade.hold_time_minutes for trade in self._completed_trades) / total_trades
         
         # Additional metrics
-        wins = [t.pnl_usd for t in self._completed_trades if t.pnl_usd > 0]
-        losses = [t.pnl_usd for t in self._completed_trades if t.pnl_usd < 0]
+        wins = [t.pnl_usd for t in winning_trades]
+        losses = [abs(t.pnl_usd) for t in losing_trades]  # Use absolute values for avg_loss
         
         avg_win = sum(wins) / len(wins) if wins else 0.0
         avg_loss = sum(losses) / len(losses) if losses else 0.0
@@ -249,19 +242,42 @@ class BaseStrategySignal(StrategySignalInterface):
                 if drawdown > max_drawdown:
                     max_drawdown = drawdown
         
-        return {
-            'completed_trades': [self._trade_to_dict(t) for t in self._completed_trades],
-            'total_trades': total_trades,
-            'total_pnl_usd': total_pnl_usd,
-            'total_pnl_pct': total_pnl_pct,
-            'win_rate': win_rate,
-            'avg_trade_duration': avg_duration,
-            'current_position': self._get_current_position_dict(),
-            'max_drawdown': max_drawdown,
-            'sharpe_ratio': self._calculate_sharpe_ratio(),
-            'avg_win': avg_win,
-            'avg_loss': avg_loss
-        }
+        # Calculate profit factor
+        total_wins = sum(wins) if wins else 0.0
+        total_losses = sum(losses) if losses else 0.0
+        profit_factor = total_wins / total_losses if total_losses > 0 else 0.0
+        
+        # Calculate min/max hold times
+        hold_times = [trade.hold_time_minutes for trade in self._completed_trades]
+        min_hold_time = min(hold_times) if hold_times else 0.0
+        max_hold_time = max(hold_times) if hold_times else 0.0
+        
+        # Update metrics object
+        metrics.total_pnl_usd = total_pnl_usd
+        metrics.total_pnl_pct = total_pnl_pct
+        metrics.realized_pnl_usd = total_pnl_usd  # All completed trades are realized
+        metrics.realized_pnl_pct = total_pnl_pct
+        metrics.win_rate = win_rate
+        metrics.avg_win_usd = avg_win
+        metrics.avg_loss_usd = avg_loss
+        metrics.profit_factor = profit_factor
+        metrics.avg_hold_time_minutes = avg_duration
+        metrics.min_hold_time_minutes = min_hold_time
+        metrics.max_hold_time_minutes = max_hold_time
+        metrics.max_drawdown_usd = max_drawdown
+        metrics.sharpe_ratio = self._calculate_sharpe_ratio()
+        
+        # Include open positions if any
+        if self._current_position:
+            metrics.open_positions = 1
+            # Add current position's unrealized P&L if available
+            metrics.unrealized_pnl_usd = self._current_position.unrealized_pnl_usd
+        
+        # Use the update_pnl_metrics method to ensure proper calculation
+        # Convert Trade objects to compatible format for the method
+        metrics.update_pnl_metrics(self._completed_trades)
+        
+        return metrics
     
     def reset_position_tracking(self) -> None:
         """
@@ -273,8 +289,20 @@ class BaseStrategySignal(StrategySignalInterface):
         self._completed_trades.clear()
         self._positions_history.clear()
         self.logger.info(f"Position tracking reset for {self.strategy_type}")
-    
-    def _track_positions_internally(self, df_with_signals: pd.DataFrame) -> None:
+
+    def _apply_signal_to_backtest(self, df: pd.DataFrame, **params) -> pd.DataFrame:
+        raise NotImplementedError("Should be implemented in inheriting class")
+
+
+
+    def backtest(self, df: pd.DataFrame, **params) -> PerformanceMetrics:
+        df = self._apply_signal_to_backtest(df, **params)
+
+        self._emulate_trading(df)
+
+        return self._get_performance_metrics()
+
+    def _emulate_trading(self, df_with_signals: pd.DataFrame) -> None:
         """
         Internal vectorized position tracking for backtesting.
         
@@ -308,34 +336,45 @@ class BaseStrategySignal(StrategySignalInterface):
             
             # Process signal
             if signal == Signal.ENTER and self._current_position is None:
-                self._internal_open_position(signal, market_data, current_time)
+                self._open_position(signal, row, current_time)
             elif signal == Signal.EXIT and self._current_position is not None:
-                self._internal_close_position(signal, market_data, current_time)
+                self._close_position(signal, row, current_time)
     
-    def _internal_open_position(self, signal: Signal, market_data: Dict[str, Any], timestamp: datetime) -> None:
+    def _open_position(self, signal: Signal, row: pd.Series, timestamp: datetime) -> None:
         """
         Internal position opening with timestamp tracking.
         
         Args:
             signal: ENTER signal
-            market_data: Market data snapshot
+            row: Market data snapshot
             timestamp: Position entry timestamp
         """
         # Calculate entry prices using strategy-specific logic
-        entry_prices = self._calculate_entry_prices(market_data)
+        entry_prices = self._calculate_entry_prices(row)
         
         if not entry_prices:
             self.logger.warning(f"Could not calculate entry prices for {self.strategy_type}")
             return
+        
+        # Create TradeEntry objects for each exchange
+        trade_entries = {}
+        for exchange, price in entry_prices.items():
+            # Determine side based on strategy logic (default: BUY for entry)
+            side = self._determine_entry_side(exchange, row)
+            trade_entries[exchange] = TradeEntry(
+                side=side,
+                entry_price=price,
+                exit_price=None
+            )
         
         # Create position
         position = Position(
             entry_time=timestamp,
             strategy_type=self.strategy_type,
             entry_signal=signal,
-            entry_data=market_data.copy(),
+            entry_data=row.copy(),
             position_size_usd=self.position_size_usd,
-            entry_prices=entry_prices
+            entries=trade_entries
         )
         
         self._current_position = position
@@ -343,29 +382,41 @@ class BaseStrategySignal(StrategySignalInterface):
         
         self.logger.debug(f"Position opened at {timestamp}: {entry_prices}")
     
-    def _internal_close_position(self, signal: Signal, market_data: Dict[str, Any], timestamp: datetime) -> None:
+    def _close_position(self, signal: Signal, row: pd.Series, timestamp: datetime) -> None:
         """
         Internal position closing with P&L calculation.
         
         Args:
             signal: EXIT signal
-            market_data: Market data snapshot
+            row: Market data snapshot
             timestamp: Position exit timestamp
         """
         if not self._current_position:
             return
         
         # Calculate exit prices using strategy-specific logic
-        exit_prices = self._calculate_exit_prices(market_data)
+        exit_prices = self._calculate_exit_prices(row)
         
         if not exit_prices:
             self.logger.warning(f"Could not calculate exit prices for {self.strategy_type}")
             return
         
+        # Create TradeEntry objects for exits
+        exit_entries = {}
+        for exchange, price in exit_prices.items():
+            # Determine exit side (opposite of entry side)
+            entry_side = self._current_position.entries[exchange].side if exchange in self._current_position.entries else Side.BUY
+            exit_side = Side.SELL if entry_side == Side.BUY else Side.BUY
+            exit_entries[exchange] = TradeEntry(
+                side=exit_side,
+                entry_price=price,  # For exits, this is the exit price
+                exit_price=None
+            )
+        
         # Calculate P&L using strategy-specific logic
-        pnl_usd, pnl_pct = self._calculate_pnl(
-            self._current_position.entry_prices,
-            exit_prices,
+        pnl_usd, pnl_pct = self._calculate_pnl_from_entries(
+            self._current_position.entries,
+            exit_entries,
             self._current_position.position_size_usd
         )
         
@@ -380,13 +431,13 @@ class BaseStrategySignal(StrategySignalInterface):
             entry_signal=self._current_position.entry_signal,
             exit_signal=signal,
             position_size_usd=self._current_position.position_size_usd,
-            entry_prices=self._current_position.entry_prices.copy(),
-            exit_prices=exit_prices,
+            entries=self._current_position.entries.copy(),
+            exits=exit_entries,
             pnl_usd=pnl_usd,
             pnl_pct=pnl_pct,
             hold_time_minutes=hold_time,
             entry_data=self._current_position.entry_data.copy(),
-            exit_data=market_data.copy()
+            exit_data=row.copy()
         )
         
         self._completed_trades.append(trade)
@@ -394,7 +445,34 @@ class BaseStrategySignal(StrategySignalInterface):
         
         self.logger.debug(f"Position closed at {timestamp}: P&L = ${pnl_usd:.2f} ({pnl_pct:.3f}%)")
     
-    def _calculate_entry_prices(self, market_data: Dict[str, Any]) -> Dict[str, float]:
+    def _determine_entry_side(self, exchange: ExchangeEnum, market_data: Dict[str, Any]) -> Side:
+        """
+        Determine the trading side for entry on a specific exchange.
+        
+        Default implementation - should be overridden by specific strategies.
+        
+        Args:
+            exchange: Exchange enum
+            market_data: Current market data snapshot
+            
+        Returns:
+            Side enum (BUY or SELL)
+        """
+        # Default strategy: BUY on cheaper exchange, SELL on expensive exchange
+        mexc_spot_ask_price = market_data.get('MEXC_SPOT:ask_price', 0)
+        gateio_spot_bid_price = market_data.get('GATEIO_SPOT:bid_price', 0)
+        
+        if exchange == ExchangeEnum.MEXC:
+            # Default: BUY on MEXC if it's cheaper
+            return Side.BUY if mexc_spot_ask_price < gateio_spot_bid_price else Side.SELL
+        elif exchange == ExchangeEnum.GATEIO:
+            # Default: SELL on GATEIO if MEXC is cheaper
+            return Side.SELL if mexc_spot_ask_price < gateio_spot_bid_price else Side.BUY
+        else:
+            # Default for futures or other exchanges
+            return Side.BUY
+    
+    def _calculate_entry_prices(self, market_data: Dict[str, Any]) -> Dict[ExchangeEnum, float]:
         """
         Calculate entry prices from market data.
         
@@ -404,22 +482,25 @@ class BaseStrategySignal(StrategySignalInterface):
             market_data: Current market data snapshot
             
         Returns:
-            Dictionary of entry prices by exchange/instrument
+            Dictionary of entry prices by exchange using ExchangeEnum keys
         """
         entry_prices = {}
         
-        # Extract standard price fields with fallbacks
-        mexc_ask = market_data.get('mexc_ask', market_data.get('MEXC_SPOT_ask_price', 0))
-        gateio_bid = market_data.get('gateio_bid', market_data.get('GATEIO_SPOT_bid_price', 0))
+        # Extract standard price fields
+        mexc_spot_ask_price = market_data.get('MEXC_SPOT:ask_price', 0)
+        gateio_spot_bid_price = market_data.get('GATEIO_SPOT:bid_price', 0)
+        gateio_futures_bid_price = market_data.get('GATEIO_FUTURES:bid_price', 0)
         
-        if mexc_ask > 0:
-            entry_prices['mexc'] = mexc_ask
-        if gateio_bid > 0:
-            entry_prices['gateio'] = gateio_bid
+        if mexc_spot_ask_price > 0:
+            entry_prices[ExchangeEnum.MEXC] = mexc_spot_ask_price
+        if gateio_spot_bid_price > 0:
+            entry_prices[ExchangeEnum.GATEIO] = gateio_spot_bid_price
+        if gateio_futures_bid_price > 0:
+            entry_prices[ExchangeEnum.GATEIO_FUTURES] = gateio_futures_bid_price
             
         return entry_prices
     
-    def _calculate_exit_prices(self, market_data: Dict[str, Any]) -> Dict[str, float]:
+    def _calculate_exit_prices(self, market_data: Dict[str, Any]) -> Dict[ExchangeEnum, float]:
         """
         Calculate exit prices from market data.
         
@@ -429,99 +510,107 @@ class BaseStrategySignal(StrategySignalInterface):
             market_data: Current market data snapshot
             
         Returns:
-            Dictionary of exit prices by exchange/instrument
+            Dictionary of exit prices by exchange using ExchangeEnum keys
         """
         exit_prices = {}
         
-        # Extract standard price fields with fallbacks
-        mexc_bid = market_data.get('mexc_bid', market_data.get('MEXC_SPOT_bid_price', 0))
-        gateio_ask = market_data.get('gateio_ask', market_data.get('GATEIO_SPOT_ask_price', 0))
+        # Extract standard price fields
+        mexc_spot_bid_price = market_data.get('MEXC_SPOT:bid_price', 0)
+        gateio_spot_ask_price = market_data.get('GATEIO_SPOT:ask_price', 0)
+        gateio_futures_ask_price = market_data.get('GATEIO_FUTURES:ask_price', 0)
         
-        if mexc_bid > 0:
-            exit_prices['mexc'] = mexc_bid
-        if gateio_ask > 0:
-            exit_prices['gateio'] = gateio_ask
+        if mexc_spot_bid_price > 0:
+            exit_prices[ExchangeEnum.MEXC] = mexc_spot_bid_price
+        if gateio_spot_ask_price > 0:
+            exit_prices[ExchangeEnum.GATEIO] = gateio_spot_ask_price
+        if gateio_futures_ask_price > 0:
+            exit_prices[ExchangeEnum.GATEIO_FUTURES] = gateio_futures_ask_price
             
         return exit_prices
     
-    def _calculate_pnl(self, entry_prices: Dict[str, float], exit_prices: Dict[str, float], position_size_usd: float) -> Tuple[float, float]:
+    def _calculate_pnl_from_entries(self, entry_trades: Dict[ExchangeEnum, TradeEntry], exit_trades: Dict[ExchangeEnum, TradeEntry], position_size_usd: float) -> Tuple[float, float]:
         """
-        Calculate P&L for the trade.
+        Calculate P&L for the trade using TradeEntry objects.
         
         Default implementation for cross-exchange arbitrage.
         Should be overridden by specific strategies.
         
         Args:
-            entry_prices: Entry prices by exchange
-            exit_prices: Exit prices by exchange
+            entry_trades: Entry TradeEntry objects by exchange
+            exit_trades: Exit TradeEntry objects by exchange
+            position_size_usd: Position size in USD
+            
+        Returns:
+            Tuple of (pnl_usd, pnl_pct)
+        """
+        total_pnl_usd = 0.0
+        
+        # Calculate P&L for each exchange leg
+        for exchange in entry_trades.keys():
+            if exchange not in exit_trades:
+                continue
+                
+            entry_trade = entry_trades[exchange]
+            exit_trade = exit_trades[exchange]
+            
+            entry_price = entry_trade.entry_price
+            exit_price = exit_trade.entry_price  # For exits, entry_price holds the exit price
+            
+            if not entry_price or not exit_price:
+                continue
+            
+            # Calculate P&L based on side
+            if entry_trade.side == Side.BUY:
+                # Bought at entry, sell at exit
+                pnl_per_unit = exit_price - entry_price
+            else:
+                # Sold at entry, buy back at exit
+                pnl_per_unit = entry_price - exit_price
+            
+            # Calculate position units (simplified)
+            units = position_size_usd / (2 * entry_price)  # Divide by 2 for dual-leg arbitrage
+            exchange_pnl = pnl_per_unit * units
+            total_pnl_usd += exchange_pnl
+        
+        # Subtract fees
+        total_pnl_usd -= (position_size_usd * self.total_fees)
+        total_pnl_pct = total_pnl_usd / position_size_usd * 100 if position_size_usd > 0 else 0
+        
+        return total_pnl_usd, total_pnl_pct
+    
+    def _calculate_pnl(self, entry_prices: Dict[ExchangeEnum, float], exit_prices: Dict[ExchangeEnum, float], position_size_usd: float) -> Tuple[float, float]:
+        """
+        Calculate P&L for the trade (legacy method for backward compatibility).
+        
+        Default implementation for cross-exchange arbitrage.
+        Should be overridden by specific strategies.
+        
+        Args:
+            entry_prices: Entry prices by exchange using ExchangeEnum keys
+            exit_prices: Exit prices by exchange using ExchangeEnum keys
             position_size_usd: Position size in USD
             
         Returns:
             Tuple of (pnl_usd, pnl_pct)
         """
         # Default cross-exchange arbitrage P&L calculation
-        mexc_entry = entry_prices.get('mexc', 0)
-        mexc_exit = exit_prices.get('mexc', 0)
-        gateio_entry = entry_prices.get('gateio', 0)
-        gateio_exit = exit_prices.get('gateio', 0)
+        MEXC_entry_price = entry_prices.get(ExchangeEnum.MEXC, 0)
+        MEXC_exit_price = exit_prices.get(ExchangeEnum.MEXC, 0)
+        GATEIO_entry_price = entry_prices.get(ExchangeEnum.GATEIO, 0)
+        GATEIO_exit_price = exit_prices.get(ExchangeEnum.GATEIO, 0)
         
-        if not all([mexc_entry, mexc_exit, gateio_entry, gateio_exit]):
+        if not all([MEXC_entry_price, MEXC_exit_price, GATEIO_entry_price, GATEIO_exit_price]):
             return 0.0, 0.0
         
         # Calculate P&L for each leg
-        mexc_pnl = (mexc_exit - mexc_entry) / mexc_entry * position_size_usd
-        gateio_pnl = (gateio_entry - gateio_exit) / gateio_entry * position_size_usd
+        MEXC_pnl = (MEXC_exit_price - MEXC_entry_price) / MEXC_entry_price * position_size_usd
+        GATEIO_pnl = (GATEIO_entry_price - GATEIO_exit_price) / GATEIO_entry_price * position_size_usd
         
         # Total P&L minus fees
-        total_pnl_usd = mexc_pnl + gateio_pnl - (position_size_usd * self.total_fees)
+        total_pnl_usd = MEXC_pnl + GATEIO_pnl - (position_size_usd * self.total_fees)
         total_pnl_pct = total_pnl_usd / position_size_usd * 100
         
         return total_pnl_usd, total_pnl_pct
-    
-    def _get_current_position_dict(self) -> Optional[Dict[str, Any]]:
-        """
-        Get current position as dictionary.
-        
-        Returns:
-            Position dictionary or None if no current position
-        """
-        if not self._current_position:
-            return None
-        
-        return {
-            'entry_time': self._current_position.entry_time.isoformat(),
-            'strategy_type': self._current_position.strategy_type,
-            'entry_signal': self._current_position.entry_signal.value,
-            'position_size_usd': self._current_position.position_size_usd,
-            'entry_prices': self._current_position.entry_prices.copy(),
-            'unrealized_pnl_usd': self._current_position.unrealized_pnl_usd,
-            'unrealized_pnl_pct': self._current_position.unrealized_pnl_pct,
-            'hold_time_minutes': self._current_position.hold_time_minutes
-        }
-    
-    def _trade_to_dict(self, trade: Trade) -> Dict[str, Any]:
-        """
-        Convert Trade object to dictionary.
-        
-        Args:
-            trade: Trade object
-            
-        Returns:
-            Trade dictionary
-        """
-        return {
-            'entry_time': trade.entry_time.isoformat(),
-            'exit_time': trade.exit_time.isoformat(),
-            'strategy_type': trade.strategy_type,
-            'entry_signal': trade.entry_signal.value,
-            'exit_signal': trade.exit_signal.value,
-            'position_size_usd': trade.position_size_usd,
-            'entry_prices': trade.entry_prices.copy(),
-            'exit_prices': trade.exit_prices.copy(),
-            'pnl_usd': trade.pnl_usd,
-            'pnl_pct': trade.pnl_pct,
-            'hold_time_minutes': trade.hold_time_minutes
-        }
     
     def _calculate_sharpe_ratio(self) -> float:
         """
@@ -556,19 +645,19 @@ class BaseStrategySignal(StrategySignalInterface):
             DataFrame with added indicator columns
         """
         # Calculate spreads
-        df['mexc_spread'] = (df['MEXC_SPOT_ask_price'] - df['MEXC_SPOT_bid_price']) / df['MEXC_SPOT_ask_price'] * 100
-        df['gateio_spot_spread'] = (df['GATEIO_SPOT_ask_price'] - df['GATEIO_SPOT_bid_price']) / df['GATEIO_SPOT_ask_price'] * 100
-        df['gateio_futures_spread'] = (df['GATEIO_FUTURES_ask_price'] - df['GATEIO_FUTURES_bid_price']) / df['GATEIO_FUTURES_ask_price'] * 100
+        df['MEXC_SPOT:spread'] = (df['MEXC_SPOT:ask_price'] - df['MEXC_SPOT:bid_price']) / df['MEXC_SPOT:ask_price'] * 100
+        df['GATEIO_SPOT:spread'] = (df['GATEIO_SPOT:ask_price'] - df['GATEIO_SPOT:bid_price']) / df['GATEIO_SPOT:ask_price'] * 100
+        df['GATEIO_FUTURES:spread'] = (df['GATEIO_FUTURES:ask_price'] - df['GATEIO_FUTURES:bid_price']) / df['GATEIO_FUTURES:ask_price'] * 100
         
         # Calculate cross-exchange spreads
         df['mexc_vs_gateio_futures'] = (
-            (df['MEXC_SPOT_bid_price'] - df['GATEIO_FUTURES_ask_price']) / 
-            df['MEXC_SPOT_bid_price'] * 100
+            (df['MEXC_SPOT:bid_price'] - df['GATEIO_FUTURES:ask_price']) / 
+            df['MEXC_SPOT:bid_price'] * 100
         )
         
         df['gateio_spot_vs_futures'] = (
-            (df['GATEIO_SPOT_bid_price'] - df['GATEIO_FUTURES_ask_price']) / 
-            df['GATEIO_SPOT_bid_price'] * 100
+            (df['GATEIO_SPOT:bid_price'] - df['GATEIO_FUTURES:ask_price']) / 
+            df['GATEIO_SPOT:bid_price'] * 100
         )
         
         # Calculate rolling statistics
@@ -654,56 +743,29 @@ class BaseStrategySignal(StrategySignalInterface):
         """
         spreads = {}
         
-        # Extract prices with fallbacks
-        mexc_bid = market_data.get('mexc_bid', market_data.get('MEXC_SPOT_bid_price', 0))
-        mexc_ask = market_data.get('mexc_ask', market_data.get('MEXC_SPOT_ask_price', 0))
-        gateio_spot_bid = market_data.get('gateio_spot_bid', market_data.get('GATEIO_SPOT_bid_price', 0))
-        gateio_spot_ask = market_data.get('gateio_spot_ask', market_data.get('GATEIO_SPOT_ask_price', 0))
-        gateio_futures_bid = market_data.get('gateio_futures_bid', market_data.get('GATEIO_FUTURES_bid_price', 0))
-        gateio_futures_ask = market_data.get('gateio_futures_ask', market_data.get('GATEIO_FUTURES_ask_price', 0))
+        # Extract prices
+        mexc_spot_bid_price = market_data.get('MEXC_SPOT:bid_price', 0)
+        mexc_spot_ask_price = market_data.get('MEXC_SPOT:ask_price', 0)
+        gateio_spot_bid_price = market_data.get('GATEIO_SPOT:bid_price', 0)
+        gateio_spot_ask_price = market_data.get('GATEIO_SPOT:ask_price', 0)
+        gateio_futures_bid_price = market_data.get('GATEIO_FUTURES:bid_price', 0)
+        gateio_futures_ask_price = market_data.get('GATEIO_FUTURES:ask_price', 0)
         
         # Calculate spreads
-        if mexc_bid > 0 and gateio_futures_ask > 0:
-            spreads['mexc_vs_gateio_futures'] = (mexc_bid - gateio_futures_ask) / mexc_bid * 100
+        if mexc_spot_bid_price > 0 and gateio_futures_ask_price > 0:
+            spreads['mexc_vs_gateio_futures'] = (mexc_spot_bid_price - gateio_futures_ask_price) / mexc_spot_bid_price * 100
         
-        if gateio_spot_bid > 0 and gateio_futures_ask > 0:
-            spreads['gateio_spot_vs_futures'] = (gateio_spot_bid - gateio_futures_ask) / gateio_spot_bid * 100
+        if gateio_spot_bid_price > 0 and gateio_futures_ask_price > 0:
+            spreads['gateio_spot_vs_futures'] = (gateio_spot_bid_price - gateio_futures_ask_price) / gateio_spot_bid_price * 100
         
         # Calculate execution spreads
-        if mexc_ask > 0 and mexc_bid > 0:
-            spreads['mexc_spread'] = (mexc_ask - mexc_bid) / mexc_ask * 100
+        if mexc_spot_ask_price > 0 and mexc_spot_bid_price > 0:
+            spreads['MEXC_SPOT:spread'] = (mexc_spot_ask_price - mexc_spot_bid_price) / mexc_spot_ask_price * 100
         
-        if gateio_spot_ask > 0 and gateio_spot_bid > 0:
-            spreads['gateio_spot_spread'] = (gateio_spot_ask - gateio_spot_bid) / gateio_spot_ask * 100
+        if gateio_spot_ask_price > 0 and gateio_spot_bid_price > 0:
+            spreads['GATEIO_SPOT:spread'] = (gateio_spot_ask_price - gateio_spot_bid_price) / gateio_spot_ask_price * 100
         
-        if gateio_futures_ask > 0 and gateio_futures_bid > 0:
-            spreads['gateio_futures_spread'] = (gateio_futures_ask - gateio_futures_bid) / gateio_futures_ask * 100
+        if gateio_futures_ask_price > 0 and gateio_futures_bid_price > 0:
+            spreads['GATEIO_FUTURES:spread'] = (gateio_futures_ask_price - gateio_futures_bid_price) / gateio_futures_ask_price * 100
         
         return spreads
-    
-    # Default implementations of new interface methods
-    # These should be overridden by specific strategy implementations
-    
-    def open_position(self, signal: Signal, market_data: Dict[str, Any]) -> None:
-        """
-        Default open_position implementation.
-        
-        This should be overridden by specific strategy implementations.
-        """
-        if signal != Signal.ENTER:
-            return
-            
-        timestamp = datetime.now(timezone.utc)
-        self._internal_open_position(signal, market_data, timestamp)
-    
-    def close_position(self, signal: Signal, market_data: Dict[str, Any]) -> None:
-        """
-        Default close_position implementation.
-        
-        This should be overridden by specific strategy implementations.
-        """
-        if signal != Signal.EXIT:
-            return
-            
-        timestamp = datetime.now(timezone.utc)
-        self._internal_close_position(signal, market_data, timestamp)

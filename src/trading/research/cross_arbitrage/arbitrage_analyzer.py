@@ -15,8 +15,6 @@ Usage:
 import asyncio
 import pandas as pd
 import numpy as np
-from datetime import datetime, timedelta
-from pathlib import Path
 from typing import Dict, Any, Tuple, Optional, List, Union
 import sys
 import os
@@ -26,9 +24,9 @@ from db import initialize_database_manager, get_database_manager
 # Add src to path for imports
 sys.path.append(os.path.join(os.path.dirname(__file__), '..', '..'))
 
-from trading.research.cross_arbitrage.book_ticker_source import CandlesBookTickerSource, BookTickerDbSource
+from trading.data_sources.book_ticker.book_ticker_source import CandlesBookTickerSource, BookTickerDbSource
 from exchanges.structs.enums import ExchangeEnum, KlineInterval
-from exchanges.structs import Symbol, AssetName
+from exchanges.structs import Symbol
 from trading.analysis.arbitrage_signals import calculate_arb_signals
 
 

@@ -17,17 +17,16 @@ Key Features:
 import pandas as pd
 import numpy as np
 import time
-from datetime import datetime, timezone, timedelta
-from typing import List, Dict, Any, Tuple, Optional
+from datetime import datetime
+from typing import List, Dict, Any, Optional
 
-from exchanges.structs import Symbol, AssetName
+from exchanges.structs import Symbol
 from ..types.signal_types import Signal
 
 # Import strategy signal architecture
-from ..base.strategy_signal_factory import create_strategy_signal, normalize_strategy_type
+from trading.strategies.base.strategy_signal_factory import create_strategy_signal, normalize_strategy_type
 
 # Ensure strategy registrations are loaded
-from .. import registry
 
 
 class VectorizedStrategyBacktester:
@@ -211,10 +210,7 @@ class VectorizedStrategyBacktester:
             await strategy.preload(df, **params)
             
             # Apply signals to backtest data (includes internal position tracking)
-            df_with_signals = strategy.apply_signal_to_backtest(df, **params)
-            
-            # Get performance metrics from internal strategy tracking
-            performance_metrics = strategy.get_performance_metrics()
+            performance_metrics = strategy.backtest(df, **params)
             
             # Extract trades and performance data
             trades = performance_metrics.get('completed_trades', [])
@@ -287,7 +283,7 @@ class VectorizedStrategyBacktester:
                 return await self.data_source.get_data(symbol, days, start_date)
         
         # Default fallback: Use BookTickerDbSource
-        from trading.research.cross_arbitrage.book_ticker_source import BookTickerDbSource
+        from trading.data_sources.book_ticker.book_ticker_source import BookTickerDbSource
         from exchanges.structs.enums import ExchangeEnum
         
         print(f"🔄 No data source configured, using default BookTickerDbSource for {symbol}")
@@ -299,11 +295,11 @@ class VectorizedStrategyBacktester:
     def _create_default_data_source(self):
         """Create default data source based on configuration."""
         if self.use_db_book_tickers:
-            from trading.research.cross_arbitrage.book_ticker_source import BookTickerDbSource
+            from trading.data_sources.book_ticker.book_ticker_source import BookTickerDbSource
             self.data_source = BookTickerDbSource()
             print("📊 Auto-configured BookTickerDbSource for real data loading")
         else:
-            from trading.research.cross_arbitrage.book_ticker_source import CandlesBookTickerSource
+            from trading.data_sources.book_ticker.book_ticker_source import CandlesBookTickerSource
             self.data_source = CandlesBookTickerSource()
             print("📊 Auto-configured CandlesBookTickerSource for candle-based data loading")
 

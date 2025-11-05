@@ -8,10 +8,9 @@ Provides unified interface for both real-time trading and backtesting operations
 from abc import ABC, abstractmethod
 from typing import Dict, Any, Optional, Union, Tuple
 import pandas as pd
-import numpy as np
-from datetime import datetime
 
-from trading.analysis.signal_types import Signal
+from trading.signals.types import PerformanceMetrics
+from trading.signals.types.signal_types import Signal
 
 
 class StrategySignalInterface(ABC):
@@ -53,9 +52,10 @@ class StrategySignalInterface(ABC):
             Tuple of (Signal, confidence_score)
         """
         pass
-    
+
+
     @abstractmethod
-    def apply_signal_to_backtest(self, df: pd.DataFrame, **params) -> pd.DataFrame:
+    def backtest(self, df: pd.DataFrame, **params) -> PerformanceMetrics:
         """
         Apply strategy signals to historical data for backtesting.
         
@@ -70,33 +70,7 @@ class StrategySignalInterface(ABC):
         """
         pass
     
-    @abstractmethod
-    def open_position(self, signal: Signal, market_data: Dict[str, Any]) -> None:
-        """
-        Open a new position based on signal and market data.
-        
-        Internal position tracking handles entry prices, sizes, and state management.
-        Position details are stored internally and managed by the strategy.
-        
-        Args:
-            signal: Trading signal (ENTER)
-            market_data: Current market data snapshot
-        """
-        pass
-    
-    @abstractmethod
-    def close_position(self, signal: Signal, market_data: Dict[str, Any]) -> None:
-        """
-        Close current position and record trade details.
-        
-        Internal position tracking handles exit prices, P&L calculation, and trade recording.
-        Trade details are stored internally and accessible via get_performance_metrics().
-        
-        Args:
-            signal: Trading signal (EXIT)
-            market_data: Current market data snapshot
-        """
-        pass
+
     
     @abstractmethod
     def update_indicators(self, new_data: Union[Dict[str, Any], pd.DataFrame]) -> None:
@@ -121,16 +95,7 @@ class StrategySignalInterface(ABC):
         """
         pass
     
-    @abstractmethod
-    def get_strategy_params(self) -> Dict[str, Any]:
-        """
-        Get current strategy parameters.
-        
-        Returns:
-            Dictionary of strategy configuration parameters
-        """
-        pass
-    
+
     @abstractmethod
     def validate_market_data(self, data: Union[Dict[str, Any], pd.DataFrame]) -> bool:
         """
@@ -157,23 +122,7 @@ class StrategySignalInterface(ABC):
         """
         pass
     
-    @abstractmethod
-    def get_performance_metrics(self) -> Dict[str, Any]:
-        """
-        Get comprehensive performance metrics from internal position tracking.
-        
-        Returns:
-            Dictionary containing:
-            - completed_trades: List of completed trade details
-            - total_trades: Number of completed trades
-            - total_pnl_usd: Total P&L in USD
-            - total_pnl_pct: Total P&L as percentage
-            - win_rate: Percentage of profitable trades
-            - avg_trade_duration: Average holding time
-            - current_position: Current position details (if any)
-        """
-        pass
-    
+
     @abstractmethod
     def reset_position_tracking(self) -> None:
         """

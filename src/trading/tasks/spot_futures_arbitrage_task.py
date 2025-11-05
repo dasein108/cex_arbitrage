@@ -27,7 +27,8 @@ from trading.tasks.arbitrage_task_context import (
 from exchanges.structs import Symbol, Side, ExchangeEnum, Order
 from infrastructure.logging import HFTLoggerInterface, get_logger
 from utils.exchange_utils import flip_side
-from trading.analysis.arbitrage_signals import calculate_arb_signals, Signal
+from trading.analysis.arbitrage_signals import calculate_arb_signals
+from trading.signals.structs import Signal
 from trading.research.cross_arbitrage.arbitrage_analyzer import ArbitrageAnalyzer
 
 # Import existing arbitrage components

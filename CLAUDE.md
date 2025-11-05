@@ -4,7 +4,7 @@ High-level architectural overview for the ultra-high-performance CEX arbitrage e
 
 ## 🚨 Critical Development Guidelines
 
-**MANDATORY READING**: **[PROJECT_GUIDES.md](PROJECT_GUIDES.md)** contains critical development rules, patterns, and implementation requirements that must be followed to maintain system integrity.
+**MANDATORY READING**: **[PROJECT_GUIDES.md](docs/GUIDES/PROJECT_GUIDES.md)** contains critical development rules, patterns, and implementation requirements that must be followed to maintain system integrity.
 
 ## System Overview
 
@@ -269,7 +269,7 @@ The architecture is fully documented across specialized files:
 ## Quick Reference
 
 ### **Getting Started**
-1. Read **[PROJECT_GUIDES.md](PROJECT_GUIDES.md)** - Mandatory development rules
+1. Read **[PROJECT_GUIDES.md](docs/GUIDES/PROJECT_GUIDES.md)** - Mandatory development rules
 2. Review **[Unified Exchange Architecture](specs/architecture/unified-exchange-architecture.md)** - Core system design
 3. Check **[HFT Requirements Compliance](specs/performance/hft-requirements-compliance.md)** - Performance targets
 4. Follow **[LEAN Development Methodology](specs/patterns/lean-development-methodology.md)** - Development approach

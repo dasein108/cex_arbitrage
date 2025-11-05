@@ -29,7 +29,6 @@ import matplotlib.pyplot as plt
 import sys
 import os
 
-from config.config_manager import get_arbitrage_config
 from db import get_database_manager
 from exchanges.structs import Symbol, AssetName
 from exchanges.structs.enums import KlineInterval
@@ -38,7 +37,6 @@ from exchanges.structs.enums import KlineInterval
 src_path = os.path.join(os.path.dirname(__file__), 'src')
 sys.path.insert(0, src_path)
 
-from trading.analysis.structs import Signal
 from trading.research.cross_arbitrage.arbitrage_analyzer import ArbitrageAnalyzer, AnalyzerKeys
 from trading.analysis.arbitrage_signals import ArbSignal, ArbStats, Signal, calculate_arb_signals
 

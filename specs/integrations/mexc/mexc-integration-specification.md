@@ -862,25 +862,25 @@ public, private = await factory.create_exchange_pair(
 ```python
 async def mexc_market_data_example():
     """Example of MEXC market data operations."""
-    
+
     # Initialize public exchange
     mexc_public = await factory.create_public_exchange('mexc_spot', symbols)
-    
+
     # Get real-time orderbook
     orderbook = await mexc_public.get_orderbook(Symbol('BTC', 'USDT'))
     print(f"Best bid: {orderbook.bids[0].price}")
     print(f"Best ask: {orderbook.asks[0].price}")
-    
+
     # Get recent trades
     trades = await mexc_public.get_recent_trades(Symbol('BTC', 'USDT'))
     print(f"Last trade: {trades[0].price} @ {trades[0].timestamp}")
-    
+
     # Start real-time streaming
     await mexc_public.start_orderbook_stream([Symbol('BTC', 'USDT')])
     await mexc_public.start_trades_stream([Symbol('ETH', 'USDT')])
-    
+
     # Monitor performance
-    metrics = mexc_public.get_performance_metrics()
+    metrics = mexc_public._get_performance_metrics()
     print(f"Cache hit rate: {metrics['cache_hit_rate']}%")
 ```
 

@@ -240,7 +240,7 @@ pytest tests/integrations/ --live-trading
 All integrations provide consistent metrics:
 
 ```python
-metrics = exchange.get_performance_metrics()
+metrics = exchange._get_performance_metrics()
 # Returns:
 {
     'ws_connections_established': int,
@@ -337,7 +337,7 @@ logging.getLogger(f"exchanges.{exchange_name}").setLevel(logging.DEBUG)
 health_status = await check_exchange_health(exchange_name)
 
 # Get performance metrics
-metrics = exchange.get_performance_metrics()
+metrics = exchange._get_performance_metrics()
 
 # Validate integration components
 validation_results = integration_workflow.validate_integration(exchange_name)
