@@ -12,6 +12,7 @@ import numpy as np
 from datetime import datetime
 
 from ..types.signal_types import Signal
+from ..types.performance_metrics import PerformanceMetrics
 
 
 class StrategySignalInterface(ABC):
@@ -69,36 +70,26 @@ class StrategySignalInterface(ABC):
         pass
     
     @abstractmethod
-    def open_position(self, signal: Signal, market_data: Dict[str, Any], **params) -> Dict[str, Any]:
+    def open_position(self, signal: Signal, market_data: Dict[str, Any], **params) -> None:
         """
-        Calculate position opening details.
-        
-        Determines entry prices, position sizes, and risk parameters.
+        Open position with internal tracking.
         
         Args:
-            signal: Trading signal (ENTER)
+            signal: Trading signal (should be ENTER)
             market_data: Current market data
-            **params: Position sizing and risk parameters
-            
-        Returns:
-            Position details dictionary
+            **params: Additional parameters (position_size_usd, etc.)
         """
         pass
     
     @abstractmethod
-    def close_position(self, position: Dict[str, Any], market_data: Dict[str, Any], **params) -> Dict[str, Any]:
+    def close_position(self, signal: Signal, market_data: Dict[str, Any], **params) -> None:
         """
-        Calculate position closing details and P&L.
-        
-        Determines exit prices and final P&L calculations.
+        Close position with internal tracking.
         
         Args:
-            position: Current position details
+            signal: Trading signal (should be EXIT)
             market_data: Current market data
-            **params: Exit parameters
-            
-        Returns:
-            Trade closure details with P&L
+            **params: Additional parameters
         """
         pass
     
@@ -159,4 +150,19 @@ class StrategySignalInterface(ABC):
         Returns:
             Confidence score between 0.0 and 1.0
         """
+        pass
+    
+    @abstractmethod
+    def get_performance_metrics(self) -> PerformanceMetrics:
+        """
+        Get comprehensive performance metrics for this strategy.
+        
+        Returns:
+            PerformanceMetrics struct with current performance data
+        """
+        pass
+    
+    @abstractmethod
+    def reset_position_tracking(self) -> None:
+        """Reset all internal position tracking data."""
         pass

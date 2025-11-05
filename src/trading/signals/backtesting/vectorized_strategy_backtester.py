@@ -9,7 +9,7 @@ Key Features:
 - Factory Pattern: Automatic strategy instantiation and registration
 - Vectorized operations for 50x performance improvement  
 - Direct data loading with BookTickerDbSource/CandlesBookTickerSource
-- Accurate position tracking with PositionTracker
+- Internal position tracking via strategy signals
 - Performance: Sub-millisecond per-row processing
 - Auto-configuration: Smart data source selection
 """
@@ -25,7 +25,6 @@ from ..types.signal_types import Signal
 
 # Import strategy signal architecture
 from ..base.strategy_signal_factory import create_strategy_signal, normalize_strategy_type
-from .position_tracker import PositionTracker
 
 # Ensure strategy registrations are loaded
 from .. import registry
@@ -43,6 +42,7 @@ class VectorizedStrategyBacktester:
     - Performance: Sub-millisecond per-row processing (<0.004ms average)
     - Direct Implementation: No adapters, clean and simple
     - Auto Data Loading: BookTickerDbSource/CandlesBookTickerSource integration
+    - Internal Position Tracking: Strategy signals handle position management internally
     """
     
     def __init__(self, 
@@ -98,6 +98,27 @@ class VectorizedStrategyBacktester:
                 'position_size_usd': 1000.0,
                 'volatility_threshold': 0.8,
                 'profit_target': 0.5,
+                'stop_loss_pct': 1.0,
+                'take_profit_pct': 0.8,
+                'max_holding_hours': 6
+            },
+            # V2 strategies with arbitrage analyzer logic
+            'inventory_spot_v2': {
+                'position_size_usd': 1000.0,
+                'min_profit_bps': 20.0,
+                'min_execution_confidence': 0.6,
+                'safe_offset_percentile': 75.0,
+                'lookback_periods': 200,
+                'stop_loss_pct': 1.5,
+                'take_profit_pct': 1.2,
+                'max_holding_hours': 12
+            },
+            'volatility_harvesting_v2': {
+                'position_size_usd': 1000.0,
+                'min_profit_bps': 15.0,
+                'min_execution_confidence': 0.5,
+                'safe_offset_percentile': 80.0,
+                'lookback_periods': 150,
                 'stop_loss_pct': 1.0,
                 'take_profit_pct': 0.8,
                 'max_holding_hours': 6
@@ -189,31 +210,29 @@ class VectorizedStrategyBacktester:
             # Preload strategy with historical data
             await strategy.preload(df, **params)
             
-            # Apply signals to backtest data
+            # Apply signals to backtest data (includes internal position tracking)
             df_with_signals = strategy.apply_signal_to_backtest(df, **params)
             
-            # Track positions and calculate performance
-            position_tracker = PositionTracker(
-                initial_capital=self.initial_capital
-            )
+            # Get performance metrics from internal strategy tracking
+            performance_metrics = strategy.get_performance_metrics()
             
-            # Create simple strategy config for position tracker
-            strategy_config = {
-                'type': strategy_type,
-                'params': params
+            # Extract trades and performance data
+            trades = performance_metrics.get('completed_trades', [])
+            performance = {
+                'total_pnl_usd': performance_metrics.get('total_pnl_usd', 0.0),
+                'total_pnl_pct': performance_metrics.get('total_pnl_pct', 0.0),
+                'win_rate': performance_metrics.get('win_rate', 0.0),
+                'avg_trade_pnl': performance_metrics.get('total_pnl_usd', 0.0) / max(len(trades), 1),
+                'max_drawdown': performance_metrics.get('max_drawdown', 0.0),
+                'sharpe_ratio': performance_metrics.get('sharpe_ratio', 0.0)
             }
-            
-            positions, trades = position_tracker.track_positions_vectorized(df_with_signals, strategy_config)
-            
-            # Calculate performance metrics
-            performance = self._calculate_performance_metrics(trades, df_with_signals)
             
             # Count signals
             signal_distribution = df_with_signals['signal'].value_counts().to_dict()
             signal_dist_named = {
-                'ENTER': signal_distribution.get(Signal.ENTER.value, 0),
-                'EXIT': signal_distribution.get(Signal.EXIT.value, 0), 
-                'HOLD': signal_distribution.get(Signal.HOLD.value, 0)
+                'ENTER': signal_distribution.get('enter', 0),
+                'EXIT': signal_distribution.get('exit', 0), 
+                'HOLD': signal_distribution.get('hold', 0) + signal_distribution.get(Signal.HOLD.value, 0)
             }
             
             return {
@@ -227,7 +246,7 @@ class VectorizedStrategyBacktester:
                 'sharpe_ratio': performance['sharpe_ratio'],
                 'signal_distribution': signal_dist_named,
                 'final_balance': self.initial_capital + performance['total_pnl_usd'],
-                'num_positions': len(positions)
+                'current_position': performance_metrics.get('current_position')
             }
             
         except Exception as e:
@@ -291,7 +310,10 @@ class VectorizedStrategyBacktester:
     
     def _calculate_performance_metrics(self, trades: List, df: pd.DataFrame) -> Dict[str, Any]:
         """
-        Calculate performance metrics from trades.
+        DEPRECATED: Legacy performance metrics calculation.
+        
+        Performance metrics are now calculated internally by strategy signals.
+        This method is kept for backward compatibility only.
         
         Args:
             trades: List of completed trades
@@ -393,11 +415,8 @@ class VectorizedStrategyBacktester:
         
         try:
             # Load data once for all parameter combinations
-            if self.data_source:
-                df = await self._load_data_from_source_async(symbol, days)
-            else:
-                df = await self._load_default_data(symbol, days)
-            
+            df = await self._load_data_from_source_async(symbol, days)
+
             if df.empty:
                 return {
                     'error': 'No data available for optimization',
@@ -547,6 +566,30 @@ def create_default_strategy_configs() -> List[Dict[str, Any]]:
                 'mean_reversion_threshold': 1.5,
                 'position_size_usd': 1000.0,
                 'lookback_periods': 100
+            }
+        },
+        {
+            'name': 'Inventory Spot V2 (Arbitrage Logic)',
+            'type': 'inventory_spot_v2',
+            'params': {
+                'min_profit_bps': 20.0,
+                'min_execution_confidence': 0.6,
+                'safe_offset_percentile': 75.0,
+                'position_size_usd': 1000.0,
+                'lookback_periods': 200
+            }
+        },
+        {
+            'name': 'Volatility Harvesting V2 (Arbitrage Logic)',
+            'type': 'volatility_harvesting_v2',
+            'params': {
+                'volatility_threshold': 2.0,
+                'min_profit_bps': 25.0,
+                'min_execution_confidence': 0.65,
+                'volatility_window': 50,
+                'safe_offset_percentile': 80.0,
+                'position_size_usd': 1000.0,
+                'lookback_periods': 150
             }
         }
     ]

@@ -161,11 +161,14 @@ class VolatilityHarvestingStrategySignal(BaseStrategySignal):
         # Calculate confidence scores
         df['confidence'] = self._calculate_vectorized_confidence(df)
         
+        # Run internal position tracking for this backtest
+        self._track_positions_internally(df)
+        
         return df
     
-    def open_position(self, signal: Signal, market_data: Dict[str, Any], **params) -> Dict[str, Any]:
+    def open_position(self, signal: Signal, market_data: Dict[str, Any]) -> None:
         """
-        Calculate position opening details for volatility harvesting strategy.
+        Open position for volatility harvesting strategy with internal tracking.
         
         Strategy positions:
         - Dynamic position based on volatility direction
@@ -174,157 +177,26 @@ class VolatilityHarvestingStrategySignal(BaseStrategySignal):
         Args:
             signal: Trading signal (should be ENTER)
             market_data: Current market data
-            **params: Position parameters
-            
-        Returns:
-            Position details dictionary
         """
-        if signal != Signal.ENTER:
-            return {}
-        
-        spreads = self._calculate_spread_from_market_data(market_data)
-        volatility_metrics = self._calculate_volatility_metrics(spreads)
-        position_size = params.get('position_size_usd', self.position_size_usd)
-        
-        # Determine position direction based on mean reversion signal
-        mean_reversion_signal = volatility_metrics.get('mean_reversion_direction', 0)
-        
-        # Extract prices
-        mexc_bid = market_data.get('mexc_bid', market_data.get('MEXC_SPOT_bid_price', 0))
-        mexc_ask = market_data.get('mexc_ask', market_data.get('MEXC_SPOT_ask_price', 0))
-        gateio_spot_bid = market_data.get('gateio_spot_bid', market_data.get('GATEIO_SPOT_bid_price', 0))
-        gateio_spot_ask = market_data.get('gateio_spot_ask', market_data.get('GATEIO_SPOT_ask_price', 0))
-        gateio_futures_bid = market_data.get('gateio_futures_bid', market_data.get('GATEIO_FUTURES_bid_price', 0))
-        gateio_futures_ask = market_data.get('gateio_futures_ask', market_data.get('GATEIO_FUTURES_ask_price', 0))
-        
-        if not all([mexc_bid, mexc_ask, gateio_futures_bid, gateio_futures_ask]):
-            return {}
-        
-        # Dynamic position sizing based on volatility
-        volatility_multiplier = min(2.0, volatility_metrics.get('volatility_z_score', 1.0))
-        adjusted_position_size = position_size * volatility_multiplier
-        
-        position = {
-            'strategy_type': self.strategy_type,
-            'signal': signal.value,
-            'timestamp': datetime.now(),
-            'position_size_usd': adjusted_position_size,
-            'volatility_multiplier': volatility_multiplier,
-            
-            # Entry prices (depends on direction)
-            'mexc_entry_price': mexc_ask if mean_reversion_signal > 0 else mexc_bid,
-            'gateio_futures_entry_price': gateio_futures_bid if mean_reversion_signal > 0 else gateio_futures_ask,
-            
-            # Position direction
-            'position_direction': 'LONG' if mean_reversion_signal > 0 else 'SHORT',
-            'mean_reversion_signal': mean_reversion_signal,
-            
-            # Volatility metrics at entry
-            'entry_volatility': volatility_metrics.get('current_volatility', 0),
-            'volatility_z_score': volatility_metrics.get('volatility_z_score', 0),
-            'mean_reversion_strength': volatility_metrics.get('mean_reversion_strength', 0),
-            
-            # Risk metrics
-            'profit_target': self.profit_target_pct,
-            'max_loss_bps': -150,  # 1.5% max loss
-            'target_profit_bps': self.profit_target_pct * 100,
-        }
-        
-        self.current_position = position
-        return position
+        # Internal tracking handled by base class
+        # This method is called during backtesting by _internal_open_position
+        pass
     
-    def close_position(self, position: Dict[str, Any], market_data: Dict[str, Any], **params) -> Dict[str, Any]:
+    def close_position(self, signal: Signal, market_data: Dict[str, Any]) -> None:
         """
-        Calculate position closing details and P&L.
+        Close position for volatility harvesting strategy with internal tracking.
+        
+        Closing actions:
+        - Close positions based on original direction
+        - Calculate realized P&L with volatility analysis
         
         Args:
-            position: Current position details
+            signal: Trading signal (should be EXIT)
             market_data: Current market data
-            **params: Exit parameters
-            
-        Returns:
-            Trade closure details with P&L
         """
-        spreads = self._calculate_spread_from_market_data(market_data)
-        volatility_metrics = self._calculate_volatility_metrics(spreads)
-        
-        # Extract current prices
-        mexc_bid = market_data.get('mexc_bid', market_data.get('MEXC_SPOT_bid_price', 0))
-        mexc_ask = market_data.get('mexc_ask', market_data.get('MEXC_SPOT_ask_price', 0))
-        gateio_futures_bid = market_data.get('gateio_futures_bid', market_data.get('GATEIO_FUTURES_bid_price', 0))
-        gateio_futures_ask = market_data.get('gateio_futures_ask', market_data.get('GATEIO_FUTURES_ask_price', 0))
-        
-        if not all([mexc_bid, mexc_ask, gateio_futures_bid, gateio_futures_ask]):
-            return {}
-        
-        # Determine exit prices based on original position direction
-        position_direction = position.get('position_direction', 'LONG')
-        
-        if position_direction == 'LONG':
-            mexc_exit_price = mexc_bid  # Sell at bid
-            gateio_futures_exit_price = gateio_futures_ask  # Buy at ask
-        else:
-            mexc_exit_price = mexc_ask  # Buy at ask
-            gateio_futures_exit_price = gateio_futures_bid  # Sell at bid
-        
-        # Calculate P&L based on position direction
-        mexc_entry = position['mexc_entry_price']
-        gateio_entry = position['gateio_futures_entry_price']
-        
-        if position_direction == 'LONG':
-            mexc_pnl = mexc_exit_price - mexc_entry
-            gateio_pnl = gateio_entry - gateio_futures_exit_price
-        else:
-            mexc_pnl = mexc_entry - mexc_exit_price
-            gateio_pnl = gateio_futures_exit_price - gateio_entry
-        
-        # Total P&L per unit
-        total_pnl_per_unit = mexc_pnl + gateio_pnl
-        
-        # Scale to position size
-        position_size = position['position_size_usd']
-        entry_price = mexc_entry
-        units = position_size / entry_price if entry_price > 0 else 0
-        
-        total_pnl_usd = total_pnl_per_unit * units
-        
-        # Calculate fees
-        fees_usd = position_size * self.total_fees
-        net_pnl_usd = total_pnl_usd - fees_usd
-        
-        trade_result = {
-            'strategy_type': self.strategy_type,
-            'entry_timestamp': position.get('timestamp'),
-            'exit_timestamp': datetime.now(),
-            'position_size_usd': position_size,
-            'position_direction': position_direction,
-            
-            # Entry details
-            'mexc_entry_price': mexc_entry,
-            'gateio_futures_entry_price': gateio_entry,
-            
-            # Exit details
-            'mexc_exit_price': mexc_exit_price,
-            'gateio_futures_exit_price': gateio_futures_exit_price,
-            
-            # P&L breakdown
-            'mexc_pnl_per_unit': mexc_pnl,
-            'gateio_futures_pnl_per_unit': gateio_pnl,
-            'total_pnl_per_unit': total_pnl_per_unit,
-            'total_pnl_usd': total_pnl_usd,
-            'fees_usd': fees_usd,
-            'net_pnl_usd': net_pnl_usd,
-            'pnl_percentage': (net_pnl_usd / position_size) * 100 if position_size > 0 else 0,
-            
-            # Volatility analysis
-            'entry_volatility': position.get('entry_volatility', 0),
-            'exit_volatility': volatility_metrics.get('current_volatility', 0),
-            'volatility_change': volatility_metrics.get('current_volatility', 0) - position.get('entry_volatility', 0),
-            'volatility_z_score_change': volatility_metrics.get('volatility_z_score', 0) - position.get('volatility_z_score', 0),
-        }
-        
-        self.current_position = None
-        return trade_result
+        # Internal tracking handled by base class
+        # This method is called during backtesting by _internal_close_position
+        pass
     
     def update_indicators(self, new_data: Union[Dict[str, Any], pd.DataFrame]) -> None:
         """
@@ -550,3 +422,138 @@ class VolatilityHarvestingStrategySignal(BaseStrategySignal):
             confidence = np.where(momentum > 1.5, confidence * 1.1, confidence)
         
         return pd.Series(confidence, index=df.index).clip(0.0, 1.0)
+    
+    # Override price calculation methods for strategy-specific logic
+    
+    def _calculate_entry_prices(self, market_data: Dict[str, Any]) -> Dict[str, float]:
+        """
+        Calculate entry prices for volatility harvesting strategy.
+        
+        Strategy-specific entry prices:
+        - Dynamic pricing based on mean reversion signal
+        - MEXC: Buy/sell based on direction
+        - Gate.io Futures: Opposite direction for hedge
+        
+        Args:
+            market_data: Current market data snapshot
+            
+        Returns:
+            Dictionary of entry prices by exchange/instrument
+        """
+        entry_prices = {}
+        
+        # Calculate spreads and volatility to determine direction
+        spreads = self._calculate_spread_from_market_data(market_data)
+        volatility_metrics = self._calculate_volatility_metrics(spreads)
+        mean_reversion_signal = volatility_metrics.get('mean_reversion_direction', 0)
+        
+        # Extract prices
+        mexc_bid = market_data.get('mexc_bid', market_data.get('MEXC_SPOT_bid_price', 0))
+        mexc_ask = market_data.get('mexc_ask', market_data.get('MEXC_SPOT_ask_price', 0))
+        gateio_futures_bid = market_data.get('gateio_futures_bid', market_data.get('GATEIO_FUTURES_bid_price', 0))
+        gateio_futures_ask = market_data.get('gateio_futures_ask', market_data.get('GATEIO_FUTURES_ask_price', 0))
+        
+        # Dynamic pricing based on mean reversion signal
+        if mean_reversion_signal > 0:  # Long direction
+            if mexc_ask > 0:
+                entry_prices['mexc'] = mexc_ask  # Buy MEXC at ask
+            if gateio_futures_bid > 0:
+                entry_prices['gateio_futures'] = gateio_futures_bid  # Sell Gate.io futures at bid
+        else:  # Short direction
+            if mexc_bid > 0:
+                entry_prices['mexc'] = mexc_bid  # Sell MEXC at bid
+            if gateio_futures_ask > 0:
+                entry_prices['gateio_futures'] = gateio_futures_ask  # Buy Gate.io futures at ask
+                
+        return entry_prices
+    
+    def _calculate_exit_prices(self, market_data: Dict[str, Any]) -> Dict[str, float]:
+        """
+        Calculate exit prices for volatility harvesting strategy.
+        
+        Strategy-specific exit prices:
+        - Opposite of entry prices to close positions
+        - Based on original position direction
+        
+        Args:
+            market_data: Current market data snapshot
+            
+        Returns:
+            Dictionary of exit prices by exchange/instrument
+        """
+        exit_prices = {}
+        
+        # Get position direction from current position or calculate it
+        position_direction = getattr(self, '_current_position_direction', None)
+        if position_direction is None:
+            # Calculate direction like entry would
+            spreads = self._calculate_spread_from_market_data(market_data)
+            volatility_metrics = self._calculate_volatility_metrics(spreads)
+            mean_reversion_signal = volatility_metrics.get('mean_reversion_direction', 0)
+            position_direction = 'LONG' if mean_reversion_signal > 0 else 'SHORT'
+        
+        # Extract prices
+        mexc_bid = market_data.get('mexc_bid', market_data.get('MEXC_SPOT_bid_price', 0))
+        mexc_ask = market_data.get('mexc_ask', market_data.get('MEXC_SPOT_ask_price', 0))
+        gateio_futures_bid = market_data.get('gateio_futures_bid', market_data.get('GATEIO_FUTURES_bid_price', 0))
+        gateio_futures_ask = market_data.get('gateio_futures_ask', market_data.get('GATEIO_FUTURES_ask_price', 0))
+        
+        # Exit prices based on original position direction
+        if position_direction == 'LONG':
+            if mexc_bid > 0:
+                exit_prices['mexc'] = mexc_bid  # Sell MEXC at bid
+            if gateio_futures_ask > 0:
+                exit_prices['gateio_futures'] = gateio_futures_ask  # Buy Gate.io futures at ask
+        else:  # SHORT direction
+            if mexc_ask > 0:
+                exit_prices['mexc'] = mexc_ask  # Buy MEXC at ask
+            if gateio_futures_bid > 0:
+                exit_prices['gateio_futures'] = gateio_futures_bid  # Sell Gate.io futures at bid
+                
+        return exit_prices
+    
+    def _calculate_pnl(self, entry_prices: Dict[str, float], exit_prices: Dict[str, float], position_size_usd: float) -> Tuple[float, float]:
+        """
+        Calculate P&L for volatility harvesting strategy trade.
+        
+        Strategy-specific P&L calculation:
+        - Dynamic direction-based P&L calculation
+        - Accounts for both long and short positions
+        
+        Args:
+            entry_prices: Entry prices by exchange
+            exit_prices: Exit prices by exchange
+            position_size_usd: Position size in USD
+            
+        Returns:
+            Tuple of (pnl_usd, pnl_pct)
+        """
+        # Volatility harvesting P&L calculation
+        mexc_entry = entry_prices.get('mexc', 0)
+        mexc_exit = exit_prices.get('mexc', 0)
+        gateio_futures_entry = entry_prices.get('gateio_futures', 0)
+        gateio_futures_exit = exit_prices.get('gateio_futures', 0)
+        
+        if not all([mexc_entry, mexc_exit, gateio_futures_entry, gateio_futures_exit]):
+            return 0.0, 0.0
+        
+        # Determine position direction from entry prices
+        # If mexc_entry > mexc_exit, it was a sell (short), otherwise buy (long)
+        # This works because in entry we use ask for buy, bid for sell
+        # and in exit we use bid for sell, ask for buy
+        if mexc_entry >= mexc_exit:  # Was a sell (short position)
+            # MEXC short: profit when entry > exit (sell high, buy low)
+            mexc_pnl = (mexc_entry - mexc_exit) / mexc_entry * position_size_usd
+            # Gate.io futures long: profit when exit > entry (buy low, sell high)
+            gateio_futures_pnl = (gateio_futures_exit - gateio_futures_entry) / gateio_futures_entry * position_size_usd
+        else:  # Was a buy (long position)
+            # MEXC long: profit when exit > entry (buy low, sell high)
+            mexc_pnl = (mexc_exit - mexc_entry) / mexc_entry * position_size_usd
+            # Gate.io futures short: profit when entry > exit (sell high, buy low)
+            gateio_futures_pnl = (gateio_futures_entry - gateio_futures_exit) / gateio_futures_entry * position_size_usd
+        
+        # Total P&L minus fees
+        total_pnl_usd = mexc_pnl + gateio_futures_pnl - (position_size_usd * self.total_fees)
+        total_pnl_pct = total_pnl_usd / position_size_usd * 100
+        
+        return total_pnl_usd, total_pnl_pct

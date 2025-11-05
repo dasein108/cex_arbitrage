@@ -1,7 +1,8 @@
 """
-Base Strategy Signal Implementation
+Base Strategy Signal Implementation with Internal Position Tracking
 
-Common implementation for all strategy signals with shared functionality.
+Common implementation for all strategy signals with integrated position management.
+Eliminates external PositionTracker dependency by handling all tracking internally.
 """
 
 from typing import Dict, Any, Optional, Union, List, Tuple
@@ -10,20 +11,54 @@ import numpy as np
 from collections import deque
 from datetime import datetime, timezone
 import logging
+from dataclasses import dataclass, field
 
 from trading.strategies.base.strategy_signal_interface import StrategySignalInterface
 from trading.analysis.signal_types import Signal
 
 
+@dataclass
+class Position:
+    """Internal position representation for tracking."""
+    entry_time: datetime
+    strategy_type: str
+    entry_signal: Signal
+    entry_data: Dict[str, Any]
+    position_size_usd: float
+    entry_prices: Dict[str, float]  # e.g., {'mexc': 0.054, 'gateio': 0.053}
+    unrealized_pnl_usd: float = 0.0
+    unrealized_pnl_pct: float = 0.0
+    hold_time_minutes: float = 0.0
+
+
+@dataclass
+class Trade:
+    """Completed trade representation."""
+    entry_time: datetime
+    exit_time: datetime
+    strategy_type: str
+    entry_signal: Signal
+    exit_signal: Signal
+    position_size_usd: float
+    entry_prices: Dict[str, float]
+    exit_prices: Dict[str, float]
+    pnl_usd: float
+    pnl_pct: float
+    hold_time_minutes: float
+    entry_data: Dict[str, Any] = field(default_factory=dict)
+    exit_data: Dict[str, Any] = field(default_factory=dict)
+
+
 class BaseStrategySignal(StrategySignalInterface):
     """
-    Base implementation with common functionality for all strategy signals.
+    Base implementation with internal position tracking for all strategy signals.
     
-    Provides default implementations for common operations like:
-    - Data validation
-    - Indicator management
-    - Performance tracking
-    - Risk calculations
+    Provides complete position management functionality:
+    - Internal position tracking and state management
+    - Integrated P&L calculation and trade recording
+    - Performance metrics and analytics
+    - Simplified method interfaces (signal, market_data only)
+    - Eliminates external PositionTracker dependency
     """
     
     def __init__(self, 
@@ -34,7 +69,7 @@ class BaseStrategySignal(StrategySignalInterface):
                  total_fees: float = 0.0025,
                  **params):
         """
-        Initialize base strategy signal.
+        Initialize base strategy signal with internal position tracking.
         
         Args:
             strategy_type: Name of the strategy
@@ -61,6 +96,11 @@ class BaseStrategySignal(StrategySignalInterface):
         self.signal_count = 0
         self.last_signal = Signal.HOLD
         self.last_signal_time = None
+        
+        # Internal position tracking state
+        self._current_position: Optional[Position] = None
+        self._completed_trades: List[Trade] = []
+        self._positions_history: List[Position] = []
         
         # Logger
         self.logger = logging.getLogger(f"{self.__class__.__name__}")
@@ -147,6 +187,361 @@ class BaseStrategySignal(StrategySignalInterface):
                 confidence = 0.3
         
         return min(max(confidence, 0.0), 1.0)
+    
+    # Internal Position Tracking Implementation
+    
+    def get_performance_metrics(self) -> Dict[str, Any]:
+        """
+        Get comprehensive performance metrics from internal position tracking.
+        
+        Returns:
+            Dictionary containing complete trading performance data
+        """
+        total_trades = len(self._completed_trades)
+        
+        if total_trades == 0:
+            return {
+                'completed_trades': [],
+                'total_trades': 0,
+                'total_pnl_usd': 0.0,
+                'total_pnl_pct': 0.0,
+                'win_rate': 0.0,
+                'avg_trade_duration': 0.0,
+                'current_position': self._get_current_position_dict(),
+                'max_drawdown': 0.0,
+                'sharpe_ratio': 0.0,
+                'avg_win': 0.0,
+                'avg_loss': 0.0
+            }
+        
+        # Calculate basic metrics
+        total_pnl_usd = sum(trade.pnl_usd for trade in self._completed_trades)
+        total_pnl_pct = sum(trade.pnl_pct for trade in self._completed_trades)
+        
+        # Win rate calculation
+        winning_trades = [t for t in self._completed_trades if t.pnl_usd > 0]
+        win_rate = len(winning_trades) / total_trades * 100
+        
+        # Average trade duration
+        avg_duration = sum(trade.hold_time_minutes for trade in self._completed_trades) / total_trades
+        
+        # Additional metrics
+        wins = [t.pnl_usd for t in self._completed_trades if t.pnl_usd > 0]
+        losses = [t.pnl_usd for t in self._completed_trades if t.pnl_usd < 0]
+        
+        avg_win = sum(wins) / len(wins) if wins else 0.0
+        avg_loss = sum(losses) / len(losses) if losses else 0.0
+        
+        # Calculate drawdown
+        cumulative_pnl = []
+        running_pnl = 0.0
+        for trade in self._completed_trades:
+            running_pnl += trade.pnl_usd
+            cumulative_pnl.append(running_pnl)
+        
+        max_drawdown = 0.0
+        if cumulative_pnl:
+            peak = cumulative_pnl[0]
+            for pnl in cumulative_pnl:
+                if pnl > peak:
+                    peak = pnl
+                drawdown = peak - pnl
+                if drawdown > max_drawdown:
+                    max_drawdown = drawdown
+        
+        return {
+            'completed_trades': [self._trade_to_dict(t) for t in self._completed_trades],
+            'total_trades': total_trades,
+            'total_pnl_usd': total_pnl_usd,
+            'total_pnl_pct': total_pnl_pct,
+            'win_rate': win_rate,
+            'avg_trade_duration': avg_duration,
+            'current_position': self._get_current_position_dict(),
+            'max_drawdown': max_drawdown,
+            'sharpe_ratio': self._calculate_sharpe_ratio(),
+            'avg_win': avg_win,
+            'avg_loss': avg_loss
+        }
+    
+    def reset_position_tracking(self) -> None:
+        """
+        Reset internal position tracking state.
+        
+        Clears all position history, completed trades, and current positions.
+        """
+        self._current_position = None
+        self._completed_trades.clear()
+        self._positions_history.clear()
+        self.logger.info(f"Position tracking reset for {self.strategy_type}")
+    
+    def _track_positions_internally(self, df_with_signals: pd.DataFrame) -> None:
+        """
+        Internal vectorized position tracking for backtesting.
+        
+        Processes signal changes and manages positions/trades internally.
+        This replaces the external PositionTracker.track_positions_vectorized() method.
+        
+        Args:
+            df_with_signals: DataFrame with signal column added
+        """
+        # Reset state for fresh backtest
+        self.reset_position_tracking()
+        
+        # Find signal changes
+        signal_changes = df_with_signals['signal'].ne(df_with_signals['signal'].shift())
+        signal_points = df_with_signals[signal_changes].copy()
+        
+        current_time = None
+        
+        for idx, row in signal_points.iterrows():
+            current_time = row.name if hasattr(row.name, 'to_pydatetime') else datetime.now(timezone.utc)
+            signal_str = row['signal']
+            market_data = row.to_dict()
+            
+            # Convert string signal to Signal enum
+            if signal_str == 'enter':
+                signal = Signal.ENTER
+            elif signal_str == 'exit':
+                signal = Signal.EXIT
+            else:
+                signal = Signal.HOLD
+            
+            # Process signal
+            if signal == Signal.ENTER and self._current_position is None:
+                self._internal_open_position(signal, market_data, current_time)
+            elif signal == Signal.EXIT and self._current_position is not None:
+                self._internal_close_position(signal, market_data, current_time)
+    
+    def _internal_open_position(self, signal: Signal, market_data: Dict[str, Any], timestamp: datetime) -> None:
+        """
+        Internal position opening with timestamp tracking.
+        
+        Args:
+            signal: ENTER signal
+            market_data: Market data snapshot
+            timestamp: Position entry timestamp
+        """
+        # Calculate entry prices using strategy-specific logic
+        entry_prices = self._calculate_entry_prices(market_data)
+        
+        if not entry_prices:
+            self.logger.warning(f"Could not calculate entry prices for {self.strategy_type}")
+            return
+        
+        # Create position
+        position = Position(
+            entry_time=timestamp,
+            strategy_type=self.strategy_type,
+            entry_signal=signal,
+            entry_data=market_data.copy(),
+            position_size_usd=self.position_size_usd,
+            entry_prices=entry_prices
+        )
+        
+        self._current_position = position
+        self._positions_history.append(position)
+        
+        self.logger.debug(f"Position opened at {timestamp}: {entry_prices}")
+    
+    def _internal_close_position(self, signal: Signal, market_data: Dict[str, Any], timestamp: datetime) -> None:
+        """
+        Internal position closing with P&L calculation.
+        
+        Args:
+            signal: EXIT signal
+            market_data: Market data snapshot
+            timestamp: Position exit timestamp
+        """
+        if not self._current_position:
+            return
+        
+        # Calculate exit prices using strategy-specific logic
+        exit_prices = self._calculate_exit_prices(market_data)
+        
+        if not exit_prices:
+            self.logger.warning(f"Could not calculate exit prices for {self.strategy_type}")
+            return
+        
+        # Calculate P&L using strategy-specific logic
+        pnl_usd, pnl_pct = self._calculate_pnl(
+            self._current_position.entry_prices,
+            exit_prices,
+            self._current_position.position_size_usd
+        )
+        
+        # Calculate hold time
+        hold_time = (timestamp - self._current_position.entry_time).total_seconds() / 60.0
+        
+        # Create completed trade
+        trade = Trade(
+            entry_time=self._current_position.entry_time,
+            exit_time=timestamp,
+            strategy_type=self.strategy_type,
+            entry_signal=self._current_position.entry_signal,
+            exit_signal=signal,
+            position_size_usd=self._current_position.position_size_usd,
+            entry_prices=self._current_position.entry_prices.copy(),
+            exit_prices=exit_prices,
+            pnl_usd=pnl_usd,
+            pnl_pct=pnl_pct,
+            hold_time_minutes=hold_time,
+            entry_data=self._current_position.entry_data.copy(),
+            exit_data=market_data.copy()
+        )
+        
+        self._completed_trades.append(trade)
+        self._current_position = None
+        
+        self.logger.debug(f"Position closed at {timestamp}: P&L = ${pnl_usd:.2f} ({pnl_pct:.3f}%)")
+    
+    def _calculate_entry_prices(self, market_data: Dict[str, Any]) -> Dict[str, float]:
+        """
+        Calculate entry prices from market data.
+        
+        Default implementation - should be overridden by specific strategies.
+        
+        Args:
+            market_data: Current market data snapshot
+            
+        Returns:
+            Dictionary of entry prices by exchange/instrument
+        """
+        entry_prices = {}
+        
+        # Extract standard price fields with fallbacks
+        mexc_ask = market_data.get('mexc_ask', market_data.get('MEXC_SPOT_ask_price', 0))
+        gateio_bid = market_data.get('gateio_bid', market_data.get('GATEIO_SPOT_bid_price', 0))
+        
+        if mexc_ask > 0:
+            entry_prices['mexc'] = mexc_ask
+        if gateio_bid > 0:
+            entry_prices['gateio'] = gateio_bid
+            
+        return entry_prices
+    
+    def _calculate_exit_prices(self, market_data: Dict[str, Any]) -> Dict[str, float]:
+        """
+        Calculate exit prices from market data.
+        
+        Default implementation - should be overridden by specific strategies.
+        
+        Args:
+            market_data: Current market data snapshot
+            
+        Returns:
+            Dictionary of exit prices by exchange/instrument
+        """
+        exit_prices = {}
+        
+        # Extract standard price fields with fallbacks
+        mexc_bid = market_data.get('mexc_bid', market_data.get('MEXC_SPOT_bid_price', 0))
+        gateio_ask = market_data.get('gateio_ask', market_data.get('GATEIO_SPOT_ask_price', 0))
+        
+        if mexc_bid > 0:
+            exit_prices['mexc'] = mexc_bid
+        if gateio_ask > 0:
+            exit_prices['gateio'] = gateio_ask
+            
+        return exit_prices
+    
+    def _calculate_pnl(self, entry_prices: Dict[str, float], exit_prices: Dict[str, float], position_size_usd: float) -> Tuple[float, float]:
+        """
+        Calculate P&L for the trade.
+        
+        Default implementation for cross-exchange arbitrage.
+        Should be overridden by specific strategies.
+        
+        Args:
+            entry_prices: Entry prices by exchange
+            exit_prices: Exit prices by exchange
+            position_size_usd: Position size in USD
+            
+        Returns:
+            Tuple of (pnl_usd, pnl_pct)
+        """
+        # Default cross-exchange arbitrage P&L calculation
+        mexc_entry = entry_prices.get('mexc', 0)
+        mexc_exit = exit_prices.get('mexc', 0)
+        gateio_entry = entry_prices.get('gateio', 0)
+        gateio_exit = exit_prices.get('gateio', 0)
+        
+        if not all([mexc_entry, mexc_exit, gateio_entry, gateio_exit]):
+            return 0.0, 0.0
+        
+        # Calculate P&L for each leg
+        mexc_pnl = (mexc_exit - mexc_entry) / mexc_entry * position_size_usd
+        gateio_pnl = (gateio_entry - gateio_exit) / gateio_entry * position_size_usd
+        
+        # Total P&L minus fees
+        total_pnl_usd = mexc_pnl + gateio_pnl - (position_size_usd * self.total_fees)
+        total_pnl_pct = total_pnl_usd / position_size_usd * 100
+        
+        return total_pnl_usd, total_pnl_pct
+    
+    def _get_current_position_dict(self) -> Optional[Dict[str, Any]]:
+        """
+        Get current position as dictionary.
+        
+        Returns:
+            Position dictionary or None if no current position
+        """
+        if not self._current_position:
+            return None
+        
+        return {
+            'entry_time': self._current_position.entry_time.isoformat(),
+            'strategy_type': self._current_position.strategy_type,
+            'entry_signal': self._current_position.entry_signal.value,
+            'position_size_usd': self._current_position.position_size_usd,
+            'entry_prices': self._current_position.entry_prices.copy(),
+            'unrealized_pnl_usd': self._current_position.unrealized_pnl_usd,
+            'unrealized_pnl_pct': self._current_position.unrealized_pnl_pct,
+            'hold_time_minutes': self._current_position.hold_time_minutes
+        }
+    
+    def _trade_to_dict(self, trade: Trade) -> Dict[str, Any]:
+        """
+        Convert Trade object to dictionary.
+        
+        Args:
+            trade: Trade object
+            
+        Returns:
+            Trade dictionary
+        """
+        return {
+            'entry_time': trade.entry_time.isoformat(),
+            'exit_time': trade.exit_time.isoformat(),
+            'strategy_type': trade.strategy_type,
+            'entry_signal': trade.entry_signal.value,
+            'exit_signal': trade.exit_signal.value,
+            'position_size_usd': trade.position_size_usd,
+            'entry_prices': trade.entry_prices.copy(),
+            'exit_prices': trade.exit_prices.copy(),
+            'pnl_usd': trade.pnl_usd,
+            'pnl_pct': trade.pnl_pct,
+            'hold_time_minutes': trade.hold_time_minutes
+        }
+    
+    def _calculate_sharpe_ratio(self) -> float:
+        """
+        Calculate Sharpe ratio from completed trades.
+        
+        Returns:
+            Sharpe ratio (assumes risk-free rate of 0)
+        """
+        if len(self._completed_trades) < 2:
+            return 0.0
+        
+        returns = [trade.pnl_pct for trade in self._completed_trades]
+        mean_return = np.mean(returns)
+        std_return = np.std(returns)
+        
+        if std_return == 0:
+            return 0.0
+        
+        # Annualized Sharpe (assuming daily returns)
+        return (mean_return / std_return) * np.sqrt(365)
     
     # Protected helper methods
     
@@ -285,3 +680,30 @@ class BaseStrategySignal(StrategySignalInterface):
             spreads['gateio_futures_spread'] = (gateio_futures_ask - gateio_futures_bid) / gateio_futures_ask * 100
         
         return spreads
+    
+    # Default implementations of new interface methods
+    # These should be overridden by specific strategy implementations
+    
+    def open_position(self, signal: Signal, market_data: Dict[str, Any]) -> None:
+        """
+        Default open_position implementation.
+        
+        This should be overridden by specific strategy implementations.
+        """
+        if signal != Signal.ENTER:
+            return
+            
+        timestamp = datetime.now(timezone.utc)
+        self._internal_open_position(signal, market_data, timestamp)
+    
+    def close_position(self, signal: Signal, market_data: Dict[str, Any]) -> None:
+        """
+        Default close_position implementation.
+        
+        This should be overridden by specific strategy implementations.
+        """
+        if signal != Signal.EXIT:
+            return
+            
+        timestamp = datetime.now(timezone.utc)
+        self._internal_close_position(signal, market_data, timestamp)

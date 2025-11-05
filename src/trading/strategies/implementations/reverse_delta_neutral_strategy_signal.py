@@ -176,11 +176,14 @@ class ReverseDeltaNeutralStrategySignal(BaseStrategySignal):
         # Calculate confidence scores
         df['confidence'] = self._calculate_vectorized_confidence(df)
         
+        # Run internal position tracking for this backtest
+        self._track_positions_internally(df)
+        
         return df
     
-    def open_position(self, signal: Signal, market_data: Dict[str, Any], **params) -> Dict[str, Any]:
+    def open_position(self, signal: Signal, market_data: Dict[str, Any]) -> None:
         """
-        Calculate position opening details for reverse delta neutral strategy.
+        Open position for reverse delta neutral strategy with internal tracking.
         
         Strategy positions:
         - Buy MEXC spot (source)
@@ -190,60 +193,14 @@ class ReverseDeltaNeutralStrategySignal(BaseStrategySignal):
         Args:
             signal: Trading signal (should be ENTER)
             market_data: Current market data
-            **params: Position parameters
-            
-        Returns:
-            Position details dictionary
         """
-        if signal != Signal.ENTER:
-            return {}
-        
-        spreads = self._calculate_spread_from_market_data(market_data)
-        position_size = params.get('position_size_usd', self.position_size_usd)
-        
-        # Extract prices
-        mexc_bid = market_data.get('mexc_bid', market_data.get('MEXC_SPOT_bid_price', 0))
-        mexc_ask = market_data.get('mexc_ask', market_data.get('MEXC_SPOT_ask_price', 0))
-        gateio_futures_bid = market_data.get('gateio_futures_bid', market_data.get('GATEIO_FUTURES_bid_price', 0))
-        gateio_futures_ask = market_data.get('gateio_futures_ask', market_data.get('GATEIO_FUTURES_ask_price', 0))
-        
-        if not all([mexc_ask, gateio_futures_bid]):
-            return {}
-        
-        # Calculate hedge ratio (simplified to 1:1 for now)
-        self.hedge_ratio = 1.0
-        
-        position = {
-            'strategy_type': self.strategy_type,
-            'signal': signal.value,
-            'timestamp': datetime.now(),
-            'position_size_usd': position_size,
-            'hedge_ratio': self.hedge_ratio,
-            
-            # Entry prices (what we actually pay/receive)
-            'mexc_entry_price': mexc_ask,  # Buy at ask
-            'gateio_futures_entry_price': gateio_futures_bid,  # Sell at bid
-            
-            # Spreads at entry
-            'entry_mexc_vs_futures_spread': spreads.get('mexc_vs_gateio_futures', 0),
-            'entry_gateio_spread': spreads.get('gateio_spot_vs_futures', 0),
-            
-            # Position details
-            'mexc_position': 'LONG',
-            'gateio_futures_position': 'SHORT',
-            'expected_profit_bps': spreads.get('mexc_vs_gateio_futures', 0) * 100,
-            
-            # Risk metrics
-            'max_loss_bps': -200,  # 2% max loss
-            'target_profit_bps': 50,  # 0.5% target profit
-        }
-        
-        self.current_position = position
-        return position
+        # Internal tracking handled by base class
+        # This method is called during backtesting by _internal_open_position
+        pass
     
-    def close_position(self, position: Dict[str, Any], market_data: Dict[str, Any], **params) -> Dict[str, Any]:
+    def close_position(self, signal: Signal, market_data: Dict[str, Any]) -> None:
         """
-        Calculate position closing details and P&L.
+        Close position for reverse delta neutral strategy with internal tracking.
         
         Closing actions:
         - Sell MEXC spot position
@@ -251,77 +208,106 @@ class ReverseDeltaNeutralStrategySignal(BaseStrategySignal):
         - Calculate realized P&L
         
         Args:
-            position: Current position details
+            signal: Trading signal (should be EXIT)
             market_data: Current market data
-            **params: Exit parameters
+        """
+        # Internal tracking handled by base class
+        # This method is called during backtesting by _internal_close_position
+        pass
+    
+    # Override price calculation methods for strategy-specific logic
+    
+    def _calculate_entry_prices(self, market_data: Dict[str, Any]) -> Dict[str, float]:
+        """
+        Calculate entry prices for reverse delta neutral strategy.
+        
+        Strategy-specific entry prices:
+        - MEXC: Buy at ask (going long)
+        - Gate.io Futures: Sell at bid (going short)
+        
+        Args:
+            market_data: Current market data snapshot
             
         Returns:
-            Trade closure details with P&L
+            Dictionary of entry prices by exchange/instrument
         """
-        spreads = self._calculate_spread_from_market_data(market_data)
+        entry_prices = {}
         
-        # Extract current prices
-        mexc_bid = market_data.get('mexc_bid', market_data.get('MEXC_SPOT_bid_price', 0))
+        # Reverse delta neutral strategy entry prices
         mexc_ask = market_data.get('mexc_ask', market_data.get('MEXC_SPOT_ask_price', 0))
         gateio_futures_bid = market_data.get('gateio_futures_bid', market_data.get('GATEIO_FUTURES_bid_price', 0))
+        
+        if mexc_ask > 0:
+            entry_prices['mexc'] = mexc_ask  # Buy MEXC spot at ask
+        if gateio_futures_bid > 0:
+            entry_prices['gateio_futures'] = gateio_futures_bid  # Sell Gate.io futures at bid
+            
+        return entry_prices
+    
+    def _calculate_exit_prices(self, market_data: Dict[str, Any]) -> Dict[str, float]:
+        """
+        Calculate exit prices for reverse delta neutral strategy.
+        
+        Strategy-specific exit prices:
+        - MEXC: Sell at bid (closing long)
+        - Gate.io Futures: Buy at ask (closing short)
+        
+        Args:
+            market_data: Current market data snapshot
+            
+        Returns:
+            Dictionary of exit prices by exchange/instrument
+        """
+        exit_prices = {}
+        
+        # Reverse delta neutral strategy exit prices
+        mexc_bid = market_data.get('mexc_bid', market_data.get('MEXC_SPOT_bid_price', 0))
         gateio_futures_ask = market_data.get('gateio_futures_ask', market_data.get('GATEIO_FUTURES_ask_price', 0))
         
-        if not all([mexc_bid, gateio_futures_ask]):
-            return {}
-        
-        # Exit prices (what we receive/pay when closing)
-        mexc_exit_price = mexc_bid  # Sell at bid
-        gateio_futures_exit_price = gateio_futures_ask  # Buy at ask
-        
-        # Calculate P&L components
-        mexc_pnl = mexc_exit_price - position['mexc_entry_price']
-        gateio_futures_pnl = position['gateio_futures_entry_price'] - gateio_futures_exit_price
-        
-        # Total P&L per unit
-        total_pnl_per_unit = mexc_pnl + gateio_futures_pnl
-        
-        # Scale to position size
-        position_size = position['position_size_usd']
-        entry_price = position['mexc_entry_price']
-        units = position_size / entry_price if entry_price > 0 else 0
-        
-        total_pnl_usd = total_pnl_per_unit * units
-        
-        # Calculate fees
-        fees_usd = position_size * self.total_fees
-        net_pnl_usd = total_pnl_usd - fees_usd
-        
-        trade_result = {
-            'strategy_type': self.strategy_type,
-            'entry_timestamp': position.get('timestamp'),
-            'exit_timestamp': datetime.now(),
-            'position_size_usd': position_size,
+        if mexc_bid > 0:
+            exit_prices['mexc'] = mexc_bid  # Sell MEXC spot at bid
+        if gateio_futures_ask > 0:
+            exit_prices['gateio_futures'] = gateio_futures_ask  # Buy Gate.io futures at ask
             
-            # Entry details
-            'mexc_entry_price': position['mexc_entry_price'],
-            'gateio_futures_entry_price': position['gateio_futures_entry_price'],
-            
-            # Exit details
-            'mexc_exit_price': mexc_exit_price,
-            'gateio_futures_exit_price': gateio_futures_exit_price,
-            
-            # P&L breakdown
-            'mexc_pnl_per_unit': mexc_pnl,
-            'gateio_futures_pnl_per_unit': gateio_futures_pnl,
-            'total_pnl_per_unit': total_pnl_per_unit,
-            'total_pnl_usd': total_pnl_usd,
-            'fees_usd': fees_usd,
-            'net_pnl_usd': net_pnl_usd,
-            'pnl_percentage': (net_pnl_usd / position_size) * 100 if position_size > 0 else 0,
-            
-            # Spread analysis
-            'entry_spread': position.get('entry_mexc_vs_futures_spread', 0),
-            'exit_gateio_spread': spreads.get('gateio_spot_vs_futures', 0),
-            'spread_capture': position.get('entry_mexc_vs_futures_spread', 0) + spreads.get('gateio_spot_vs_futures', 0),
-        }
+        return exit_prices
+    
+    def _calculate_pnl(self, entry_prices: Dict[str, float], exit_prices: Dict[str, float], position_size_usd: float) -> Tuple[float, float]:
+        """
+        Calculate P&L for reverse delta neutral strategy trade.
         
-        self.current_position = None
-        return trade_result
+        Strategy-specific P&L calculation:
+        - MEXC: Long position (buy low, sell high)
+        - Gate.io Futures: Short position (sell high, buy low)
+        
+        Args:
+            entry_prices: Entry prices by exchange
+            exit_prices: Exit prices by exchange
+            position_size_usd: Position size in USD
+            
+        Returns:
+            Tuple of (pnl_usd, pnl_pct)
+        """
+        # Reverse delta neutral P&L calculation
+        mexc_entry = entry_prices.get('mexc', 0)
+        mexc_exit = exit_prices.get('mexc', 0)
+        gateio_futures_entry = entry_prices.get('gateio_futures', 0)
+        gateio_futures_exit = exit_prices.get('gateio_futures', 0)
+        
+        if not all([mexc_entry, mexc_exit, gateio_futures_entry, gateio_futures_exit]):
+            return 0.0, 0.0
+        
+        # Calculate P&L for each leg
+        # MEXC long: profit when exit > entry
+        mexc_pnl = (mexc_exit - mexc_entry) / mexc_entry * position_size_usd
+        
+        # Gate.io futures short: profit when entry > exit
+        gateio_futures_pnl = (gateio_futures_entry - gateio_futures_exit) / gateio_futures_entry * position_size_usd
+        
+        # Total P&L minus fees
+        total_pnl_usd = mexc_pnl + gateio_futures_pnl - (position_size_usd * self.total_fees)
+        total_pnl_pct = total_pnl_usd / position_size_usd * 100
+        
+        return total_pnl_usd, total_pnl_pct
     
     def update_indicators(self, new_data: Union[Dict[str, Any], pd.DataFrame]) -> None:
         """

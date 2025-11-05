@@ -9,7 +9,7 @@ Key Features:
 - Factory Pattern: Automatic strategy instantiation and registration
 - Vectorized operations for 50x performance improvement  
 - Direct data loading with BookTickerDbSource/CandlesBookTickerSource
-- Accurate position tracking with PositionTracker
+- Internal position tracking within strategies
 - Performance: Sub-millisecond per-row processing
 - Auto-configuration: Smart data source selection
 """
@@ -25,8 +25,8 @@ from trading.analysis.signal_types import Signal
 
 # Import strategy signal architecture
 from trading.strategies.base.strategy_signal_factory import create_strategy_signal, normalize_strategy_type
-from trading.signals.backtesting.position_tracker import PositionTracker
-
+# PositionTracker functionality now internal to strategies
+from exchanges.structs.enums import ExchangeEnum
 # Ensure strategy registrations are loaded
 import trading.strategies.implementations
 
@@ -101,6 +101,28 @@ class VectorizedStrategyBacktester:
                 'stop_loss_pct': 1.0,
                 'take_profit_pct': 0.8,
                 'max_holding_hours': 6
+            },
+            'inventory_spot_v2': {
+                'position_size_usd': 1000.0,
+                'min_profit_bps': 20.0,
+                'min_execution_confidence': 0.6,
+                'safe_offset_percentile': 75.0,
+                'lookback_periods': 200,
+                'stop_loss_pct': 1.5,
+                'take_profit_pct': 1.2,
+                'max_holding_hours': 12
+            },
+            'volatility_harvesting_v2': {
+                'position_size_usd': 1000.0,
+                'volatility_threshold': 2.0,
+                'min_profit_bps': 25.0,
+                'min_execution_confidence': 0.65,
+                'volatility_window': 50,
+                'safe_offset_percentile': 80.0,
+                'lookback_periods': 150,
+                'stop_loss_pct': 1.0,
+                'take_profit_pct': 1.0,
+                'max_holding_hours': 8
             }
         }
     
@@ -138,7 +160,7 @@ class VectorizedStrategyBacktester:
             return {config.get('name', config.get('type', 'Unknown')): {'error': 'No data available'} 
                     for config in strategy_configs}
         
-        print(f"✅ Data loaded: {len(df)} rows")
+        print(f"✅ Data loaded: {len(df)} rows from {df.index[0]} to {df.index[-1]}")
         
         # Run backtest for each strategy
         results = {}
@@ -192,18 +214,15 @@ class VectorizedStrategyBacktester:
             # Apply signals to backtest data
             df_with_signals = strategy.apply_signal_to_backtest(df, **params)
             
-            # Track positions and calculate performance
-            position_tracker = PositionTracker(
-                initial_capital=self.initial_capital
-            )
-            
-            # Create simple strategy config for position tracker
-            strategy_config = {
-                'type': strategy_type,
-                'params': params
-            }
-            
-            positions, trades = position_tracker.track_positions_vectorized(df_with_signals, strategy_config)
+            # Get performance metrics from strategy's internal tracking
+            # The apply_signal_to_backtest method already ran internal position tracking
+            if hasattr(strategy, 'get_performance_metrics'):
+                performance_metrics = strategy.get_performance_metrics()
+                trades = performance_metrics.get('completed_trades', [])
+            else:
+                # Backward compatibility for V2 strategies that don't have internal tracking
+                performance_metrics = {'completed_trades': [], 'total_positions': 0}
+                trades = []
             
             # Calculate performance metrics
             performance = self._calculate_performance_metrics(trades, df_with_signals)
@@ -227,7 +246,7 @@ class VectorizedStrategyBacktester:
                 'sharpe_ratio': performance['sharpe_ratio'],
                 'signal_distribution': signal_dist_named,
                 'final_balance': self.initial_capital + performance['total_pnl_usd'],
-                'num_positions': len(positions)
+                'num_positions': performance_metrics.get('total_positions', len(trades))
             }
             
         except Exception as e:
@@ -254,28 +273,30 @@ class VectorizedStrategyBacktester:
             DataFrame with market data
         """
         # Use configured data source if available
-        if self.data_source is not None:
-            if hasattr(self.data_source, 'get_multi_exchange_data'):
-                # BookTickerDbSource/CandlesBookTickerSource interface
-                from exchanges.structs.enums import ExchangeEnum
-                exchanges = [ExchangeEnum.MEXC, ExchangeEnum.GATEIO, ExchangeEnum.GATEIO_FUTURES]
-                return await self.data_source.get_multi_exchange_data(exchanges, symbol, hours=days * 24)
-            elif hasattr(self.data_source, '_download_and_merge_data'):
-                # Legacy ArbitrageAnalyzer interface (deprecated)
-                return await self.data_source._download_and_merge_data(symbol, days)
-            elif hasattr(self.data_source, 'get_data'):
-                # Generic async data source interface
-                return await self.data_source.get_data(symbol, days, start_date)
-        
-        # Default fallback: Use BookTickerDbSource
-        from trading.research.cross_arbitrage.book_ticker_source import BookTickerDbSource
-        from exchanges.structs.enums import ExchangeEnum
-        
-        print(f"🔄 No data source configured, using default BookTickerDbSource for {symbol}")
-        default_source = BookTickerDbSource()
+        # if self.data_source is not None:
+        #     if hasattr(self.data_source, 'get_multi_exchange_data'):
+        #         # BookTickerDbSource/CandlesBookTickerSource interface
+        #         from exchanges.structs.enums import ExchangeEnum
+        #         exchanges = [ExchangeEnum.MEXC, ExchangeEnum.GATEIO, ExchangeEnum.GATEIO_FUTURES]
+        #         return await self.data_source.get_multi_exchange_data(exchanges, symbol, hours=days * 24)
+        #     elif hasattr(self.data_source, '_download_and_merge_data'):
+        #         # Legacy ArbitrageAnalyzer interface (deprecated)
+        #         return await self.data_source._download_and_merge_data(symbol, days)
+        #     elif hasattr(self.data_source, 'get_data'):
+        #         # Generic async data source interface
+        #         return await self.data_source.get_data(symbol, days, start_date)
+        #
+        # # Default fallback: Use BookTickerDbSource
+        # from trading.research.cross_arbitrage.book_ticker_source import BookTickerDbSource
+        # from exchanges.structs.enums import ExchangeEnum
+        #
+        # print(f"🔄 No data source configured, using default BookTickerDbSource for {symbol}")
+        # default_source = BookTickerDbSource()
         exchanges = [ExchangeEnum.MEXC, ExchangeEnum.GATEIO, ExchangeEnum.GATEIO_FUTURES]
         
-        return await default_source.get_multi_exchange_data(exchanges, symbol, hours=days * 24)
+        df = await self.data_source.get_multi_exchange_data(exchanges, symbol, hours=days * 24)
+        df.dropna(inplace=True)
+        return df
     
     def _create_default_data_source(self):
         """Create default data source based on configuration."""
@@ -310,11 +331,19 @@ class VectorizedStrategyBacktester:
                 'sharpe_ratio': 0.0
             }
         
-        # Calculate basic metrics
-        total_pnl = sum(trade.pnl_usd for trade in trades)
+        # Calculate basic metrics - handle both Trade objects and dictionaries
+        def get_pnl(trade):
+            if hasattr(trade, 'pnl_usd'):
+                return trade.pnl_usd
+            elif isinstance(trade, dict):
+                return trade.get('pnl_usd', 0.0)
+            else:
+                return 0.0
+        
+        total_pnl = sum(get_pnl(trade) for trade in trades)
         total_pnl_pct = (total_pnl / self.initial_capital) * 100
         
-        winning_trades = [t for t in trades if t.pnl_usd > 0]
+        winning_trades = [t for t in trades if get_pnl(t) > 0]
         win_rate = len(winning_trades) / len(trades) * 100
         
         avg_trade_pnl = total_pnl / len(trades)
@@ -323,7 +352,7 @@ class VectorizedStrategyBacktester:
         cumulative_pnl = []
         running_pnl = 0
         for trade in trades:
-            running_pnl += trade.pnl_usd
+            running_pnl += get_pnl(trade)
             cumulative_pnl.append(running_pnl)
         
         if cumulative_pnl:
@@ -339,7 +368,7 @@ class VectorizedStrategyBacktester:
         
         # Simplified Sharpe ratio calculation
         if len(trades) > 1:
-            trade_returns = [t.pnl_usd / self.initial_capital for t in trades]
+            trade_returns = [get_pnl(t) / self.initial_capital for t in trades]
             avg_return = np.mean(trade_returns)
             std_return = np.std(trade_returns)
             sharpe_ratio = avg_return / std_return if std_return > 0 else 0
@@ -547,6 +576,30 @@ def create_default_strategy_configs() -> List[Dict[str, Any]]:
                 'mean_reversion_threshold': 1.5,
                 'position_size_usd': 1000.0,
                 'lookback_periods': 100
+            }
+        },
+        {
+            'name': 'Inventory Spot V2 (Arbitrage Logic)',
+            'type': 'inventory_spot_v2',
+            'params': {
+                'min_profit_bps': 30.0,
+                'min_execution_confidence': 0.6,
+                'safe_offset_percentile': 75.0,
+                'position_size_usd': 1000.0,
+                'lookback_periods': 200
+            }
+        },
+        {
+            'name': 'Volatility Harvesting V2 (Arbitrage Logic)',
+            'type': 'volatility_harvesting_v2',
+            'params': {
+                'volatility_threshold': 2.0,
+                'min_profit_bps': 25.0,
+                'min_execution_confidence': 0.65,
+                'volatility_window': 50,
+                'safe_offset_percentile': 80.0,
+                'position_size_usd': 1000.0,
+                'lookback_periods': 150
             }
         }
     ]

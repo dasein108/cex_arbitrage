@@ -179,11 +179,14 @@ class InventorySpotStrategySignal(BaseStrategySignal):
         # Add position time tracking
         df = self._add_position_time_tracking(df)
         
+        # Run internal position tracking for this backtest
+        self._track_positions_internally(df)
+        
         return df
     
-    def open_position(self, signal: Signal, market_data: Dict[str, Any], **params) -> Dict[str, Any]:
+    def open_position(self, signal: Signal, market_data: Dict[str, Any]) -> None:
         """
-        Calculate position opening details for inventory spot strategy.
+        Open position for inventory spot strategy with internal tracking.
         
         Strategy positions:
         - Sell MEXC spot (higher price)
@@ -193,66 +196,14 @@ class InventorySpotStrategySignal(BaseStrategySignal):
         Args:
             signal: Trading signal (should be ENTER)
             market_data: Current market data
-            **params: Position parameters
-            
-        Returns:
-            Position details dictionary
         """
-        if signal != Signal.ENTER:
-            return {}
-        
-        spreads = self._calculate_spread_from_market_data(market_data)
-        position_size = params.get('position_size_usd', self.position_size_usd)
-        
-        # Extract prices
-        mexc_bid = market_data.get('mexc_bid', market_data.get('MEXC_SPOT_bid_price', 0))
-        mexc_ask = market_data.get('mexc_ask', market_data.get('MEXC_SPOT_ask_price', 0))
-        gateio_spot_bid = market_data.get('gateio_spot_bid', market_data.get('GATEIO_SPOT_bid_price', 0))
-        gateio_spot_ask = market_data.get('gateio_spot_ask', market_data.get('GATEIO_SPOT_ask_price', 0))
-        
-        if not all([mexc_bid, gateio_spot_ask]):
-            return {}
-        
-        # Calculate spot arbitrage spread
-        spot_spread = (mexc_bid - gateio_spot_ask) / mexc_bid * 100
-        
-        position = {
-            'strategy_type': self.strategy_type,
-            'signal': signal.value,
-            'timestamp': datetime.now(),
-            'position_size_usd': position_size,
-            
-            # Entry prices
-            'mexc_entry_price': mexc_bid,  # Sell at bid
-            'gateio_entry_price': gateio_spot_ask,  # Buy at ask
-            
-            # Spreads at entry
-            'entry_spot_spread': spot_spread,
-            'mexc_spread': spreads.get('mexc_spread', 0),
-            'gateio_spread': spreads.get('gateio_spot_spread', 0),
-            
-            # Position details
-            'mexc_position': 'SHORT',
-            'gateio_position': 'LONG',
-            'expected_profit_bps': spot_spread * 100,
-            
-            # Risk metrics
-            'max_loss_bps': -100,  # 1% max loss
-            'target_profit_bps': 25,  # 0.25% target profit
-        }
-        
-        # Update inventory tracking
-        units = position_size / mexc_bid if mexc_bid > 0 else 0
-        self.mexc_inventory -= units  # Short position
-        self.gateio_inventory += units  # Long position
-        
-        self.current_position = position
-        self.position_start_time = datetime.now()
-        return position
+        # Internal tracking handled by base class
+        # This method is called during backtesting by _internal_open_position
+        pass
     
-    def close_position(self, position: Dict[str, Any], market_data: Dict[str, Any], **params) -> Dict[str, Any]:
+    def close_position(self, signal: Signal, market_data: Dict[str, Any]) -> None:
         """
-        Calculate position closing details and P&L.
+        Close position for inventory spot strategy with internal tracking.
         
         Closing actions:
         - Buy back MEXC spot position  
@@ -260,85 +211,106 @@ class InventorySpotStrategySignal(BaseStrategySignal):
         - Calculate realized P&L
         
         Args:
-            position: Current position details
+            signal: Trading signal (should be EXIT)
             market_data: Current market data
-            **params: Exit parameters
+        """
+        # Internal tracking handled by base class
+        # This method is called during backtesting by _internal_close_position
+        pass
+    
+    # Override price calculation methods for strategy-specific logic
+    
+    def _calculate_entry_prices(self, market_data: Dict[str, Any]) -> Dict[str, float]:
+        """
+        Calculate entry prices for inventory spot strategy.
+        
+        Strategy-specific entry prices:
+        - MEXC: Sell at bid (going short)
+        - Gate.io Spot: Buy at ask (going long)
+        
+        Args:
+            market_data: Current market data snapshot
             
         Returns:
-            Trade closure details with P&L
+            Dictionary of entry prices by exchange/instrument
         """
-        # Extract current prices
+        entry_prices = {}
+        
+        # Inventory spot strategy entry prices
         mexc_bid = market_data.get('mexc_bid', market_data.get('MEXC_SPOT_bid_price', 0))
+        gateio_spot_ask = market_data.get('gateio_spot_ask', market_data.get('gateio_ask', market_data.get('GATEIO_SPOT_ask_price', 0)))
+        
+        if mexc_bid > 0:
+            entry_prices['mexc'] = mexc_bid  # Sell MEXC spot at bid
+        if gateio_spot_ask > 0:
+            entry_prices['gateio_spot'] = gateio_spot_ask  # Buy Gate.io spot at ask
+            
+        return entry_prices
+    
+    def _calculate_exit_prices(self, market_data: Dict[str, Any]) -> Dict[str, float]:
+        """
+        Calculate exit prices for inventory spot strategy.
+        
+        Strategy-specific exit prices:
+        - MEXC: Buy at ask (closing short)
+        - Gate.io Spot: Sell at bid (closing long)
+        
+        Args:
+            market_data: Current market data snapshot
+            
+        Returns:
+            Dictionary of exit prices by exchange/instrument
+        """
+        exit_prices = {}
+        
+        # Inventory spot strategy exit prices
         mexc_ask = market_data.get('mexc_ask', market_data.get('MEXC_SPOT_ask_price', 0))
-        gateio_spot_bid = market_data.get('gateio_spot_bid', market_data.get('GATEIO_SPOT_bid_price', 0))
-        gateio_spot_ask = market_data.get('gateio_spot_ask', market_data.get('GATEIO_SPOT_ask_price', 0))
+        gateio_spot_bid = market_data.get('gateio_spot_bid', market_data.get('gateio_bid', market_data.get('GATEIO_SPOT_bid_price', 0)))
         
-        if not all([mexc_ask, gateio_spot_bid]):
-            return {}
-        
-        # Exit prices (reverse of entry)
-        mexc_exit_price = mexc_ask  # Buy at ask to close short
-        gateio_exit_price = gateio_spot_bid  # Sell at bid to close long
-        
-        # Calculate P&L components
-        mexc_pnl = position['mexc_entry_price'] - mexc_exit_price  # Short position P&L
-        gateio_pnl = gateio_exit_price - position['gateio_entry_price']  # Long position P&L
-        
-        # Total P&L per unit
-        total_pnl_per_unit = mexc_pnl + gateio_pnl
-        
-        # Scale to position size
-        position_size = position['position_size_usd']
-        entry_price = position['mexc_entry_price']
-        units = position_size / entry_price if entry_price > 0 else 0
-        
-        total_pnl_usd = total_pnl_per_unit * units
-        
-        # Calculate fees
-        fees_usd = position_size * self.total_fees
-        net_pnl_usd = total_pnl_usd - fees_usd
-        
-        # Calculate current spot spread
-        current_spot_spread = (mexc_bid - gateio_spot_ask) / mexc_bid * 100 if mexc_bid > 0 else 0
-        
-        trade_result = {
-            'strategy_type': self.strategy_type,
-            'entry_timestamp': position.get('timestamp'),
-            'exit_timestamp': datetime.now(),
-            'position_size_usd': position_size,
-            'hold_time_seconds': (datetime.now() - position.get('timestamp')).total_seconds(),
+        if mexc_ask > 0:
+            exit_prices['mexc'] = mexc_ask  # Buy MEXC spot at ask
+        if gateio_spot_bid > 0:
+            exit_prices['gateio_spot'] = gateio_spot_bid  # Sell Gate.io spot at bid
             
-            # Entry details
-            'mexc_entry_price': position['mexc_entry_price'],
-            'gateio_entry_price': position['gateio_entry_price'],
-            
-            # Exit details
-            'mexc_exit_price': mexc_exit_price,
-            'gateio_exit_price': gateio_exit_price,
-            
-            # P&L breakdown
-            'mexc_pnl_per_unit': mexc_pnl,
-            'gateio_pnl_per_unit': gateio_pnl,
-            'total_pnl_per_unit': total_pnl_per_unit,
-            'total_pnl_usd': total_pnl_usd,
-            'fees_usd': fees_usd,
-            'net_pnl_usd': net_pnl_usd,
-            'pnl_percentage': (net_pnl_usd / position_size) * 100 if position_size > 0 else 0,
-            
-            # Spread analysis
-            'entry_spot_spread': position.get('entry_spot_spread', 0),
-            'exit_spot_spread': current_spot_spread,
-            'spread_capture': position.get('entry_spot_spread', 0) - current_spot_spread,
-        }
+        return exit_prices
+    
+    def _calculate_pnl(self, entry_prices: Dict[str, float], exit_prices: Dict[str, float], position_size_usd: float) -> Tuple[float, float]:
+        """
+        Calculate P&L for inventory spot strategy trade.
         
-        # Update inventory tracking
-        units = position_size / entry_price if entry_price > 0 else 0
-        self.mexc_inventory += units  # Close short position
-        self.gateio_inventory -= units  # Close long position
+        Strategy-specific P&L calculation:
+        - MEXC: Short position (sell high, buy low)
+        - Gate.io Spot: Long position (buy low, sell high)
         
-        self.current_position = None
-        self.position_start_time = None
-        return trade_result
+        Args:
+            entry_prices: Entry prices by exchange
+            exit_prices: Exit prices by exchange
+            position_size_usd: Position size in USD
+            
+        Returns:
+            Tuple of (pnl_usd, pnl_pct)
+        """
+        # Inventory spot P&L calculation
+        mexc_entry = entry_prices.get('mexc', 0)
+        mexc_exit = exit_prices.get('mexc', 0)
+        gateio_spot_entry = entry_prices.get('gateio_spot', 0)
+        gateio_spot_exit = exit_prices.get('gateio_spot', 0)
+        
+        if not all([mexc_entry, mexc_exit, gateio_spot_entry, gateio_spot_exit]):
+            return 0.0, 0.0
+        
+        # Calculate P&L for each leg
+        # MEXC short: profit when exit < entry
+        mexc_pnl = (mexc_entry - mexc_exit) / mexc_entry * position_size_usd
+        
+        # Gate.io spot long: profit when exit > entry
+        gateio_spot_pnl = (gateio_spot_exit - gateio_spot_entry) / gateio_spot_entry * position_size_usd
+        
+        # Total P&L minus fees
+        total_pnl_usd = mexc_pnl + gateio_spot_pnl - (position_size_usd * self.total_fees)
+        total_pnl_pct = total_pnl_usd / position_size_usd * 100
+        
+        return total_pnl_usd, total_pnl_pct
     
     def update_indicators(self, new_data: Union[Dict[str, Any], pd.DataFrame]) -> None:
         """

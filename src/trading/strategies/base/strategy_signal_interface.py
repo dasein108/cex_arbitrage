@@ -21,7 +21,9 @@ class StrategySignalInterface(ABC):
     Defines the contract that all strategy signals must implement for both
     real-time trading and backtesting operations.
     """
-    
+
+    strategy_type: Optional[str] = None
+
     @abstractmethod
     async def preload(self, historical_data: pd.DataFrame, **params) -> None:
         """
@@ -69,36 +71,30 @@ class StrategySignalInterface(ABC):
         pass
     
     @abstractmethod
-    def open_position(self, signal: Signal, market_data: Dict[str, Any], **params) -> Dict[str, Any]:
+    def open_position(self, signal: Signal, market_data: Dict[str, Any]) -> None:
         """
-        Calculate position opening details.
+        Open a new position based on signal and market data.
         
-        Determines entry prices, position sizes, and risk parameters.
+        Internal position tracking handles entry prices, sizes, and state management.
+        Position details are stored internally and managed by the strategy.
         
         Args:
             signal: Trading signal (ENTER)
-            market_data: Current market data
-            **params: Position sizing and risk parameters
-            
-        Returns:
-            Position details dictionary
+            market_data: Current market data snapshot
         """
         pass
     
     @abstractmethod
-    def close_position(self, position: Dict[str, Any], market_data: Dict[str, Any], **params) -> Dict[str, Any]:
+    def close_position(self, signal: Signal, market_data: Dict[str, Any]) -> None:
         """
-        Calculate position closing details and P&L.
+        Close current position and record trade details.
         
-        Determines exit prices and final P&L calculations.
+        Internal position tracking handles exit prices, P&L calculation, and trade recording.
+        Trade details are stored internally and accessible via get_performance_metrics().
         
         Args:
-            position: Current position details
-            market_data: Current market data
-            **params: Exit parameters
-            
-        Returns:
-            Trade closure details with P&L
+            signal: Trading signal (EXIT)
+            market_data: Current market data snapshot
         """
         pass
     
@@ -158,5 +154,32 @@ class StrategySignalInterface(ABC):
             
         Returns:
             Confidence score between 0.0 and 1.0
+        """
+        pass
+    
+    @abstractmethod
+    def get_performance_metrics(self) -> Dict[str, Any]:
+        """
+        Get comprehensive performance metrics from internal position tracking.
+        
+        Returns:
+            Dictionary containing:
+            - completed_trades: List of completed trade details
+            - total_trades: Number of completed trades
+            - total_pnl_usd: Total P&L in USD
+            - total_pnl_pct: Total P&L as percentage
+            - win_rate: Percentage of profitable trades
+            - avg_trade_duration: Average holding time
+            - current_position: Current position details (if any)
+        """
+        pass
+    
+    @abstractmethod
+    def reset_position_tracking(self) -> None:
+        """
+        Reset internal position tracking state.
+        
+        Clears all position history, completed trades, and current positions.
+        Used for starting fresh backtests or live trading sessions.
         """
         pass

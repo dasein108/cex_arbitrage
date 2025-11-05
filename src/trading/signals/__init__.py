@@ -42,7 +42,6 @@ from .engines.strategy_signal_engine import StrategySignalEngine
 # Backtesting system
 from .backtesting.strategy_signal_backtester import StrategySignalBacktester
 from .backtesting.vectorized_strategy_backtester import VectorizedStrategyBacktester
-from .backtesting.position_tracker import PositionTracker
 
 # Types and utilities
 from .types.signal_types import Signal
@@ -70,7 +69,6 @@ __all__ = [
     # Backtesting
     'StrategySignalBacktester',
     'VectorizedStrategyBacktester',
-    'PositionTracker',
     
     # Types
     'Signal',

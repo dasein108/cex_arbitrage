@@ -10,9 +10,42 @@ import numpy as np
 from collections import deque
 from datetime import datetime, timezone
 import logging
+from dataclasses import dataclass
 
 from .strategy_signal_interface import StrategySignalInterface
 from ..types.signal_types import Signal
+from ..types.performance_metrics import PerformanceMetrics
+
+
+@dataclass
+class Position:
+    """Internal position tracking for strategy signals."""
+    entry_time: datetime
+    strategy_type: str
+    entry_signal: Signal
+    entry_data: Dict[str, Any]
+    position_size_usd: float
+    entry_prices: Dict[str, float]
+    unrealized_pnl_usd: float = 0.0
+    unrealized_pnl_pct: float = 0.0
+    hold_time_minutes: float = 0.0
+
+
+@dataclass
+class Trade:
+    """Completed trade tracking for strategy signals."""
+    entry_time: datetime
+    exit_time: datetime
+    strategy_type: str
+    entry_signal: Signal
+    exit_signal: Signal
+    position_size_usd: float
+    entry_prices: Dict[str, float]
+    exit_prices: Dict[str, float]
+    pnl_usd: float
+    pnl_pct: float
+    hold_time_minutes: float
+    fees_usd: float = 0.0
 
 
 class BaseStrategySignal(StrategySignalInterface):
@@ -64,6 +97,11 @@ class BaseStrategySignal(StrategySignalInterface):
         
         # Logger
         self.logger = logging.getLogger(f"{self.__class__.__name__}")
+        
+        # Internal position tracking
+        self.open_positions: List[Position] = []
+        self.completed_trades: List[Trade] = []
+        self.position_counter = 0
     
     async def preload(self, historical_data: pd.DataFrame, **params) -> None:
         """
@@ -285,3 +323,229 @@ class BaseStrategySignal(StrategySignalInterface):
             spreads['gateio_futures_spread'] = (gateio_futures_ask - gateio_futures_bid) / gateio_futures_ask * 100
         
         return spreads
+    
+    def update_indicators(self, new_data: Union[Dict[str, Any], pd.DataFrame]) -> None:
+        """
+        Update rolling indicators with new market data.
+        
+        Args:
+            new_data: New market data (single row or snapshot)
+        """
+        if isinstance(new_data, pd.DataFrame) and not new_data.empty:
+            # Handle DataFrame input (last row)
+            latest_row = new_data.iloc[-1]
+            mexc_spread = latest_row.get('mexc_vs_gateio_futures', 0)
+            gateio_spread = latest_row.get('gateio_spot_vs_futures', 0)
+        else:
+            # Handle dict input
+            spreads = self._calculate_spread_from_market_data(new_data)
+            mexc_spread = spreads.get('mexc_vs_gateio_futures', 0)
+            gateio_spread = spreads.get('gateio_spot_vs_futures', 0)
+        
+        # Update rolling windows
+        if mexc_spread != 0:
+            self._update_rolling_statistics(mexc_spread, 'mexc_vs_gateio_futures')
+        
+        if gateio_spread != 0:
+            self._update_rolling_statistics(gateio_spread, 'gateio_spot_vs_futures')
+    
+    def get_performance_metrics(self) -> PerformanceMetrics:
+        """
+        Get comprehensive performance metrics for this strategy.
+        
+        Returns:
+            PerformanceMetrics struct with current performance data
+        """
+        # Create metrics instance
+        metrics = PerformanceMetrics(
+            strategy_type=self.strategy_type,
+            signal_count=self.signal_count,
+            last_signal_time=self.last_signal_time,
+            total_positions=self.position_counter,
+            open_positions=len(self.open_positions),
+            completed_trades=len(self.completed_trades)
+        )
+        
+        # Update with trade data
+        metrics.update_pnl_metrics(self.completed_trades)
+        metrics.update_position_metrics(self.open_positions)
+        
+        return metrics
+    
+    def reset_position_tracking(self) -> None:
+        """Reset all internal position tracking data."""
+        self.open_positions.clear()
+        self.completed_trades.clear()
+        self.position_counter = 0
+        self.signal_count = 0
+        self.last_signal_time = None
+    
+    def open_position(self, signal: Signal, market_data: Dict[str, Any], **params) -> None:
+        """
+        Open position with internal tracking.
+        
+        Args:
+            signal: Trading signal (should be ENTER)
+            market_data: Current market data
+            **params: Additional parameters (position_size_usd, etc.)
+        """
+        position_size_usd = params.get('position_size_usd', self.position_size_usd)
+        
+        # Calculate entry prices using strategy-specific logic
+        entry_prices = self._calculate_entry_prices(market_data)
+        
+        if not entry_prices:
+            self.logger.warning("No valid entry prices calculated - skipping position open")
+            return
+        
+        # Create position
+        position = Position(
+            entry_time=datetime.now(timezone.utc),
+            strategy_type=self.strategy_type,
+            entry_signal=signal,
+            entry_data=market_data.copy(),
+            position_size_usd=position_size_usd,
+            entry_prices=entry_prices
+        )
+        
+        # Add to internal tracking
+        self.open_positions.append(position)
+        self.position_counter += 1
+        
+        self.logger.info(f"Opened {self.strategy_type} position #{self.position_counter} with entry prices: {entry_prices}")
+    
+    def close_position(self, signal: Signal, market_data: Dict[str, Any], **params) -> None:
+        """
+        Close position with internal tracking.
+        
+        Args:
+            signal: Trading signal (should be EXIT)
+            market_data: Current market data
+            **params: Additional parameters
+        """
+        if not self.open_positions:
+            self.logger.warning("No open positions to close")
+            return
+        
+        # Get the oldest position (FIFO)
+        position = self.open_positions.pop(0)
+        
+        # Calculate exit prices using strategy-specific logic
+        exit_prices = self._calculate_exit_prices(market_data)
+        
+        if not exit_prices:
+            self.logger.warning("No valid exit prices calculated - position not closed properly")
+            return
+        
+        # Calculate P&L using strategy-specific logic
+        pnl_usd, pnl_pct = self._calculate_pnl(position.entry_prices, exit_prices, position.position_size_usd)
+        
+        # Calculate hold time
+        exit_time = datetime.now(timezone.utc)
+        hold_time_minutes = (exit_time - position.entry_time).total_seconds() / 60
+        
+        # Create completed trade
+        trade = Trade(
+            entry_time=position.entry_time,
+            exit_time=exit_time,
+            strategy_type=position.strategy_type,
+            entry_signal=position.entry_signal,
+            exit_signal=signal,
+            position_size_usd=position.position_size_usd,
+            entry_prices=position.entry_prices,
+            exit_prices=exit_prices,
+            pnl_usd=pnl_usd,
+            pnl_pct=pnl_pct,
+            hold_time_minutes=hold_time_minutes,
+            fees_usd=position.position_size_usd * self.total_fees
+        )
+        
+        # Add to completed trades
+        self.completed_trades.append(trade)
+        
+        self.logger.info(f"Closed {self.strategy_type} position: P&L ${pnl_usd:.2f} ({pnl_pct:.3f}%) in {hold_time_minutes:.1f}min")
+    
+    def _track_positions_internally(self, df_with_signals: pd.DataFrame) -> None:
+        """
+        Internal vectorized position tracking for backtesting.
+        
+        Args:
+            df_with_signals: DataFrame with signal column
+        """
+        # Reset for clean backtesting
+        self.reset_position_tracking()
+        
+        # Process signals sequentially to maintain position state
+        for idx, row in df_with_signals.iterrows():
+            signal_value = row.get('signal', 'hold')
+            
+            # Convert string signals to Signal enum
+            if isinstance(signal_value, str):
+                if signal_value.lower() == 'enter':
+                    signal = Signal.ENTER
+                elif signal_value.lower() == 'exit':
+                    signal = Signal.EXIT
+                else:
+                    signal = Signal.HOLD
+            elif isinstance(signal_value, Signal):
+                signal = signal_value
+            else:
+                continue
+            
+            # Convert row to dict for market data
+            market_data = row.to_dict()
+            
+            # Process signal
+            if signal == Signal.ENTER and len(self.open_positions) == 0:
+                self.open_position(signal, market_data)
+            elif signal == Signal.EXIT and len(self.open_positions) > 0:
+                self.close_position(signal, market_data)
+    
+    # Abstract methods for strategy-specific implementations
+    
+    def _calculate_entry_prices(self, market_data: Dict[str, Any]) -> Dict[str, float]:
+        """
+        Calculate entry prices for this strategy.
+        
+        Should be overridden by specific strategy implementations.
+        
+        Args:
+            market_data: Current market data snapshot
+            
+        Returns:
+            Dictionary of entry prices by exchange/instrument
+        """
+        # Default implementation - should be overridden
+        return {}
+    
+    def _calculate_exit_prices(self, market_data: Dict[str, Any]) -> Dict[str, float]:
+        """
+        Calculate exit prices for this strategy.
+        
+        Should be overridden by specific strategy implementations.
+        
+        Args:
+            market_data: Current market data snapshot
+            
+        Returns:
+            Dictionary of exit prices by exchange/instrument
+        """
+        # Default implementation - should be overridden
+        return {}
+    
+    def _calculate_pnl(self, entry_prices: Dict[str, float], exit_prices: Dict[str, float], position_size_usd: float) -> Tuple[float, float]:
+        """
+        Calculate P&L for this strategy trade.
+        
+        Should be overridden by specific strategy implementations.
+        
+        Args:
+            entry_prices: Entry prices by exchange
+            exit_prices: Exit prices by exchange
+            position_size_usd: Position size in USD
+            
+        Returns:
+            Tuple of (pnl_usd, pnl_pct)
+        """
+        # Default implementation - should be overridden
+        return 0.0, 0.0
