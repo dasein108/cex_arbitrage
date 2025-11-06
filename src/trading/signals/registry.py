@@ -8,7 +8,7 @@ from .base.strategy_signal_factory import register_strategy_signal
 # from .implementations.reverse_delta_neutral_strategy_signal import ReverseDeltaNeutralStrategySignal
 # from .implementations.inventory_spot_strategy_signal import InventorySpotStrategySignal
 # from .implementations.volatility_harvesting_strategy_signal import VolatilityHarvestingStrategySignal
-from .implementations.inventory_spot_strategy_signal_v2 import InventorySpotStrategySignalV2
+from trading.signals_v2.implementation.inventory_spot_strategy_signal import InventorySpotStrategySignalV2
 from trading.signals.implementations.unsupported.volatility_harvesting_strategy_signal_v2 import VolatilityHarvestingStrategySignalV2
 
 

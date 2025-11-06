@@ -385,7 +385,7 @@ class VolatilityArbitrageBacktest:
             # Check stop loss / take profit
             self.check_stop_loss_take_profit(current_prices, timestamp)
             
-            # Generate volatility signals
+            # Generate volatility signals_v2
             opportunities = self.volatility_indicators.scan_opportunities(
                 {symbol: df.loc[:timestamp] for symbol, df in resampled_data.items()}
             )

@@ -225,7 +225,7 @@ class SpotFuturesArbitrageTask(BaseArbitrageTask):
                 signal_result, total_spread_cost, actual_fees, execution_spreads
             )
         else:  # HOLD
-            return False  # Don't trade on HOLD signals
+            return False  # Don't trade on HOLD signals_v2
         
         # Update rejection counter
         if not validation_result:
@@ -276,7 +276,7 @@ class SpotFuturesArbitrageTask(BaseArbitrageTask):
     def _validate_entry_spreads(self, signal_result, total_spread_cost: float, 
                                actual_fees: float, execution_spreads: dict) -> bool:
         """
-        Validate spreads for ENTRY signals using dynamic ArbStats thresholds.
+        Validate spreads for ENTRY signals_v2 using dynamic ArbStats thresholds.
         
         For entries, we care most about:
         1. The arbitrage opportunity exceeds statistical entry threshold
@@ -335,7 +335,7 @@ class SpotFuturesArbitrageTask(BaseArbitrageTask):
     def _validate_exit_spreads(self, signal_result, total_spread_cost: float,
                               actual_fees: float, execution_spreads: dict) -> bool:
         """
-        Validate spreads for EXIT signals using dynamic ArbStats thresholds.
+        Validate spreads for EXIT signals_v2 using dynamic ArbStats thresholds.
         
         For exits, we care most about:
         1. We're in a profitable exit zone (above 25th percentile of maxes)
@@ -386,7 +386,7 @@ class SpotFuturesArbitrageTask(BaseArbitrageTask):
 
     def _check_arbitrage_signal(self) -> Signal:
         """
-        Check for arbitrage entry/exit signals using dynamic thresholds.
+        Check for arbitrage entry/exit signals_v2 using dynamic thresholds.
         
         Returns:
             Signal enum (ENTER, EXIT, or HOLD)

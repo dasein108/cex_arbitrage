@@ -79,7 +79,7 @@ class AMIAConfig:
     
     # Performance parameters
     outlier_threshold: float = 3.0  # Z-score threshold for outliers
-    signal_min_gap_seconds: float = 30.0  # Minimum time between signals
+    signal_min_gap_seconds: float = 30.0  # Minimum time between signals_v2
 
 
 class AMIADataProcessor:
@@ -225,7 +225,7 @@ class AMIASignalGenerator:
     
     def generate_signals(self, df_with_opportunities: pd.DataFrame) -> Tuple[pd.Series, pd.Series]:
         """
-        Generate AMIA entry and exit signals
+        Generate AMIA entry and exit signals_v2
         
         Args:
             df_with_opportunities: DataFrame with opportunity scores
@@ -486,7 +486,7 @@ class AMIAStrategy:
         futures_data['bid_price'] *= (1 + np.random.normal(0, 0.0001, len(futures_data)))
         futures_data['ask_price'] *= (1 + np.random.normal(0, 0.0001, len(futures_data)))
         
-        # Calculate opportunities and signals
+        # Calculate opportunities and signals_v2
         opportunities_df = self.signal_generator.calculate_opportunity_scores(spot_data, futures_data)
         
         if opportunities_df.empty:
@@ -517,10 +517,10 @@ class AMIAStrategy:
     
     def _simulate_trading(self, opportunities_df: pd.DataFrame, 
                          entry_signals: pd.Series, exit_signals: pd.Series) -> List[AMIAPosition]:
-        """Simulate trading based on signals"""
+        """Simulate trading based on signals_v2"""
         trades = []
         
-        # Combine signals with data
+        # Combine signals_v2 with data
         signal_data = opportunities_df.copy()
         signal_data['entry_signal'] = entry_signals
         signal_data['exit_signal'] = exit_signals
@@ -546,7 +546,7 @@ class AMIAStrategy:
                     row['exit_opportunity'], force_close=True
                 )
             
-            # Check for entry signals
+            # Check for entry signals_v2
             if row['entry_signal'] and self.position_manager.can_open_position():
                 spot_data = {
                     'bid_price': row['bid_price_spot'],
@@ -564,7 +564,7 @@ class AMIAStrategy:
                 if position:
                     trades.append(position)
             
-            # Check for exit signals
+            # Check for exit signals_v2
             elif row['exit_signal'] and self.position_manager.active_positions:
                 for position in list(self.position_manager.active_positions):
                     spot_data = {

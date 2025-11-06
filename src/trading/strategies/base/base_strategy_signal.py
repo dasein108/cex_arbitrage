@@ -1,7 +1,7 @@
 """
 Base Strategy Signal Implementation with Internal Position Tracking
 
-Common implementation for all strategy signals with integrated position management.
+Common implementation for all strategy signals_v2 with integrated position management.
 Eliminates external PositionTracker dependency by handling all tracking internally.
 """
 
@@ -22,20 +22,28 @@ from exchanges.structs.enums import ExchangeEnum, Side
 class TradeEntry:
     side: Side
     entry_price: float
-    exit_price: Optional[float]
+    exit_price: Optional[float] = None
 
 @dataclass
 class Position:
     """Internal position representation for tracking."""
     entry_time: datetime
-    strategy_type: str
     entry_signal: Signal
     entry_data: Dict[str, Any]
     position_size_usd: float
-    entries: Dict[ExchangeEnum, TradeEntry]  # e.g., {ExchangeEnum.MEXC: TradeEntry(...)}
+    entries: Dict[ExchangeEnum, List[TradeEntry]]  # e.g., {ExchangeEnum.MEXC: TradeEntry(...)}
+    strategy_type: Optional[str] = None
     unrealized_pnl_usd: float = 0.0
     unrealized_pnl_pct: float = 0.0
     hold_time_minutes: float = 0.0
+    transfer_completion_time: Optional[datetime] = None
+
+    def is_transfer_in_progress(self, current_time: datetime) -> bool:
+        """Check if transfer is in progress."""
+        if self.transfer_completion_time is None:
+            return False
+
+        return current_time < self.transfer_completion_time
 
 
 
@@ -59,7 +67,7 @@ class Trade:
 
 class BaseStrategySignal(StrategySignalInterface):
     """
-    Base implementation with internal position tracking for all strategy signals.
+    Base implementation with internal position tracking for all strategy signals_v2.
     
     Provides complete position management functionality:
     - Internal position tracking and state management
@@ -324,8 +332,7 @@ class BaseStrategySignal(StrategySignalInterface):
         for idx, row in signal_points.iterrows():
             current_time = row.name if hasattr(row.name, 'to_pydatetime') else datetime.now(timezone.utc)
             signal_str = row['signal']
-            market_data = row.to_dict()
-            
+
             # Convert string signal to Signal enum
             if signal_str == 'enter':
                 signal = Signal.ENTER

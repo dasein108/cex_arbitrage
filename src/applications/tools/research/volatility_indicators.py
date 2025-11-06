@@ -218,7 +218,7 @@ class VolatilityIndicators:
                         symbol2
                     )
                     
-                    # Only store signals with action
+                    # Only store signals_v2 with action
                     if signal.action != 'hold':
                         opportunities[(symbol1, symbol2)] = signal
         

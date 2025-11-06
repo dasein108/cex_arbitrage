@@ -169,7 +169,7 @@ class AMIADataPreprocessor:
 ### Step 2: Deviation Calculator
 
 ```python
-# signals/deviation_calculator.py
+# signals_v2/deviation_calculator.py
 import pandas as pd
 import numpy as np
 from typing import Dict
@@ -230,7 +230,7 @@ class DeviationCalculator:
 ### Step 3: Signal Generator
 
 ```python
-# signals/signal_generator.py
+# signals_v2/signal_generator.py
 import pandas as pd
 import numpy as np
 from typing import Tuple
@@ -248,7 +248,7 @@ class AMIASignalGenerator:
     
     def generate_signals(self, df: pd.DataFrame) -> Tuple[pd.Series, pd.Series]:
         """
-        Generate AMIA entry and exit signals
+        Generate AMIA entry and exit signals_v2
         
         Args:
             df: DataFrame with opportunity calculations
@@ -277,9 +277,9 @@ class AMIASignalGenerator:
     def apply_timing_filters(self, entry_signals: pd.Series, exit_signals: pd.Series, 
                            df: pd.DataFrame) -> Tuple[pd.Series, pd.Series]:
         """
-        Apply timing-based filters to signals
+        Apply timing-based filters to signals_v2
         """
-        # Prevent rapid signal oscillation (minimum 30 seconds between signals)
+        # Prevent rapid signal oscillation (minimum 30 seconds between signals_v2)
         min_signal_gap = pd.Timedelta('30s')
         
         filtered_entry = entry_signals.copy()
@@ -535,7 +535,7 @@ class AMIACEXIntegration:
                 # Run AMIA signal generation
                 signals = self.amia_strategy.generate_signals(spot_data, futures_data)
                 
-                # Execute trades if signals are triggered
+                # Execute trades if signals_v2 are triggered
                 if signals['entry_signal']:
                     await self._execute_entry_trade()
                 elif signals['exit_signal']:

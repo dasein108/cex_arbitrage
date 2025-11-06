@@ -1,7 +1,7 @@
 """
 Performance Metrics Struct for Strategy Signal Analysis
 
-Type-safe performance metrics for internal position tracking within strategy signals.
+Type-safe performance metrics for internal position tracking within strategy signals_v2.
 Provides comprehensive trading statistics and position analytics.
 """
 
@@ -13,7 +13,7 @@ from datetime import datetime
 @dataclass
 class PerformanceMetrics:
     """
-    Comprehensive performance metrics for strategy signals with internal position tracking.
+    Comprehensive performance metrics for strategy signals_v2 with internal position tracking.
     
     Used by BaseStrategySignal.get_performance_metrics() to provide type-safe
     performance data instead of dictionaries.

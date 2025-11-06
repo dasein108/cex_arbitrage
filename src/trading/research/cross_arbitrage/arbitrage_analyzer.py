@@ -205,7 +205,7 @@ class ArbitrageAnalyzer:
             min_history: int = 50,  # Minimum periods before trading
     ) -> pd.DataFrame:
         """
-        Add arbitrage signals with bidirectional position tracking and P&L calculation.
+        Add arbitrage signals_v2 with bidirectional position tracking and P&L calculation.
         Uses unified logic for both MEXC_TO_GATEIO and GATEIO_TO_MEXC directions.
 
         Args:
@@ -213,10 +213,10 @@ class ArbitrageAnalyzer:
             window_size: Rolling window size for statistics (default: 10)
             total_fees: Total trading fees (default: 0.25%)
             lookback_periods: Fixed lookback period for percentile calculation (default: 500)
-            min_history: Minimum periods before generating signals (default: 50)
+            min_history: Minimum periods before generating signals_v2 (default: 50)
 
         Returns:
-            DataFrame with signals, positions, and P&L for both directions
+            DataFrame with signals_v2, positions, and P&L for both directions
         """
         mexc_col = AnalyzerKeys.mexc_vs_gateio_futures_arb
         gateio_col = AnalyzerKeys.gateio_spot_vs_futures_arb
@@ -229,7 +229,7 @@ class ArbitrageAnalyzer:
         df['mexc_gateio_mean'] = np.nan
         df['gateio_spot_mean'] = np.nan
 
-        # Calculate signals using unified methodology from hedged backtest
+        # Calculate signals_v2 using unified methodology from hedged backtest
         for i in range(len(df)):
             # Skip if insufficient history
             if i < min_history:
@@ -415,7 +415,7 @@ class ArbitrageAnalyzer:
             total_fees: Total round-trip trading fees as decimal
             
         Returns:
-            DataFrame with reverse delta-neutral signals and P&L
+            DataFrame with reverse delta-neutral signals_v2 and P&L
         """
         # Initialize columns for reverse delta-neutral strategy
         df['rdn_signal'] = 'HOLD'
@@ -584,7 +584,7 @@ class ArbitrageAnalyzer:
             total_fees: Total round-trip trading fees
             
         Returns:
-            DataFrame with inventory arbitrage signals and P&L
+            DataFrame with inventory arbitrage signals_v2 and P&L
         """
         # Initialize columns
         df['inv_signal'] = 'HOLD'
@@ -755,7 +755,7 @@ class ArbitrageAnalyzer:
             total_fees: Total trading fees
             
         Returns:
-            DataFrame with volatility harvesting signals and P&L
+            DataFrame with volatility harvesting signals_v2 and P&L
         """
         # Initialize columns
         df['svh_signal'] = 'HOLD'

@@ -38,7 +38,7 @@ class DeltaNeutralArbitrage:
     
     def generate_signals(self, spot_data: pd.DataFrame, futures_data: pd.DataFrame) -> Dict:
         """
-        Generate delta-neutral signals based on mispricing
+        Generate delta-neutral signals_v2 based on mispricing
         """
         # Calculate theoretical futures price
         theoretical_price = self.calculate_theoretical_futures_price(spot_data, futures_data)
@@ -194,7 +194,7 @@ class AMIAPairsTrading:
         """
         Combine spread mean reversion with AMIA opportunity scoring
         """
-        # Traditional pairs signals
+        # Traditional pairs signals_v2
         spread_zscore = (spread - spread.rolling(self.lookback_period).mean()) / spread.rolling(self.lookback_period).std()
         pairs_entry = abs(spread_zscore) > 2.0
         pairs_exit = abs(spread_zscore) < 0.5
@@ -203,7 +203,7 @@ class AMIAPairsTrading:
         amia_entry_opportunity = spot_deviations + futures_deviations
         amia_entry = amia_entry_opportunity < -0.001
         
-        # Combined signals (both conditions must be met)
+        # Combined signals_v2 (both conditions must be met)
         combined_entry = pairs_entry & amia_entry
         combined_exit = pairs_exit | (amia_entry_opportunity > -0.0002)
         
@@ -250,7 +250,7 @@ class AMIAMicrostructure:
     
     def generate_microstructure_enhanced_signals(self, market_data: pd.DataFrame) -> Dict:
         """
-        Generate AMIA signals enhanced with microstructure information
+        Generate AMIA signals_v2 enhanced with microstructure information
         """
         # Calculate microstructure indicators
         ofi = self.calculate_order_flow_imbalance(market_data)
@@ -265,7 +265,7 @@ class AMIAMicrostructure:
         price_momentum = (microprice - microprice.shift(1)) / microprice.shift(1)
         ofi_momentum = ofi - ofi.shift(1)
         
-        # Enhanced AMIA signals
+        # Enhanced AMIA signals_v2
         base_amia_signals = self.calculate_base_amia_signals(market_data)
         
         # Microstructure confirmation
@@ -356,7 +356,7 @@ class AMIAAdaptiveMarketMaker:
     
     def adapt_spreads_to_amia_signals(self, market_data: Dict, amia_signals: Dict) -> Dict:
         """
-        Adapt market making spreads based on AMIA opportunity signals
+        Adapt market making spreads based on AMIA opportunity signals_v2
         """
         adapted_quotes = {}
         
@@ -430,7 +430,7 @@ class AMIATriangularArbitrage:
         if not triangular_signals['opportunity']:
             return {'execute': False, 'reason': 'no_triangular_opportunity'}
         
-        # Check if AMIA signals support the triangular opportunity
+        # Check if AMIA signals_v2 support the triangular opportunity
         amia_support = amia_signals.get('entry_opportunity', 0) < -0.0005
         
         if not amia_support:
@@ -568,7 +568,7 @@ class AMIACalendarSpread:
     def generate_calendar_amia_signals(self, calendar_data: Dict, 
                                       spot_amia_signals: Dict) -> Dict:
         """
-        Generate calendar spread signals enhanced with AMIA
+        Generate calendar spread signals_v2 enhanced with AMIA
         """
         # Historical spread statistics
         spread_history = calendar_data['historical_spreads']
@@ -579,14 +579,14 @@ class AMIACalendarSpread:
         spread_std = spread_history.std()
         spread_zscore = (current_spread - spread_mean) / spread_std
         
-        # Calendar spread signals
+        # Calendar spread signals_v2
         calendar_entry = abs(spread_zscore) > 1.5  # Enter when spread is unusual
         calendar_exit = abs(spread_zscore) < 0.5   # Exit when spread normalizes
         
         # AMIA confirmation
         amia_confirmation = spot_amia_signals.get('entry_opportunity', 0) < -0.0005
         
-        # Combined signals
+        # Combined signals_v2
         combined_entry = calendar_entry & amia_confirmation
         
         return {
@@ -652,7 +652,7 @@ class InterExchangeBasisTrading:
                             amia2.get('entry_opportunity', 0)
                         ) / 2
                         
-                        # Only proceed if AMIA signals are favorable
+                        # Only proceed if AMIA signals_v2 are favorable
                         if avg_amia_opportunity < -0.0005:
                             opportunities.append({
                                 'long_exchange': exchange1 if basis_diff > 0 else exchange2,
@@ -682,18 +682,18 @@ class MultiTimeframeAMIA:
     
     def calculate_multi_timeframe_signals(self, market_data: Dict[str, pd.DataFrame]) -> Dict:
         """
-        Calculate AMIA signals across multiple timeframes
+        Calculate AMIA signals_v2 across multiple timeframes
         """
         timeframe_signals = {}
         
         for timeframe in self.timeframes:
             df = market_data[timeframe]
             
-            # Calculate AMIA signals for this timeframe
+            # Calculate AMIA signals_v2 for this timeframe
             signals = self.calculate_single_timeframe_amia(df)
             timeframe_signals[timeframe] = signals
         
-        # Combine signals with weights
+        # Combine signals_v2 with weights
         combined_opportunity = sum(
             timeframe_signals[tf]['entry_opportunity'] * self.timeframe_weights[tf]
             for tf in self.timeframes
@@ -759,7 +759,7 @@ class MLEnhancedAMIA:
         
         # Prepare features and labels
         X = self.prepare_features(historical_data)
-        y = historical_returns  # Future returns following signals
+        y = historical_returns  # Future returns following signals_v2
         
         # Train-test split
         X_train, X_test, y_train, y_test = train_test_split(
@@ -782,7 +782,7 @@ class MLEnhancedAMIA:
     
     def generate_ml_enhanced_signals(self, current_data: pd.DataFrame) -> Dict:
         """
-        Generate AMIA signals enhanced with ML predictions
+        Generate AMIA signals_v2 enhanced with ML predictions
         """
         if self.model is None:
             raise ValueError("Model must be trained first")
@@ -793,7 +793,7 @@ class MLEnhancedAMIA:
         # ML prediction
         ml_score = self.model.predict(features.iloc[-1:].values)[0]
         
-        # Base AMIA signals
+        # Base AMIA signals_v2
         base_signals = self.calculate_base_amia_signals(current_data)
         
         # ML enhancement

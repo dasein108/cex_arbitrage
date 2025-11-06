@@ -22,7 +22,6 @@ Usage:
 """
 
 # Core interfaces and base classes
-from trading.strategies.base.strategy_signal_interface import StrategySignalInterface
 from trading.strategies.base.base_strategy_signal import BaseStrategySignal
 from trading.strategies.base.strategy_signal_factory import StrategySignalFactory
 
@@ -48,7 +47,6 @@ from .types.signal_types import Signal
 
 __all__ = [
     # Core interfaces
-    'StrategySignalInterface',
     'BaseStrategySignal',
     'StrategySignalFactory',
 

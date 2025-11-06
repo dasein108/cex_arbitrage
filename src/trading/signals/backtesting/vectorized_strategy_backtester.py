@@ -9,7 +9,7 @@ Key Features:
 - Factory Pattern: Automatic strategy instantiation and registration
 - Vectorized operations for 50x performance improvement  
 - Direct data loading with BookTickerDbSource/CandlesBookTickerSource
-- Internal position tracking via strategy signals
+- Internal position tracking via strategy signals_v2
 - Performance: Sub-millisecond per-row processing
 - Auto-configuration: Smart data source selection
 """
@@ -41,7 +41,7 @@ class VectorizedStrategyBacktester:
     - Performance: Sub-millisecond per-row processing (<0.004ms average)
     - Direct Implementation: No adapters, clean and simple
     - Auto Data Loading: BookTickerDbSource/CandlesBookTickerSource integration
-    - Internal Position Tracking: Strategy signals handle position management internally
+    - Internal Position Tracking: Strategy signals_v2 handle position management internally
     """
     
     def __init__(self, 
@@ -209,7 +209,7 @@ class VectorizedStrategyBacktester:
             # Preload strategy with historical data
             await strategy.preload(df, **params)
             
-            # Apply signals to backtest data (includes internal position tracking)
+            # Apply signals_v2 to backtest data (includes internal position tracking)
             performance_metrics = strategy.backtest(df, **params)
             
             # Extract trades and performance data
@@ -223,7 +223,7 @@ class VectorizedStrategyBacktester:
                 'sharpe_ratio': performance_metrics.get('sharpe_ratio', 0.0)
             }
             
-            # Count signals
+            # Count signals_v2
             signal_distribution = df_with_signals['signal'].value_counts().to_dict()
             signal_dist_named = {
                 'ENTER': signal_distribution.get('enter', 0),
@@ -308,7 +308,7 @@ class VectorizedStrategyBacktester:
         """
         DEPRECATED: Legacy performance metrics calculation.
         
-        Performance metrics are now calculated internally by strategy signals.
+        Performance metrics are now calculated internally by strategy signals_v2.
         This method is kept for backward compatibility only.
         
         Args:

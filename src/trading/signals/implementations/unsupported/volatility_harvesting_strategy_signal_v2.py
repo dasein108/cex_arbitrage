@@ -180,7 +180,7 @@ class VolatilityHarvestingStrategySignalV2(BaseStrategySignal):
     
     def apply_signal_to_backtest(self, df: pd.DataFrame, **params) -> pd.DataFrame:
         """
-        Apply strategy signals to historical data for backtesting.
+        Apply strategy signals_v2 to historical data for backtesting.
         
         Uses vectorized implementation of the arbitrage analyzer logic
         combined with volatility analysis.
@@ -235,7 +235,7 @@ class VolatilityHarvestingStrategySignalV2(BaseStrategySignal):
             (df['execution_confidence'] < min_confidence * 0.7)
         )
         
-        # Apply signals
+        # Apply signals_v2
         df.loc[enter_condition, 'signal'] = Signal.ENTER.value
         df.loc[exit_condition, 'signal'] = Signal.EXIT.value
         

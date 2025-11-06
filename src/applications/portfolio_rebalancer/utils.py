@@ -39,7 +39,7 @@ def save_backtest_results(results, config, filename: str = None):
             'usdt_reserve': config.usdt_reserve,
             'min_order_value': config.min_order_value,
             'cooldown_minutes': config.cooldown_minutes,
-            'initial_capital': config.initial_capital,
+            'initial_capital': config.initial_capital_usdt,
             'trading_fee': config.trading_fee
         },
         'performance': {

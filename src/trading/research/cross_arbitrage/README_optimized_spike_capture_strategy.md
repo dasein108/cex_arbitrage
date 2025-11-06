@@ -192,7 +192,7 @@ Net Profit: 0.4% - 0.14% (costs) = 0.26%
 
 ### Key Variables
 ```python
-# Entry signals
+# Entry signals_v2
 price_differential = mexc_pct_change - gateio_pct_change
 single_move_max = max(abs(mexc_pct_change), abs(gateio_pct_change))
 

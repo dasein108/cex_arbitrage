@@ -62,7 +62,7 @@ indicators = VolatilityIndicators(
     sps_threshold=0.6     # 60% spike persistence
 )
 
-# Generate signals
+# Generate signals_v2
 signal = indicators.generate_signal(pair1_data, pair2_data, "BTC/USDT", "ETH/USDT")
 
 # Run backtest

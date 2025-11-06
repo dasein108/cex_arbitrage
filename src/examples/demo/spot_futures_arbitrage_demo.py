@@ -2,7 +2,7 @@
 Spot-Futures Arbitrage Strategy Demo
 
 Demonstrates cross-exchange spot-futures arbitrage using the integrated analyzer signal logic.
-Features z-score based entry/exit signals with basis spread analysis and rolling statistics.
+Features z-score based entry/exit signals_v2 with basis spread analysis and rolling statistics.
 
 Examples:
 - MEXC spot vs Gate.io futures (cross-exchange)
@@ -49,7 +49,7 @@ async def create_maker_limit_mexc_gateio_futures_task(
     """Create a MEXC spot vs Gate.io futures arbitrage task.
 
     This is the most profitable cross-exchange spot-futures setup.
-    Uses z-score based signals with analyzer logic integration.
+    Uses z-score based signals_v2 with analyzer logic integration.
 
     Args:
         symbol: Trading symbol (e.g., F/USDT)
@@ -99,7 +99,7 @@ async def create_mexc_gateio_futures_task(
     """Create a MEXC spot vs Gate.io futures arbitrage task.
     
     This is the most profitable cross-exchange spot-futures setup.
-    Uses z-score based signals with analyzer logic integration.
+    Uses z-score based signals_v2 with analyzer logic integration.
     
     Args:
         symbol: Trading symbol (e.g., F/USDT)

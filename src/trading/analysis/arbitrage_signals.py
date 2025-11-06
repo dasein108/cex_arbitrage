@@ -32,7 +32,7 @@ def calculate_arb_signals(
     window_size: int = 10
 ) -> ArbSignal:
     """
-    Calculate arbitrage entry/exit signals based on statistical thresholds.
+    Calculate arbitrage entry/exit signals_v2 based on statistical thresholds.
     
     Entry Signal: When mexc_vs_gateio_futures < 25th percentile of minimums
     Exit Signal: When gateio_spot_vs_futures > 25th percentile of maximums

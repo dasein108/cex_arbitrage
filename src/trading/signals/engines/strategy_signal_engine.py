@@ -96,7 +96,7 @@ class StrategySignalEngine:
                                       strategy_type: Optional[str] = None,
                                       **params) -> pd.DataFrame:
         """
-        Apply strategy signals to historical data for backtesting.
+        Apply strategy signals_v2 to historical data for backtesting.
         
         Args:
             df: Historical market data DataFrame
@@ -115,18 +115,18 @@ class StrategySignalEngine:
             # Preload strategy with historical data
             await strategy.preload(df, **params)
             
-            # Apply signals to backtest
+            # Apply signals_v2 to backtest
             result_df = strategy.backtest(df, **params)
             
             # Add metadata
             result_df['strategy_type'] = strategy_type
             
-            self.logger.info(f"Applied {strategy_type} signals to {len(result_df)} periods")
+            self.logger.info(f"Applied {strategy_type} signals_v2 to {len(result_df)} periods")
             return result_df
             
         except Exception as e:
-            self.logger.error(f"Error applying {strategy_type} signals to backtest: {e}")
-            # Return original DataFrame with HOLD signals
+            self.logger.error(f"Error applying {strategy_type} signals_v2 to backtest: {e}")
+            # Return original DataFrame with HOLD signals_v2
             df['signal'] = Signal.HOLD.value
             df['confidence'] = 0.0
             df['strategy_type'] = strategy_type
@@ -316,7 +316,7 @@ async def apply_signals_to_backtest(df: pd.DataFrame,
                                   strategy_type: str = 'reverse_delta_neutral',
                                   **params) -> pd.DataFrame:
     """
-    Convenience function to apply signals to backtest data.
+    Convenience function to apply signals_v2 to backtest data.
     
     Args:
         df: Historical market data
@@ -324,7 +324,7 @@ async def apply_signals_to_backtest(df: pd.DataFrame,
         **params: Strategy parameters
         
     Returns:
-        DataFrame with signals
+        DataFrame with signals_v2
     """
     engine = StrategySignalEngine()
     return await engine.apply_signals_to_backtest(df, strategy_type, **params)

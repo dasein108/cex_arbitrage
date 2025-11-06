@@ -77,7 +77,7 @@ class ArbitrageSignalEngine:
     
     async def generate_signals(self, df: pd.DataFrame, strategy_type: str, **params) -> pd.DataFrame:
         """
-        Generate arbitrage signals using strategy signal architecture.
+        Generate arbitrage signals_v2 using strategy signal architecture.
         
         NO IF/ELSE CHAINS: Uses strategy pattern implementation.
         
@@ -87,7 +87,7 @@ class ArbitrageSignalEngine:
             **params: Strategy-specific parameters
             
         Returns:
-            DataFrame with generated signals
+            DataFrame with generated signals_v2
         """
         start_time = time.perf_counter()
         
@@ -101,7 +101,7 @@ class ArbitrageSignalEngine:
             # Preload strategy with historical data (async)
             await strategy.preload(df, **params)
             
-            # Apply signals to backtest data
+            # Apply signals_v2 to backtest data
             result_df = strategy.backtest(df, **params)
             
             # Add metadata
@@ -115,7 +115,7 @@ class ArbitrageSignalEngine:
             return result_df
             
         except Exception as e:
-            # Return DataFrame with HOLD signals on error
+            # Return DataFrame with HOLD signals_v2 on error
             df_copy = df.copy()
             df_copy['signal'] = Signal.HOLD.value
             df_copy['confidence'] = 0.0
@@ -124,7 +124,7 @@ class ArbitrageSignalEngine:
     
     async def generate_signals_incremental(self, df: pd.DataFrame, strategy_type: str, **params) -> pd.DataFrame:
         """
-        Generate signals incrementally for live trading.
+        Generate signals_v2 incrementally for live trading.
         
         Args:
             df: Recent market data
@@ -132,7 +132,7 @@ class ArbitrageSignalEngine:
             **params: Strategy parameters
             
         Returns:
-            DataFrame with signals
+            DataFrame with signals_v2
         """
         # For incremental updates, use the same logic as batch processing
         # but only process the last few rows for efficiency
@@ -197,7 +197,7 @@ async def generate_signals(df: pd.DataFrame, strategy_type: str, **params) -> pd
         **params: Strategy parameters
         
     Returns:
-        DataFrame with signals
+        DataFrame with signals_v2
     """
     engine = ArbitrageSignalEngine()
     return await engine.generate_signals(df, strategy_type, **params)

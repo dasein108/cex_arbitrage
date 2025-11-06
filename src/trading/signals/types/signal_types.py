@@ -1,5 +1,5 @@
 """
-Signal Types - Enum definitions for arbitrage signals.
+Signal Types - Enum definitions for arbitrage signals_v2.
 
 Centralized signal type definitions to avoid circular imports.
 """

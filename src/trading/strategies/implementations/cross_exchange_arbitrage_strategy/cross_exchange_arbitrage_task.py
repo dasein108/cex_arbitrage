@@ -381,7 +381,7 @@ class CrossExchangeArbitrageTask(BaseStrategyTask[CrossExchangeArbitrageTaskCont
 
     async def _check_arbitrage_signal(self) -> Signal:
         """
-        Check for arbitrage entry/exit signals using dynamic thresholds with integrated spread validation.
+        Check for arbitrage entry/exit signals_v2 using dynamic thresholds with integrated spread validation.
         
         Returns:
             Signal enum (ENTER, EXIT, or HOLD) - HOLD if spreads fail validation
@@ -511,7 +511,7 @@ class CrossExchangeArbitrageTask(BaseStrategyTask[CrossExchangeArbitrageTaskCont
             self.logger.error(f"❌ Failed to update historical spreads: {e}")
 
     def _generate_signal_from_current_data(self):
-        """Generate signals using current market data with historical candle context."""
+        """Generate signals_v2 using current market data with historical candle context."""
         
         # Ensure we have enough historical data
         if len(self.historical_spreads['mexc_vs_gateio_futures']) < 50:
@@ -605,7 +605,7 @@ class CrossExchangeArbitrageTask(BaseStrategyTask[CrossExchangeArbitrageTaskCont
                 arb_signal_result, total_spread_cost, execution_spreads
             )
         else:  # HOLD
-            return Signal.HOLD  # Pass through HOLD signals
+            return Signal.HOLD  # Pass through HOLD signals_v2
         
         # Update rejection counter
         if not validation_result:
@@ -630,7 +630,7 @@ class CrossExchangeArbitrageTask(BaseStrategyTask[CrossExchangeArbitrageTaskCont
 
     def _validate_entry_spreads(self, arb_signal_result, total_spread_cost: float, execution_spreads: dict) -> bool:
         """
-        Validate spreads for ENTRY signals using dynamic ArbStats thresholds.
+        Validate spreads for ENTRY signals_v2 using dynamic ArbStats thresholds.
         
         For entries, we care most about:
         1. The arbitrage opportunity exceeds statistical entry threshold
@@ -691,7 +691,7 @@ class CrossExchangeArbitrageTask(BaseStrategyTask[CrossExchangeArbitrageTaskCont
 
     def _validate_exit_spreads(self, arb_signal_result, total_spread_cost: float, execution_spreads: dict) -> bool:
         """
-        Validate spreads for EXIT signals using dynamic ArbStats thresholds.
+        Validate spreads for EXIT signals_v2 using dynamic ArbStats thresholds.
         
         For exits, we care most about:
         1. We're in a profitable exit zone (above 25th percentile of maxes)
@@ -1009,7 +1009,7 @@ class CrossExchangeArbitrageTask(BaseStrategyTask[CrossExchangeArbitrageTaskCont
             self.logger.error("❌ Current role is not set, cannot manage positions")
 
     async def _manage_arbitrage_signals(self):
-        # Check arbitrage signals with integrated spread validation
+        # Check arbitrage signals_v2 with integrated spread validation
         validated_signal = await self._check_arbitrage_signal()
         
         # Set trading permissions based on validated signal

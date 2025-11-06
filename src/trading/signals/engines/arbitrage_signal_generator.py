@@ -1,7 +1,7 @@
 """
 Arbitrage Signal Generator - Contains actual strategy logic for signal generation.
 
-Generates trading signals based on indicators and current market conditions.
+Generates trading signals_v2 based on indicators and current market conditions.
 Ports actual strategy logic from ArbitrageAnalyzer backtesting methods.
 """
 
@@ -14,7 +14,7 @@ from ..types.signal_types import Signal
 
 class ArbitrageSignalGenerator:
     """
-    Generates trading signals based on indicators and current market conditions.
+    Generates trading signals_v2 based on indicators and current market conditions.
     Contains actual strategy logic ported from ArbitrageAnalyzer.
     """
     

@@ -13,6 +13,7 @@ from exchanges.structs.enums import KlineInterval
 from utils.kline_utils import get_interval_seconds
 from ..db_book_ticker_loader import BookTickerSnapshotLoader
 from ..candles_loader import CandlesLoader
+from ..column_utils import get_column_key
 
 class BookTickerSourceProtocol(Protocol):
     """Protocol for book ticker data sources."""
@@ -77,7 +78,7 @@ class BookTickerDbSource(BookTickerSourceProtocol):
             # Prefix all column names with the exchange key (use enum name)
             prefixed = df.copy()
             prefixed = prefixed[["bid_price", "ask_price"]]
-            prefixed.columns = [f"{exchange.value}_{col}" for col in prefixed.columns]
+            prefixed.columns = [get_column_key(exchange, col) for col in prefixed.columns]
             exchange_df_map[exchange] = prefixed
 
             # Merge all available dataframes into a single dataframe (outer join on index)
@@ -142,7 +143,7 @@ class CandlesBookTickerSource(BookTickerSourceProtocol):
             prefixed = prefixed[["timestamp", "bid_price", "ask_price"]]
             prefixed["timestamp"] = pd.to_datetime(prefixed["timestamp"], unit="ms", utc=True)
             prefixed.set_index("timestamp", inplace=True)
-            prefixed.columns = [f"{exchange.value}_{col}" for col in prefixed.columns]
+            prefixed.columns = [get_column_key(exchange, col) for col in prefixed.columns]
             exchange_df_map[exchange] = prefixed
 
         # Merge all available dataframes into a single dataframe (outer join on index)

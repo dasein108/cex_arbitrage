@@ -133,7 +133,7 @@ class InventorySpotStrategySignal(BaseStrategySignal):
     
     def backtest(self, df: pd.DataFrame, **params) -> pd.DataFrame:
         """
-        Apply strategy signals to historical data for backtesting.
+        Apply strategy signals_v2 to historical data for backtesting.
         
         Args:
             df: Historical market data DataFrame with indicators
@@ -169,7 +169,7 @@ class InventorySpotStrategySignal(BaseStrategySignal):
         enter_condition = df['mexc_vs_gateio_spot'] > entry_thresh
         exit_condition = df['mexc_vs_gateio_spot'] < exit_thresh
         
-        # Apply signals
+        # Apply signals_v2
         df.loc[enter_condition, 'signal'] = Signal.ENTER.value
         df.loc[exit_condition, 'signal'] = Signal.EXIT.value
         
@@ -443,7 +443,7 @@ class InventorySpotStrategySignal(BaseStrategySignal):
         Add position time tracking for backtesting.
         
         Args:
-            df: DataFrame with signals
+            df: DataFrame with signals_v2
             
         Returns:
             DataFrame with position time tracking

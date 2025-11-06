@@ -99,7 +99,7 @@ async def demo_backtest():
         # Generate random walk with varying volatility
         returns = np.random.normal(0, volatility, len(dates))
         
-        # Add some volatility spikes for interesting signals
+        # Add some volatility spikes for interesting signals_v2
         spike_indices = np.random.choice(len(dates), size=20, replace=False)
         returns[spike_indices] *= 3  # Create volatility spikes
         

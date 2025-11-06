@@ -239,7 +239,7 @@ class HedgedCrossArbitrageBacktest:
             # Update position statuses (check for transfer completion, forced exits)
             self._update_position_statuses(current_time)
             
-            # Generate signals
+            # Generate signals_v2
             signal_result, direction = self._generate_signal(row)
             df.at[idx, 'signal'] = signal_result.signal.value
             df.at[idx, 'direction'] = direction or 'NONE'
@@ -259,7 +259,7 @@ class HedgedCrossArbitrageBacktest:
         return df
     
     def _generate_signal(self, row: pd.Series) -> Tuple[Any, Optional[str]]:
-        """Generate unified bidirectional signals."""
+        """Generate unified bidirectional signals_v2."""
         
         # Ensure we have enough historical data
         if len(self.historical_spreads['mexc_vs_gateio_futures']) < 50:
@@ -301,17 +301,17 @@ class HedgedCrossArbitrageBacktest:
     
 
     def _execute_trading_logic(self, current_time: datetime, row: pd.Series, signal_result: Any, direction: Optional[str]) -> Optional[str]:
-        """Execute unified position management based on signals and direction."""
+        """Execute unified position management based on signals_v2 and direction."""
         action = None
         
         signal = signal_result.signal
 
-        # Check for entry signals with direction
+        # Check for entry signals_v2 with direction
         if (signal == Signal.ENTER and direction and
             len(self.open_positions) < self.config.max_concurrent_positions):
             action = self._open_position(current_time, row, direction)
         
-        # Check for exit signals on ready positions
+        # Check for exit signals_v2 on ready positions
         elif signal == Signal.EXIT:
             action = self._close_ready_positions(current_time, row)
         

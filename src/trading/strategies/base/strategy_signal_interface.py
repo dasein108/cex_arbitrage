@@ -17,7 +17,7 @@ class StrategySignalInterface(ABC):
     """
     Abstract base interface for all strategy signal implementations.
     
-    Defines the contract that all strategy signals must implement for both
+    Defines the contract that all strategy signals_v2 must implement for both
     real-time trading and backtesting operations.
     """
 
@@ -57,7 +57,7 @@ class StrategySignalInterface(ABC):
     @abstractmethod
     def backtest(self, df: pd.DataFrame, **params) -> PerformanceMetrics:
         """
-        Apply strategy signals to historical data for backtesting.
+        Apply strategy signals_v2 to historical data for backtesting.
         
         Vectorized implementation for efficient backtesting across large datasets.
         

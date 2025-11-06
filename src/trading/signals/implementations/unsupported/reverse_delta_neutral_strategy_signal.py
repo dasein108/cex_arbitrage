@@ -123,7 +123,7 @@ class ReverseDeltaNeutralStrategySignal(BaseStrategySignal):
     
     def backtest(self, df: pd.DataFrame, **params) -> pd.DataFrame:
         """
-        Apply strategy signals to historical data for backtesting.
+        Apply strategy signals_v2 to historical data for backtesting.
         
         Args:
             df: Historical market data DataFrame with indicators
@@ -166,7 +166,7 @@ class ReverseDeltaNeutralStrategySignal(BaseStrategySignal):
         total_spread = df['mexc_vs_gateio_futures'] + df['gateio_spot_vs_futures']
         profit_condition = total_spread > min_profit
         
-        # Apply signals
+        # Apply signals_v2
         enter_mask = mexc_condition & profit_condition
         exit_mask = gateio_adaptive_condition & profit_condition
         

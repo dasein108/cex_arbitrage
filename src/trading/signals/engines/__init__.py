@@ -1,7 +1,7 @@
 """
 Signal Generation Engines
 
-High-performance engines for generating and processing strategy signals.
+High-performance engines for generating and processing strategy signals_v2.
 Designed for both real-time trading and backtesting applications.
 """
 

@@ -581,7 +581,7 @@ class SpotFuturesArbitrageCandidateAnalyzer:
         )
     
     def _simulate_trades(self, df: pd.DataFrame, opportunity: ArbitrageOpportunity) -> List[Dict]:
-        """Simulate trades based on z-score signals and execution mode."""
+        """Simulate trades based on z-score signals_v2 and execution mode."""
         trades = []
         position_open = False
         entry_index = None
@@ -589,7 +589,7 @@ class SpotFuturesArbitrageCandidateAnalyzer:
         spot_col = f'{opportunity.spot_exchange.value}_close'
         futures_col = f'{opportunity.futures_exchange.value}_close'
         
-        # Calculate signals
+        # Calculate signals_v2
         df = self._calculate_basis_metrics(df, spot_col, futures_col)
         
         # Get fee structure

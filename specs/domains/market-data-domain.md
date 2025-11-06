@@ -303,7 +303,7 @@ class OpportunityQualifier:
 ### **Market Data → Trading Domain Integration**
 
 ```python
-# Clean domain boundary - market data produces signals
+# Clean domain boundary - market data produces signals_v2
 class MarketDataDomain:
     async def publish_opportunity(self, opportunity: ArbitrageOpportunity):
         """Publish opportunity to Trading Domain (event-driven)"""

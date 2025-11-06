@@ -12,11 +12,11 @@ from .volatility_harvesting_strategy_signal import VolatilityHarvestingStrategyS
 # Auto-register all strategy implementations
 from trading.strategies.base.strategy_signal_factory import register_strategy_signal
 
-# Import V2 implementations from signals module
-from trading.signals.implementations.inventory_spot_strategy_signal_v2 import InventorySpotStrategySignalV2
+# Import V2 implementations from signals_v2 module
+from trading.signals_v2.implementation.inventory_spot_strategy_signal import InventorySpotStrategySignalV2
 from trading.signals.implementations.unsupported.volatility_harvesting_strategy_signal_v2 import VolatilityHarvestingStrategySignalV2
 
-# Register all strategy signals with the factory
+# Register all strategy signals_v2 with the factory
 register_strategy_signal('reverse_delta_neutral', ReverseDeltaNeutralStrategySignal)
 register_strategy_signal('delta_neutral', ReverseDeltaNeutralStrategySignal)  # Alias
 register_strategy_signal('inventory_spot', InventorySpotStrategySignal)

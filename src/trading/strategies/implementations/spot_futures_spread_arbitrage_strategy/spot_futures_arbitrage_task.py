@@ -302,7 +302,7 @@ class SpotFuturesArbitrageTask(BaseStrategyTask[SpotFuturesArbitrageTaskContext]
 
     async def _check_arbitrage_signal(self) -> Signal:
         """
-        Check for spot-futures arbitrage entry/exit signals using dynamic thresholds.
+        Check for spot-futures arbitrage entry/exit signals_v2 using dynamic thresholds.
         
         Returns:
             Signal enum (ENTER, EXIT, or HOLD) - HOLD if spreads fail validation
@@ -548,7 +548,7 @@ class SpotFuturesArbitrageTask(BaseStrategyTask[SpotFuturesArbitrageTaskContext]
             self.logger.error(f"❌ Failed to update historical spreads: {e}")
 
     def _generate_signal_from_current_data(self):
-        """Generate signals using z-score based analysis from analyzer logic."""
+        """Generate signals_v2 using z-score based analysis from analyzer logic."""
         
         # Ensure we have enough historical data (need at least 20 for rolling stats)
 
@@ -786,7 +786,7 @@ class SpotFuturesArbitrageTask(BaseStrategyTask[SpotFuturesArbitrageTaskContext]
         return signal if validation_result else Signal.HOLD
 
     def _validate_entry_spreads(self, arb_signal_result, total_spread_cost: float, execution_spreads: dict) -> bool:
-        """Validate spreads for ENTRY signals using dynamic ArbStats thresholds."""
+        """Validate spreads for ENTRY signals_v2 using dynamic ArbStats thresholds."""
         actual_fees = self.round_trip_fees * 100  # Convert to percentage
 
         # Extract ArbStats for dynamic thresholds (using spot-futures as main signal)
@@ -839,7 +839,7 @@ class SpotFuturesArbitrageTask(BaseStrategyTask[SpotFuturesArbitrageTaskContext]
         return True
 
     def _validate_exit_spreads(self, arb_signal_result, total_spread_cost: float, execution_spreads: dict) -> bool:
-        """Validate spreads for EXIT signals using dynamic ArbStats thresholds."""
+        """Validate spreads for EXIT signals_v2 using dynamic ArbStats thresholds."""
         # Extract ArbStats for dynamic thresholds (using execution costs as exit signal)
         execution_stats = arb_signal_result.gateio_spot_vs_futures  # Reusing structure
         

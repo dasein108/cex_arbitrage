@@ -248,7 +248,7 @@ class PairsTrading:
     
     def generate_trading_signals(self, symbol1: str, symbol2: str,
                                prices1: pd.Series, prices2: pd.Series) -> Dict:
-        """Generate pairs trading signals"""
+        """Generate pairs trading signals_v2"""
         
         # Test cointegration
         coint_result = self.test_cointegration(prices1, prices2)
@@ -266,7 +266,7 @@ class PairsTrading:
         spread_stats = self.calculate_spread_statistics(prices1, prices2, hedge_ratio)
         current_zscore = spread_stats['current_zscore']
         
-        # Generate signals
+        # Generate signals_v2
         signal_type = 'no_signal'
         signal_details = {}
         
@@ -514,7 +514,7 @@ class AdvancedPairsTrading(PairsTrading):
             'signal_quality': 'good' if (mean_reverting and suitable_half_life) else 'poor'
         })
         
-        # Filter signals based on quality
+        # Filter signals_v2 based on quality
         if not mean_reverting or not suitable_half_life:
             enhanced_signal['signal_type'] = 'no_signal'
             enhanced_signal['reason'] = 'poor_signal_quality'
