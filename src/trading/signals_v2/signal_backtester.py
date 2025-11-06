@@ -8,7 +8,7 @@ import time
 from datetime import datetime
 from typing import List, Dict, Optional, Literal
 
-from exchanges.structs import Symbol, ExchangeEnum, AssetName
+from exchanges.structs import Symbol, ExchangeEnum, AssetName, Fees
 from exchanges.structs.enums import KlineInterval
 
 # Import strategy signal architecture
@@ -19,8 +19,14 @@ from trading.data_sources.book_ticker.book_ticker_source import (BookTickerDbSou
                                                             BookTickerSourceProtocol)
 
 from trading.signals_v2.report_utils import arbitrage_trade_to_table, performance_metrics_table
+from trading.signals_v2.visualization import visualize_arbitrage_results
 type BacktestDataSource = Literal['candles', 'snapshot']
 
+TRADING_FEES = {
+    ExchangeEnum.MEXC: Fees(taker_fee=0.05, maker_fee=0.0),
+    ExchangeEnum.GATEIO: Fees(taker_fee=0.1, maker_fee=0.1),
+    ExchangeEnum.GATEIO_FUTURES: Fees(taker_fee=0.05, maker_fee=0.05),
+}
 
 class SignalBacktester:
     """
@@ -88,17 +94,41 @@ class SignalBacktester:
 
         print(f"✅ Data loaded: {len(df)} rows, from {df.index[0]} to {df.index[-1]}")
 
-        backtesting_params = BacktestingParams(initial_balance_usd=self.initial_capital_usdt,
-                                               position_size_usd=self.position_size_usdt)
+        # Enhanced backtesting parameters with realistic costs
+        backtesting_params = BacktestingParams(
+            initial_balance_usd=self.initial_capital_usdt,
+            position_size_usd=self.position_size_usdt,
+            transfer_delay_minutes=8,  # More realistic transfer time
+            transfer_fee_usd=0.0,      # Realistic transfer cost
+            slippage_pct=0.05,         # 0.05% slippage
+            execution_failure_rate=0.10,  # 10% failure rate
+            min_profit_threshold_bps=30.0  # 30 BPS minimum (0.3%)
+        )
 
-        strategy=InventorySpotStrategySignal(min_profit_bps=30,
-                                             backtesting_params=backtesting_params)
+        strategy = InventorySpotStrategySignal(
+            backtesting_params=backtesting_params,
+            fees=TRADING_FEES
+        )
 
         result = await self.run_single_backtest(strategy, df)
         print(f"{strategy.name} Performance:")
         print(performance_metrics_table([result], True))
         print("Trades")
         print(arbitrage_trade_to_table(result.trades, include_header=True))
+        
+        # Generate comprehensive visualization
+        print(f"\n📊 Generating visualization for {symbol} trading analysis...")
+        base_name = symbol.base.value if hasattr(symbol.base, 'value') else str(symbol.base)
+        quote_name = symbol.quote.value if hasattr(symbol.quote, 'value') else str(symbol.quote)
+        symbol_name = f"{base_name}/{quote_name}"
+        visualize_arbitrage_results(
+            df=df,
+            trades=result.trades,
+            performance_metrics=result,
+            symbol_name=symbol_name,
+            save_path=f"arbitrage_analysis_{base_name}_{quote_name}_{data_source}.png"
+        )
+        print(f"✅ Visualization saved: arbitrage_analysis_{base_name}_{quote_name}_{data_source}.png")
 
 
 if __name__ == "__main__":

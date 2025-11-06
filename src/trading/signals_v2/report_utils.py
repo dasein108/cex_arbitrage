@@ -1,3 +1,10 @@
+"""
+Performance Reporting Utilities
+
+This module provides comprehensive reporting and analysis tools for cryptocurrency
+arbitrage trading strategies, including trade tables and performance metrics visualization.
+"""
+
 from typing import List
 from datetime import datetime
 from .entities import ArbitrageTrade, PerformanceMetrics
@@ -78,4 +85,95 @@ def performance_metrics_table(metrics_list: List[PerformanceMetrics], include_he
 
     return "\n".join(lines)
 
+
+def validate_performance_metrics(metrics: PerformanceMetrics) -> List[str]:
+    """
+    Validate performance metrics for realistic arbitrage trading results.
+    
+    This function checks for unrealistic performance characteristics that may
+    indicate bugs in strategy implementation or overly optimistic assumptions.
+    
+    Args:
+        metrics: Performance metrics to validate
+        
+    Returns:
+        List of warning messages for unrealistic metrics
+    """
+    warnings = []
+    
+    # Check for unrealistic win rate
+    if metrics.win_rate > 90:
+        warnings.append(f"⚠️  Win rate {metrics.win_rate:.1f}% is unrealistically high for arbitrage (expected: 65-85%)")
+    
+    # Check for unrealistic average trade P&L
+    if metrics.avg_trade_pnl > 5.0:  # $5 per trade is very high for arbitrage
+        warnings.append(f"⚠️  Average trade P&L ${metrics.avg_trade_pnl:.2f} is very high (expected: $0.10-$2.00)")
+    
+    # Check for zero max drawdown
+    if metrics.max_drawdown == 0 and metrics.total_trades > 5:
+        warnings.append("⚠️  Zero max drawdown is unrealistic for multi-trade strategies")
+    
+    # Check for unrealistic Sharpe ratio
+    if metrics.sharpe_ratio > 3.0:
+        warnings.append(f"⚠️  Sharpe ratio {metrics.sharpe_ratio:.2f} is unusually high (expected: 0.5-2.0)")
+    
+    # Check individual trade P&L percentages
+    if metrics.trades:
+        high_pnl_trades = [t for t in metrics.trades if t.pnl_pct > 2.0]  # >2% per trade
+        if len(high_pnl_trades) > len(metrics.trades) * 0.1:  # >10% of trades
+            warnings.append(f"⚠️  {len(high_pnl_trades)} trades show >2% P&L (may indicate cost modeling issues)")
+    
+    return warnings
+
+
+def generate_performance_summary(metrics: PerformanceMetrics, include_warnings: bool = True) -> str:
+    """
+    Generate comprehensive performance summary with validation warnings.
+    
+    Args:
+        metrics: Performance metrics to summarize
+        include_warnings: Whether to include validation warnings
+        
+    Returns:
+        Formatted performance summary string
+    """
+    lines = []
+    
+    # Main performance table
+    lines.append("PERFORMANCE SUMMARY")
+    lines.append("=" * 50)
+    lines.append(performance_metrics_table([metrics], include_header=True))
+    
+    if include_warnings:
+        warnings = validate_performance_metrics(metrics)
+        if warnings:
+            lines.append("")
+            lines.append("VALIDATION WARNINGS")
+            lines.append("=" * 50)
+            for warning in warnings:
+                lines.append(warning)
+        else:
+            lines.append("")
+            lines.append("✅ All metrics appear realistic for arbitrage trading")
+    
+    # Trade statistics
+    if metrics.trades:
+        lines.append("")
+        lines.append("TRADE STATISTICS")
+        lines.append("=" * 50)
+        
+        profitable_trades = [t for t in metrics.trades if t.pnl_usdt > 0]
+        losing_trades = [t for t in metrics.trades if t.pnl_usdt < 0]
+        
+        lines.append(f"Profitable trades: {len(profitable_trades)} ({len(profitable_trades)/len(metrics.trades)*100:.1f}%)")
+        lines.append(f"Losing trades: {len(losing_trades)} ({len(losing_trades)/len(metrics.trades)*100:.1f}%)")
+        
+        if profitable_trades:
+            avg_win = sum(t.pnl_usdt for t in profitable_trades) / len(profitable_trades)
+            lines.append(f"Average winning trade: ${avg_win:.2f}")
+            
+        if losing_trades:
+            avg_loss = sum(t.pnl_usdt for t in losing_trades) / len(losing_trades)
+            lines.append(f"Average losing trade: ${avg_loss:.2f}")
+    
     return "\n".join(lines)

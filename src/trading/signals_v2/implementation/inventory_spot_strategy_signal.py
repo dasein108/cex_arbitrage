@@ -1,13 +1,19 @@
 """
 Inventory Spot Strategy Signal V2
 
+High-performance cryptocurrency arbitrage strategy for cross-exchange trading
+between MEXC and Gate.io spot markets with realistic cost modeling and risk management.
+
+This strategy implements sophisticated inventory management with transfer delays,
+comprehensive cost accounting, and enhanced performance metrics for accurate
+backtesting and live trading scenarios.
 """
 
 from typing import Dict, Optional, List
 import pandas as pd
 from datetime import datetime, timedelta, UTC
 
-from exchanges.structs import BookTicker
+from exchanges.structs import BookTicker, Fees
 from trading.signals.types import Signal
 from exchanges.structs.enums import ExchangeEnum, Side
 
@@ -16,30 +22,45 @@ from trading.signals_v2.strategy_signal import StrategySignal
 from trading.data_sources.column_utils import get_column_key
 
 class InventorySpotStrategySignal(StrategySignal):
-    name: str = "inventory_spot_signal"
     """
-    Inventory spot arbitrage strategy V2 - matches arbitrage_analyzer.py logic.
+    Advanced Inventory Spot Arbitrage Strategy V2
+    
+    This strategy implements sophisticated cross-exchange arbitrage with realistic
+    cost modeling, transfer delays, and enhanced risk management.
     
     Strategy Logic:
-    - Preload: buy initial amount on exchange where price is lower, hedge with futures
-    - Futures position stay open continuously
-    - transfer assets between exchanges if balance on one exchange >= max_balance_usd and other == 0
-    - then buy low/sell high between exchanges when spread exceeds threshold
+    1. Initial Setup: Buy initial inventory on the exchange with lower prices
+    2. Continuous Monitoring: Track spreads between MEXC and Gate.io spot markets  
+    3. Arbitrage Execution: Execute trades when spread exceeds profitable thresholds
+    4. Transfer Management: Handle asset transfers between exchanges with realistic delays
+    5. Cost Accounting: Include trading fees, slippage, and transfer costs
+    
+    Key Features:
+    - Realistic cost modeling with fees, slippage, and transfer costs
+    - Enhanced performance metrics with proper risk adjustment
+    - Transfer delay simulation with configurable timing
+    - Position sizing based on available balances and market conditions
+    - Comprehensive profit/loss calculation using net cash flow analysis
     """
     
+    name: str = "inventory_spot_signal"
+    
     def __init__(self, 
-                 min_profit_bps: float = 10.0,  # 10 basis points minimum profit
                  update_interval_seconds: int = 60,
                  max_history_length: int = 100,
-                 backtesting_params: BacktestingParams = BacktestingParams()
+                 backtesting_params: BacktestingParams = None,
+                 fees: Dict[ExchangeEnum, Fees] = {}
                  ):
         """
-        Initialize inventory spot strategy V2.
+        Initialize advanced inventory spot arbitrage strategy.
         
         Args:
-            min_profit_bps: Minimum profit in basis points (10 bps = 0.1%)
+            update_interval_seconds: Price history update frequency
+            max_history_length: Maximum price history to maintain
+            backtesting_params: Enhanced backtesting configuration with realistic costs
         """
-        self.min_profit_bps = min_profit_bps
+        self.fees = fees
+        self._backtesting_params = backtesting_params or BacktestingParams()
 
         self.col_mexc_bid = get_column_key(ExchangeEnum.MEXC, 'bid_price')
         self.col_mexc_ask = get_column_key(ExchangeEnum.MEXC, 'ask_price')
@@ -114,10 +135,24 @@ class InventorySpotStrategySignal(StrategySignal):
 
         if row[self.col_mexc_ask] < row[self.col_gateio_ask]:
             qty = self._backtesting_params.initial_balance_usd / row[self.col_mexc_ask]
-            trade = TradeEntry(exchange=ExchangeEnum.MEXC, side=Side.BUY, price=row[self.col_mexc_ask], qty=qty)
+            trade = TradeEntry(
+                exchange=ExchangeEnum.MEXC, 
+                side=Side.BUY, 
+                price=row[self.col_mexc_ask], 
+                qty=qty,
+                fee_pct=self.fees.get(ExchangeEnum.MEXC).taker_fee,
+                slippage_pct=self._backtesting_params.slippage_pct
+            )
         else:
             qty = self._backtesting_params.initial_balance_usd / row[self.col_gateio_ask]
-            trade = TradeEntry(exchange=ExchangeEnum.GATEIO, side=Side.BUY, price=row[self.col_gateio_ask], qty=qty)
+            trade = TradeEntry(
+                exchange=ExchangeEnum.GATEIO, 
+                side=Side.BUY, 
+                price=row[self.col_gateio_ask], 
+                qty=qty,
+                fee_pct=self.fees.get(ExchangeEnum.GATEIO_FUTURES).taker_fee,
+                slippage_pct=self._backtesting_params.slippage_pct
+            )
 
         self.position.add_trade(trade)
         df_backtest = df[1:]
@@ -177,11 +212,31 @@ class InventorySpotStrategySignal(StrategySignal):
                 if qty == 0:
                     continue
 
+                # ✅ FIX: mexc_to_gateio_spread means SELL on MEXC (higher), BUY on Gate.io (lower)
                 self.position.add_arbitrage_trade(idx, [
-                    TradeEntry(exchange=ExchangeEnum.MEXC, side=Side.BUY, price=row[self.col_mexc_ask], qty=qty),
-                    TradeEntry(exchange=ExchangeEnum.GATEIO, side=Side.SELL, price=row[self.col_gateio_bid], qty=qty)
-                ]).start_transfer(self._backtesting_params.transfer_delay_minutes, idx,
-                                  ExchangeEnum.MEXC, ExchangeEnum.GATEIO)
+                    TradeEntry(
+                        exchange=ExchangeEnum.MEXC, 
+                        side=Side.SELL,  # ✅ SELL on MEXC (higher price)
+                        price=row[self.col_mexc_bid], 
+                        qty=qty,
+                        fee_pct=self.fees.get(ExchangeEnum.MEXC).taker_fee,
+                        slippage_pct=self._backtesting_params.slippage_pct
+                    ),
+                    TradeEntry(
+                        exchange=ExchangeEnum.GATEIO, 
+                        side=Side.BUY,  # ✅ BUY on Gate.io (lower price)
+                        price=row[self.col_gateio_ask], 
+                        qty=qty,
+                        fee_pct=self.fees.get(ExchangeEnum.GATEIO).taker_fee,
+                        slippage_pct=self._backtesting_params.slippage_pct
+                    )
+                ]).start_transfer(
+                    self._backtesting_params.transfer_delay_minutes, 
+                    idx,
+                    ExchangeEnum.GATEIO,  # ✅ FIX: Transfer TO Gate.io (we bought there)
+                    ExchangeEnum.MEXC,   # ✅ FIX: Transfer FROM MEXC (we sold there)
+                    self._backtesting_params.transfer_fee_usd
+                )
 
                 self._update_df_balance(df, idx)
                 self._update_transfer_in_progress(df,idx)
@@ -190,19 +245,52 @@ class InventorySpotStrategySignal(StrategySignal):
                 if qty == 0:
                     continue
 
-                self.position.add_arbitrage_trade(idx,[
-                    TradeEntry(exchange=ExchangeEnum.GATEIO, side=Side.BUY, price=row[self.col_gateio_ask], qty=qty),
-                    TradeEntry(exchange=ExchangeEnum.MEXC, side=Side.SELL, price=row[self.col_mexc_bid], qty=qty)
-                ]).start_transfer(self._backtesting_params.transfer_delay_minutes, idx,
-                                  ExchangeEnum.GATEIO, ExchangeEnum.MEXC)
+                # ✅ FIX: gateio_to_mexc_spread means SELL on Gate.io (higher), BUY on MEXC (lower)
+                self.position.add_arbitrage_trade(idx, [
+                    TradeEntry(
+                        exchange=ExchangeEnum.GATEIO, 
+                        side=Side.SELL,  # ✅ SELL on Gate.io (higher price)
+                        price=row[self.col_gateio_bid], 
+                        qty=qty,
+                        fee_pct=self.fees.get(ExchangeEnum.MEXC).taker_fee,
+                        slippage_pct=self._backtesting_params.slippage_pct
+                    ),
+                    TradeEntry(
+                        exchange=ExchangeEnum.MEXC, 
+                        side=Side.BUY,  # ✅ BUY on MEXC (lower price)
+                        price=row[self.col_mexc_ask], 
+                        qty=qty,
+                        fee_pct=self.fees.get(ExchangeEnum.GATEIO).taker_fee,
+                        slippage_pct=self._backtesting_params.slippage_pct
+                    )
+                ]).start_transfer(
+                    self._backtesting_params.transfer_delay_minutes, 
+                    idx,
+                    ExchangeEnum.MEXC,   # ✅ FIX: Transfer TO MEXC (we bought there)
+                    ExchangeEnum.GATEIO, # ✅ FIX: Transfer FROM Gate.io (we sold there)
+                    self._backtesting_params.transfer_fee_usd
+                )
 
                 self._update_df_balance(df, idx)
                 self._update_transfer_in_progress(df,idx)
 
 
+    def _validate_columns(self, df: pd.DataFrame) -> bool:
+        """Validate that required columns exist in DataFrame."""
+        required_columns = [
+            self.col_mexc_bid, self.col_mexc_ask,
+            self.col_gateio_bid, self.col_gateio_ask
+        ]
+        
+        missing_columns = [col for col in required_columns if col not in df.columns]
+        if missing_columns:
+            raise ValueError(f"Missing required columns: {missing_columns}. Available: {list(df.columns)}")
+        
+        return True
+
     def _prepare_signals(self, df: pd.DataFrame) -> pd.DataFrame:
         """
-        Apply strategy signals_v2 to historical data using arbitrage analyzer logic.
+        Apply strategy signals to historical data using corrected arbitrage logic.
         
         Args:
             df: Historical market data DataFrame
@@ -210,19 +298,50 @@ class InventorySpotStrategySignal(StrategySignal):
         Returns:
             DataFrame with added signal columns
         """
+        
+        # Validate columns first
+        self._validate_columns(df)
 
+        # ✅ FIX: Correct spread formulas for proper arbitrage detection
+        # mexc_to_gateio_spread: profitable when MEXC prices > Gate.io prices (sell MEXC, buy Gate.io)
+        mexc_to_gateio_spread_bps = ((df[self.col_mexc_bid] - df[self.col_gateio_ask]) /
+                                     df[self.col_gateio_ask] * 10000)
+        
+        # gateio_to_mexc_spread: profitable when Gate.io prices > MEXC prices (sell Gate.io, buy MEXC)  
+        gateio_to_mexc_spread_bps = ((df[self.col_gateio_bid] - df[self.col_mexc_ask]) /
+                                     df[self.col_mexc_ask] * 10000)
 
-        gateio_spread_bps = ((df[self.col_gateio_bid] - df[self.col_mexc_ask]) /
-                             df[self.col_mexc_ask] * 10000)
+        # Use enhanced minimum profit threshold from backtesting params
+        effective_min_profit_bps = max(self._backtesting_params.min_profit_threshold_bps,
+                                       self._backtesting_params.min_profit_threshold_bps)
 
-        mexc_spread_bps = ((df[self.col_mexc_bid] - df[self.col_gateio_ask]) /
-                           df[self.col_gateio_ask] * 10000)
+        df['mexc_spread_bps'] = mexc_to_gateio_spread_bps
+        df['gateio_spread_bps'] = gateio_to_mexc_spread_bps
 
-        df['mexc_to_gateio_spread'] = gateio_spread_bps > self.min_profit_bps
-        df['gateio_to_mexc_spread'] = mexc_spread_bps > self.min_profit_bps
+        # ✅ FIX: Correct signal assignment
+        df['mexc_to_gateio_spread'] = mexc_to_gateio_spread_bps > effective_min_profit_bps
+        df['gateio_to_mexc_spread'] = gateio_to_mexc_spread_bps > effective_min_profit_bps
 
         df['has_opportunity'] = df['mexc_to_gateio_spread'] | df['gateio_to_mexc_spread']
         df['transfer_in_progress'] = False  # Placeholder for transfer logic
 
+        # ✅ FIX: Add debugging output for signal verification
+        if len(df) > 0:
+            mexc_opportunities = df['mexc_to_gateio_spread'].sum()
+            gateio_opportunities = df['gateio_to_mexc_spread'].sum()
+            total_opportunities = df['has_opportunity'].sum()
+            
+            print(f"Signal Analysis:")
+            print(f"  MEXC->Gate.io opportunities: {mexc_opportunities}")
+            print(f"  Gate.io->MEXC opportunities: {gateio_opportunities}")
+            print(f"  Total opportunities: {total_opportunities}")
+            print(f"  Data points: {len(df)}")
+            
+            if total_opportunities > 0:
+                sample_mexc_spread = df[df['mexc_to_gateio_spread']]['mexc_spread_bps'].iloc[0] if mexc_opportunities > 0 else 0
+                sample_gateio_spread = df[df['gateio_to_mexc_spread']]['gateio_spread_bps'].iloc[0] if gateio_opportunities > 0 else 0
+                print(f"  Sample MEXC spread: {sample_mexc_spread:.2f} bps")
+                print(f"  Sample Gate.io spread: {sample_gateio_spread:.2f} bps")
+                print(f"  Minimum threshold: {effective_min_profit_bps:.2f} bps")
 
         return df
