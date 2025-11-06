@@ -18,6 +18,7 @@ from trading.signals_v2.strategy_signal import StrategySignal
 from trading.data_sources.book_ticker.book_ticker_source import (BookTickerDbSource, CandlesBookTickerSource,
                                                             BookTickerSourceProtocol)
 
+from trading.signals_v2.report_utils import arbitrage_trade_to_table, performance_metrics_table
 type BacktestDataSource = Literal['candles', 'snapshot']
 
 
@@ -93,7 +94,11 @@ class SignalBacktester:
         strategy=InventorySpotStrategySignal(min_profit_bps=30,
                                              backtesting_params=backtesting_params)
 
-        await self.run_single_backtest(strategy, df)
+        result = await self.run_single_backtest(strategy, df)
+        print(f"{strategy.name} Performance:")
+        print(performance_metrics_table([result], True))
+        print("Trades")
+        print(arbitrage_trade_to_table(result.trades, include_header=True))
 
 
 if __name__ == "__main__":

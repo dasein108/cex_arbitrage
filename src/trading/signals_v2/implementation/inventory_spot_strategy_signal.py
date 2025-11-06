@@ -46,6 +46,8 @@ class InventorySpotStrategySignal(StrategySignal):
         self.col_gateio_bid = get_column_key(ExchangeEnum.GATEIO, 'bid_price')
         self.col_gateio_ask = get_column_key(ExchangeEnum.GATEIO, 'ask_price')
 
+        self.col_mexc_balance = get_column_key(ExchangeEnum.MEXC, 'balance')
+        self.col_gateio_balance = get_column_key(ExchangeEnum.GATEIO, 'balance')
 
         self.price_history = {
             self.col_mexc_bid: [],
@@ -103,6 +105,11 @@ class InventorySpotStrategySignal(StrategySignal):
 
     def initialize_backtest(self, df: pd.DataFrame):
         """Initialize backtest state."""
+
+        # init balances columns
+        df[self.col_mexc_balance] = 0
+        df[self.col_gateio_balance] = 0
+
         row = df.iloc[0]
 
         if row[self.col_mexc_ask] < row[self.col_gateio_ask]:
@@ -113,8 +120,9 @@ class InventorySpotStrategySignal(StrategySignal):
             trade = TradeEntry(exchange=ExchangeEnum.GATEIO, side=Side.BUY, price=row[self.col_gateio_ask], qty=qty)
 
         self.position.add_trade(trade)
-
-        return df[1:]
+        df_backtest = df[1:]
+        self._update_df_balance(df_backtest, df_backtest.index[0])
+        return df_backtest
 
 
     def backtest(self, df: pd.DataFrame) -> PerformanceMetrics:
@@ -124,6 +132,24 @@ class InventorySpotStrategySignal(StrategySignal):
         self._emulate_trading(df)
 
         return self.position.get_performance_metrics(self._backtesting_params.initial_balance_usd)
+
+    def _update_df_balance(self, df: pd.DataFrame, idx: pd.Timestamp):
+        balances = [self.position.balances.get(ExchangeEnum.MEXC, 0.0),
+                    self.position.balances.get(ExchangeEnum.GATEIO, 0.0)]
+        df.loc[idx:, [self.col_mexc_balance, self.col_gateio_balance]] = balances
+        # df.loc[idx:, self.col_gateio_balance] = self.position.balances[ExchangeEnum.GATEIO]
+
+    def _update_transfer_in_progress(self, df:pd.DataFrame, idx: pd.Timestamp):
+        transfer_to = idx + pd.Timedelta(minutes=self._backtesting_params.transfer_delay_minutes)
+
+        # Method 1: Using searchsorted (fastest for sorted DatetimeIndex)
+        transfer_idx = df.index.searchsorted(transfer_to, side='left')
+        if transfer_idx < len(df):
+            actual_idx = df.index[transfer_idx]
+            df.loc[idx:actual_idx, 'transfer_in_progress'] = True
+        else:
+            # transfer_to is beyond the end of the dataframe
+            df.loc[idx:, 'transfer_in_progress'] = True
 
     def _emulate_trading(self, df: pd.DataFrame) -> None:
         """
@@ -143,24 +169,35 @@ class InventorySpotStrategySignal(StrategySignal):
         signal_points = df[changes_mask].copy()
 
         for idx, row in signal_points.iterrows():
-            if self.position and self.position.is_transfer_in_progress(row.name):
-                df.loc[idx,'transfer_in_progress'] = True
+            if self.position and df.loc[idx,'transfer_in_progress']:
                 continue  # Skip processing during transfer
 
             if row['mexc_to_gateio_spread']:
-                qty = self.position.balances.get(ExchangeEnum.MEXC, 0.0)
+                qty = df.loc[idx, self.col_mexc_balance]
+                if qty == 0:
+                    continue
+
                 self.position.add_arbitrage_trade(idx, [
                     TradeEntry(exchange=ExchangeEnum.MEXC, side=Side.BUY, price=row[self.col_mexc_ask], qty=qty),
                     TradeEntry(exchange=ExchangeEnum.GATEIO, side=Side.SELL, price=row[self.col_gateio_bid], qty=qty)
                 ]).start_transfer(self._backtesting_params.transfer_delay_minutes, idx,
                                   ExchangeEnum.MEXC, ExchangeEnum.GATEIO)
+
+                self._update_df_balance(df, idx)
+                self._update_transfer_in_progress(df,idx)
             elif row['gateio_to_mexc_spread']:
-                qty = self.position.balances.get(ExchangeEnum.GATEIO, 0.0)
+                qty = df.loc[idx, self.col_gateio_balance]
+                if qty == 0:
+                    continue
+
                 self.position.add_arbitrage_trade(idx,[
                     TradeEntry(exchange=ExchangeEnum.GATEIO, side=Side.BUY, price=row[self.col_gateio_ask], qty=qty),
                     TradeEntry(exchange=ExchangeEnum.MEXC, side=Side.SELL, price=row[self.col_mexc_bid], qty=qty)
                 ]).start_transfer(self._backtesting_params.transfer_delay_minutes, idx,
                                   ExchangeEnum.GATEIO, ExchangeEnum.MEXC)
+
+                self._update_df_balance(df, idx)
+                self._update_transfer_in_progress(df,idx)
 
 
     def _prepare_signals(self, df: pd.DataFrame) -> pd.DataFrame:
@@ -186,5 +223,6 @@ class InventorySpotStrategySignal(StrategySignal):
 
         df['has_opportunity'] = df['mexc_to_gateio_spread'] | df['gateio_to_mexc_spread']
         df['transfer_in_progress'] = False  # Placeholder for transfer logic
+
 
         return df

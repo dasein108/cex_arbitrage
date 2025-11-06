@@ -32,7 +32,7 @@ class PerformanceMetrics:
     @property
     def total_trades(self):
         return len(self.trades)
-    
+
 class TradeEntry:
     def __init__(self, exchange: ExchangeEnum, side: Side, price: float, qty: float, fee_pct: float = 0.0):
         self.exchange = exchange
@@ -177,13 +177,13 @@ class PositionEntry:
                 continue
             buy_trade = next((t for t in arb_trade if t.side == Side.BUY), None)
             sell_trade = next((t for t in arb_trade if t.side == Side.SELL), None)
-            pnl = buy_trade.cost + buy_trade.fees_usd - sell_trade.cost + sell_trade.fees_usd
+            pnl =  sell_trade.cost - sell_trade.fees_usd - buy_trade.cost - buy_trade.fees_usd
             pnl_pct = (pnl / buy_trade.cost) * 100 if buy_trade.cost != 0 else 0.0
             arb_trade = ArbitrageTrade(timestamp, buy_trade.exchange, sell_trade.exchange, buy_trade.price,
                                        sell_trade.price, buy_trade.qty, pnl, pnl_pct)
             trades.append(arb_trade)
 
-        winning_trades = [t for t in trades if t['pnl_usd'] > 0]
+        winning_trades = [t for t in trades if t.pnl_usdt > 0]
         win_rate = len(winning_trades) / len(trades) * 100
 
         avg_trade_pnl = total_pnl / len(trades)
@@ -192,7 +192,7 @@ class PositionEntry:
         cumulative_pnl = []
         running_pnl = 0
         for trade in trades:
-            running_pnl += trade['pnl_usd']
+            running_pnl += trade.pnl_usdt
             cumulative_pnl.append(running_pnl)
 
         if cumulative_pnl:
@@ -208,7 +208,7 @@ class PositionEntry:
 
         # Simplified Sharpe ratio calculation
         if len(trades) > 1:
-            trade_returns = [t['pnl_usd'] / initial_capital_usd for t in trades]
+            trade_returns = [t.pnl_usdt / initial_capital_usd for t in trades]
             avg_return = np.mean(trade_returns)
             std_return = np.std(trade_returns)
             sharpe_ratio = avg_return / std_return if std_return > 0 else 0
