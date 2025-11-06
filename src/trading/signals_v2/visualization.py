@@ -139,20 +139,23 @@ class ArbitrageVisualization:
                 buy_trades.append((trade.timestamp, trade.buy_price, trade.buy_exchange, trade.pnl_usdt))
             if trade.sell_exchange in [ExchangeEnum.MEXC, ExchangeEnum.GATEIO]:
                 sell_trades.append((trade.timestamp, trade.sell_price, trade.sell_exchange, trade.pnl_usdt))
-        
+        ax.xaxis_date()
         # Plot buy markers
         for timestamp, price, exchange, pnl in buy_trades:
             color = 'darkgreen' if pnl > 0 else 'darkred'
             ax.scatter(timestamp, price, **self.trade_markers['buy'], 
                       color=color, alpha=0.8, edgecolors='white', linewidth=1,
                       label='Buy Trade' if timestamp == buy_trades[0][0] else "")
-        
+            ax.text(timestamp, price, f'{price:.6f}', fontsize=8, ha='center', va='top', color=color)
+
         # Plot sell markers
         for timestamp, price, exchange, pnl in sell_trades:
             color = 'darkgreen' if pnl > 0 else 'darkred'
             ax.scatter(timestamp, price, **self.trade_markers['sell'], 
                       color=color, alpha=0.8, edgecolors='white', linewidth=1,
                       label='Sell Trade' if timestamp == sell_trades[0][0] else "")
+            ax.text(timestamp, price, f'{price:.6f}', fontsize=8, ha='center', va='bottom', color=color)
+
         
         ax.set_title(f'{symbol_name} - Price Chart with Trade Entry Points', fontsize=14, fontweight='bold')
         ax.set_ylabel('Price (USDT)', fontsize=12)

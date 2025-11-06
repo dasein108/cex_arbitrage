@@ -87,6 +87,7 @@ class InventorySpotStrategySignal(StrategySignal):
         self._max_history_length = max_history_length
 
         self._backtesting_params = backtesting_params
+        self.analysis_results = {}
 
     def _update_price_history(self, book_tickers: Dict[ExchangeEnum, BookTicker]) -> None:
         """Update price history for volatility calculation."""
@@ -356,4 +357,5 @@ class InventorySpotStrategySignal(StrategySignal):
 
             results[v] = item
 
+        self.analysis_results = results
         return results
