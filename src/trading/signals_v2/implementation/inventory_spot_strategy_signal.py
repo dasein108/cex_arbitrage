@@ -20,6 +20,7 @@ from exchanges.structs.enums import ExchangeEnum, Side
 from trading.signals_v2.entities import PerformanceMetrics, TradeEntry, PositionEntry, BacktestingParams
 from trading.signals_v2.strategy_signal import StrategySignal
 from trading.data_sources.column_utils import get_column_key
+import numpy as np
 
 class InventorySpotStrategySignal(StrategySignal):
     """
@@ -161,7 +162,8 @@ class InventorySpotStrategySignal(StrategySignal):
 
 
     def backtest(self, df: pd.DataFrame) -> PerformanceMetrics:
-        df = self._prepare_signals(df)
+        df = self.prepare_signals(df)
+        self.analyze_signals(df)
         df = self.initialize_backtest(df)
 
         self._emulate_trading(df)
@@ -233,8 +235,8 @@ class InventorySpotStrategySignal(StrategySignal):
                 ]).start_transfer(
                     self._backtesting_params.transfer_delay_minutes, 
                     idx,
-                    ExchangeEnum.GATEIO,  # ✅ FIX: Transfer TO Gate.io (we bought there)
-                    ExchangeEnum.MEXC,   # ✅ FIX: Transfer FROM MEXC (we sold there)
+                    ExchangeEnum.GATEIO,
+                    ExchangeEnum.MEXC,
                     self._backtesting_params.transfer_fee_usd
                 )
 
@@ -266,8 +268,8 @@ class InventorySpotStrategySignal(StrategySignal):
                 ]).start_transfer(
                     self._backtesting_params.transfer_delay_minutes, 
                     idx,
-                    ExchangeEnum.MEXC,   # ✅ FIX: Transfer TO MEXC (we bought there)
-                    ExchangeEnum.GATEIO, # ✅ FIX: Transfer FROM Gate.io (we sold there)
+                    ExchangeEnum.MEXC,
+                    ExchangeEnum.GATEIO,
                     self._backtesting_params.transfer_fee_usd
                 )
 
@@ -275,20 +277,7 @@ class InventorySpotStrategySignal(StrategySignal):
                 self._update_transfer_in_progress(df,idx)
 
 
-    def _validate_columns(self, df: pd.DataFrame) -> bool:
-        """Validate that required columns exist in DataFrame."""
-        required_columns = [
-            self.col_mexc_bid, self.col_mexc_ask,
-            self.col_gateio_bid, self.col_gateio_ask
-        ]
-        
-        missing_columns = [col for col in required_columns if col not in df.columns]
-        if missing_columns:
-            raise ValueError(f"Missing required columns: {missing_columns}. Available: {list(df.columns)}")
-        
-        return True
-
-    def _prepare_signals(self, df: pd.DataFrame) -> pd.DataFrame:
+    def prepare_signals(self, df: pd.DataFrame) -> pd.DataFrame:
         """
         Apply strategy signals to historical data using corrected arbitrage logic.
         
@@ -299,10 +288,6 @@ class InventorySpotStrategySignal(StrategySignal):
             DataFrame with added signal columns
         """
         
-        # Validate columns first
-        self._validate_columns(df)
-
-        # ✅ FIX: Correct spread formulas for proper arbitrage detection
         # mexc_to_gateio_spread: profitable when MEXC prices > Gate.io prices (sell MEXC, buy Gate.io)
         mexc_to_gateio_spread_bps = ((df[self.col_mexc_bid] - df[self.col_gateio_ask]) /
                                      df[self.col_gateio_ask] * 10000)
@@ -312,8 +297,7 @@ class InventorySpotStrategySignal(StrategySignal):
                                      df[self.col_mexc_ask] * 10000)
 
         # Use enhanced minimum profit threshold from backtesting params
-        effective_min_profit_bps = max(self._backtesting_params.min_profit_threshold_bps,
-                                       self._backtesting_params.min_profit_threshold_bps)
+        effective_min_profit_bps = self._backtesting_params.min_profit_threshold_bps
 
         df['mexc_spread_bps'] = mexc_to_gateio_spread_bps
         df['gateio_spread_bps'] = gateio_to_mexc_spread_bps
@@ -345,3 +329,31 @@ class InventorySpotStrategySignal(StrategySignal):
                 print(f"  Minimum threshold: {effective_min_profit_bps:.2f} bps")
 
         return df
+
+
+    def analyze_signals(self, df: pd.DataFrame):
+        fees = {'mexc_spread_bps': 20,
+                     'gateio_spread_bps': 20}
+
+        quantile_perc = [0.25, 0.5, 0.75, 0.9, 0.95, 0.97, 0.99]
+
+        results = {}
+        for v in fees.keys():
+            item = {}
+            exchange_threshold = fees[v]
+            positive_spreads = df[df[v]>exchange_threshold]
+            positive_spread_count = len(positive_spreads)
+            negative_spread_count = len(df[v]) - positive_spread_count
+            item[f'spreads'] = {'positive': positive_spread_count,
+                                'negative': negative_spread_count,
+                                'ratio': round(positive_spread_count/negative_spread_count,2)}
+            quantiles =  positive_spreads[v].quantile(quantile_perc)
+            for quantile,value in quantiles.items():
+                df_q = positive_spreads[positive_spreads[v]>=value][v]
+                item[f'quantile_{quantile}'] = {'spread': value,
+                                                'count': len(df_q),
+                                                'sum': (df_q -exchange_threshold).sum()}
+
+            results[v] = item
+
+        return results
