@@ -80,7 +80,10 @@ class CandlesLoader:
             }
             data.append(row)
         
-        return pd.DataFrame(data)
+        df = pd.DataFrame(data)
+        df['timestamp'] = pd.to_datetime(df['timestamp'], unit='ms')
+        df.set_index('timestamp', inplace=True)
+        return df
     
     async def download_candles(
         self,
