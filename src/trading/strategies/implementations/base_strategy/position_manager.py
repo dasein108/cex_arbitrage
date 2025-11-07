@@ -300,3 +300,23 @@ class PositionManager:
     def get_remaining_qty(self, min_base_amount: float) -> float:
         """Calculate remaining quantity to reach target."""
         return self._position.get_remaining_qty(min_base_amount)
+
+    async def place_trailing_limit_order(self, side: Side, price: float, quantity: float, trail_percent: float) -> bool:
+        order = self._last_order
+        if order:
+            should_cancel = price / order.price - 1.0 > trail_percent / 100.0 if order.side == Side.SELL else \
+                            1.0 - price / order.price > trail_percent / 100.0
+            if should_cancel:
+                self._logger.info(f"🔻 {self.tag} Updating trailing limit order from {order.price} to {price}")
+                o = await self.cancel_order()
+                if o.is_filled:
+                    return False # Filled during cancel handle hedge outside
+            else:
+                return False  # No need to update
+
+        new_order = await self.place_order(side, quantity, price, is_market=False)
+        if new_order:
+            self._logger.info(f"🔺 {self.tag} Placed trailing limit order {new_order}")
+            return True
+
+

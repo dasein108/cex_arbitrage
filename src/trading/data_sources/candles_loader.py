@@ -14,7 +14,7 @@ from infrastructure.logging import HFTLoggerInterface
 from infrastructure.logging.factory import get_logger
 from utils.kline_utils import kline_interval_to_timeframe, round_datetime_to_interval
 import asyncio
-
+from trading.data_sources.column_utils import get_column_key
 # Import exchange modules to trigger auto-registration
 
 
@@ -210,7 +210,7 @@ class CandlesLoader:
                 continue
             # Prefix all column names with the exchange key (use enum name)
             prefixed = df[['open', 'high', 'low', 'close', 'volume']].copy()
-            prefixed.columns = [f"{exchange.value}_{col}" for col in prefixed.columns]
+            prefixed.columns = [get_column_key(exchange, col) for col in prefixed.columns]
             exchange_df_map[exchange] = prefixed
 
         # Merge all available dataframes into a single dataframe (outer join on index)

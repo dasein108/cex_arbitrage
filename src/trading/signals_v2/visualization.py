@@ -60,7 +60,8 @@ class ArbitrageVisualization:
                                     trades: List[ArbitrageTrade],
                                     performance_metrics: PerformanceMetrics,
                                     symbol_name: str = "Trading Pair",
-                                    save_path: Optional[str] = None) -> None:
+                                    save_path: Optional[str] = None,
+                                    profit_thresholds: Dict[ExchangeEnum, float] = None) -> None:
         """
         Create comprehensive multi-subplot analysis of arbitrage trading performance.
         
@@ -86,7 +87,8 @@ class ArbitrageVisualization:
         
         # Spread analysis (bottom center)
         ax_spread = fig.add_subplot(gs[2, :2])
-        self._plot_spread_analysis(ax_spread, df, trades)
+
+        self._plot_spread_analysis(ax_spread, df, trades, profit_thresholds)
         
         # Performance metrics dashboard (right sidebar - spans all rows)
         ax_metrics = fig.add_subplot(gs[:, 2])
@@ -121,9 +123,9 @@ class ArbitrageVisualization:
                 
                 # Plot bid and ask lines
                 ax.plot(df.index, df[bid_col], color=colors['bid'], 
-                       linewidth=1.5, label=f'{exchange_name} Bid', alpha=0.8)
+                       linewidth=1, label=f'{exchange_name} Bid', alpha=0.5)
                 ax.plot(df.index, df[ask_col], color=colors['ask'], 
-                       linewidth=1.5, label=f'{exchange_name} Ask', alpha=0.8)
+                       linewidth=1, label=f'{exchange_name} Ask', alpha=0.5)
                 
                 # Fill spread area
                 ax.fill_between(df.index, df[bid_col], df[ask_col], 
@@ -202,9 +204,16 @@ class ArbitrageVisualization:
         ax.xaxis.set_major_formatter(mdates.DateFormatter('%H:%M'))
         plt.setp(ax.xaxis.get_majorticklabels(), rotation=45)
 
-    def _plot_spread_analysis(self, ax: plt.Axes, df: pd.DataFrame, trades: List[ArbitrageTrade]) -> None:
+    def _plot_spread_analysis(self, ax: plt.Axes, df: pd.DataFrame, trades: List[ArbitrageTrade],
+                              profit_thresholds: Dict[ExchangeEnum, float] = None) -> None:
         """Plot spread analysis between exchanges."""
-        
+
+        if not profit_thresholds:
+            profit_thresholds = {
+                ExchangeEnum.MEXC: 0.3,  # 0.3% threshold
+                ExchangeEnum.GATEIO: 0.3
+            }
+
         mexc_bid_col = get_column_key(ExchangeEnum.MEXC, 'bid_price')
         mexc_ask_col = get_column_key(ExchangeEnum.MEXC, 'ask_price')
         gateio_bid_col = get_column_key(ExchangeEnum.GATEIO, 'bid_price')
@@ -225,7 +234,7 @@ class ArbitrageVisualization:
         # Plot spreads
         ax.plot(df.index, mexc_to_gateio_spread, linewidth=1.5, color='blue', 
                label='MEXC→Gate.io Spread', alpha=0.8)
-        ax.plot(df.index, gateio_to_mexc_spread, linewidth=1.5, color='orange', 
+        ax.plot(df.index, gateio_to_mexc_spread, linewidth=1.5, color='orange',
                label='Gate.io→MEXC Spread', alpha=0.8)
         
         # Add zero line
@@ -316,11 +325,11 @@ class ArbitrageVisualization:
         
         start_time = min(trade.timestamp for trade in metrics.trades)
         end_time = max(trade.timestamp for trade in metrics.trades)
-        duration_hours = (end_time - start_time).total_seconds() / 3600
+        duration_minutes = (end_time - start_time).total_seconds() / 60
         
-        if duration_hours > 0:
-            freq = len(metrics.trades) / duration_hours
-            return f"{freq:.1f}/h"
+        if duration_minutes > 0:
+            freq = len(metrics.trades) / duration_minutes
+            return f"{freq:.1f}/min"
         return "N/A"
 
 def visualize_arbitrage_results(df: pd.DataFrame, 

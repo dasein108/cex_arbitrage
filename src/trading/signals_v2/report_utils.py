@@ -68,7 +68,7 @@ def performance_metrics_table(metrics_list: List[PerformanceMetrics], include_he
         # Header
         header = (
             f"{'Trades':>7} | {'Total PnL ($)':>14} | {'Total PnL (%)':>13} | "
-            f"{'Win Rate':>9} | {'Avg Trade':>11} | {'Max DD':>8} | {'Sharpe':>7}"
+            f"{'Win Rate':>9} | {'Avg Trade':>11} | {'Max DD':>8} | {'Sharpe':>7} | {'freq/min':>7}"
         )
         separator = "=" * len(header)
         lines.extend([header, separator])
@@ -79,7 +79,7 @@ def performance_metrics_table(metrics_list: List[PerformanceMetrics], include_he
             f"{metrics.total_trades:>7} | {metrics.total_pnl_usd:>14,.2f} | "
             f"{metrics.total_pnl_pct:>12.2f}% | {metrics.win_rate:>8.2f}% | "
             f"{metrics.avg_trade_pnl:>11,.2f} | {metrics.max_drawdown:>7.2f}% | "
-            f"{metrics.sharpe_ratio:>7.2f}"
+            f"{metrics.sharpe_ratio:>7.2f} | {metrics.trade_freq:>7.2f}"
         )
         lines.append(row)
 

@@ -45,7 +45,7 @@ async def demo_strategy_compatibility_v2():
             'name': 'Inventory Spot V2 (Arbitrage Logic)',
             'type': 'inventory_spot_v2',
             'params': {
-                'min_profit_bps': 30.0,
+                'min_profit_bps': 27.0,
                 'min_execution_confidence': 0.6,
                 'safe_offset_percentile': 75.0,
                 'position_size_usd': 1000.0,

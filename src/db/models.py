@@ -5,7 +5,7 @@ Data structures for database operations using msgspec for maximum performance.
 Optimized for HFT requirements with zero-copy serialization.
 """
 
-from datetime import datetime
+from datetime import datetime, UTC
 from typing import Optional
 from enum import IntEnum
 import msgspec
@@ -706,7 +706,7 @@ class TradeSnapshot(msgspec.Struct):
             quantity=trade.quantity,
             side='buy' if trade.side == Side.BUY else 'sell',
             trade_id=trade.trade_id,
-            timestamp=datetime.fromtimestamp(trade.timestamp / 1000) if trade.timestamp else datetime.now(),
+            timestamp=datetime.fromtimestamp(trade.timestamp / 1000, UTC) if trade.timestamp else datetime.now(UTC),
             quote_quantity=trade.quote_quantity,
             is_buyer=trade.is_buyer,
             is_maker=trade.is_maker

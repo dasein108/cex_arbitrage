@@ -119,8 +119,7 @@ class BaseMultiSpotFuturesArbitrageTask(BaseStrategyTask[BaseMultiSpotFuturesTas
         self._spot_ex: List[DualExchange] = [DualExchange.get_instance(get_exchange_config(
             setting.exchange), self.logger) for setting in self.context.settings]
 
-        self._symbol_info: List[SymbolInfo] = []
-
+        self._spot_ex_map: [ExchangeEnum, int] = {}
         # Single position managers - one per position
         self._hedge_manager: Optional[PositionManager] = None
         self._spot_managers: List[PositionManager] = []
@@ -145,8 +144,11 @@ class BaseMultiSpotFuturesArbitrageTask(BaseStrategyTask[BaseMultiSpotFuturesTas
         )
 
     async def _start_spot_exchanges(self, index: int):
-        setting = self.context.settings[index]
+        # setting = self.context.settings[index]
         exchange = self._spot_ex[index]
+
+        self._spot_ex_map[exchange.exchange_enum] = index
+
         await exchange.initialize(
             [self.context.symbol],
             public_channels=[PublicWebsocketChannelType.BOOK_TICKER],

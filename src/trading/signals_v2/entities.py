@@ -5,7 +5,7 @@ This module contains the core data structures for cryptocurrency arbitrage tradi
 between exchanges, including trade tracking, position management, and performance metrics.
 """
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from typing import Optional, List, Dict, Union
 from decimal import Decimal
@@ -48,7 +48,7 @@ class PerformanceMetrics:
     
     def __init__(self, total_pnl_usd: float = 0, total_pnl_pct: float = 0, win_rate: float = 0,
                  avg_trade_pnl: float = 0, max_drawdown: float = 0, sharpe_ratio: float = 0,
-                 trades: List[ArbitrageTrade] = None):
+                 trades: List[ArbitrageTrade] = None, trade_freq: float = 0):
         """
         Initialize performance metrics.
         
@@ -68,6 +68,7 @@ class PerformanceMetrics:
         self.max_drawdown = max_drawdown
         self.sharpe_ratio = sharpe_ratio
         self.trades = trades or []
+        self.trade_freq = trade_freq
 
     @property
     def total_trades(self) -> int:
@@ -361,6 +362,11 @@ class PositionEntry:
         else:
             sharpe_ratio = 0
 
+        delays = np.diff([t.timestamp.timestamp() for t in trades])  # seconds
+        delays_minutes = delays / 60  # convert to minutes
+
+        mean_delay = np.mean(delays_minutes)
+
         return PerformanceMetrics(
             total_pnl_usd=total_arbitrage_pnl,  # ✅ FIX: Use arbitrage P&L, not position value
             total_pnl_pct=total_pnl_pct,
@@ -368,7 +374,8 @@ class PositionEntry:
             avg_trade_pnl=avg_trade_pnl,
             max_drawdown=max_drawdown,
             sharpe_ratio=sharpe_ratio,
-            trades=trades
+            trades=trades,
+            trade_freq=mean_delay
         )
 
 
@@ -386,4 +393,4 @@ class BacktestingParams:
     transfer_fee_usd: float = 0          # Fixed transfer cost per move
     slippage_pct: float = 0.05               # Expected slippage (0.05% typical)
     execution_failure_rate: float = 0.10     # 10% of trades fail to execute
-    min_profit_threshold_bps: float = 30.0   # Minimum profit threshold in BPS
+    custom: Dict[str, float] = field(default_factory=dict)

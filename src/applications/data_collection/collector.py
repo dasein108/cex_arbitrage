@@ -13,7 +13,7 @@ Architecture (Oct 2025):
 """
 
 import asyncio
-from datetime import datetime, timezone
+from datetime import datetime, timezone, UTC, timedelta
 from typing import Dict, List, Optional, Set, Callable, Awaitable, Union
 from dataclasses import dataclass
 
@@ -227,9 +227,9 @@ class UnifiedWebSocketManager:
                 self.logger.info(f"Bound TICKER handler for futures exchange {exchange.value}")
             
             # Trade handler binding disabled for performance optimization
-            # if self.trade_handler:
-            #     adapter.bind(PublicWebsocketChannelType.PUB_TRADE, 
-            #                lambda trade: self._handle_trades_update(exchange, trade.symbol, [trade]))
+            if self.trade_handler:
+                adapter.bind(PublicWebsocketChannelType.PUB_TRADE,
+                           lambda trade: self._handle_trades_update(exchange, trade.symbol, [trade]))
 
             # Store composite and adapter
             self._exchange_composites[exchange] = composite
@@ -240,8 +240,9 @@ class UnifiedWebSocketManager:
             # Initialize composite with symbols and channels
             # NOTE: Trade subscription disabled for performance optimization - only collecting book tickers
             with LoggingTimer(self.logger, "composite_initialization") as timer:
-                channels = [PublicWebsocketChannelType.BOOK_TICKER]  # Core market data
-                
+                # channels = [PublicWebsocketChannelType.BOOK_TICKER, PublicWebsocketChannelType.PUB_TRADE]  # Core market data
+                channels = [PublicWebsocketChannelType.PUB_TRADE]  # Core market data
+
                 # Add TICKER channel for futures exchanges to collect funding rates
                 config = get_exchange_config(exchange.value)
                 if config.is_futures:
@@ -1146,7 +1147,7 @@ class DataCollector:
             self.ws_manager = UnifiedWebSocketManager(
                 exchanges=self.config.exchanges,
                 book_ticker_handler=self._handle_external_book_ticker,
-                trade_handler=None,  # Disabled for performance optimization
+                trade_handler=self._handle_external_trade,  # Disabled for performance optimization
                 database_manager=self.db
             )
             self.logger.info(f"WebSocket manager created for {len(self.config.exchanges)} exchanges")
@@ -1166,7 +1167,7 @@ class DataCollector:
                 ws_manager=self.ws_manager,
                 interval_seconds=self.config.snapshot_interval,
                 snapshot_handler=self._handle_snapshot_storage,
-                trade_handler=None,  # Disabled since trade collection is disabled
+                # trade_handler=self._handle_trades_snapshot_storage,  # Disabled since trade collection is disabled
                 funding_rate_handler=self._handle_funding_rate_storage
             )
             self.logger.info(f"Snapshot scheduler initialized with {self.config.snapshot_interval}s interval")
@@ -1284,6 +1285,19 @@ class DataCollector:
                 pass
         except Exception as e:
             self.logger.error(f"Error handling external trade update: {e}")
+
+    async def _handle_trades_snapshot_storage(self, snapshots: List[TradeSnapshot]):
+        # min_trade, min_qty, max_trade, max_qty, total_qty, count = 0
+        if len(snapshots) == 0:
+            return
+
+        date_to = (snapshots[-1].timestamp - timedelta(seconds=self.config.snapshot_interval))
+        bucket = []
+        for t in  reversed(snapshots):
+            if t.timestamp > date_to:
+                bucket.append(t)
+
+        print(bucket)
 
     async def _handle_snapshot_storage(self, snapshots: List[BookTickerSnapshot]) -> None:
         """
