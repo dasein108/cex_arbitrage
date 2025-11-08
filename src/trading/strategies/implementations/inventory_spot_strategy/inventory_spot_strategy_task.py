@@ -119,6 +119,8 @@ class InventorySpotStrategyTask(BaseMultiSpotFuturesArbitrageTask[InventorySpotT
                 quantity=qty,
             ))
 
+        await asyncio.gather(*tasks)
+
     async def _manage_positions(self):
 
         book_tickers = {ExchangeEnum.MEXC: self._pos[ExchangeEnum.MEXC].book_ticker,
@@ -127,6 +129,9 @@ class InventorySpotStrategyTask(BaseMultiSpotFuturesArbitrageTask[InventorySpotT
         signal = self.signal.get_live_signal_book_ticker(book_tickers)
 
         if signal != InventorySignalWithLimitEnum.HOLD:
+            self.logger.info(f"Live Signal: {signal.name} MEXC: {self._pos[ExchangeEnum.MEXC].book_ticker},"
+                             f" GATEIO: {self._pos[ExchangeEnum.GATEIO].book_ticker}")
+
             await self.manage_arbitrage(signal)
         else:
             await asyncio.gather(*[p.cancel_order() for p in self._spot_managers])

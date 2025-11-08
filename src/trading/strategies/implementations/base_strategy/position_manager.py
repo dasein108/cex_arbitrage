@@ -314,7 +314,7 @@ class PositionManager:
         Returned value is in percent (e.g. 1.5 means 1.5%).
         """
         order = self._last_order
-        if order or order.price == 0:
+        if not order or order.price == 0:
             return 0.0
 
         if order.side == Side.SELL:

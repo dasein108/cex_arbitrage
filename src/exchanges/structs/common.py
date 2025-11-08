@@ -327,7 +327,7 @@ class BookTicker(Struct):
 
     def __str__(self):
         return (f"{self.symbol} Bid: {self.bid_price}@{self.bid_quantity} / Ask: {self.ask_price}@{self.ask_quantity} "
-                f"spread: {self.spread} ({self.spread_percentage():.4f}%)")
+                f"spread: {self.spread} ({self.spread_percentage:.4f}%)")
 
 class FuturesTicker(Struct):
     """Futures ticker with comprehensive market data including funding rates."""

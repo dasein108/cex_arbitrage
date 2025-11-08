@@ -137,6 +137,8 @@ class BaseMultiSpotFuturesArbitrageTask(BaseStrategyTask[T], Generic[T]):
         else:
             self.context.positions[index] = position_data
         # This can be overridden by subclasses if needed
+
+        self.context.set_save_flag()
         pass
 
     async def _start_hedge_exchange(self):

@@ -14,6 +14,7 @@ import pandas as pd
 from datetime import datetime, timedelta, UTC
 
 from exchanges.structs import BookTicker, Fees
+from infrastructure.logging import HFTLoggerInterface, get_logger
 from trading.signals.types import Signal
 from exchanges.structs.enums import ExchangeEnum, Side
 
@@ -66,7 +67,8 @@ class InventorySpotStrategySignal(StrategySignal):
                  update_interval_seconds: int = 60,
                  max_history_length: int = 100,
                  backtesting_params: BacktestingParams = None,
-                 fees: Dict[ExchangeEnum, Fees] = {}
+                 fees: Dict[ExchangeEnum, Fees] = {},
+                 logger: HFTLoggerInterface=None
                  ):
         """
         Initialize advanced inventory spot arbitrage strategy.
@@ -76,6 +78,7 @@ class InventorySpotStrategySignal(StrategySignal):
             max_history_length: Maximum price history to maintain
             backtesting_params: Enhanced backtesting configuration with realistic costs
         """
+        self.logger = logger or get_logger(__name__)
         self.params = params
         self.fees = fees
         self._backtesting_params = backtesting_params or BacktestingParams()
