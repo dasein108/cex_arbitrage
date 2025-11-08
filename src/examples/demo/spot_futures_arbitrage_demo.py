@@ -32,7 +32,7 @@ from trading.strategies.implementations.spot_futures_spread_arbitrage_strategy i
     SpotFuturesArbitrageTask,
     SpotFuturesArbitrageTaskContext
 )
-from trading.strategies.implementations.spot_futures_spread_arbitrage_strategy.spot_futures_arbitrage_task import MarketData
+from trading.strategies.structs import MarketData
 from trading.strategies.implementations.maker_limit_delta_neutral__simple_strategy.maker_limit_simple_delta_neutral_task import MakerLimitDeltaNeutralTask, MakerLimitDeltaNeutralTaskContext
 
 from exchanges.exchange_factory import create_rest_client

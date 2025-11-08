@@ -177,6 +177,7 @@ class SymbolInfo(Struct, frozen=True):
     is_futures: bool = False
     quanto_multiplier: float = 1  # For futures
 
+
     def round_quote(self, amount: float) -> float:
         """Round price to the symbol's price/quote precision."""
         return round(amount, self.quote_precision)

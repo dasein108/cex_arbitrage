@@ -182,7 +182,7 @@ class CandlesLoader:
         self.logger.info(f"Successfully saved {len(df)} candles to {pickle_path}")
         self.logger.info(f"File size: {file_size / 1024:.1f} KB")
 
-    async def get_multi_candles_df(
+    async def get_multi_exchange_data(
             self,
             exchanges: list[ExchangeEnum],
             symbol: Symbol,

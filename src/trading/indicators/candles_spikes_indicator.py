@@ -17,8 +17,8 @@ class CandlesIndicator:
         self.symbol = symbol
 
     async def update(self):
-        self.df = await self.candles_loader.get_multi_candles_df(self.exchanges, self.symbol, hours=self.lookback_period_hours,
-                                                 timeframe=self.timeframe)
+        self.df = await self.candles_loader.get_multi_exchange_data(self.exchanges, self.symbol, hours=self.lookback_period_hours,
+                                                                    timeframe=self.timeframe)
         return self.df
 
 class CandlesSpikeIndicator(CandlesIndicator):

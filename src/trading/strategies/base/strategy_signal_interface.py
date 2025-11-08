@@ -9,7 +9,7 @@ from abc import ABC, abstractmethod
 from typing import Dict, Any, Optional, Union, Tuple
 import pandas as pd
 
-from trading.signals.types import PerformanceMetrics
+from trading.strategies.base.types import PerformanceMetrics
 from trading.signals.types.signal_types import Signal
 
 

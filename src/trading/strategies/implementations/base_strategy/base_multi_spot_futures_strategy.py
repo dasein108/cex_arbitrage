@@ -1,5 +1,5 @@
 import asyncio
-from typing import Optional, Type, Dict, Literal, List, TypeAlias
+from typing import Optional, Type, Dict, Literal, List, TypeAlias, TypeVar, Generic
 import msgspec
 from dill import settings
 from msgspec import Struct
@@ -49,7 +49,7 @@ class BaseMultiSpotFuturesTaskContext(BaseStrategyContext, kw_only=True):
     # Complex fields with factory defaults
     positions: List[PositionData] = msgspec.field(default_factory=lambda: [])
 
-    settings: List[MarketData] = msgspec.field(default_factory=lambda: [])
+    spot_settings: List[MarketData] = msgspec.field(default_factory=lambda: [])
 
     hedge_settings: MarketData = msgspec.field(default_factory=lambda: MarketType())
 
@@ -64,7 +64,10 @@ class BaseMultiSpotFuturesTaskContext(BaseStrategyContext, kw_only=True):
         return msgspec.json.decode(json_bytes, type=BaseMultiSpotFuturesTaskContext)
 
 
-class BaseMultiSpotFuturesArbitrageTask(BaseStrategyTask[BaseMultiSpotFuturesTaskContext]):
+T = TypeVar("T", bound=BaseMultiSpotFuturesTaskContext)
+
+class BaseMultiSpotFuturesArbitrageTask(BaseStrategyTask[T], Generic[T]):
+# class BaseMultiSpotFuturesArbitrageTask(BaseStrategyTask[BaseMultiSpotFuturesTaskContext]):
     """State machine for executing cross-exchange spot-futures arbitrage strategies.
 
     Executes simultaneous spot positions on one exchange and futures positions on another
@@ -73,9 +76,9 @@ class BaseMultiSpotFuturesArbitrageTask(BaseStrategyTask[BaseMultiSpotFuturesTas
     """
 
     @property
-    def context_class(self) -> Type[BaseMultiSpotFuturesTaskContext]:
+    def context_class(self) -> T:
         """Return the spot-futures arbitrage context class."""
-        return BaseMultiSpotFuturesTaskContext
+        return T
 
     @property
     def total_spot_qty(self):
@@ -106,20 +109,20 @@ class BaseMultiSpotFuturesArbitrageTask(BaseStrategyTask[BaseMultiSpotFuturesTas
         return None
 
     def __init__(self,
-                 context: BaseMultiSpotFuturesTaskContext,
+                 context: T,
                  logger: HFTLoggerInterface = None,
                  **kwargs):
         """Initialize spot-futures arbitrage task.
         """
         super().__init__(context, logger, **kwargs)
-        self.logger = get_logger(self.context.tag) if logger is None else logger
+        self.logger = get_logger(str(self.context.tag)) if logger is None else logger
         self._hedge_ex = DualExchange.get_instance(get_exchange_config(context.hedge_settings.exchange), self.logger)
 
         # DualExchange instances for spot and futures markets
         self._spot_ex: List[DualExchange] = [DualExchange.get_instance(get_exchange_config(
-            setting.exchange), self.logger) for setting in self.context.settings]
+            setting.exchange), self.logger) for setting in self.context.spot_settings]
 
-        self._spot_ex_map: [ExchangeEnum, int] = {}
+        self._spot_ex_map: [int, ExchangeEnum] = {}
         # Single position managers - one per position
         self._hedge_manager: Optional[PositionManager] = None
         self._spot_managers: List[PositionManager] = []
@@ -147,7 +150,7 @@ class BaseMultiSpotFuturesArbitrageTask(BaseStrategyTask[BaseMultiSpotFuturesTas
         # setting = self.context.settings[index]
         exchange = self._spot_ex[index]
 
-        self._spot_ex_map[exchange.exchange_enum] = index
+        self._spot_ex_map[index] = exchange.exchange_enum
 
         await exchange.initialize(
             [self.context.symbol],
@@ -165,7 +168,7 @@ class BaseMultiSpotFuturesArbitrageTask(BaseStrategyTask[BaseMultiSpotFuturesTas
 
         # Initialize DualExchanges
         init_tasks = [self._start_hedge_exchange()]
-        for i in range(len(self.context.settings)):
+        for i in range(len(self.context.spot_settings)):
             init_tasks.append(self._start_spot_exchanges(i))
 
         await asyncio.gather(*init_tasks)
@@ -178,7 +181,7 @@ class BaseMultiSpotFuturesArbitrageTask(BaseStrategyTask[BaseMultiSpotFuturesTas
 
         # create spot positions if not exists
         if not self.context.positions:
-            for setting in self.context.settings:
+            for setting in self.context.spot_settings:
                 pos = PositionData(
                     symbol=self.context.symbol,
                     side=Side.BUY)

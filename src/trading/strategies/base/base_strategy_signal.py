@@ -15,7 +15,7 @@ from dataclasses import dataclass, field
 
 from trading.strategies.base.strategy_signal_interface import StrategySignalInterface
 from trading.signals.types.signal_types import Signal
-from trading.signals.types.performance_metrics import PerformanceMetrics
+from trading.strategies.base.types import PerformanceMetrics
 from exchanges.structs.enums import ExchangeEnum, Side
 
 @dataclass

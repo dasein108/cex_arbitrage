@@ -43,7 +43,7 @@ class SpotSpotArbitrageAnalyzer:
 
         self.logger.info(f"📊 Loading candle data for {symbol} from {start_time} to {end_time}")
 
-        df = await self.candles_source.get_multi_candles_df(
+        df = await self.candles_source.get_multi_exchange_data(
             exchanges=self.exchanges,
             symbol=symbol,
             date_to=end_time,

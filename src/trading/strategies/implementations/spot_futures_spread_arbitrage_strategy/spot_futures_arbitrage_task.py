@@ -1,7 +1,6 @@
 import asyncio
 from typing import Optional, Type, Dict, Literal, TypeAlias
 import msgspec
-from msgspec import Struct
 import numpy as np
 from exchanges.dual_exchange import DualExchange
 from config.config_manager import get_exchange_config
@@ -10,6 +9,7 @@ from exchanges.structs.common import Side
 from infrastructure.exceptions.exchange import OrderNotFoundError, InsufficientBalanceError
 from infrastructure.logging import HFTLoggerInterface, get_logger
 from infrastructure.networking.websocket.structs import PublicWebsocketChannelType, PrivateWebsocketChannelType
+from trading.strategies.structs import MarketData
 
 from utils.math_utils import get_decrease_vector
 from trading.strategies.implementations.base_strategy.unified_position import Position, PositionError
@@ -24,15 +24,6 @@ MarketType: TypeAlias = Literal['spot', 'futures']
 TRANSFER_REFRESH_SECONDS = 30
 
 SPOT_FUTURES_ARBITRAGE_TASK_TYPE = "spot_futures_arbitrage_strategy"
-
-
-class MarketData(Struct):
-    exchange: Optional[ExchangeEnum] = None
-    tick_tolerance: int = 0
-    ticks_offset: int = 0
-    use_market: bool = False
-    order_id: Optional[OrderId] = None
-
 
 
 class SpotFuturesArbitrageTaskContext(BaseStrategyContext, kw_only=True):

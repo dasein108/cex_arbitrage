@@ -8,7 +8,6 @@ between exchanges, including trade tracking, position management, and performanc
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 from typing import Optional, List, Dict, Union
-from decimal import Decimal
 
 import numpy as np
 

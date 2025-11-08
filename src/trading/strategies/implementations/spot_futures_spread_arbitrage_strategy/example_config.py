@@ -7,7 +7,8 @@ opportunities are typically between different exchanges (e.g., MEXC spot vs Gate
 """
 
 from exchanges.structs import Symbol, AssetName, ExchangeEnum
-from .spot_futures_arbitrage_task import SpotFuturesArbitrageTaskContext, MarketData
+from .spot_futures_arbitrage_task import SpotFuturesArbitrageTaskContext
+from trading.strategies.structs import MarketData
 
 
 def create_mexc_spot_gateio_futures_config(symbol_base: str, symbol_quote: str) -> SpotFuturesArbitrageTaskContext:

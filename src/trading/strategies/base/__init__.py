@@ -13,6 +13,7 @@ from .strategy_signal_factory import (
     get_available_strategy_signals,
     normalize_strategy_type
 )
+from .types import PerformanceMetrics
 
 __all__ = [
     'StrategySignalInterface',
@@ -21,5 +22,6 @@ __all__ = [
     'create_strategy_signal',
     'register_strategy_signal', 
     'get_available_strategy_signals',
-    'normalize_strategy_type'
+    'normalize_strategy_type',
+    'PerformanceMetrics'
 ]

@@ -29,8 +29,8 @@ class PositionManager:
     position on one exchange, similar to the original ExchangePosition pattern.
     """
 
-    def __init__(self, 
-                 position_data: PositionData, 
+    def __init__(self,
+                 position_data: PositionData,
                  exchange: DualExchange,
                  logger: HFTLoggerInterface, 
                  save_context: Optional[Callable[[PositionData], None]] = None):
@@ -40,10 +40,13 @@ class PositionManager:
         self._save_context = save_context
         
         # Exchange-specific data
-        self._symbol: Optional[Symbol] = None
         self._symbol_info: Optional[SymbolInfo] = None
         self._fees: Optional[Fees] = None
         self._last_order: Optional[Order] = None
+
+    @property
+    def symbol(self):
+        return self._position.symbol
 
     @property
     def position(self) -> PositionData:
@@ -55,16 +58,13 @@ class PositionManager:
         """Get the exchange."""
         return self._exchange
 
-    @property
-    def symbol(self) -> Optional[Symbol]:
-        """Get the trading symbol."""
-        return self._symbol
+
 
     @property
     def tag(self) -> str:
         """Generate logging tag for position manager."""
         exchange_name = self._exchange.exchange_enum.value if self._exchange else "Unknown"
-        return f"{exchange_name}_{self._symbol}" if self._symbol else f"{exchange_name}_Position"
+        return f"{exchange_name}_{self.symbol}" if self.symbol else f"{exchange_name}_Position"
 
     @property
     def is_futures(self) -> bool:
@@ -74,20 +74,20 @@ class PositionManager:
     @property
     def book_ticker(self):
         """Get book ticker for the symbol."""
-        if self._exchange and self._symbol:
-            return self._exchange.public.book_ticker.get(self._symbol)
+        if self._exchange and self.symbol:
+            return self._exchange.public.book_ticker.get(self.symbol)
         return None
 
     async def initialize(self, target_qty: float = 0.0) -> bool:
         """Initialize position with exchange data."""
         try:
-            if not self._symbol:
+            if not self.symbol:
                 raise ValueError("Symbol not set for position")
             
             # Load symbol info and fees
             symbols_info = await self._exchange.public.load_symbols_info()
-            self._symbol_info = symbols_info.get(self._symbol)
-            self._fees = self._exchange.private.get_fees(self._symbol)
+            self._symbol_info = symbols_info.get(self.symbol)
+            self._fees = self._exchange.private.get_fees(self.symbol)
             
             # Set target quantity
             self._position.target_qty = target_qty
@@ -115,7 +115,7 @@ class PositionManager:
 
     async def _load_futures_position(self) -> None:
         """Load futures position from exchange."""
-        exchange_position = await self._exchange.private.get_position(self._symbol, force=True)
+        exchange_position = await self._exchange.private.get_position(self.symbol, force=True)
         
         if exchange_position:
             self._position.qty = exchange_position.qty_base
@@ -129,7 +129,7 @@ class PositionManager:
         """Load spot position from exchange."""
         min_qty = self._get_min_base_qty()
         book_ticker = self.book_ticker
-        balance = await self._exchange.private.get_asset_balance(self._symbol.base)
+        balance = await self._exchange.private.get_asset_balance(self.symbol.base)
 
         if balance.available > min_qty:
             self._position.qty = balance.available
@@ -143,7 +143,7 @@ class PositionManager:
 
     async def _force_book_ticker_refresh(self) -> None:
         """Force reload book ticker via REST API."""
-        await self._exchange.public.get_book_ticker(self._symbol, force=True)
+        await self._exchange.public.get_book_ticker(self.symbol, force=True)
 
     async def _force_last_order_refresh(self) -> None:
         """Refresh the last order status for the position."""
@@ -153,7 +153,7 @@ class PositionManager:
         order = None
         
         try:
-            order = await self._exchange.private.fetch_order(self._symbol, self._last_order.order_id)
+            order = await self._exchange.private.fetch_order(self.symbol, self._last_order.order_id)
         except OrderNotFoundError as e:
             self._logger.warning(f"⚠️ {self.tag} Could not find existing order '{self._last_order}' during reload: {e}")
             self._last_order = None
@@ -220,20 +220,25 @@ class PositionManager:
         fee_rate = self._fees.taker_fee if self._fees else 0.0
         return self._position.update(order.side, filled_qty, order.price, fee_rate)
 
+    async def place_market_order(self, side: Side, quantity: float) -> Optional[Order]:
+        """Place market order for the position."""
+        price = self.book_ticker.ask_price if side == Side.BUY else self.book_ticker.bid_price
+        return await self.place_order(side, quantity, price, is_market=True)
+
     async def place_order(self, side: Side, quantity: float, price: float, is_market: bool = False) -> Optional[Order]:
         """Place order for the position."""
         
         try:
             if is_market:
                 order = await self._exchange.private.place_market_order(
-                    symbol=self._symbol,
+                    symbol=self.symbol,
                     side=side,
                     quantity=quantity,
                     price=price,
                 )
             else:
                 order = await self._exchange.private.place_limit_order(
-                    symbol=self._symbol,
+                    symbol=self.symbol,
                     side=side,
                     quantity=quantity,
                     price=price,
@@ -264,19 +269,19 @@ class PositionManager:
     async def cancel_order(self) -> Optional[Order]:
         """Cancel active order for the position."""
         if self._last_order is None:
-            self._logger.warning(f"⚠️ {self.tag} No active order to cancel")
+            # self._logger.warning(f"⚠️ {self.tag} No active order to cancel")
             return None
 
         order_id = self._last_order.order_id
 
         try:
-            order = await self._exchange.private.cancel_order(self._symbol, order_id)
+            order = await self._exchange.private.cancel_order(self.symbol, order_id)
             self._logger.info(f"🛑 {self.tag} Cancelled order", order=str(order), order_id=order_id)
         except Exception as e:
             self._logger.error(f"🚫 {self.tag} Failed to cancel order", error=str(e))
             # Try to fetch order status instead
         finally:
-            order = await self._exchange.private.fetch_order(self._symbol, order_id)
+            order = await self._exchange.private.fetch_order(self.symbol, order_id)
 
         self._track_order_execution(order)
         return order
@@ -286,7 +291,7 @@ class PositionManager:
         if not self._last_order:
             return None
 
-        updated_order = await self._exchange.private.get_active_order(self._symbol, self._last_order.order_id)
+        updated_order = await self._exchange.private.get_active_order(self.symbol, self._last_order.order_id)
 
         if self._track_order_execution(updated_order):
             return updated_order
@@ -301,22 +306,51 @@ class PositionManager:
         """Calculate remaining quantity to reach target."""
         return self._position.get_remaining_qty(min_base_amount)
 
-    async def place_trailing_limit_order(self, side: Side, price: float, quantity: float, trail_percent: float) -> bool:
-        order = self._last_order
-        if order:
-            should_cancel = price / order.price - 1.0 > trail_percent / 100.0 if order.side == Side.SELL else \
-                            1.0 - price / order.price > trail_percent / 100.0
-            if should_cancel:
-                self._logger.info(f"🔻 {self.tag} Updating trailing limit order from {order.price} to {price}")
-                o = await self.cancel_order()
-                if o.is_filled:
-                    return False # Filled during cancel handle hedge outside
-            else:
-                return False  # No need to update
+    def _should_cancel_trailing_order(self, current_price: float, trail_pct: float) -> float:
+        """Return percent change between current_price and order_price from the perspective of the side.
 
-        new_order = await self.place_order(side, quantity, price, is_market=False)
+        For SELL: positive when current_price > order_price.
+        For BUY: positive when current_price < order_price.
+        Returned value is in percent (e.g. 1.5 means 1.5%).
+        """
+        order = self._last_order
+        if order or order.price == 0:
+            return 0.0
+
+        if order.side == Side.SELL:
+            return (current_price / order.price - 1.0) * 100.0 > trail_pct
+        else:
+            return (1.0 - current_price / order.price) * 100.0 > trail_pct
+
+    def _adjust_price_by_pct(self, price: float, price_pct: float, side: Side) -> float:
+        """Adjust price by price_pct depending on side.
+
+        For SELL: increases price by price_pct percent.
+        For BUY: decreases price by price_pct percent.
+        """
+        factor = 1.0 + (price_pct / 100.0) if side == Side.SELL else 1.0 - (price_pct / 100.0)
+        return self._symbol_info.round_quote(price * factor)
+
+    async def place_trailing_limit_order(self, side: Side, quantity: float,
+                                         top_offset_pct: float=0, trail_pct: float=0) -> bool:
+        order = self._last_order
+
+        price = self.book_ticker.ask_price if side == Side.SELL else self.book_ticker.bid_price
+
+        if self._should_cancel_trailing_order(price, trail_pct):
+            self._logger.info(f"🔻 {self.tag} Updating trailing limit order from {order.price} to {price}")
+            o = await self.cancel_order()
+            if o.is_filled:
+                return False # Filled during cancel handle hedge outside
+
+        price_with_offset = self._adjust_price_by_pct(price, top_offset_pct, side)
+
+        new_order = await self.place_order(side, quantity, price_with_offset, is_market=False)
+
         if new_order:
             self._logger.info(f"🔺 {self.tag} Placed trailing limit order {new_order}")
             return True
+
+        return False
 
 

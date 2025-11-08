@@ -140,9 +140,8 @@ class CandlesBookTickerSource(BookTickerSourceProtocol):
             prefixed = df.copy()
             prefixed[f"bid_price"] = prefixed['close'] * (1 - self.SPREAD_FACTOR)
             prefixed[f"ask_price"] = prefixed['close'] * (1 + self.SPREAD_FACTOR)
-            prefixed = prefixed[["timestamp", "bid_price", "ask_price"]]
-            prefixed["timestamp"] = pd.to_datetime(prefixed["timestamp"], unit="ms", utc=True)
-            prefixed.set_index("timestamp", inplace=True)
+            prefixed = prefixed[["bid_price", "ask_price"]]
+            # timestamp is already the index from candles data
             prefixed.columns = [get_column_key(exchange, col) for col in prefixed.columns]
             exchange_df_map[exchange] = prefixed
 
@@ -182,9 +181,9 @@ class CandlesBookTickerSource(BookTickerSourceProtocol):
             if df is None or df.empty:
                 exchange_df_map[exchange] = None
                 continue
-            # Prefix all column names with the exchange key (use enum name)
+            # Prefix all column names with the exchange key (use get_column_key format)
             prefixed = df[['open', 'high', 'low', 'close', 'volume']].copy()
-            prefixed.columns = [f"{exchange.value}_{col}" for col in prefixed.columns]
+            prefixed.columns = [get_column_key(exchange, col) for col in prefixed.columns]
             exchange_df_map[exchange] = prefixed
 
         # Merge all available dataframes into a single dataframe (outer join on index)
