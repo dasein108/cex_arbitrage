@@ -298,13 +298,17 @@ class PositionManager:
 
         return None
 
-    def is_fulfilled(self, min_base_amount: float) -> bool:
-        """Check if position has reached its target quantity."""
-        return self._position.is_fulfilled(min_base_amount)
+    @property
+    def min_base_qty(self):
+        return self._exchange.public.get_min_base_quantity(self.symbol)
 
-    def get_remaining_qty(self, min_base_amount: float) -> float:
+    def is_fulfilled(self) -> bool:
+        """Check if position has reached its target quantity."""
+        return self._position.is_fulfilled(self.min_base_qty)
+
+    def get_remaining_qty(self) -> float:
         """Calculate remaining quantity to reach target."""
-        return self._position.get_remaining_qty(min_base_amount)
+        return self._position.get_remaining_qty(self.min_base_qty)
 
     def _should_cancel_trailing_order(self, current_price: float, trail_pct: float) -> float:
         """Return percent change between current_price and order_price from the perspective of the side.

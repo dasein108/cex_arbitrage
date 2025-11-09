@@ -15,6 +15,7 @@ from trading.data_sources.candles_loader import CandlesLoader
 # Import strategy signal architecture
 from trading.signals_v2.implementation.inventory_spot_strategy_signal import InventorySpotStrategySignal
 from trading.signals_v2.implementation.spike_catching_strategy_signal import SpikeCatchingStrategySignal
+from trading.signals_v2.implementation.cross_exchange_parity_signal import CrossExchangeParitySignal
 from trading.signals_v2.entities import BacktestingParams, PerformanceMetrics
 from trading.signals_v2.strategy_signal import StrategySignal
 from trading.data_sources.book_ticker.book_ticker_source import (BookTickerDbSource, CandlesBookTickerSource,
@@ -259,7 +260,7 @@ class SignalBacktester:
                            strategy_type: str = "inventory_spot"
                            ):
         # Load data once for all strategies
-        timeframe = self.candles_timeframe if data_source == 'candles' else self.snapshot_seconds
+        timeframe = self.snapshot_seconds if data_source == 'snapshot_book_ticker' else self.candles_timeframe
         print(f"🚀 Starting vectorized backtesting for {symbol} with data source: {data_source}")
 
         # Use candles data for spike catching strategy, book ticker for others
@@ -268,6 +269,9 @@ class SignalBacktester:
                                                                          symbol, hours=hours,
                                                                          date_to=end_date,
                                                                          timeframe=timeframe)
+
+
+        df.dropna(inplace=True)
 
         if df.empty:
             print(f"❌ No data available for {data_source}: {symbol}")
@@ -295,6 +299,22 @@ class SignalBacktester:
                 spike_offset_multiplier=2.0,  # Increased from 2.5 to handle high volatility
                 stabilization_threshold=2.0,  # Increased from 0.5% to 2% for volatile conditions
                 max_position_time_minutes=60,  # Reduced from 30 to 15 minutes for faster exits
+                backtesting_params=backtesting_params,
+                fees=TRADING_FEES
+            )
+        elif strategy_type == "cross_exchange_parity":
+            strategy = CrossExchangeParitySignal(
+                params=dict(
+                    parity_threshold_bps=5.0,
+                    lookback_periods=50,
+                    divergence_multiplier=2.5,
+                    position_size_usd=self.position_size_usdt,
+                    max_position_time_minutes=120,
+                    min_hold_time_minutes=5,
+                    max_spread_bps=50.0,
+                    take_profit_bps=15.0,
+                    max_daily_positions=5
+                ),
                 backtesting_params=backtesting_params,
                 fees=TRADING_FEES
             )
@@ -389,8 +409,9 @@ if __name__ == "__main__":
         else:
             print("🚀 Running regular backtesting...")
             await backtester.run_backtest(symbol=symbol,
-                                          data_source='snapshot_book_ticker',
-                                          strategy_type = "inventory_spot",  # or "inventory_spot", spike_catching
+                                          data_source='candles_book_ticker',
+                                          # cross_exchange_parity, inventory_spot, spike_catching
+                                          strategy_type = "inventory_spot",
                                           hours=24)
 
 

@@ -81,7 +81,6 @@ class InventorySpotStrategyTask(BaseMultiSpotFuturesArbitrageTask[InventorySpotT
         pos_mexc = self._pos[ExchangeEnum.MEXC]
         pos_gateio = self._pos[ExchangeEnum.GATEIO]
         qty = self.context.order_qty
-        tasks = []
 
         # MEXC, GATEIO params mapping
         signal_mapping = {
@@ -94,6 +93,14 @@ class InventorySpotStrategyTask(BaseMultiSpotFuturesArbitrageTask[InventorySpotT
         }
 
         mexc_params, gateio_params = signal_mapping.get(signal)
+        mexc_sell_allowed = pos_mexc.is_fulfilled() or mexc_params[0] == Side.BUY
+        gateio_sell_allowed = pos_gateio.is_fulfilled() or gateio_params[0] == Side.BUY
+
+        if not mexc_sell_allowed or not gateio_sell_allowed:
+            self.logger.info(f"⚠️ {signal.name} Sell not allowed - MEXC {pos_mexc} GATEIO {pos_gateio}")
+            return
+
+        tasks = []
 
         if mexc_params[1]:
             if not self.is_opened:  # workaround to open with limit one side if position not persisted

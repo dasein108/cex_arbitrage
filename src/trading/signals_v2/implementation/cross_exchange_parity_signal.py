@@ -1,500 +1,435 @@
 """
-Cross-Exchange Price Parity Arbitrage Signal
+Cross-Exchange Mean Reversion Arbitrage Signal V2
 
-This strategy identifies price parity opportunities between exchanges and profits
-from temporary price divergences through mean reversion.
+This strategy profits from temporary price divergences between exchanges by entering
+during high spreads and exiting when prices revert to parity using real-time bid/ask data.
 
 Strategy Logic:
-1. Monitor price differences between MEXC spot and Gate.io futures
-2. Enter positions when prices are near parity (minimal spread)
-3. Exit when price divergence spikes create profit opportunities
-4. Profit from mean reversion back to equilibrium
+1. Monitor price differences between MEXC spot and Gate.io futures using bid/ask prices
+2. Enter positions when price spreads are HIGH (divergence from parity)
+3. Exit when spreads return to LOW levels (mean reversion to equilibrium)
+4. Profit from the convergence back to fair value parity
 
-Key Advantages over Momentum:
-- Buy at fair value, not momentum peaks
-- Profit from predictable mean reversion
-- Lower risk due to price parity entry
-- Natural stop-loss when divergence exceeds normal ranges
+Key Advantages:
+- Uses bid/ask prices for more precise arbitrage detection
+- Integrated with SignalBacktester architecture
+- Realistic cost modeling with fees and slippage
+- Enhanced performance metrics
 """
 
-import asyncio
-from dataclasses import dataclass
-from datetime import datetime, timezone, timedelta
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional
 import pandas as pd
 import numpy as np
+from datetime import datetime, UTC, timedelta
 
-from exchanges.structs.common import Symbol, AssetName
-from exchanges.structs.enums import ExchangeEnum, KlineInterval
-from trading.data_sources.candles_loader import CandlesLoader
-from trading.signals_v2.entities import PositionEntry, TradeEntry, PerformanceMetrics
-from trading.signals_v2.report_utils import generate_generic_report
+from exchanges.structs import Symbol, BookTicker, Fees
+from exchanges.structs.enums import ExchangeEnum, Side
+from infrastructure.logging import HFTLoggerInterface, get_logger
+from trading.signals_v2.entities import PositionEntry, TradeEntry, PerformanceMetrics, BacktestingParams
+from trading.signals_v2.strategy_signal import StrategySignal
+from trading.data_sources.column_utils import get_column_key
 
-@dataclass
-class CrossExchangeParityParams:
-    """Parameters for cross-exchange parity arbitrage strategy."""
-    
-    # Parity Detection
-    parity_threshold_bps: float = 5.0      # Max spread to consider "parity" (5 basis points)
-    lookback_periods: int = 50             # Periods to calculate median spread
-    divergence_multiplier: float = 2.5     # Exit when spread > median * multiplier
-    
-    # Position Management
-    position_size_usd: float = 1000.0      # Position size
-    max_position_time_minutes: int = 120   # Maximum hold time (2 hours)
-    min_hold_time_minutes: int = 5         # Minimum hold time to avoid noise
-    
-    # Risk Management
-    max_spread_bps: float = 50.0           # Emergency exit if spread too wide (50 bps)
-    take_profit_bps: float = 15.0          # Take profit target (15 basis points)
-    max_daily_positions: int = 5           # Conservative position limit
-    
-    # Quality Filters
-    min_volume_ratio: float = 0.1          # Min volume ratio between exchanges
-    volatility_filter: bool = True         # Avoid high volatility periods
+# Default parameters for cross-exchange parity strategy
+DEFAULT_PARITY_PARAMS = {
+    'parity_threshold_bps': 8.0,           # Exit threshold - back to parity (8 basis points = 0.08%)
+    'lookback_periods': 50,                # Periods to calculate median spread
+    'divergence_multiplier': 2.0,          # Enter when spread > median * 2.0 (reduced from 2.5)
+    'position_size_usd': 1000.0,           # Position size
+    'max_position_time_minutes': 120,      # Maximum hold time (2 hours)
+    'min_hold_time_minutes': 5,            # Minimum hold time to avoid noise
+    'max_spread_bps': 100.0,               # Emergency exit if spread too wide (100 bps = 1.0%)
+    'take_profit_bps': 30.0,               # Minimum entry threshold (30 basis points = 0.3%)
+    'max_daily_positions': 10,             # Increased position limit
+    'min_volume_ratio': 0.1,               # Min volume ratio between exchanges
+    'volatility_filter': True              # Avoid high volatility periods
+}
 
-@dataclass 
-class ParityPosition:
-    """Represents a cross-exchange parity position."""
-    
-    entry_time: datetime
-    symbol: Symbol
-    
-    # Position details
-    spot_exchange: ExchangeEnum
-    futures_exchange: ExchangeEnum
-    spot_price: float
-    futures_price: float
-    entry_spread_bps: float
-    
-    # Position sizing
-    spot_quantity: float
-    futures_quantity: float
-    position_size_usd: float
-    
-    # Tracking
-    median_spread_bps: float
-    target_exit_spread_bps: float
-    unrealized_pnl: float = 0.0
-    max_favorable_spread: float = 0.0  # Track best unrealized profit
-
-class CrossExchangeParitySignal:
+class CrossExchangeParitySignal(StrategySignal):
     """
-    Cross-Exchange Price Parity Arbitrage Strategy
+    Cross-Exchange Mean Reversion Arbitrage Strategy V2
     
     This strategy profits from temporary price divergences between exchanges
-    by entering at parity and exiting on mean reversion spikes.
+    by entering during high spreads and exiting when prices converge back to parity.
     
-    Key Innovation:
-    - Enter when prices are EQUAL (low risk)
-    - Exit when prices DIVERGE significantly (high profit)
-    - Natural mean reversion provides consistent profits
+    Key Features:
+    - Uses bid/ask prices for precise arbitrage detection
+    - Integrated with SignalBacktester architecture
+    - Realistic cost modeling with fees and slippage
+    - Enhanced performance metrics
     """
     
-    def __init__(self, params: CrossExchangeParityParams):
-        self.params = params
-        self.candles_loader = CandlesLoader()
-        
-        # Strategy state
-        self.current_positions: Dict[str, ParityPosition] = {}
-        self.daily_position_count = 0
-        self.last_trade_date: Optional[datetime] = None
-        
-        # Price data and analytics
-        self.price_data: Dict[ExchangeEnum, pd.DataFrame] = {}
-        self.spread_history: List[float] = []
-        self.median_spread_bps: float = 0.0
-        
-    async def update_market_data(self, symbol: Symbol, hours: int = 6) -> None:
-        """Update market data and calculate spread analytics."""
-        
-        end_time = datetime.now(timezone.utc)
-        start_time = end_time - timedelta(hours=hours)
-        
-        # Load price data from both exchanges
-        exchanges = [ExchangeEnum.MEXC, ExchangeEnum.GATEIO_FUTURES]
-        
-        for exchange in exchanges:
-            try:
-                df = await self.candles_loader.download_candles(
-                    exchange=exchange,
-                    symbol=symbol,
-                    timeframe=KlineInterval.MINUTE_1,
-                    start_date=start_time,
-                    end_date=end_time
-                )
-                
-                if not df.empty:
-                    # Add volume-weighted average price
-                    df['vwap'] = (df['high'] + df['low'] + df['close'] * 2) / 4
-                    df['volume_sma'] = df['volume'].rolling(window=20).mean()
-                    self.price_data[exchange] = df
-                    
-            except Exception as e:
-                print(f"Error loading data for {exchange}: {e}")
-                continue
-                
-        # Calculate spread analytics
-        await self._update_spread_analytics()
-        
-    async def _update_spread_analytics(self) -> None:
-        """Calculate spread statistics and median spread."""
-        
-        if len(self.price_data) < 2:
-            return
-            
-        mexc_data = self.price_data.get(ExchangeEnum.MEXC)
-        futures_data = self.price_data.get(ExchangeEnum.GATEIO_FUTURES)
-        
-        if mexc_data is None or futures_data is None:
-            return
-            
-        # Align timestamps and calculate spreads
-        common_times = mexc_data.index.intersection(futures_data.index)
-        
-        if len(common_times) < self.params.lookback_periods:
-            return
-            
-        spreads_bps = []
-        
-        for timestamp in common_times[-self.params.lookback_periods:]:
-            mexc_price = mexc_data.loc[timestamp]['close']
-            futures_price = futures_data.loc[timestamp]['close']
-            
-            # Calculate spread in basis points
-            mid_price = (mexc_price + futures_price) / 2
-            spread_bps = abs(mexc_price - futures_price) / mid_price * 10000
-            spreads_bps.append(spread_bps)
-            
-        if spreads_bps:
-            self.spread_history = spreads_bps
-            self.median_spread_bps = np.median(spreads_bps)
+    name: str = "cross_exchange_parity_signal"
     
-    def _check_volume_conditions(self, current_time: datetime = None) -> bool:
-        """Check if volume conditions are suitable for trading."""
+    def __init__(self,
+                 params: Dict[str, float] = None,
+                 backtesting_params: BacktestingParams = None,
+                 fees: Dict[ExchangeEnum, Fees] = None,
+                 logger: HFTLoggerInterface = None):
+        """
+        Initialize cross-exchange parity arbitrage strategy.
         
-        if not self.params.min_volume_ratio:
-            return True
-            
-        mexc_data = self.price_data.get(ExchangeEnum.MEXC)
-        futures_data = self.price_data.get(ExchangeEnum.GATEIO_FUTURES)
+        Args:
+            params: Strategy parameters dictionary
+            backtesting_params: Backtesting configuration
+            fees: Exchange fee structure
+            logger: HFT logger interface
+        """
+        self.logger = logger or get_logger(__name__)
+        self.params = {**DEFAULT_PARITY_PARAMS, **(params or {})}
+        self.fees = fees or {}
+        self._backtesting_params = backtesting_params or BacktestingParams()
         
-        if mexc_data is None or futures_data is None:
-            return False
-            
-        try:
-            if current_time:
-                # For backtesting
-                mexc_volume = mexc_data.loc[current_time]['volume']
-                futures_volume = futures_data.loc[current_time]['volume']
-            else:
-                # For live trading
-                mexc_volume = mexc_data.iloc[-1]['volume']
-                futures_volume = futures_data.iloc[-1]['volume']
-                
-            # Check minimum volume ratio
-            if mexc_volume <= 0 or futures_volume <= 0:
-                return False
-                
-            volume_ratio = min(mexc_volume, futures_volume) / max(mexc_volume, futures_volume)
-            return volume_ratio >= self.params.min_volume_ratio
-            
-        except Exception:
-            return False
+        # Column mappings for DataFrame access
+        self.col_mexc_bid = get_column_key(ExchangeEnum.MEXC, 'bid_price')
+        self.col_mexc_ask = get_column_key(ExchangeEnum.MEXC, 'ask_price')
+        self.col_gateio_futures_bid = get_column_key(ExchangeEnum.GATEIO_FUTURES, 'bid_price')
+        self.col_gateio_futures_ask = get_column_key(ExchangeEnum.GATEIO_FUTURES, 'ask_price')
+        
+        # Position tracking
+        self.position: Optional[PositionEntry] = PositionEntry(entry_time=datetime.now(UTC))
+        self.historical_positions: List[PositionEntry] = []
+        
+        # Analysis results for reporting
+        self.analysis_results = {}
+        
+    def backtest(self, df: pd.DataFrame) -> PerformanceMetrics:
+        """Required method for SignalBacktester integration."""
+        
+        # Prepare signals from DataFrame
+        df_with_signals = self._prepare_parity_signals(df)
+        
+        # Analyze signals for reporting
+        self.analyze_signals(df_with_signals)
+        
+        # Initialize backtest state
+        df_backtest = self._initialize_backtest(df_with_signals)
+        
+        # Emulate trading using signals
+        self._emulate_parity_trading(df_backtest)
+        
+        # Return performance metrics
+        return self.position.get_performance_metrics(self._backtesting_params.initial_balance_usd)
     
-    def generate_entry_signal(self, symbol: Symbol, current_time: datetime = None) -> Optional[Dict]:
-        """Generate entry signal when prices are at parity."""
+    def _prepare_parity_signals(self, df: pd.DataFrame) -> pd.DataFrame:
+        """Generate parity entry/exit signals from book ticker data."""
         
-        # Check daily position limit
-        current_date = (current_time or datetime.now(timezone.utc)).date()
-        if self.last_trade_date != current_date:
-            self.daily_position_count = 0
-            self.last_trade_date = current_date
-            
-        if self.daily_position_count >= self.params.max_daily_positions:
-            return None
-            
-        # Check if we have sufficient data
-        if not self.spread_history or self.median_spread_bps <= 0:
-            return None
-            
-        # Check volume conditions
-        if not self._check_volume_conditions(current_time):
-            return None
-            
-        # Get current prices
-        mexc_data = self.price_data.get(ExchangeEnum.MEXC)
-        futures_data = self.price_data.get(ExchangeEnum.GATEIO_FUTURES)
+        # Log data quality statistics
+        total_rows = len(df)
+        valid_mexc = df[self.col_mexc_bid].notna() & df[self.col_mexc_ask].notna()
+        valid_futures = df[self.col_gateio_futures_bid].notna() & df[self.col_gateio_futures_ask].notna()
+        valid_both = valid_mexc & valid_futures
         
-        if mexc_data is None or futures_data is None:
-            return None
-            
-        try:
-            if current_time is not None:
-                # For backtesting
-                if current_time not in mexc_data.index or current_time not in futures_data.index:
-                    return None
-                mexc_price = mexc_data.loc[current_time]['close']
-                futures_price = futures_data.loc[current_time]['close']
-            else:
-                # For live trading
-                mexc_price = mexc_data.iloc[-1]['close']
-                futures_price = futures_data.iloc[-1]['close']
-                
-        except Exception:
-            return None
+        if hasattr(self, '_logger') and self._logger:
+            self._logger.info(f"Data quality - Total rows: {total_rows}, "
+                            f"MEXC valid: {valid_mexc.sum()} ({valid_mexc.mean()*100:.1f}%), "
+                            f"Futures valid: {valid_futures.sum()} ({valid_futures.mean()*100:.1f}%), "
+                            f"Both valid: {valid_both.sum()} ({valid_both.mean()*100:.1f}%)")
         
-        # Calculate current spread
-        mid_price = (mexc_price + futures_price) / 2
-        current_spread_bps = abs(mexc_price - futures_price) / mid_price * 10000
+        # Calculate mid prices for both exchanges
+        df['mexc_mid'] = (df[self.col_mexc_bid] + df[self.col_mexc_ask]) / 2
+        df['futures_mid'] = (df[self.col_gateio_futures_bid] + df[self.col_gateio_futures_ask]) / 2
         
-        # Check if spread is near parity (within threshold)
-        if current_spread_bps <= self.params.parity_threshold_bps:
-            
-            # Determine direction based on which exchange is cheaper
-            if mexc_price < futures_price:
-                # MEXC cheaper: BUY spot, SELL futures
-                direction = "LONG_SPOT_SHORT_FUTURES"
-                spread_direction = "positive"  # Expect futures to drop or spot to rise
-            else:
-                # Futures cheaper: SELL spot, BUY futures  
-                direction = "SHORT_SPOT_LONG_FUTURES"
-                spread_direction = "negative"  # Expect spot to drop or futures to rise
-                
-            # Calculate target exit spread
-            target_exit_spread_bps = max(
-                self.median_spread_bps * self.params.divergence_multiplier,
-                self.params.take_profit_bps
-            )
-            
-            return {
-                "action": "ENTER",
-                "direction": direction,
-                "symbol": symbol,
-                "spot_exchange": ExchangeEnum.MEXC,
-                "futures_exchange": ExchangeEnum.GATEIO_FUTURES,
-                "spot_price": mexc_price,
-                "futures_price": futures_price,
-                "entry_spread_bps": current_spread_bps,
-                "median_spread_bps": self.median_spread_bps,
-                "target_exit_spread_bps": target_exit_spread_bps,
-                "spread_direction": spread_direction,
-                "reason": f"Price parity entry: {current_spread_bps:.1f}bps spread, median: {self.median_spread_bps:.1f}bps"
-            }
-            
-        return None
-    
-    def check_exit_conditions(self, position: ParityPosition, current_time: datetime = None) -> Optional[Dict]:
-        """Check if position should be exited based on spread divergence."""
+        # Calculate spread in basis points
+        df['mid_price'] = (df['mexc_mid'] + df['futures_mid']) / 2
+        df['spread_bps'] = (abs(df['mexc_mid'] - df['futures_mid']) / df['mid_price'] * 10000).fillna(0)
         
-        if current_time is None:
-            current_time = datetime.now(timezone.utc)
-            
-        # Check maximum hold time
-        hold_time = (current_time - position.entry_time).total_seconds() / 60
+        # Calculate rolling median spread for dynamic thresholds
+        df['median_spread_bps'] = df['spread_bps'].rolling(
+            window=int(self.params['lookback_periods']), 
+            min_periods=10
+        ).median().fillna(0)
         
-        if hold_time >= self.params.max_position_time_minutes:
-            return {
-                "action": "EXIT",
-                "reason": f"Maximum hold time reached: {hold_time:.1f} minutes",
-                "exit_type": "time_stop"
-            }
-        
-        # Don't exit too quickly (avoid noise)
-        if hold_time < self.params.min_hold_time_minutes:
-            return None
-            
-        # Get current prices
-        mexc_data = self.price_data.get(ExchangeEnum.MEXC)
-        futures_data = self.price_data.get(ExchangeEnum.GATEIO_FUTURES)
-        
-        if mexc_data is None or futures_data is None:
-            return None
-            
-        try:
-            if current_time not in mexc_data.index or current_time not in futures_data.index:
-                return None
-                
-            current_mexc_price = mexc_data.loc[current_time]['close']
-            current_futures_price = futures_data.loc[current_time]['close']
-            
-        except Exception:
-            return None
-        
-        # Calculate current spread
-        mid_price = (current_mexc_price + current_futures_price) / 2
-        current_spread_bps = abs(current_mexc_price - current_futures_price) / mid_price * 10000
-        
-        # Calculate P&L
-        spot_pnl = (current_mexc_price - position.spot_price) * position.spot_quantity
-        futures_pnl = (position.futures_price - current_futures_price) * position.futures_quantity
-        
-        if "SHORT_SPOT" in position.symbol.__str__():  # Approximate direction check
-            spot_pnl = -spot_pnl  # Reverse P&L for short positions
-            futures_pnl = -futures_pnl
-            
-        total_pnl = spot_pnl + futures_pnl
-        pnl_bps = (total_pnl / position.position_size_usd) * 10000
-        
-        # Update max favorable spread
-        position.max_favorable_spread = max(position.max_favorable_spread, current_spread_bps)
-        
-        # Exit conditions
-        
-        # 1. Target profit reached (spread diverged enough)
-        if current_spread_bps >= position.target_exit_spread_bps:
-            return {
-                "action": "EXIT",
-                "current_spot_price": current_mexc_price,
-                "current_futures_price": current_futures_price,
-                "current_spread_bps": current_spread_bps,
-                "total_pnl": total_pnl,
-                "pnl_bps": pnl_bps,
-                "reason": f"Target spread reached: {current_spread_bps:.1f}bps >= {position.target_exit_spread_bps:.1f}bps",
-                "exit_type": "take_profit"
-            }
-        
-        # 2. Emergency exit if spread becomes too extreme
-        if current_spread_bps >= self.params.max_spread_bps:
-            return {
-                "action": "EXIT",
-                "current_spot_price": current_mexc_price,
-                "current_futures_price": current_futures_price,
-                "current_spread_bps": current_spread_bps,
-                "total_pnl": total_pnl,
-                "pnl_bps": pnl_bps,
-                "reason": f"Emergency exit: spread too wide {current_spread_bps:.1f}bps",
-                "exit_type": "emergency_stop"
-            }
-        
-        # 3. Trailing stop: exit if spread has compressed significantly from peak
-        if position.max_favorable_spread > position.target_exit_spread_bps:
-            spread_compression = (position.max_favorable_spread - current_spread_bps) / position.max_favorable_spread
-            if spread_compression > 0.5:  # 50% retracement from peak
-                return {
-                    "action": "EXIT",
-                    "current_spot_price": current_mexc_price,
-                    "current_futures_price": current_futures_price,
-                    "current_spread_bps": current_spread_bps,
-                    "total_pnl": total_pnl,
-                    "pnl_bps": pnl_bps,
-                    "reason": f"Trailing stop: spread compressed {spread_compression*100:.1f}% from peak {position.max_favorable_spread:.1f}bps",
-                    "exit_type": "trailing_stop"
-                }
-        
-        return None
-    
-    async def run_backtest(self, symbol: Symbol, hours: int = 72) -> Tuple[PerformanceMetrics, List[TradeEntry]]:
-        """Run backtest for cross-exchange parity strategy."""
-        
-        print(f"🧪 Running Cross-Exchange Parity Backtest for {symbol}")
-        
-        # Update market data
-        await self.update_market_data(symbol, hours)
-        
-        if len(self.price_data) < 2:
-            print("❌ Insufficient market data")
-            return PerformanceMetrics(), []
-        
-        # Get time range for backtest
-        mexc_data = self.price_data[ExchangeEnum.MEXC]
-        futures_data = self.price_data[ExchangeEnum.GATEIO_FUTURES]
-        
-        common_times = mexc_data.index.intersection(futures_data.index)
-        if len(common_times) < 100:
-            print("❌ Insufficient overlapping data")
-            return PerformanceMetrics(), []
-        
-        backtest_start = common_times[50]  # Skip first 50 for warm-up
-        backtest_end = common_times[-1]
-        
-        print(f"📅 Backtest period: {backtest_start} to {backtest_end}")
-        print(f"📊 Median spread: {self.median_spread_bps:.2f} basis points")
-        
-        # Run backtest
-        trades: List[TradeEntry] = []
-        positions: Dict[str, ParityPosition] = {}
-        
-        for current_time in common_times[50:]:  # Skip warm-up period
-            
-            # Check for new entry signals
-            if not positions:  # Only one position at a time
-                entry_signal = self.generate_entry_signal(symbol, current_time)
-                
-                if entry_signal:
-                    # Create position
-                    position = ParityPosition(
-                        entry_time=current_time,
-                        symbol=symbol,
-                        spot_exchange=entry_signal["spot_exchange"],
-                        futures_exchange=entry_signal["futures_exchange"],
-                        spot_price=entry_signal["spot_price"],
-                        futures_price=entry_signal["futures_price"],
-                        entry_spread_bps=entry_signal["entry_spread_bps"],
-                        spot_quantity=self.params.position_size_usd / entry_signal["spot_price"],
-                        futures_quantity=self.params.position_size_usd / entry_signal["futures_price"],
-                        position_size_usd=self.params.position_size_usd,
-                        median_spread_bps=entry_signal["median_spread_bps"],
-                        target_exit_spread_bps=entry_signal["target_exit_spread_bps"]
-                    )
-                    
-                    positions[f"{symbol}_parity"] = position
-                    self.daily_position_count += 1
-                    
-                    print(f"📈 Entered parity position at {current_time}: "
-                          f"spot@{entry_signal['spot_price']:.4f}, futures@{entry_signal['futures_price']:.4f} "
-                          f"({entry_signal['entry_spread_bps']:.1f}bps spread)")
-            
-            # Check exit conditions for existing positions
-            to_close = []
-            for pos_key, position in positions.items():
-                exit_signal = self.check_exit_conditions(position, current_time)
-                
-                if exit_signal:
-                    # Calculate P&L and trade details
-                    hold_time = (current_time - position.entry_time).total_seconds() / 60
-                    
-                    trade = {
-                        "entry_time": position.entry_time,
-                        "exit_time": current_time,
-                        "symbol": str(symbol),
-                        "direction": "ARBITRAGE",
-                        "entry_price": (position.spot_price + position.futures_price) / 2,
-                        "exit_price": (exit_signal["current_spot_price"] + exit_signal["current_futures_price"]) / 2,
-                        "quantity": position.position_size_usd,
-                        "pnl_usd": exit_signal["total_pnl"],
-                        "pnl_pct": exit_signal["pnl_bps"] / 100,  # Convert bps to percentage
-                        "hold_time_minutes": hold_time,
-                        "exit_reason": exit_signal["reason"]
-                    }
-                    
-                    trades.append(trade)
-                    to_close.append(pos_key)
-                    
-                    print(f"📉 Closed position: P&L=${exit_signal['total_pnl']:.2f} "
-                          f"spot @ {exit_signal['current_spot_price']:.4f} "
-                          f"futures @ {exit_signal['current_futures_price']:.4f} "
-                          f"({exit_signal['pnl_bps']:.1f}bps) in {hold_time:.1f}min "
-                          f"({exit_signal['exit_type']})")
-            
-            # Remove closed positions
-            for pos_key in to_close:
-                del positions[pos_key]
-        
-        # Calculate performance metrics
-        total_pnl = sum(trade["pnl_usd"] for trade in trades)
-        winning_trades = [t for t in trades if t["pnl_usd"] > 0]
-        
-        metrics = PerformanceMetrics(
-            total_pnl_usd=total_pnl,
-            total_pnl_pct=(total_pnl / (self.params.position_size_usd * len(trades))) * 100 if trades else 0,
-            win_rate=(len(winning_trades) / len(trades)) * 100 if trades else 0,
-            avg_trade_pnl=total_pnl / len(trades) if trades else 0,
-            max_drawdown=0,  # TODO: Calculate proper drawdown
-            sharpe_ratio=0,  # TODO: Calculate Sharpe ratio
-            trade_freq=len(trades) / (hours / 24) if hours > 0 else 0
+        # Calculate dynamic entry threshold (enter when spread is high - divergence)
+        df['target_entry_spread_bps'] = np.maximum(
+            df['median_spread_bps'] * self.params['divergence_multiplier'],
+            self.params['take_profit_bps']
         )
         
-        print(f"📊 Backtest completed: {len(trades)} trades, P&L=${total_pnl:.2f}, Win Rate={metrics.win_rate:.1f}%")
+        # Entry signals: spread divergence (high spread - opportunity for mean reversion)
+        df['parity_entry_signal'] = (
+            (df['spread_bps'] >= df['target_entry_spread_bps']) &
+            (df['median_spread_bps'] > 0) &  # Ensure valid median
+            (df['spread_bps'] <= self.params['max_spread_bps'])  # Not too extreme
+        )
         
-        return metrics, trades
+        # Exit signals: back to parity (low spread - mean reversion completed)
+        df['parity_exit_signal'] = df['spread_bps'] <= self.params['parity_threshold_bps']
+        
+        # Emergency exit: spread too wide
+        df['emergency_exit_signal'] = df['spread_bps'] >= self.params['max_spread_bps']
+        
+        # Combined exit signal
+        df['exit_signal'] = df['parity_exit_signal'] | df['emergency_exit_signal']
+        
+        # Direction signals based on price difference
+        # df['mexc_higher'] = df['mexc_mid'] > df['futures_mid']  # Sell MEXC, buy futures
+        # df['futures_higher'] = df['futures_mid'] > df['mexc_mid']  # Buy MEXC, sell futures
+        df['mexc_higher'] = df[self.col_mexc_bid] > df[self.col_gateio_futures_ask]  # Sell MEXC, buy futures
+        df['futures_higher'] = df[self.col_gateio_futures_bid] > df[self.col_mexc_ask]  # Buy MEXC, sell futures
+
+        return df
+    
+    def _initialize_backtest(self, df: pd.DataFrame) -> pd.DataFrame:
+        """Initialize backtest state and set initial position."""
+        
+        # Initialize position tracking
+        self.position = PositionEntry(entry_time=datetime.now(UTC))
+        
+        # Add position state columns
+        df['position_active'] = False
+        df['entry_time'] = pd.NaT
+        df['hold_time_minutes'] = 0.0
+        
+        return df.copy()
+    
+    def _check_time_exit(self, current_time, entry_time) -> bool:
+        """Check if position should be exited due to time limits."""
+        if entry_time is None:
+            return False
+            
+        hold_time = (current_time - entry_time).total_seconds() / 60
+        return hold_time >= self.params['max_position_time_minutes']
+    
+    def _check_min_hold_time(self, current_time, entry_time) -> bool:
+        """Check if minimum hold time has passed."""
+        if entry_time is None:
+            return True
+            
+        hold_time = (current_time - entry_time).total_seconds() / 60
+        return hold_time >= self.params['min_hold_time_minutes']
+    
+    def _emulate_parity_trading(self, df: pd.DataFrame) -> None:
+        """Emulate parity trading using vectorized approach."""
+        
+        # Track position state
+        position_active = False
+        entry_time = None
+        daily_position_count = 0
+        last_trade_date = None
+        
+        # Find signal changes for efficient processing
+        signal_changes = (
+            df['parity_entry_signal'].ne(df['parity_entry_signal'].shift()) |
+            df['exit_signal'].ne(df['exit_signal'].shift())
+        )
+        signal_points = df[signal_changes].copy()
+        
+        for idx, row in signal_points.iterrows():
+            current_time = idx
+            current_date = current_time.date() if hasattr(current_time, 'date') else None
+            
+            # Data validation: Skip rows with NaN prices
+            required_prices = [
+                row[self.col_mexc_bid], row[self.col_mexc_ask],
+                row[self.col_gateio_futures_bid], row[self.col_gateio_futures_ask]
+            ]
+            if pd.isna(required_prices).any():
+                continue  # Skip this row if any required price is NaN
+            
+            # Reset daily counter
+            if last_trade_date != current_date:
+                daily_position_count = 0
+                last_trade_date = current_date
+            
+            # Entry logic
+            if (not position_active and 
+                row['parity_entry_signal'] and 
+                daily_position_count < self.params['max_daily_positions']):
+                
+                # Determine direction and create trades
+                if row['mexc_higher']:  # Sell MEXC (higher), buy futures (lower)
+                    # Use average price for quantity to ensure equal quantities
+                    avg_price = (row[self.col_mexc_bid] + row[self.col_gateio_futures_ask]) / 2
+                    qty = self.params['position_size_usd'] / avg_price
+                    
+                    trades = [
+                        TradeEntry(
+                            exchange=ExchangeEnum.MEXC,
+                            side=Side.SELL,
+                            price=row[self.col_mexc_bid],
+                            qty=qty,
+                            fee_pct=self.fees.get(ExchangeEnum.MEXC, Fees()).taker_fee,
+                            slippage_pct=self._backtesting_params.slippage_pct
+                        ),
+                        TradeEntry(
+                            exchange=ExchangeEnum.GATEIO_FUTURES,
+                            side=Side.BUY,
+                            price=row[self.col_gateio_futures_ask],
+                            qty=qty,
+                            fee_pct=self.fees.get(ExchangeEnum.GATEIO_FUTURES, Fees()).taker_fee,
+                            slippage_pct=self._backtesting_params.slippage_pct
+                        )
+                    ]
+                elif row['futures_higher']:  # Buy MEXC (lower), sell futures (higher)
+                    # Use average price for quantity to ensure equal quantities
+                    avg_price = (row[self.col_mexc_ask] + row[self.col_gateio_futures_bid]) / 2
+                    qty = self.params['position_size_usd'] / avg_price
+                    
+                    trades = [
+                        TradeEntry(
+                            exchange=ExchangeEnum.MEXC,
+                            side=Side.BUY,
+                            price=row[self.col_mexc_ask],
+                            qty=qty,
+                            fee_pct=self.fees.get(ExchangeEnum.MEXC, Fees()).taker_fee,
+                            slippage_pct=self._backtesting_params.slippage_pct
+                        ),
+                        TradeEntry(
+                            exchange=ExchangeEnum.GATEIO_FUTURES,
+                            side=Side.SELL,
+                            price=row[self.col_gateio_futures_bid],
+                            qty=qty,
+                            fee_pct=self.fees.get(ExchangeEnum.GATEIO_FUTURES, Fees()).taker_fee,
+                            slippage_pct=self._backtesting_params.slippage_pct
+                        )
+                    ]
+                else:
+                    continue  # No clear direction
+                
+                # Execute entry trades
+                self.position.add_arbitrage_trade(current_time, trades)
+                position_active = True
+                entry_time = current_time
+                daily_position_count += 1
+                
+            # Exit logic
+            elif (position_active and 
+                  (row['exit_signal'] or 
+                   self._check_time_exit(current_time, entry_time))):
+                
+                # Check minimum hold time
+                if self._check_min_hold_time(current_time, entry_time):
+                    # Close position (reverse trades)
+                    self._close_parity_position(current_time, row)
+                    position_active = False
+                    entry_time = None
+    
+    def _close_parity_position(self, current_time, row) -> None:
+        """Close parity position with appropriate trades."""
+        # Data validation: Check for NaN prices before closing position
+        required_prices = [
+            row[self.col_mexc_bid], row[self.col_mexc_ask],
+            row[self.col_gateio_futures_bid], row[self.col_gateio_futures_ask]
+        ]
+        if pd.isna(required_prices).any():
+            return  # Cannot close position with NaN prices
+        
+        # Get the most recent arbitrage trade to determine direction
+        if not self.position.arbitrage_trades:
+            return
+            
+        # Get the last trade timestamp and trades
+        last_timestamp = max(self.position.arbitrage_trades.keys())
+        entry_trades = self.position.arbitrage_trades[last_timestamp]
+        
+        if len(entry_trades) != 2:
+            return
+            
+        # Reverse the entry trades for exit
+        exit_trades = []
+        
+        for entry_trade in entry_trades:
+            # Reverse the side (buy becomes sell, sell becomes buy)
+            exit_side = Side.SELL if entry_trade.side == Side.BUY else Side.BUY
+            
+            # Use appropriate price based on new side
+            if entry_trade.exchange == ExchangeEnum.MEXC:
+                exit_price = row[self.col_mexc_bid] if exit_side == Side.SELL else row[self.col_mexc_ask]
+            else:  # GATEIO_FUTURES
+                exit_price = row[self.col_gateio_futures_bid] if exit_side == Side.SELL else row[self.col_gateio_futures_ask]
+            
+            exit_trades.append(TradeEntry(
+                exchange=entry_trade.exchange,
+                side=exit_side,
+                price=exit_price,
+                qty=entry_trade.qty,
+                fee_pct=self.fees.get(entry_trade.exchange, Fees()).taker_fee,
+                slippage_pct=self._backtesting_params.slippage_pct
+            ))
+        
+        # Execute exit trades
+        self.position.add_arbitrage_trade(current_time, exit_trades)
+    
+    def analyze_signals(self, df: pd.DataFrame) -> Dict:
+        """Analyze parity signals for reporting."""
+        
+        results = {}
+        
+        # Entry signal analysis
+        entry_signals = df[df['parity_entry_signal']]
+        exit_signals = df[df['exit_signal']]
+        
+        results['entry_analysis'] = {
+            'total_entry_signals': len(entry_signals),
+            'pct_of_data': len(entry_signals) / len(df) * 100 if len(df) > 0 else 0,
+            'avg_spread_bps': entry_signals['spread_bps'].mean() if len(entry_signals) > 0 else 0,
+            'median_spread_bps': entry_signals['spread_bps'].median() if len(entry_signals) > 0 else 0
+        }
+        
+        results['exit_analysis'] = {
+            'total_exit_signals': len(exit_signals),
+            'pct_of_data': len(exit_signals) / len(df) * 100 if len(df) > 0 else 0,
+            'avg_spread_bps': exit_signals['spread_bps'].mean() if len(exit_signals) > 0 else 0,
+            'median_spread_bps': exit_signals['spread_bps'].median() if len(exit_signals) > 0 else 0
+        }
+        
+        # Spread statistics
+        results['spread_statistics'] = {
+            'avg_spread_bps': df['spread_bps'].mean(),
+            'median_spread_bps': df['spread_bps'].median(),
+            'std_spread_bps': df['spread_bps'].std(),
+            'min_spread_bps': df['spread_bps'].min(),
+            'max_spread_bps': df['spread_bps'].max(),
+            'quantiles': {
+                '25%': df['spread_bps'].quantile(0.25),
+                '50%': df['spread_bps'].quantile(0.50),
+                '75%': df['spread_bps'].quantile(0.75),
+                '95%': df['spread_bps'].quantile(0.95),
+                '99%': df['spread_bps'].quantile(0.99)
+            }
+        }
+        
+        # Parameter analysis
+        results['parameter_analysis'] = {
+            'parity_threshold_bps': self.params['parity_threshold_bps'],
+            'take_profit_bps': self.params['take_profit_bps'],
+            'max_spread_bps': self.params['max_spread_bps'],
+            'divergence_multiplier': self.params['divergence_multiplier'],
+            'signals_below_parity_threshold': (df['spread_bps'] <= self.params['parity_threshold_bps']).sum(),
+            'signals_above_take_profit': (df['spread_bps'] >= self.params['take_profit_bps']).sum()
+        }
+        
+        self.analysis_results = results
+        return results
+    
+    def get_live_signal(self, book_tickers: Dict[ExchangeEnum, BookTicker]) -> Optional[Dict]:
+        """Generate live trading signal using book ticker data."""
+        
+        mexc_book = book_tickers.get(ExchangeEnum.MEXC)
+        futures_book = book_tickers.get(ExchangeEnum.GATEIO_FUTURES)
+        
+        if not mexc_book or not futures_book:
+            return None
+        
+        # Calculate mid prices
+        mexc_mid = (mexc_book.bid_price + mexc_book.ask_price) / 2
+        futures_mid = (futures_book.bid_price + futures_book.ask_price) / 2
+        
+        # Calculate spread
+        mid_price = (mexc_mid + futures_mid) / 2
+        spread_bps = abs(mexc_mid - futures_mid) / mid_price * 10000
+        
+        # Check divergence entry condition (high spread - opportunity for mean reversion)
+        if spread_bps >= self.params['take_profit_bps'] and spread_bps <= self.params['max_spread_bps']:
+            direction = 'mexc_higher' if mexc_mid > futures_mid else 'futures_higher'
+            
+            return {
+                'signal': 'ENTER',
+                'direction': direction,
+                'spread_bps': spread_bps,
+                'mexc_mid': mexc_mid,
+                'futures_mid': futures_mid,
+                'reason': f'Divergence entry: {spread_bps:.1f}bps spread (expecting mean reversion)'
+            }
+        
+        return None
