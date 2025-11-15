@@ -32,7 +32,7 @@ from typing import Dict, Optional, Any, List, Union
 from websockets import connect
 
 from exchanges.integrations.gateio.services.spot_symbol_mapper import GateioSpotSymbol
-from exchanges.structs import OrderStatus
+from exchanges.structs import OrderStatus, ExchangeEnum
 from exchanges.structs.common import Order, AssetBalance, Trade, OrderId
 from exchanges.structs.types import AssetName
 from config.structs import ExchangeConfig
@@ -195,7 +195,8 @@ class GateioPrivateSpotWebsocket(GateioBaseWebsocket, PrivateBaseWebsocket):
                 filled_quantity=filled_quantity,
                 remaining_quantity=remaining_quantity,
                 status=order_status,
-                timestamp=int(float(order_data.get('create_time', '0')) * 1000)
+                timestamp=int(float(order_data.get('create_time', '0')) * 1000),
+                exchange=ExchangeEnum.GATEIO
             )
             await self._exec_bound_handler(PrivateWebsocketChannelType.ORDER, order)
 

@@ -128,6 +128,11 @@ class PnlTracker(Struct):
         """Get quantity that hasn't been exited yet."""
         return max(0.0, self.total_entry_qty - self.total_exit_qty)
 
+    @property
+    def unrealized_qty_quote(self) -> float:
+        """Get quote currency value of unrealized quantity."""
+        return self.unrealized_qty * self.avg_entry_price
+
     def calculate_unrealized_pnl(self, current_price: float, fee_rate: float = 0.0) -> Optional[float]:
         """Calculate unrealized PNL for remaining position."""
         remaining = self.unrealized_qty

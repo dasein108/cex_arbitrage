@@ -8,6 +8,8 @@ HFT COMPLIANT: Zero overhead function calls, no object instantiation.
 """
 
 from typing import Dict, Optional, Any
+
+from exchanges.structs import ExchangeEnum
 from exchanges.structs.common import (
     Side, OrderStatus, OrderType, TimeInForce, AssetName, AssetBalance, FuturesBalance, Order
 )
@@ -277,7 +279,8 @@ def rest_futures_to_order(order_data: Dict[str, Any]) -> Order:
         status=order_status,
         timestamp=timestamp,
         fee=float(order_data.get('fee', '0')),
-        time_in_force=to_time_in_force(order_data.get('tif'))
+        time_in_force=to_time_in_force(order_data.get('tif')),
+        exchange=ExchangeEnum.GATEIO_FUTURES
 
     )
 
@@ -301,7 +304,8 @@ def rest_spot_to_order(order_data: Dict[str, Any]) -> Order:
         order_id=OrderId(str(order_data['id'])),
         status=to_order_status(order_data['status']),
         timestamp=int(order_data['create_time_ms']) if order_data.get('create_time_ms') else None,
-        fee=fee
+        fee=fee,
+        exchange=ExchangeEnum.GATEIO
     )
 
 def to_withdrawal_status(status_str: str) -> WithdrawalStatus:

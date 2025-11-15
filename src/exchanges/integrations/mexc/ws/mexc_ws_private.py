@@ -25,7 +25,7 @@ Architecture: Handler objects with composite class coordination
 
 from typing import Dict, Optional, Any, Union
 import asyncio
-from exchanges.structs import Order, AssetBalance, Trade, Side, OrderType, OrderStatus
+from exchanges.structs import Order, AssetBalance, Trade, Side, OrderType, OrderStatus, ExchangeEnum
 from exchanges.integrations.mexc.rest.mexc_rest_spot_private import MexcPrivateSpotRestInterface
 from config.structs import ExchangeConfig
 from exchanges.interfaces.ws import PrivateBaseWebsocket
@@ -254,7 +254,8 @@ class MexcPrivateSpotWebsocket(PrivateBaseWebsocket):
                                                                                         'cumulativeQuantity') else 0.0,
                         status=status,
                         timestamp=int(getattr(order_data, 'time', 0)),
-                        client_order_id=None
+                        client_order_id=None,
+                        exchange=ExchangeEnum.MEXC
                     )
 
                     await self._exec_bound_handler(PrivateWebsocketChannelType.ORDER, order)

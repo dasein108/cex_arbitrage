@@ -39,7 +39,7 @@ async def run_spot_futures_arbitrage_demo():
     logger = get_logger("spot_futures_arbitrage_demo")
     
     # Initialize StrategyTaskManager
-    manager = StrategyTaskManager(logger, base_path="spot_futures_task_data")
+    manager = StrategyTaskManager(logger)
     await manager.initialize()
     
     # Set up graceful shutdown
@@ -93,7 +93,7 @@ async def run_spot_futures_arbitrage_demo():
                 task_id = await manager.add_task(task)
                 logger.info(f"✅ Created {task.tag} for {symbol}")
 
-            await add_inventory_spot_task(Symbol(base=AssetName("FLK"), quote=AssetName("USDT")))
+            await add_inventory_spot_task(Symbol(base=AssetName("ASP"), quote=AssetName("USDT")))
             # Add same-exchange task for comparison
             # await add_same_exchange_task(Symbol(base=AssetName("BTC"), quote=AssetName("USDT")))
 
@@ -102,7 +102,7 @@ async def run_spot_futures_arbitrage_demo():
         monitor_count = 0
         while not shutdown_event.is_set():
             # Status monitoring every 60 seconds
-            if monitor_count % 600 == 0:  # 600 * 0.1s = 60s
+            if monitor_count % 3000 == 0:  # 600 * 0.1s = 60s
                 task_count = manager.task_count
                 logger.info("📈 Spot-Futures Arbitrage Monitor",
                            active_tasks=task_count,

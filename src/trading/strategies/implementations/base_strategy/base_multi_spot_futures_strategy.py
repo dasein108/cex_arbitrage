@@ -123,6 +123,7 @@ class BaseMultiSpotFuturesArbitrageTask(BaseStrategyTask[T], Generic[T]):
             setting.exchange), self.logger) for setting in self.context.spot_settings]
 
         self._spot_ex_map: [int, ExchangeEnum] = {}
+        self._exchanges: [ExchangeEnum, DualExchange] = {}
         # Single position managers - one per position
         self._hedge_manager: Optional[PositionManager] = None
         self._spot_managers: List[PositionManager] = []
@@ -148,11 +149,16 @@ class BaseMultiSpotFuturesArbitrageTask(BaseStrategyTask[T], Generic[T]):
             private_channels=[PrivateWebsocketChannelType.ORDER, PrivateWebsocketChannelType.POSITION]
         )
 
+
+        self._exchanges[self._hedge_ex.exchange_enum] = self._hedge_ex
+
     async def _start_spot_exchanges(self, index: int):
         # setting = self.context.settings[index]
         exchange = self._spot_ex[index]
 
         self._spot_ex_map[index] = exchange.exchange_enum
+
+        self._exchanges[exchange.exchange_enum] = exchange
 
         await exchange.initialize(
             [self.context.symbol],
@@ -258,9 +264,12 @@ class BaseMultiSpotFuturesArbitrageTask(BaseStrategyTask[T], Generic[T]):
         # Sync spot positions
         for manager in self._spot_managers:
             sync_tasks.append(manager.sync_with_exchange())
-        
+
+        results = []
         if sync_tasks:
-            await asyncio.gather(*sync_tasks, return_exceptions=True)
+           results = await asyncio.gather(*sync_tasks, return_exceptions=True)
+
+        return [res for res in results if isinstance(res, Exception)]
 
     async def _manage_positions(self):
         """Manage positions for both spot and futures markets."""

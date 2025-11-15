@@ -13,6 +13,7 @@ import re
 from exchanges.integrations.mexc.structs.exchange import (
     MexcOrderResponse, MexcAccountTradeResponse
 )
+from exchanges.structs import ExchangeName, ExchangeEnum
 from exchanges.structs.common import (
     Side, OrderStatus, OrderType, TimeInForce, Order, Symbol, Trade
 )
@@ -200,7 +201,8 @@ def trades_to_order(symbol: Symbol, order_id: OrderId, trades: List[Trade]) -> O
         status=OrderStatus.FILLED,
         timestamp=min(trade.timestamp for trade in trades),
         fee=total_fee if total_fee > 0 else None,
-        client_order_id=None
+        client_order_id=None,
+        exchange=ExchangeEnum.MEXC
     )
 
 def rest_to_order(mexc_order_data: MexcOrderResponse) -> Order:
@@ -229,7 +231,8 @@ def rest_to_order(mexc_order_data: MexcOrderResponse) -> Order:
         status=to_order_status(mexc_order_data.status),
         timestamp=int(mexc_order_data.transactTime),
         fee=fee,
-        client_order_id=mexc_order_data.clientOrderId
+        client_order_id=mexc_order_data.clientOrderId,
+        exchange=ExchangeEnum.MEXC
     )
 
 

@@ -2,26 +2,29 @@ import asyncio
 from typing import Dict, Tuple, Optional, Type
 
 from db.models import Symbol
-from exchanges.structs import ExchangeEnum, BookTicker
+from exchanges.structs import ExchangeEnum, BookTicker, Order
 from exchanges.structs.common import Side
 from infrastructure.logging import HFTLoggerInterface
 from trading.strategies.implementations.base_strategy.position_manager import PositionManager
+from trading.strategies.implementations.cross_exchange_arbitrage_strategy.asset_transfer_module import \
+    AssetTransferModule, TransferRequest
 from trading.strategies.structs import MarketData
-
-from utils.math_utils import get_decrease_vector
 
 from trading.strategies.implementations.base_strategy.base_multi_spot_futures_strategy import (
     BaseMultiSpotFuturesArbitrageTask,
     BaseMultiSpotFuturesTaskContext)
 from trading.signals_v2.implementation.inventory_spot_strategy_signal import InventorySpotStrategySignal, \
-    InventorySignalWithLimitEnum
+    InventorySignalPairType, InventorySignalType
 from utils.logging_utils import disable_default_exchange_logging
 
+TRANSFER_REFRESH_SECONDS = 30
 
 class InventorySpotTaskContext(BaseMultiSpotFuturesTaskContext, kw_only=True):
     name: str = "inventory_spot_strategy"
     mexc_spread_threshold_bps: Optional[float] = 30,
     gateio_spread_threshold_bps: Optional[float] = 30
+    transfer_request: Optional[TransferRequest] = None
+
 
 
 class InventorySpotStrategyTask(BaseMultiSpotFuturesArbitrageTask[InventorySpotTaskContext]):
@@ -48,11 +51,164 @@ class InventorySpotStrategyTask(BaseMultiSpotFuturesArbitrageTask[InventorySpotT
         disable_default_exchange_logging()
 
         self._pos: Dict[ExchangeEnum, PositionManager] = {}
+        self._opo_pos: Dict[ExchangeEnum, PositionManager] = {}
+
+        self._transfer_module: Optional[AssetTransferModule] = None
+        self.opo_exchange = {
+                ExchangeEnum.MEXC: ExchangeEnum.GATEIO,
+                ExchangeEnum.GATEIO: ExchangeEnum.MEXC
+            }
 
     async def start(self):
         await super().start()
         self._pos = {self._spot_ex_map[i]: spot_man for i, spot_man in enumerate(self._spot_managers)}
+        self._opo_pos = {exchange: self._pos[self.opo_exchange[exchange]] for exchange in self._pos}
+
         self._pos[ExchangeEnum.GATEIO_FUTURES] = self.hedge_manager
+
+        self._transfer_module = AssetTransferModule(
+            exchanges={exchange: e.private for exchange, e in self._exchanges.items()},
+            logger=self.logger
+        )
+
+        # if there is an active transfer, restore state
+        transfer_request = self.context.transfer_request
+        if transfer_request:
+            transfer_request = await self._transfer_module.update_transfer_request(transfer_request)
+
+            if not transfer_request:
+                self.logger.warning(f"⚠️ Could not restore active transfer - remove")
+                self.context.transfer_request = None
+                self.context.set_save_flag()
+            else:
+                self.context.transfer_request = transfer_request
+                self.logger.warning(f"Waiting for active transfer to complete")
+                await self._start_transfer_monitor()
+
+    async def stop(self):
+        await super().stop()
+        await self._stop_transfer_monitor()
+
+    async def _start_transfer_monitor(self):
+        self._transfer_task = asyncio.create_task(self._update_transfer_status())
+
+    async def _stop_transfer_monitor(self):
+        if self._transfer_task:
+            self._transfer_task.cancel()
+            try:
+                await self._transfer_task
+            except asyncio.CancelledError:
+                pass
+            self._transfer_task = None
+
+    async def _update_transfer_status(self):
+        transfer_request = self.context.transfer_request
+
+        while transfer_request:
+            if not transfer_request.in_progress:
+                break
+            try:
+                transfer_request = await self._transfer_module.update_transfer_request(transfer_request)
+                self.context.transfer_request = transfer_request
+                if not transfer_request:
+                    break
+            except Exception as e:
+                self.logger.error(f"❌ Error updating transfer status: {e}")
+                break
+            await asyncio.sleep(TRANSFER_REFRESH_SECONDS)
+
+    async def _initiate_new_transfer(self) -> Optional[TransferRequest]:
+        try:
+            """Initiate a new transfer if position is fulfilled."""
+            symbol = self.context.symbol
+            from_exchange = to_exchange = None
+            qty = 0.0
+            asset = None
+
+            for exchange, pos in self._pos.items():
+                if pos.is_fulfilled():
+                    from_exchange = exchange
+                    to_exchange =self.opo_exchange[exchange]
+                    qty = pos.position.qty
+                    asset = symbol.base
+                    break
+
+            # nothing to transfer on base, check quote unrealized pnl
+            if not asset:
+                for exchange, pos in self._pos.items():
+                    if pos.balance_usdt > self._pos[opo_exchange[exchange]].balance_usdt:
+                        qty = self.context.total_quantity * pos.book_ticker.bid_price
+                        asset = symbol.quote
+                        from_exchange = exchange
+                        to_exchange = opo_exchange[exchange]
+                        break
+
+            if asset and qty > 0:
+                transfer_request = await self._transfer_module.transfer_asset(
+                    symbol.base, from_exchange, to_exchange, qty, buy_price=0
+                )
+
+                self.logger.info(
+                    f"🚀 Starting transfer of {qty} {symbol.base} from {from_exchange.name} to {to_exchange.name}")
+
+                return transfer_request
+
+            return None
+        except Exception as e:
+            self.logger.error(f"❌ Error initiating new transfer: {e}")
+            return None
+
+
+    async def _handle_completed_transfer(self, request: TransferRequest) -> None:
+        """Handle a completed transfer and update positions accordingly."""
+        self.logger.info(f"🔄 Transfer completed: {request.qty} {request.asset}: {request} resuming trading")
+        await asyncio.gather(*[p.load_position_from_exchange() for p in self._spot_managers])
+
+
+        # from infrastructure.networking.telegram import send_to_telegram
+        # await send_to_telegram(msg)
+        #
+        # source_pos.reset(self.context.total_quantity)
+        # dest_pos.reset(0.0)
+        # hedge_pos.reset()
+
+    async def _manage_transfer_between_exchanges(self) -> bool:
+        try:
+            request = self.context.transfer_request
+
+            if request:  # has active transfer
+                if request.in_progress:
+                    return True
+                else:  # has completed or failed
+                    if request.completed:
+                        await self._handle_completed_transfer(request)
+
+                    else:
+                        self.logger.error(f"❌ Transfer failed, check manually {request}")
+
+                    self.context.transfer_request = None
+                    self.context.set_save_flag()
+                    await self._stop_transfer_monitor()
+                    return False
+            else:
+                # No active transfer, check if we should initiate one
+                transfer_request = await self._initiate_new_transfer()
+
+                if transfer_request:
+                    self.context.transfer_request = transfer_request
+                    for p in self.context.positions:
+                        p.reset(target_qty=self.context.total_quantity, reset_pnl=False)
+
+                    self.context.set_save_flag()
+                    await self._start_transfer_monitor()
+                    return True
+                else:
+                    return False
+
+        except Exception as e:
+            self.logger.error(f"❌ Error managing transfer between exchanges: {e}")
+            return False
+
 
     def get_spot_book_ticker(self, index: int) -> BookTicker:
         return self._spot_ex[index].public.book_ticker[self.context.symbol]
@@ -77,74 +233,55 @@ class InventorySpotStrategyTask(BaseMultiSpotFuturesArbitrageTask[InventorySpotT
 
         await self.hedge_manager.place_order(side=side, price=price, quantity=abs(delta), is_market=True)
 
-    async def manage_arbitrage(self, signal: InventorySignalWithLimitEnum):
-        pos_mexc = self._pos[ExchangeEnum.MEXC]
-        pos_gateio = self._pos[ExchangeEnum.GATEIO]
-        qty = self.context.order_qty
+    async def _manage_spot_position(self, signals: InventorySignalPairType, exchange: ExchangeEnum) -> Optional[Order]:
+        try:
+            signal = signals.get(exchange)
+            pos = self._pos[exchange]
+            if not signal or pos.is_fulfilled():
+                return None
 
-        # MEXC, GATEIO params mapping
-        signal_mapping = {
-            InventorySignalWithLimitEnum.MARKET_MEXC_SELL_LIMIT_GATEIO_BUY: ((Side.SELL, True), (Side.BUY, False)),
-            InventorySignalWithLimitEnum.LIMIT_MEXC_SELL_MARKET_GATEIO_BUY: ((Side.SELL, False), (Side.BUY, True)),
-            InventorySignalWithLimitEnum.LIMIT_GATEIO_SELL_MARKET_MEXC_BUY: ((Side.BUY, True), (Side.SELL, False)),
-            InventorySignalWithLimitEnum.MARKET_GATEIO_SELL_LIMIT_MEXC_BUY: ((Side.BUY, True), (Side.SELL, False)),
-            InventorySignalWithLimitEnum.MARKET_GATEIO_SELL_MARKET_MEXC_BUY: ((Side.BUY, True), (Side.SELL, True)),
-            InventorySignalWithLimitEnum.MARKET_MEXC_SELL_MARKET_GATEIO_BUY: ((Side.SELL, True), (Side.BUY, True))
-        }
+            opo_signal = signals.get(self.opo_exchange[exchange])
+            opo_pos = self._opo_pos[exchange]
 
-        mexc_params, gateio_params = signal_mapping.get(signal)
-        mexc_sell_allowed = pos_mexc.is_fulfilled() or mexc_params[0] == Side.BUY
-        gateio_sell_allowed = pos_gateio.is_fulfilled() or gateio_params[0] == Side.BUY
+            qty = min(self.context.order_qty, opo_pos.qty - pos.qty)
 
-        if not mexc_sell_allowed or not gateio_sell_allowed:
-            self.logger.info(f"⚠️ {signal.name} Sell not allowed - MEXC {pos_mexc} GATEIO {pos_gateio}")
-            return
+            # avoid overfilling position
+            if qty <= pos.get_min_base_qty():
+                return None
 
-        tasks = []
+            if signal.is_market:
+                # if exchange not market or opo position zero, market orders not allowed
+                if not opo_signal and opo_signal.is_market and opo_pos.qty == 0:
+                    return None
 
-        if mexc_params[1]:
-            if not self.is_opened:  # workaround to open with limit one side if position not persisted
-                tasks.append(pos_mexc.place_market_order(
-                    side=mexc_params[0],
+                return await pos.place_market_order(
+                    side=signal.side,
                     quantity=qty,
-                ))
-        else:
-            tasks.append(pos_mexc.place_trailing_limit_order(
-                side=mexc_params[0],
-                quantity=qty,
-            ))
+                )
 
-        if gateio_params[1]:
-            if not self.is_opened:  # workaround to open with limit one side if position not persisted
-                tasks.append(pos_gateio.place_market_order(
-                    side=gateio_params[0],
-                    quantity=qty,
-                ))
-        else:
-            tasks.append(pos_mexc.place_trailing_limit_order(
-                side=gateio_params[0],
+            return await pos.place_trailing_limit_order(
+                side=signal.side,
                 quantity=qty,
-            ))
+            )
+        except Exception as e:
+            self.logger.error(f"❌ Error managing spot position on {exchange.name}: {e}")
+            return None
 
-        await asyncio.gather(*tasks)
 
     async def _manage_positions(self):
+        # if await self._manage_transfer_between_exchanges():
+        #     return
 
         book_tickers = {ExchangeEnum.MEXC: self._pos[ExchangeEnum.MEXC].book_ticker,
                         ExchangeEnum.GATEIO: self._pos[ExchangeEnum.GATEIO].book_ticker}
 
-        signal = self.signal.get_live_signal_book_ticker(book_tickers)
-
-        if signal != InventorySignalWithLimitEnum.HOLD:
-            self.logger.info(f"Live Signal: {signal.name} MEXC: {self._pos[ExchangeEnum.MEXC].book_ticker},"
-                             f" GATEIO: {self._pos[ExchangeEnum.GATEIO].book_ticker}")
-
-            await self.manage_arbitrage(signal)
-        else:
-            await asyncio.gather(*[p.cancel_order() for p in self._spot_managers])
-
+        signals: InventorySignalPairType = self.signal.get_live_signal_book_ticker(book_tickers)
+        await asyncio.gather(*[self._manage_spot_position(signals, exchange) for exchange in signals])
         await self.manage_delta_hedge()
 
+    def status(self):
+        return (f"HEDGE: {self.hedge_pos}, MEXC SPOT: {self._pos[ExchangeEnum.MEXC].position}, "
+                f"GATEIO SPOT: {self._pos[ExchangeEnum.GATEIO].position}")
 
 def create_inventory_spread_strategy_task(symbol: Symbol, order_qty: float, total_qty: float,
                 mexc_spread_threshold_bps: Optional[float] = 30,

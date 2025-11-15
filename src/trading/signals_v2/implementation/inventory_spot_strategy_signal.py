@@ -9,7 +9,7 @@ comprehensive cost accounting, and enhanced performance metrics for accurate
 backtesting and live trading scenarios.
 """
 
-from typing import Dict, Optional, List
+from typing import Dict, Optional, List, Tuple
 import pandas as pd
 from datetime import datetime, timedelta, UTC
 
@@ -17,13 +17,13 @@ from exchanges.structs import BookTicker, Fees
 from infrastructure.logging import HFTLoggerInterface, get_logger
 from trading.signals.types import Signal
 from exchanges.structs.enums import ExchangeEnum, Side
-
+from numbers import Number
 from trading.signals_v2.entities import PerformanceMetrics, TradeEntry, PositionEntry, BacktestingParams
 from trading.signals_v2.strategy_signal import StrategySignal
 from trading.data_sources.column_utils import get_column_key
 import numpy as np
 from enum import IntEnum
-
+from msgspec import Struct
 class InventorySignalEnum(IntEnum):
     MEXC_TO_GATEIO = 1
     GATEIO_TO_MEXC = 2
@@ -37,6 +37,20 @@ class InventorySignalWithLimitEnum(IntEnum):
     MARKET_GATEIO_SELL_LIMIT_MEXC_BUY = 4
     MARKET_MEXC_SELL_LIMIT_GATEIO_BUY = 5
     LIMIT_GATEIO_SELL_MARKET_MEXC_BUY = 6
+
+class InventorySignalType(Struct):
+    side: Side
+    is_market: bool
+
+
+class InventorySpreadStats(Struct):
+    min_spread_bps: float
+    max_spread_bps: float
+    avg_spread_bps: float
+    spread_stddev_bps: float
+    spread_history: List[float]
+
+type InventorySignalPairType = Dict[ExchangeEnum,InventorySignalType]  # (side, is_market_order)
 
 class InventorySpotStrategySignal(StrategySignal):
     """
@@ -90,6 +104,7 @@ class InventorySpotStrategySignal(StrategySignal):
 
         self.col_mexc_balance = get_column_key(ExchangeEnum.MEXC, 'balance')
         self.col_gateio_balance = get_column_key(ExchangeEnum.GATEIO, 'balance')
+        self.stats: Dict[str, Dict[str,float]] = {}
 
         self.price_history = {
             self.col_mexc_bid: [],
@@ -108,6 +123,7 @@ class InventorySpotStrategySignal(StrategySignal):
 
         self._backtesting_params = backtesting_params
         self.analysis_results = {}
+        self._get_live_signal_calls = 0
 
     def _update_price_history(self, book_tickers: Dict[ExchangeEnum, BookTicker]) -> None:
         """Update price history for volatility calculation."""
@@ -282,63 +298,110 @@ class InventorySpotStrategySignal(StrategySignal):
 
                 self._update_df_balance(df, idx)
 
-    def get_live_signal(self, mexc_buy: float, mexc_sell: float, gateio_buy: float, gateio_sell: float)-> InventorySignalEnum:
+    def get_live_signal(self, mexc_buy: float, mexc_sell: float, gateio_buy: float, gateio_sell: float)-> Tuple[InventorySignalEnum, Dict[str, float]]:
         mexc_to_gateio_spread_bps = ((mexc_sell - gateio_buy) / gateio_buy * 10000)
         gateio_to_mexc_spread_bps = ((gateio_sell - mexc_buy) / mexc_buy * 10000)
-
+        spreads = {'mexc_to_gateio': mexc_to_gateio_spread_bps, 'gateio_to_mexc': gateio_to_mexc_spread_bps}
         if mexc_to_gateio_spread_bps > self.params['mexc_spread_threshold_bps']:
-            return InventorySignalEnum.MEXC_TO_GATEIO  # SELL on MEXC (higher), BUY on Gate.io (lower)
+            return InventorySignalEnum.MEXC_TO_GATEIO, spreads  # SELL on MEXC (higher), BUY on Gate.io (lower)
         elif gateio_to_mexc_spread_bps > self.params['gateio_spread_threshold_bps']:
-            return InventorySignalEnum.GATEIO_TO_MEXC  # SELL on Gate.io (higher), BUY on MEXC (lower)
+            return InventorySignalEnum.GATEIO_TO_MEXC, spreads  # SELL on Gate.io (higher), BUY on MEXC (lower)
 
-        return InventorySignalEnum.HOLD
+        return InventorySignalEnum.HOLD, spreads
 
-    def get_live_signal_book_ticker(self, book_tickers: Dict[ExchangeEnum, BookTicker]) -> InventorySignalWithLimitEnum:
+    def _merge_stats(self, category: str, new_stats: Dict[str, object]) -> None:
         """
-        Generate live trading signal using arbitrage analyzer logic.
-
-        Returns:
-           Signal
+        Merge numeric stats into self.stats[category], keeping running min/max per metric.
+        Accepts values as numbers or dicts with 'min' and 'max'.
         """
+        dest = self.stats.setdefault(category, {})
+        for key, val in new_stats.items():
+            # normalize incoming to (val_min, val_max)
+            if isinstance(val, dict) and 'min' in val and 'max' in val:
+                val_min, val_max = val['min'], val['max']
+            else:
+                val_min = val_max = val
+
+            existing = dest.get(key, {'min': float('inf'), 'max': float('-inf')})
+            dest[key] = {
+                'min': min(existing.get('min', float('inf')), val_min),
+                'max': max(existing.get('max', float('-inf')), val_max)
+            }
+
+    # python
+    def get_live_signal_book_ticker(self, book_tickers: Dict[ExchangeEnum, BookTicker]) -> InventorySignalPairType:
         mexc_bid = book_tickers[ExchangeEnum.MEXC].bid_price
         mexc_ask = book_tickers[ExchangeEnum.MEXC].ask_price
         gateio_bid = book_tickers[ExchangeEnum.GATEIO].bid_price
         gateio_ask = book_tickers[ExchangeEnum.GATEIO].ask_price
 
-        # direct market v market
-        signal_market_both = self.get_live_signal(mexc_sell=mexc_bid, mexc_buy=mexc_ask,
-                                      gateio_buy=gateio_ask, gateio_sell=gateio_bid)
+        # candidate signals for 3 scenarios
+        market_signal, market_stats = self.get_live_signal(mexc_sell=mexc_bid, mexc_buy=mexc_ask,
+                                             gateio_buy=gateio_ask, gateio_sell=gateio_bid)
+        limit_mexc_signal, limit_mexc_stats = self.get_live_signal(mexc_sell=mexc_ask, mexc_buy=mexc_bid,
+                                                 gateio_buy=gateio_ask, gateio_sell=gateio_bid)
+        limit_gateio_signal, limit_gateio_stats = self.get_live_signal(mexc_sell=mexc_bid, mexc_buy=mexc_ask,
+                                                   gateio_buy=gateio_bid, gateio_sell=gateio_ask)
 
-        if signal_market_both != signal_market_both.HOLD:
-            signal_map = {InventorySignalEnum.MEXC_TO_GATEIO: InventorySignalWithLimitEnum.MARKET_MEXC_SELL_MARKET_GATEIO_BUY,
-                   InventorySignalEnum.GATEIO_TO_MEXC: InventorySignalWithLimitEnum.MARKET_GATEIO_SELL_MARKET_MEXC_BUY}
+        self._merge_stats('market', market_stats)
+        self._merge_stats('limit_mexc', limit_mexc_stats)
+        self._merge_stats('limit_gateio', limit_gateio_stats)
 
-            return signal_map[signal_market_both]
+        if self._get_live_signal_calls % 3000 == 0:
+            info = f"\n{'name':<14} | {'mexc_to_gateio_max':<20} | {'mexc_to_gateio_min':<20} | {'gateio_to_mexc_max':<20} | {'gateio_to_mexc_min':<20}"
+            for s, item in self.stats.items():
+                info += f"\n{s:<14} | {round(item['mexc_to_gateio']['min']):<20} | {round(item['mexc_to_gateio']['max']):<20} | {round(item['gateio_to_mexc']['min']):<20} | {round(item['gateio_to_mexc']['max']):<20}"
 
-        # limit MEXC vs market GATEIO
-        signal_limit_gateio = self.get_live_signal(mexc_sell=mexc_ask, mexc_buy=mexc_bid,
-                                                   gateio_buy=gateio_ask, gateio_sell=gateio_bid)
+            self.logger.info(info)
 
-        if signal_limit_gateio != signal_market_both.HOLD:
-            signal_map = {
-                InventorySignalEnum.MEXC_TO_GATEIO: InventorySignalWithLimitEnum.LIMIT_MEXC_SELL_MARKET_GATEIO_BUY,
-                InventorySignalEnum.GATEIO_TO_MEXC: InventorySignalWithLimitEnum.MARKET_GATEIO_SELL_MARKET_MEXC_BUY}
+        self._get_live_signal_calls += 1
 
-            return signal_map[signal_limit_gateio]
+        # mappings from InventorySignalEnum -> InventorySignalType for each scenario
+        market_mapping = {
+            InventorySignalEnum.MEXC_TO_GATEIO: {
+                ExchangeEnum.MEXC: InventorySignalType(Side.SELL, True),
+                ExchangeEnum.GATEIO: InventorySignalType(Side.BUY, True)
+            },
+            InventorySignalEnum.GATEIO_TO_MEXC: {
+                ExchangeEnum.GATEIO: InventorySignalType(Side.SELL, True),
+                ExchangeEnum.MEXC: InventorySignalType(Side.BUY, True)
+            }
+        }
 
-        signal_limit_gateio = self.get_live_signal(mexc_sell=mexc_bid, mexc_buy=mexc_ask,
-                                                 gateio_buy=gateio_bid, gateio_sell=gateio_ask)
+        limit_mexc_mapping = {
+            InventorySignalEnum.MEXC_TO_GATEIO: {
+                ExchangeEnum.MEXC: InventorySignalType(Side.SELL, False),  # limit sell on MEXC
+                ExchangeEnum.GATEIO: InventorySignalType(Side.BUY, True)  # market buy on Gate.io
+            },
+            InventorySignalEnum.GATEIO_TO_MEXC: {
+                ExchangeEnum.GATEIO: InventorySignalType(Side.SELL, True),  # market sell on Gate.io
+                ExchangeEnum.MEXC: InventorySignalType(Side.BUY, False)  # limit buy on MEXC
+            }
+        }
 
-        # market MEXC vs limit GATEIO
-        if signal_limit_gateio != signal_market_both.HOLD:
-            signal_map = {
-                InventorySignalEnum.MEXC_TO_GATEIO: InventorySignalWithLimitEnum.MARKET_MEXC_SELL_LIMIT_GATEIO_BUY,
-                InventorySignalEnum.GATEIO_TO_MEXC: InventorySignalWithLimitEnum.LIMIT_GATEIO_SELL_MARKET_MEXC_BUY}
+        limit_gateio_mapping = {
+            InventorySignalEnum.MEXC_TO_GATEIO: {
+                ExchangeEnum.MEXC: InventorySignalType(Side.SELL, True),  # market sell on MEXC
+                ExchangeEnum.GATEIO: InventorySignalType(Side.BUY, False)  # limit buy on Gate.io
+            },
+            InventorySignalEnum.GATEIO_TO_MEXC: {
+                ExchangeEnum.GATEIO: InventorySignalType(Side.SELL, False),  # limit sell on Gate.io
+                ExchangeEnum.MEXC: InventorySignalType(Side.BUY, True)  # market buy on MEXC
+            }
+        }
 
-            return signal_map[signal_limit_gateio]
+        scenarios = [
+            (market_signal, market_mapping),
+            (limit_mexc_signal, limit_mexc_mapping),
+            (limit_gateio_signal, limit_gateio_mapping)
+        ]
 
-        return InventorySignalWithLimitEnum.HOLD
+        for sig, mapping in scenarios:
+            if sig == InventorySignalEnum.HOLD:
+                continue
+            return mapping.get(sig, {})
 
+        return {}
 
     # def get_live_signal_book_ticker(self, book_tickers: Dict[ExchangeEnum, BookTicker]) -> InventorySignalEnum:
     #     """

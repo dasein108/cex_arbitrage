@@ -16,7 +16,7 @@ Design Principles:
 from msgspec import Struct
 from typing import Optional, Dict, List
 
-from .enums import TimeInForce, KlineInterval, OrderStatus, OrderType, Side, WithdrawalStatus, DepositStatus
+from .enums import TimeInForce, KlineInterval, OrderStatus, OrderType, Side, WithdrawalStatus, DepositStatus, ExchangeEnum
 from .types import ExchangeName, AssetName, OrderId
 
 
@@ -66,6 +66,7 @@ class Order(Struct):
     fee: Optional[float] = None
     fee_asset: Optional[AssetName] = None
     time_in_force: TimeInForce = TimeInForce.GTC
+    exchange: Optional[ExchangeEnum] = None
 
     @property
     def qty_quote(self) -> Optional[float]:

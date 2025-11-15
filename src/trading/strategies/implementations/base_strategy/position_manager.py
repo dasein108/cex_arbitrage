@@ -11,7 +11,7 @@ import asyncio
 from typing import Optional, Callable
 
 from exchanges.dual_exchange import DualExchange
-from exchanges.structs import Order, Symbol, SymbolInfo, Fees
+from exchanges.structs import Order, Symbol, SymbolInfo, Fees, AssetName
 from exchanges.structs.common import Side
 from infrastructure.exceptions.exchange import OrderNotFoundError, InsufficientBalanceError
 from infrastructure.logging import HFTLoggerInterface
@@ -54,6 +54,11 @@ class PositionManager:
         return self._position
 
     @property
+    def qty(self) -> float:
+        """Get the position quantity."""
+        return self._position.qty
+
+    @property
     def exchange(self) -> DualExchange:
         """Get the exchange."""
         return self._exchange
@@ -78,6 +83,14 @@ class PositionManager:
             return self._exchange.public.book_ticker.get(self.symbol)
         return None
 
+    @property
+    def has_order(self):
+        return self._last_order is not None
+
+    @property
+    def balance_usdt(self):
+        return self._exchange.private.balances[AssetName('USDT')].available
+
     async def initialize(self, target_qty: float = 0.0) -> bool:
         """Initialize position with exchange data."""
         try:
@@ -94,7 +107,7 @@ class PositionManager:
             
             # Initialize position state from exchange
             await asyncio.gather(
-                self._load_position_from_exchange(),
+                self.load_position_from_exchange(),
                 self._force_book_ticker_refresh(),
                 self._force_last_order_refresh()
             )
@@ -106,7 +119,7 @@ class PositionManager:
             self._logger.error(f"❌ {self.tag} Failed to initialize position: {e}")
             return False
 
-    async def _load_position_from_exchange(self) -> None:
+    async def load_position_from_exchange(self) -> None:
         """Load current position from exchange and update local data."""
         if self.is_futures:
             await self._load_futures_position()
@@ -127,12 +140,14 @@ class PositionManager:
 
     async def _load_spot_position(self) -> None:
         """Load spot position from exchange."""
-        min_qty = self._get_min_base_qty()
+        min_qty = self.get_min_base_qty()
         book_ticker = self.book_ticker
         balance = await self._exchange.private.get_asset_balance(self.symbol.base)
 
         if balance.available > min_qty:
             self._position.qty = balance.available
+        else:
+            self._position.qty = 0.0
 
         # Fix price if not set
         if self._position.qty > 0 and self._position.price == 0:
@@ -163,14 +178,14 @@ class PositionManager:
 
         self._track_order_execution(order)
 
-    def _get_min_base_qty(self) -> float:
+    def get_min_base_qty(self) -> float:
         """Get minimum base quantity for the exchange."""
         book_ticker = self.book_ticker
         
         if not book_ticker or not self._symbol_info:
             return 0.0
             
-        price = book_ticker.bid_price
+        price = book_ticker.bid_price if self._position.side == Side.BUY else book_ticker.ask_price
         return self._symbol_info.get_abs_min_quantity(price)
 
     def _track_order_execution(self, order: Optional[Order] = None) -> bool:
@@ -336,7 +351,7 @@ class PositionManager:
         return self._symbol_info.round_quote(price * factor)
 
     async def place_trailing_limit_order(self, side: Side, quantity: float,
-                                         top_offset_pct: float=0, trail_pct: float=0) -> bool:
+                                         top_offset_pct: float=0, trail_pct: float=0) -> Optional[Order]:
         order = self._last_order
 
         price = self.book_ticker.ask_price if side == Side.SELL else self.book_ticker.bid_price
@@ -345,7 +360,7 @@ class PositionManager:
             self._logger.info(f"🔻 {self.tag} Updating trailing limit order from {order.price} to {price}")
             o = await self.cancel_order()
             if o.is_filled:
-                return False # Filled during cancel handle hedge outside
+                return o # Filled during cancel handle hedge outside
 
         price_with_offset = self._adjust_price_by_pct(price, top_offset_pct, side)
 
@@ -353,8 +368,9 @@ class PositionManager:
 
         if new_order:
             self._logger.info(f"🔺 {self.tag} Placed trailing limit order {new_order}")
-            return True
+            if new_order.is_filled:
+                return new_order
 
-        return False
+        return None
 
 

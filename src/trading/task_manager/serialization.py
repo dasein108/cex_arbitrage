@@ -279,7 +279,8 @@ class TaskSerializer:
                         average_price=order_data.get('average_price'),
                         fee=order_data.get('fee'),
                         fee_asset=order_data.get('fee_asset'),
-                        time_in_force=time_in_force
+                        time_in_force=time_in_force,
+                        exchange="NOT IMPLEMENTED"
                     )
                 
                 # Reconstruct nested active_orders structure

@@ -318,7 +318,7 @@ arbitrage:
       is_enabled: true
       priority: 10
     - id: "ai16z_usdt_spot_arb"
-      base_asset: "AI16Z"
+      base_asset: "DF"
       quote_asset: "USDT"
       opportunity_type: "SPOT_SPOT"
       min_profit_bps: 50
@@ -334,7 +334,7 @@ arbitrage:
 #      is_enabled: true
 #      priority: 12
     - id: "lunc_usdt_spot_arb"
-      base_asset: "ZRC"
+      base_asset: "AMZNX"
       quote_asset: "USDT"
       opportunity_type: "SPOT_SPOT"
       min_profit_bps: 50
@@ -342,7 +342,7 @@ arbitrage:
       is_enabled: true
       priority: 12
     - id: "velvet_usdt_spot_arb"
-      base_asset: "NAVX"
+      base_asset: "BICO"
       quote_asset: "USDT"
       opportunity_type: "SPOT_SPOT"
       min_profit_bps: 50
@@ -358,7 +358,7 @@ arbitrage:
       is_enabled: true
       priority: 12
     - id: "aria_usdt_spot_arb"
-      base_asset: "ARIA"
+      base_asset: "GPS"
       quote_asset: "USDT"
       opportunity_type: "SPOT_SPOT"
       min_profit_bps: 50
@@ -366,7 +366,7 @@ arbitrage:
       is_enabled: true
       priority: 12
     - id: "адл_usdt_spot_arb"
-      base_asset: "FLK"
+      base_asset: "U"
       quote_asset: "USDT"
       opportunity_type: "SPOT_SPOT"
       min_profit_bps: 50
@@ -374,7 +374,7 @@ arbitrage:
       is_enabled: true
       priority: 12
     - id: "SUNDOG_usdt_spot_arb"
-      base_asset: "SUNDOG"
+      base_asset: "VELO"
       quote_asset: "USDT"
       opportunity_type: "SPOT_SPOT"
       min_profit_bps: 50
@@ -390,7 +390,7 @@ arbitrage:
 #      is_enabled: true
 #      priority: 12
     - id: "PIGGY_usdt_spot_arb"
-      base_asset: "PIGGY"
+      base_asset: "ASP"
       quote_asset: "USDT"
       opportunity_type: "SPOT_SPOT"
       min_profit_bps: 50
