@@ -227,9 +227,10 @@ class UnifiedWebSocketManager:
                 self.logger.info(f"Bound TICKER handler for futures exchange {exchange.value}")
             
             # Trade handler binding disabled for performance optimization
-            if self.trade_handler:
-                adapter.bind(PublicWebsocketChannelType.PUB_TRADE,
-                           lambda trade: self._handle_trades_update(exchange, trade.symbol, [trade]))
+            # TODO: tmp disabled
+            # if self.trade_handler:
+            #     adapter.bind(PublicWebsocketChannelType.PUB_TRADE,
+            #                lambda trade: self._handle_trades_update(exchange, trade.symbol, [trade]))
 
             # Store composite and adapter
             self._exchange_composites[exchange] = composite

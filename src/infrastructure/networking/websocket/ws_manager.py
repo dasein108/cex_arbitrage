@@ -90,6 +90,9 @@ class WebSocketManager:
             maxsize=self.manager_config.max_pending_messages
         )
 
+    async def on_connection_error(self):
+        pass
+
     async def initialize(self) -> None:
         """
         Initialize WebSocket connection using direct connection method.
@@ -265,7 +268,10 @@ class WebSocketManager:
                              tags={"exchange": "ws",
                                    "from_state": previous_state.name,
                                    "to_state": state.name})
-            
+
+            # handle connection error outside
+            await self.on_connection_error()
+
             # Notify external handler
             if self.connection_handler:
                 try:
@@ -306,6 +312,9 @@ class WebSocketManager:
             self.logger.error("Error queuing message",
                             error_type=type(e).__name__,
                             error_message=str(e))
+
+            # handle connection error outside
+            await self.on_connection_error()
             
             # Track queuing error metrics
             self.logger.metric("ws_queuing_errors", 1,
@@ -340,6 +349,9 @@ class WebSocketManager:
                     # Track message processing error metrics with path identification
                     self.logger.metric("ws_message_processing_errors", 1,
                                        tags={"exchange": "ws"})
+
+                    # handle connection error outside
+                    await self.on_connection_error()
                 finally:
                     self._message_queue.task_done()
 
@@ -367,7 +379,7 @@ class WebSocketManager:
         self.metrics.error_count += 1
         
         error_type = type(error).__name__
-        
+
 
         self.logger.error("WebSocket error",
                         error_type=error_type,
@@ -376,6 +388,12 @@ class WebSocketManager:
         # Track WebSocket error metrics
         self.logger.metric("ws_errors", 1,
                          tags={"exchange": "ws", "error_type": error_type})
+
+        # handle connection error outside
+        await self.on_connection_error()
+
+        if self.connection_handler:
+            await self.connection_handler(self.connection_state)
         
     def is_connected(self) -> bool:
         """Check if WebSocket is connected."""

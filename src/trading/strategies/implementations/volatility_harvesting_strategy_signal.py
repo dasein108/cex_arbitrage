@@ -9,9 +9,126 @@ from typing import Dict, Any, Tuple, Union
 import pandas as pd
 import numpy as np
 from datetime import datetime
+import msgspec
 
 from trading.strategies.base.base_strategy_signal import BaseStrategySignal
 from trading.signals.types.signal_types import Signal
+
+
+class VolatilityStats(msgspec.Struct):
+    """
+    Memory-efficient volatility statistics using numpy arrays for circular buffer management.
+    
+    Optimized for high-frequency operations with sub-millisecond performance requirements.
+    """
+    current_volatility: float
+    volatility_z_score: float
+    mean_reversion_strength: float
+    mean_reversion_direction: float
+    spread_momentum: float
+    spread_deviation: float
+    spread_history: np.ndarray
+    volatility_history: np.ndarray
+    
+    @classmethod
+    def create_empty(cls, max_history_length: int = 100, volatility_window: int = 20) -> 'VolatilityStats':
+        """Create empty volatility stats with numpy arrays initialized to NaN."""
+        return cls(
+            current_volatility=0.0,
+            volatility_z_score=0.0,
+            mean_reversion_strength=0.0,
+            mean_reversion_direction=0.0,
+            spread_momentum=0.0,
+            spread_deviation=0.0,
+            spread_history=np.full(max_history_length, np.nan, dtype=np.float64),
+            volatility_history=np.full(volatility_window, np.nan, dtype=np.float64)
+        )
+    
+    def update_with_spread(self, spread_value: float) -> 'VolatilityStats':
+        """
+        Update volatility statistics with new spread value using circular buffer.
+        
+        Implements high-performance circular buffer with NaN detection for efficient
+        memory management and sub-millisecond update performance.
+        
+        Args:
+            spread_value: New spread value to add to history
+            
+        Returns:
+            New VolatilityStats instance with updated values
+        """
+        # Copy spread history array for immutable update
+        spread_history = self.spread_history.copy()
+        
+        # Find first NaN slot or use circular buffer
+        nan_indices = np.where(np.isnan(spread_history))[0]
+        if len(nan_indices) > 0:
+            # Fill first available NaN slot
+            spread_history[nan_indices[0]] = spread_value
+        else:
+            # Array is full, shift left and add new value (circular buffer)
+            spread_history[:-1] = spread_history[1:]
+            spread_history[-1] = spread_value
+        
+        # Get valid spreads for calculations
+        valid_spreads = spread_history[~np.isnan(spread_history)]
+        
+        if len(valid_spreads) < 2:
+            # Not enough data for meaningful calculations
+            return VolatilityStats(
+                current_volatility=0.0,
+                volatility_z_score=0.0,
+                mean_reversion_strength=0.0,
+                mean_reversion_direction=0.0,
+                spread_momentum=0.0,
+                spread_deviation=0.0,
+                spread_history=spread_history,
+                volatility_history=self.volatility_history.copy()
+            )
+        
+        # Calculate current volatility and statistics
+        current_volatility = float(np.std(valid_spreads))
+        mean_spread = float(np.mean(valid_spreads))
+        
+        # Update volatility history with circular buffer
+        volatility_history = self.volatility_history.copy()
+        vol_nan_indices = np.where(np.isnan(volatility_history))[0]
+        if len(vol_nan_indices) > 0:
+            volatility_history[vol_nan_indices[0]] = current_volatility
+        else:
+            volatility_history[:-1] = volatility_history[1:]
+            volatility_history[-1] = current_volatility
+        
+        # Calculate volatility z-score
+        valid_volatilities = volatility_history[~np.isnan(volatility_history)]
+        if len(valid_volatilities) > 1:
+            vol_mean = float(np.mean(valid_volatilities))
+            vol_std = float(np.std(valid_volatilities))
+            volatility_z_score = (current_volatility - vol_mean) / (vol_std + 1e-8)
+        else:
+            volatility_z_score = 0.0
+        
+        # Calculate mean reversion metrics
+        current_deviation = spread_value - mean_spread
+        mean_reversion_strength = abs(current_deviation) / (current_volatility + 1e-8)
+        mean_reversion_direction = -np.sign(current_deviation)  # Revert to mean
+        
+        # Calculate momentum (using last 5 valid values)
+        if len(valid_spreads) >= 5:
+            momentum = (valid_spreads[-1] - valid_spreads[-5]) / (current_volatility + 1e-8)
+        else:
+            momentum = 0.0
+        
+        return VolatilityStats(
+            current_volatility=current_volatility,
+            volatility_z_score=volatility_z_score,
+            mean_reversion_strength=mean_reversion_strength,
+            mean_reversion_direction=mean_reversion_direction,
+            spread_momentum=float(momentum),
+            spread_deviation=current_deviation,
+            spread_history=spread_history,
+            volatility_history=volatility_history
+        )
 
 
 class VolatilityHarvestingStrategySignal(BaseStrategySignal):
@@ -56,10 +173,55 @@ class VolatilityHarvestingStrategySignal(BaseStrategySignal):
             **params
         )
         
-        # Strategy-specific indicators
+        # Strategy-specific indicators with numpy optimization
+        max_history_length = params.get('max_history_length', 100)
+        
+        # Initialize volatility stats with numpy arrays for performance
+        self.volatility_stats: VolatilityStats = VolatilityStats.create_empty(
+            max_history_length=max_history_length,
+            volatility_window=volatility_window
+        )
+        
+        # Maintain price history for additional calculations
+        self.price_history = {
+            'mexc_bid': np.array([], dtype=np.float64),
+            'mexc_ask': np.array([], dtype=np.float64),
+            'gateio_futures_bid': np.array([], dtype=np.float64),
+            'gateio_futures_ask': np.array([], dtype=np.float64)
+        }
+        self._max_price_history = max_history_length
+        
+        # Backward compatibility fields (deprecated - use volatility_stats instead)
         self.volatility_indicators = {}
-        self.volatility_history = []
-        self.spread_history = []
+        self.volatility_history = []  # Kept for backward compatibility
+        self.spread_history = []      # Kept for backward compatibility
+    
+    def _update_price_history(self, market_data: Dict[str, Any]) -> None:
+        """
+        Update price history using circular buffer with numpy arrays for optimal performance.
+        
+        Args:
+            market_data: Market data containing bid/ask prices for exchanges
+        """
+        # Extract prices with multiple possible field names for compatibility
+        prices = {
+            'mexc_bid': market_data.get('mexc_bid', market_data.get('MEXC_SPOT_bid_price', 0.0)),
+            'mexc_ask': market_data.get('mexc_ask', market_data.get('MEXC_SPOT_ask_price', 0.0)),
+            'gateio_futures_bid': market_data.get('gateio_futures_bid', market_data.get('GATEIO_FUTURES_bid_price', 0.0)),
+            'gateio_futures_ask': market_data.get('gateio_futures_ask', market_data.get('GATEIO_FUTURES_ask_price', 0.0))
+        }
+        
+        # Update each price array with circular buffer logic
+        for key, value in prices.items():
+            if value > 0 and key in self.price_history:
+                current_history = self.price_history[key]
+                
+                if len(current_history) < self._max_price_history:
+                    # Still filling the buffer
+                    self.price_history[key] = np.append(current_history, value)
+                else:
+                    # Buffer is full - shift left and add new value
+                    self.price_history[key] = np.append(current_history[1:], value)
     
     def generate_live_signal(self, market_data: Dict[str, Any], **params) -> Tuple[Signal, float]:
         """
@@ -72,39 +234,39 @@ class VolatilityHarvestingStrategySignal(BaseStrategySignal):
         Returns:
             Tuple of (Signal, confidence_score)
         """
+        # Update price history first for consistent data tracking
+        self._update_price_history(market_data)
+        
         # Validate market data
         if not self.validate_market_data(market_data):
             return Signal.HOLD, 0.0
         
-        # Calculate current spreads and volatility
+        # Calculate current spreads and update numpy-based volatility stats
         spreads = self._calculate_spread_from_market_data(market_data)
-        volatility_metrics = self._calculate_volatility_metrics(spreads)
-        
-        if not spreads or not volatility_metrics:
+        if not spreads:
             return Signal.HOLD, 0.0
         
-        # Update indicators
-        self._update_volatility_indicators(volatility_metrics)
+        # Update volatility stats with new spread data using optimized numpy operations
+        main_spread = spreads.get('mexc_vs_gateio_futures', 0.0)
+        self.volatility_stats = self.volatility_stats.update_with_spread(main_spread)
         
-        # Check if we have enough history
-        if len(self.volatility_history) < self.min_history:
+        # Check if we have sufficient data for signal generation
+        valid_spreads = self.volatility_stats.spread_history[~np.isnan(self.volatility_stats.spread_history)]
+        if len(valid_spreads) < self.min_history:
             return Signal.HOLD, 0.0
         
         # Override parameters
         vol_thresh = params.get('volatility_threshold', self.volatility_threshold)
         mean_rev_thresh = params.get('mean_reversion_threshold', self.mean_reversion_threshold)
         
-        # Generate signal
-        signal = self._generate_volatility_signal_logic(
-            volatility_metrics, vol_thresh, mean_rev_thresh
-        )
+        # Generate signal using optimized volatility stats
+        signal = self._generate_volatility_signal_logic_optimized(vol_thresh, mean_rev_thresh)
         
-        # Calculate confidence
-        confidence = self.calculate_signal_confidence({
-            'volatility_z_score': volatility_metrics.get('volatility_z_score', 0),
-            'mean_reversion_strength': volatility_metrics.get('mean_reversion_strength', 0),
-            'spread_momentum': volatility_metrics.get('spread_momentum', 0)
-        })
+        # Calculate confidence using numpy-based stats
+        confidence = self._calculate_signal_confidence_optimized()
+        
+        # Update backward compatibility indicators for legacy code
+        self._update_legacy_indicators()
         
         # Update tracking
         self.last_signal = signal
@@ -112,6 +274,81 @@ class VolatilityHarvestingStrategySignal(BaseStrategySignal):
         self.signal_count += 1
         
         return signal, confidence
+    
+    def _generate_volatility_signal_logic_optimized(self, vol_thresh: float, mean_rev_thresh: float) -> Signal:
+        """
+        Optimized signal generation logic using numpy-based volatility stats.
+        
+        Args:
+            vol_thresh: Volatility threshold for signal generation
+            mean_rev_thresh: Mean reversion threshold for signal generation
+            
+        Returns:
+            Generated signal based on volatility patterns
+        """
+        # Use precomputed stats from numpy operations
+        vol_z_score = self.volatility_stats.volatility_z_score
+        mean_rev_strength = self.volatility_stats.mean_reversion_strength
+        
+        # Entry: High volatility + strong mean reversion signal
+        if vol_z_score > vol_thresh and mean_rev_strength > mean_rev_thresh:
+            return Signal.ENTER
+        
+        # Exit: Volatility subsides
+        if vol_z_score < vol_thresh * 0.5:
+            return Signal.EXIT
+        
+        return Signal.HOLD
+    
+    def _calculate_signal_confidence_optimized(self) -> float:
+        """
+        Calculate confidence score using optimized numpy-based volatility stats.
+        
+        Returns:
+            Confidence score between 0.0 and 1.0
+        """
+        confidence = 0.5
+        
+        # Confidence based on volatility z-score
+        vol_z = abs(self.volatility_stats.volatility_z_score)
+        if vol_z > 3:
+            confidence = 0.95
+        elif vol_z > 2:
+            confidence = 0.8
+        elif vol_z > 1.5:
+            confidence = 0.6
+        else:
+            confidence = 0.3
+        
+        # Adjust for mean reversion strength
+        mean_rev_strength = self.volatility_stats.mean_reversion_strength
+        if mean_rev_strength > 2:
+            confidence = min(confidence * 1.3, 1.0)
+        elif mean_rev_strength < 1:
+            confidence = confidence * 0.8
+        
+        # Adjust for spread momentum
+        momentum = abs(self.volatility_stats.spread_momentum)
+        if momentum > 1.5:
+            confidence = min(confidence * 1.1, 1.0)
+        
+        return max(min(confidence, 1.0), 0.0)
+    
+    def _update_legacy_indicators(self) -> None:
+        """
+        Update legacy indicator fields for backward compatibility.
+        
+        This method maintains compatibility with existing code that may rely on
+        the old dictionary-based volatility_indicators.
+        """
+        self.volatility_indicators = {
+            'current_volatility': self.volatility_stats.current_volatility,
+            'volatility_z_score': self.volatility_stats.volatility_z_score,
+            'mean_reversion_strength': self.volatility_stats.mean_reversion_strength,
+            'mean_reversion_direction': self.volatility_stats.mean_reversion_direction,
+            'spread_momentum': self.volatility_stats.spread_momentum,
+            'spread_deviation': self.volatility_stats.spread_deviation
+        }
     
     def backtest(self, df: pd.DataFrame, **params) -> pd.DataFrame:
         """
@@ -200,31 +437,54 @@ class VolatilityHarvestingStrategySignal(BaseStrategySignal):
     
     def update_indicators(self, new_data: Union[Dict[str, Any], pd.DataFrame]) -> None:
         """
-        Update rolling indicators with new market data.
+        Update rolling indicators with new market data using optimized numpy operations.
         
         Args:
             new_data: New market data (single row or snapshot)
         """
-        # Calculate spreads and volatility
+        # Extract market data
         if isinstance(new_data, pd.DataFrame) and not new_data.empty:
-            spreads = self._calculate_spread_from_market_data(new_data.iloc[-1].to_dict())
+            market_data = new_data.iloc[-1].to_dict()
         else:
-            spreads = self._calculate_spread_from_market_data(new_data)
+            market_data = new_data
+        
+        # Update price history using optimized numpy arrays
+        self._update_price_history(market_data)
+        
+        # Calculate spreads
+        spreads = self._calculate_spread_from_market_data(market_data)
         
         if spreads:
-            volatility_metrics = self._calculate_volatility_metrics(spreads)
-            self._update_volatility_indicators(volatility_metrics)
+            # Update using optimized numpy-based volatility stats
+            main_spread = spreads.get('mexc_vs_gateio_futures', 0.0)
+            self.volatility_stats = self.volatility_stats.update_with_spread(main_spread)
+            
+            # Update legacy indicators for backward compatibility
+            self._update_legacy_indicators()
     
     def calculate_signal_confidence(self, indicators: Dict[str, float]) -> float:
         """
         Calculate confidence score specific to volatility harvesting strategy.
         
+        Legacy method maintained for backward compatibility. Uses optimized
+        numpy-based confidence calculation when possible.
+        
         Args:
-            indicators: Current indicator values
+            indicators: Current indicator values (optional, used for fallback)
             
         Returns:
             Confidence score between 0.0 and 1.0
         """
+        # Try to use optimized numpy-based calculation first
+        try:
+            # Check if we have sufficient data in volatility stats
+            valid_spreads = self.volatility_stats.spread_history[~np.isnan(self.volatility_stats.spread_history)]
+            if len(valid_spreads) >= self.min_history:
+                return self._calculate_signal_confidence_optimized()
+        except (AttributeError, IndexError):
+            pass  # Fall back to legacy calculation
+        
+        # Legacy calculation using indicators
         confidence = 0.5
         
         # Confidence based on volatility z-score
@@ -256,7 +516,10 @@ class VolatilityHarvestingStrategySignal(BaseStrategySignal):
     
     def _calculate_volatility_metrics(self, spreads: Dict[str, float]) -> Dict[str, float]:
         """
-        Calculate volatility-related metrics.
+        Calculate volatility-related metrics using optimized numpy-based stats.
+        
+        Legacy method maintained for backward compatibility. Internally uses the optimized
+        VolatilityStats structure for calculations.
         
         Args:
             spreads: Current spread values
@@ -265,88 +528,75 @@ class VolatilityHarvestingStrategySignal(BaseStrategySignal):
             Dictionary of volatility metrics
         """
         # Get main spread
-        main_spread = spreads.get('mexc_vs_gateio_futures', 0)
+        main_spread = spreads.get('mexc_vs_gateio_futures', 0.0)
         
-        # Update spread history
+        # Update volatility stats with optimized numpy operations
+        self.volatility_stats = self.volatility_stats.update_with_spread(main_spread)
+        
+        # Update legacy lists for backward compatibility
         self.spread_history.append(main_spread)
         if len(self.spread_history) > self.lookback_periods:
             self.spread_history.pop(0)
         
-        if len(self.spread_history) < self.volatility_window:
+        # Check if we have enough data
+        valid_spreads = self.volatility_stats.spread_history[~np.isnan(self.volatility_stats.spread_history)]
+        if len(valid_spreads) < self.volatility_window:
             return {}
         
-        # Calculate volatility
-        recent_spreads = self.spread_history[-self.volatility_window:]
-        volatility = np.std(recent_spreads)
-        mean_spread = np.mean(recent_spreads)
-        
-        # Update volatility history
-        self.volatility_history.append(volatility)
+        # Update legacy volatility history for compatibility
+        current_volatility = self.volatility_stats.current_volatility
+        self.volatility_history.append(current_volatility)
         if len(self.volatility_history) > self.lookback_periods:
             self.volatility_history.pop(0)
         
         if len(self.volatility_history) < self.min_history:
             return {}
         
-        # Calculate volatility z-score
-        vol_mean = np.mean(self.volatility_history)
-        vol_std = np.std(self.volatility_history)
-        vol_z_score = (volatility - vol_mean) / (vol_std + 1e-8)
-        
-        # Calculate mean reversion signal
-        current_deviation = main_spread - mean_spread
-        mean_reversion_strength = abs(current_deviation) / (volatility + 1e-8)
-        mean_reversion_direction = -np.sign(current_deviation)  # Revert to mean
-        
-        # Calculate momentum
-        if len(recent_spreads) >= 5:
-            momentum = (recent_spreads[-1] - recent_spreads[-5]) / (volatility + 1e-8)
-        else:
-            momentum = 0
-        
+        # Return metrics from optimized VolatilityStats
         return {
-            'current_volatility': volatility,
-            'volatility_z_score': vol_z_score,
-            'mean_reversion_strength': mean_reversion_strength,
-            'mean_reversion_direction': mean_reversion_direction,
-            'spread_momentum': momentum,
-            'spread_deviation': current_deviation
+            'current_volatility': self.volatility_stats.current_volatility,
+            'volatility_z_score': self.volatility_stats.volatility_z_score,
+            'mean_reversion_strength': self.volatility_stats.mean_reversion_strength,
+            'mean_reversion_direction': self.volatility_stats.mean_reversion_direction,
+            'spread_momentum': self.volatility_stats.spread_momentum,
+            'spread_deviation': self.volatility_stats.spread_deviation
         }
     
     def _update_volatility_indicators(self, volatility_metrics: Dict[str, float]) -> None:
         """
         Update volatility indicator storage.
         
+        Legacy method maintained for backward compatibility. Delegates to the optimized
+        _update_legacy_indicators method.
+        
         Args:
             volatility_metrics: New volatility metrics
         """
-        self.volatility_indicators.update(volatility_metrics)
+        # Use optimized legacy indicator update
+        self._update_legacy_indicators()
+        
+        # Override with any additional metrics if provided
+        if volatility_metrics:
+            self.volatility_indicators.update(volatility_metrics)
     
     def _generate_volatility_signal_logic(self, volatility_metrics: Dict[str, float],
                                         vol_thresh: float, mean_rev_thresh: float) -> Signal:
         """
         Core signal generation logic for volatility harvesting.
         
+        Legacy method maintained for backward compatibility. Delegates to the optimized
+        numpy-based signal generation logic.
+        
         Args:
-            volatility_metrics: Current volatility metrics
+            volatility_metrics: Current volatility metrics (used for compatibility)
             vol_thresh: Volatility threshold
             mean_rev_thresh: Mean reversion threshold
             
         Returns:
             Generated signal
         """
-        vol_z_score = volatility_metrics.get('volatility_z_score', 0)
-        mean_rev_strength = volatility_metrics.get('mean_reversion_strength', 0)
-        
-        # Entry: High volatility + strong mean reversion signal
-        if vol_z_score > vol_thresh and mean_rev_strength > mean_rev_thresh:
-            return Signal.ENTER
-        
-        # Exit: Volatility subsides
-        if vol_z_score < vol_thresh * 0.5:
-            return Signal.EXIT
-        
-        return Signal.HOLD
+        # Use optimized signal generation with numpy-based stats
+        return self._generate_volatility_signal_logic_optimized(vol_thresh, mean_rev_thresh)
     
     def _calculate_volatility_indicators_vectorized(self, df: pd.DataFrame) -> pd.DataFrame:
         """
@@ -442,10 +692,15 @@ class VolatilityHarvestingStrategySignal(BaseStrategySignal):
         """
         entry_prices = {}
         
-        # Calculate spreads and volatility to determine direction
+        # Calculate spreads and determine direction using optimized stats
         spreads = self._calculate_spread_from_market_data(market_data)
-        volatility_metrics = self._calculate_volatility_metrics(spreads)
-        mean_reversion_signal = volatility_metrics.get('mean_reversion_direction', 0)
+        if spreads:
+            # Update volatility stats to get current direction signal
+            main_spread = spreads.get('mexc_vs_gateio_futures', 0.0)
+            self.volatility_stats = self.volatility_stats.update_with_spread(main_spread)
+            mean_reversion_signal = self.volatility_stats.mean_reversion_direction
+        else:
+            mean_reversion_signal = 0
         
         # Extract prices
         mexc_bid = market_data.get('mexc_bid', market_data.get('MEXC_SPOT_bid_price', 0))
@@ -486,11 +741,15 @@ class VolatilityHarvestingStrategySignal(BaseStrategySignal):
         # Get position direction from current position or calculate it
         position_direction = getattr(self, '_current_position_direction', None)
         if position_direction is None:
-            # Calculate direction like entry would
+            # Calculate direction using optimized stats
             spreads = self._calculate_spread_from_market_data(market_data)
-            volatility_metrics = self._calculate_volatility_metrics(spreads)
-            mean_reversion_signal = volatility_metrics.get('mean_reversion_direction', 0)
-            position_direction = 'LONG' if mean_reversion_signal > 0 else 'SHORT'
+            if spreads:
+                main_spread = spreads.get('mexc_vs_gateio_futures', 0.0)
+                self.volatility_stats = self.volatility_stats.update_with_spread(main_spread)
+                mean_reversion_signal = self.volatility_stats.mean_reversion_direction
+                position_direction = 'LONG' if mean_reversion_signal > 0 else 'SHORT'
+            else:
+                position_direction = 'LONG'  # Default direction
         
         # Extract prices
         mexc_bid = market_data.get('mexc_bid', market_data.get('MEXC_SPOT_bid_price', 0))

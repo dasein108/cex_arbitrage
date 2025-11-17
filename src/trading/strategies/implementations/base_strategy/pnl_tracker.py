@@ -184,6 +184,11 @@ class PositionChange(Struct):
         return self.qty_after > self.qty_before + 1e-8 or self.qty_after < self.qty_before - 1e-8
 
     @property
+    def delta_qty(self) -> float:
+        """Calculate change in quantity."""
+        return self.qty_after - self.qty_before
+
+    @property
     def has_pnl(self) -> bool:
         """Check if this position change includes PNL calculation."""
         return abs(self.realized_pnl) > 1e-8

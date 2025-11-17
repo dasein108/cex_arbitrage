@@ -941,6 +941,7 @@ class SpotFuturesArbitrageTask(BaseStrategyTask[SpotFuturesArbitrageTaskContext]
             self.logger.error(f"🚫 Insufficient balance to place order {tag_str} "
                               f"| pos: {pos}, order: {quantity} @ {price}  adjust position amount",
                               error=str(ife))
+
             return None
         except Exception as e:
             self.logger.error(f"🚫 Failed to place order {tag_str}", error=str(e))

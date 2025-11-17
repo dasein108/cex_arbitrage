@@ -145,8 +145,8 @@ class PositionData(Struct):
 
     def is_fulfilled(self, min_base_amount: float) -> bool:
         """Check if position has reached its target quantity."""
-        delta = self.qty - self.target_qty
-        return delta <= 0 or delta > min_base_amount and self.target_qty > 1e-8
+        delta = self.target_qty -  self.qty
+        return delta < min_base_amount and self.target_qty > 1e-8
 
     def get_remaining_qty(self, min_base_amount: float) -> float:
         """Calculate remaining quantity to reach target."""

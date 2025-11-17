@@ -75,7 +75,7 @@ class BasePrivateComposite(BalanceSyncMixin,
         websocket_client.bind(PrivateWebsocketChannelType.BALANCE, self._balance_handler)
         websocket_client.bind(PrivateWebsocketChannelType.ORDER, self._order_handler)
         websocket_client.bind(PrivateWebsocketChannelType.EXECUTION, self._execution_handler)
-
+        websocket_client.connection_loss = self.force_reload_on_ws_error
         # Private data state (HFT COMPLIANT - no caching of real-time data)
         self._balances: Dict[AssetName, AssetBalance] = {}
         self._assets_info: Dict[AssetName, AssetInfo] = {}
@@ -95,6 +95,8 @@ class BasePrivateComposite(BalanceSyncMixin,
     # ========================================
     # Type-Safe Channel Publishing (Phase 1)
     # ========================================
+    async def force_reload_on_ws_error(self):
+        await self.refresh_exchange_data()
 
     def publish(self, channel: PrivateWebsocketChannelType, data: Any) -> None:
         """
@@ -319,13 +321,14 @@ class BasePrivateComposite(BalanceSyncMixin,
             self.remove_order(order_id)
             return None
 
-    async def fetch_order_from_trades(self, symbol: Symbol, order_id: OrderId) -> Order | None:
+    async def fetch_order_from_trades(self, symbol: Symbol, order_id: OrderId, force = True) -> Order | None:
         """
         Get current status of an order.
 
         Args:
             symbol: Trading symbol
             order_id: Exchange order ID
+            force: If True, force fetch even(NEW/UNFILLED/CANCELED order) if no trades found
 
         Returns:
             Order object with current status
@@ -341,8 +344,11 @@ class BasePrivateComposite(BalanceSyncMixin,
                 return await self._update_order(order, order_id)
 
             if not trades:
-                self.logger.warning("No trades found for order", order_id=order_id)
-                self.remove_order(order_id)
+                if force:
+                    order = await self.fetch_order(symbol, order_id)
+                    if not order:
+                        self.logger.warning("No trades found for order", order_id=order_id)
+                        self.remove_order(order_id)
 
             return None
         except OrderNotFoundError as e:
@@ -414,7 +420,9 @@ class BasePrivateComposite(BalanceSyncMixin,
                 for o in orders:
                     # Mexc prices from orders is incorrect, need to fetch from trades
                     if self.config.exchange_enum == ExchangeEnum.MEXC:
-                        o = await self.fetch_order_from_trades(o.symbol, o.order_id)
+                        o_from_trades = await self.fetch_order_from_trades(o.symbol, o.order_id, False)
+                        if o_from_trades:
+                            o = o_from_trades
 
                     # if it was opened before reconnect, remove from forced reload list
                     if o.order_id in prev_open_orders:
@@ -543,7 +551,7 @@ class BasePrivateComposite(BalanceSyncMixin,
         """
         # Step 1: Check local cache first
         if asset in self._balances and not force:
-            return self._balances[asset]
+            return self._balances.get(asset, AssetBalance(asset=asset, available=0.0, locked=0.0))
 
         # Step 2: Fallback to REST API
         try:

@@ -9,7 +9,7 @@ comprehensive cost accounting, and enhanced performance metrics for accurate
 backtesting and live trading scenarios.
 """
 
-from typing import Dict, Optional, List, Tuple
+from typing import Dict, Optional, List, Tuple, Literal, Union
 import pandas as pd
 from datetime import datetime, timedelta, UTC
 
@@ -42,13 +42,70 @@ class InventorySignalType(Struct):
     side: Side
     is_market: bool
 
+type ArbitrageSignalType = Literal['both_market', 'limit_mexc', 'limit_gateio']
+type InventorySpreadDirectionType = Literal['mexc_to_gateio', 'gateio_to_mexc']
+
+class InventoryExecutionOpportunity(Struct):
+    exchange: ExchangeEnum
+    side: Side
+    is_market: bool
+    spread_bps: float
+    pair: InventorySpreadDirectionType
+
 
 class InventorySpreadStats(Struct):
     min_spread_bps: float
     max_spread_bps: float
     avg_spread_bps: float
     spread_stddev_bps: float
-    spread_history: List[float]
+    spread_history: np.ndarray
+    
+    @classmethod
+    def create_empty(cls, max_history_length: int = 100) -> 'InventorySpreadStats':
+        """Create an empty stats object with pre-allocated numpy array."""
+        return cls(
+            min_spread_bps=float('inf'),
+            max_spread_bps=float('-inf'),
+            avg_spread_bps=0.0,
+            spread_stddev_bps=0.0,
+            spread_history=np.full(max_history_length, np.nan, dtype=np.float64)
+        )
+    
+    def update_with_spread(self, spread_bps: float) -> 'InventorySpreadStats':
+        """Update stats with new spread value using circular buffer."""
+        # Copy history array for immutable update
+        history = self.spread_history.copy()
+        
+        # Find first NaN slot or use circular buffer
+        nan_indices = np.where(np.isnan(history))[0]
+        if len(nan_indices) > 0:
+            # Fill first available NaN slot
+            history[nan_indices[0]] = spread_bps
+        else:
+            # Array is full, shift left and add new value (circular buffer)
+            history[:-1] = history[1:]
+            history[-1] = spread_bps
+        
+        # Calculate statistics using numpy for performance
+        valid_spreads = history[~np.isnan(history)]
+        if len(valid_spreads) > 0:
+            min_spread = float(np.min(valid_spreads))
+            max_spread = float(np.max(valid_spreads))
+            avg_spread = float(np.mean(valid_spreads))
+            std_spread = float(np.std(valid_spreads)) if len(valid_spreads) > 1 else 0.0
+        else:
+            min_spread = spread_bps
+            max_spread = spread_bps
+            avg_spread = spread_bps
+            std_spread = 0.0
+            
+        return InventorySpreadStats(
+            min_spread_bps=min_spread,
+            max_spread_bps=max_spread,
+            avg_spread_bps=avg_spread,
+            spread_stddev_bps=std_spread,
+            spread_history=history
+        )
 
 type InventorySignalPairType = Dict[ExchangeEnum,InventorySignalType]  # (side, is_market_order)
 
@@ -104,14 +161,31 @@ class InventorySpotStrategySignal(StrategySignal):
 
         self.col_mexc_balance = get_column_key(ExchangeEnum.MEXC, 'balance')
         self.col_gateio_balance = get_column_key(ExchangeEnum.GATEIO, 'balance')
-        self.stats: Dict[str, Dict[str,float]] = {}
-
-        self.price_history = {
-            self.col_mexc_bid: [],
-            self.col_mexc_ask: [],
-            self.col_gateio_bid: [],
-            self.col_gateio_ask: []
+        
+        # Initialize stats with proper typing and numpy arrays
+        self.stats: Dict[ArbitrageSignalType, Dict[InventorySpreadDirectionType, InventorySpreadStats]] = {
+            'both_market': {
+                'mexc_to_gateio': InventorySpreadStats.create_empty(max_history_length),
+                'gateio_to_mexc': InventorySpreadStats.create_empty(max_history_length)
+            },
+            'limit_mexc': {
+                'mexc_to_gateio': InventorySpreadStats.create_empty(max_history_length),
+                'gateio_to_mexc': InventorySpreadStats.create_empty(max_history_length)
+            },
+            'limit_gateio': {
+                'mexc_to_gateio': InventorySpreadStats.create_empty(max_history_length),
+                'gateio_to_mexc': InventorySpreadStats.create_empty(max_history_length)
+            }
         }
+        
+        # Initialize price history with numpy arrays for better performance
+        self.price_history = {
+            self.col_mexc_bid: np.full(max_history_length, np.nan, dtype=np.float64),
+            self.col_mexc_ask: np.full(max_history_length, np.nan, dtype=np.float64),
+            self.col_gateio_bid: np.full(max_history_length, np.nan, dtype=np.float64),
+            self.col_gateio_ask: np.full(max_history_length, np.nan, dtype=np.float64)
+        }
+        self._history_index = 0
 
         self.position: Optional[PositionEntry] = PositionEntry(entry_time=datetime.now(UTC))
         self.historical_positions: List[PositionEntry] = []
@@ -126,23 +200,37 @@ class InventorySpotStrategySignal(StrategySignal):
         self._get_live_signal_calls = 0
 
     def _update_price_history(self, book_tickers: Dict[ExchangeEnum, BookTicker]) -> None:
-        """Update price history for volatility calculation."""
+        """Update price history for volatility calculation using numpy arrays."""
 
         now = datetime.now(UTC)
-        if self._last_update_time + self._update_interval < now:
+        if self._last_update_time + self._update_interval > now:
             return
 
         self._last_update_time = now
 
         mexc_book = book_tickers.get(ExchangeEnum.MEXC)
         gateio_book = book_tickers.get(ExchangeEnum.GATEIO)
-        for key, value in [
-            (self.col_mexc_bid, mexc_book.bid_price), (self.col_mexc_ask, mexc_book.ask_price),
-            (self.col_gateio_bid, gateio_book.bid_price), (self.col_gateio_ask, gateio_book.ask_price)
-        ]:
-            self.price_history[key].append(value)
-            if len(self.price_history[key]) > self._max_history_length:
-                self.price_history[key].pop(0)
+        
+        if mexc_book and gateio_book:
+            # Update price history using circular buffer with numpy
+            values = [
+                (self.col_mexc_bid, mexc_book.bid_price),
+                (self.col_mexc_ask, mexc_book.ask_price),
+                (self.col_gateio_bid, gateio_book.bid_price),
+                (self.col_gateio_ask, gateio_book.ask_price)
+            ]
+            
+            for key, value in values:
+                if self._history_index < self._max_history_length:
+                    self.price_history[key][self._history_index] = value
+                else:
+                    # Shift array and add new value (circular buffer)
+                    self.price_history[key][:-1] = self.price_history[key][1:]
+                    self.price_history[key][-1] = value
+            
+            # Update history index
+            if self._history_index < self._max_history_length - 1:
+                self._history_index += 1
 
 
     def _initialize_backtest(self, df: pd.DataFrame):
@@ -301,7 +389,9 @@ class InventorySpotStrategySignal(StrategySignal):
     def get_live_signal(self, mexc_buy: float, mexc_sell: float, gateio_buy: float, gateio_sell: float)-> Tuple[InventorySignalEnum, Dict[str, float]]:
         mexc_to_gateio_spread_bps = ((mexc_sell - gateio_buy) / gateio_buy * 10000)
         gateio_to_mexc_spread_bps = ((gateio_sell - mexc_buy) / mexc_buy * 10000)
+
         spreads = {'mexc_to_gateio': mexc_to_gateio_spread_bps, 'gateio_to_mexc': gateio_to_mexc_spread_bps}
+
         if mexc_to_gateio_spread_bps > self.params['mexc_spread_threshold_bps']:
             return InventorySignalEnum.MEXC_TO_GATEIO, spreads  # SELL on MEXC (higher), BUY on Gate.io (lower)
         elif gateio_to_mexc_spread_bps > self.params['gateio_spread_threshold_bps']:
@@ -309,52 +399,191 @@ class InventorySpotStrategySignal(StrategySignal):
 
         return InventorySignalEnum.HOLD, spreads
 
-    def _merge_stats(self, category: str, new_stats: Dict[str, object]) -> None:
+    def _update_spread_stats(self, category: ArbitrageSignalType, new_stats: Dict[str, float]) -> None:
         """
-        Merge numeric stats into self.stats[category], keeping running min/max per metric.
-        Accepts values as numbers or dicts with 'min' and 'max'.
+        Update spread statistics using numpy arrays for optimal performance.
+        
+        Args:
+            category: The arbitrage signal type ('both_market', 'limit_mexc', 'limit_gateio')
+            new_stats: Dictionary with 'mexc_to_gateio' and 'gateio_to_mexc' spread values in BPS
         """
-        dest = self.stats.setdefault(category, {})
-        for key, val in new_stats.items():
-            # normalize incoming to (val_min, val_max)
-            if isinstance(val, dict) and 'min' in val and 'max' in val:
-                val_min, val_max = val['min'], val['max']
-            else:
-                val_min = val_max = val
+        if category not in self.stats:
+            return
+            
+        for direction_key, spread_bps in new_stats.items():
+            if direction_key in self.stats[category]:
+                # Update the spread stats with new value using numpy operations
+                current_stats = self.stats[category][direction_key]
+                updated_stats = current_stats.update_with_spread(spread_bps=spread_bps)
+                self.stats[category][direction_key] = updated_stats
 
-            existing = dest.get(key, {'min': float('inf'), 'max': float('-inf')})
-            dest[key] = {
-                'min': min(existing.get('min', float('inf')), val_min),
-                'max': max(existing.get('max', float('-inf')), val_max)
-            }
+    def get_spread_insights(self) -> Dict[str, Dict[str, Dict[str, float]]]:
+        """
+        Get comprehensive spread insights for analysis and optimization.
+        
+        Returns:
+            Dictionary with spread statistics for each strategy and direction
+        """
+        insights = {}
+        
+        for strategy_type, directions in self.stats.items():
+            insights[strategy_type] = {}
+            for direction, stats in directions.items():
+                # Only include strategies with valid data
+                if stats.min_spread_bps != float('inf'):
+                    # Calculate additional derived metrics
+                    valid_history = stats.spread_history[~np.isnan(stats.spread_history)]
+                    percentile_75 = float(np.percentile(valid_history, 75)) if len(valid_history) > 0 else 0.0
+                    percentile_25 = float(np.percentile(valid_history, 25)) if len(valid_history) > 0 else 0.0
+                    
+                    insights[strategy_type][direction] = {
+                        'min_spread_bps': stats.min_spread_bps,
+                        'max_spread_bps': stats.max_spread_bps,
+                        'avg_spread_bps': stats.avg_spread_bps,
+                        'stddev_spread_bps': stats.spread_stddev_bps,
+                        'percentile_25_bps': percentile_25,
+                        'percentile_75_bps': percentile_75,
+                        'sample_count': len(valid_history),
+                        'coefficient_of_variation': stats.spread_stddev_bps / stats.avg_spread_bps if stats.avg_spread_bps != 0 else 0.0
+                    }
+        
+        return insights
 
     # python
-    def get_live_signal_book_ticker(self, book_tickers: Dict[ExchangeEnum, BookTicker]) -> InventorySignalPairType:
+    def get_live_signal_book_ticker(self, book_tickers: Dict[ExchangeEnum, BookTicker], threshold: float) -> List[InventoryExecutionOpportunity]:
+        # Update price history first
+        self._update_price_history(book_tickers)
+        
         mexc_bid = book_tickers[ExchangeEnum.MEXC].bid_price
         mexc_ask = book_tickers[ExchangeEnum.MEXC].ask_price
         gateio_bid = book_tickers[ExchangeEnum.GATEIO].bid_price
         gateio_ask = book_tickers[ExchangeEnum.GATEIO].ask_price
 
+        results: List[InventoryExecutionOpportunity] = []
         # candidate signals for 3 scenarios
         market_signal, market_stats = self.get_live_signal(mexc_sell=mexc_bid, mexc_buy=mexc_ask,
                                              gateio_buy=gateio_ask, gateio_sell=gateio_bid)
+
+
+        if market_stats['mexc_to_gateio'] > threshold:
+            results.append(InventoryExecutionOpportunity(
+                exchange=ExchangeEnum.MEXC,
+                side=Side.SELL,
+                is_market=True,
+                spread_bps=market_stats['mexc_to_gateio'],
+                pair='mexc_to_gateio',
+
+            ))
+            results.append(InventoryExecutionOpportunity(
+                exchange=ExchangeEnum.GATEIO,
+                side=Side.BUY,
+                is_market=True,
+                spread_bps=market_stats['mexc_to_gateio'],
+                pair='mexc_to_gateio'
+            ))
+        elif market_stats['gateio_to_mexc'] > threshold:
+            results.append(InventoryExecutionOpportunity(
+                exchange=ExchangeEnum.GATEIO,
+                side=Side.SELL,
+                is_market=True,
+                spread_bps=market_stats['gateio_to_mexc'],
+                pair='gateio_to_mexc'
+            ))
+            results.append(InventoryExecutionOpportunity(
+                exchange=ExchangeEnum.MEXC,
+                side=Side.BUY,
+                is_market=True,
+                spread_bps=market_stats['gateio_to_mexc'],
+                pair='gateio_to_mexc'
+            ))
+
         limit_mexc_signal, limit_mexc_stats = self.get_live_signal(mexc_sell=mexc_ask, mexc_buy=mexc_bid,
                                                  gateio_buy=gateio_ask, gateio_sell=gateio_bid)
+        if limit_mexc_stats['mexc_to_gateio'] > threshold:
+            results.append(InventoryExecutionOpportunity(
+                exchange=ExchangeEnum.MEXC,
+                side=Side.SELL,
+                is_market=False,
+                spread_bps=limit_mexc_stats['mexc_to_gateio'],
+                pair='mexc_to_gateio'
+            ))
+            results.append(InventoryExecutionOpportunity(
+                exchange=ExchangeEnum.GATEIO,
+                side=Side.BUY,
+                is_market=True,
+                spread_bps=limit_mexc_stats['mexc_to_gateio'],
+                pair='mexc_to_gateio'
+            ))
+        elif limit_mexc_stats['gateio_to_mexc'] > threshold:
+            results.append(InventoryExecutionOpportunity(
+                exchange=ExchangeEnum.GATEIO,
+                side=Side.SELL,
+                is_market=True,
+                spread_bps=limit_mexc_stats['gateio_to_mexc'],
+                pair='gateio_to_mexc'
+            ))
+            results.append(InventoryExecutionOpportunity(
+                exchange=ExchangeEnum.MEXC,
+                side=Side.BUY,
+                is_market=False,
+                spread_bps=limit_mexc_stats['gateio_to_mexc'],
+                pair='gateio_to_mexc'
+            ))
         limit_gateio_signal, limit_gateio_stats = self.get_live_signal(mexc_sell=mexc_bid, mexc_buy=mexc_ask,
                                                    gateio_buy=gateio_bid, gateio_sell=gateio_ask)
+        if limit_gateio_stats['mexc_to_gateio'] > threshold:
+            results.append(InventoryExecutionOpportunity(
+                exchange=ExchangeEnum.MEXC,
+                side=Side.SELL,
+                is_market=True,
+                spread_bps=limit_gateio_stats['mexc_to_gateio'],
+                pair='mexc_to_gateio'
+            ))
+            results.append(InventoryExecutionOpportunity(
+                exchange=ExchangeEnum.GATEIO,
+                side=Side.BUY,
+                is_market=False,
+                spread_bps=limit_gateio_stats['mexc_to_gateio'],
+                pair='mexc_to_gateio'
+            ))
+        elif limit_gateio_stats['gateio_to_mexc'] > threshold:
+            results.append(InventoryExecutionOpportunity(
+                exchange=ExchangeEnum.GATEIO,
+                side=Side.SELL,
+                is_market=False,
+                spread_bps=limit_gateio_stats['gateio_to_mexc'],
+                pair='gateio_to_mexc'
+            ))
+            results.append(InventoryExecutionOpportunity(
+                exchange=ExchangeEnum.MEXC,
+                side=Side.BUY,
+                is_market=True,
+                spread_bps=limit_gateio_stats['gateio_to_mexc'],
+                pair='gateio_to_mexc'
+            ))
 
-        self._merge_stats('market', market_stats)
-        self._merge_stats('limit_mexc', limit_mexc_stats)
-        self._merge_stats('limit_gateio', limit_gateio_stats)
+        # Update spread statistics using the new numpy-optimized method
+        self._update_spread_stats('both_market', market_stats)
+        self._update_spread_stats('limit_mexc', limit_mexc_stats)
+        self._update_spread_stats('limit_gateio', limit_gateio_stats)
 
         if self._get_live_signal_calls % 3000 == 0:
-            info = f"\n{'name':<14} | {'mexc_to_gateio_max':<20} | {'mexc_to_gateio_min':<20} | {'gateio_to_mexc_max':<20} | {'gateio_to_mexc_min':<20}"
-            for s, item in self.stats.items():
-                info += f"\n{s:<14} | {round(item['mexc_to_gateio']['min']):<20} | {round(item['mexc_to_gateio']['max']):<20} | {round(item['gateio_to_mexc']['min']):<20} | {round(item['gateio_to_mexc']['max']):<20}"
+            # Log spread statistics with enhanced info including mean and std dev
+            info = f"\n{'Strategy':<14} | {'Direction':<16} | {'Min':<8} | {'Max':<8} | {'Mean':<8} | {'StdDev':<8}"
+            info += f"\n{'-'*80}"
+            
+            for strategy_type, directions in self.stats.items():
+                for direction, stats in directions.items():
+                    # Only show stats if we have valid data (not infinity)
+                    if stats.min_spread_bps != float('inf'):
+                        info += f"\n{strategy_type:<14} | {direction:<16} | "
+                        info += f"{stats.min_spread_bps:<8.1f} | {stats.max_spread_bps:<8.1f} | "
+                        info += f"{stats.avg_spread_bps:<8.1f} | {stats.spread_stddev_bps:<8.1f}"
 
             self.logger.info(info)
 
         self._get_live_signal_calls += 1
+        return results
 
         # mappings from InventorySignalEnum -> InventorySignalType for each scenario
         market_mapping = {

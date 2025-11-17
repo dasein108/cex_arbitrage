@@ -12,6 +12,7 @@ from infrastructure.exceptions.exchange import OrderNotFoundError, InsufficientB
 from infrastructure.logging import HFTLoggerInterface, get_logger
 from utils.exchange_utils import is_order_filled
 from .base_strategy import BaseStrategyContext, BaseStrategyTask
+from .pnl_tracker import PositionChange
 from .position_data import PositionData
 from .exchange_position import PositionError
 from infrastructure.networking.websocket.structs import PublicWebsocketChannelType, PrivateWebsocketChannelType
@@ -209,7 +210,8 @@ class BaseMultiSpotFuturesArbitrageTask(BaseStrategyTask[T], Generic[T]):
                 position_data=pos,
                 exchange=self._spot_ex[i],
                 logger=self.logger,
-                save_context=lambda pd: self.save_context(index=i, position_data=pd, is_hedge=False)
+                save_context=lambda pd: self.save_context(index=i, position_data=pd, is_hedge=False),
+                on_order_filled_callback=self._on_order_filled_callback
             )
             self._spot_managers.append(manager)
 
@@ -252,6 +254,9 @@ class BaseMultiSpotFuturesArbitrageTask(BaseStrategyTask[T], Generic[T]):
         if cancel_tasks:
             canceled = await asyncio.gather(*cancel_tasks, return_exceptions=True)
             self.logger.info(f"🛑 Canceled all orders", orders=str(canceled))
+
+    async def _on_order_filled_callback(self, order: Order, change: PositionChange):
+        pass
 
     async def _sync_positions(self):
         """Sync order status from exchanges in parallel."""

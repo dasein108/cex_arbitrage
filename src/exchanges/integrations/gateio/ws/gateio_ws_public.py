@@ -44,7 +44,7 @@ from exchanges.integrations.gateio.ws.gateio_ws_common import GateioBaseWebsocke
 _SPOT_PUBLIC_CHANNEL_MAPPING = {
     WebsocketChannelType.BOOK_TICKER: "spot.book_ticker",
     WebsocketChannelType.ORDERBOOK: "spot.order_book",
-    WebsocketChannelType.EXECUTION: "spot.trades",
+    WebsocketChannelType.PUB_TRADE: "spot.trades",
     WebsocketChannelType.HEARTBEAT: "spot.ping",
 }
 

@@ -51,6 +51,10 @@ class ArbitrageOpportunityScore:
     volatility_ratio: float                  # Relative price volatility
     liquidity_depth_score: float            # Market depth availability
     
+    # Volume and Volatility Metrics
+    avg_volume_per_min: float               # Average trading volume per minute
+    price_volatility_bps: float             # Price volatility in basis points
+    
     # Execution Factors
     avg_execution_time_ms: float             # Expected execution latency
     slippage_impact_bps: float              # Expected slippage cost
@@ -213,6 +217,10 @@ class SpotArbitrageCandidateFinder:
             liquidity_depth_score = self._calculate_liquidity_score(df, mexc_bid_col, mexc_ask_col, 
                                                                    gateio_bid_col, gateio_ask_col)
             
+            # Volume and volatility metrics
+            avg_volume_per_min = self._calculate_avg_volume_per_min(df, mexc_bid_col, mexc_ask_col, gateio_bid_col, gateio_ask_col)
+            price_volatility_bps = self._calculate_price_volatility_bps(df, mexc_bid_col, gateio_bid_col)
+            
             # Execution metrics
             avg_execution_time_ms = 250.0  # Estimated based on system performance
             slippage_impact_bps = self._estimate_slippage_impact(df, symbol)
@@ -226,6 +234,8 @@ class SpotArbitrageCandidateFinder:
                 price_correlation=price_correlation,
                 volatility_ratio=volatility_ratio,
                 liquidity_depth_score=liquidity_depth_score,
+                avg_volume_per_min=avg_volume_per_min,
+                price_volatility_bps=price_volatility_bps,
                 avg_execution_time_ms=avg_execution_time_ms,
                 slippage_impact_bps=slippage_impact_bps,
                 transfer_viability_score=transfer_viability_score,
@@ -303,6 +313,49 @@ class SpotArbitrageCandidateFinder:
             
         except Exception:
             return 0.5
+    
+    def _calculate_avg_volume_per_min(self, df: pd.DataFrame, mexc_bid_col: str, mexc_ask_col: str, 
+                                     gateio_bid_col: str, gateio_ask_col: str) -> float:
+        """Calculate average trading volume per minute."""
+        try:
+            # Try to get volume columns first
+            mexc_vol_col = mexc_bid_col.replace('bid_price', 'bid_qty')
+            gateio_vol_col = gateio_bid_col.replace('bid_price', 'bid_qty')
+            
+            if mexc_vol_col in df.columns and gateio_vol_col in df.columns:
+                # Calculate average volume from bid quantities
+                mexc_vol = df[mexc_vol_col].fillna(0)
+                gateio_vol = df[gateio_vol_col].fillna(0)
+                avg_volume = (mexc_vol.mean() + gateio_vol.mean()) / 2
+                return float(avg_volume)
+            else:
+                # Fallback: estimate volume from price movements
+                mexc_price_changes = df[mexc_bid_col].diff().abs().mean()
+                gateio_price_changes = df[gateio_bid_col].diff().abs().mean()
+                # Simple heuristic: more price movement suggests more volume
+                estimated_volume = (mexc_price_changes + gateio_price_changes) * 1000
+                return float(estimated_volume)
+                
+        except Exception:
+            return 0.0  # Default if calculation fails
+    
+    def _calculate_price_volatility_bps(self, df: pd.DataFrame, col1: str, col2: str) -> float:
+        """Calculate average price volatility in basis points."""
+        try:
+            # Calculate returns for both exchanges
+            returns1 = df[col1].pct_change().dropna()
+            returns2 = df[col2].pct_change().dropna()
+            
+            # Calculate volatility (standard deviation of returns)
+            vol1 = returns1.std() * 10000  # Convert to basis points
+            vol2 = returns2.std() * 10000
+            
+            # Return average volatility
+            avg_volatility = (vol1 + vol2) / 2
+            return float(avg_volatility)
+            
+        except Exception:
+            return 0.0  # Default if calculation fails
     
     def _estimate_slippage_impact(self, df: pd.DataFrame, symbol: Symbol) -> float:
         """Estimate slippage impact based on historical data."""
@@ -415,6 +468,8 @@ class SpotArbitrageCandidateFinder:
                 'volatility_ratio': candidate.opportunity_score.volatility_ratio,
                 'liquidity_depth_score': candidate.opportunity_score.liquidity_depth_score,
                 'estimated_slippage_bps': candidate.opportunity_score.slippage_impact_bps,
+                'avg_volume_per_min': candidate.opportunity_score.avg_volume_per_min,
+                'price_volatility_bps': candidate.opportunity_score.price_volatility_bps,
                 'analysis_period_hours': candidate.analysis_period_hours,
                 'last_updated': candidate.last_updated.isoformat() if candidate.last_updated else None
             }
@@ -444,8 +499,8 @@ class SpotArbitrageCandidateFinder:
         
         if candidates:
             print(f"\n🏆 Top 10 Arbitrage Candidates:")
-            print(f"{'Rank':<4} {'Symbol':<12} {'Score':<8} {'Avg Spread':<12} {'Frequency':<10} {'Correlation':<12} {'Transfer':<20}")
-            print("-" * 70)
+            print(f"{'Rank':<4} {'Symbol':<12} {'Score':<8} {'Avg Spread':<12} {'Frequency':<10} {'Vol/Min':<10} {'Volatility':<12} {'Correlation':<12} {'Transfer':<20}")
+            print("-" * 95)
             
             for i, candidate in enumerate(candidates[:10], 1):
                 transferable = False
@@ -457,6 +512,7 @@ class SpotArbitrageCandidateFinder:
                 score = candidate.opportunity_score
                 print(f"{i:<4} {str(candidate.symbol):<12} {score.final_score:<8.2f} "
                       f"{score.avg_spread_bps:<12.1f} {score.opportunity_frequency:<10.2f} "
+                      f"{score.avg_volume_per_min:<10.1f} {score.price_volatility_bps:<12.1f} "
                       f"{score.price_correlation:<12.3f} {transfer_info:<20}")
             
             # Best candidate details
@@ -465,6 +521,8 @@ class SpotArbitrageCandidateFinder:
             print(f"   Final Score: {best.opportunity_score.final_score:.2f}")
             print(f"   Average Spread: {best.opportunity_score.avg_spread_bps:.1f} bps")
             print(f"   Opportunities/Hour: {best.opportunity_score.opportunity_frequency:.2f}")
+            print(f"   Volume/Min: {best.opportunity_score.avg_volume_per_min:.1f}")
+            print(f"   Price Volatility: {best.opportunity_score.price_volatility_bps:.1f} bps")
             print(f"   Price Correlation: {best.opportunity_score.price_correlation:.3f}")
             print(f"   Liquidity Score: {best.opportunity_score.liquidity_depth_score:.3f}")
         else:

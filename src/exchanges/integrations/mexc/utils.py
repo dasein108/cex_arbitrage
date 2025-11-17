@@ -20,7 +20,7 @@ from exchanges.structs.common import (
 from exchanges.structs.types import OrderId, AssetName
 from exchanges.structs.enums import WithdrawalStatus, DepositStatus, KlineInterval
 from exchanges.integrations.mexc.services.symbol_mapper import MexcSymbol
-
+from datetime import datetime, UTC
 # MEXC -> Unified mappings (these could be module-level constants)
 _MEXC_ORDER_STATUS_MAP = {
     'new': OrderStatus.NEW,
@@ -229,7 +229,7 @@ def rest_to_order(mexc_order_data: MexcOrderResponse) -> Order:
         filled_quantity=filled_quantity,
         order_id=OrderId(str(mexc_order_data.orderId)),
         status=to_order_status(mexc_order_data.status),
-        timestamp=int(mexc_order_data.transactTime),
+        timestamp=int(mexc_order_data.transactTime or datetime.now(tz=UTC).timestamp() * 1000),
         fee=fee,
         client_order_id=mexc_order_data.clientOrderId,
         exchange=ExchangeEnum.MEXC

@@ -360,7 +360,7 @@ if __name__ == "__main__":
                                       candles_timeframe=KlineInterval.MINUTE_1,
                                       snapshot_seconds=60)
 
-        asset_name = 'FLK'
+        asset_name = 'ASP'
         symbol = Symbol(base=AssetName(asset_name), quote=AssetName('USDT'))
         
         # Choose mode: 'optimize' or 'backtest'
@@ -409,7 +409,7 @@ if __name__ == "__main__":
         else:
             print("🚀 Running regular backtesting...")
             await backtester.run_backtest(symbol=symbol,
-                                          data_source='candles_book_ticker',
+                                          data_source='snapshot_book_ticker',
                                           # cross_exchange_parity, inventory_spot, spike_catching
                                           strategy_type = "inventory_spot",
                                           hours=24)

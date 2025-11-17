@@ -8,10 +8,10 @@ Each PositionManager handles exactly one position on one exchange.
 """
 
 import asyncio
-from typing import Optional, Callable
+from typing import Optional, Callable, Awaitable
 
 from exchanges.dual_exchange import DualExchange
-from exchanges.structs import Order, Symbol, SymbolInfo, Fees, AssetName
+from exchanges.structs import Order, SymbolInfo, Fees, AssetName, AssetBalance
 from exchanges.structs.common import Side
 from infrastructure.exceptions.exchange import OrderNotFoundError, InsufficientBalanceError
 from infrastructure.logging import HFTLoggerInterface
@@ -32,17 +32,19 @@ class PositionManager:
     def __init__(self,
                  position_data: PositionData,
                  exchange: DualExchange,
-                 logger: HFTLoggerInterface, 
-                 save_context: Optional[Callable[[PositionData], None]] = None):
+                 logger: HFTLoggerInterface,
+                 save_context: Optional[Callable[[PositionData], None]] = None,
+                 on_order_filled_callback: Optional[Callable[[Order, PositionChange], Awaitable[None]]] = None):
         self._position = position_data
         self._exchange = exchange
         self._logger = logger
         self._save_context = save_context
-        
+
         # Exchange-specific data
         self._symbol_info: Optional[SymbolInfo] = None
         self._fees: Optional[Fees] = None
         self._last_order: Optional[Order] = None
+        self._on_order_filled_callback = on_order_filled_callback
 
     @property
     def symbol(self):
@@ -62,8 +64,6 @@ class PositionManager:
     def exchange(self) -> DualExchange:
         """Get the exchange."""
         return self._exchange
-
-
 
     @property
     def tag(self) -> str:
@@ -91,30 +91,35 @@ class PositionManager:
     def balance_usdt(self):
         return self._exchange.private.balances[AssetName('USDT')].available
 
+    @property
+    def balance_base(self):
+        return self._exchange.private.balances.get(self.symbol.base,
+                                                   AssetBalance(self.symbol.base, 0, 0)).available
+
     async def initialize(self, target_qty: float = 0.0) -> bool:
         """Initialize position with exchange data."""
         try:
             if not self.symbol:
                 raise ValueError("Symbol not set for position")
-            
+
             # Load symbol info and fees
             symbols_info = await self._exchange.public.load_symbols_info()
             self._symbol_info = symbols_info.get(self.symbol)
             self._fees = self._exchange.private.get_fees(self.symbol)
-            
+
             # Set target quantity
             self._position.target_qty = target_qty
-            
+
             # Initialize position state from exchange
             await asyncio.gather(
                 self.load_position_from_exchange(),
                 self._force_book_ticker_refresh(),
                 self._force_last_order_refresh()
             )
-            
+
             self._logger.info(f"✅ {self.tag} Position initialized")
             return True
-            
+
         except Exception as e:
             self._logger.error(f"❌ {self.tag} Failed to initialize position: {e}")
             return False
@@ -129,7 +134,7 @@ class PositionManager:
     async def _load_futures_position(self) -> None:
         """Load futures position from exchange."""
         exchange_position = await self._exchange.private.get_position(self.symbol, force=True)
-        
+
         if exchange_position:
             self._position.qty = exchange_position.qty_base
             self._position.price = exchange_position.entry_price
@@ -160,13 +165,14 @@ class PositionManager:
         """Force reload book ticker via REST API."""
         await self._exchange.public.get_book_ticker(self.symbol, force=True)
 
+
     async def _force_last_order_refresh(self) -> None:
         """Refresh the last order status for the position."""
         if not self._last_order:
             return
 
         order = None
-        
+
         try:
             order = await self._exchange.private.fetch_order(self.symbol, self._last_order.order_id)
         except OrderNotFoundError as e:
@@ -176,19 +182,19 @@ class PositionManager:
         if self._last_order is None and order:
             self._logger.info(f"Lag detected: SKIPPING {order} update as no last_order is set")
 
-        self._track_order_execution(order)
+        await self._track_order_execution(order)
 
     def get_min_base_qty(self) -> float:
         """Get minimum base quantity for the exchange."""
         book_ticker = self.book_ticker
-        
+
         if not book_ticker or not self._symbol_info:
             return 0.0
-            
+
         price = book_ticker.bid_price if self._position.side == Side.BUY else book_ticker.ask_price
         return self._symbol_info.get_abs_min_quantity(price)
 
-    def _track_order_execution(self, order: Optional[Order] = None) -> bool:
+    async def _track_order_execution(self, order: Optional[Order] = None) -> bool:
         """Process filled order and update position data."""
         if not order:
             self._last_order = None
@@ -196,15 +202,20 @@ class PositionManager:
 
         try:
             # Check for out-of-order updates
-            if self._last_order and self._last_order.timestamp > order.timestamp:
-                self._logger.warning(f"⚠️ {self.tag} Received out-of-order update for order "
-                                     f"{order.order_id}: last_order timestamp {self._last_order.timestamp} > "
-                                     f"order timestamp {order.timestamp}. Skipping update.")
+            if self._last_order:
+                # self._last_order.timestamp > order.timestamp or
+                if (self._last_order.filled_quantity > order.filled_quantity or
+                        (self._last_order.is_done and not order.is_done)):
+                    self._logger.warning(f"⚠️ {self.tag} Received out-of-order update for order "
+                                         f"{order.order_id}: last_order timestamp {self._last_order.timestamp} > "
+                                         f"order timestamp {order.timestamp}. Skipping update.")
+
                 return False
-            
+
             pos_change = self.update_position_with_order(order)
             if pos_change.is_changed:
                 self._save()
+                self._on_order_filled_callback and await self._on_order_filled_callback(order, pos_change)
                 self._logger.info(f"📊 {self.tag} Updated position",
                                   side=order.side.name,
                                   qty_before=pos_change.qty_before,
@@ -242,7 +253,7 @@ class PositionManager:
 
     async def place_order(self, side: Side, quantity: float, price: float, is_market: bool = False) -> Optional[Order]:
         """Place order for the position."""
-        
+
         try:
             if is_market:
                 order = await self._exchange.private.place_market_order(
@@ -259,21 +270,24 @@ class PositionManager:
                     price=price,
                 )
 
-            self._track_order_execution(order)
+            await self._track_order_execution(order)
 
             self._logger.info(f"📈 {self.tag} placed order",
-                             order_id=order.order_id,
-                             order=str(order))
+                              order_id=order.order_id,
+                              order=str(order))
 
             return order
 
         except InsufficientBalanceError as ife:
             # Mark position as fulfilled if we can't place more orders due to balance
-            self._position.qty = self._position.target_qty
+            # self._position.qty = self._position.target_qty
+
+            await self.exchange.private.load_balances()
+            self._position.qty = self.balance_base  # Adjust position qty to balance
 
             self._logger.error(f"🚫 {self.tag} Insufficient balance to place order "
-                              f"| pos: {self._position}, order: {quantity} @ {price}  adjust position amount",
-                              error=str(ife))
+                               f"| pos: {self._position}, order: {quantity} @ {price}  adjust position amount",
+                               error=str(ife))
             return None
         except Exception as e:
             self._logger.error(f"🚫 {self.tag} Failed to place order", error=str(e))
@@ -298,7 +312,7 @@ class PositionManager:
         finally:
             order = await self._exchange.private.fetch_order(self.symbol, order_id)
 
-        self._track_order_execution(order)
+        await self._track_order_execution(order)
         return order
 
     async def sync_with_exchange(self) -> Optional[Order]:
@@ -308,7 +322,7 @@ class PositionManager:
 
         updated_order = await self._exchange.private.get_active_order(self.symbol, self._last_order.order_id)
 
-        if self._track_order_execution(updated_order):
+        if await self._track_order_execution(updated_order):
             return updated_order
 
         return None
@@ -337,7 +351,7 @@ class PositionManager:
             return 0.0
 
         if order.side == Side.SELL:
-            return (current_price / order.price - 1.0) * 100.0 > trail_pct
+            return (current_price / order.price - 1.0) * 100.0 < -trail_pct
         else:
             return (1.0 - current_price / order.price) * 100.0 > trail_pct
 
@@ -351,7 +365,7 @@ class PositionManager:
         return self._symbol_info.round_quote(price * factor)
 
     async def place_trailing_limit_order(self, side: Side, quantity: float,
-                                         top_offset_pct: float=0, trail_pct: float=0) -> Optional[Order]:
+                                         top_offset_pct: float = 0, trail_pct: float = 0) -> Optional[Order]:
         order = self._last_order
 
         price = self.book_ticker.ask_price if side == Side.SELL else self.book_ticker.bid_price
@@ -359,8 +373,13 @@ class PositionManager:
         if self._should_cancel_trailing_order(price, trail_pct):
             self._logger.info(f"🔻 {self.tag} Updating trailing limit order from {order.price} to {price}")
             o = await self.cancel_order()
-            if o.is_filled:
-                return o # Filled during cancel handle hedge outside
+            if o and o.is_filled:
+                return o  # Filled during cancel handle hedge outside
+        elif order:
+            if order.is_done:
+                return order
+
+            return None
 
         price_with_offset = self._adjust_price_by_pct(price, top_offset_pct, side)
 
@@ -372,5 +391,3 @@ class PositionManager:
                 return new_order
 
         return None
-
-
