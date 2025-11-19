@@ -1,5 +1,5 @@
 import asyncio
-from typing import Dict, Tuple, Optional, Type
+from typing import Dict, Tuple, Optional, Type, List
 
 from db.models import Symbol
 from exchanges.structs import ExchangeEnum, BookTicker, Order
@@ -15,7 +15,7 @@ from trading.strategies.implementations.base_strategy.base_multi_spot_futures_st
     BaseMultiSpotFuturesArbitrageTask,
     BaseMultiSpotFuturesTaskContext)
 from trading.signals_v2.implementation.inventory_spot_strategy_signal import InventorySpotStrategySignal, \
-    InventorySignalPairType, InventorySignalType
+    InventorySignalPairType, InventorySignalType, ArbitrageSetup
 from utils.logging_utils import disable_default_exchange_logging
 
 TRANSFER_REFRESH_SECONDS = 30
@@ -60,7 +60,9 @@ class InventorySpotStrategyTask(BaseMultiSpotFuturesArbitrageTask[InventorySpotT
                 ExchangeEnum.GATEIO: ExchangeEnum.MEXC
             }
 
-        self.mexc_side: Side = Side.BUY
+        self.current_setup: Optional[ArbitrageSetup] = None
+        self.primary_exchange: Optional[ExchangeEnum] = None
+        self.primary_side: Side = Side.BUY
 
     async def start(self):
         await super().start()
@@ -70,11 +72,12 @@ class InventorySpotStrategyTask(BaseMultiSpotFuturesArbitrageTask[InventorySpotT
         self._pos[ExchangeEnum.GATEIO_FUTURES] = self.hedge_manager
 
         await self._pos[ExchangeEnum.MEXC].cancel_order()
-
-        if self._pos[ExchangeEnum.MEXC].qty >= self._pos[ExchangeEnum.GATEIO].qty:
-            self.mexc_side = Side.SELL
-        else:
-            self.mexc_side = Side.BUY
+        # self.primary_exchange = ExchangeEnum.MEXC
+        #
+        # if self._pos[ExchangeEnum.MEXC].qty >= self._pos[ExchangeEnum.GATEIO].qty:
+        #     self.primary_side = Side.SELL
+        # else:
+        #     self.primary_side = Side.BUY
 
         self._transfer_module = AssetTransferModule(
             exchanges={exchange: e.private for exchange, e in self._exchanges.items()},
@@ -243,126 +246,162 @@ class InventorySpotStrategyTask(BaseMultiSpotFuturesArbitrageTask[InventorySpotT
 
         await self.hedge_manager.place_order(side=side, price=price, quantity=abs(delta), is_market=True)
 
-    # async def _manage_spot_position(self, signals: InventorySignalPairType, exchange: ExchangeEnum) -> Optional[Order]:
-    #     try:
-    #         signal = signals.get(exchange)
-    #         pos = self._pos[exchange]
-    #         if not signal or pos.is_fulfilled():
-    #             return None
-    #
-    #         opo_signal = signals.get(self.opo_exchange[exchange])
-    #         opo_pos = self._opo_pos[exchange]
-    #
-    #         qty = min(self.context.order_qty, opo_pos.qty - pos.qty)
-    #
-    #         # avoid overfilling position
-    #         if qty <= pos.get_min_base_qty():
-    #             return None
-    #
-    #         if signal.is_market:
-    #             # if exchange not market or opo position zero, market orders not allowed
-    #             if not opo_signal and opo_signal.is_market and opo_pos.qty == 0:
-    #                 return None
-    #
-    #             return await pos.place_market_order(
-    #                 side=signal.side,
-    #                 quantity=qty,
-    #             )
-    #
-    #         return await pos.place_trailing_limit_order(
-    #             side=signal.side,
-    #             quantity=qty,
-    #         )
-    #     except Exception as e:
-    #         self.logger.error(f"❌ Error managing spot position on {exchange.name}: {e}")
-    #         return None
     async def _on_order_filled_callback(self, order: Order, change: PositionChange):
         self.logger.info(f"✅ {order.exchange} Order filled: {order}")
-        if order.exchange == ExchangeEnum.MEXC:
-            # switch mexc side
-            self.mexc_side = Side.SELL if order.side == Side.BUY else Side.BUY
-            gateio_side = Side.BUY if order.side == Side.SELL else Side.SELL
-            gateio_pos = self._pos[ExchangeEnum.GATEIO]
-            qty = min(gateio_pos.qty, change.delta_qty) if gateio_side == Side.SELL else change.delta_qty
-            return await self._pos[ExchangeEnum.GATEIO].place_market_order(
-                side=gateio_side,
-                quantity=qty,
-            )
-    async def _manage_mexc_position(self) -> Optional[Order]:
+        pass
+        #
+        # if order.exchange == ExchangeEnum.MEXC:
+        #     # switch mexc side
+        #     gateio_side = Side.BUY if order.side == Side.SELL else Side.SELL
+        #     gateio_pos = self._pos[ExchangeEnum.GATEIO]
+        #     qty_executed = self._pos[ExchangeEnum.MEXC].get_filled_qty(order.side)
+        #
+        #     qty = min(gateio_pos.qty, qty_executed) if gateio_side == Side.SELL else qty_executed
+        #
+        #     if qty <= gateio_pos.get_min_base_qty():
+        #         return
+        #
+        #     return await self._pos[ExchangeEnum.GATEIO].place_market_order(
+        #         side=gateio_side,
+        #         quantity=qty,
+        #     )
+
+    async def _execute_both_market(self, setup: ArbitrageSetup)-> Optional[Tuple[Order, Order]]:
         try:
-            pos = self._pos[ExchangeEnum.MEXC]
-            opo_pos = self._opo_pos[ExchangeEnum.MEXC]
-            side =self.mexc_side
+            qty = min(self._pos[ExchangeEnum.MEXC].qty, self._pos[ExchangeEnum.GATEIO].qty)
+            tasks = []
+            for e, params in setup.leg.items():
+                pos = self._pos[e]
+                if qty < pos.get_min_base_qty(params.side):
+                    self.logger.info(f" ⚪️ {e.name} position too small to execute market order, skipping")
+                    return None
+                tasks.append(self._pos[e].place_market_order(
+                    side=params.side,
+                    quantity=qty,
+                ))
+            await asyncio.gather(*tasks)
+            await self._finish_arb_trade()
+            return None
+        except Exception as e:
+            self.logger.error(f"❌ Error executing both market orders: {e}")
+            return None
 
+    async def _execute_limit_leg(self, arb_setup: ArbitrageSetup)-> Optional[Tuple[Order, Order]]:
+        try:
+            side = arb_setup.leg[arb_setup.limit_leg].side
             if side == Side.BUY:
-                if pos.is_fulfilled() and opo_pos.is_fulfilled():
-                    self.mexc_side = Side.SELL
-                    return None
-                # qty = min(self.context.order_qty, opo_pos.qty - pos.qty) if is_opo_greater else self.context.order_qty
-                qty = self.context.order_qty
+                opo_qty = self._opo_pos[arb_setup.limit_leg].qty
+
+                min_arb_qty = max(self._pos[arb_setup.limit_leg].get_min_base_qty(),
+                                  self._opo_pos[arb_setup.limit_leg].get_min_base_qty(Side.SELL))
+                if opo_qty < min_arb_qty:
+                    qty = self.context.order_qty
+                else:
+                    if self._pos[ExchangeEnum.MEXC].qty > 0:
+                        qty = min(self._pos[ExchangeEnum.MEXC].qty, self._pos[ExchangeEnum.GATEIO].qty)
+                    else:
+                        qty = self._pos[ExchangeEnum.GATEIO].qty
             else:
-                if pos.qty <= pos.get_min_base_qty():
-                    # switch to BUY mode
-                    self.logger.info(f" 🔄 MEXC position zero, switching to BUY mode")
-                    self.mexc_side = Side.BUY
+                qty = self._pos[arb_setup.limit_leg].qty
+                # limit_pos = self._pos[arb_setup.limit_leg]
+                # if limit_pos.qty > limit_pos.get_min_base_qty(limit_side=Side.SELL):
+                # # qty = min(self._pos[ExchangeEnum.MEXC].qty, self._pos[ExchangeEnum.GATEIO].qty)
+                #     qty = self._pos[arb_setup.limit_leg].qty
+                # else:
 
-                    return None
-                qty = min(self.context.order_qty, pos.qty)
-
-
-            return await pos.place_trailing_limit_order(
+            await self._pos[arb_setup.limit_leg].place_trailing_limit_order(
                 side=side,
-                quantity=qty,
-                top_offset_pct=0.1,
-                trail_pct=0.2
+                quantity=qty
             )
+            return None
+        except Exception as e:
+            self.logger.error(f"❌ Error executing both market orders: {e}")
+            return None
+
+    async def _finish_arb_trade(self):
+        pass
+
+    async def _sync_spot_legs(self):
+        market_pos = self._pos[self.current_setup.market_leg]
+        limit_pos = self._pos[self.current_setup.limit_leg]
+        limit_side = self.current_setup.leg[self.current_setup.limit_leg].side
+        market_side = self.current_setup.leg[self.current_setup.market_leg].side
+        market_qty = limit_pos.get_filled_qty(limit_side) - market_pos.get_filled_qty(market_side)
+        both_filled = limit_pos.get_filled_qty(limit_side) > 0 and market_pos.get_filled_qty(market_side) > 0
+        if market_qty >= market_pos.get_min_base_qty():
+            await market_pos.place_market_order(
+                side=market_side,
+                quantity=market_qty
+            )
+
+        sell_pos = market_pos if market_side == Side.SELL else limit_pos
+        # accomplish when sold all, or market leg qty is less than min qty
+        if both_filled and (sell_pos.qty == 0  or market_qty < market_pos.get_min_base_qty()):
+            await self._finish_arb_trade()
+
+    def get_best_setup(self, setups: List[ArbitrageSetup]) -> Optional[ArbitrageSetup]:
+        best = None
+        for setup in setups:
+            if setup is None:
+                continue
+            if not best or setup.spread_bps > best.spread_bps:
+                best = setup
+        return best
+
+    async def _manage_arbitrage(self) -> Optional[Order]:
+
+        try:
+            threshold_bps = 5
+            # if not opened choose the best opportunity to initial buy
+            if self.total_spot_qty == 0:
+                # trading_setup = self.get_best_setup([
+                #     self.signal.get_best_setup(exchange=ExchangeEnum.MEXC, side=Side.BUY),
+                #     self.signal.get_best_setup(exchange=ExchangeEnum.GATEIO, side=Side.BUY)
+                # ])
+                # if not trading_setup and trading_setup.limit_side != Side.BUY:
+                trading_setup = self.get_best_setup([
+                    self.signal.get_best_setup(exchange=ExchangeEnum.MEXC, side=Side.BUY, is_market=False,
+                                               threshold_bps=threshold_bps),
+                    self.signal.get_best_setup(exchange=ExchangeEnum.GATEIO, side=Side.BUY, is_market=False,
+                                               threshold_bps=threshold_bps)
+                ])
+                pass
+            else:
+                mexc_pos = self._pos[ExchangeEnum.MEXC]
+                gateio_pos = self._pos[ExchangeEnum.GATEIO]
+                primary_side = Side.SELL
+
+                if gateio_pos.qty == 0 and mexc_pos.qty > 0:
+                    primary_exchange = ExchangeEnum.GATEIO
+                    primary_side = Side.BUY
+                elif mexc_pos.qty == 0 and gateio_pos.qty > 0:
+                    primary_exchange = ExchangeEnum.MEXC
+                    primary_side = Side.BUY
+                else:
+                    primary_exchange = ExchangeEnum.MEXC if mexc_pos.qty >= gateio_pos.qty else ExchangeEnum.GATEIO
+
+                trading_setup = self.signal.get_best_setup(primary_exchange, primary_side, is_market=False,
+                                                           threshold_bps=threshold_bps)
+
+
+            if self.current_setup != trading_setup:
+                self.logger.info(f" 🔄 New trading setup detected on {trading_setup}")
+                # TODO: cancel trailing limit orders on setup change
+                self.current_setup = trading_setup
+                await asyncio.gather(*[pos.cancel_order() for pos in self._pos.values()])
+
+            if not trading_setup:
+                return None
+
+            if trading_setup.all_market:
+                return await self._execute_both_market(trading_setup)
+
+            await self._execute_limit_leg(trading_setup)
+            await self._sync_spot_legs()
+            return None
         except Exception as e:
             self.logger.error(f"❌ Error managing spot position on MEXC: {e}")
             return None
-    # async def _manage_spot_position(self, exchange: ExchangeEnum) -> Optional[Order]:
-    #     try:
-    #         pos = self._pos[exchange]
-    #
-    #
-    #
-    #         opo_pos = self._opo_pos[exchange]
-    #         is_opo_greater = opo_pos.qty > pos.qty
-    #         qty = min(self.context.order_qty, opo_pos.qty - pos.qty) if is_opo_greater else self.context.order_qty
-    #
-    #
-    #         # refuse to place order if opo position has an active order
-    #         if opo_pos.has_order:
-    #             return None
-    #
-    #         if exchange == ExchangeEnum.GATEIO:
-    #             side = Side.BUY if pos.qty < opo_pos.qty else Side.SELL
-    #
-    #             restricted = pos.is_fulfilled() if side == Side.BUY else qty <= pos.get_min_base_qty()
-    #             if not restricted:
-    #                 return None
-    #
-    #             # if exchange not market or opo position zero, market orders not allowed
-    #             if not is_opo_greater or opo_pos.qty == 0:
-    #                 return None
-    #
-    #             return await pos.place_market_order(
-    #                 side=side,
-    #                 quantity=qty,
-    #             )
-    #
-    #         side = Side.BUY if pos.qty == 0 or pos.qty < opo_pos.qty else Side.SELL
-    #
-    #         restricted = pos.is_fulfilled() if side == Side.BUY else qty <= pos.get_min_base_qty()
-    #         if not restricted:
-    #             return None
-    #
-    #         return await pos.place_trailing_limit_order(
-    #             side=side,
-    #             quantity=qty,
-    #         )
-    #     except Exception as e:
-    #         self.logger.error(f"❌ Error managing spot position on {exchange.name}: {e}")
-    #         return None
 
     async def _manage_positions(self):
         # if await self._manage_transfer_between_exchanges():
@@ -374,7 +413,7 @@ class InventorySpotStrategyTask(BaseMultiSpotFuturesArbitrageTask[InventorySpotT
         # signals: InventorySignalPairType = self.signal.get_live_signal_book_ticker(book_tickers, threshold=15)
         # await asyncio.gather(*[self._manage_spot_position(signals, exchange) for exchange in signals])
         self.signal.get_live_signal_book_ticker(book_tickers, threshold=15)
-        await self._manage_mexc_position()
+        await self._manage_arbitrage()
         await self.manage_delta_hedge()
 
     def status(self):

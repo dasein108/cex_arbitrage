@@ -7,7 +7,7 @@ stored in msgspec.Struct contexts without any runtime dependencies.
 """
 
 from msgspec import Struct, field
-from typing import Optional
+from typing import Optional, Dict
 
 from exchanges.structs import Symbol
 from exchanges.structs.common import Side
@@ -26,7 +26,8 @@ class PositionData(Struct):
     symbol: Optional[Symbol] = None  # String representation for serialization
 
     side: Optional[Side] = None
-    
+    filled_amount: Dict[Side, float] = field(default_factory=lambda: {Side.BUY: 0.0, Side.SELL: 0.0})
+
     # Integrated PNL tracker with avg entry/exit prices
     pnl_tracker: PnlTracker = field(default_factory=PnlTracker)
 
@@ -60,6 +61,7 @@ class PositionData(Struct):
             - Maintains weighted average price for accurate P&L calculation
         """
         from utils.math_utils import calculate_weighted_price
+        self.filled_amount[side] += quantity
 
         if quantity <= 0:
             return PositionChange(self.qty, self.price, self.qty, self.price)
@@ -81,7 +83,6 @@ class PositionData(Struct):
             pos_change = PositionChange(self.qty, self.price, new_qty, new_price)
             self.qty = new_qty
             self.price = new_price
-
             # Always track entry when adding to position
             self.pnl_tracker.add_entry(price, quantity, side, fee)
 
@@ -91,7 +92,6 @@ class PositionData(Struct):
         else:
             old_qty = self.qty
             old_price = self.price
-
             # Determine the quantity being closed
             close_qty = min(quantity, self.qty)
 
@@ -145,16 +145,16 @@ class PositionData(Struct):
 
     def is_fulfilled(self, min_base_amount: float) -> bool:
         """Check if position has reached its target quantity."""
-        delta = self.target_qty -  self.qty
+        delta = self.target_qty - self.qty
         return delta < min_base_amount and self.target_qty > 1e-8
 
     def get_remaining_qty(self, min_base_amount: float) -> float:
         """Calculate remaining quantity to reach target."""
         if self.target_qty <= 1e-8:
             return 0.0
-            
+
         remaining = abs(self.target_qty - self.qty)
-        
+
         if remaining < min_base_amount:
             return 0.0
 
@@ -166,6 +166,8 @@ class PositionData(Struct):
         self.qty = 0.0
         self.price = 0.0
         self.side = None
+        self.filled_amount[Side.BUY] = 0.0
+        self.filled_amount[Side.SELL] = 0.0
 
         if reset_pnl:
             self.pnl_tracker.reset()
