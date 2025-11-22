@@ -17,6 +17,7 @@ from .position_data import PositionData
 from .exchange_position import PositionError
 from infrastructure.networking.websocket.structs import PublicWebsocketChannelType, PrivateWebsocketChannelType
 from .position_manager import PositionManager
+from ..cross_exchange_arbitrage_strategy.asset_transfer_module import AssetTransferModule, TransferRequest
 
 MarketType: TypeAlias = Literal['spot', 'futures']
 
@@ -29,6 +30,7 @@ class MarketData(Struct):
     ticks_offset: int = 0
     use_market: bool = False
 
+TRANSFER_REFRESH_SECONDS = 30
 
 class BaseMultiSpotFuturesTaskContext(BaseStrategyContext, kw_only=True):
     """Context for cross-exchange spot-futures arbitrage execution.
@@ -53,6 +55,8 @@ class BaseMultiSpotFuturesTaskContext(BaseStrategyContext, kw_only=True):
     spot_settings: List[MarketData] = msgspec.field(default_factory=lambda: [])
 
     hedge_settings: MarketData = msgspec.field(default_factory=lambda: MarketType())
+
+    transfer_request: Optional[TransferRequest] = None
 
     @property
     def tag(self) -> str:
@@ -129,6 +133,9 @@ class BaseMultiSpotFuturesArbitrageTask(BaseStrategyTask[T], Generic[T]):
         self._hedge_manager: Optional[PositionManager] = None
         self._spot_managers: List[PositionManager] = []
 
+        self._transfer_module: Optional[AssetTransferModule] = None
+
+
         self.context.status = 'inactive'
 
     def save_context(self, position_data: PositionData, index: Optional[int] = None,
@@ -166,6 +173,27 @@ class BaseMultiSpotFuturesArbitrageTask(BaseStrategyTask[T], Generic[T]):
             public_channels=[PublicWebsocketChannelType.BOOK_TICKER],
             private_channels=[PrivateWebsocketChannelType.ORDER, PrivateWebsocketChannelType.BALANCE]
         )
+
+    async def init_transfer_module(self):
+        self._transfer_module = AssetTransferModule(
+            exchanges={exchange: e.private for exchange, e in self._exchanges.items()},
+            logger=self.logger
+        )
+
+        # if there is an active transfer, restore state
+        transfer_request = self.context.transfer_request
+        if transfer_request:
+            transfer_request = await self._transfer_module.update_transfer_request(transfer_request)
+
+            if not transfer_request:
+                self.logger.warning(f"⚠️ Could not restore active transfer - remove")
+                self.context.transfer_request = None
+                self.context.set_save_flag()
+            else:
+                self.context.transfer_request = transfer_request
+                self.logger.warning(f"Waiting for active transfer to complete")
+                await self._start_transfer_monitor()
+
 
     async def start(self):
         if self.context is None:
@@ -239,6 +267,7 @@ class BaseMultiSpotFuturesArbitrageTask(BaseStrategyTask[T], Generic[T]):
         """Handle stopped state."""
         await super().stop()
         await self._cancel_all()
+        await self._stop_transfer_monitor()
 
     async def _cancel_all(self):
         cancel_tasks = []
@@ -305,3 +334,124 @@ class BaseMultiSpotFuturesArbitrageTask(BaseStrategyTask[T], Generic[T]):
             close_tasks.append(exchange.close())
 
         await asyncio.gather(*close_tasks)
+
+    async def _start_transfer_monitor(self):
+        self._transfer_task = asyncio.create_task(self._update_transfer_status())
+
+    async def _stop_transfer_monitor(self):
+        if self._transfer_task:
+            self._transfer_task.cancel()
+            try:
+                await self._transfer_task
+            except asyncio.CancelledError:
+                pass
+            self._transfer_task = None
+
+    async def _update_transfer_status(self):
+        transfer_request = self.context.transfer_request
+
+        while transfer_request:
+            if not transfer_request.in_progress:
+                break
+            try:
+                transfer_request = await self._transfer_module.update_transfer_request(transfer_request)
+                self.context.transfer_request = transfer_request
+                if not transfer_request:
+                    break
+            except Exception as e:
+                self.logger.error(f"❌ Error updating transfer status: {e}")
+                break
+            await asyncio.sleep(TRANSFER_REFRESH_SECONDS)
+
+    async def _initiate_new_transfer(self,  from_exchange: ExchangeEnum, to_exchange: ExchangeEnum) -> Optional[TransferRequest]:
+        try:
+            """Initiate a new transfer if position is fulfilled."""
+            symbol = self.context.symbol
+            from_exchange = to_exchange = None
+            qty = 0.0
+            asset = None
+            # TODO: refactor
+            # for exchange, pos in self._pos.items():
+            #     if pos.is_fulfilled():
+            #         from_exchange = exchange
+            #         to_exchange =self.opo_exchange[exchange]
+            #         qty = pos.position.qty
+            #         asset = symbol.base
+            #         break
+            #
+            # # nothing to transfer on base, check quote unrealized pnl
+            # if not asset:
+            #     for pos in self._spot_managers:
+            #         if pos.balance_usdt > self._pos[self.opo_exchange[exchange]].balance_usdt:
+            #             qty = self.context.total_quantity * pos.book_ticker.bid_price
+            #             asset = symbol.quote
+            #             from_exchange = exchange
+            #             to_exchange = self.opo_exchange[exchange]
+            #             break
+
+            if asset and qty > 0:
+                transfer_request = await self._transfer_module.transfer_asset(
+                    symbol.base, from_exchange, to_exchange, qty, buy_price=0
+                )
+
+                self.logger.info(
+                    f"🚀 Starting transfer of {qty} {symbol.base} from {from_exchange.name} to {to_exchange.name}")
+
+                return transfer_request
+
+            return None
+        except Exception as e:
+            self.logger.error(f"❌ Error initiating new transfer: {e}")
+            return None
+
+
+    async def _handle_completed_transfer(self, request: TransferRequest) -> None:
+        """Handle a completed transfer and update positions accordingly."""
+        self.logger.info(f"🔄 Transfer completed: {request.qty} {request.asset}: {request} resuming trading")
+        await asyncio.gather(*[p.load_position_from_exchange() for p in self._spot_managers])
+
+
+        # from infrastructure.networking.telegram import send_to_telegram
+        # await send_to_telegram(msg)
+        #
+        # source_pos.reset(self.context.total_quantity)
+        # dest_pos.reset(0.0)
+        # hedge_pos.reset()
+
+    async def _manage_transfer_between_exchanges(self, from_exchange: ExchangeEnum, to_exchange: ExchangeEnum) -> bool:
+        try:
+            request = self.context.transfer_request
+
+            if request:  # has active transfer
+                if request.in_progress:
+                    return True
+                else:  # has completed or failed
+                    if request.completed:
+                        await self._handle_completed_transfer(request)
+
+                    else:
+                        self.logger.error(f"❌ Transfer failed, check manually {request}")
+
+                    self.context.transfer_request = None
+                    self.context.set_save_flag()
+                    await self._stop_transfer_monitor()
+                    return False
+            else:
+                # No active transfer, check if we should initiate one
+                transfer_request = await self._initiate_new_transfer(from_exchange, to_exchange)
+
+                if transfer_request:
+                    self.context.transfer_request = transfer_request
+                    for p in self.context.positions:
+                        p.reset(target_qty=self.context.total_quantity, reset_pnl=False)
+
+                    self.context.set_save_flag()
+                    await self._start_transfer_monitor()
+                    return True
+                else:
+                    return False
+
+        except Exception as e:
+            self.logger.error(f"❌ Error managing transfer between exchanges: {e}")
+            return False
+

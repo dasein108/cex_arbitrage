@@ -48,7 +48,10 @@ class InventorySignalType(Struct):
 
 
 type ArbitrageSignalType = Literal['both_market', 'limit_mexc', 'limit_gateio']
-type InventorySpreadDirectionType = Literal['mexc_to_gateio', 'gateio_to_mexc']
+type InventorySpreadDirectionType = Literal[
+    'mexc_to_gateio', 'gateio_to_mexc',
+    'mexc_to_gateio_fut', 'gateio_fut_to_mexc',
+    'gateio_to_gateio_fut', 'gateio_fut_to_gateio']
 
 
 class ArbitrageSetup(Struct):
@@ -76,6 +79,9 @@ class ArbitrageSetup(Struct):
     def limit_leg(self):
         return self._get_leg(is_market=False)
 
+    def get_leg_by_side(self, side: Side) -> Optional[ExchangeEnum]:
+        return self._get_leg(side=side)
+
     @property
     def limit_side(self) -> Optional[Side]:
         limit_exchange = self.limit_leg
@@ -94,11 +100,13 @@ class ArbitrageSetup(Struct):
     def market_leg(self):
         return self._get_leg(is_market=True)
 
-    def _get_leg(self, is_market: bool) -> Optional[ExchangeEnum]:
+    def _get_leg(self, is_market: Optional[bool] = None, side: Optional[Side] = None) -> Optional[ExchangeEnum]:
         for exchange, signal in self.leg.items():
-            if signal.is_market == is_market:
+            if ((is_market is not None and signal.is_market == is_market) or
+                    (side is not None and signal.side == side)):
                 return exchange
         return None
+
 
 class InventoryExecutionOpportunity(Struct):
     exchange: ExchangeEnum
@@ -223,15 +231,27 @@ class InventorySpotStrategySignal(StrategySignal):
         self.stats: Dict[ArbitrageSignalType, Dict[InventorySpreadDirectionType, InventorySpreadStats]] = {
             'both_market': {
                 'mexc_to_gateio': InventorySpreadStats.create_empty(max_history_length),
-                'gateio_to_mexc': InventorySpreadStats.create_empty(max_history_length)
+                'gateio_to_mexc': InventorySpreadStats.create_empty(max_history_length),
+                'mexc_to_gateio_fut': InventorySpreadStats.create_empty(max_history_length),
+                'gateio_fut_to_mexc': InventorySpreadStats.create_empty(max_history_length),
+                'gateio_to_gateio_fut': InventorySpreadStats.create_empty(max_history_length),
+                'gateio_fut_to_gateio': InventorySpreadStats.create_empty(max_history_length),
             },
             'limit_mexc': {
                 'mexc_to_gateio': InventorySpreadStats.create_empty(max_history_length),
-                'gateio_to_mexc': InventorySpreadStats.create_empty(max_history_length)
+                'gateio_to_mexc': InventorySpreadStats.create_empty(max_history_length),
+                'mexc_to_gateio_fut': InventorySpreadStats.create_empty(max_history_length),
+                'gateio_fut_to_mexc': InventorySpreadStats.create_empty(max_history_length),
+                'gateio_to_gateio_fut': InventorySpreadStats.create_empty(max_history_length),
+                'gateio_fut_to_gateio': InventorySpreadStats.create_empty(max_history_length),
             },
             'limit_gateio': {
                 'mexc_to_gateio': InventorySpreadStats.create_empty(max_history_length),
-                'gateio_to_mexc': InventorySpreadStats.create_empty(max_history_length)
+                'gateio_to_mexc': InventorySpreadStats.create_empty(max_history_length),
+                'mexc_to_gateio_fut': InventorySpreadStats.create_empty(max_history_length),
+                'gateio_fut_to_mexc': InventorySpreadStats.create_empty(max_history_length),
+                'gateio_to_gateio_fut': InventorySpreadStats.create_empty(max_history_length),
+                'gateio_fut_to_gateio': InventorySpreadStats.create_empty(max_history_length),
             }
         }
 
@@ -443,12 +463,22 @@ class InventorySpotStrategySignal(StrategySignal):
 
                 self._update_df_balance(df, idx)
 
-    def get_live_signal(self, mexc_buy: float, mexc_sell: float, gateio_buy: float, gateio_sell: float) -> Tuple[
+    def get_live_signal(self, mexc_buy: float, mexc_sell: float, gateio_buy: float, gateio_sell: float,
+                        gateio_fut_buy: float, gateio_fut_sell) -> Tuple[
         InventorySignalEnum, Dict[str, float]]:
         mexc_to_gateio_spread_bps = ((mexc_sell - gateio_buy) / gateio_buy * 10000)
         gateio_to_mexc_spread_bps = ((gateio_sell - mexc_buy) / mexc_buy * 10000)
 
-        spreads = {'mexc_to_gateio': mexc_to_gateio_spread_bps, 'gateio_to_mexc': gateio_to_mexc_spread_bps}
+        mexc_to_gateio_fut_spread_bps = ((mexc_sell - gateio_fut_buy) / gateio_fut_buy * 10000)
+        gateio_fut_to_mexc_spread_bps = ((gateio_fut_sell - mexc_buy) / mexc_buy * 10000)
+
+        gateio_to_gateio_fut_spread_bps = ((gateio_sell - gateio_fut_buy) / gateio_fut_buy * 10000)
+        gateio_fut_to_gateio_spread_bps = ((gateio_fut_sell - gateio_buy) / gateio_buy * 10000)
+        spreads = {'mexc_to_gateio': mexc_to_gateio_spread_bps, 'gateio_to_mexc': gateio_to_mexc_spread_bps,
+                   'mexc_to_gateio_fut': mexc_to_gateio_fut_spread_bps,
+                   'gateio_fut_to_mexc': gateio_fut_to_mexc_spread_bps,
+                   'gateio_to_gateio_fut': gateio_to_gateio_fut_spread_bps,
+                   'gateio_fut_to_gateio': gateio_fut_to_gateio_spread_bps}
 
         if mexc_to_gateio_spread_bps > self.params['mexc_spread_threshold_bps']:
             return InventorySignalEnum.MEXC_TO_GATEIO, spreads  # SELL on MEXC (higher), BUY on Gate.io (lower)
@@ -480,6 +510,10 @@ class InventorySpotStrategySignal(StrategySignal):
 
         for category, directions in self.stats.items():
             for direction, stats in directions.items():
+                if direction in ['mexc_to_gateio_fut', 'gateio_fut_to_mexc',
+                                 'gateio_to_gateio_fut','gateio_fut_to_gateio']:
+                    continue
+
                 if stats.min_spread_bps != float('inf'):
                     setup = ArbitrageSetup(
                         leg={
@@ -530,11 +564,10 @@ class InventorySpotStrategySignal(StrategySignal):
 
         return insights
 
-    def get_best_setup(self, exchange: Optional[ExchangeEnum]=None,
-                       side: Optional[Side] = None, is_market: Optional[bool]=None,
-                       threshold_bps:float= 15) -> ArbitrageSetup:
+    def get_best_setup(self, exchange: Optional[ExchangeEnum] = None,
+                       side: Optional[Side] = None, threshold_bps: float = 15) -> ArbitrageSetup:
         setup = None
-        best_spread = threshold_bps #float('-inf')
+        best_spread = threshold_bps  # float('-inf')
         for arb_setup in self.arbitrage_setups:
             for leg_exchange, leg_signal in arb_setup.leg.items():
                 if exchange and leg_exchange != exchange:
@@ -543,14 +576,27 @@ class InventorySpotStrategySignal(StrategySignal):
                 if side and leg_signal.side != side:
                     continue
 
-                if is_market is not None and not arb_setup.all_market and leg_signal.is_market != is_market:
-                    continue
-
                 if arb_setup.spread_bps > best_spread:
                     best_spread = arb_setup.spread_bps
                     setup = arb_setup
 
         return setup
+
+    def get_stats_by_direction(self, direction_list: List[InventorySpreadDirectionType]) -> str:
+        info = f"\n{'Strategy':<14} | {'Direction':<20} | {'Min':<8} | {'Max':<8} | {'Mean':<8} | {'StdDev':<8}"
+        info += f"\n{'-' * 80}"
+
+        for strategy_type, directions in self.stats.items():
+            for direction, stats in directions.items():
+                if direction not in direction_list:
+                    continue
+                # Only show stats if we have valid data (not infinity)
+                if stats.min_spread_bps != float('inf'):
+                    info += f"\n{strategy_type:<14} | {direction:<16} | "
+                    info += f"{stats.min_spread_bps:<8.1f} | {stats.max_spread_bps:<8.1f} | "
+                    info += f"{stats.avg_spread_bps:<8.1f} | {stats.spread_stddev_bps:<8.1f}"
+
+        return info
 
     # python
     def get_live_signal_book_ticker(self, book_tickers: Dict[ExchangeEnum, BookTicker], threshold: float) -> List[
@@ -562,17 +608,25 @@ class InventorySpotStrategySignal(StrategySignal):
         mexc_ask = book_tickers[ExchangeEnum.MEXC].ask_price
         gateio_bid = book_tickers[ExchangeEnum.GATEIO].bid_price
         gateio_ask = book_tickers[ExchangeEnum.GATEIO].ask_price
+        gateio_fut_bid = book_tickers[ExchangeEnum.GATEIO_FUTURES].bid_price
+        gateio_fut_ask = book_tickers[ExchangeEnum.GATEIO_FUTURES].ask_price
 
         results: List[InventoryExecutionOpportunity] = []
         # candidate signals for 3 scenarios
         market_signal, market_stats = self.get_live_signal(mexc_sell=mexc_bid, mexc_buy=mexc_ask,
-                                                           gateio_buy=gateio_ask, gateio_sell=gateio_bid)
+                                                           gateio_buy=gateio_ask, gateio_sell=gateio_bid,
+                                                           gateio_fut_buy=gateio_fut_bid,
+                                                           gateio_fut_sell=gateio_fut_bid)
 
         limit_mexc_signal, limit_mexc_stats = self.get_live_signal(mexc_sell=mexc_ask, mexc_buy=mexc_bid,
-                                                                   gateio_buy=gateio_ask, gateio_sell=gateio_bid)
+                                                                   gateio_buy=gateio_ask, gateio_sell=gateio_bid,
+                                                                   gateio_fut_buy=gateio_fut_bid,
+                                                                   gateio_fut_sell=gateio_fut_bid)
 
         limit_gateio_signal, limit_gateio_stats = self.get_live_signal(mexc_sell=mexc_bid, mexc_buy=mexc_ask,
-                                                                       gateio_buy=gateio_bid, gateio_sell=gateio_ask)
+                                                                       gateio_buy=gateio_bid, gateio_sell=gateio_ask,
+                                                                       gateio_fut_buy=gateio_fut_bid,
+                                                                       gateio_fut_sell=gateio_fut_bid)
 
         # Update spread statistics using the new numpy-optimized method
         self._update_spread_stats('both_market', market_stats)
@@ -581,20 +635,9 @@ class InventorySpotStrategySignal(StrategySignal):
         self._update_arbitrage_setups()
 
         if self._get_live_signal_calls % 3000 == 0:
-            # Log spread statistics with enhanced info including mean and std dev
-            info = f"\n{'Strategy':<14} | {'Direction':<16} | {'Min':<8} | {'Max':<8} | {'Mean':<8} | {'StdDev':<8}"
-            info += f"\n{'-' * 80}"
-
-            for strategy_type, directions in self.stats.items():
-                for direction, stats in directions.items():
-                    # Only show stats if we have valid data (not infinity)
-                    if stats.min_spread_bps != float('inf'):
-                        info += f"\n{strategy_type:<14} | {direction:<16} | "
-                        info += f"{stats.min_spread_bps:<8.1f} | {stats.max_spread_bps:<8.1f} | "
-                        info += f"{stats.avg_spread_bps:<8.1f} | {stats.spread_stddev_bps:<8.1f}"
-
-            self.logger.info(info)
-
+            self.logger.info(self.get_stats_by_direction(['mexc_to_gateio', 'gateio_to_mexc']))
+            self.logger.info(self.get_stats_by_direction(['mexc_to_gateio_fut', 'gateio_fut_to_mexc']))
+            self.logger.info(self.get_stats_by_direction(['gateio_to_gateio_fut','gateio_fut_to_gateio']))
         self._get_live_signal_calls += 1
         return results
 

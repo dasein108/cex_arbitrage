@@ -11,7 +11,7 @@ import asyncio
 from typing import Optional, Callable, Awaitable
 
 from exchanges.dual_exchange import DualExchange
-from exchanges.structs import Order, SymbolInfo, Fees, AssetName, AssetBalance
+from exchanges.structs import Order, SymbolInfo, Fees, AssetName, AssetBalance, ExchangeEnum
 from exchanges.structs.common import Side
 from infrastructure.exceptions.exchange import OrderNotFoundError, InsufficientBalanceError
 from infrastructure.logging import HFTLoggerInterface
@@ -61,6 +61,10 @@ class PositionManager:
         return self._position.qty if self._position.qty > self.get_min_base_qty() else 0.0
 
     @property
+    def pnl(self):
+        return self._position.pnl_tracker
+
+    @property
     def exchange(self) -> DualExchange:
         """Get the exchange."""
         return self._exchange
@@ -99,6 +103,9 @@ class PositionManager:
     def get_filled_qty(self, side: Side) -> float:
         """Get filled quantity for the given side."""
         return self._position.filled_amount.get(side, 0.0)
+
+    def set_side(self, side: Side):
+        self._position.side = side
 
     async def initialize(self, target_qty: float = 0.0) -> bool:
         """Initialize position with exchange data."""
@@ -264,22 +271,43 @@ class PositionManager:
         price = self.book_ticker.ask_price if side == Side.BUY else self.book_ticker.bid_price
         return await self.place_order(side, quantity, price, is_market=True)
 
+    def get_book_ticker_price(self, side: Side, is_market: bool):
+        if is_market:
+            price = self.book_ticker.ask_price if side == Side.BUY else self.book_ticker.bid_price
+        else:
+            price = self.book_ticker.ask_price if side == Side.SELL else self.book_ticker.bid_price
+
+        return price
+
+    async def get_fees_base(self, side: Side, qty: float, is_market: bool = False):
+        fees = self._fees.taker_fee if is_market else self._fees.taker_fee
+        price = self.get_book_ticker_price(side, is_market)
+        return fees * price * qty
+
+    async def deduct_fees(self, side: Side, qty: float, is_market: bool = False):
+        if side == Side.SELL:
+            fee_amount = await self.get_fees_base(side, qty, is_market)
+            return qty - fee_amount
+
+        return qty
+
     async def place_order(self, side: Side, quantity: float, price: float, is_market: bool = False) -> Optional[Order]:
         """Place order for the position."""
 
         try:
+            qty_after_fees = await self.deduct_fees(side, quantity, is_market)
             if is_market:
                 order = await self._exchange.private.place_market_order(
                     symbol=self.symbol,
                     side=side,
-                    quantity=quantity,
+                    quantity=qty_after_fees,
                     price=price,
                 )
             else:
                 order = await self._exchange.private.place_limit_order(
                     symbol=self.symbol,
                     side=side,
-                    quantity=quantity,
+                    quantity=qty_after_fees,
                     price=price,
                 )
 

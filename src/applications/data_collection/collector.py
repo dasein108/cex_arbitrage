@@ -127,7 +127,7 @@ class UnifiedWebSocketManager:
         self.logger = get_logger('data_collector.websocket_manager')
 
         # Exchange composite clients (separated domain architecture)
-        self._exchange_composites: Dict[ExchangeEnum,
+        self._exchanges: Dict[ExchangeEnum,
         Union[CompositePublicSpotExchange, CompositePublicFuturesExchange]] = {}
         
         # Event handler adapters for each exchange
@@ -206,13 +206,13 @@ class UnifiedWebSocketManager:
             config = get_exchange_config(exchange.value)
             
             # Create composite public exchange (separated domain architecture)
-            composite = get_composite_implementation(
+            public_exchange = get_composite_implementation(
                 exchange_config=config,
                 is_private=False  # Pure market data domain
             )
 
             # Create event handler adapter
-            adapter = BindedEventHandlersAdapter(self.logger).bind_to_exchange(composite)
+            adapter = BindedEventHandlersAdapter(self.logger).bind_to_exchange(public_exchange)
             
             # Bind event handlers using modern .bind() pattern
             if self.book_ticker_handler:
@@ -233,7 +233,7 @@ class UnifiedWebSocketManager:
             #                lambda trade: self._handle_trades_update(exchange, trade.symbol, [trade]))
 
             # Store composite and adapter
-            self._exchange_composites[exchange] = composite
+            self._exchanges[exchange] = public_exchange
             self._event_adapters[exchange] = adapter
             self._active_symbols[exchange] = set()
             self._connected[exchange] = False
@@ -241,11 +241,10 @@ class UnifiedWebSocketManager:
             # Initialize composite with symbols and channels
             # NOTE: Trade subscription disabled for performance optimization - only collecting book tickers
             with LoggingTimer(self.logger, "composite_initialization") as timer:
-                # channels = [PublicWebsocketChannelType.BOOK_TICKER, PublicWebsocketChannelType.PUB_TRADE]  # Core market data
-                channels = [PublicWebsocketChannelType.PUB_TRADE]  # Core market data
+                channels = [PublicWebsocketChannelType.BOOK_TICKER, PublicWebsocketChannelType.PUB_TRADE]  # Core market data
+                # channels = [PublicWebsocketChannelType.PUB_TRADE]  # Core market data
 
                 # Add TICKER channel for futures exchanges to collect funding rates
-                config = get_exchange_config(exchange.value)
                 if config.is_futures:
                     channels.append(PublicWebsocketChannelType.TICKER)
                     self.logger.info(f"Added TICKER channel for futures exchange {exchange.value}")
@@ -257,7 +256,7 @@ class UnifiedWebSocketManager:
                 
                 for symbol in symbols:
                     try:
-                        if await composite.is_tradable(symbol):
+                        if await public_exchange.is_tradable(symbol):
                             tradable_symbols.append(symbol)
                         else:
                             non_tradable_symbols.append(symbol)
@@ -271,7 +270,7 @@ class UnifiedWebSocketManager:
                     await self._notify_non_tradable_symbols(exchange, non_tradable_symbols)
                 
                 # Initialize with only tradable symbols
-                await composite.initialize(tradable_symbols, channels)
+                await public_exchange.initialize(tradable_symbols, channels)
                 self._active_symbols[exchange].update(tradable_symbols)
                 self._connected[exchange] = True
 
@@ -520,7 +519,7 @@ class UnifiedWebSocketManager:
         """Sync funding rates for all active futures symbols."""
         try:
             with LoggingTimer(self.logger, "funding_rate_sync") as timer:
-                for exchange, composite in self._exchange_composites.items():
+                for exchange, composite in self._exchanges.items():
                     if not self._connected[exchange]:
                         continue
                         
@@ -611,7 +610,7 @@ class UnifiedWebSocketManager:
             return
 
         try:
-            for exchange, composite in self._exchange_composites.items():
+            for exchange, composite in self._exchanges.items():
                 if self._connected[exchange]:
                     # Use channel types for subscription - trade subscription disabled for performance
                     channels = [PublicWebsocketChannelType.BOOK_TICKER]
@@ -636,7 +635,7 @@ class UnifiedWebSocketManager:
             return
 
         try:
-            for exchange, composite in self._exchange_composites.items():
+            for exchange, composite in self._exchanges.items():
                 if self._connected[exchange]:
                     # Use composite pattern for unsubscription
                     for s in symbols:
@@ -878,7 +877,7 @@ class UnifiedWebSocketManager:
                     self.logger.error(f"Error disposing adapter for {exchange}: {e}")
 
             # Close all composite exchanges
-            for exchange, composite in self._exchange_composites.items():
+            for exchange, composite in self._exchanges.items():
                 try:
                     await composite.close()
                     self._connected[exchange] = False
@@ -890,7 +889,7 @@ class UnifiedWebSocketManager:
             self._trade_cache.clear()
             self._funding_rate_cache.clear()
             self._active_symbols.clear()
-            self._exchange_composites.clear()
+            self._exchanges.clear()
             self._event_adapters.clear()
 
             self.logger.info("All composite exchange connections closed")
@@ -1419,10 +1418,10 @@ class DataCollector:
                 
             # Validate HFT performance requirement (<5ms target)
             if timer.elapsed_ms > 5.0:
-                self.logger.warning(f"Funding rate storage exceeded HFT target: {timer.elapsed_ms:.1f}ms > 5ms")
+                self.logger.debug(f"Funding rate storage exceeded HFT target: {timer.elapsed_ms:.1f}ms > 5ms")
                 self.logger.metric("storage_hft_violations", 1, tags={"operation": "funding_rate_storage"})
             elif timer.elapsed_ms > 2.0:  # Warning threshold
-                self.logger.warning(f"Funding rate storage performance degraded: {timer.elapsed_ms:.1f}ms")
+                self.logger.debug(f"Funding rate storage performance degraded: {timer.elapsed_ms:.1f}ms")
                 self.logger.metric("storage_performance_warnings", 1, tags={"operation": "funding_rate_storage"})
 
             self.logger.debug(

@@ -18,7 +18,7 @@ from typing import Optional, Dict, List
 
 from .enums import TimeInForce, KlineInterval, OrderStatus, OrderType, Side, WithdrawalStatus, DepositStatus, ExchangeEnum
 from .types import ExchangeName, AssetName, OrderId
-
+from math import floor
 
 # Connection setting structures for exchanges
 
@@ -181,11 +181,15 @@ class SymbolInfo(Struct, frozen=True):
 
     def round_quote(self, amount: float) -> float:
         """Round price to the symbol's price/quote precision."""
-        return round(amount, self.quote_precision)
+        # return round(amount, self.quote_precision)
+        factor = 10 ** self.quote_precision
+        return floor(amount * factor) / factor
 
     def round_base(self, quantity: float) -> float:
         """Round quantity to the symbol's base precision."""
-        return round(quantity, self.base_precision)
+        # return round(quantity, self.base_precision)
+        factor = 10 ** self.base_precision
+        return floor(quantity * factor) / factor
 
     def base_to_contracts(self, quantity: float) -> float:
         """Adjust quantity to meet minimum and step size requirements."""

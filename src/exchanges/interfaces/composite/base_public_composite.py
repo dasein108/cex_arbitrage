@@ -246,7 +246,7 @@ class BasePublicComposite(BaseCompositeExchange[PublicRestType, PublicWebsocketT
 
         # Track performance for HFT compliance
         if timer.elapsed_ms > 50:
-            self.logger.warning("Orderbook snapshot slow",
+            self.logger.debug("Orderbook snapshot slow",
                                 symbol=symbol,
                                 time_ms=timer.elapsed_ms)
 

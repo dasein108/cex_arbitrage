@@ -253,7 +253,7 @@ arbitrage:
       is_enabled: true
       priority: 1  # Highest priority
     - id: "hifi_usdt_spot_arb"
-      base_asset: "HIFI"
+      base_asset: "METAX"
       quote_asset: "USDT"
       opportunity_type: "SPOT_SPOT"
       min_profit_bps: 25  # Minimum 0.25% profit
@@ -278,7 +278,7 @@ arbitrage:
       priority: 4
     # Additional pairs can be added - symbol info auto-discovered
     - id: "neiroeth_usdt_spot_arb"
-      base_asset: "SWTCH"
+      base_asset: "FIO"
       quote_asset: "USDT"
       opportunity_type: "SPOT_SPOT"
       min_profit_bps: 45

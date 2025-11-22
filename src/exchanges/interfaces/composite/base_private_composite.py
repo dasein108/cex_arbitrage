@@ -292,6 +292,18 @@ class BasePrivateComposite(BalanceSyncMixin,
             self.remove_order(order_id)
             return await self.fetch_order(symbol, order_id)
 
+    async def fetch_order_rest(self, symbol: Symbol, order_id: OrderId) -> Order | None:
+        try:
+            order = await self._rest.get_order(symbol, order_id)
+            if order:
+                return await self._update_order(order, order_id)
+
+            return None
+        except OrderNotFoundError as e:
+            self.logger.error("Failed to fetch order status", order_id=order_id, error=str(e))
+            self.remove_order(order_id)
+            return None
+
     async def fetch_order(self, symbol: Symbol, order_id: OrderId) -> Order | None:
         """
         Get current status of an order.
@@ -310,16 +322,8 @@ class BasePrivateComposite(BalanceSyncMixin,
         if self.config.exchange_enum == ExchangeEnum.MEXC:
             return await self.fetch_order_from_trades(symbol, order_id)
 
-        try:
-            order = await self._rest.get_order(symbol, order_id)
-            if order:
-                return await self._update_order(order, order_id)
+        return await self.fetch_order_rest(symbol, order_id)
 
-            return None
-        except OrderNotFoundError as e:
-            self.logger.error("Failed to fetch order status", order_id=order_id, error=str(e))
-            self.remove_order(order_id)
-            return None
 
     async def fetch_order_from_trades(self, symbol: Symbol, order_id: OrderId, force = True) -> Order | None:
         """
@@ -344,8 +348,11 @@ class BasePrivateComposite(BalanceSyncMixin,
                 return await self._update_order(order, order_id)
 
             if not trades:
+                if self._orders.get(order_id):
+                    return self._orders.get(order_id)
+
                 if force:
-                    order = await self.fetch_order(symbol, order_id)
+                    order = await self.fetch_order_rest(symbol, order_id)
                     if not order:
                         self.logger.warning("No trades found for order", order_id=order_id)
                         self.remove_order(order_id)
