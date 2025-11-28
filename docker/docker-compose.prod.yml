@@ -6,6 +6,15 @@ version: '3.8'
 services:
   # Database optimized for 4GB RAM server
   database:
+    
+    # Production log rotation configuration for database
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "50m"       # Smaller logs for database (less verbose)
+        max-file: "2"         # Keep 2 log files for database
+        compress: "true"      # Compress rotated logs
+    
     environment:
       POSTGRES_DB: ${POSTGRES_DB:-arbitrage_data}
       POSTGRES_USER: ${POSTGRES_USER:-arbitrage_user}
@@ -53,6 +62,15 @@ services:
   # Data collector optimized for minimal memory usage
   data_collector:
     command: ["python", "src/applications/data_collection/run.py"]
+    
+    # Production log rotation configuration
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "100m"      # Maximum log file size before rotation
+        max-file: "3"         # Keep maximum 3 log files (current + 2 rotated)
+        compress: "true"      # Compress rotated logs to save space
+    
     environment:
       # Database credentials
       POSTGRES_HOST: database

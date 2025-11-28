@@ -511,7 +511,7 @@ class InventorySpotStrategySignal(StrategySignal):
         for category, directions in self.stats.items():
             for direction, stats in directions.items():
                 if direction in ['mexc_to_gateio_fut', 'gateio_fut_to_mexc',
-                                 'gateio_to_gateio_fut','gateio_fut_to_gateio']:
+                                 'gateio_to_gateio_fut', 'gateio_fut_to_gateio']:
                     continue
 
                 if stats.min_spread_bps != float('inf'):
@@ -573,8 +573,14 @@ class InventorySpotStrategySignal(StrategySignal):
                 if exchange and leg_exchange != exchange:
                     continue
 
-                if side and leg_signal.side != side:
-                    continue
+                if side:
+                    # if leg_signal.side != side:
+                    #     continue
+
+                    # filter by limit leg side if applicable or all market
+                    if (not arb_setup.all_market and
+                            not (arb_setup.limit_leg == exchange and side == arb_setup.limit_side)):
+                        continue
 
                 if arb_setup.spread_bps > best_spread:
                     best_spread = arb_setup.spread_bps
@@ -637,7 +643,7 @@ class InventorySpotStrategySignal(StrategySignal):
         if self._get_live_signal_calls % 3000 == 0:
             self.logger.info(self.get_stats_by_direction(['mexc_to_gateio', 'gateio_to_mexc']))
             self.logger.info(self.get_stats_by_direction(['mexc_to_gateio_fut', 'gateio_fut_to_mexc']))
-            self.logger.info(self.get_stats_by_direction(['gateio_to_gateio_fut','gateio_fut_to_gateio']))
+            self.logger.info(self.get_stats_by_direction(['gateio_to_gateio_fut', 'gateio_fut_to_gateio']))
         self._get_live_signal_calls += 1
         return results
 

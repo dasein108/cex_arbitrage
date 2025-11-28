@@ -42,16 +42,18 @@ class CompositePublicFuturesExchange(BasePublicComposite):
         self._tag = f'{config.name}_public_futures'
 
 
-    async def initialize(self, symbols: List[Symbol] = None, channels: List[PublicWebsocketChannelType]=None) -> None:
+    async def initialize(self, symbols: List[Symbol] = None, channels: List[PublicWebsocketChannelType]=None,
+                         ensure_connection=False) -> None:
         """
         Initialize futures exchange with symbols and futures-specific data.
         
         Args:
             symbols: Optional list of symbols to track
             channels: Optional list of WebSocket channels to subscribe to
+            ensure_connection: Whether to wait until connected before returning
         """
         # Initialize composite public functionality
-        await super().initialize(symbols, channels)
+        await super().initialize(symbols, channels, ensure_connection)
 
         if symbols:
             try:

@@ -124,7 +124,9 @@ CREATE TABLE IF NOT EXISTS trade_snapshots (
     CONSTRAINT chk_positive_trade_price CHECK (price > 0),
     CONSTRAINT chk_positive_trade_quantity CHECK (quantity > 0),
     
-    PRIMARY KEY (timestamp, symbol_id, id)
+    PRIMARY KEY (timestamp, symbol_id, id),
+    -- Add unique constraint for ON CONFLICT handling
+    CONSTRAINT uk_trade_deduplication UNIQUE (symbol_id, timestamp, trade_id)
 );
 
 -- Funding rate snapshots table - NORMALIZED SCHEMA (matches FundingRateSnapshot model)

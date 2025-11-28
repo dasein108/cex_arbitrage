@@ -104,6 +104,27 @@ class InventorySpotStrategyTask(BaseMultiSpotFuturesArbitrageTask[InventorySpotT
 
     async def _on_order_filled_callback(self, order: Order, change: PositionChange):
         self.logger.info(f"✅ {order.exchange.name} Order filled: {order}")
+        # skip hedge fills
+
+        if order.exchange in [ExchangeEnum.GATEIO_FUTURES]:
+            return
+
+        curr_setup = self.current_setup
+        if not curr_setup:
+           await self._adjust_spot_delta()
+        else:
+            if curr_setup.all_market:
+                self.logger.info(" ⚪️ Both legs are market orders, no action needed on fill")
+                await self._finish_arb_trade()
+                return
+            elif order.exchange == curr_setup.market_leg:
+                # do nothing
+                return
+            else:
+                await self._execute_market_leg(self.current_setup)
+            # await self._execute_market_leg(order)
+
+        # _execute_market_leg
         pass
         #
         # if order.exchange == ExchangeEnum.MEXC:
@@ -127,9 +148,14 @@ class InventorySpotStrategyTask(BaseMultiSpotFuturesArbitrageTask[InventorySpotT
             tasks = []
             for e, params in setup.leg.items():
                 pos = self._pos[e]
-                if qty < pos.get_min_base_qty(params.side):
-                    self.logger.info(f" ⚪️ {e.name} position too small to execute market order, skipping")
-                    return None
+                if params.side == Side.SELL:
+                    qty = min(pos.qty, qty)
+                    if qty < pos.get_min_base_qty(params.side):
+                        self.logger.info(f" ⚪️ {e.name} {qty} position too small to execute market order, skipping")
+                        continue
+                elif qty > self.context.total_quantity and params.side == Side.BUY:
+                    self.logger.info(f" ⚪️ {e.name} {qty} position too big to execute market order, skipping")
+                    continue
 
                 tasks.append(self._pos[e].place_market_order(
                     side=params.side,
@@ -240,9 +266,14 @@ class InventorySpotStrategyTask(BaseMultiSpotFuturesArbitrageTask[InventorySpotT
             
             # default qty
             arb_qty = self.context.order_qty
-            
-            # if not opened choose the best opportunity to initial buy
-            if self.total_spot_qty == 0:
+            mexc_pos = self._pos[ExchangeEnum.MEXC]
+            gateio_pos = self._pos[ExchangeEnum.GATEIO]
+
+            abs_delta = abs(mexc_pos.qty - gateio_pos.qty)
+            min_qty = min(mexc_pos.get_min_base_qty(Side.SELL), gateio_pos.get_min_base_qty(Side.SELL))
+
+            # both have zero position
+            if self.total_spot_qty < min_qty:
                 # trading_setup = self.get_best_setup([
                 #     self.signal.get_best_setup(exchange=ExchangeEnum.MEXC, side=Side.BUY),
                 #     self.signal.get_best_setup(exchange=ExchangeEnum.GATEIO, side=Side.BUY)
@@ -254,11 +285,7 @@ class InventorySpotStrategyTask(BaseMultiSpotFuturesArbitrageTask[InventorySpotT
                 ])
                 pass
             else:
-                mexc_pos = self._pos[ExchangeEnum.MEXC]
-                gateio_pos = self._pos[ExchangeEnum.GATEIO]
-                
-                abs_delta = abs(mexc_pos.qty - gateio_pos.qty)
-                min_qty= min(mexc_pos.get_min_base_qty(Side.SELL), gateio_pos.get_min_base_qty(Side.SELL))
+                # have no imbalance, but both have balance
                 if abs_delta > min_qty and mexc_pos.qty > 0 and gateio_pos.qty > 0:
                     # self.logger.warning(f"⚠️ Equal spot positions detected, cannot determine primary exchange")
                     trading_setup = self.get_best_setup([
@@ -274,6 +301,7 @@ class InventorySpotStrategyTask(BaseMultiSpotFuturesArbitrageTask[InventorySpotT
                     arb_qty = abs_delta if abs_delta > min_qty else self.context.order_qty
 
             if self.current_setup != trading_setup:
+                self.logger.info(self.status())
                 self.logger.info(f" 🔄 New trading setup detected on {trading_setup}")
                 self.current_setup = trading_setup
                 
@@ -300,10 +328,10 @@ class InventorySpotStrategyTask(BaseMultiSpotFuturesArbitrageTask[InventorySpotT
 
             # check market leg regardless setup, to handle when setup is gone
             # and limit order was executed in between signals
-            if not trading_setup:
-                await self._adjust_spot_delta()
-            else:
-                await self._execute_market_leg(trading_setup)
+            # if not trading_setup:
+            #     await self._adjust_spot_delta()
+            # else:
+            #     await self._execute_market_leg(trading_setup)
 
             return None
         except Exception as e:

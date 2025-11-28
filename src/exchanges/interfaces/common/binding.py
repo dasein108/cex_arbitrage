@@ -30,17 +30,18 @@ class BoundHandlerInterface(Generic[T]):
             channel: The channel (enum type for backward compatibility, or string for new approach)
             handler: Async function to handle messages for this channel
         """
+        channel_str = self._normalize_channel_to_string(channel)
+        print(f"Binding handler to channel: {channel_str}")
         if isinstance(channel, str):
             # New string-based binding
             self._string_handlers[channel] = handler
             if hasattr(self, 'logger'):
-                self.logger.debug(f"Bound handler for string channel: {channel}")
+                self.logger.debug(f"Bound handler for string channel: {channel_str}")
         else:
             # Legacy enum-based binding
             self._bound_handlers[channel] = handler
             
             # Also create string mapping for unified access
-            channel_str = self._normalize_channel_to_string(channel)
             self._string_handlers[channel_str] = handler
             self._enum_to_string[channel] = channel_str
             

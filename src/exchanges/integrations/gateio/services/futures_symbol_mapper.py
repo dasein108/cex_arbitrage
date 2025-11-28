@@ -37,8 +37,8 @@ class GateioFuturesSymbolMapper(SymbolMapperInterface):
         
         if len(parts) == 2:
             base, quote = parts
-            if quote in self._quote_assets:
-                return Symbol(base=AssetName(base), quote=AssetName(quote))
+            # if quote in self._quote_assets:
+            return Symbol(base=AssetName(base), quote=AssetName(quote))
         
         elif len(parts) == 3:
             base, quote, expiry = parts

@@ -6,7 +6,7 @@ Optimized for HFT requirements with minimal latency and maximum throughput.
 """
 
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import List, Optional, Dict, Any, Set
 from collections import defaultdict
 import time
@@ -37,7 +37,7 @@ def _cleanup_timestamp_cache():
     if current_time - _cache_last_cleanup < _cache_cleanup_interval:
         return
     
-    cutoff_time = datetime.utcnow() - timedelta(minutes=10)
+    cutoff_time = datetime.now(timezone.utc) - timedelta(minutes=10)
     total_removed = 0
     
     # Clean up old timestamps from each cache entry
@@ -488,7 +488,7 @@ async def get_book_ticker_history(
     """
     db = get_db_manager()
     
-    timestamp_from = datetime.utcnow() - timedelta(hours=hours_back)
+    timestamp_from = datetime.now(timezone.utc) - timedelta(hours=hours_back)
     
     # Use window function to sample data at intervals with normalized schema
     query = """
@@ -558,7 +558,7 @@ async def cleanup_old_snapshots(days_to_keep: int = 7) -> int:
     """
     db = get_db_manager()
     
-    cutoff_date = datetime.utcnow() - timedelta(days=days_to_keep)
+    cutoff_date = datetime.now(timezone.utc) - timedelta(days=days_to_keep)
     
     query = """
         DELETE FROM book_ticker_snapshots
@@ -653,7 +653,7 @@ def _cleanup_trade_timestamp_cache():
     """
     Clean up old entries from the trade timestamp cache.
     """
-    cutoff_time = datetime.utcnow() - timedelta(minutes=10)
+    cutoff_time = datetime.now(timezone.utc) - timedelta(minutes=10)
     total_removed = 0
     
     for key in list(_trade_timestamp_cache.keys()):
@@ -717,7 +717,7 @@ async def insert_trade_snapshot(snapshot: TradeSnapshot) -> int:
             snapshot.quote_quantity,
             snapshot.is_buyer,
             snapshot.is_maker,
-            snapshot.created_at or datetime.now()
+            snapshot.created_at or datetime.now(timezone.utc)
         )
         
         logger.debug(f"Inserted trade snapshot {record_id} for symbol_id {snapshot.symbol_id}")
@@ -786,7 +786,7 @@ async def insert_funding_rate_snapshots_batch(snapshots: List[FundingRateSnapsho
             float(snapshot.funding_rate),  # Float-only policy
             funding_time,                  # Already converted to int above
             funding_time,                  # Use same value for next_funding_time field
-            snapshot.created_at or datetime.now()
+            snapshot.created_at or datetime.now(timezone.utc)
         ))
     
     try:
@@ -859,20 +859,12 @@ async def insert_trade_snapshots_batch(snapshots: List[TradeSnapshot]) -> int:
     db = get_db_manager()
     count = 0
     
+    # Simple INSERT without ON CONFLICT - let duplicates be handled by deduplication logic above
     query = """
         INSERT INTO trade_snapshots (
             symbol_id, price, quantity, side, trade_id, timestamp,
             quote_quantity, is_buyer, is_maker, created_at
         ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
-        ON CONFLICT (symbol_id, timestamp, trade_id)
-        DO UPDATE SET
-            price = EXCLUDED.price,
-            quantity = EXCLUDED.quantity,
-            side = EXCLUDED.side,
-            quote_quantity = EXCLUDED.quote_quantity,
-            is_buyer = EXCLUDED.is_buyer,
-            is_maker = EXCLUDED.is_maker,
-            created_at = EXCLUDED.created_at
     """
     
     try:
@@ -890,7 +882,7 @@ async def insert_trade_snapshots_batch(snapshots: List[TradeSnapshot]) -> int:
                         snapshot.quote_quantity,
                         snapshot.is_buyer,
                         snapshot.is_maker,
-                        snapshot.created_at or datetime.now()
+                        snapshot.created_at or datetime.now(timezone.utc)
                     )
                     count += 1
         
@@ -899,6 +891,13 @@ async def insert_trade_snapshots_batch(snapshots: List[TradeSnapshot]) -> int:
         
     except Exception as e:
         logger.error(f"Failed in trade batch insert: {e}")
+        logger.error(f"Error details: {type(e).__name__}: {str(e)}")
+        if deduplicated_snapshots:
+            sample = deduplicated_snapshots[0]
+            logger.error(f"Sample snapshot data - symbol_id: {sample.symbol_id}, trade_id: {sample.trade_id}, timestamp: {sample.timestamp}")
+        logger.error(f"Attempting to insert {len(deduplicated_snapshots)} trade snapshots")
+        import traceback
+        logger.error(f"Traceback: {traceback.format_exc()}")
         raise
 
 
@@ -921,7 +920,7 @@ async def get_recent_trades(
         List of TradeSnapshot objects ordered by timestamp DESC
     """
     db = get_db_manager()
-    timestamp_from = datetime.utcnow() - timedelta(minutes=minutes_back)
+    timestamp_from = datetime.now(timezone.utc) - timedelta(minutes=minutes_back)
     
     query = """
         SELECT ts.id, ts.symbol_id, ts.price, ts.quantity, ts.side,
@@ -1056,7 +1055,7 @@ async def insert_balance_snapshots_batch(snapshots: List[BalanceSnapshot]) -> in
             float(snapshot.frozen_balance or 0.0),
             float(snapshot.borrowing_balance or 0.0),
             float(snapshot.interest_balance or 0.0),
-            snapshot.created_at or datetime.now()
+            snapshot.created_at or datetime.now(timezone.utc)
         ))
     
     try:
@@ -1168,7 +1167,7 @@ async def get_balance_history(
     """
     db = get_db_manager()
     
-    timestamp_from = datetime.utcnow() - timedelta(hours=hours_back)
+    timestamp_from = datetime.now(timezone.utc) - timedelta(hours=hours_back)
     
     query = """
         SELECT bs.id, bs.exchange_id, bs.asset_name,
@@ -1560,7 +1559,7 @@ async def update_exchange(exchange_id: int, updates: Dict[str, Any]) -> bool:
     
     # Always update the updated_at timestamp
     set_clauses.append(f"updated_at = ${param_counter}")
-    params.append(datetime.utcnow())
+    params.append(datetime.now(timezone.utc))
     param_counter += 1
     
     # Add WHERE clause parameter
@@ -1996,7 +1995,7 @@ async def update_symbol(symbol_id: int, updates: Dict[str, Any]) -> bool:
     
     # Always update the updated_at timestamp
     set_clauses.append(f"updated_at = ${param_counter}")
-    params.append(datetime.utcnow())
+    params.append(datetime.now(timezone.utc))
     param_counter += 1
     
     # Add WHERE clause parameter

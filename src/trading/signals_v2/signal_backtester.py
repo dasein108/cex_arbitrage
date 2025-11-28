@@ -272,7 +272,7 @@ class SignalBacktester:
 
 
         df.dropna(inplace=True)
-
+        # df.to_csv('debug_backtest_data.csv')
         if df.empty:
             print(f"❌ No data available for {data_source}: {symbol}")
             return {'error': 'No data available'}
@@ -371,7 +371,7 @@ if __name__ == "__main__":
             optimization_results = await backtester.optimize_strategy_parameters(
                 symbol=symbol,
                 data_source='candles',
-                hours=48  # Use more data for optimization
+                hours=24  # Use more data for optimization
             )
             
             if 'error' in optimization_results:

@@ -498,10 +498,14 @@ class SpotArbitrageCandidateFinder:
         print(f"   Success rate: {(self.discovery_stats['viable_candidates_found'] / max(1, self.discovery_stats['total_symbols_analyzed']) * 100):.1f}%")
         
         if candidates:
+            print("LIST:")
+            symbols_str = [f"'{s.symbol.base}_{s.symbol.quote}'" for s in candidates[:10]]
+            print(f'[{", ".join(symbols_str)}]')
+
             print(f"\n🏆 Top 10 Arbitrage Candidates:")
             print(f"{'Rank':<4} {'Symbol':<12} {'Score':<8} {'Avg Spread':<12} {'Frequency':<10} {'Vol/Min':<10} {'Volatility':<12} {'Correlation':<12} {'Transfer':<20}")
             print("-" * 95)
-            
+
             for i, candidate in enumerate(candidates[:10], 1):
                 transferable = False
                 transfer_info = ""

@@ -255,7 +255,8 @@ class BasePublicComposite(BaseCompositeExchange[PublicRestType, PublicWebsocketT
     # Initialization and lifecycle
 
     async def initialize(self, symbols: List[Symbol] = None,
-                         channels: List[WebsocketChannelType]=None ) -> None:
+                         channels: List[WebsocketChannelType]=None,
+                         ensure_connection=False) -> None:
         """
         Initialize public exchange with template method orchestration.
         PATTERN: Copied from composite exchange line 45-120
@@ -291,10 +292,10 @@ class BasePublicComposite(BaseCompositeExchange[PublicRestType, PublicWebsocketT
             # Step 2: Load initial market data via REST (parallel loading, line 70)
             self.logger.info(f"{self._tag} Loading initial market data...")
 
-            tasks = [self.refresh_exchange_data()]
-
             if not self._symbols_info:
-                tasks.append(self.load_symbols_info())
+                await self.load_symbols_info()
+
+            tasks = [self.refresh_exchange_data()]
 
             await asyncio.gather(
                 *tasks,
@@ -304,6 +305,9 @@ class BasePublicComposite(BaseCompositeExchange[PublicRestType, PublicWebsocketT
 
             await self._ws.initialize()
 
+            if ensure_connection:
+                await self._ws.wait_until_connected(5)
+            self.logger.info(f"{self._tag} WebSocket client connected: {self._ws.is_connected()}")
             if new_symbols:
                 await self._ws.subscribe(symbol=list(self.active_symbols), channel=channels)
 
@@ -359,10 +363,12 @@ class BasePublicComposite(BaseCompositeExchange[PublicRestType, PublicWebsocketT
 
                 self.book_ticker[symbol] = book_ticker
                 self._book_ticker_update[symbol] = time.perf_counter()
-                self.publish(PublicWebsocketChannelType.BOOK_TICKER, book_ticker)  # Publish to streams
+                await self._handle_book_ticker(book_ticker)
 
         except Exception as e:
             self.logger.error(f"Failed to load orderbook snapshot for {symbol}: {e}")
+            import traceback
+            traceback.print_exc()
             raise
 
     def _update_orderbook(
@@ -447,6 +453,8 @@ class BasePublicComposite(BaseCompositeExchange[PublicRestType, PublicWebsocketT
                                     symbol=book_ticker.symbol)
                 return
 
+            prev_book_ticker = self.book_ticker.get(book_ticker.symbol)
+
             multiplier = self.symbols_info[book_ticker.symbol].quanto_multiplier
             quote_book_ticker = BookTicker(symbol=book_ticker.symbol,
                                            bid_price=book_ticker.bid_price,
@@ -509,9 +517,9 @@ class BasePublicComposite(BaseCompositeExchange[PublicRestType, PublicWebsocketT
                     if symbol in self._active_symbols:
                         self._tickers[symbol] = ticker
                         self.publish("tickers", ticker)
-                else:
-                    self.logger.warning("REST client has no ticker methods available")
-                            
+                    else:
+                        self.logger.warning("REST client has no ticker methods available")
+
             self.logger.info("Ticker sync completed",
                            symbols_synced=len([s for s in self._active_symbols if s in self._tickers]),
                            sync_time_ms=timer.elapsed_ms)

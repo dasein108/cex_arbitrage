@@ -64,16 +64,15 @@ class PublicBaseWebsocket(BaseWebsocketInterface, WebsocketSubscriptionPublicInt
                 self.logger.debug(f"Already subscribed to all requested channels for symbol {s}")
                 continue
 
-            ws_subscriptions = []
+
             for c in channels:
                 if c not in PublicWebsocketChannelType:
                     self.logger.warning(f"Invalid channel {c} for public subscription on symbol {s}")
                     channels.remove(c)
                 else:
-                    ws_subscriptions = self._prepare_subscription_message(SubscriptionAction.SUBSCRIBE, s, c)
-
-            if ws_subscriptions:
-                await self._send_message_if_connected(ws_subscriptions)
+                    ws_subscription = self._prepare_subscription_message(SubscriptionAction.SUBSCRIBE, s, c)
+                    # TODO: send batch by 10
+                    await self._send_message_if_connected(ws_subscription)
 
             if s not in self.subscriptions:
                 self.subscriptions[s] = []

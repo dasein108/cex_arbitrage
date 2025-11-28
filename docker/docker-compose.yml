@@ -20,7 +20,7 @@ services:
       - arbitrage_network
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U arbitrage_user -d arbitrage_data"]
-      interval: 10s
+      interval: 60s
       timeout: 5s
       retries: 5
 
@@ -75,6 +75,11 @@ services:
           memory: 512M
         reservations:
           memory: 256M
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
 
   # Optional: Database administration interface
   pgadmin:

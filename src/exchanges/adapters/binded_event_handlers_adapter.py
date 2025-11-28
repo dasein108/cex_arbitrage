@@ -326,7 +326,7 @@ class BindedEventHandlersAdapter:
                     try:
                         wrapper = self._channel_wrappers.get(channel)
                         if wrapper:
-                            self._exchange.unbind(channel, wrapper)
+                            self._exchange.unbind(channel)
                     except Exception as e:
                         if self.logger:
                             self.logger.warning(f"Error unbinding from channel {channel}: {e}")
