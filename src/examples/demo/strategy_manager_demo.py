@@ -93,7 +93,7 @@ async def run_spot_futures_arbitrage_demo():
                 task_id = await manager.add_task(task)
                 logger.info(f"✅ Created {task.tag} for {symbol}")
 
-            await add_inventory_spot_task(Symbol(base=AssetName("ASP"), quote=AssetName("USDT")))
+            await add_inventory_spot_task(Symbol(base=AssetName("U"), quote=AssetName("USDT")))
             # Add same-exchange task for comparison
             # await add_same_exchange_task(Symbol(base=AssetName("BTC"), quote=AssetName("USDT")))
 

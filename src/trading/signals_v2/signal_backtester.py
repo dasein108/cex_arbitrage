@@ -15,6 +15,7 @@ from trading.data_sources.candles_loader import CandlesLoader
 # Import strategy signal architecture
 from trading.signals_v2.implementation.inventory_spot_strategy_signal import InventorySpotStrategySignal
 from trading.signals_v2.implementation.spike_catching_strategy_signal import SpikeCatchingStrategySignal
+from trading.signals_v2.implementation.mexc_gateio_futures_arbitrage_signal import MexcGateioFuturesArbitrageSignal
 from trading.signals_v2.implementation.cross_exchange_parity_signal import CrossExchangeParitySignal
 from trading.signals_v2.entities import BacktestingParams, PerformanceMetrics
 from trading.signals_v2.strategy_signal import StrategySignal
@@ -291,8 +292,9 @@ class SignalBacktester:
         )
 
         # Choose strategy type and optimization parameters
-
-        if strategy_type == "spike_catching":
+        if strategy_type == "spot_futures":
+            strategy = MexcGateioFuturesArbitrageSignal()
+        elif strategy_type == "spike_catching":
             # OPTIMIZED PARAMETERS based on debug analysis
             strategy = SpikeCatchingStrategySignal(
                 symbol=symbol,
@@ -360,7 +362,7 @@ if __name__ == "__main__":
                                       candles_timeframe=KlineInterval.MINUTE_1,
                                       snapshot_seconds=60)
 
-        asset_name = 'ASP'
+        asset_name = 'U'
         symbol = Symbol(base=AssetName(asset_name), quote=AssetName('USDT'))
         
         # Choose mode: 'optimize' or 'backtest'
@@ -411,7 +413,7 @@ if __name__ == "__main__":
             await backtester.run_backtest(symbol=symbol,
                                           data_source='snapshot_book_ticker',
                                           # cross_exchange_parity, inventory_spot, spike_catching
-                                          strategy_type = "inventory_spot",
+                                          strategy_type = "spot_futures",# "inventory_spot",
                                           hours=24)
 
 

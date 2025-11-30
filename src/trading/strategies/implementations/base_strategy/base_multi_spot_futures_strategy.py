@@ -50,7 +50,7 @@ class BaseMultiSpotFuturesTaskContext(BaseStrategyContext, kw_only=True):
     hedge: Optional[PositionData] = None
 
     # Complex fields with factory defaults
-    positions: List[PositionData] = msgspec.field(default_factory=lambda: [])
+    positions: Dict[str, PositionData] = msgspec.field(default_factory=lambda: {})
 
     spot_settings: List[MarketData] = msgspec.field(default_factory=lambda: [])
 
@@ -87,10 +87,7 @@ class BaseMultiSpotFuturesArbitrageTask(BaseStrategyTask[T], Generic[T]):
 
     @property
     def total_spot_qty(self):
-        return sum([p.qty for p in self.context.positions])
-
-    def get_spot_pos(self, index: int):
-        return self.context.positions[index]
+        return sum([p.qty for p in self.context.positions.values()])
 
     @property
     def hedge_pos(self):
@@ -138,13 +135,12 @@ class BaseMultiSpotFuturesArbitrageTask(BaseStrategyTask[T], Generic[T]):
 
         self.context.status = 'inactive'
 
-    def save_context(self, position_data: PositionData, index: Optional[int] = None,
-                     is_hedge: bool = False):
+    def save_context(self, position_data: PositionData, is_hedge: bool = False):
         """Save context callback for position managers."""
         if is_hedge:
             self.context.hedge = position_data
         else:
-            self.context.positions[index] = position_data
+            self.context.positions[position_data.exchange.value] = position_data
         # This can be overridden by subclasses if needed
 
         self.context.set_save_flag()
@@ -214,6 +210,7 @@ class BaseMultiSpotFuturesArbitrageTask(BaseStrategyTask[T], Generic[T]):
         if not self.context.hedge:
             self.context.hedge = PositionData(
                 symbol=self.context.symbol,
+                exchange=self._hedge_ex.exchange_enum,
                 side=Side.SELL)
 
         # create spot positions if not exists
@@ -221,8 +218,9 @@ class BaseMultiSpotFuturesArbitrageTask(BaseStrategyTask[T], Generic[T]):
             for setting in self.context.spot_settings:
                 pos = PositionData(
                     symbol=self.context.symbol,
+                    exchange=setting.exchange,
                     side=Side.BUY)
-                self.context.positions.append(pos)
+                self.context.positions[setting.exchange.value] = pos
 
         # Create position managers - one per position
         self._hedge_manager = PositionManager(
@@ -233,12 +231,12 @@ class BaseMultiSpotFuturesArbitrageTask(BaseStrategyTask[T], Generic[T]):
         )
 
         self._spot_managers = []
-        for i, pos in enumerate(self.context.positions):
+        for pos in self.context.positions.values():
             manager = PositionManager(
                 position_data=pos,
-                exchange=self._spot_ex[i],
+                exchange=self._exchanges[pos.exchange],
                 logger=self.logger,
-                save_context=lambda pd: self.save_context(index=i, position_data=pd, is_hedge=False),
+                save_context=lambda pd: self.save_context(position_data=pd, is_hedge=False),
                 on_order_filled_callback=self._on_order_filled_callback
             )
             self._spot_managers.append(manager)
@@ -442,7 +440,7 @@ class BaseMultiSpotFuturesArbitrageTask(BaseStrategyTask[T], Generic[T]):
 
                 if transfer_request:
                     self.context.transfer_request = transfer_request
-                    for p in self.context.positions:
+                    for p in self.context.positions.values():
                         p.reset(target_qty=self.context.total_quantity, reset_pnl=False)
 
                     self.context.set_save_flag()

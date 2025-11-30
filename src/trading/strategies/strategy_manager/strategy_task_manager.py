@@ -194,6 +194,8 @@ class StrategyTaskManager:
                 
             except Exception as e:
                 self.logger.error(f"Task {task.tag} execution failed", error=str(e))
+                import traceback
+                traceback.print_exc()
 
         return TaskResult(tag=task.tag, status=task.status)
 

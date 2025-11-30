@@ -40,7 +40,7 @@ def arbitrage_trade_to_table(trades: List[ArbitrageTrade], include_header: bool 
         timestamp_str = trade.timestamp.strftime("%Y-%m-%d %H:%M:%S")
         row = (
             f"{timestamp_str:<20} | {trade.buy_exchange.value:<12} | {trade.sell_exchange.value:<12} | "
-            f"{trade.buy_price:>12.4f} | {trade.sell_price:>12.4f} | {trade.qty:>10.4f} | "
+            f"{trade.buy_price:>12.6f} | {trade.sell_price:>12.6f} | {trade.qty:>10.4f} | "
             f"{trade.pnl_pct:>7.2f}% | {trade.pnl_usdt:>10.4f}"
         )
         lines.append(row)

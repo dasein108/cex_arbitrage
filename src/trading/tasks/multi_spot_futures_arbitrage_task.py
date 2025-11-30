@@ -165,13 +165,16 @@ class MultiSpotFuturesArbitrageTask(SpotFuturesArbitrageTask):
         try:
             # Create position data for each spot exchange
             for exchange_key in self.spot_exchange_keys:
-                position_data = PositionData(symbol=str(self.context.symbol))
                 exchange = self.exchange_manager.get_exchange(exchange_key)
+
+                position_data = PositionData(symbol=str(self.context.symbol),
+                                             exchange=exchange.exchange_enum)
                 self.position_manager.add_position(exchange_key, position_data, exchange)
             
             # Create futures position data
-            futures_position_data = PositionData(symbol=str(self.context.symbol))
             futures_exchange = self.exchange_manager.get_exchange('futures')
+
+            futures_position_data = PositionData(symbol=str(self.context.symbol), exchange=futures_exchange.exchange_enum)
             self.position_manager.add_position('futures', futures_position_data, futures_exchange)
             
             # Initialize all positions

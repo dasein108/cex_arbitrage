@@ -9,7 +9,7 @@ stored in msgspec.Struct contexts without any runtime dependencies.
 from msgspec import Struct, field
 from typing import Optional, Dict
 
-from exchanges.structs import Symbol
+from exchanges.structs import Symbol, ExchangeEnum
 from exchanges.structs.common import Side
 from .pnl_tracker import PnlTracker, PositionChange
 
@@ -24,7 +24,7 @@ class PositionData(Struct):
     price: float = 0.0
     target_qty: float = 0.0
     symbol: Optional[Symbol] = None  # String representation for serialization
-
+    exchange: Optional[ExchangeEnum] = None
     side: Optional[Side] = None
     filled_amount: Dict[Side, float] = field(default_factory=lambda: {Side.BUY: 0.0, Side.SELL: 0.0})
 

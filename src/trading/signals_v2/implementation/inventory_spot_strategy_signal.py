@@ -42,7 +42,7 @@ class InventorySignalWithLimitEnum(IntEnum):
     LIMIT_GATEIO_SELL_MARKET_MEXC_BUY = 6
 
 
-class InventorySignalType(Struct):
+class ArbitrageLegType(Struct):
     side: Side
     is_market: bool
 
@@ -54,10 +54,13 @@ type InventorySpreadDirectionType = Literal[
     'gateio_to_gateio_fut', 'gateio_fut_to_gateio']
 
 
+type ExchangeSideAllowanceType = Dict[ExchangeEnum, Dict[Side, bool]]
+
+
 class ArbitrageSetup(Struct):
-    leg: Dict[ExchangeEnum, InventorySignalType]
-    spread_bps: float
-    id: str
+    leg: Dict[ExchangeEnum, ArbitrageLegType]
+    spread_bps: float = 0
+    id: str = ""
 
     def __eq__(self, other):
         if not isinstance(other, ArbitrageSetup):
@@ -70,6 +73,13 @@ class ArbitrageSetup(Struct):
             for exchange, signal in self.leg.items()
         )
         return f"ArbitrageSetup(Spread BPS: {self.spread_bps:.2f}, Legs: {{{legs_str}}})"
+
+    def is_allowed(self, exchange_sides: ExchangeSideAllowanceType) -> bool:
+        for leg_exchange, leg_signal in self.leg.items():
+            exchange_allowance = exchange_sides.get(leg_exchange, {})
+            if not exchange_allowance.get(leg_signal.side, False):
+                return False
+        return True
 
     @property
     def all_market(self) -> bool:
@@ -171,7 +181,7 @@ class InventorySpreadStats(Struct):
         )
 
 
-type InventorySignalPairType = Dict[ExchangeEnum, InventorySignalType]  # (side, is_market_order)
+type InventorySignalPairType = Dict[ExchangeEnum, ArbitrageLegType]  # (side, is_market_order)
 
 
 class InventorySpotStrategySignal(StrategySignal):
@@ -223,6 +233,8 @@ class InventorySpotStrategySignal(StrategySignal):
         self.col_mexc_ask = get_column_key(ExchangeEnum.MEXC, 'ask_price')
         self.col_gateio_bid = get_column_key(ExchangeEnum.GATEIO, 'bid_price')
         self.col_gateio_ask = get_column_key(ExchangeEnum.GATEIO, 'ask_price')
+        self.col_gateio_fut_bid = get_column_key(ExchangeEnum.GATEIO_FUTURES, 'bid_price')
+        self.col_gateio_fut_ask = get_column_key(ExchangeEnum.GATEIO_FUTURES, 'ask_price')
 
         self.col_mexc_balance = get_column_key(ExchangeEnum.MEXC, 'balance')
         self.col_gateio_balance = get_column_key(ExchangeEnum.GATEIO, 'balance')
@@ -517,11 +529,11 @@ class InventorySpotStrategySignal(StrategySignal):
                 if stats.min_spread_bps != float('inf'):
                     setup = ArbitrageSetup(
                         leg={
-                            ExchangeEnum.MEXC: InventorySignalType(
+                            ExchangeEnum.MEXC: ArbitrageLegType(
                                 side=Side.SELL if direction == 'mexc_to_gateio' else Side.BUY,
                                 is_market=category in ['both_market', 'limit_gateio']
                             ),
-                            ExchangeEnum.GATEIO: InventorySignalType(
+                            ExchangeEnum.GATEIO: ArbitrageLegType(
                                 side=Side.BUY if direction == 'mexc_to_gateio' else Side.SELL,
                                 is_market=category in ['both_market', 'limit_mexc']
                             )
@@ -565,18 +577,27 @@ class InventorySpotStrategySignal(StrategySignal):
         return insights
 
     def get_best_setup(self, exchange: Optional[ExchangeEnum] = None,
-                       side: Optional[Side] = None, threshold_bps: float = 15) -> ArbitrageSetup:
+                       side: Optional[Side] = None, threshold_bps: float = 15,
+                       availability: Optional[Dict[ExchangeEnum, Dict[Side, bool]]] = None) -> ArbitrageSetup:
         setup = None
         best_spread = threshold_bps  # float('-inf')
         for arb_setup in self.arbitrage_setups:
+            # Check availability constraint first - all legs must be available
+            if availability:
+                all_legs_available = True
+                for leg_exchange, leg_signal in arb_setup.leg.items():
+                    exchange_availability = availability.get(leg_exchange, {})
+                    if not exchange_availability.get(leg_signal.side, False):
+                        all_legs_available = False
+                        break
+                if not all_legs_available:
+                    continue
+            
             for leg_exchange, leg_signal in arb_setup.leg.items():
                 if exchange and leg_exchange != exchange:
                     continue
 
                 if side:
-                    # if leg_signal.side != side:
-                    #     continue
-
                     # filter by limit leg side if applicable or all market
                     if (not arb_setup.all_market and
                             not (arb_setup.limit_leg == exchange and side == arb_setup.limit_side)):
@@ -587,6 +608,18 @@ class InventorySpotStrategySignal(StrategySignal):
                     setup = arb_setup
 
         return setup
+
+    def get_signals(self, exchange_sides: ExchangeSideAllowanceType,  threshold_bps: float = 15) -> ArbitrageSetup:
+        setup = None
+        best_spread = threshold_bps  # float('-inf')
+        for arb_setup in self.arbitrage_setups:
+            # Check if all legs are allowed
+            if arb_setup.is_allowed(exchange_sides) and arb_setup.spread_bps >= best_spread:
+                best_spread = arb_setup.spread_bps
+                setup = arb_setup
+
+        return setup
+
 
     def get_stats_by_direction(self, direction_list: List[InventorySpreadDirectionType]) -> str:
         info = f"\n{'Strategy':<14} | {'Direction':<20} | {'Min':<8} | {'Max':<8} | {'Mean':<8} | {'StdDev':<8}"
@@ -650,34 +683,34 @@ class InventorySpotStrategySignal(StrategySignal):
         # mappings from InventorySignalEnum -> InventorySignalType for each scenario
         market_mapping = {
             InventorySignalEnum.MEXC_TO_GATEIO: {
-                ExchangeEnum.MEXC: InventorySignalType(Side.SELL, True),
-                ExchangeEnum.GATEIO: InventorySignalType(Side.BUY, True)
+                ExchangeEnum.MEXC: ArbitrageLegType(Side.SELL, True),
+                ExchangeEnum.GATEIO: ArbitrageLegType(Side.BUY, True)
             },
             InventorySignalEnum.GATEIO_TO_MEXC: {
-                ExchangeEnum.GATEIO: InventorySignalType(Side.SELL, True),
-                ExchangeEnum.MEXC: InventorySignalType(Side.BUY, True)
+                ExchangeEnum.GATEIO: ArbitrageLegType(Side.SELL, True),
+                ExchangeEnum.MEXC: ArbitrageLegType(Side.BUY, True)
             }
         }
 
         limit_mexc_mapping = {
             InventorySignalEnum.MEXC_TO_GATEIO: {
-                ExchangeEnum.MEXC: InventorySignalType(Side.SELL, False),  # limit sell on MEXC
-                ExchangeEnum.GATEIO: InventorySignalType(Side.BUY, True)  # market buy on Gate.io
+                ExchangeEnum.MEXC: ArbitrageLegType(Side.SELL, False),  # limit sell on MEXC
+                ExchangeEnum.GATEIO: ArbitrageLegType(Side.BUY, True)  # market buy on Gate.io
             },
             InventorySignalEnum.GATEIO_TO_MEXC: {
-                ExchangeEnum.GATEIO: InventorySignalType(Side.SELL, True),  # market sell on Gate.io
-                ExchangeEnum.MEXC: InventorySignalType(Side.BUY, False)  # limit buy on MEXC
+                ExchangeEnum.GATEIO: ArbitrageLegType(Side.SELL, True),  # market sell on Gate.io
+                ExchangeEnum.MEXC: ArbitrageLegType(Side.BUY, False)  # limit buy on MEXC
             }
         }
 
         limit_gateio_mapping = {
             InventorySignalEnum.MEXC_TO_GATEIO: {
-                ExchangeEnum.MEXC: InventorySignalType(Side.SELL, True),  # market sell on MEXC
-                ExchangeEnum.GATEIO: InventorySignalType(Side.BUY, False)  # limit buy on Gate.io
+                ExchangeEnum.MEXC: ArbitrageLegType(Side.SELL, True),  # market sell on MEXC
+                ExchangeEnum.GATEIO: ArbitrageLegType(Side.BUY, False)  # limit buy on Gate.io
             },
             InventorySignalEnum.GATEIO_TO_MEXC: {
-                ExchangeEnum.GATEIO: InventorySignalType(Side.SELL, False),  # limit sell on Gate.io
-                ExchangeEnum.MEXC: InventorySignalType(Side.BUY, True)  # market buy on MEXC
+                ExchangeEnum.GATEIO: ArbitrageLegType(Side.SELL, False),  # limit sell on Gate.io
+                ExchangeEnum.MEXC: ArbitrageLegType(Side.BUY, True)  # market buy on MEXC
             }
         }
 
